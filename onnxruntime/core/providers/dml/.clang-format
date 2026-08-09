@@ -1,0 +1,3 @@
+# Readability matters. Prevent syntax noise in pull requests for people who
+# accidentally leave enabled the auto-formatting options in Visual Studio.
+DisableFormat: true

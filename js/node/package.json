@@ -1,0 +1,55 @@
+{
+  "license": "MIT",
+  "name": "onnxruntime-node",
+  "repository": {
+    "url": "https://github.com/Microsoft/onnxruntime.git",
+    "type": "git"
+  },
+  "author": "fs-eire",
+  "binary": {
+    "napi_versions": [
+      6
+    ]
+  },
+  "version": "1.29.0",
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "global-agent": "^4.1.3",
+    "onnxruntime-common": "file:../common"
+  },
+  "scripts": {
+    "postinstall": "node ./script/install",
+    "buildr": "tsc && node ./script/build --config=RelWithDebInfo",
+    "preprepare": "node -e \"require('node:fs').copyFileSync('./node_modules/long/index.d.ts', './node_modules/long/umd/index.d.ts')\"",
+    "prepare": "tsc --build script test .",
+    "rebuild": "tsc && node ./script/build --rebuild",
+    "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
+    "buildd": "tsc && node ./script/build --config=Debug",
+    "build": "tsc && node ./script/build",
+    "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && mocha ./test/test-main",
+    "prepack": "node ./script/prepack",
+    "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo"
+  },
+  "keywords": [
+    "ONNX",
+    "ONNXRuntime",
+    "ONNX Runtime"
+  ],
+  "devDependencies": {
+    "@types/minimist": "^1.2.2",
+    "@types/node": "^20.10.0",
+    "cmake-js": "^8.0.0",
+    "jsonc": "^2.0.0",
+    "minimist": "^1.2.8",
+    "node-addon-api": "^6.0.0",
+    "protobufjs": "^7.2.4"
+  },
+  "main": "dist/index.js",
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "types": "dist/index.d.ts",
+  "description": "ONNXRuntime Node.js binding"
+}

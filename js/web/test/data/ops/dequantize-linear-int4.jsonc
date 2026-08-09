@@ -1,0 +1,72 @@
+[
+  {
+    "name": "DequantizeLinear int4",
+    "opset": { "domain": "", "version": 21 },
+    "operator": "DequantizeLinear",
+    "attributes": [{ "name": "axis", "data": 0, "type": "int" }],
+    "cases": [
+      {
+        "name": "T[2,3]",
+        "inputs": [
+          {
+            "data": [0, 1, 7, -4, -8],
+            "dims": [5],
+            "type": "int4"
+          },
+          {
+            "data": [2],
+            "dims": [],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int4"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-2, 0, 12, -10, -18],
+            "dims": [5],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "DequantizeLinear uint4",
+    "opset": { "domain": "", "version": 21 },
+    "operator": "DequantizeLinear",
+    "attributes": [{ "name": "axis", "data": 0, "type": "int" }],
+    "cases": [
+      {
+        "name": "T[2,3]",
+        "inputs": [
+          {
+            "data": [0, 1, 7, 10, 15],
+            "dims": [5],
+            "type": "uint4"
+          },
+          {
+            "data": [2],
+            "dims": [],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "uint4"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-2, 0, 12, 18, 28],
+            "dims": [5],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

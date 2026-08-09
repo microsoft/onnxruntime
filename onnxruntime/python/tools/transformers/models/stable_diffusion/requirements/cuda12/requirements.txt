@@ -1,0 +1,21 @@
+-r ../requirements.txt
+
+onnxruntime-gpu>=1.19.2
+
+py3nvml
+
+# The version of cuda-python shall be compatible with installed CUDA version.
+# For demo of TensorRT excution provider and TensortRT.
+cuda-python>=12.1.0
+
+# For windows, cuda-python need the following
+pywin32; platform_system == "Windows"
+
+# For windows, run `conda install -c conda-forge nvtx` instead
+nvtx; platform_system != "Windows"
+
+# Please install PyTorch 2.4 or above using one of the following commands:
+# pip3 install torch --index-url https://download.pytorch.org/whl/cu124
+
+# Run the following command to install some extra packages for onnx graph optimization for TensorRT manually.
+# pip3 install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com

@@ -1,0 +1,9 @@
+{
+  "name": "ort-type-test-module-resolution",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

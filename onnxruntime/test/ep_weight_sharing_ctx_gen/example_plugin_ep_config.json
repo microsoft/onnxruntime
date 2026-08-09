@@ -1,0 +1,6 @@
+{
+    "ep_library_registration_name": "example_plugin_ep",
+    "ep_library_path": "example_plugin_ep.dll",
+    "selected_ep_name": "example_plugin_ep",
+    "default_ep_options": { "option_key": "option_value" }
+}

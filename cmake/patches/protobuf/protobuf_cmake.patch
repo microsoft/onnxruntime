@@ -1,0 +1,55 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 04cb3303a..c023001de 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -249,9 +249,7 @@ if (MSVC)
+   # MSVC warning suppressions
+   add_definitions(
+     /wd4065 # switch statement contains 'default' but no 'case' labels
+-    /wd4244 # 'conversion' conversion from 'type1' to 'type2', possible loss of data
+     /wd4251 # 'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'
+-    /wd4267 # 'var' : conversion from 'size_t' to 'type', possible loss of data
+     /wd4305 # 'identifier' : truncation from 'type1' to 'type2'
+     /wd4307 # 'operator' : integral constant overflow
+     /wd4309 # 'conversion' : truncation of constant value
+@@ -259,7 +257,7 @@ if (MSVC)
+     /wd4355 # 'this' : used in base member initializer list
+     /wd4506 # no definition for inline function 'function'
+     /wd4800 # 'type' : forcing value to bool 'true' or 'false' (performance warning)
+-    /wd4996 # The compiler encountered a deprecated declaration.
++    ${onnxruntime_PROTOBUF_EXTRA_WARNING_DISABLEMENT}
+   )
+   # Allow big object
+   add_definitions(/bigobj)
+@@ -289,7 +286,6 @@ if (MSVC)
+ else (MSVC)
+   # No version.rc file.
+   set(protobuf_version_rc_file)
+-
+   # When building with "make", "lib" prefix will be added automatically by
+   # the build tool.
+   set(LIB_PREFIX)
+diff --git a/src/google/protobuf/map.h b/src/google/protobuf/map.h
+index 008c19225..cbab108c2 100644
+--- a/src/google/protobuf/map.h
++++ b/src/google/protobuf/map.h
+@@ -52,7 +52,8 @@
+ #endif  // defined(__cpp_lib_string_view)
+ 
+ #if !defined(GOOGLE_PROTOBUF_NO_RDTSC) && defined(__APPLE__)
+-#include <mach/mach_time.h>
++// apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
++#include <time.h>
+ #endif
+ 
+ #include <google/protobuf/stubs/common.h>
+@@ -1154,7 +1155,8 @@ class Map {
+ #if defined(__APPLE__)
+       // Use a commpage-based fast time function on Apple environments (MacOS,
+       // iOS, tvOS, watchOS, etc).
+-      s += mach_absolute_time();
++      // apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
++      s += clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+ #elif defined(__x86_64__) && defined(__GNUC__)
+       uint32_t hi, lo;
+       asm volatile("rdtsc" : "=a"(lo), "=d"(hi));

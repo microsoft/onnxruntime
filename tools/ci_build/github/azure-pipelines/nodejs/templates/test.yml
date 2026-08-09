@@ -1,0 +1,49 @@
+steps:
+- checkout: none
+- download: build
+  displayName: 'Download NPM_packages'
+  artifact: 'NPM_packages'
+
+
+- task: PowerShell@2
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Move Artifact Directory (Windows)'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Move-Item -Path "$(Pipeline.Workspace)/build/NPM_packages" -Destination "$(Build.BinariesDirectory)/nodejs-artifact"
+
+- task: CmdLine@2
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Move Artifact Directory (POSIX)'
+  inputs:
+    script: |
+      mv "$(Pipeline.Workspace)/build/NPM_packages" "$(Build.BinariesDirectory)/nodejs-artifact"
+
+- script: mkdir e2e_test
+  workingDirectory: '$(Build.BinariesDirectory)'
+
+- task: PowerShell@2
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Extract package file name (Windows)'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "##vso[task.setvariable variable=NpmPackageFilesForTest;]$(ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz)"
+    workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
+
+- task: CmdLine@2
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Extract package file name (POSIX)'
+  inputs:
+    script: |
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
+      echo "##vso[task.setvariable variable=NpmPackageFilesForTest;]`ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz | tr '\n' ' '`"
+    workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
+
+- script: |
+    npm init -y
+    npm install $(NpmPackageFilesForTest) --onnxruntime-node-install-cuda=skip
+    node -p "require('onnxruntime-node')"
+  workingDirectory: '$(Build.BinariesDirectory)/e2e_test'

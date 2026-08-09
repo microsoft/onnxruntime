@@ -1,0 +1,66 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Python packaging pipeline'
+    trigger: true
+    branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
+
+stages:
+- stage: Linux_Test_CPU_x86_64_stage
+  jobs:
+  - template: templates/py-packaging-linux-test-cpu.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+
+
+- stage: Linux_Test_CPU_aarch64_stage
+  dependsOn: []
+  jobs:
+  - template: templates/py-packaging-linux-test-cpu.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+
+- stage: Packages_Somking_Test
+  dependsOn: []
+  jobs:
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_LINUX_x86_64_Wheels
+        itemPattern: '*/*manylinux*x86_64.whl'
+        arch: 'x86_64'
+        machine_pool:
+          name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+
+# ****The following Stage depend on all previous tags. ***
+
+# if final job not extecuted, it will not run nightlly build
+- stage: Final
+  dependsOn:
+  - Linux_Test_CPU_x86_64_stage
+  - Linux_Test_CPU_aarch64_stage
+  - Packages_Somking_Test
+  jobs:
+  - job: Final
+    # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
+    timeoutInMinutes: 60
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: onnxruntime-Win-CPU-VS2022-Latest
+    steps:
+    - task: PowerShell@2
+      displayName: 'Add Build Tag'
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      inputs:
+        targetType: inline
+        script: |
+          $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+          $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
+          $headers.Add("Content-Type", "application/json")
+          $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
+          Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT

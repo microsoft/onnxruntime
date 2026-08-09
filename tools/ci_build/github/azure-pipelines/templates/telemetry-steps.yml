@@ -1,0 +1,20 @@
+# sets the TelemetryOption variable and optionally generates TraceLoggingConfigPrivate.h based on the TELEMETRYGUID
+# variable
+
+steps:
+  # TELEMETRYGUID is a runtime variable that is stored on the pipeline in an old-fashioned way. So it cannot be used in
+  # template expressions. We access it through env variables.
+  - task: PowerShell@2
+    condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+    displayName: 'Set TelemetryOption variable and optionally create TraceLoggingConfigPrivate.h for WinML Telemetry'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\set_telemetry_var.ps1
+      failOnStderr: true
+      showWarnings: true
+      workingDirectory: $(Build.SourcesDirectory)
+    env:
+      # When the pipeline variable does not exist, the following line will create a new env variable with value of
+      # what you see here. 
+      TELEMETRYGUID: $(TELEMETRYGUID)
+      

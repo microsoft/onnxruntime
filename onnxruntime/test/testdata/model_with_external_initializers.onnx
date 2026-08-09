@@ -1,0 +1,19 @@
+onnx-example:–
+&
+X
+PadsY"Pad*
+mode"constant 
+test-model*"BPadsj
+locationPads.binpZ
+X
+
+
+Z
+Pads
+
+
+b
+Y
+
+
+B

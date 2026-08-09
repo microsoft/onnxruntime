@@ -1,0 +1,15 @@
+/.vscode/
+/build/
+/script/
+!/script/install.js
+/src/
+/test/
+
+/types/**/*.d.ts
+!/types/lib/**/*.d.ts
+
+CMakeLists.txt
+tsconfig.json
+**/*.tsbuildinfo
+
+*.tgz

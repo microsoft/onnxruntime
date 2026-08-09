@@ -1,0 +1,26 @@
+/CODEOWNERS @microsoft/onnxruntime-admin
+
+# Mobile
+/onnxruntime/core/flatbuffers/schema/ort.fbs @microsoft/onnxruntime-mobile
+
+# Dependencies
+requirements-dev.txt @microsoft/onnxruntime-admin
+requirements-doc.txt @microsoft/onnxruntime-admin
+requirements-training.txt @microsoft/onnxruntime-admin
+requirements.txt.in @microsoft/onnxruntime-admin
+/cgmanifests/cgmanifest.json @microsoft/onnxruntime-admin
+/cgmanifests/generated/cgmanifest.json @microsoft/onnxruntime-admin
+
+# Public facing APIs
+# C/C++
+/onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h @microsoft/onnxruntime-api
+/onnxruntime/include/onnxruntime/core/session/onnxruntime_cxx_api.h @microsoft/onnxruntime-api
+/onnxruntime/include/onnxruntime/core/session/onnxruntime_cxx_inline.h @microsoft/onnxruntime-api
+
+# C#
+/onnxruntime/csharp/src/Microsoft.ML.OnnxRuntime/*.cs @microsoft/onnxruntime-api
+
+# Python
+/onnxruntime/onnxruntime/python/*.h @microsoft/onnxruntime-api
+/onnxruntime/onnxruntime/python/*.cc @microsoft/onnxruntime-api
+/onnxruntime/onnxruntime/python/*.py @microsoft/onnxruntime-api

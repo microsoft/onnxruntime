@@ -1,0 +1,18 @@
+"ai.onnxruntime.test2ORT matmul test:Ñ
+)
+input
+tensoroutputmatmul-0"MatMulort-test-matmul*L
+Btensorj
+locationexternal-matmul.outj
+offset0j
+length64pZ!
+input
+
+
+batch_size
+b"
+output
+
+
+batch_size
+B

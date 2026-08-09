@@ -1,0 +1,35 @@
+p2o:þ
+f
+INPUT
+SKIP
+GAMMA
+BETA
+BIAS
+return_val"SkipLayerNormalization*
+epsilonoƒ: :com.microsoftskip_layer_normalizationZ2
+INPUT)
+'#
+batch
+	seq_len
+hidden_sizeZ1
+SKIP)
+'#
+batch
+	seq_len
+hidden_sizeZ
+GAMMA
+
+hidden_sizeZ
+BETA
+
+hidden_sizeZ
+BIAS
+
+hidden_sizeb5
+
+return_val'
+%!
+batch
+	seq_len
+	inter_dimB
+com.microsoft

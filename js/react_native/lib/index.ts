@@ -1,0 +1,16 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+export * from 'onnxruntime-common';
+export { listSupportedBackends } from './backend';
+
+import { registerBackend, env } from 'onnxruntime-common';
+import { onnxruntimeBackend, listSupportedBackends } from './backend';
+import { version } from './version';
+
+const backends = listSupportedBackends();
+for (const backend of backends) {
+  registerBackend(backend.name, onnxruntimeBackend, 1);
+}
+
+Object.defineProperty(env.versions, 'react-native', { value: version, enumerable: true });

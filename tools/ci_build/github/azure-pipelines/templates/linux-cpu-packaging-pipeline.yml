@@ -1,0 +1,47 @@
+parameters:
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+- name: stage_name_suffix
+  displayName: Suffix for stage name as every stage name needs to be unique
+  type: string
+  default: 'CPU'
+
+- name: ArtifactNamePrefix
+  displayName: Prefix for artifact name
+  type: string
+  default: onnxruntime
+
+- name: PackageJava
+  type: boolean
+  default: true
+
+- name: PackageNodejs
+  type: boolean
+  default: true
+
+stages:
+- stage: Linux_C_API_Packaging_${{ parameters.stage_name_suffix }}
+  dependsOn: [ ]
+  jobs:
+  - template: c-api-linux-cpu.yml
+    parameters:
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      OnnxruntimeArch: 'x64'
+      OnnxruntimeNodejsBindingArch: 'x64'
+      PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
+      ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
+      PackageJava: ${{ parameters.PackageJava }}
+      PackageNodeJS: false
+
+  - template: c-api-linux-cpu.yml
+    parameters:
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      OnnxruntimeArch: 'aarch64'
+      OnnxruntimeNodejsBindingArch: 'arm64'
+      PoolName: 'onnxruntime-linux-ARM64-CPU-2019'
+      ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
+      PackageJava: ${{ parameters.PackageJava }}
+      PackageNodeJS: ${{ parameters.PackageNodeJS }}

@@ -1,0 +1,29 @@
+parameters:
+  StageSuffix: ''
+  AgentPool : 'macOS-15'
+  UseHostedVmImage: 'true'
+  PoolDemands: ''
+
+stages:
+- stage: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
+  dependsOn:
+  - Setup
+  condition: succeeded()
+  jobs:
+  - job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
+    workspace:
+      clean: all
+    timeoutInMinutes:  120
+    pool:
+      ${{ if eq(parameters.UseHostedVmImage, 'true') }}:
+        vmImage: ${{ parameters.AgentPool }}
+      ${{ else }}:
+        name: ${{ parameters.AgentPool }}
+        ${{ if ne(parameters.PoolDemands, '') }}:
+          demands: ${{ parameters.PoolDemands }}
+
+    variables:
+    - name: OnnxRuntimeBuildDirectory
+      value: '$(Build.BinariesDirectory)'
+    steps:
+    - template: test.yml

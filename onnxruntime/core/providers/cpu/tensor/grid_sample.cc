@@ -1,0 +1,626 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+#include "core/common/safeint.h"
+#include "core/providers/cpu/tensor/grid_sample.h"
+#include "core/framework/element_type_lists.h"
+#include "core/framework/TensorSeq.h"
+#include "core/providers/common.h"
+#include "core/framework/copy.h"
+#include "core/providers/op_kernel_type_control.h"
+
+namespace onnxruntime {
+
+#define REGISTER_VERSIONED_KERNEL_TYPED(START_VER, END_VER, T)                                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(GridSample, START_VER, END_VER, T,                           \
+                                           KernelDefBuilder()                                           \
+                                               .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+                                               .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+                                           GridSample<T>);
+
+#define REGISTER_KERNEL_TYPED(VER, T)                                                         \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(GridSample, VER, T,                                          \
+                                 KernelDefBuilder()                                           \
+                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+                                 GridSample<T>);
+
+REGISTER_VERSIONED_KERNEL_TYPED(16, 19, float)
+REGISTER_VERSIONED_KERNEL_TYPED(16, 19, double)
+
+REGISTER_VERSIONED_KERNEL_TYPED(20, 21, float)
+REGISTER_VERSIONED_KERNEL_TYPED(20, 21, double)
+
+// Opset 22 supports BFloat16
+REGISTER_KERNEL_TYPED(22, float)
+REGISTER_KERNEL_TYPED(22, double)
+
+// Restore normalized location to actual image location
+//   When align_corners is true:
+//     Normalized location (-1, -1) points to the top-left pixel.
+//     Normalized location (1, 1) points to the bottom-right pixel.
+//   When align_corners is false [default]:
+//     Normalized location (-1, -1) points to the top-left pixel minus half
+//     pixel in both directions, i.e, (-0.5, -0.5) in actual image space.
+//     Normalized location (1, 1) points to the bottom-right pixel plus half
+//     pixel in both directions, i.e. (H - 0.5, W - 0.5) in actual image space.
+template <typename T>
+T GsDenormalize(T n, int64_t length, bool align_corners) {
+  T x = {};
+  if (align_corners) {  // align_corners: true => [-1, 1] to [0, length - 1]
+    x = static_cast<T>((n + 1) / 2.f * (length - 1));
+  } else {  // align_corners: false => [-1, 1] to [-0.5, length - 0.5]
+    x = static_cast<T>(((n + 1) * length - 1) / 2.f);
+  }
+  return x;
+}
+
+// Reflect by the near border till within the borders
+template <typename T>
+T GsReflect(T x, T x_min, T x_max) {
+  T dx = {};
+  T fx = static_cast<T>(x);
+  // Guard against NaN or Inf first, before computing the range, so a non-finite coordinate
+  // returns early without an unnecessary subtraction and can never reach the float->int cast
+  // (undefined behavior) below.
+  if (!std::isfinite(fx)) {
+    return x_min;
+  }
+  T range = x_max - x_min;
+  // Guard against a non-positive range (e.g. dim==1 with align_corners=true) which would
+  // otherwise produce wild indices via division by zero.
+  if (!(range > T{0})) {
+    return x_min;
+  }
+  if (fx < x_min) {
+    dx = x_min - fx;
+    // Use int64_t rather than int: for extreme (but finite) inputs, dx / range can exceed
+    // INT_MAX, making a float->int cast undefined behavior.
+    int64_t n = static_cast<int64_t>(dx / range);
+    T r = dx - n * range;
+    if (n % 2 == 0) {
+      fx = x_min + r;
+    } else {
+      fx = x_max - r;
+    }
+  } else if (fx > x_max) {
+    dx = fx - x_max;
+    int64_t n = static_cast<int64_t>(dx / range);
+    T r = dx - n * range;
+    if (n % 2 == 0) {
+      fx = x_max - r;
+    } else {
+      fx = x_min + r;
+    }
+  }
+  // else fallthrough
+  return static_cast<T>(fx);
+}
+
+// Returns true when v is finite and its magnitude is small enough that converting it to
+// int64_t via std::floor / std::nearbyint is well-defined. 2^62 is far below INT64_MAX
+// (~9.22e18) and leaves ample margin for any realistic image dimension.
+template <typename T>
+inline bool IsSafeForInt64Conversion(T v) {
+  constexpr T kSafeBound = static_cast<T>(int64_t{1} << 62);
+  return std::isfinite(v) && v >= -kSafeBound && v <= kSafeBound;
+}
+
+// Calculate cubic convolution interpolation coefficients
+// ROBERT G. KEYS https://ieeexplore.ieee.org/document/1163711
+template <typename T>
+void GsGetCubicCoeffs(T x, T coeffs[4]) {
+  constexpr T cubic_alpha = -0.75f;
+  x = std::abs(x);
+  coeffs[0] = ((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha;
+  coeffs[1] = ((cubic_alpha + 2) * x - (cubic_alpha + 3)) * x * x + 1;
+  coeffs[2] = ((cubic_alpha + 2) * (1 - x) - (cubic_alpha + 3)) * (1 - x) * (1 - x) + 1;
+  coeffs[3] = ((cubic_alpha * (2 - x) - 5 * cubic_alpha) * (2 - x) + 8 * cubic_alpha) * (2 - x) - 4 * cubic_alpha;
+}
+
+template <typename T>
+T GsBicubicInterpolate(T p[4][4], T x, T y) {
+  T v[4] = {};
+  T coeffs[4] = {};
+  GsGetCubicCoeffs(x, coeffs);
+  for (int64_t i = 0; i < 4; i++) {
+    v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2] + coeffs[3] * p[i][3];
+  }
+  GsGetCubicCoeffs(y, coeffs);
+  return static_cast<T>(coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2] + coeffs[3] * v[3]);
+}
+
+template <typename T>
+T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, T border[/* 4 */]) const {
+  T pixel = {};  // default 0
+  if (padding_mode_ == Zeros) {
+    if (c >= 0 && c < W && r >= 0 && r < H) {
+      pixel = image[r * W + c];
+    }
+  } else if (padding_mode_ == Border) {
+    c = std::clamp<int64_t>(c, 0, W - 1);
+    r = std::clamp<int64_t>(r, 0, H - 1);
+    pixel = image[r * W + c];
+  } else {  // (padding_mode_ == Reflection)
+    c = static_cast<int64_t>(GsReflect(static_cast<T>(c), border[0], border[2]));
+    r = static_cast<int64_t>(GsReflect(static_cast<T>(r), border[1], border[3]));
+    // Safety clamp: GsReflect is computed in floating point and casts back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the image range before indexing.
+    c = std::clamp<int64_t>(c, 0, W - 1);
+    r = std::clamp<int64_t>(r, 0, H - 1);
+    pixel = image[r * W + c];
+  }
+  return pixel;
+}
+
+template <typename T>
+T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, int64_t D, int64_t H, int64_t W, T border[/* 6 */]) const {
+  T pixel = {};  // default 0
+  if (padding_mode_ == Zeros) {
+    if (w >= 0 && w < W && h >= 0 && h < H && d >= 0 && d < D) {
+      pixel = image[d * H * W + h * W + w];
+    }
+  } else if (padding_mode_ == Border) {
+    w = std::clamp<int64_t>(w, 0, W - 1);
+    h = std::clamp<int64_t>(h, 0, H - 1);
+    d = std::clamp<int64_t>(d, 0, D - 1);
+    pixel = image[d * H * W + h * W + w];
+  } else {  // (padding_mode_ == Reflection)
+    w = static_cast<int64_t>(GsReflect(static_cast<T>(w), border[0], border[3]));
+    h = static_cast<int64_t>(GsReflect(static_cast<T>(h), border[1], border[4]));
+    d = static_cast<int64_t>(GsReflect(static_cast<T>(d), border[2], border[5]));
+    // Safety clamp: GsReflect is computed in floating point and casts back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the image range before indexing.
+    w = std::clamp<int64_t>(w, 0, W - 1);
+    h = std::clamp<int64_t>(h, 0, H - 1);
+    d = std::clamp<int64_t>(d, 0, D - 1);
+    pixel = image[d * H * W + h * W + w];
+  }
+  return pixel;
+}
+
+namespace {
+
+constexpr uint8_t kTopLeftMask = 1u << 0;
+constexpr uint8_t kTopRightMask = 1u << 1;
+constexpr uint8_t kBottomLeftMask = 1u << 2;
+constexpr uint8_t kBottomRightMask = 1u << 3;
+constexpr uint8_t kAllNeighborsMask = kTopLeftMask | kTopRightMask | kBottomLeftMask | kBottomRightMask;
+
+template <typename T>
+struct BilinearSamplePlan2D {
+  int64_t x1;
+  int64_t x2;
+  int64_t y1;
+  int64_t y2;
+  T w11;
+  T w12;
+  T w21;
+  T w22;
+  uint8_t mask = 0;
+};
+// PrecomputeBilinearSamplePlan2D, the loop runs across all H_out * W_out points, using the right nx/ny for each (oy, ox) and
+// storing that point's four indices, four weights, and mask in plans[idx]. This operation takes place only when bilinear interpolation
+// is used with zero padding and no align_corners set, and it helps to speed up the sampling by precomputing the plan for each output pixel.
+template <typename T>
+void PrecomputeBilinearSamplePlan2D(const T* grid_data,
+                                    int64_t H_out,
+                                    int64_t W_out,
+                                    int64_t H_in,
+                                    int64_t W_in,
+                                    std::vector<BilinearSamplePlan2D<T>>& plans) {
+  const size_t point_count = static_cast<size_t>(H_out) * static_cast<size_t>(W_out);
+
+  for (size_t idx = 0; idx < point_count; ++idx) {
+    auto& plan = plans[idx];
+    const T nx = grid_data[idx * 2];
+    const T ny = grid_data[idx * 2 + 1];
+    T x = GsDenormalize<T>(nx, W_in, false);
+    T y = GsDenormalize<T>(ny, H_in, false);
+
+    // Sanitize coordinates that are non-finite or whose magnitude is too large
+    // for a safe float->int64 conversion via std::floor. The fast path is only used
+    // for zeros padding without align_corners, so substituting the lower border (-0.5)
+    // produces an out-of-bounds floor index that the mask logic correctly rejects.
+    if (!IsSafeForInt64Conversion(x)) {
+      x = static_cast<T>(-0.5f);
+    }
+    if (!IsSafeForInt64Conversion(y)) {
+      y = static_cast<T>(-0.5f);
+    }
+
+    const int64_t x1 = static_cast<int64_t>(std::floor(x));
+    const int64_t y1 = static_cast<int64_t>(std::floor(y));
+    const int64_t x2 = x1 + 1;
+    const int64_t y2 = y1 + 1;
+
+    const T dx2 = static_cast<T>(x2) - x;
+    const T dx1 = x - static_cast<T>(x1);
+    const T dy2 = static_cast<T>(y2) - y;
+    const T dy1 = y - static_cast<T>(y1);
+
+    uint8_t mask = 0;
+    if (x1 >= 0 && x1 < W_in && y1 >= 0 && y1 < H_in) {
+      mask |= kTopLeftMask;
+    }
+    if (x2 >= 0 && x2 < W_in && y1 >= 0 && y1 < H_in) {
+      mask |= kTopRightMask;
+    }
+    if (x1 >= 0 && x1 < W_in && y2 >= 0 && y2 < H_in) {
+      mask |= kBottomLeftMask;
+    }
+    if (x2 >= 0 && x2 < W_in && y2 >= 0 && y2 < H_in) {
+      mask |= kBottomRightMask;
+    }
+
+    plan.x1 = x1;
+    plan.x2 = x2;
+    plan.y1 = y1;
+    plan.y2 = y2;
+    plan.w11 = dy2 * dx2;
+    plan.w12 = dy2 * dx1;
+    plan.w21 = dy1 * dx2;
+    plan.w22 = dy1 * dx1;
+    plan.mask = mask;
+  }
+}
+
+template <typename T>
+void EvaluatePlanForChannel(const T* input_data,
+                            T* output_data,
+                            int64_t W_in,
+                            const BilinearSamplePlan2D<T>* plan_data,
+                            size_t point_count) {
+  for (size_t idx = 0; idx < point_count; ++idx) {
+    const auto& plan = plan_data[idx];
+    if (plan.mask == 0) {
+      output_data[idx] = T{};
+      continue;
+    }
+
+    T p11 = T{};
+    T p12 = T{};
+    T p21 = T{};
+    T p22 = T{};
+
+    if (plan.mask == kAllNeighborsMask) {
+      const int64_t row1 = plan.y1 * W_in;
+      const int64_t row2 = plan.y2 * W_in;
+      p11 = input_data[row1 + plan.x1];
+      p12 = input_data[row1 + plan.x2];
+      p21 = input_data[row2 + plan.x1];
+      p22 = input_data[row2 + plan.x2];
+    } else {
+      if (plan.mask & kTopLeftMask) {
+        p11 = input_data[plan.y1 * W_in + plan.x1];
+      }
+      if (plan.mask & kTopRightMask) {
+        p12 = input_data[plan.y1 * W_in + plan.x2];
+      }
+      if (plan.mask & kBottomLeftMask) {
+        p21 = input_data[plan.y2 * W_in + plan.x1];
+      }
+      if (plan.mask & kBottomRightMask) {
+        p22 = input_data[plan.y2 * W_in + plan.x2];
+      }
+    }
+
+    output_data[idx] = plan.w11 * p11 + plan.w12 * p12 + plan.w21 * p21 + plan.w22 * p22;
+  }
+}
+
+template <typename T>
+void TryRunBilinearZerosFastPath2D(const Tensor& input,
+                                   const Tensor& grid,
+                                   Tensor& output,
+                                   int64_t n,
+                                   int64_t C,
+                                   int64_t H_in,
+                                   int64_t W_in,
+                                   int64_t H_out,
+                                   int64_t W_out,
+                                   concurrency::ThreadPool* tp,
+                                   std::vector<BilinearSamplePlan2D<T>>& sampling_plan) {
+  const size_t plane_in = static_cast<size_t>(H_in) * static_cast<size_t>(W_in);
+  const size_t plane_out = static_cast<size_t>(H_out) * static_cast<size_t>(W_out);
+  sampling_plan.resize(plane_out);
+
+  const T* grid_data = grid.Data<T>() + n * plane_out * 2;
+  PrecomputeBilinearSamplePlan2D(grid_data, H_out, W_out, H_in, W_in, sampling_plan);
+
+  const T* input_data = input.Data<T>();
+  T* output_data = output.MutableData<T>();
+
+  if (plane_out == 0) {
+    return;
+  }
+
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      tp, onnxruntime::narrow<std::ptrdiff_t>(C),
+      [&](std::ptrdiff_t c) {
+        const T* X_data = input_data + (n * C + c) * plane_in;
+        T* Y_data = output_data + (n * C + c) * plane_out;
+        EvaluatePlanForChannel(X_data, Y_data, W_in, sampling_plan.data(), plane_out);
+      });
+}
+
+}  // namespace
+
+// When grid sampling, padding is applied before interpolation.
+// For instance, in bilinear mode and zeros padding-mode, pixel p at actual
+// image location (-0.5, -0.5)
+//     0   0  <-- Zero padding
+//       p
+//     0   p00 p01 ...
+//
+//         p10 p11 ...
+//         ...
+// would be interpolated as p = p00 / 4
+//
+template <typename T>
+Status GridSample<T>::Compute(OpKernelContext* context) const {
+  const auto* input = context->Input<Tensor>(0);
+  const auto* grid = context->Input<Tensor>(1);
+  const auto& input_dims = input->Shape();
+  const auto& grid_dims = grid->Shape();
+
+  int64_t data_dims = input_dims.NumDimensions() - 2;
+  ORT_ENFORCE(static_cast<int64_t>(grid_dims.NumDimensions()) == data_dims + 2,
+              "grid dimensions must be ", data_dims + 2, "for input dimension of ", data_dims);
+
+  ORT_ENFORCE(grid_dims[grid_dims.NumDimensions() - 1] == data_dims,
+              "Last dimension of grid: ", grid_dims[grid_dims.NumDimensions() - 1], ", expect ", data_dims);
+
+  ORT_ENFORCE(input_dims.NumDimensions() == 4 || input_dims.NumDimensions() == 5, "Only 4-D or 5-D tensor is supported");
+
+  // Spatial dimensions must be non-empty for sampling: the output is sized by the grid, so a zero-size
+  // input spatial dimension would otherwise lead to invalid index computations during interpolation.
+  for (size_t i = 2; i < input_dims.NumDimensions(); ++i) {
+    ORT_RETURN_IF_NOT(input_dims[i] > 0,
+                      "Input spatial dimensions must be non-empty for sampling. Dimension ", i,
+                      " has size ", input_dims[i]);
+  }
+
+  auto N = input_dims[0];
+  auto C = input_dims[1];
+  ORT_ENFORCE(grid_dims[0] == N, "Grid batch size ", grid_dims[0], " does not match input batch size ", N);
+
+  if (input_dims.NumDimensions() == 5) {
+    ORT_ENFORCE(mode_ != Cubic, "Only support GridSample Cubic mode in 4-D cases.");
+  }
+
+  if (data_dims == 2) {
+    // sample 2d;
+    auto H_in = input_dims[2];
+    auto W_in = input_dims[3];
+    auto H_out = grid_dims[1];
+    auto W_out = grid_dims[2];
+    TensorShape Y_shape = {N, C, H_out, W_out};
+    auto& Y = *context->Output(0, Y_shape);
+    // Return early if the output tensor is going to be of size 0
+    if (Y.Shape().Size() == 0) {
+      return Status::OK();
+    }
+
+    T x_min = -0.5f;
+    T x_max = W_in - 0.5f;
+    T y_min = -0.5f;
+    T y_max = H_in - 0.5f;
+
+    if (align_corners_) {
+      x_min = 0.f;
+      x_max = W_in - 1.f;
+      y_min = 0.f;
+      y_max = H_in - 1.f;
+    }
+    T border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
+
+    concurrency::ThreadPool* tp = H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
+
+    if (mode_ == Linear && padding_mode_ == Zeros && !align_corners_) {
+      std::vector<BilinearSamplePlan2D<T>> sampling_plan;
+      for (int64_t n = 0; n < N; n++) {
+        // Fast path for bilinear interpolation with zero padding when align_corners is false.
+        // Out-of-bounds neighbors are handled via masked loads and implicitly treated as zeros,
+        // and sampling_plan precomputes a separate plan entry per output pixel to avoid per-pixel
+        // boundary checks in the main loop.
+        TryRunBilinearZerosFastPath2D(*input, *grid, Y, n, C, H_in, W_in, H_out, W_out, tp, sampling_plan);
+      }
+    } else {
+      for (int64_t n = 0; n < N; n++) {
+        const T* grid_data = grid->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n) * H_out * W_out * 2);
+        concurrency::ThreadPool::TrySimpleParallelFor(
+            tp, onnxruntime::narrow<std::ptrdiff_t>(C),
+            [&](std::ptrdiff_t c) {
+              const SafeInt<size_t> nc = SafeInt<size_t>(n) * SafeInt<size_t>(C) + SafeInt<size_t>(c);
+              const T* X_data =
+                  input->Data<T>() + static_cast<size_t>(nc * H_in * W_in);
+              T* Y_data = Y.MutableData<T>() + static_cast<size_t>(nc * H_out * W_out);
+
+              for (int64_t oy = 0; oy < H_out; oy++) {
+                for (int64_t ox = 0; ox < W_out; ox++) {
+                  const T* gridpoint = grid_data + (oy * W_out + ox) * 2;
+                  T* Y_gridpoint = Y_data + oy * W_out + ox;
+                  auto nx = gridpoint[0];  // normalized location
+                  auto ny = gridpoint[1];
+                  auto x = GsDenormalize<T>(nx, W_in, align_corners_);  // actual location
+                  auto y = GsDenormalize<T>(ny, H_in, align_corners_);
+
+                  // Sanitize coordinates that are non-finite or whose magnitude is too large
+                  // for a safe float->int64 conversion via std::floor / std::nearbyint.
+                  // Substituting the in-range border value keeps the subsequent casts
+                  // well-defined while still producing a defined output for each padding mode.
+                  if (!IsSafeForInt64Conversion(x)) {
+                    x = x_min;
+                  }
+                  if (!IsSafeForInt64Conversion(y)) {
+                    y = y_min;
+                  }
+
+                  if (mode_ == Nearest) {
+                    x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
+                    y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
+                    // x, y are integers in all padding modes
+                    *Y_gridpoint = PixelAtGrid(X_data, static_cast<int64_t>(y), static_cast<int64_t>(x), H_in, W_in, border);
+                  } else if (mode_ == Linear) {
+                    int64_t x1 = static_cast<int64_t>(std::floor(x));
+                    int64_t y1 = static_cast<int64_t>(std::floor(y));
+                    int64_t x2 = x1 + 1;
+                    int64_t y2 = y1 + 1;
+
+                    T p11 = PixelAtGrid(X_data, y1, x1, H_in, W_in, border);
+                    T p12 = PixelAtGrid(X_data, y1, x2, H_in, W_in, border);
+                    T p21 = PixelAtGrid(X_data, y2, x1, H_in, W_in, border);
+                    T p22 = PixelAtGrid(X_data, y2, x2, H_in, W_in, border);
+
+                    T dx2 = static_cast<T>(x2) - x;
+                    T dx1 = x - static_cast<T>(x1);
+                    T dy2 = static_cast<T>(y2) - y;
+                    T dy1 = y - static_cast<T>(y1);
+                    *Y_gridpoint = dy2 * (dx2 * p11 + dx1 * p12) + dy1 * (dx2 * p21 + dx1 * p22);
+                  } else if (mode_ == Cubic) {
+                    int64_t x0 = static_cast<int64_t>(std::floor(x)) - 1;  // top-left corner of the bbox
+                    int64_t y0 = static_cast<int64_t>(std::floor(y)) - 1;
+
+                    T p[4][4] = {};  // [H][W]
+                    for (int64_t h = 0; h < 4; h++) {
+                      for (int64_t w = 0; w < 4; w++) {
+                        p[h][w] = PixelAtGrid(X_data, h + y0, w + x0, H_in, W_in, border);
+                      }
+                    }
+                    T dx = static_cast<T>(x - x0 - 1);
+                    T dy = static_cast<T>(y - y0 - 1);
+                    *Y_gridpoint = GsBicubicInterpolate(p, dx, dy);
+                  }
+                }
+              }
+            });
+      }
+    }
+  } else if (data_dims == 3) {
+    // sample 3d;
+    auto D_in = input_dims[2];
+    auto H_in = input_dims[3];
+    auto W_in = input_dims[4];
+    auto D_out = grid_dims[1];
+    auto H_out = grid_dims[2];
+    auto W_out = grid_dims[3];
+    TensorShape Y_shape = {N, C, D_out, H_out, W_out};
+    auto& Y = *context->Output(0, Y_shape);
+    // Return early if the output tensor is going to be of size 0
+    if (Y.Shape().Size() == 0) {
+      return Status::OK();
+    }
+
+    T x_min = -0.5f;
+    T x_max = W_in - 0.5f;
+    T y_min = -0.5f;
+    T y_max = H_in - 0.5f;
+    T z_min = -0.5f;
+    T z_max = D_in - 0.5f;
+
+    if (align_corners_) {
+      x_min = 0.f;
+      x_max = W_in - 1.f;
+      y_min = 0.f;
+      y_max = H_in - 1.f;
+      z_min = 0.f;
+      z_max = D_in - 1.f;
+    }
+    T border[] = {x_min, y_min, z_min, x_max, y_max, z_max};
+
+    concurrency::ThreadPool* tp = D_out * H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
+    for (int64_t n = 0; n < N; n++) {
+      const T* grid_data = grid->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n) * D_out * H_out * W_out * 3);
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(C),
+          [&](std::ptrdiff_t c) {
+            const SafeInt<size_t> nc = SafeInt<size_t>(n) * SafeInt<size_t>(C) + SafeInt<size_t>(c);
+            const SafeInt<size_t> input_plane_offset = nc * SafeInt<size_t>(D_in) * SafeInt<size_t>(H_in) * SafeInt<size_t>(W_in);
+            const SafeInt<size_t> output_plane_offset = nc * SafeInt<size_t>(D_out) * SafeInt<size_t>(H_out) * SafeInt<size_t>(W_out);
+            const T* X_data =
+                input->Data<T>() + static_cast<size_t>(input_plane_offset);
+            T* Y_data =
+                Y.MutableData<T>() + static_cast<size_t>(output_plane_offset);
+
+            for (int64_t oz = 0; oz < D_out; oz++) {
+              for (int64_t oy = 0; oy < H_out; oy++) {
+                for (int64_t ox = 0; ox < W_out; ox++) {
+                  const T* gridpoint = grid_data + (oz * H_out * W_out + oy * W_out + ox) * 3;
+                  T* Y_gridpoint = Y_data + oz * H_out * W_out + oy * W_out + ox;
+                  auto nx = gridpoint[0];  // normalized location
+                  auto ny = gridpoint[1];
+                  auto nz = gridpoint[2];
+                  auto x = GsDenormalize<T>(nx, W_in, align_corners_);  // actual location
+                  auto y = GsDenormalize<T>(ny, H_in, align_corners_);
+                  auto z = GsDenormalize<T>(nz, D_in, align_corners_);
+
+                  // Sanitize coordinates that are non-finite or whose magnitude is too large
+                  // for a safe float->int64 conversion via std::floor / std::nearbyint.
+                  // Substituting the in-range border value keeps the subsequent casts
+                  // well-defined while still producing a defined output for each padding mode.
+                  if (!IsSafeForInt64Conversion(x)) {
+                    x = x_min;
+                  }
+                  if (!IsSafeForInt64Conversion(y)) {
+                    y = y_min;
+                  }
+                  if (!IsSafeForInt64Conversion(z)) {
+                    z = z_min;
+                  }
+
+                  if (mode_ == Nearest) {
+                    x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
+                    y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
+                    z = static_cast<T>(std::nearbyint(static_cast<T>(z)));
+
+                    // x, y are integers in all padding modes
+                    *Y_gridpoint = PixelAtGrid3D(X_data, static_cast<int64_t>(z), static_cast<int64_t>(y), static_cast<int64_t>(x),
+                                                 D_in, H_in, W_in, border);
+                  } else if (mode_ == Linear) {
+                    int64_t x1 = static_cast<int64_t>(std::floor(x));
+                    int64_t y1 = static_cast<int64_t>(std::floor(y));
+                    int64_t z1 = static_cast<int64_t>(std::floor(z));
+                    int64_t x2 = x1 + 1;
+                    int64_t y2 = y1 + 1;
+                    int64_t z2 = z1 + 1;
+
+                    T dx2 = static_cast<T>(x2) - x;
+                    T dx1 = x - static_cast<T>(x1);
+                    T dy2 = static_cast<T>(y2) - y;
+                    T dy1 = y - static_cast<T>(y1);
+                    T dz2 = static_cast<T>(z2) - z;
+                    T dz1 = z - static_cast<T>(z1);
+
+                    T p111 = PixelAtGrid3D(X_data, z1, y1, x1, D_in, H_in, W_in, border);
+                    T p112 = PixelAtGrid3D(X_data, z1, y1, x2, D_in, H_in, W_in, border);
+                    T p121 = PixelAtGrid3D(X_data, z1, y2, x1, D_in, H_in, W_in, border);
+                    T p122 = PixelAtGrid3D(X_data, z1, y2, x2, D_in, H_in, W_in, border);
+                    T Y_gridpoint_z1 = dy2 * (dx2 * p111 + dx1 * p112) + dy1 * (dx2 * p121 + dx1 * p122);
+
+                    T p211 = PixelAtGrid3D(X_data, z2, y1, x1, D_in, H_in, W_in, border);
+                    T p212 = PixelAtGrid3D(X_data, z2, y1, x2, D_in, H_in, W_in, border);
+                    T p221 = PixelAtGrid3D(X_data, z2, y2, x1, D_in, H_in, W_in, border);
+                    T p222 = PixelAtGrid3D(X_data, z2, y2, x2, D_in, H_in, W_in, border);
+                    T Y_gridpoint_z2 = dy2 * (dx2 * p211 + dx1 * p212) + dy1 * (dx2 * p221 + dx1 * p222);
+                    *Y_gridpoint = dz2 * Y_gridpoint_z1 + dz1 * Y_gridpoint_z2;
+                  }
+                }
+              }
+            }
+          });
+    }
+  } else {
+    // shall not reach here due to above checks
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Only support GirdSample in 4-D or 5-D cases.");
+  }
+  return Status::OK();
+}
+
+}  // namespace onnxruntime

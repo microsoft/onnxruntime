@@ -1,0 +1,296 @@
+parameters:
+- name: DoCompliance
+  displayName: Run Compliance Tasks?
+  type: boolean
+  default: true
+
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: buildArch
+  type: string
+
+- name: msbuildPlatform
+  type: string
+
+- name: packageName
+  displayName: Package name for nuget
+  type: string
+
+- name: buildparameter
+  displayName: Additional build commandline parameter
+  type: string
+
+- name: runTests
+  type: boolean
+  default: true
+
+- name: buildJava
+  type: boolean
+  default: true
+
+- name: buildNodejs
+  type: boolean
+  default: false
+
+- name: stage_name_suffix
+  displayName: job name for nuget
+  type: string
+  default: ''
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
+# for inference packages '', for training packages '-training'
+# used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
+- name: artifact_name_suffix
+  type: string
+  default: ''
+
+- name: ort_build_pool_name
+  type: string
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
+
+#'onnxruntime' or 'onnxruntime_gpu'
+- name: java_artifact_id
+  type: string
+  default: 'onnxruntime'
+
+- name: UseIncreasedTimeoutForTests
+  displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: CudaVersion
+  type: string
+  default: '12.8'
+  values:
+      - 12.8
+      - 13.0
+
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
+stages:
+- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
+  dependsOn: []
+  variables:
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+    VSGenerator: 'Visual Studio 17 2022'
+    CUDA_MODULE_LOADING: 'LAZY'
+    ${{ if eq(parameters['buildJava'], 'true') }}:
+      buildJavaParameter: '--build_java'
+    ${{ else }}:
+      buildJavaParameter: ''
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+      timeoutParameter: '--ctest_timeout 72000'
+    ${{ else }}:
+      timeoutParameter: ''
+  jobs:
+  - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
+    workspace:
+      clean: all
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        psscriptanalyzer:
+          enabled: true
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - output: pipelineArtifact
+          targetPath: $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+      # GPU build has two jobs. This is the first one.
+      - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+          - output: pipelineArtifact
+            targetPath: $(Agent.TempDirectory)/RelWithDebInfo
+            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
+
+    ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+    ${{ else }}:
+      pool:
+        name: ${{ parameters.ort_build_pool_name }}
+        os: windows
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+      timeoutInMinutes: 1200
+    ${{ else }}:
+      timeoutInMinutes: 360
+
+    steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+
+      - ${{ if eq(parameters['buildJava'], 'true') }}:
+        # Download and install JDK 17 explicitly instead of relying on a
+        # preinstalled JDK, which is no longer guaranteed to be present on the
+        # onnxruntime-Win-CPU-VS2022-Latest agent pool image.
+        - powershell: |
+            $jdkUrl = "https://aka.ms/download-jdk/microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip"
+            $jdkZip = "$(Agent.TempDirectory)\microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip"
+            Write-Host "Downloading JDK 17 from $jdkUrl"
+            Invoke-WebRequest -Uri $jdkUrl -OutFile $jdkZip
+          displayName: 'Download Microsoft Build of OpenJDK 17'
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "17"
+            jdkArchitectureOption: ${{ parameters.buildArch }}
+            jdkSourceOption: 'LocalDirectory'
+            jdkFile: '$(Agent.TempDirectory)\microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip'
+            jdkDestinationDirectory: '$(Agent.ToolsDirectory)\jdk17'
+            cleanDestinationDirectory: true
+
+      - ${{ if ne(parameters.CudaVersion, '') }}:
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
+            ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+              DownloadCUDA: true
+              DownloadTRT: true
+
+      - template: set-version-number-variables-step.yml
+
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+
+      - template: set-variable.yml
+        parameters:
+          name: commonBuildPyArgs
+          value: >-
+            --config RelWithDebInfo
+            --parallel
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_binskim_compliant_compile_flags
+            --enable_lto
+            --disable_rtti
+            --skip_submodule_sync
+            --build_shared_lib
+            --update --build
+            --cmake_generator "$(VSGenerator)"
+            --enable_onnx_tests
+            $(TelemetryOption)
+            ${{ parameters.buildparameter }}
+            $(timeoutParameter)
+            $(buildJavaParameter)
+
+      - ${{ if eq(parameters.msbuildPlatform, 'arm64x') }}:
+        - template: build-win-arm64x-steps.yml
+          parameters:
+            buildDirectory: '$(Build.BinariesDirectory)'
+            additionalBuildPyArgs: '$(commonBuildPyArgs)'
+
+      - ${{ else }}:
+        - task: PythonScript@0
+          displayName: 'Generate build system and build'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '$(commonBuildPyArgs) --build_dir $(Build.BinariesDirectory)'
+            workingDirectory: '$(Build.BinariesDirectory)'
+
+      # For CPU job, tests are run in the same machine as building
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - template: setup-maven.yml
+        - template: make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: ${{ parameters.msbuildPlatform }}
+            java_artifact_id: ${{ parameters.java_artifact_id }}
+            PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+            PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+            buildOnly: true
+
+        # All GPU builds will be tested in the next stage with GPU machine
+      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+        - task: PythonScript@0
+          displayName: 'test'
+          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+            workingDirectory: '$(Build.BinariesDirectory)'
+      - ${{ else }}:
+        - powershell: |
+            New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
+            Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Force
+            Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
+            Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.pdb -File -Recurse | ForEach-Object { $_.Delete() }
+            Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.lib -File -Recurse | ForEach-Object { $_.Delete() }
+            Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
+            cd $(Agent.TempDirectory)/RelWithDebInfo
+            tree /f
+          displayName: 'Copy native test needs files'
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+        - ${{ if eq(parameters['buildJava'], 'true') }}:
+          - powershell: |
+              Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime4j_jni.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
+              Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/java" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
+              cd $(Agent.TempDirectory)/RelWithDebInfo
+              tree /f
+            displayName: 'Copy java pad and folder for java test'
+            workingDirectory: '$(Build.BinariesDirectory)'
+
+      - script: |
+          dir *.dll
+          mkdir $(Build.ArtifactStagingDirectory)\testdata
+        workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
+        displayName: 'List built DLLs'
+
+      - template: c-api-artifacts-package-and-publish-steps-windows.yml
+        parameters:
+          buildConfig: RelWithDebInfo
+          artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+          commitId: $(OnnxRuntimeGitCommitHash)
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - ${{ if eq(parameters.buildNodejs, true) }}:
+        - template: nodejs-artifacts-package-and-publish-steps-windows.yml
+          parameters:
+            arch: ${{ parameters.packageName }}
+            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
+            DoEsrp: ${{ parameters.DoEsrp }}
+
+      - task: CopyFiles@2
+        displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
+        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          Contents: 'custom_op_library.dll'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'

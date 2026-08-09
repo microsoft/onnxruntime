@@ -1,0 +1,23 @@
+autopep8
+matplotlib
+scikit-learn
+skl2onnx
+sphinx==5.3.0
+sphinx-gallery
+sphinxcontrib.imagesvg
+sphinxcontrib.googleanalytics
+sphinx_rtd_theme
+furo
+pyquickhelper
+pandas
+pydot
+flatbuffers
+numpy<2.0.0
+packaging
+protobuf>=4.25.8
+sympy
+onnx
+sphinx_exec_code
+sphinx_tabs
+furo
+torch >= 2.6.0

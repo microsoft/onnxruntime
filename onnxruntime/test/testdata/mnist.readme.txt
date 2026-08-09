@@ -1,0 +1,9 @@
+The mnist model is used in multiple tests for minimal/mobile builds in both ONNX and ORT formats.
+
+We also save the ORT format version of the model with level 1 (aka 'basic') optimizations applied: mnist.basic.ort.
+This file is used in NNAPI and CoreML EP unit tests.
+
+It can be generated with the following steps:
+- Set environment variable ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL=basic
+- From this directory, run
+  $ python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_style=Fixed ./mnist.onnx

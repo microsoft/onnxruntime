@@ -1,0 +1,1591 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
+
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <type_traits>
+
+#include "core/common/common.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
+#include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas_qnbit.h"
+#include "core/mlas/inc/mlas_q4.h"
+#include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
+#include "core/providers/common.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
+#include "core/platform/threadpool.h"
+#include "core/util/thread_utils.h"
+
+namespace onnxruntime {
+namespace contrib {
+
+namespace {
+
+// MatMulNBits op input indices.
+// These should match the inputs names specified in the op schema.
+namespace InputIndex {
+constexpr size_t A = 0,
+                 B = 1,
+                 scales = 2,
+                 zero_points = 3,
+                 g_idx = 4,
+                 bias = 5;
+};
+
+typedef enum {
+  Level0, /*!< input fp32, accumulator fp32 */
+  Level1, /*!< input fp32, accumulator fp32 */
+  Level2, /*!< input fp16, accumulator fp16 */
+  Level3, /*!< input bf16, accumulator fp32 */
+  Level4, /*!< input int8, accumulator int32 */
+} ACCURACY_LEVEL;
+
+// T: A data type.
+template <typename T>
+MLAS_QNBIT_GEMM_COMPUTE_TYPE
+GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  // For Fp32, only accuracy level 1 or 4 makes sense.
+  // non-ARM CPU converts Fp16 to Fp32.
+  // By converting Fp32 to Fp16, precision becomes worse. And due to the casting,
+  // there is no performance gain.
+  if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
+      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+    return SQNBIT_CompInt8;
+  }
+
+  return SQNBIT_CompFp32;
+}
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+template <>
+MLAS_QNBIT_GEMM_COMPUTE_TYPE
+GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  // For Fp16, only accuracy level 2 or 4 makes sense.
+  // By converting Fp16 to Fp32, there is not precision increase, and the performance
+  // becomes worse.
+  if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
+      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+    return HQNBIT_CompInt8;
+  }
+
+  // if HQNBIT_CompFp16 is not supported, will fallback to unpacked computation.
+  return HQNBIT_CompFp16;
+}
+#endif  // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
+
+}  // namespace
+
+bool GetType(const NodeArg& node_arg, int32_t& type) {
+  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  const auto* type_proto = node_arg.TypeAsProto();
+  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
+    return false;
+  }
+
+  type = type_proto->tensor_type().elem_type();
+  return true;
+}
+
+// T1 is the type of the input matrix A, scales and biases.
+// Use class level template to facilitate specialization for different types.
+template <typename T1>
+class MatMulNBits final : public OpKernel {
+ public:
+  MatMulNBits(const OpKernelInfo& info)
+      : OpKernel(info),
+        K_{narrow<size_t>(info.GetAttr<int64_t>("K"))},
+        N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
+        block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
+        nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
+        has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
+        has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
+        prefer_lut_gemm_{std::is_same_v<T1, float> &&
+                         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
+                         MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
+                                                narrow<size_t>(info.GetAttr<int64_t>("K")),
+                                                narrow<size_t>(info.GetAttr<int64_t>("bits")),
+                                                narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
+        compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+
+    const auto& node = info.node();
+    auto input_defs = node.InputDefs();
+    const NodeArg* zero_point_arg =
+        (info.GetInputCount() > InputIndex::zero_points && input_defs[InputIndex::zero_points]->Exists())
+            ? input_defs[3]
+            : nullptr;
+
+    if (int32_t type; zero_point_arg && GetType(*zero_point_arg, type)) {
+      has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    }
+
+    has_zp_arg_ = zero_point_arg != nullptr;
+
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
+                "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(block_size_ == 16 || block_size_ == 32 || block_size_ == 64 ||
+                    block_size_ == 128 || block_size_ == 256,
+                "Only block sizes 16, 32, 64, 128, and 256 are supported for MatMulNBits op, got: ",
+                block_size_);
+    const Tensor* tensor_zero_point = nullptr;
+    has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> prepacked_buffer_sizes,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
+ private:
+  const size_t K_;
+  const size_t N_;
+  const size_t block_size_;
+  const size_t nbits_;
+  const bool has_g_idx_;
+  const bool has_bias_;
+  bool scales_are_packed_{false};
+  const bool prefer_lut_gemm_{false};
+  const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
+  bool has_unquantized_zero_point_{false};
+  bool has_zp_arg_{false};  // true if the node has a zero_point input (constant or dynamic)
+  const bool column_wise_quant_{true};
+  IAllocatorUniquePtr<void> packed_b_{};
+  size_t packed_b_size_{0};
+  // True once PrePack(InputIndex::B) has folded the scales and (constant) zero points into packed_b_,
+  // leaving the CompInt8 buffer fully packed and compute-ready. Pre-packed weight sharing
+  // content-hashes the buffer right after the B PrePack returns, so everything that affects the
+  // packed bytes (in particular the block sum / BZpCorr, which depend on the zero points) must be
+  // folded in by then. Once set, the later scales/zero_point PrePack calls must not pack again: the
+  // CompInt8 packing is single-shot, and the buffer may by then be one shared from another session.
+  bool packed_b_finalized_{false};
+  IAllocatorUniquePtr<float> scales_fp32_{};
+  IAllocatorUniquePtr<float> bias_fp32_{};
+
+  bool has_zp_input_{false};  // true only when zero_points is a constant initializer available during PrePack
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
+  // dequantize B first and then compute float gemm
+  Status ComputeBUnpacked(const Tensor* a,
+                          const Tensor* b,
+                          const Tensor* scales,
+                          const Tensor* zero_points,
+                          const Tensor* reorder_idx,
+                          const Tensor* bias,
+                          Tensor* y,
+                          AllocatorPtr& allocator,
+                          concurrency::ThreadPool* thread_pool,
+                          const MatMulComputeHelper& helper) const {
+    ORT_THROW("ComputeBUnpacked is not supported for T1 type.");
+  }
+
+  Status ComputeBPacked(const Tensor* a,
+                        const Tensor* scales,
+                        const Tensor* zero_points,
+                        const Tensor* bias,
+                        Tensor* y,
+                        AllocatorPtr& allocator,
+                        concurrency::ThreadPool* thread_pool,
+                        const MatMulComputeHelper& helper) const;
+
+  Status ComputeBPackedLUT(const Tensor* a,
+                           const Tensor* bias,
+                           Tensor* y,
+                           concurrency::ThreadPool* thread_pool,
+                           const MatMulComputeHelper& helper) const;
+};
+
+// Helper to convert float/fp16 zero points to float32 for LUT GEMM prepack.
+// Returns pointer to float32 ZP data in the provided buffer.
+static const float* ConvertFloatZeroPointsForLutGemm(
+    const Tensor* zero_points,
+    size_t N, size_t K, size_t block_size,
+    std::vector<float>& zp_fp32_buf) {
+  size_t k_blocks = (K + block_size - 1) / block_size;
+  size_t zp_count = N * k_blocks;
+  ORT_ENFORCE(static_cast<size_t>(zero_points->Shape().Size()) == zp_count,
+              "Float zero_points tensor size mismatch: expected ", zp_count,
+              ", got ", zero_points->Shape().Size());
+  zp_fp32_buf.resize(zp_count);
+  if (zero_points->IsDataType<float>()) {
+    std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
+  } else if (zero_points->IsDataType<MLFloat16>()) {
+    MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
+  } else {
+    ORT_THROW(
+        "Unsupported float zero_points type for LUT GEMM prepack. "
+        "Only float32 and float16 are supported.");
+  }
+  return zp_fp32_buf.data();
+}
+
+#if defined(MLAS_TARGET_ARM64)
+namespace {
+bool RequiresDynamicZeroPointPrepackFallback(
+    size_t K, size_t nbits, size_t block_size,
+    bool has_zp_arg, bool has_zp_input,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& backend_kernel_selector_config) {
+  const auto effective_compute_type = compute_type == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type;
+
+  // KleidiAI asymmetric Q4 pack needs zero points during PrePack; dynamic zero points arrive later.
+  return has_zp_arg && !has_zp_input && nbits == 4 && effective_compute_type == SQNBIT_CompInt8 &&
+         MlasQNBitGemmScalesPacked(K, nbits, block_size, effective_compute_type,
+                                   true, &backend_kernel_selector_config);
+}
+}  // namespace
+#endif
+
+template <typename T1>
+Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                /*out*/ bool& is_packed,
+                                /*out*/ PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+
+  // Validate the incoming initializer's shape against the attribute-derived shape before any of
+  // the pack routines below dereference tensor.DataRaw(). The MLAS pack routines size their reads
+  // from the (N, K, bits, block_size) attributes; without this check a crafted model whose
+  // attributes overstate the real tensor extents would trigger a heap-buffer-overflow READ at
+  // session initialization. The matching guard in matmul_nbits_helper::CheckInputs is invoked
+  // from Compute() -- too late, because PrePack has already done the OOB read, and by then the
+  // original B tensor is passed as nullptr so the Compute-time check never sees it.
+  //
+  // When input_idx == B, this guard also validates the constant scales and zero_points
+  // initializers (looked up via TryGetConstantInput). SessionState::PrepackConstantInitializedTensors
+  // iterates inputs in index order, so the B PrePack call runs before scales/zero_points are
+  // prepacked on their own. The B prepack path reads those constant tensors and passes their
+  // raw data to the MLAS pack routines (MlasLutGemmPack, MlasQNBitGemmPackQuantBData), which size
+  // their reads from the same (N, K, bits, block_size) attributes. Without validating scales /
+  // zero_points here, a crafted model with an undersized scales or zero_points buffer would still
+  // trigger an OOB read inside the B packing pass before each tensor's own PrePack call could
+  // catch the mismatch.
+  //
+  // This validation runs before the early-return guards below (has_g_idx_, unquantized ZP,
+  // dynamic-ZP-with-LUT, !MlasIsQNBitGemmAvailable). On builds where MLAS QNBit GEMM is not
+  // available (e.g. Windows x86 32-bit) PrePack would otherwise short-circuit before reaching
+  // these checks, and the original B tensor is dropped after PrePack so Compute()'s helper-time
+  // check never sees it. Running the validation first makes session init reject bad-shape models
+  // consistently across all build configurations. The checks are cheap (a few TensorShape
+  // equality comparisons) and independent of any MLAS kernel availability.
+  {
+    const int64_t n = static_cast<int64_t>(N_);
+    const int64_t k = static_cast<int64_t>(K_);
+    const int64_t bs = static_cast<int64_t>(block_size_);
+    const int64_t bits = static_cast<int64_t>(nbits_);
+    // Layout derivations live in matmul_nbits_helper.h so this guard and the Compute-time
+    // CheckInputs stay in lockstep if the canonical packing layout ever changes.
+    const int64_t k_blocks = matmul_nbits_helper::GetKBlocks(k, bs);
+    const int64_t blob_size = matmul_nbits_helper::GetBlobSize(bs, bits);
+    const int64_t zp_blob_size_uint8 = matmul_nbits_helper::GetUint8ZeroPointBlobSize(k_blocks, bits);
+
+    auto validate_scales_shape = [&](const TensorShape& s) -> Status {
+      // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
+      ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
+                        "MatMulNBits PrePack: scales initializer shape ", s,
+                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                        n, ",", k_blocks, "]");
+      return Status::OK();
+    };
+
+    auto validate_zero_points_shape = [&](const TensorShape& s, int32_t element_type) -> Status {
+      if (element_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+        ORT_RETURN_IF_NOT(s == TensorShape({n * zp_blob_size_uint8}) || s == TensorShape({n, zp_blob_size_uint8}),
+                          "MatMulNBits PrePack: zero_points initializer shape ", s,
+                          " does not match attribute-derived shape [", n * zp_blob_size_uint8, "] or [",
+                          n, ",", zp_blob_size_uint8, "]");
+      } else {
+        ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
+                          "MatMulNBits PrePack: zero_points initializer shape ", s,
+                          " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                          n, ",", k_blocks, "]");
+      }
+      return Status::OK();
+    };
+
+    const TensorShape& shape = tensor.Shape();
+
+    if (input_idx == InputIndex::B) {
+      ORT_RETURN_IF_NOT(shape == TensorShape({n, k_blocks, blob_size}),
+                        "MatMulNBits PrePack: B initializer shape ", shape,
+                        " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
+                        "] (N=", N_, ", K=", K_, ", bits=", nbits_, ", block_size=", block_size_, ")");
+
+      // Also validate constant scales / zero_points, which the B prepack path below dereferences
+      // (via TryGetConstantInput) and hands to MLAS, before their own PrePack calls run.
+      const Tensor* scales_tensor = nullptr;
+      if (OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales_tensor) && scales_tensor != nullptr) {
+        ORT_RETURN_IF_ERROR(validate_scales_shape(scales_tensor->Shape()));
+      }
+      const Tensor* zp_tensor = nullptr;
+      if (has_zp_arg_ && has_zp_input_ &&
+          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor) && zp_tensor != nullptr) {
+        ORT_RETURN_IF_ERROR(validate_zero_points_shape(zp_tensor->Shape(), zp_tensor->GetElementType()));
+      }
+    } else if (input_idx == InputIndex::scales) {
+      ORT_RETURN_IF_ERROR(validate_scales_shape(shape));
+    } else if (input_idx == InputIndex::zero_points) {
+      ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
+    }
+  }
+
+  if (has_g_idx_) {
+    return Status::OK();
+  }
+  if (has_unquantized_zero_point_ && !prefer_lut_gemm_) {
+    return Status::OK();
+  }
+
+  // LUT GEMM requires ZP to be a constant initializer for prepacking. If the node
+  // has a ZP input but it's dynamic, skip LUT packing and fall through to the
+  // unpacked dequant path at compute time (similar to KleidiAI's dynamic ZP fallback).
+  if (prefer_lut_gemm_ && has_zp_arg_ && !has_zp_input_) {
+    return Status::OK();
+  }
+
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && !prefer_lut_gemm_) {
+    return Status::OK();
+  }
+
+#if defined(MLAS_TARGET_ARM64)
+  if (RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
+                                              compute_type_, mlas_backend_kernel_selector_config_)) {
+    return Status::OK();
+  }
+#endif
+
+  // Create a temporary threadpool for parallel packing
+  // This is used during model load time to speed up weight prepacking
+  std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
+  concurrency::ThreadPool* threadpool_ptr = nullptr;
+
+  // Only create threadpool for LUT GEMM path which can benefit from parallel packing
+  // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
+  if (prefer_lut_gemm_) {
+    OrtThreadPoolParams tpo;
+    tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
+    tpo.allow_spinning = false;  // Don't spin during model load
+    tpo.auto_set_affinity = false;
+
+    temp_threadpool = concurrency::CreateThreadPool(
+        &Env::Default(),
+        tpo,
+        concurrency::ThreadPoolType::INTRA_OP);
+
+    threadpool_ptr = temp_threadpool.get();
+  }
+
+  if (input_idx == InputIndex::B) {
+    const Tensor* scales = nullptr;
+    OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
+
+    if (prefer_lut_gemm_) {
+      MlasInitLutGemmKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
+
+      packed_b_size_ = MlasLutGemmPackedSize(N_, K_, nbits_, block_size_, has_zp_input_);
+      if (packed_b_size_ == 0) {
+        return Status::OK();
+      }
+
+      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+
+      const float* scales_ptr = scales ? scales->Data<float>() : nullptr;
+      const void* zp_ptr = nullptr;
+      bool is_float_zp = false;
+      std::vector<float> zp_fp32_buf;
+      if (scales_ptr != nullptr && has_zp_input_) {
+        const Tensor* zero_points = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
+        if (zero_points != nullptr) {
+          if (has_unquantized_zero_point_) {
+            is_float_zp = true;
+            zp_ptr = ConvertFloatZeroPointsForLutGemm(zero_points, N_, K_, block_size_, zp_fp32_buf);
+          } else {
+            zp_ptr = zero_points->DataRaw();
+          }
+        }
+      }
+
+      MlasLutGemmPack(
+          N_, K_, nbits_, block_size_, has_zp_input_,
+          static_cast<const std::byte*>(tensor.DataRaw()),
+          scales_ptr,
+          zp_ptr,
+          is_float_zp,
+          static_cast<std::byte*>(packed_b_.get()),
+          threadpool_ptr);
+
+      // Do not append packed_b_ here. Both the LUT and non-LUT branches share the single append
+      // after this if/else, so each records exactly one buffer. Appending here as well would move
+      // packed_b_ out now and then have the shared append record a second, moved-from/null buffer
+      // with a non-zero packed_b_size_. PrePackedWeights::GetHash() skips null buffers so sharing
+      // appears to work, but the prepacked-blob save path writes buffer_sizes_[i] bytes from
+      // buffers_[i].get() and would dereference that null pointer.
+    } else {
+      // For HQNBIT_CompInt8, route through SQNBIT_CompInt8 for sizing and packing.
+      // This gets KleidiAI-sized buffer when available for 4-bit and packs B+scales correctly.
+      const auto effective_compute_type = (compute_type_ == HQNBIT_CompInt8)
+                                              ? SQNBIT_CompInt8
+                                              : compute_type_;
+
+      packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, effective_compute_type, &mlas_backend_kernel_selector_config_);
+      if (packed_b_size_ == 0) {
+        return Status::OK();
+      }
+
+      auto qptr = tensor.DataRaw();
+      const void* scale_ptr = nullptr;
+
+      // For HQNBIT_CompInt8: convert constant fp16 scales to fp32 for packing.
+      // KleidiAI bakes scales into packed B for 4-bit; 8-bit needs fp32 scales for SQ8BitGemmPackQuantBDataAndBlkSum.
+      if (compute_type_ == HQNBIT_CompInt8 && scales) {
+        auto sptr_fp16 = scales->Data<MLFloat16>();
+        auto scales_size = static_cast<size_t>(scales->Shape().Size());
+        scales_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, scales_size, true);
+        MlasConvertHalfToFloatBuffer(sptr_fp16, scales_fp32_.get(), scales_size);
+        scale_ptr = scales_fp32_.get();
+      } else if (scales && compute_type_ != HQNBIT_CompInt8 && compute_type_ != HQNBIT_CompFp16) {
+        // For non-HQNBIT compute types, scales are already float.
+        scale_ptr = scales->DataRaw();
+      }
+
+      const void* zp_ptr = nullptr;
+      if (has_zp_input_) {
+        const Tensor* zero_points = nullptr;
+        ORT_IGNORE_RETURN_VALUE(OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points));
+        if (zero_points != nullptr) {
+          zp_ptr = zero_points->DataRaw();
+        }
+      }
+
+      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+      // The framework content-hashes this packed buffer to deduplicate pre-packed weights, both
+      // within a session and across sessions (the shared container). The session-state prepack pass
+      // (SessionState::PrepackConstantInitializedTensors) passes a non-null prepacked_weights on both
+      // the container and the default single-session paths, so this zero-fill runs on essentially
+      // every prepack at load, not only when a sharing container is configured -- the guard below
+      // only skips a caller that asks for no cacheable buffer. The pack routines need not write every
+      // byte (alignment padding between the CompInt8 sub-regions; any layout could gain padding) and
+      // the reserve allocation is not zero-filled, so the hash would otherwise depend on uninitialized
+      // bytes. Zeroing the whole buffer is a one-time O(packed_b_size_) load cost (the pack overwrites
+      // the data regions, leaving only padding zeroed); inference is unaffected.
+      if (prepacked_weights != nullptr) {
+        std::memset(packed_b_.get(), 0, packed_b_size_);
+      }
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
+                                  has_zp_input_, zp_ptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
+
+      // Fold the scales and (constant) zero points into packed_b_ now, during the B PrePack, instead
+      // of deferring them to the later scales/zero_points PrePack calls. Pre-packed weight sharing
+      // content-hashes this buffer immediately after the B PrePack returns; the CompInt8 block sum
+      // (and the KleidiAI BZpCorr) is a function of the zero points, so they must already be folded
+      // in for the hash to reflect them. Otherwise two initializers with identical B and scales but
+      // different zero points would hash equal and the second would wrongly adopt the first's buffer
+      // and silently compute wrong results. scales and zero_points are constant initializers, so they
+      // are available here. The B pack above only partially populates the buffer (on x64 the block sum
+      // is deferred; on ARM64 8-bit the scales are ignored during B packing), so issue one more pack
+      // call with QuantBData == nullptr to finalize it. This is byte-identical to the staged
+      // scales + zero_points packing it replaces.
+      bool finalize_scale_zp_into_packed_b = effective_compute_type == SQNBIT_CompInt8 && scale_ptr != nullptr;
+#if !defined(MLAS_TARGET_AMD64_IX86)
+      // On ARM64 the scales/zero points are folded into B only for 8-bit, or for 4-bit when MLAS bakes
+      // them in (KleidiAI). For 4-bit non-KleidiAI they are applied at compute time and must not be
+      // passed to the packing routine, which would dereference the null QuantBData buffer.
+      finalize_scale_zp_into_packed_b =
+          finalize_scale_zp_into_packed_b &&
+          (nbits_ == 8 || MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, effective_compute_type,
+                                                    has_zp_input_, &mlas_backend_kernel_selector_config_));
+#endif
+      if (finalize_scale_zp_into_packed_b) {
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, nullptr /*QuantBData*/,
+                                    packed_b_.get(), scale_ptr, has_zp_input_, zp_ptr, nullptr,
+                                    &mlas_backend_kernel_selector_config_);
+        packed_b_finalized_ = true;
+      }
+    }
+    is_packed = true;
+
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+  } else if (compute_type_ == SQNBIT_CompInt8 && !prefer_lut_gemm_) {
+    // Packing scales and zero points
+    // Guard: for LUT-eligible nodes, scales/ZP are already packed inside
+    // packed_b_ by the LUT branch above (or by the LUT scale-pack path at
+    // the bottom of this function). Re-running the non-LUT pack here would
+    // corrupt the LUT-packed buffer (overwrite the LUT layout with W2 layout
+    // bytes), so the LUT compute path would then read garbage. prefer_lut_gemm_
+    // is gated to T1==float (see ctor), so checking it here is sufficient.
+    bool should_pack_scale_and_zp_inputs = [&]() {
+#if defined(MLAS_TARGET_AMD64_IX86)
+      return true;
+#else
+      // W2 on ARM64 (NEON DotProd) uses the same 3-call prepack pattern as
+      // AVX-512: B in the input_idx==B call, scales+ZP in the separate
+      // input_idx==scales / input_idx==zero_points calls. Without this, the
+      // ZP tensor is silently dropped and QuantBBlkSum bakes in the symmetric
+      // default ZP=2 for every block, producing wrong outputs whenever the
+      // model's real ZPs ≠ 2. W4 stays out because it goes through the
+      // KleidiAI scale-baked path above and does not use the 3-call pattern.
+      return (nbits_ == 2 || nbits_ == 8);
+#endif
+    }();
+
+    if (should_pack_scale_and_zp_inputs) {
+      // packed_b_ is already finalized during the B PrePack (scales and zero points folded in there so
+      // the sharing content hash captures them), so skip packing here. The CompInt8 packing is
+      // single-shot and packed_b_ may now be a buffer shared from another session.
+      if (input_idx == InputIndex::scales && packed_b_ != nullptr && !packed_b_finalized_) {
+        auto sptr = tensor.Data<float>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                                    has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
+        is_packed = false;
+      }
+
+      // Packing zero_point
+      if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && !packed_b_finalized_) {
+        auto zptr = tensor.Data<uint8_t>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), nullptr,
+                                    has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+        is_packed = false;
+      }
+    }
+
+#if defined(MLAS_TARGET_ARM64)
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
+        MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_,
+                                  has_zp_input_, &mlas_backend_kernel_selector_config_)) {
+      // For asymmetric quantization, we require zero_points to be a constant initializer
+      // in order to safely use the KleidiAI packed-scales path. If zero_points is not
+      // constant, fall back to the non-KleidiAI path by leaving scales unpacked.
+      if (has_zp_input_) {
+        const Tensor* zp_tensor = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        if (zp_tensor == nullptr) {
+          // zero_points is dynamic: do not mark scales as packed so that the
+          // execution falls back to the non-KleidiAI path.
+          return Status::OK();
+        }
+      }
+
+      scales_are_packed_ = true;
+
+      // The scales were folded into packed_b_ during the B PrePack, so there is no separate packed
+      // scales buffer to cache or share. Report is_packed = false (as the x64 path already does for
+      // the scales input) so the framework does not engage pre-packed weight sharing for scales.
+      // Engaging it would require pushing a placeholder buffer, but the real scales live inside
+      // packed_b_ so the placeholder would be null - and PrePackedWeights::GetHash() skips null
+      // buffers, making the scales container key identical for every MatMulNBits node. That would
+      // falsely increment the shared-weights counter for unrelated nodes without sharing any real
+      // buffer. The quantized weight B (which carries the folded-in scales) is shared on its own.
+      is_packed = false;
+
+      // BZpCorr was already folded into packed_b_ during the B PrePack (so the sharing content hash
+      // captures the zero points), so re-folding it here must be skipped: the packing is single-shot
+      // and packed_b_ may now be a buffer shared from another session.
+      if (has_zp_input_ && nbits_ == 4 && !packed_b_finalized_) {
+        const Tensor* zp_tensor = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        if (zp_tensor != nullptr) {
+          auto sptr = tensor.Data<float>();
+          auto zptr = zp_tensor->Data<uint8_t>();
+          MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                                      has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+        }
+      }
+    }
+#endif  // MLAS_TARGET_ARM64
+  } else if (compute_type_ == HQNBIT_CompInt8) {
+    // For MLFloat16 inputs using CompInt8, scales are fp16 but MLAS SQNBIT_CompInt8 packing expects float.
+    // HQNBIT_CompInt8 converts fp16 data to fp32 and calls the SQNBIT_CompInt8 MLAS path.
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+#if defined(MLAS_TARGET_ARM64)
+      // For 4-bit on ARM64: check if KleidiAI packs scales into B (scales already packed during B packing).
+      if (nbits_ == 4 &&
+          MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, SQNBIT_CompInt8,
+                                    has_zp_input_, &mlas_backend_kernel_selector_config_)) {
+        // For asymmetric quantization, require zero_points to be constant for KleidiAI.
+        if (has_zp_input_) {
+          const Tensor* zp_tensor = nullptr;
+          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+          if (zp_tensor == nullptr) {
+            // zero_points is dynamic: fall back to non-KleidiAI path.
+            // Convert scales to fp32 for use at compute time.
+            auto sptr_fp16 = tensor.Data<MLFloat16>();
+            auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+            if (!scales_fp32_) {
+              scales_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+              MlasConvertHalfToFloatBuffer(sptr_fp16, scales_fp32_.get(), tensor_size);
+            }
+            return Status::OK();
+          }
+        }
+
+        // BZpCorr was already computed during B packing in Step 1 (if applicable).
+        scales_are_packed_ = true;
+
+        // The scales were folded into the packed B buffer during the B PrePack, so there is no
+        // separate packed scales buffer to cache or share. Report is_packed = false (mirroring the
+        // x64 path and the SQNBIT_CompInt8 path above) so the framework does not engage sharing for
+        // the scales input; engaging it would push a null placeholder whose content hash is identical
+        // for every node, falsely incrementing the shared-weights counter without sharing any real
+        // buffer.
+        is_packed = false;
+      } else
+#endif  // MLAS_TARGET_ARM64
+      {
+        // Non-KleidiAI path (or 8-bit): convert fp16 scales to fp32.
+        auto sptr_fp16 = tensor.Data<MLFloat16>();
+        auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+        if (!scales_fp32_) {
+          scales_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+          MlasConvertHalfToFloatBuffer(sptr_fp16, scales_fp32_.get(), tensor_size);
+        }
+        // Pack scales separately only for 8-bit. For 4-bit on ARM64, scales are already packed
+        // during B packing or used as a raw pointer at compute time (matching standard
+        // SQNBIT_CompInt8 behavior where should_pack_scale_and_zp_inputs = (nbits_ == 8) on ARM64).
+        // Skip when packed_b_ was already finalized during the B PrePack (scales/zero points folded
+        // in there for the sharing content hash); it may now be a buffer shared from another session.
+        if (nbits_ == 8 && !packed_b_finalized_) {
+          MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
+                                      scales_fp32_.get(), has_zp_input_, nullptr, nullptr,
+                                      &mlas_backend_kernel_selector_config_);
+        }
+        is_packed = false;
+      }
+    }
+
+    // Pack zero_points separately for W2; W4/W8 are folded into packed_b_ during the B PrePack.
+    // Pass scales_fp32_ so QuantBBlkSum = -scale*zp is recomputed (otherwise it keeps the symmetric
+    // default ZP=2 from the B-pack call and silently produces wrong outputs when real ZPs != 2).
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && !packed_b_finalized_ && nbits_ == 2) {
+      auto zptr = tensor.Data<uint8_t>();
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
+                                  scales_fp32_.get(), has_zp_input_, zptr, nullptr,
+                                  &mlas_backend_kernel_selector_config_);
+      is_packed = false;
+    }
+
+    // Pre-convert fp16 bias to fp32 for use at compute time.
+    if (input_idx == InputIndex::bias) {
+      auto bptr_fp16 = tensor.Data<MLFloat16>();
+      auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+      bias_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+      MlasConvertHalfToFloatBuffer(bptr_fp16, bias_fp32_.get(), tensor_size);
+      is_packed = false;
+    }
+  } else if (prefer_lut_gemm_) {
+    // Pack scales/zero_points for LUT GEMM if B was already packed but scales weren't available then
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      auto scales_ptr = tensor.Data<float>();
+      const void* zp_ptr = nullptr;
+      bool is_float_zp = false;
+      std::vector<float> zp_fp32_buf;
+      if (has_zp_input_) {
+        const Tensor* zero_points = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
+        if (zero_points != nullptr) {
+          if (has_unquantized_zero_point_) {
+            is_float_zp = true;
+            zp_ptr = ConvertFloatZeroPointsForLutGemm(zero_points, N_, K_, block_size_, zp_fp32_buf);
+          } else {
+            zp_ptr = zero_points->DataRaw();
+          }
+        }
+      }
+      // Pack only scales (QuantBData is nullptr)
+      MlasLutGemmPack(
+          N_, K_, nbits_, block_size_, has_zp_input_,
+          nullptr,  // QuantBData already packed
+          scales_ptr,
+          zp_ptr,
+          is_float_zp,
+          static_cast<std::byte*>(packed_b_.get()),
+          nullptr);       // No threadpool needed for scales only
+      is_packed = false;  // scales tensor can be released but not "packed" in the ORT sense
+    }
+  }
+
+  // Threadpool will be automatically destroyed when temp_threadpool goes out of scope
+
+  return Status::OK();
+}
+
+#if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
+// Non-ARM-with-fp16-intrinsics fall back fp16 to fp32.
+template <>
+Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                       /*out*/ bool& is_packed,
+                                       /*out*/ PrePackedWeights* prepacked_weights) {
+  if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
+    auto sptr = tensor.Data<MLFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+    MlasConvertHalfToFloatBuffer(sptr, ptr.get(), tensor_size);
+    if (input_idx == InputIndex::scales) {
+      scales_fp32_ = std::move(ptr);
+    } else {
+      bias_fp32_ = std::move(ptr);
+    }
+  }
+
+  is_packed = false;
+  if (has_g_idx_ || has_unquantized_zero_point_) {
+    return Status::OK();
+  }
+
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+    return Status::OK();
+  }
+
+#if defined(MLAS_TARGET_ARM64)
+  if (RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
+                                              compute_type_, mlas_backend_kernel_selector_config_)) {
+    return Status::OK();
+  }
+#endif
+
+  const auto effective_compute_type = compute_type_ == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type_;
+  if (input_idx == InputIndex::B) {
+    const Tensor* scales = nullptr;
+    OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
+    // Convert the constant fp16 scales to fp32 up front so they (and the zero points) can be folded
+    // into packed_b_ during this B PrePack, mirroring the primary float PrePack above. Pre-packed
+    // weight sharing content-hashes the buffer right after this B PrePack returns, so for CompInt8
+    // everything that affects the packed bytes (the scales, and the block sum / KleidiAI BZpCorr that
+    // depend on the zero points) must be folded in by now.
+    if (scales && effective_compute_type == SQNBIT_CompInt8) {
+      auto sptr = scales->Data<MLFloat16>();
+      auto scales_size = static_cast<size_t>(scales->Shape().Size());
+      auto ptr = IAllocator::MakeUniquePtr<float>(alloc, scales_size, true);
+      MlasConvertHalfToFloatBuffer(sptr, ptr.get(), scales_size);
+      scales_fp32_ = std::move(ptr);
+    }
+
+    packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_,
+                                                     has_zp_input_, effective_compute_type,
+                                                     &mlas_backend_kernel_selector_config_);
+    if (packed_b_size_ == 0) {
+      return Status::OK();
+    }
+    auto qptr = tensor.DataRaw();
+    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    const void* zp_ptr = nullptr;
+    if (has_zp_input_) {
+      const Tensor* zero_points = nullptr;
+      ORT_IGNORE_RETURN_VALUE(OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points));
+      if (zero_points != nullptr) {
+        zp_ptr = zero_points->DataRaw();
+      }
+    }
+    // See the primary PrePack() above: SessionState::PrepackConstantInitializedTensors passes a
+    // non-null prepacked_weights on both the container and the default single-session paths, so this
+    // zero-fill runs on essentially every prepack at load (the guard only skips a caller that asks for
+    // no cacheable buffer). It keeps the dedup content hash reproducible regardless of bytes the pack
+    // leaves uninitialized (alignment padding), for any compute type. One-time O(packed_b_size_) load
+    // cost; inference is unaffected.
+    if (prepacked_weights != nullptr) {
+      std::memset(packed_b_.get(), 0, packed_b_size_);
+    }
+    MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(),
+                                scales_fp32_.get(), has_zp_input_, zp_ptr, nullptr,
+                                &mlas_backend_kernel_selector_config_);
+
+    // Fold the scales and (constant) zero points into packed_b_ now (see the primary PrePack above):
+    // the CompInt8 block sum and the KleidiAI BZpCorr depend on the zero points, so they must be
+    // folded in before the sharing content hash is taken. Otherwise two initializers with identical B
+    // and scales but different zero points would hash equal and the second would wrongly adopt the
+    // first's buffer. The B pack above only partially populates the buffer, so issue one more pack
+    // call with QuantBData == nullptr to finalize it. This is byte-identical to the staged
+    // scales + zero_points packing it replaces.
+    bool finalize_scale_zp_into_packed_b = effective_compute_type == SQNBIT_CompInt8 && scales_fp32_ != nullptr;
+#if !defined(MLAS_TARGET_AMD64_IX86)
+    // On ARM64 the scales/zero points are folded into B only for 8-bit, or for 4-bit when MLAS bakes
+    // them in (KleidiAI). For 4-bit non-KleidiAI they are applied at compute time and must not be
+    // passed to the packing routine, which would dereference the null QuantBData buffer.
+    finalize_scale_zp_into_packed_b =
+        finalize_scale_zp_into_packed_b &&
+        (nbits_ == 8 || MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, effective_compute_type,
+                                                  has_zp_input_, &mlas_backend_kernel_selector_config_));
+#endif
+    if (finalize_scale_zp_into_packed_b) {
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, nullptr /*QuantBData*/,
+                                  packed_b_.get(), scales_fp32_.get(), has_zp_input_, zp_ptr, nullptr,
+                                  &mlas_backend_kernel_selector_config_);
+      packed_b_finalized_ = true;
+    }
+    is_packed = true;
+
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+  } else if (compute_type_ == SQNBIT_CompInt8) {
+    bool should_pack_scale_and_zp = [&]() {
+#if defined(MLAS_TARGET_AMD64_IX86)
+      return true;
+#else
+      return (nbits_ == 2 || nbits_ == 8);
+#endif
+    }();
+
+    if (should_pack_scale_and_zp) {
+      if (input_idx == InputIndex::scales && packed_b_ != nullptr && !packed_b_finalized_) {
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                    scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
+        is_packed = false;
+      } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && !packed_b_finalized_) {
+        auto zptr = tensor.Data<uint8_t>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                    nullptr, has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+        is_packed = false;
+      }
+    }
+  }
+
+  return Status::OK();
+}
+#endif  // end !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
+
+template <typename T1>
+Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                  gsl::span<const size_t> prepacked_buffer_sizes,
+                                                  int input_idx,
+                                                  /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == InputIndex::B && !prepacked_buffers.empty()) {
+#if defined(MLAS_TARGET_ARM64)
+    ORT_RETURN_IF(RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
+                                                          compute_type_, mlas_backend_kernel_selector_config_),
+                  "MatMulNBits cannot use shared prepacked B for KleidiAI Q4 with runtime zero_points. ",
+                  "PrePack should have declined prepacking for this node.");
+#endif
+
+    ORT_RETURN_IF(prepacked_buffer_sizes.empty(),
+                  "Missing MatMulNBits prepacked B buffer size metadata.");
+
+    packed_b_ = std::move(prepacked_buffers[0]);
+    packed_b_size_ = prepacked_buffer_sizes[0];
+    used_shared_buffers = true;
+
+    if (prefer_lut_gemm_) {
+      MlasInitLutGemmKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
+    } else {
+      const Tensor* scales = nullptr;
+      const auto effective_compute_type = compute_type_ == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type_;
+      bool shared_packed_b_finalized = effective_compute_type == SQNBIT_CompInt8 &&
+                                       OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
+#if defined(MLAS_TARGET_ARM64)
+      // 4-bit scales are folded into B only when MLAS reports backend support.
+      shared_packed_b_finalized =
+          shared_packed_b_finalized &&
+          (nbits_ == 8 || MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, effective_compute_type,
+                                                    has_zp_input_, &mlas_backend_kernel_selector_config_));
+#endif
+      if (shared_packed_b_finalized) {
+        scales_are_packed_ = true;
+        packed_b_finalized_ = true;
+      }
+    }
+  }
+  // Scales and zero points are folded into packed_b_ and are not shared as separate buffers.
+
+  return Status::OK();
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
+                                          const Tensor* bias,
+                                          Tensor* y,
+                                          concurrency::ThreadPool* thread_pool,
+                                          const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<T1>();
+  auto* y_data = y->MutableData<T1>();
+  const int M = static_cast<int>(helper.M());
+  const int N = static_cast<int>(helper.N());
+  const int K = static_cast<int>(helper.K());
+
+  // Bias is fused into MlasLutGemm: it is broadcast-added per output-feature tile inside
+  // the same parallel loop that runs the GEMM, so the bias addition is multi-threaded and
+  // operates on data that is still hot in cache. MlasLutGemm currently only supports fp32
+  // activations/outputs; reject any other type when a bias is present.
+  const float* bias_data = nullptr;
+  if (bias != nullptr) {
+    if constexpr (std::is_same_v<T1, float>) {
+      bias_data = bias->Data<float>();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "MatMulNBits LUT GEMM path does not support non-fp32 bias.");
+    }
+  }
+
+  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool, bias_data);
+  return Status::OK();
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
+                                       const Tensor* scales,
+                                       const Tensor* zero_points,
+                                       const Tensor* bias,
+                                       Tensor* y,
+                                       AllocatorPtr& allocator,
+                                       concurrency::ThreadPool* thread_pool,
+                                       const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<T1>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  auto* y_data = y->MutableData<T1>();
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+
+  // For fp16 MatMulNBits with CompInt8, run through the fp32 SQNBIT_CompInt8 MLAS path.
+  // Bulk conversion avoids per-tile fp16 wrappers and lets the same path use KleidiAI when selected.
+  if constexpr (std::is_same_v<T1, MLFloat16>) {
+    if (compute_type_ == SQNBIT_CompInt8 || compute_type_ == HQNBIT_CompInt8) {
+      const auto* a_data_fp16 = a->Data<MLFloat16>();
+      const auto* bias_data_fp16 = bias == nullptr ? nullptr : bias->Data<MLFloat16>();
+
+      // Bulk convert A from fp16 to fp32.
+      auto a_size = static_cast<size_t>(a->Shape().Size());
+      auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
+      MlasConvertHalfToFloatBufferInParallel(a_data_fp16, tmp_a_data_ptr.get(), a_size, thread_pool);
+
+      // Use pre-converted fp32 scales, or nullptr if scales are baked into packed B (KleidiAI).
+      // For non-KleidiAI 4-bit: scales_fp32_ was set during PrePack.
+      // For 8-bit: scales are packed inside PackedQuantBDataStruct and extracted at dispatch.
+      float* scales_ptr = nullptr;
+      IAllocatorUniquePtr<float> tmp_scales;
+      if (!scales_are_packed_) {
+        if (scales_fp32_) {
+          scales_ptr = scales_fp32_.get();
+        } else {
+          // Dynamic scales (non-constant input): convert fp16 to fp32 at compute time.
+          ORT_ENFORCE(scales != nullptr, "scales must be provided when not packed and not pre-converted");
+          auto scales_size = static_cast<size_t>(scales->Shape().Size());
+          tmp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
+          MlasConvertHalfToFloatBuffer(scales->Data<MLFloat16>(), tmp_scales.get(), scales_size);
+          scales_ptr = tmp_scales.get();
+        }
+      }
+
+      // Use pre-converted fp32 bias, or convert on the fly.
+      float* bias_ptr = nullptr;
+      IAllocatorUniquePtr<float> tmp_bias;
+      if (bias_data_fp16) {
+        if (bias_fp32_) {
+          bias_ptr = bias_fp32_.get();
+        } else {
+          auto bias_size = static_cast<size_t>(bias->Shape().Size());
+          tmp_bias = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
+          MlasConvertHalfToFloatBuffer(bias_data_fp16, tmp_bias.get(), bias_size);
+          bias_ptr = tmp_bias.get();
+        }
+      }
+
+      // Allocate fp32 output buffer.
+      auto c_size = static_cast<size_t>(y->Shape().Size());
+      auto tmp_c = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+
+      // Compute workspace sized for SQNBIT_CompInt8 (includes KleidiAI workspace when available).
+      IAllocatorUniquePtr<std::byte> workspace{};
+      const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(
+          M, N, K, batch_count, nbits_, block_size_, zero_points, SQNBIT_CompInt8, &mlas_backend_kernel_selector_config_);
+      if (workspace_size > 0) {
+        workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
+      }
+
+      InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> data(batch_count);
+      for (size_t i = 0; i < batch_count; ++i) {
+        data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+        data[i].lda = lda;
+        data[i].QuantBDataWorkspace = packed_b_.get();
+        data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
+        data[i].QuantBScale = scales_ptr;
+        data[i].QuantBZeroPoint = zero_points_data;
+        data[i].Bias = bias_ptr;
+        data[i].C = tmp_c.get() + helper.OutputOffsets()[i];
+        data[i].ldc = N;
+      }
+
+      MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, SQNBIT_CompInt8, data.data(), workspace.get(),
+                         thread_pool, &mlas_backend_kernel_selector_config_);
+
+      // Bulk convert output from fp32 to fp16.
+      MlasConvertFloatToHalfBufferInParallel(tmp_c.get(), y_data, c_size, thread_pool);
+      return Status::OK();
+    }
+  }
+
+  // Standard path for non-HQNBIT_CompInt8 compute types (fp32 inputs, CompFp32, CompFp16, etc.)
+  const auto* scales_data = scales == nullptr ? nullptr : scales->Data<T1>();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
+
+  IAllocatorUniquePtr<std::byte> workspace{};
+  const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(
+      M, N, K, batch_count, nbits_, block_size_, zero_points, compute_type_, &mlas_backend_kernel_selector_config_);
+  if (workspace_size > 0) {
+    // Use reserve since no caching is needed
+    workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
+  }
+
+  InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<T1>> data(batch_count);
+  for (size_t i = 0; i < batch_count; ++i) {
+    data[i].A = a_data + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    if (compute_type_ == SQNBIT_CompInt8) {
+      data[i].QuantBDataWorkspace = packed_b_.get();
+    }
+    data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
+    data[i].QuantBScale = scales_data;
+    data[i].QuantBZeroPoint = zero_points_data;
+    data[i].Bias = bias_data;
+    data[i].C = y_data + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+  }
+  MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
+                     thread_pool, &mlas_backend_kernel_selector_config_);
+  return Status::OK();
+}
+
+#if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
+template <>
+Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
+                                              const Tensor* scales,
+                                              const Tensor* zero_points,
+                                              const Tensor* bias,
+                                              Tensor* y,
+                                              AllocatorPtr& allocator,
+                                              concurrency::ThreadPool* thread_pool,
+                                              const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<MLFloat16>();
+  const auto* scales_data = scales == nullptr ? nullptr : scales->Data<MLFloat16>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<MLFloat16>();
+  auto* y_data = y->MutableData<MLFloat16>();
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+  const auto effective_compute_type = compute_type_ == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type_;
+
+  IAllocatorUniquePtr<std::byte> workspace{};
+  const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(
+      M, N, K, batch_count, nbits_, block_size_, zero_points, effective_compute_type,
+      &mlas_backend_kernel_selector_config_);
+  if (workspace_size > 0) {
+    // Use reserve since no caching is needed
+    workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
+  }
+
+  // On the int8 path the workspace init quantizes A. If the platform can quantize
+  // straight from fp16, hand it the fp16 A and skip the fp32 copy of A entirely; the
+  // quantized A is bit-identical either way. The fp32 (CompFp32) path reads A as float
+  // directly, so it still needs the conversion.
+  const bool quantize_a_from_fp16 =
+      compute_type_ == SQNBIT_CompInt8 && MlasQNBitGemmFp16DirectQuantASupported();
+
+  IAllocatorUniquePtr<float> tmp_a_data_ptr;
+  if (!quantize_a_from_fp16) {
+    auto a_size = static_cast<size_t>(a->Shape().Size());
+    tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
+    MlasConvertHalfToFloatBufferInParallel(a_data, tmp_a_data_ptr.get(), a_size, thread_pool);
+  }
+
+  float* scales_ptr = nullptr;
+  IAllocatorUniquePtr<float> scales_temp;
+  if (!scales_are_packed_) {
+    if (scales_fp32_) {
+      scales_ptr = scales_fp32_.get();
+    } else {
+      ORT_ENFORCE(scales != nullptr, "scales must be provided when not packed and not pre-converted");
+      const auto scales_size = static_cast<size_t>(scales->Shape().Size());
+      scales_temp = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
+      MlasConvertHalfToFloatBuffer(scales_data, scales_temp.get(), scales_size);
+      scales_ptr = scales_temp.get();
+    }
+  }
+
+  float* bias_ptr = nullptr;
+  IAllocatorUniquePtr<float> bias_temp;
+  if (bias_data) {
+    if (bias_fp32_) {
+      bias_ptr = bias_fp32_.get();
+    } else {
+      const auto bias_size = static_cast<size_t>(bias->Shape().Size());
+      bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
+      MlasConvertHalfToFloatBuffer(bias_data, bias_temp.get(), bias_size);
+      bias_ptr = bias_temp.get();
+    }
+  }
+
+  const size_t c_size = static_cast<size_t>(y->Shape().Size());
+  // When the compute path can emit fp16 directly, skip the full fp32 copy of the result:
+  // each worker converts its own output tile to fp16 in place. Otherwise compute into an
+  // fp32 buffer and convert once at the end. No zero-init: the GEMM writes every element.
+  const bool output_fp16_direct =
+      (compute_type_ == SQNBIT_CompInt8 || compute_type_ == SQNBIT_CompFp32) &&
+      MlasQNBitGemmFp16DirectCOutputSupported(nbits_, compute_type_);
+  IAllocatorUniquePtr<float> c_v;
+  if (!output_fp16_direct) {
+    c_v = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+  }
+
+  InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> data(batch_count);
+  for (size_t i = 0; i < batch_count; ++i) {
+    if (quantize_a_from_fp16) {
+      data[i].AFp16 = a_data + helper.LeftOffsets()[i];
+    } else {
+      data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+    }
+    data[i].lda = lda;
+    if (effective_compute_type == SQNBIT_CompInt8) {
+      data[i].QuantBDataWorkspace = packed_b_.get();
+    }
+    data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
+    data[i].QuantBScale = scales_ptr;
+    data[i].QuantBZeroPoint = zero_points_data;
+    data[i].Bias = bias ? bias_ptr : nullptr;
+    if (output_fp16_direct) {
+      data[i].CFp16 = y_data + helper.OutputOffsets()[i];
+    } else {
+      data[i].C = c_v.get() + helper.OutputOffsets()[i];
+    }
+    data[i].ldc = N;
+  }
+  MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, effective_compute_type, data.data(), workspace.get(),
+                     thread_pool, &mlas_backend_kernel_selector_config_);
+  if (!output_fp16_direct) {
+    MlasConvertFloatToHalfBufferInParallel(c_v.get(), y_data, c_size, thread_pool);
+  }
+  return Status::OK();
+}
+#endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64
+
+template <>
+Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
+                                            const Tensor* b,
+                                            const Tensor* scales,
+                                            const Tensor* zero_points,
+                                            const Tensor* reorder_idx,
+                                            const Tensor* bias,
+                                            Tensor* y,
+                                            AllocatorPtr& allocator,
+                                            concurrency::ThreadPool* thread_pool,
+                                            const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<float>();
+  const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
+  auto* y_data = y->MutableData<float>();
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+  const size_t ldb = helper.Ldb(true);
+
+  // TODO(fajin): move B dequant to prepack
+  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
+
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
+    // dequantize b, only 2b, 4b, and 8b quantization is supported for now
+    if (this->nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (this->nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+      ORT_ENFORCE(nbits_ == 8);
+      MlasDequantizeBlockwise<float, 8>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    }
+  } else {
+    // Hitting any of the below is very rare
+    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
+                "Only 2b and 4b quantization is supported for unpacked compute for now");
+
+    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
+    // MatMulNBits<float> only float (not MLFloat16) ZP can reach this branch.
+    if (zero_points && zero_points->IsDataType<float>()) {
+      if (nbits_ == 2) {
+        ORT_ENFORCE(reorder_idx_data == nullptr,
+                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
+        MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
+            tmp_b_data_ptr.get(),
+            b_data,
+            scales_data,
+            static_cast<const float*>(zero_points_data),
+            static_cast<int32_t>(block_size_),
+            static_cast<int32_t>(K_),
+            static_cast<int32_t>(N_),
+            thread_pool);
+      } else {
+        DequantizeBlockwise<float, float>(
+            tmp_b_data_ptr.get(),                         // dequantized output
+            b_data,                                       // quantized input
+            scales_data,                                  // quantization scales
+            static_cast<const float*>(zero_points_data),  // quantization zero points
+            reorder_idx_data,
+            static_cast<int32_t>(block_size_),  // quantization block size
+            column_wise_quant_,                 // columnwise quantization or row-wise
+            static_cast<int32_t>(K_),           // number of rows in quantized input
+            static_cast<int32_t>(N_),           // number of columns in quantized input
+            thread_pool);
+      }
+    } else {
+      DequantizeBlockwise<float, uint8_t>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          reorder_idx_data,
+          static_cast<int32_t>(block_size_),  // quantization block size
+          column_wise_quant_,                 // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),           // number of rows in quantized input
+          static_cast<int32_t>(N_),           // number of columns in quantized input
+          thread_pool);
+    }
+  }
+#if 0  // for debug
+  auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
+  MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
+#endif
+
+  std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
+  for (size_t i = 0; i < batch_count; i++) {
+    data[i].BIsPacked = false;
+    data[i].A = a_data + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
+    data[i].ldb = ldb;
+    data[i].C = y_data + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+    data[i].alpha = 1.f;
+    data[i].beta = 0.0f;
+  }
+
+  // if there is a bias input, copy bias values into C and set beta to 1.0f
+  if (bias) {
+    gsl::span<const float> bias_span = bias->DataAsSpan<float>();
+    for (size_t i = 0; i < batch_count; ++i) {
+      float* C_row = data[i].C;
+      const size_t ldc = data[i].ldc;
+      for (size_t m = 0; m < M; ++m) {
+        memcpy(C_row, bias_span.data(), bias_span.size_bytes());
+        C_row += ldc;
+      }
+
+      data[i].beta = 1.0f;
+    }
+  }
+
+  MlasGemmBatch(CblasNoTrans, CblasTrans,
+                M, N, K, data.data(), batch_count, thread_pool, &mlas_backend_kernel_selector_config_);
+
+  return Status::OK();
+}
+
+template <>
+Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
+                                                const Tensor* b,
+                                                const Tensor* scales,
+                                                const Tensor* zero_points,
+                                                const Tensor* reorder_idx,
+                                                const Tensor* bias,
+                                                Tensor* y,
+                                                AllocatorPtr& allocator,
+                                                concurrency::ThreadPool* thread_pool,
+                                                const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<MLFloat16>();
+  const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<MLFloat16>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
+  auto* y_data = y->MutableData<MLFloat16>();
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+  const size_t ldb = helper.Ldb(true);
+
+  float* scales_ptr = nullptr;
+  IAllocatorUniquePtr<float> temp_scales;
+  if (!scales_fp32_) {
+    auto scales_size = static_cast<size_t>(scales->Shape().Size());
+    temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
+    MlasConvertHalfToFloatBuffer(scales_data, temp_scales.get(), scales_size);
+    scales_ptr = temp_scales.get();
+  } else {
+    scales_ptr = scales_fp32_.get();
+  }
+
+  // TODO(fajin): move B dequant to prepack
+  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
+
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
+      ORT_ENFORCE(nbits_ == 8);
+      MlasDequantizeBlockwise<float, 8>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    }
+  } else {
+    // Hitting any of the below is very rare
+    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
+                "Only 2b and 4b quantization is supported for unpacked compute for now");
+
+    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
+    // MatMulNBits<MLFloat16> only MLFloat16 (not float) ZP can reach this branch.
+    if (zero_points && zero_points->IsDataType<MLFloat16>()) {
+      if (nbits_ == 2) {
+        ORT_ENFORCE(reorder_idx_data == nullptr,
+                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
+        MlasDequantizeBlockwiseFpZeroPoint<float, MLFloat16, 2>(
+            tmp_b_data_ptr.get(),
+            b_data,
+            scales_ptr,
+            static_cast<const MLFloat16*>(zero_points_data),
+            static_cast<int32_t>(block_size_),
+            static_cast<int32_t>(K_),
+            static_cast<int32_t>(N_),
+            thread_pool);
+      } else {
+        DequantizeBlockwise<float, MLFloat16>(
+            tmp_b_data_ptr.get(),                             // dequantized output
+            b_data,                                           // quantized input
+            scales_ptr,                                       // quantization scales
+            static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
+            reorder_idx_data,
+            static_cast<int32_t>(block_size_),  // quantization block size
+            column_wise_quant_,                 // columnwise quantization or row-wise
+            static_cast<int32_t>(K_),           // number of rows in quantized input
+            static_cast<int32_t>(N_),           // number of columns in quantized input
+            thread_pool);
+      }
+    } else {
+      DequantizeBlockwise<float, uint8_t>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          reorder_idx_data,
+          static_cast<int32_t>(block_size_),  // quantization block size
+          column_wise_quant_,                 // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),           // number of rows in quantized input
+          static_cast<int32_t>(N_),           // number of columns in quantized input
+          thread_pool);
+    }
+  }
+#if 0  // for debug
+  auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
+  MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
+#endif
+
+  std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
+
+  auto a_size = static_cast<size_t>(a->Shape().Size());
+  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
+  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a_size);
+
+  auto c_size = static_cast<size_t>(y->Shape().Size());
+  auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+
+  for (size_t i = 0; i < batch_count; i++) {
+    data[i].BIsPacked = false;
+    data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
+    data[i].ldb = ldb;
+    data[i].C = tmp_c_ptr.get() + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+    data[i].alpha = 1.f;
+    data[i].beta = 0.0f;
+  }
+
+  // if there is a bias input, copy bias values into C and set beta to 1.0f
+  if (bias) {
+    float* bias_ptr = nullptr;
+    const size_t bias_size = static_cast<size_t>(bias->Shape().Size());
+    IAllocatorUniquePtr<float> bias_temp;
+    if (!bias_fp32_) {
+      bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
+      MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), bias_temp.get(), bias_size);
+      bias_ptr = bias_temp.get();
+    } else {
+      bias_ptr = bias_fp32_.get();
+    }
+    for (size_t i = 0; i < batch_count; ++i) {
+      float* C_row = data[i].C;
+      const size_t ldc = data[i].ldc;
+      for (size_t m = 0; m < M; ++m) {
+        std::copy(bias_ptr, bias_ptr + bias_size, C_row);
+        C_row += ldc;
+      }
+      data[i].beta = 1.0f;
+    }
+  }
+
+  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), batch_count, thread_pool, &mlas_backend_kernel_selector_config_);
+  MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, c_size);
+  return Status::OK();
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+  const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
+  // If B is prepacked, B would have been removed from the context
+  const bool is_b_prepacked = packed_b_size_ > 0;
+  const Tensor* b = is_b_prepacked ? nullptr : ctx->Input<Tensor>(InputIndex::B);
+  const Tensor* scales = (scales_are_packed_ || (prefer_lut_gemm_ && packed_b_)) ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
+  const Tensor* zero_points = (prefer_lut_gemm_ && packed_b_) ? nullptr : ctx->Input<Tensor>(InputIndex::zero_points);
+  const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
+  const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
+
+  ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
+
+  TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+
+  // clang-format off
+  const bool has_single_b_matrix = std::all_of(
+      helper.RightOffsets().begin(),
+      helper.RightOffsets().end(),
+      [](size_t offset) { return offset == 0; });
+  // clang-format on
+
+  if (has_single_b_matrix &&
+      packed_b_) {  // Assume that MlasQNBitGemmBatch() always requires packed B.
+                    // If this changes, i.e., if MlasIsQNBitGemmAvailable() can return true while
+                    // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
+                    // with B directly too.
+    if (prefer_lut_gemm_) {
+      return ComputeBPackedLUT(a, bias, y, thread_pool, helper);
+    }
+
+    if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+      return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
+    }
+  }
+
+  // TODO(hasesh): Should this logging level be warning ?
+  LOGS(ctx->Logger(), INFO) << "Falling back to using unpacked compute mode for the Matmul operation "
+                               "(i.e.) the weights will be de-quantized to fp32 before invoking "
+                               "the fp32 Matmul kernel."
+                               "This is because MLAS doesn't have an optimized quantized kernel "
+                               "for the requested compute configuration.";
+
+  return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
+}
+
+#define REGISTER_MatMulNBits(T1)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      MatMulNBits,                                                       \
+      kMSDomain,                                                         \
+      1,                                                                 \
+      T1,                                                                \
+      kCpuExecutionProvider,                                             \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())       \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())  \
+          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), \
+                                 DataTypeImpl::GetTensorType<T1>()})     \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
+      MatMulNBits<T1>);
+
+REGISTER_MatMulNBits(float);
+REGISTER_MatMulNBits(MLFloat16);
+
+}  // namespace contrib
+}  // namespace onnxruntime

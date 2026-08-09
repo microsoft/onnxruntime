@@ -1,0 +1,15 @@
+This image is made available to you on the condition that you agree to
+[your agreement][1] governing your use of Azure.
+If you do not have an existing agreement governing your use of Azure, you agree that 
+your agreement governing use of Azure is the [Microsoft Online Subscription Agreement][2]
+(which incorporates the [Online Services Terms][3]).
+By using the software you agree to these terms. This software may collect data
+that is transmitted to Microsoft. Please see the [Microsoft Privacy Statement][4]
+to learn more about how Microsoft processes personal data.
+
+This image must be used on Microsoft Azure Services only. 
+
+[1]: https://azure.microsoft.com/en-us/support/legal/
+[2]: https://azure.microsoft.com/en-us/support/legal/subscription-agreement/
+[3]: http://www.microsoftvolumelicensing.com/DocumentSearch.aspx?Mode=3&DocumentTypeId=46
+[4]: http://go.microsoft.com/fwlink/?LinkId=248681 

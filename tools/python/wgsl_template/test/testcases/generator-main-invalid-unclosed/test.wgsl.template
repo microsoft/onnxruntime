@@ -1,0 +1,4 @@
+$MAIN {
+    let index = global_id.x;
+    output[index] = input[index] * 2.0;
+    // Missing closing brace - should cause an error

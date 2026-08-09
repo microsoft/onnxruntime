@@ -1,0 +1,423 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/model_compilation_options.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+
+#include "core/common/path_string.h"
+#include "core/framework/allocator.h"
+#include "core/framework/ep_context_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/environment.h"
+
+namespace onnxruntime {
+ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment& env, const OrtSessionOptions& session_options)
+    : env_(env), session_options_(session_options) {
+  session_options_.value.has_explicit_ep_context_gen_options = true;
+  session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
+  session_options_.value.ep_context_gen_options.enable = true;
+  session_options_.value.ep_context_gen_options.error_if_output_file_exists = false;
+
+  // defaulting to kGenerateModel to support wider usage.
+  session_options_.value.ep_context_gen_options.action_if_no_compiled_nodes =
+      epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+
+  // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "0").IsOK());
+
+  // Signal EPs that this session is used solely for compilation (no inference).
+  // EPs that opt in can use this to skip GPU deserialization / execution context creation.
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1").IsOK());
+
+  session_options_.value.graph_optimization_level = TransformerLevel::Default;  // L0: required transformers only
+}
+
+void ModelCompilationOptions::SetInputModelPath(const std::filesystem::path& input_model_path) {
+  ResetInputModelSettings();
+  input_model_path_ = input_model_path;
+}
+
+void ModelCompilationOptions::SetInputModelFromBuffer(const void* input_model_data, size_t input_model_data_size) {
+  ResetInputModelSettings();
+  input_model_data_ = input_model_data;
+  input_model_data_size_ = input_model_data_size;
+}
+
+void ModelCompilationOptions::SetInputModel(const OrtModel* model) {
+  ResetInputModelSettings();
+  input_model_ = model;
+}
+
+Status ModelCompilationOptions::SetOutputModelPath(const std::filesystem::path& output_model_path) {
+  if (output_model_path.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output model path must not be empty.");
+  }
+
+  ConfigOptions& config_options = session_options_.value.config_options;
+  epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+
+  ep_context_gen_options.output_model_location = output_model_path;
+
+  std::string output_model_path_str = PathToUTF8String(output_model_path);
+
+  if (output_model_path_str.size() <= ConfigOptions::kMaxValueLength) {
+    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_path_str.c_str());
+    ORT_ENFORCE(status.IsOK());  // Should not fail because both key/value strings are below the min string lengths
+                                 // required by ConfigOptions::AddConfigEntry().
+  } else {
+    // A few things to note:
+    //   - ORT core now uses session_options.ep_context_gen_options to read EPContext model configurations.
+    //     It previously used session_options.config_options.
+    //   - EPs still currently use session_options.config_options to read a subset (enabled, embed mode, output path) of
+    //     EPContext model configurations.
+    //     TODO(adrianlizarraga): Update EPs to use ep_context_gen_options in backward-compatible manner.
+    //   - The output model file path is optional (generated from input path if absent).
+    //   - EPs use the output model path to generate a path to the context binary data file IFF not embedded
+    //     into EPContext nodes. If output model path is empty, EPs just create a path from input model path.
+    //   - session_options.config_options limits the string length of values, which artificially limits the length
+    //     of paths.
+    //   - So, only add this output model file path to session_options.config_options if it is not too long. The only
+    //     potential downside is that the context binary data file is using a different name, but the model will still
+    //     be valid.
+    logging::LoggingManager* log_manager = env_.GetLoggingManager();
+    if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
+      const logging::Logger& logger = log_manager->DefaultLogger();
+      LOGS(logger, WARNING) << "Output model path length (" << output_model_path_str.size()
+                            << ") exceeds limit of " << ConfigOptions::kMaxValueLength << " characters."
+                            << "ORT will still generate the expected output file, but EPs will see an empty "
+                            << "output model path in SessionOption's ConfigOptions.";
+    }
+  }
+  return Status::OK();
+}
+
+void ModelCompilationOptions::SetOutputModelExternalInitializersFile(
+    const std::filesystem::path& external_initializers_path,
+    size_t external_initializer_size_threshold) {
+  session_options_.value.ep_context_gen_options.initializers_location = epctx::ExternalInitializerFileInfo{
+      external_initializers_path,
+      external_initializer_size_threshold,
+  };
+}
+
+Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator,
+                                                     void** output_model_buffer_ptr,
+                                                     size_t* output_model_buffer_size_ptr) {
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::BufferHolder{
+      output_model_buffer_ptr,
+      output_model_buffer_size_ptr,
+      std::move(allocator),
+  };
+
+  return Status::OK();
+}
+
+void ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state) {
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::BufferWriteFuncHolder{
+      write_func,
+      state,
+  };
+}
+
+void ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
+    OrtGetInitializerLocationFunc get_initializer_location_func, void* state) {
+  session_options_.value.ep_context_gen_options.initializers_location = epctx::InitializerHandler{
+      get_initializer_location_func,
+      state,
+  };
+}
+
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state) {
+  // A null write_func clears any previously set callback. Clear the state too so a stale state pointer is never
+  // paired with a missing callback.
+  session_options_.value.ep_context_gen_options.ep_context_data_write_func = epctx::EpContextDataWriteFuncHolder{
+      write_func,
+      write_func != nullptr ? state : nullptr,
+  };
+}
+
+Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
+                                                              const std::filesystem::path& model_name) {
+  if (output_directory.empty() || model_name.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir or model_name is empty.");
+  }
+
+  if (output_directory.has_filename() && output_directory.extension() == "") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir is not a valid directory.");
+  }
+
+  std::filesystem::path ctx_model_path = output_directory / model_name;
+  std::string ctx_model_path_str = PathToUTF8String(ctx_model_path);
+
+  if (ctx_model_path_str.size() <= ConfigOptions::kMaxValueLength) {
+    ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
+                                                                             ctx_model_path_str.c_str()));
+  } else {
+    logging::LoggingManager* log_manager = env_.GetLoggingManager();
+    if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
+      const logging::Logger& logger = log_manager->DefaultLogger();
+      LOGS(logger, WARNING) << "output_directory length with model_name length together exceeds limit of "
+                            << ConfigOptions::kMaxValueLength << " characters."
+                            << "ORT will still generate the expected output file, but EPs will see an empty "
+                            << "output path in SessionOption's ConfigOptions.";
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_model) {
+  ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
+      kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
+  session_options_.value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::SetFlags(uint32_t flags) {
+  epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+  options.error_if_output_file_exists = flags & OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
+  options.action_if_no_compiled_nodes =
+      (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError
+                                                              : epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+  return Status::OK();
+}
+
+const OrtSessionOptions& ModelCompilationOptions::GetSessionOptions() const {
+  return session_options_;
+}
+
+bool ModelCompilationOptions::InputModelComesFromFile() const {
+  return !input_model_path_.empty();
+}
+
+const std::filesystem::path& ModelCompilationOptions::GetInputModelPath() const {
+  return input_model_path_;
+}
+
+const void* ModelCompilationOptions::GetInputModelData() const {
+  return input_model_data_;
+}
+
+size_t ModelCompilationOptions::GetInputModelDataSize() const {
+  return input_model_data_size_;
+}
+
+bool ModelCompilationOptions::InputModelComesFromOrtModel() const {
+  return input_model_ != nullptr;
+}
+
+const OrtModel* ModelCompilationOptions::GetInputModel() const {
+  return input_model_;
+}
+
+void ModelCompilationOptions::ResetInputModelSettings() {
+  input_model_path_.clear();
+  input_model_data_ = nullptr;
+  input_model_data_size_ = 0;
+  input_model_ = nullptr;
+}
+
+Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
+  switch (graph_optimization_level) {
+    case ORT_DISABLE_ALL:
+      // TransformerLevel::Default means that we only run required transformers.
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Default;
+      break;
+    case ORT_ENABLE_BASIC:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+      break;
+    case ORT_ENABLE_EXTENDED:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+      break;
+    case ORT_ENABLE_LAYOUT:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
+    case ORT_ENABLE_ALL:
+      session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "graph_optimization_level with value ",
+                             static_cast<int>(graph_optimization_level), " is invalid. Valid values are: ",
+                             "ORT_DISABLE_ALL (0), ORT_ENABLE_BASIC (1), ORT_ENABLE_EXTENDED (2), ",
+                             "ORT_ENABLE_LAYOUT (3), and ORT_ENABLE_ALL (99).");
+  }
+
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::Check() const {
+  const ConfigOptions& config_options = session_options_.value.config_options;
+
+  ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
+  ORT_ENFORCE(config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "0");
+
+  // Check input model settings.
+  const bool input_from_file = !input_model_path_.empty();
+  const bool input_from_memory = input_model_data_ != nullptr;
+  const bool input_from_model = input_model_ != nullptr;
+
+  int input_source_count = (input_from_file ? 1 : 0) +
+                           (input_from_memory ? 1 : 0) +
+                           (input_from_model ? 1 : 0);
+
+  if (input_source_count == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input model to compile must be specified via file path, memory buffer, or OrtModel");
+  }
+
+  if (input_source_count > 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input model to compile must be specified via exactly one of: ",
+                           "file path, memory buffer, or OrtModel");
+  }
+
+  if (input_from_file && !std::filesystem::exists(input_model_path_)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input model path does not exist: ", input_model_path_);
+  }
+
+  if (input_from_memory && input_model_data_size_ == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer for input model data has size 0");
+  }
+
+  // Validate OrtModel input
+  if (input_from_model) {
+    if (input_model_->graph == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel has no graph. Call AddGraphToModel before compilation.");
+    }
+
+    // A model with zero graph inputs is legal (e.g., a graph composed of zero-input
+    // generator ops like RandomNormal that produces output without external input).
+    // We still require at least one graph output for the compiled model to be meaningful.
+    if (input_model_->graph->GetNumOutputs() == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel graph must have at least one output defined.");
+    }
+
+    if (input_model_->domain_to_version.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel must specify at least one opset domain/version.");
+    }
+
+    // Note: Additional validation (node connections, schema) happens during
+    // Model::LoadFromModelEditorApiModel -> Graph::Resolve()
+  }
+
+  // Check output model settings.
+  const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+  bool has_no_output_model_location = std::holds_alternative<std::monostate>(
+      ep_context_gen_options.output_model_location);
+
+  // Determine if we can derive an output path from the input
+  bool can_derive_output_path = input_from_file;
+
+  // For OrtModel input, check if model_path is set in the graph using the virtual GetModelPath() method
+  // (avoids dynamic_cast which requires RTTI)
+  if (input_from_model && input_model_->graph) {
+    const ORTCHAR_T* model_path_cstr = input_model_->graph->GetModelPath();
+    if (model_path_cstr && model_path_cstr[0] != ORT_TSTR('\0')) {
+      can_derive_output_path = true;
+    }
+  }
+
+  if (has_no_output_model_location && can_derive_output_path) {
+    // User did not specify an output file, an output buffer, or an output write function. We default to generating an
+    // output file with a name based on the input file name, so do not return an error.
+    return Status::OK();
+  }
+
+  if (has_no_output_model_location) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Unable to generate an output model path: require an input model path if the location "
+                           "of the output model (e.g., file, buffer, or stream) is not specified.");
+  }
+
+  const epctx::BufferHolder* output_buffer_ptr = ep_context_gen_options.TryGetOutputModelBuffer();
+
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_ptr == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid buffer configuration for output model: buffer pointer is null");
+  }
+
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_size_ptr == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid buffer configuration for output model: size pointer is null");
+  }
+
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_allocator == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid buffer configuration for output model: allocator is null");
+  }
+
+  const epctx::BufferWriteFuncHolder* output_write_func_holder = ep_context_gen_options.TryGetOutputModelWriteFunc();
+
+  if (output_write_func_holder != nullptr && output_write_func_holder->write_func == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid buffer writing function for output model: function pointer is null");
+  }
+
+  return Status::OK();
+}
+
+std::string ModelCompilationOptions::GetInputSourceForTelemetry() const {
+  if (InputModelComesFromFile()) {
+    return "file";
+  }
+  if (InputModelComesFromOrtModel()) {
+    return "ort_model";
+  }
+  return "buffer";
+}
+
+std::string ModelCompilationOptions::GetOutputTargetForTelemetry() const {
+  const epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+
+  if (options.TryGetOutputModelPath() != nullptr) {
+    return "file";
+  }
+  if (options.TryGetOutputModelBuffer() != nullptr) {
+    return "buffer";
+  }
+  if (options.TryGetOutputModelWriteFunc() != nullptr) {
+    return "callback";
+  }
+
+  // Default: output path will be derived from input path
+  return "file";
+}
+
+uint32_t ModelCompilationOptions::GetFlagsForTelemetry() const {
+  const epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+  uint32_t flags = OrtCompileApiFlags_NONE;
+
+  if (options.error_if_output_file_exists) {
+    flags |= OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
+  }
+  if (options.action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError) {
+    flags |= OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED;
+  }
+
+  return flags;
+}
+
+int ModelCompilationOptions::GetGraphOptimizationLevelForTelemetry() const {
+  return static_cast<int>(session_options_.value.graph_optimization_level);
+}
+
+bool ModelCompilationOptions::GetEmbedEpContextForTelemetry() const {
+  return session_options_.value.ep_context_gen_options.embed_ep_context_in_model;
+}
+
+bool ModelCompilationOptions::HasExternalInitializersFileForTelemetry() const {
+  return session_options_.value.ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
+         session_options_.value.ep_context_gen_options.TryGetInitializerHandler() != nullptr;
+}
+
+}  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD)

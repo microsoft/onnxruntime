@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+#include "core/providers/cuda/cuda_kernel.h"
+#include <core/common/safeint.h>
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+using onnxruntime::OpKernelContext;
+using onnxruntime::OpKernelInfo;
+#endif
+using onnxruntime::cuda::CudaKernel;
+class DynamicTimeWarping final : public CudaKernel {
+ public:
+  DynamicTimeWarping(const OpKernelInfo& info) : CudaKernel(info) {}
+
+  ~DynamicTimeWarping() = default;
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

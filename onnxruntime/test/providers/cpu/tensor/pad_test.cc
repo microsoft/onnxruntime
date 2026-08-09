@@ -1,0 +1,1695 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+namespace onnxruntime {
+namespace test {
+
+template <typename T, int opset>
+static void RunOnnxOpsetTypedTest(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<T>& input,
+    const std::vector<int64_t>& pads, bool pads_is_initializer,
+    T value, bool value_is_initializer,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<T>& output,
+    std::string mode = "constant",
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& error_msg = "",
+    const std::unordered_set<std::string>& excluded_provider_types = {}) {
+  SCOPED_TRACE(MakeString("opset: ", opset,
+                          ", pads_is_initializer: ", pads_is_initializer,
+                          ", value_is_initializer: ", value_is_initializer));
+
+  // ONNX domain opset
+  OpTester test("Pad", opset);
+  if (mode != "constant")
+    test.AddAttribute("mode", mode);
+  test.AddInput<T>("data", input_dims, input);
+  if constexpr (opset >= 11) {
+    test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, pads_is_initializer);
+    test.AddInput<T>("value", {}, {value}, value_is_initializer);
+  } else {
+    test.AddAttribute("pads", pads);
+    test.AddAttribute("value", static_cast<float>(value));
+  }
+  test.AddOutput<T>("output", output_dims, output);
+  std::unordered_set<std::string> provider_types(excluded_provider_types.begin(), excluded_provider_types.end());
+  if constexpr (std::is_same_v<T, int8_t>) {
+    provider_types.insert(kTensorrtExecutionProvider);
+  }
+  // Exclude QNN due to a few test failures with the CPU backend.
+  provider_types.insert(kQnnExecutionProvider);
+  SessionOptions so;
+  // Don't fail early on shape inference so that we can test the op's error handling.
+  if (expect != OpTester::ExpectResult::kExpectSuccess) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  }
+  test.Run(so, expect, error_msg, provider_types);
+}
+
+template <typename T>
+static void RunAllOpsetAllDomainPadTests(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<T>& input,
+    const std::vector<int64_t>& pads,
+    T value,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<T>& output,
+    std::string mode = "constant",
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& error_msg = "",
+    const std::unordered_set<std::string>& excluded_provider_types = {}) {
+  struct TestParams {
+    bool pads_is_initializer;
+    bool value_is_initializer;
+  };
+  const std::vector<TestParams> all_test_params{
+      {false, false},
+#if (defined(USE_NNAPI) && defined(__ANDROID__)) || (defined(USE_COREML) && defined(__APPLE__))
+      // only enable when building NNAPI EP on Android or building CoreML EP for Apple environment
+      // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
+      // TODO try to enable when we move from QEMU to arm64 CI machines
+      {true, true},
+#endif
+  };
+  for (const auto& test_params : all_test_params) {
+    // opset 10
+    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+      RunOnnxOpsetTypedTest<T, 10>(input_dims,
+                                   input,
+                                   pads, test_params.pads_is_initializer,
+                                   value, test_params.value_is_initializer,
+                                   output_dims,
+                                   output,
+                                   mode, expect, error_msg, excluded_provider_types);
+    }
+
+    // opset 11
+    RunOnnxOpsetTypedTest<T, 11>(input_dims,
+                                 input,
+                                 pads, test_params.pads_is_initializer,
+                                 value, test_params.value_is_initializer,
+                                 output_dims,
+                                 output,
+                                 mode, expect, error_msg, excluded_provider_types);
+
+    // opset 13
+    RunOnnxOpsetTypedTest<T, 13>(input_dims,
+                                 input,
+                                 pads, test_params.pads_is_initializer,
+                                 value, test_params.value_is_initializer,
+                                 output_dims,
+                                 output,
+                                 mode, expect, error_msg, excluded_provider_types);
+
+#ifndef DISABLE_CONTRIB_OPS
+    // There is only support for float type for MSDomain kernel in ORT
+    if constexpr (std::is_same_v<T, float>) {
+      // MSFT domain opset-1 (contrib op)
+      OpTester test3("Pad", 1, kMSDomain);
+      if (mode != "constant") test3.AddAttribute("mode", mode);
+      test3.AddInput<T>("data", input_dims, input);
+      test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, test_params.pads_is_initializer);
+      test3.AddInput<T>("value", {1}, {value}, test_params.value_is_initializer);
+      test3.AddOutput<T>("output", output_dims, output);
+      // TensorRT does not support pads as an input
+      test3.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    }
+#endif  // DISABLE_CONTRIB_OPS
+  }
+}
+
+#ifdef USE_CUDA
+template <typename T>
+static void RunCudaOnlyOnnxOpsetPadTest(
+    int opset,
+    const std::vector<int64_t>& input_dims,
+    const std::vector<T>& input,
+    const std::vector<int64_t>& pads,
+    T value,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<T>& output,
+    const std::string& mode = "constant") {
+  auto cuda_execution_provider = DefaultCudaExecutionProvider();
+  if (cuda_execution_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  OpTester test("Pad", opset);
+  if (mode != "constant") {
+    test.AddAttribute("mode", mode);
+  }
+  test.AddInput<T>("data", input_dims, input);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<T>("value", {}, {value}, true);
+  test.AddOutput<T>("output", output_dims, output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(cuda_execution_provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
+// Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
+// Those tests will fallback to other EP.
+
+using PadTypes = ::testing::Types<float, double, int8_t, int32_t, int64_t, uint8_t, uint32_t, uint64_t>;
+
+template <typename T>
+class PadOpTest : public ::testing::Test {
+};
+TYPED_TEST_SUITE(PadOpTest, PadTypes);
+
+TYPED_TEST(PadOpTest, Pad_Spec_Example) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6)},
+                                  {0, 2, 0, 0},
+                                  T(0),
+                                  {3, 4},
+                                  {T(0), T(0), T(1), T(2), T(0), T(0), T(3), T(4), T(0), T(0), T(5), T(6)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_1D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2},
+                                  {T(1), T(2)},
+                                  {1, 2},
+                                  T(123),
+                                  {5},
+                                  {T(123), T(1), T(2), T(123), T(123)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_1D_Zero) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2},
+                                  {T(1), T(2)},
+                                  {0, 0},
+                                  T(123),
+                                  {2},
+                                  {T(1), T(2)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_1D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6)},
+                                  {0, 1, 0, 1},
+                                  T(0),
+                                  {3, 4},
+                                  {T(2), T(1), T(2), T(1), T(4), T(3), T(4), T(3), T(6), T(5), T(6), T(5)},
+                                  "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_Wrap_1D) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3, 2},
+                               {T(1), T(2), T(3), T(4), T(5), T(6)},
+                               {0, 1, 0, 1},
+                               false,
+                               T(0),
+                               false,
+                               {3, 4},
+                               {T(2), T(1), T(2), T(1), T(4), T(3), T(4), T(3), T(6), T(5), T(6), T(5)},
+                               "wrap");
+}
+
+#ifdef USE_WEBGPU
+TEST(PadOpTest, Pad_Wrap_WebGpu_LowerPadExceedsInt32Fails) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  OpTester test("Pad", 19);
+  test.AddAttribute("mode", "wrap");
+  test.AddInput<float>("data", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<int64_t>("pads", {2}, {2147483648LL, -2147483647LL}, true);
+  test.AddOutput<float>("output", {5}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "WebGPU Pad only supports lower pads in the int32 range", {}, nullptr, &eps);
+}
+
+TEST(PadOpTest, Pad_Wrap_WebGpu_PadGreaterThanInputDimension) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  OpTester test("Pad", 19);
+  test.AddAttribute("mode", "wrap");
+  test.AddInput<float>("data", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("pads", {2}, {5, 0}, true);
+  test.AddOutput<float>("output", {8}, {2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+#endif
+
+TYPED_TEST(PadOpTest, Pad_Edge_1D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6)},
+                                  {0, 2, 0, 1},
+                                  T(0),
+                                  {3, 5},
+                                  {T(1), T(1), T(1), T(2), T(2), T(3), T(3), T(3), T(4), T(4), T(5), T(5), T(5), T(6), T(6)},
+                                  "edge");
+}
+
+#ifdef USE_CUDA
+TEST(PadOpTest, Pad_Edge_CudaOnly_MLFloat16_SupportedOpsets) {
+  const std::vector<int> supported_opsets{18, 19, 20, 21, 22, 23, 24, 25};
+  for (int opset : supported_opsets) {
+    SCOPED_TRACE(MakeString("opset: ", opset));
+    RunCudaOnlyOnnxOpsetPadTest<MLFloat16>(
+        opset,
+        {3, 2},
+        {MLFloat16(1.0f), MLFloat16(2.0f),
+         MLFloat16(3.0f), MLFloat16(4.0f),
+         MLFloat16(5.0f), MLFloat16(6.0f)},
+        {0, 2, 0, 1},
+        MLFloat16(0.0f),
+        {3, 5},
+        {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+         MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(4.0f),
+         MLFloat16(5.0f), MLFloat16(5.0f), MLFloat16(5.0f), MLFloat16(6.0f), MLFloat16(6.0f)},
+        "edge");
+  }
+}
+
+TEST(PadOpTest, Pad_Wrap_CudaOnly_Float_SupportedOpsets) {
+  const std::vector<int> supported_opsets{19, 20, 21, 22, 23, 24, 25};
+  for (int opset : supported_opsets) {
+    SCOPED_TRACE(MakeString("opset: ", opset));
+    RunCudaOnlyOnnxOpsetPadTest<float>(
+        opset,
+        {3, 2},
+        {1.0f, 2.0f,
+         3.0f, 4.0f,
+         5.0f, 6.0f},
+        {0, 1, 0, 1},
+        0.0f,
+        {3, 4},
+        {2.0f, 1.0f, 2.0f, 1.0f,
+         4.0f, 3.0f, 4.0f, 3.0f,
+         6.0f, 5.0f, 6.0f, 5.0f},
+        "wrap");
+  }
+}
+#endif
+
+TYPED_TEST(PadOpTest, Pad_Constant_2D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 2},
+                                  {T(11), T(21),
+                                   T(12), T(22)},
+                                  {1, 2, 1, 2},
+                                  T(123),
+                                  {4, 6},
+                                  {T(123), T(123), T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(11), T(21), T(123), T(123),
+                                   T(123), T(123), T(12), T(22), T(123), T(123),
+                                   T(123), T(123), T(123), T(123), T(123), T(123)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_2D_negative_pads_1) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3},
+                                  {T(11), T(21), T(31),
+                                   T(12), T(22), T(32)},
+                                  {1, 2, 1, -1},
+                                  T(123),
+                                  {4, 4},
+                                  {T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(11), T(21),
+                                   T(123), T(123), T(12), T(22),
+                                   T(123), T(123), T(123), T(123)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_2D_negative_pads_2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 111, which exceeds threshold";
+  }
+
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3},
+                                  {T(11), T(21), T(31),
+                                   T(12), T(22), T(32)},
+                                  {-1, 0, 0, 0},
+                                  T(123),
+                                  {1, 3},
+                                  {T(12), T(22), T(32)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_3D_negative_pads) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 1, which exceeds threshold";
+  }
+
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({1, 1, 3},
+                                  {T(0), T(1), T(2)},
+                                  {0, 0, -1, 0, 0, -1},
+                                  T(0),
+                                  {1, 1, 1},
+                                  {T(1)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_4D_negative_pads) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 13, which exceeds threshold";
+  }
+
+  using T = TypeParam;
+  // input_vals contains values from 0 to 99 (inclusive)
+  std::vector<T> input_vals;
+  input_vals.reserve(100);
+  for (int i = 0; i < 100; ++i) {
+    input_vals.push_back(T(i));
+  }
+
+  // holder for output_vals (expected)
+  std::vector<T> output_vals;
+  output_vals.reserve(21);
+
+  int seed = 13;
+  for (int i = 0; i < 7; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      output_vals.push_back(T(seed + j));
+    }
+    seed += 10;
+  }
+
+  // run tests
+  RunAllOpsetAllDomainPadTests<T>({1, 1, 10, 10},
+                                  input_vals,
+                                  {0, 0, -1, -3, 0, 0, -2, -4},
+                                  T(0),
+                                  {1, 1, 7, 3},
+                                  output_vals);
+}
+
+TYPED_TEST(PadOpTest, Pad_3D_complex) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 2, 2},
+                                  {T(11), T(12),
+                                   T(21), T(22),
+
+                                   T(111), T(112),
+                                   T(121), T(122)},
+                                  {1, 0, 0, -1, 0, 0},
+                                  T(0),
+                                  {2, 2, 2},
+                                  {T(0), T(0),
+                                   T(0), T(0),
+
+                                   T(11), T(12),
+                                   T(21), T(22)});
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_2D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3},
+                                  {T(11), T(21), T(31),
+                                   T(12), T(22), T(32)},
+                                  {2, 2, 2, 2},
+                                  T(0),
+                                  {6, 7},
+                                  {T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({1, 2, 3},
+                                  {T(11), T(21), T(31),
+                                   T(12), T(22), T(32)},
+                                  {1, 2, 2, 1, 2, 2},
+                                  T(0),
+                                  {3, 6, 7},
+                                  {T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_2D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 3},
+                                  {T(11), T(21), T(31),
+                                   T(12), T(22), T(32),
+                                   T(13), T(23), T(33)},
+                                  {2, 2, 2, 2},
+                                  T(0),
+                                  {7, 7},
+                                  {T(33), T(23), T(13), T(23), T(33), T(23), T(13),
+                                   T(32), T(22), T(12), T(22), T(32), T(22), T(12),
+                                   T(31), T(21), T(11), T(21), T(31), T(21), T(11),
+                                   T(32), T(22), T(12), T(22), T(32), T(22), T(12),
+                                   T(33), T(23), T(13), T(23), T(33), T(23), T(13),
+                                   T(32), T(22), T(12), T(22), T(32), T(22), T(12),
+                                   T(31), T(21), T(11), T(21), T(31), T(21), T(11)},
+                                  "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_Wrap_2D) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3, 3},
+                               {T(11), T(21), T(31),
+                                T(12), T(22), T(32),
+                                T(13), T(23), T(33)},
+                               {2, 2, 2, 2},
+                               false,
+                               T(0),
+                               false,
+                               {7, 7},
+                               {T(22), T(32), T(12), T(22), T(32), T(12), T(22),
+                                T(23), T(33), T(13), T(23), T(33), T(13), T(23),
+                                T(21), T(31), T(11), T(21), T(31), T(11), T(21),
+                                T(22), T(32), T(12), T(22), T(32), T(12), T(22),
+                                T(23), T(33), T(13), T(23), T(33), T(13), T(23),
+                                T(21), T(31), T(11), T(21), T(31), T(11), T(21),
+                                T(22), T(32), T(12), T(22), T(32), T(12), T(22)},
+                               "wrap");
+}
+
+TYPED_TEST(PadOpTest, Pad_Constant_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, 1, 0, 1, 1, 0},
+                                  T(31),
+                                  {5, 4, 5},
+                                  {T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31)},
+                                  "constant");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, 1, 0, 1, 1, 0},
+                                  T(0),
+                                  {5, 4, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(16), T(17), T(18), T(19), T(20),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Pad_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 1, 0},
+                                  T(0),
+                                  {5, 2, 5},
+                                  {T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(16), T(17), T(18), T(19), T(20),
+
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Slice_Inner_No_Padding) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 13, which exceeds threshold";
+  }
+
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 0, 0},
+                                  T(0),
+                                  {4, 2, 5},
+                                  {T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_3D_Inner_No_Padding) {
+  using T = TypeParam;
+
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, 1, 0, 1, 1, 0},
+                                  T(0),
+                                  {5, 4, 5},
+                                  {T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(1), T(2), T(3), T(4), T(5),
+
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15)},
+                                  "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_wrap_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3, 2, 5},
+                               {T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30)},
+                               {1, 1, 0, 1, 1, 0},
+                               false,
+                               T(0),
+                               false,
+                               {5, 4, 5},
+                               {T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5)},
+                               "wrap");
+}
+
+TYPED_TEST(PadOpTest, Pad_wrap_3D_Inner_No_Padding2) {
+  using T = TypeParam;
+
+  RunOnnxOpsetTypedTest<T, 19>({3, 2, 5},
+                               {T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30)},
+                               {1, 2, 0, 1, 2, 0},
+                               false,
+                               T(0),
+                               false,
+                               {5, 6, 5},
+                               {T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10)},
+                               "wrap");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Pad_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 1, 0},
+                                  T(0),
+                                  {4, 3, 5},
+                                  {T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(6), T(7), T(8), T(9), T(10)},
+                                  "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 0, 0},
+                                  T(0),
+                                  {4, 2, 5},
+                                  {T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15)},
+                                  "reflect");
+}
+
+/*
+Example numpy for testing behavior
+
+import numpy as np
+
+a = np.zeros((2, 0))
+
+b = np.pad(a, 1, 'constant')
+print('constant')
+print(b)
+print(b.shape)
+
+c = np.pad(a, ((1,1),(0,0)), 'reflect')  # allowed if we don't pad the dim with '0'. error otherwise
+print('reflect')
+print(c)
+print(c.shape)
+
+d = np.pad(a, 1, 'edge')
+print('edge')
+print(d)
+print(d.shape)
+
+Output:
+
+constant
+[[0. 0.]
+ [0. 0.]
+ [0. 0.]
+ [0. 0.]]
+(4, 2)
+reflect
+[]
+(4, 0)
+edge
+[]
+(4, 0)
+*/
+
+// test handling of input with a 0 for a dimension
+TYPED_TEST(PadOpTest, Pad_Constant_DimWithZeroInput) {
+  // TODO: Unskip Dml when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 13, which exceeds threshold";
+  }
+
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({0},  // 1D
+                                  {},
+                                  {1, 1},
+                                  T(1),
+                                  {2},
+                                  {T(1), T(1)},
+                                  "constant");
+
+  RunAllOpsetAllDomainPadTests<T>({0},  // 1D empty pads
+                                  {},
+                                  {0, 0},
+                                  T(1),
+                                  {0},
+                                  {},
+                                  "constant");
+
+  RunAllOpsetAllDomainPadTests<T>({0},  // 1D offsetting pads
+                                  {},
+                                  {-1, 1},
+                                  T(1),
+                                  {0},
+                                  {},
+                                  "constant");
+
+  RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
+                                  {},
+                                  {1, 1, 1, 1},
+                                  T(1),
+                                  {4, 2},
+                                  {T(1), T(1), T(1), T(1), T(1), T(1), T(1), T(1)},
+                                  "constant");
+
+  RunAllOpsetAllDomainPadTests<T>({0, 2},
+                                  {},
+                                  {1, 1, 1, 1},
+                                  T(1),
+                                  {2, 4},
+                                  {T(1), T(1), T(1), T(1), T(1), T(1), T(1), T(1)},
+                                  "constant");
+
+  RunAllOpsetAllDomainPadTests<T>({0, 2},
+                                  {},
+                                  {1, 0, 1, 0},  // empty pads for dim 1
+                                  T(1),
+                                  {2, 2},
+                                  {T(1), T(1), T(1), T(1)},
+                                  "constant");
+
+  RunAllOpsetAllDomainPadTests<T>({2, 0, 2},  // 3D
+                                  {},
+                                  {0, 1, 0, 0, 1, 0},
+                                  T(1),
+                                  {2, 2, 2},
+                                  {T(1), T(1), T(1), T(1), T(1), T(1), T(1), T(1)},
+                                  "constant");
+}
+// Added output shape verification b/w the output shape generated by operator specific ONNX inference and
+// the output shape generated by operator specific ORT implementation. After adding this verification,
+// this test logs warning as validation fails for 2 data types out of 8 data types i.e. Float and Double.
+// Reason:
+//  Pad ORT implementation output shape does not match with Pad ONNX inference function output shape.
+//
+// For Float and Double this test gets executed for 2 different opset version, 10 and 11. Specifically this
+// test is failing for opset version 10.
+//  Investigation Analysis: Different ONNX inference class/method gets executed per opset version. Main difference b/w the 2
+//          pad operator ONNX inference class/method is:
+//              Older Pad operator ONNX inference: Accepts "pads and values" as attribute.
+//              Newer Pad operator ONNX inference: Accetps "pads and values" as input.
+//          For newer version, "pads & values" fields have not been added as initializer, thus instead of shape
+//          inference, rank inference gets triggered. Whereas, in older version shape inference gets executed
+//          as "pads & values" fields have been added as attribute.
+//      In order to remove the warning, shape inference methods needs to be fixed.
+
+TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
+  // TODO: Enable Dml when fixed #41968513
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({0},  // 1D
+                                  {},
+                                  {1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}",
+                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});
+
+  RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
+                                  {},
+                                  {1, 1, 1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}",
+                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});
+
+  RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
+                                  {},
+                                  {1, 0, 1, 0},
+                                  T(1),
+                                  {4, 0},
+                                  {},
+                                  "edge");
+
+  RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
+                                  {},
+                                  {0, 1, 1, 0, 1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {2, 4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}",
+                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});
+
+  RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
+                                  {},
+                                  {0, 1, 0, 0, 1, 0},
+                                  T(1),
+                                  {2, 4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectSuccess, "",
+                                  {kDmlExecutionProvider});
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
+  using T = TypeParam;
+  // DML: Unskip when fixed #41968513
+  RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
+                                  {},
+                                  {1, 0, 1, 0},  // allowed if it doesn't pad the empty dim
+                                  T(1),
+                                  {4, 0},
+                                  {},
+                                  "reflect",
+                                  OpTester::ExpectResult::kExpectSuccess,
+                                  "",
+                                  {kDmlExecutionProvider});
+
+  // DML: Unskip when fixed #41968513
+  RunAllOpsetAllDomainPadTests<T>({0, 2, 1},  // 3D
+                                  {},
+                                  {1, 1, 1, 1, 1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {0, 4, 2},
+                                  {},
+                                  "reflect",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}",
+                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PadOpTest, BoolType) {
+  OpTester test("Pad", 13);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<bool>("data", {3, 2}, {true, false, true, false, true, false});
+  test.AddInput<int64_t>("pads", {4}, {0, 2, 0, 0});
+  test.AddInput<bool>("value", {1}, {true});
+  test.AddOutput<bool>("output", {3, 4}, {true, true, true, false, true, true, true, false, true, true, true, false});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxes) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int32_t>("data", {1, 2, 2, 2},
+                         {1, 1,
+                          1, 1,
+                          1, 1,
+                          1, 1});
+  test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
+  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<int32_t>("axes", {2}, {1, 3});
+  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
+                          {0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
+// added the following test cases (can be taken by CoreML):
+TEST(PadOpTest, ConstantPadAxesTest1) {
+  // Specified axes with last two dimensions and have non-zero padding values with one of them
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  // Note: exclude nnapi ep here, as int64_t type axes input is invalid for NNAPI. Similar for below tests.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesTest2) {
+  // Specified axes with last two dimensions and have non-zero padding values on both of them
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {1, 1, 1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 4, 4},
+                        {0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesTest3) {
+  // Specified axes with 0's in pad values other than the last two dimensions
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {4}, {0, 1, 2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesTest4) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesOutOfOrder) {
+  // Specified out of order axes values
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {1, 0, 1, 0}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {2}, {3, 2}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesWithOneDimensionSpecified) {
+  // Specified axes and non-zero padding values for only one of the last two dimensions
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {1}, {3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadNegativeAxes) {
+  // Specified negative axes value
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {1}, {-1}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantFill_F32_RemovesAllDataOnAxis) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+
+  const std::vector<int64_t> input_shape = {1, 1, 4, 4};
+
+  const std::vector<float> input_data = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  // Calculate expected shape:
+  // dim0: 1 + 0 + 0 = 1
+  // dim1: 1 + 0 + 0 = 1
+  // dim2: 4 + -4 + 4 = 4
+  // dim3: 4 + 0 + 0 = 4
+  const std::vector<int64_t> expected_shape = {1, 1, 4, 4};
+  const std::vector<float> expected_data = {
+      0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f};
+
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {8}, {0, 0, -4, 0, 0, 0, 4, 0}, true);
+  test.AddInput<float>("constant_value", {}, {0.0f}, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.Run();
+}
+
+TEST(PadOpTest, ConstantPadLargeNegativePadNoOutput) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+
+  const std::initializer_list<int64_t> input_shape{2, 18, 4};
+
+  /* clang-format off */
+  const std::vector<float> input_data = {
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+      1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6,
+  };
+  /* clang-format on */
+
+  // input_data is larger than the shape elements in this test
+  // constexpr const size_t input_data_size = static_cast<size_t>(2) * 18 * 4;
+  // ASSERT_EQ(input_data_size, input_data.size());
+  auto input_span = gsl::make_span(input_data.data(), static_cast<size_t>(2) * 18 * 4);
+
+  const std::initializer_list<int64_t> pads_shape{6};
+  std::initializer_list<int64_t> pads = {1, 0x100000, -2, -3, 0, 1};
+  ASSERT_EQ(6U, pads.size());
+
+  // Expected shape is as follows:
+  // dim0: 2 + 1(pad) - 3(crop at the back) = (0) removed // Should produce empty output
+  // dim1: 18 + 0x100000(pad) - 0(crop at the front) = 1,048,594
+  // dim2: 4 + -2(crop at the front) + 1(pad at the back) = 3
+  // Resulting shape is {0, 1048594, 3} with 0 at the front.
+  // How do we handle zero shapes? Currently ONNX spec allows it.
+  // We choose to produce a empty tensor
+  constexpr int64_t dim0 = 2LL + 1 - 3;
+  constexpr int64_t dim1 = 18LL + 0x100000 - 0;
+  constexpr int64_t dim2 = 4LL + -2 + 1;
+  const std::initializer_list<int64_t> output_shape{dim0, dim1, dim2};
+
+  std::vector<float> output_data;  // empty now
+
+  test.AddInput<float>("data", input_shape, input_span);
+  test.AddInput<int64_t>("pads", pads_shape, pads, true);
+  test.AddInput<float>("value", {}, {100.f}, true);
+
+  // Omit Axis input
+  test.AddOutput<float>("output", output_shape, output_data);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantMode_MixedSigns_Small) {
+  const std::vector<int64_t> input_shape{2, 6, 4};
+  std::vector<float> input_data(2 * 6 * 4);
+
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = static_cast<float>((i % 5) + 1);
+  }
+
+  const std::vector<int64_t> pads{1, 3, -2, -1, 0, 1};
+  const float cv = 9.0f;
+  const std::vector<int64_t> expected_shape{2, 9, 3};
+
+  const std::vector<float> expected_output{
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      3.f, 4.f, 9.f,
+      2.f, 3.f, 9.f,
+      1.f, 2.f, 9.f,
+      5.f, 1.f, 9.f,
+      4.f, 5.f, 9.f,
+      3.f, 4.f, 9.f};
+
+  ASSERT_EQ(2U * 9U * 3U, expected_output.size());
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<float>("constant_value", {}, {cv}, true);
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "constant");
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(PadOpTest, ConstantMode_InnermostCropThenPostPad) {
+  const std::vector<int64_t> input_shape{2, 3, 5};
+
+  std::vector<float> input_data(2 * 3 * 5);
+  std::iota(input_data.begin(), input_data.end(), 1.0f);
+
+  const std::vector<int64_t> pads{1, 3, -2, -1, 0, 1};
+  const float cv = 9.0f;
+  const std::vector<int64_t> expected_shape{2, 6, 4};
+
+  const std::vector<float> expected_output{
+      // depth 0
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+
+      // depth 1
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      3.0F, 4.0F, 5.0F, 9.0F,
+      8.0F, 9.0F, 10.0F, 9.0F,
+      13.0F, 14.0F, 15.0F, 9.0F};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<float>("constant_value", {}, {cv}, true);
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "constant");
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(PadOpTest, EdgeMode_ZeroExtentFails) {
+  std::vector<int64_t> input_shape = {4};
+  // Generate input as above
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> pads = {-4, 3};
+
+  const std::vector<int64_t> expected_shape{3};
+  const std::vector<float> expected_data = {1.f, 2.f, 3.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "edge");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure, "");
+  test.RunWithConfig();
+}
+
+TEST(PadOpTest, EdgeMode_ExtentOne_Valid) {
+  const std::vector<int64_t> input_shape{4};
+  const std::vector<float> input_data{1.f, 1.f, 1.f, 1.f};
+  const std::vector<int64_t> pads{-3, 3};
+  const std::vector<int64_t> expected_shape{4};
+  const std::vector<float> expected_output{1.f, 1.f, 1.f, 1.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "edge");
+  test.Run();
+}
+
+TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
+  // Shape chosen to force FlattenInnerShape():
+  // innermost dims {2,4} -> flattened to 8
+  const std::vector<int64_t> input_shape = {2, 3, 2, 4};
+
+  std::vector<float> input_data(2 * 3 * 2 * 4);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = static_cast<float>(i);
+  }
+
+  // ONNX pad order: [b0,b1,b2,b3,e0,e1,e2,e3]
+  // The below shape will cause flattening the last two input dims to 8
+  const std::vector<int64_t> pads = {
+      0, 0, 0, 0,  // begin
+      0, 0, 0, 1   // end pad only on last original axis
+  };
+
+  // Expected shape:
+  // flattened axis grows from 8 -> 12
+  const std::vector<int64_t> expected_shape = {2, 3, 2, 5};
+
+  std::vector<float> expected_output = {
+      // [0][0][0]
+      0.f, 1.f, 2.f, 3.f, 3.f,
+      // [0][0][1]
+      4.f, 5.f, 6.f, 7.f, 7.f,
+
+      // [0][1][0]
+      8.f, 9.f, 10.f, 11.f, 11.f,
+      // [0][1][1]
+      12.f, 13.f, 14.f, 15.f, 15.f,
+
+      // [0][2][0]
+      16.f, 17.f, 18.f, 19.f, 19.f,
+      // [0][2][1]
+      20.f, 21.f, 22.f, 23.f, 23.f,
+
+      // [1][0][0]
+      24.f, 25.f, 26.f, 27.f, 27.f,
+      // [1][0][1]
+      28.f, 29.f, 30.f, 31.f, 31.f,
+
+      // [1][1][0]
+      32.f, 33.f, 34.f, 35.f, 35.f,
+      // [1][1][1]
+      36.f, 37.f, 38.f, 39.f, 39.f,
+
+      // [1][2][0]
+      40.f, 41.f, 42.f, 43.f, 43.f,
+      // [1][2][1]
+      44.f, 45.f, 46.f, 47.f, 47.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "edge");
+  test.Run();
+}
+
+// Gh issue: https://github.com/microsoft/onnxruntime/issues/11828
+TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
+  const std::vector<int64_t> input_shape = {4};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<int64_t> pads = {-3, 3};
+  const std::vector<int64_t> expected_shape{4};
+  const std::vector<float> expected_data = {2.f, 3.f, 4.f, 1.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect requires axis length >= 2 after slicing");
+  test.RunWithConfig();
+}
+
+TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
+  const std::vector<int64_t> input_shape = {4};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<int64_t> pads = {-3, 3};
+
+  const std::vector<int64_t> expected_shape{4};
+  // Post-slice core: [4]; wrap 3 -> [4, 4, 4, 4]
+  const std::vector<float> expected_data = {4, 4, 4, 4};
+
+  // Use opset 19 to exercise wrap mode, which is supported from Pad-19 onward.
+  OpTester test("Pad", 19);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "wrap");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.RunWithConfig();
+}
+
+// =====================================================================
+// Regression tests for reflect-mode pad-size validation (CVE / heap OOB)
+// ONNX spec: reflect pads must not exceed extent - 1 on each side.
+// =====================================================================
+
+// Bug repro: data_shape=[3], pads=[10,0] — pre-pad 10 > extent-1 (2)
+TEST(PadOpTest, Pad_Reflect_PrePadExceedsExtent_1D) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> pads = {10, 0};  // pre=10 > extent-1=2
+
+  // Output dims don't matter because we expect failure before any computation.
+  const std::vector<int64_t> expected_shape = {13};
+  const std::vector<float> expected_data(13, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// Post-pad exceeds extent - 1
+TEST(PadOpTest, Pad_Reflect_PostPadExceedsExtent_1D) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> pads = {0, 10};  // post=10 > extent-1=2
+
+  const std::vector<int64_t> expected_shape = {13};
+  const std::vector<float> expected_data(13, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: post-pad");
+  test.RunWithConfig();
+}
+
+// Both pre and post exceed extent - 1
+TEST(PadOpTest, Pad_Reflect_BothPadsExceedExtent_1D) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> pads = {5, 5};  // both > extent-1=2
+
+  const std::vector<int64_t> expected_shape = {13};
+  const std::vector<float> expected_data(13, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  // Pre-pad is checked first, so expect that message
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// 2D: pre-pad exceeds extent-1 on one axis only
+TEST(PadOpTest, Pad_Reflect_PrePadExceedsExtent_2D) {
+  const std::vector<int64_t> input_shape = {3, 3};
+  const std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  // pads: [start_dim0, start_dim1, end_dim0, end_dim1]
+  // dim0 extent=3 → max pad=2, but we request 5
+  const std::vector<int64_t> pads = {5, 0, 0, 0};
+
+  const std::vector<int64_t> expected_shape = {8, 3};
+  const std::vector<float> expected_data(24, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// 2D: post-pad exceeds extent-1 on second axis
+TEST(PadOpTest, Pad_Reflect_PostPadExceedsExtent_2D) {
+  const std::vector<int64_t> input_shape = {3, 3};
+  const std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  // dim1 extent=3 → max pad=2, but post-pad on dim1 is 5
+  const std::vector<int64_t> pads = {0, 0, 0, 5};
+
+  const std::vector<int64_t> expected_shape = {3, 8};
+  const std::vector<float> expected_data(24, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: post-pad");
+  test.RunWithConfig();
+}
+
+// Boundary: pad == extent - 1 should SUCCEED (max legal value)
+TEST(PadOpTest, Pad_Reflect_PadEqualsExtentMinus1_Succeeds) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  // extent=3, extent-1=2 -> pad=2 is the maximum legal value
+  const std::vector<int64_t> pads = {2, 2};
+
+  const std::vector<int64_t> expected_shape = {7};
+  // reflect of [1,2,3] with pre=2, post=2:  3,2, 1,2,3, 2,1
+  const std::vector<float> expected_data = {3.0f, 2.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.RunWithConfig();
+}
+
+// Boundary: pad == extent is one past the legal limit → should FAIL
+TEST(PadOpTest, Pad_Reflect_PadEqualsExtent_Fails) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  // extent=3 -> pad=3 exceeds the limit of 2
+  const std::vector<int64_t> pads = {3, 0};
+
+  const std::vector<int64_t> expected_shape = {6};
+  const std::vector<float> expected_data(6, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// Negative slice + positive pad: extent after slicing is 2, pad=2 > extent-1=1 → FAIL
+TEST(PadOpTest, Pad_Reflect_SlicedExtentExceeded) {
+  const std::vector<int64_t> input_shape = {4};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  // slice -2 from start → effective extent = 2, extent-1 = 1
+  // then pre-pad 2 > 1 → must fail
+  const std::vector<int64_t> pads = {-2, 4};  // net: -2 + 4 = +2, but reflect pad 4 > extent-1=1
+
+  const std::vector<int64_t> expected_shape = {6};
+  const std::vector<float> expected_data(6, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: post-pad");
+  test.RunWithConfig();
+}
+
+}  // namespace test
+}  // namespace onnxruntime

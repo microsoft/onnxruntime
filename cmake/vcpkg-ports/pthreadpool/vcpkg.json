@@ -1,0 +1,17 @@
+{
+  "name": "pthreadpool",
+  "version-date": "2024-12-17",
+  "description": "Portable (POSIX/Windows/Emscripten) thread pool for C/C++",
+  "homepage": "https://github.com/google/pthreadpool",
+  "dependencies": [
+    "fxdiv",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

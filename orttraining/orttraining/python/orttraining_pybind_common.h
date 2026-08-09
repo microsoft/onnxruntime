@@ -1,0 +1,49 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "python/onnxruntime_pybind_exceptions.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_state_common.h"
+
+#include "core/platform/env.h"
+#include <unordered_map>
+#include <cstdlib>
+
+namespace onnxruntime {
+namespace python {
+namespace py = pybind11;
+
+using namespace onnxruntime::logging;
+
+using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider>>;
+
+class ORTTrainingPythonEnv {
+ public:
+  ORTTrainingPythonEnv(OrtEnvPtr ort_env);
+
+  const OrtEnv& GetORTEnv() const;
+  OrtEnv& GetORTEnv();
+
+  std::shared_ptr<IExecutionProvider> GetExecutionProviderInstance(const std::string& provider_type,
+                                                                   size_t hash);
+
+  void AddExecutionProvider(const std::string& provider_type,
+                            size_t hash,
+                            std::unique_ptr<IExecutionProvider> execution_provider);
+
+  const std::vector<std::string>& GetAvailableTrainingExecutionProviderTypes();
+
+  void ClearExecutionProviderInstances();
+
+ private:
+  std::string GetExecutionProviderMapKey(const std::string& provider_type,
+                                         size_t hash);
+
+  OrtEnvPtr ort_env_;
+  // NOTE: the EPs in the following map probably depends on dynamic EP DLLs that are going to be unloaded by OrtEnv's destructor if we delete OrtEnv
+  ExecutionProviderMap execution_provider_instances_map_;
+  std::vector<std::string> available_training_eps_;
+};
+
+}  // namespace python
+}  // namespace onnxruntime

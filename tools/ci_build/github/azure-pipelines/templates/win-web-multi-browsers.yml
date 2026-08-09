@@ -1,0 +1,105 @@
+parameters:
+- name: CommitOverride
+  type: boolean
+  default: false
+
+jobs:
+- job: build_onnxruntime_web_windows
+  pool:
+    vmImage: windows-2019
+  timeoutInMinutes: 60
+  continueOnError: true
+  workspace:
+    clean: all
+  steps:
+  - checkout: self
+    submodules: false
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     git submodule sync -- cmake\external\onnx
+     git submodule update --init -- cmake\external\onnx
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodule onnx'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      patterns: 'Release_*/**/*'
+      path: $(Pipeline.Workspace)\artifacts
+    displayName: 'Download WebAssembly artifacts'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\ort-*.wasm
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files (.wasm)'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\ort-*.mjs
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files (.mjs)'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'npm ci /js/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'npm ci /js/common/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm ci /js/web/'
+  - task: Cache@2
+    inputs:
+      key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      restoreKeys: |
+        onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      path: $(Build.SourcesDirectory)/js/test/
+      cacheHitVar: CACHE_RESTORED
+    displayName: 'Cache ONNX node test data'
+  - script: |
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test_multi_browsers\01
+      npm test -- suite0 -e=chrome -b=wasm,webgl --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\01
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm test (Suite0, Chrome)'
+  - script: |
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'firefox.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Firefox processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test_multi_browsers\02
+      npm test -- suite0 -b=wasm,webgl -e=firefox --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\02
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm test (Suite0, Firefox)'
+  - script: |
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'msedge.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Edge processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test_multi_browsers\03
+      npm test -- suite0 -b=wasm,webgl -e=edge --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\03
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm test (Suite0, Edge)'

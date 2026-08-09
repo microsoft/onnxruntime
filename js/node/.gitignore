@@ -1,0 +1,10 @@
+node_modules/
+/build/
+/bin/
+/dist/
+/types/
+
+/lib/**/*.js
+/script/**/*.js
+!/script/install.js
+/test/**/*.js

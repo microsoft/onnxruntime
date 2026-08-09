@@ -1,0 +1,24 @@
+parameters:
+  AgentPool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+  StageSuffix: ''
+stages:
+- stage: Nodejs_Test_${{ parameters.StageSuffix }}
+  dependsOn:
+  - Setup
+  condition: succeeded()
+  jobs:
+  - job: Nodejs_Test_${{ parameters.StageSuffix }}
+    workspace:
+      clean: all
+    timeoutInMinutes: 120
+    pool:
+      name: ${{ parameters.AgentPool }}
+
+    variables:
+    - name: OnnxRuntimeBuildDirectory
+      value: '$(Build.BinariesDirectory)'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '22.x'
+    - template: test.yml

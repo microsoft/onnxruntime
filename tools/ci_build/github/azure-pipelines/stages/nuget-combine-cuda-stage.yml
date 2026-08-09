@@ -1,0 +1,86 @@
+parameters:
+- name: DoEsrp
+  type: boolean
+
+- name: IsReleaseBuild
+  type: boolean
+
+- name: CudaVersion
+  type: string
+
+- name: win_trt_home
+  type: string
+
+- name: win_cuda_home
+  type: string
+
+- name: UseIncreasedTimeoutForTests
+  type: boolean
+
+- name: RunOnnxRuntimeTests
+  type: boolean
+
+- name: buildJava
+  type: boolean
+
+- name: buildNodejs
+  type: boolean
+
+- name: SpecificArtifact
+  type: boolean
+
+- name: BuildId
+  type: string
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
+- name: CudaArchs
+  type: string
+- name: win_cudnn_home
+  type: string
+  default: ''
+
+stages:
+- template: nuget-linux-cuda-packaging-stage.yml
+  parameters:
+    CudaVersion: ${{ parameters.CudaVersion }}
+    buildJava: ${{ parameters.buildJava }}
+    buildNodejs: ${{ parameters.buildNodejs }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+
+- ${{ if eq(parameters.buildNodejs, 'true') }}:
+  - template: nodejs-linux-packaging-stage.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+
+- template: nuget-win-cuda-packaging-stage.yml
+  parameters:
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+    CudaVersion: ${{ parameters.CudaVersion }}
+    win_trt_home: ${{ parameters.win_trt_home }}
+    win_cuda_home: ${{ parameters.win_cuda_home }}
+    buildJava: ${{ parameters.buildJava }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+    CudaArchs: ${{ parameters.CudaArchs }}
+    win_cudnn_home: ${{ parameters.win_cudnn_home }}
+
+- template: nuget-cuda-packaging-stage.yml
+  parameters:
+    DoEsrp: ${{ parameters.DoEsrp }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}

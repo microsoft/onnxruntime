@@ -1,0 +1,57 @@
+parameters:
+- name: artifact_feed
+  type: string
+
+stages:
+- stage: JAR_Publishing_GPU
+  dependsOn: []
+  jobs:
+  - job: JAR_Publishing_GPU
+    #TD-DO: figure out a way to package nightly jar. Currently Java version are set from VERSION_NUMBER file
+    condition: ${{ or(eq(parameters.artifact_feed, 'onnxruntime-cuda-11'), eq(parameters.artifact_feed, 'onnxruntime-cuda-12')) }}
+    workspace:
+      clean: all
+    pool:
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+    variables:
+    - name: SYSTEM_ACCESSTOKEN
+      value: $(System.AccessToken)
+    - name: ADOFeedName
+      value: ${{ parameters.artifact_feed }}
+    - name: GDN_CODESIGN_TARGETDIRECTORY
+      value: '$(Build.BinariesDirectory)/final-package'
+    - name: artifactName
+      value: onnxruntime-java-gpu
+
+    steps:
+    - script: mkdir "$(GDN_CODESIGN_TARGETDIRECTORY)"
+
+    - download: build
+      displayName: 'Download Pipeline Artifact - $(artifactName)'
+      artifact: '$(artifactName)'
+
+    - task: CopyFiles@2
+      inputs:
+        SourceFolder: '$(Pipeline.Workspace)/build/$(artifactName)'
+        Contents: |
+          onnxruntime_gpu*.jar
+          onnxruntime_gpu*.pom
+        TargetFolder: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+        CleanTargetFolder: true
+
+    - task: PowerShell@2
+      displayName: 'Bundle Jar and POM files into a single jar file'
+      inputs:
+        targetType: 'inline'
+        script: |
+          jar cvf bundle.jar `
+            onnxruntime_gpu-*.pom `
+            onnxruntime_gpu-*.jar
+        workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+
+    - task: Gradle@3
+      inputs:
+        gradleWrapperFile: '$(Build.SourcesDirectory)/java/gradlew.bat'
+        workingDirectory: '$(Build.SourcesDirectory)/java'
+        tasks: 'publish'
+        options: '-PadoAccessToken=$(SYSTEM_ACCESSTOKEN) -PadoArtifact=$(GDN_CODESIGN_TARGETDIRECTORY)/bundle.jar'

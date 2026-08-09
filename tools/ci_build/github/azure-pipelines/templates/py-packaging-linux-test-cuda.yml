@@ -1,0 +1,95 @@
+parameters:
+- name: arch
+  type: string
+
+- name: machine_pool
+  type: string
+
+- name: extra_job_id
+  type: string
+  default: ''
+
+- name: python_wheel_suffix
+  type: string
+  default: ''
+
+- name: docker_base_image
+  type: string
+
+- name: cuda_version
+  type: string
+  default: '12.8'
+  values:
+   - 12.8
+   - 13.0
+
+# TODO: Ideally it should fetch information from the build that triggers it
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: timeout
+  type: number
+  default: 120
+
+jobs:
+- job: Linux_Test_GPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
+  timeoutInMinutes: ${{ parameters.timeout }}
+  variables:
+  - template: common-variables.yml
+  - name: skipComponentGovernanceDetection
+    value: true
+  - name: trt_version
+    ${{ if eq(parameters.arch, 'aarch64') }}:
+      value: ${{ variables.aarch64_trt_version }}
+    ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+      value: ${{ variables.linux_trt_version_cuda13 }}
+    ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
+      value: ${{ variables.linux_trt_version_cuda12 }}
+  - name: trt_download_url
+    ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+      value: ${{ variables.aarch64_trt_download_url_cuda13 }}
+    ${{ else }}:
+      value: ''
+  workspace:
+    clean: all
+  pool: ${{ parameters.machine_pool }}
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - template: setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: ${{ parameters.arch }}
+
+  - download: build   # pipeline resource identifier.
+    artifact: 'linux_gpu_wheel_${{ parameters.arch }}'
+
+  - download: build   # pipeline resource identifier.
+    artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
+
+  - bash: |
+      set -e -x
+      ls $(Pipeline.Workspace)/build
+      mv "$(Pipeline.Workspace)/build/linux_gpu_wheel_${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+      mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
+
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+      DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+
+  - task: Bash@3
+    displayName: 'Bash Script'
+    inputs:
+      targetType: filePath
+      filePath: tools/ci_build/github/linux/run_python_dockertest.sh
+      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}

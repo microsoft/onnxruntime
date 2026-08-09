@@ -1,0 +1,16 @@
+s390x compatibility changes based on
+
+https://github.com/protocolbuffers/protobuf/commit/a2859cc2ce25711613002104022186c0c37d9f1f
+
+diff --git a/src/google/protobuf/port_def.inc b/src/google/protobuf/port_def.inc
+index edd6d5122598e..a0a296a85da3d 100644
+--- a/src/google/protobuf/port_def.inc
++++ b/src/google/protobuf/port_def.inc
+@@ -255,6 +255,7 @@
+ #error PROTOBUF_TAILCALL was previously defined
+ #endif
+ #if __has_cpp_attribute(clang::musttail) && !defined(__arm__) && \
++    !defined(__s390x__) &&                                       \
+     !defined(_ARCH_PPC) && !defined(__wasm__) &&                 \
+     !(defined(_MSC_VER) && defined(_M_IX86)) &&                  \
+     !(defined(__NDK_MAJOR__) && __NDK_MAJOR <= 24)

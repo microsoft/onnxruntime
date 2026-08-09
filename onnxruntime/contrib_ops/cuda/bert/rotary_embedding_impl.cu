@@ -1,0 +1,228 @@
+/*
+Copyright (c) Microsoft Corporation.
+Licensed under the MIT License.
+*/
+
+/*
+Kernel implementation for rotary embeddings.
+*/
+
+#include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include <cuda_fp16.h>
+
+using namespace onnxruntime::cuda;
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+template <typename T, bool use_smem>
+__global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNxH
+                                    const T* input,                    // BxSxNxH
+                                    const T* cos_cache,                // Mx(H/2)
+                                    const T* sin_cache,                // Mx(H/2)
+                                    const int64_t* position_ids,       // (1) or BxS
+                                    const int* past_sequence_lengths,  // (B) for format 2
+                                    const int sequence_length, const int num_heads, const int head_size,
+                                    const int rotary_embedding_dim, const int max_sequence_length,
+                                    const int position_ids_format,
+                                    const bool interleaved,
+                                    int4 in_strides, int4 out_strides  // strides in bnsh coord, h is always contiguous
+) {
+  // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
+  // Use .x in innermost loop to access global memory efficiently
+
+  const int b = blockIdx.y;
+  const int s = blockIdx.x;
+  const int n = blockIdx.z;
+
+  const int i = threadIdx.x;
+
+  const T* input_data = input + b * in_strides.x + s * in_strides.z + n * in_strides.y;
+  T* output_data = output + b * out_strides.x + s * out_strides.z + n * out_strides.y;
+
+  [[maybe_unused]] extern __shared__ char smem_[];
+  [[maybe_unused]] T* smem = reinterpret_cast<T*>(smem_);
+
+  if constexpr (use_smem) {
+    // Load to shared memory for safe in-place update
+    if (i < head_size) {
+      smem[i] = input_data[i];
+    }
+    __syncthreads();
+  }
+
+  if (i >= head_size) {
+    return;
+  }
+
+  if (i >= rotary_embedding_dim) {
+    if constexpr (use_smem) {
+      output_data[i] = smem[i];
+    } else {
+      output_data[i] = input_data[i];
+    }
+    return;
+  }
+
+  // Cache is (M, H/2)
+  const int half_rotary_embedding_dim = rotary_embedding_dim / 2;
+  int position_id = 0;
+  if (position_ids_format == 0) {
+    // Validate base without overflow: base must be in [0, max_sequence_length - sequence_length].
+    int64_t base_pos = position_ids[0];
+    int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(base_pos >= 0 && base_pos <= max_valid_base);
+    }
+#endif
+    if (base_pos < 0 || base_pos > max_valid_base) {
+      output_data[i] = use_smem ? smem[i] : input_data[i];
+      return;
+    }
+    position_id = static_cast<int>(base_pos) + s;
+  } else if (position_ids_format == 1) {
+    int64_t pos = position_ids[b * sequence_length + s];
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(pos >= 0 && pos < static_cast<int64_t>(max_sequence_length));
+    }
+#endif
+    if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
+      output_data[i] = use_smem ? smem[i] : input_data[i];
+      return;
+    }
+    position_id = static_cast<int>(pos);
+  } else if (position_ids_format == 2) {
+    // format 2: past_sequence_length + s
+    // used for Decoding (past_sequence_length = seqlens_k[b]) or First Prompt (past=0 if nullptr)
+    int past = (past_sequence_lengths == nullptr) ? 0 : past_sequence_lengths[b];
+    position_id = past + s;
+  }
+  const int cache_offset = position_id * half_rotary_embedding_dim;
+  const T* cos_data = cos_cache + cache_offset;
+  const T* sin_data = sin_cache + cache_offset;
+
+  int cache_idx = 0;
+  T sign = 0;
+  int j = 0;
+  if (interleaved) {
+    cache_idx = (i / 2) % half_rotary_embedding_dim;
+    sign = (i % 2 == 0) ? -1 : 1;
+    j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
+  } else {
+    cache_idx = i % half_rotary_embedding_dim;
+    sign = (i < half_rotary_embedding_dim) ? -1 : 1;
+    j = (i + half_rotary_embedding_dim) % rotary_embedding_dim;
+  }
+
+  // Use values from shared memory
+  if constexpr (use_smem) {
+    output_data[i] = smem[i] * cos_data[cache_idx] + sign * smem[j] * sin_data[cache_idx];
+  } else {
+    output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+  }
+}
+
+template <typename T>
+Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* input, const int64_t* position_ids,
+                                   const int* past_sequence_lengths,
+                                   const T* cos_cache, const T* sin_cache, const int batch_size,
+                                   const int sequence_length, const int num_heads, const int head_size,
+                                   const int rotary_embedding_dim, const int max_sequence_length,
+                                   const int position_ids_format, const bool interleaved,
+                                   const int max_threads_per_block, const bool is_input_bnsh_format) {
+  int4 in_strides;
+  int4 out_strides;
+  if (is_input_bnsh_format) {
+    int in_head_stride = sequence_length * head_size;
+    int out_head_stride = sequence_length * head_size;
+    in_strides = int4{num_heads * in_head_stride, in_head_stride, in_head_stride / sequence_length, 1};
+    out_strides = int4{num_heads * out_head_stride, out_head_stride, out_head_stride / sequence_length, 1};
+  } else {
+    int in_head_stride = head_size;
+    int out_head_stride = head_size;
+    in_strides = int4{sequence_length * num_heads * in_head_stride, in_head_stride, num_heads * in_head_stride, 1};
+    out_strides = int4{sequence_length * num_heads * out_head_stride, out_head_stride, num_heads * out_head_stride, 1};
+  }
+  return LaunchRotaryEmbeddingKernel<T>(
+      stream, output, input, position_ids, past_sequence_lengths,
+      cos_cache, sin_cache, batch_size,
+      sequence_length, num_heads, head_size,
+      rotary_embedding_dim, max_sequence_length,
+      position_ids_format, interleaved,
+      max_threads_per_block,
+      in_strides, out_strides);
+}
+
+template <typename T>
+Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* input, const int64_t* position_ids,
+                                   const int* past_sequence_lengths,
+                                   const T* cos_cache, const T* sin_cache, const int batch_size,
+                                   const int sequence_length, const int num_heads, const int head_size,
+                                   const int rotary_embedding_dim, const int max_sequence_length,
+                                   const int position_ids_format, const bool interleaved,
+                                   const int max_threads_per_block,
+                                   int4 in_strides, int4 out_strides  // strides in bnsh coord
+) {
+  // Note: Current implementation assumes head_size <= max_threads_per_block
+  // because head_size is currently large for LLaMA-2. For smaller head_size
+  // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
+  // instead. This will require kernel changes to support.
+  ORT_ENFORCE(head_size <= max_threads_per_block, "Rotary embedding dim must be <= max_threads_per_block");
+  // strides in canonical bnsh coord, h is always contiguous (dim_stride == 1)
+  ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must contiguous");
+
+  int tpb = (head_size + 31) / 32 * 32;
+
+  const dim3 block(tpb);
+  const dim3 grid(sequence_length, batch_size, num_heads);
+
+  assert(head_size <= max_threads_per_block);
+
+  if (output == input) {
+    // In-place operation: use shared memory to avoid read-after-write hazards
+    size_t smem_size = head_size * sizeof(T);
+    RotaryEmbeddingBSNH<T, true><<<grid, block, smem_size, stream>>>(
+        output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
+        num_heads, head_size, rotary_embedding_dim, max_sequence_length, position_ids_format,
+        interleaved, in_strides, out_strides);
+  } else {
+    // Separate buffers: no shared memory needed
+    RotaryEmbeddingBSNH<T, false><<<grid, block, 0, stream>>>(
+        output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
+        num_heads, head_size, rotary_embedding_dim, max_sequence_length, position_ids_format,
+        interleaved, in_strides, out_strides);
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchRotaryEmbeddingKernel<float>(cudaStream_t stream, float* output, const float* input,
+                                                   const int64_t* position_ids, const int* past_sequence_lengths, const float* cos_cache,
+                                                   const float* sin_cache, const int batch_size,
+                                                   const int sequence_length, const int num_heads, const int head_size,
+                                                   const int rotary_embedding_dim, const int max_sequence_length,
+                                                   const int position_ids_format, const bool interleaved,
+                                                   const int max_threads_per_block, const bool is_input_bnsh_format);
+
+template Status LaunchRotaryEmbeddingKernel<half>(cudaStream_t stream, half* output, const half* input,
+                                                  const int64_t* position_ids, const int* past_sequence_lengths, const half* cos_cache,
+                                                  const half* sin_cache, const int batch_size,
+                                                  const int sequence_length, const int num_heads, const int head_size,
+                                                  const int rotary_embedding_dim, const int max_sequence_length,
+                                                  const int position_ids_format, const bool interleaved,
+                                                  const int max_threads_per_block, const bool is_input_bnsh_format);
+
+template Status LaunchRotaryEmbeddingKernel<BFloat16>(
+    cudaStream_t stream, BFloat16* output, const BFloat16* input, const int64_t* position_ids, const int* past_sequence_lengths,
+    const BFloat16* cos_cache, const BFloat16* sin_cache, const int batch_size, const int sequence_length,
+    const int num_heads, const int head_size, const int rotary_embedding_dim, const int max_sequence_length,
+    const int position_ids_format, const bool interleaved, const int max_threads_per_block,
+    const bool is_input_bnsh_format);
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

@@ -1,0 +1,50 @@
+# sets up common build tools for the windows build machines before build
+
+parameters:
+- name: buildConfig
+  displayName: Build Configuration
+  type: string
+  values:
+  - 'Release'
+  - 'Debug'
+  - 'RelWithDebInfo'
+
+- name: artifactName
+  displayName: Artifact Name
+  type: string
+  #default: 'onnxruntime-java'
+
+- name: libraryName
+  displayName: Main Library Name
+  type: string
+  #default: 'libonnxruntime.so'
+
+- name: nativeLibraryName
+  displayName: JNI Library Name
+  type: string
+  #default: 'libonnxruntime4j_jni.so'
+
+- name: arch
+  displayName: Architecture
+  type: string
+  #default: 'linux-x64'
+
+steps:
+- task: PythonScript@0
+  inputs:
+    scriptSource: 'filePath'
+    scriptPath: 'tools/ci_build/linux_java_copy_strip_binary.py'
+    pythonInterpreter: 'python3'
+    arguments: >-
+      --binary-dir $(Build.BinariesDirectory)
+      --build-config ${{parameters.buildConfig}}
+      --artifact-name ${{parameters.artifactName}}
+      --lib-name ${{parameters.libraryName}}
+      --native-lib-name ${{parameters.nativeLibraryName}}
+      --arch ${{parameters.arch}}
+  displayName: 'Package ONNX Runtime Java Native Libs'
+
+- task: 1ES.PublishPipelineArtifact@1
+  inputs:
+    targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+    artifactName: 'drop-${{parameters.artifactName}}'

@@ -1,0 +1,16 @@
+# This sets the default behavior, overriding core.autocrlf
+* text=auto
+
+# All source files should have unix line-endings in the repository,
+# but convert to native line-endings on checkout
+*.cc text
+*.h text
+
+# Windows specific files should retain windows line-endings
+*.sln text eol=crlf
+
+# make sure build.sh retains Unix line endings, even when checked out on windows.
+*.sh text eol=lf
+
+# Git hooks must have Unix line endings to work on all platforms
+.githooks/* text eol=lf

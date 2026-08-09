@@ -1,0 +1,52 @@
+name: Build
+description: issues related to builds
+title: "[Build] "
+labels: ["build"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
+  - type: textarea
+    id: issue-descript
+    attributes:
+      label: Describe the issue
+      placeholder: Include your issue description and any additional context necessary for your issue to be addressed (e.g., screenshots, GPU model & memory, etc.).
+    validations:
+      required: true
+  - type: textarea
+    id: urgency
+    attributes:
+      label: Urgency
+      placeholder: Is your issue urgent? If important use cases are blocked, there is a regression in ONNX Runtime functionality, or you have a strict project deadline, please elaborate here.
+    validations:
+      required: false
+  - type: input
+    id: target-platform
+    attributes:
+      label: Target platform
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Build script
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Error / output
+    validations:
+      required: true
+  - type: input
+    id: vs-version
+    attributes:
+      label: Visual Studio Version
+    validations:
+      required: false
+  - type: input
+    id: comp-version
+    attributes:
+      label: GCC / Compiler Version
+    validations:
+      required: false

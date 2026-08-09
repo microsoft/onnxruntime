@@ -1,0 +1,109 @@
+parameters:
+- name: build_py_parameters
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+- name: enable_linux_cpu
+  displayName: 'Whether Linux CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_cpu
+  displayName: 'Whether Windows CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_mac_cpu
+  displayName: 'Whether Mac CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_arm
+  displayName: 'Whether Linux ARM package is built.'
+  type: boolean
+  default: true
+
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+stages:
+- ${{ if eq(parameters.enable_windows_cpu, true) }}:
+  - stage: Python_Packaging_Windows_CPU
+    dependsOn: []
+    jobs:
+    - template: ../templates/py-win-cpu.yml
+      parameters:
+        architecture: 'x64'
+        build_py_parameters: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: ../templates/py-win-cpu.yml
+      parameters:
+        architecture: 'arm64'
+        build_py_parameters: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+- ${{ if eq(parameters.enable_mac_cpu, true) }}:
+  - stage: Python_Packaging_MacOS
+    dependsOn: []
+    jobs:
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.11'
+
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.12'
+
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.13'
+
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.14'
+
+- ${{ if eq(parameters.enable_linux_arm, true) }}:
+  - stage: Python_Packaging_Linux_ARM
+    dependsOn: []
+    jobs:
+      - template: ../templates/py-linux.yml
+        parameters:
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          is1ES: true
+
+- ${{ if eq(parameters.enable_linux_cpu, true) }}:
+  - stage: Python_Packaging_Linux_CPU
+    dependsOn: []
+    jobs:
+    - template: ../templates/py-linux.yml
+      parameters:
+        arch: 'x86_64'
+        machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+        extra_build_arg: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        is1ES: true

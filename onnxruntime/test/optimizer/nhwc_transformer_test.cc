@@ -1,0 +1,1248 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <array>
+#include <random>
+#include <string_view>
+#include <vector>
+
+#include "gtest/gtest.h"
+#include "core/framework/kernel_registry.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/providers/common.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+#include "core/mlas/lib/mlasi.h"
+#endif
+#include "core/graph/graph.h"
+#include "test/common/dnnl_op_test_utils.h"
+#include "test/util/include/test_environment.h"
+
+namespace onnxruntime {
+namespace test {
+
+template <typename T>
+struct NhwcWeightsRange {
+  static constexpr T min_value = std::numeric_limits<T>::min();
+  static constexpr T max_value = std::numeric_limits<T>::max();
+};
+
+template <>
+struct NhwcWeightsRange<int8_t> {
+  // Avoid saturation from u8s8 math.
+  static constexpr int8_t min_value = -63;
+  static constexpr int8_t max_value = +63;
+};
+
+template <typename T>
+NodeArg* NhwcMakeInitializer(ModelTestBuilder& builder, const std::vector<int64_t>& shape) {
+  return builder.MakeInitializer<T>(shape,
+                                    NhwcWeightsRange<T>::min_value,
+                                    NhwcWeightsRange<T>::max_value);
+}
+
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+static bool HasFloatNhwcFusedConvKernel() {
+  auto* cpu_ep = TestCPUExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  if (!kernel_registry) {
+    return false;
+  }
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<float>()},
+  };
+
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      type_constraints,
+      DefaultLoggingManager().DefaultLogger(),
+      &kernel_create_info);
+
+  return status.IsOK() && kernel_create_info != nullptr;
+}
+#endif
+
+static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_shape,
+                                           const std::vector<int64_t>& weight_shape,
+                                           std::vector<int64_t> pads = {},
+                                           std::vector<int64_t> strides = {},
+                                           std::vector<int64_t> dilations = {},
+                                           int64_t group = 1,
+                                           bool has_sum_input = false,
+                                           std::string_view auto_pad = "NOTSET") {
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+  if (!HasFloatNhwcFusedConvKernel() || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    return false;
+  }
+
+  if (has_sum_input || group <= 0 || input_shape.size() != 4 || weight_shape.size() != 4) {
+    return false;
+  }
+  const auto group_count = narrow<size_t>(group);
+
+  if (weight_shape[0] <= 0 || weight_shape[0] % group != 0) {
+    return false;
+  }
+  const auto filter_count = narrow<size_t>(weight_shape[0] / group);
+
+  std::array<size_t, 2> input_spatial_shape{
+      narrow<size_t>(input_shape[2]),
+      narrow<size_t>(input_shape[3]),
+  };
+  std::array<size_t, 2> kernel_spatial_shape{
+      narrow<size_t>(weight_shape[2]),
+      narrow<size_t>(weight_shape[3]),
+  };
+  std::array<size_t, 2> strides_size_t{1, 1};
+  std::array<size_t, 2> dilations_size_t{1, 1};
+  std::array<size_t, 4> pads_size_t{};
+
+  if (!strides.empty()) {
+    if (strides.size() != strides_size_t.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < strides_size_t.size(); ++i) {
+      if (strides[i] < 0) {
+        return false;
+      }
+
+      strides_size_t[i] = narrow<size_t>(strides[i]);
+    }
+  }
+
+  if (!dilations.empty()) {
+    if (dilations.size() != dilations_size_t.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < dilations_size_t.size(); ++i) {
+      if (dilations[i] < 0) {
+        return false;
+      }
+
+      dilations_size_t[i] = narrow<size_t>(dilations[i]);
+    }
+  }
+
+  const AutoPadType auto_pad_type = StringToAutoPadType(std::string(auto_pad));
+  if (auto_pad_type == AutoPadType::NOTSET) {
+    if (pads.empty()) {
+      pads_size_t.fill(0);
+    } else {
+      if (pads.size() != pads_size_t.size()) {
+        return false;
+      }
+
+      for (size_t i = 0; i < pads_size_t.size(); ++i) {
+        if (pads[i] < 0) {
+          return false;
+        }
+
+        pads_size_t[i] = narrow<size_t>(pads[i]);
+      }
+    }
+  } else {
+    for (size_t i = 0; i < 2; ++i) {
+      int64_t pad_head = 0;
+      int64_t pad_tail = 0;
+      int64_t out_dim = 0;
+      const auto status = ComputePadAndOutputShape(
+          input_shape[2 + i],
+          narrow<int64_t>(strides_size_t[i]),
+          weight_shape[2 + i],
+          narrow<int64_t>(dilations_size_t[i]),
+          auto_pad_type,
+          pad_head,
+          pad_tail,
+          out_dim,
+          /*force_symmetric_auto_padding*/ false);
+      if (!status.IsOK() || pad_head < 0 || pad_tail < 0 || out_dim < 0) {
+        return false;
+      }
+
+      pads_size_t[i] = narrow<size_t>(pad_head);
+      pads_size_t[i + 2] = narrow<size_t>(pad_tail);
+    }
+  }
+
+  if (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+          /*Dimensions*/ 2,
+          narrow<size_t>(input_shape[0]),
+          group_count,
+          input_spatial_shape.data(),
+          kernel_spatial_shape.data(),
+          dilations_size_t.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          filter_count,
+          /*Beta*/ 0.0f)) {
+    return true;
+  }
+
+  if (weight_shape[1] <= 0) {
+    return false;
+  }
+
+  const auto input_channels_per_group = narrow<size_t>(weight_shape[1]);
+  return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+      /*Dimensions*/ 2,
+      narrow<size_t>(input_shape[0]),
+      group_count,
+      input_channels_per_group,
+      input_spatial_shape.data(),
+      kernel_spatial_shape.data(),
+      dilations_size_t.data(),
+      pads_size_t.data(),
+      strides_size_t.data(),
+      filter_count,
+      /*Beta*/ 0.0f);
+#else
+  ORT_UNUSED_PARAMETER(input_shape);
+  ORT_UNUSED_PARAMETER(weight_shape);
+  ORT_UNUSED_PARAMETER(pads);
+  ORT_UNUSED_PARAMETER(strides);
+  ORT_UNUSED_PARAMETER(dilations);
+  ORT_UNUSED_PARAMETER(group);
+  ORT_UNUSED_PARAMETER(has_sum_input);
+  ORT_UNUSED_PARAMETER(auto_pad);
+  return false;
+#endif
+}
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+static bool HasFp16NhwcFusedConvKernel() {
+  auto* cpu_ep = TestCPUExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  if (!kernel_registry) {
+    return false;
+  }
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<MLFloat16>()},
+  };
+
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      type_constraints,
+      DefaultLoggingManager().DefaultLogger(),
+      &kernel_create_info);
+
+  return status.IsOK() && kernel_create_info != nullptr;
+}
+#endif
+
+#ifndef DISABLE_CONTRIB_OPS
+
+TEST(NhwcTransformerTests, Conv) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape, 0, 31);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight_arg = NhwcMakeInitializer<uint8_t>(builder, weights_shape);
+
+      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                          weight_arg, .02f, 126,
+                                          output_arg, .37f, 131);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 12, 37}, {32, 12, 5});
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3});
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+}
+
+TEST(NhwcTransformerTests, ConvBlockBinary) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](const std::string& binary_op_type) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 23, 13, 13}, 0, 31);
+      auto* conv1_output_arg = builder.MakeIntermediate();
+      auto* conv2_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+      auto* conv1_weight_arg = builder.MakeInitializer<uint8_t>({30, 23, 3, 3},
+                                                                NhwcWeightsRange<uint8_t>::min_value,
+                                                                NhwcWeightsRange<uint8_t>::max_value);
+
+      auto* conv2_weight_arg = builder.MakeInitializer<uint8_t>({30, 23, 1, 1},
+                                                                NhwcWeightsRange<uint8_t>::min_value,
+                                                                NhwcWeightsRange<uint8_t>::max_value);
+
+      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                             conv1_weight_arg, .02f, 126,
+                                                             conv1_output_arg, .37f, 131);
+      conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                          conv2_weight_arg, .015f, 129,
+                                          conv2_output_arg, .37f, 131);
+      builder.AddQLinearBinaryNode(binary_op_type,
+                                   conv1_output_arg, .37f, 131,
+                                   conv2_output_arg, .37f, 131,
+                                   output_arg, .43f, 126);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  std::vector<std::string> activation_op_types{"QLinearAdd", "QLinearMul"};
+  for (auto& activation_op_type : activation_op_types) {
+    test_case(activation_op_type);
+  }
+}
+
+TEST(NhwcTransformerTests, ConvMaxPool) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape, 0, 31);
+      auto* conv_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+      auto* conv_weight_arg = NhwcMakeInitializer<uint8_t>(builder, weights_shape);
+
+      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                          conv_weight_arg, .02f, 126,
+                                          conv_output_arg, .37f, 131);
+      Node& pool_node = builder.AddNode("MaxPool", {conv_output_arg}, {output_arg});
+      std::vector<int64_t> pads((weights_shape.size() - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(weights_shape.size() - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.NhwcMaxPool"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({5, 12, 37}, {128, 12, 5});
+  test_case({3, 14, 13, 13}, {64, 14, 3, 3});
+  test_case({1, 15, 11, 13, 15}, {31, 15, 5, 3, 3});
+}
+
+TEST(NhwcTransformerTests, ConvMaxPoolIndexTensor) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 16, 17, 17}, 0, 31);
+    auto* conv_output_arg = builder.MakeIntermediate();
+    auto* index_output_arg = builder.MakeOutput();
+    auto* output_arg = builder.MakeOutput();
+    auto* conv_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 16, 3, 3});
+
+    builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                        conv_weight_arg, .02f, 126,
+                                        conv_output_arg, .37f, 131);
+    Node& pool_node = builder.AddNode("MaxPool", {conv_output_arg}, {output_arg, index_output_arg});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 1);
+    EXPECT_EQ(op_to_count["MaxPool"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  // Test that MaxPool using the optional index tensor is not converted to NhwcMaxPool.
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
+TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
+  DNNL_GTEST_SKIP();
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 23, 13, 13}, 0, 31);
+    auto* conv1_output_arg = builder.MakeIntermediate();
+    auto* conv2_output_arg = builder.MakeIntermediate();
+    auto* gavgpool1_output_arg = builder.MakeIntermediate();
+    auto* gavgpool2_output_arg = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
+    auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 1, 1});
+
+    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                           conv1_weight_arg, .02f, 126,
+                                                           conv1_output_arg, .37f, 131);
+    conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    builder.AddQLinearActivationNode("QLinearGlobalAveragePool",
+                                     conv1_output_arg, .37f, 131,
+                                     gavgpool1_output_arg, .43f, 111);
+    builder.AddQLinearConvNode<uint8_t>(gavgpool1_output_arg, .43f, 111,
+                                        conv2_weight_arg, .015f, 129,
+                                        conv2_output_arg, .37f, 131);
+    builder.AddQLinearActivationNode("QLinearGlobalAveragePool",
+                                     conv2_output_arg, .37f, 131,
+                                     gavgpool2_output_arg, .37f, 131);
+    builder.AddDequantizeLinearNode<uint8_t>(gavgpool2_output_arg, .37f, 131, output_arg);
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwcUntilDepthwiseKernelEnabled) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_FALSE(HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8));
+    EXPECT_EQ(op_to_count["Conv"] + op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_AsymmetricPaddingSkipsNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+    conv_node.AddAttribute("pads", std::vector<int64_t>{0, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {0, 1, 1, 1}, {}, {}, 8);
+    EXPECT_FALSE(expect_nhwc);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvGroupedFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 2, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(4));
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 2, 3, 3}, {1, 1, 1, 1}, {}, {}, 4);
+    EXPECT_FALSE(expect_nhwc);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvDepthwiseMultiplier2Float_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 1, 3, 3}, {1, 1, 1, 1}, {}, {}, 8);
+    EXPECT_FALSE(expect_nhwc);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+
+    const bool kleidi_supported = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1});
+    const int nhwc_count = op_to_count["com.microsoft.NhwcFusedConv"];
+
+    // Other Level 3 layout optimizers may consume the Conv node in the graph before NhwcTransformer.
+    // If NHWC is selected, validate that it's only used with Arm® KleidiAI™ support and that
+    // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
+    if (nhwc_count == 0) {
+      // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
+      // ensure that some other optimizer ran and consumed the Conv node instead
+      EXPECT_TRUE(!kleidi_supported || op_to_count["Conv"] == 0);
+      return;
+    }
+
+    EXPECT_TRUE(kleidi_supported);
+    EXPECT_EQ(nhwc_count, 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_RespectsKleidiDisableConfig) {
+  if (!HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1})) {
+    GTEST_SKIP() << "Float NHWC KleidiAI path is not available on this configuration.";
+  }
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  auto add_session_options = [](SessionOptions& session_options) {
+    const auto status = session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1");
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6,
+                    nullptr,
+                    add_session_options);
+}
+
+TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+
+    const bool kleidi_supported = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1});
+    const int nhwc_count = op_to_count["com.microsoft.NhwcFusedConv"];
+
+    // Other Level 3 layout optimizers may consume the FusedConv node in the graph before NhwcTransformer.
+    // If NHWC is selected, validate that it's only used with Arm® KleidiAI™ support and that
+    // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
+    if (nhwc_count == 0) {
+      // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
+      // ensure that some other optimizer ran and consumed the FusedConv node instead
+      EXPECT_TRUE(!kleidi_supported || op_to_count["com.microsoft.FusedConv"] == 0);
+      return;
+    }
+
+    EXPECT_TRUE(kleidi_supported);
+    EXPECT_EQ(nhwc_count, 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  // This compares a Level 3 layout-optimized FusedConv+Relu path with the Level 2 baseline, which can use a different FP accumulation order.
+  // The NCHWc-selected path showed deterministic FP rounding drift just over 1e-6, so use a slightly wider but still narrow margin.
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1.25e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, FusedConvWithSumFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+    auto* sum_arg = builder.MakeInput<float>({1, 16, 5, 5}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 7, 7}, {16, 8, 3, 3}, {0, 0, 0, 0}, {1, 1}, {}, 1, true);
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 3 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvAutoPadFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 6, 6}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("auto_pad", "SAME_UPPER");
+    conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 6, 6}, {16, 8, 3, 3}, {}, {2, 2}, {}, 1, false, "SAME_UPPER");
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvAveragePool) {
+  DNNL_GTEST_SKIP();
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 23, 13, 13}, 0, 31);
+    auto* conv1_output_arg = builder.MakeIntermediate();
+    auto* conv2_output_arg = builder.MakeIntermediate();
+    auto* avgpool1_output_arg = builder.MakeIntermediate();
+    auto* avgpool2_output_arg = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
+    auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 3, 3});
+
+    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                           conv1_weight_arg, .02f, 126,
+                                                           conv1_output_arg, .37f, 131);
+    conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    Node& avgpool_node1 = builder.AddQLinearActivationNode("QLinearAveragePool",
+                                                           conv1_output_arg, .37f, 131,
+                                                           avgpool1_output_arg, .43f, 111);
+    avgpool_node1.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    avgpool_node1.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    builder.AddQLinearConvNode<uint8_t>(avgpool1_output_arg, .43f, 111,
+                                        conv2_weight_arg, .015f, 129,
+                                        conv2_output_arg, .37f, 131);
+    Node& avgpool_node2 = builder.AddQLinearActivationNode("QLinearAveragePool",
+                                                           conv2_output_arg, .37f, 131,
+                                                           avgpool2_output_arg, .37f, 131);
+    avgpool_node2.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    avgpool_node2.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    builder.AddDequantizeLinearNode<uint8_t>(avgpool2_output_arg, .37f, 131, output_arg);
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
+TEST(NhwcTransformerTests, ConvSplit) {
+  DNNL_GTEST_SKIP();
+
+  for (int64_t axis = -4LL; axis < 4; axis++) {
+    auto build_test_case = [&, axis](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({2, 23, 16, 16}, 0, 31);
+      auto* conv_output_arg = builder.MakeIntermediate();
+      auto* split_output1_arg = builder.MakeIntermediate();
+      auto* split_output2_arg = builder.MakeIntermediate();
+      auto* qladd_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+
+      constexpr int64_t conv1_output_channels = 32;
+      auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
+
+      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                            conv1_weight_arg, .02f, 126,
+                                                            conv_output_arg, .37f, 131);
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      }
+      split_node.AddAttribute("axis", static_cast<int64_t>(axis));
+      builder.AddQLinearBinaryNode("QLinearAdd",
+                                   split_output1_arg, .37f, 131,
+                                   split_output2_arg, .37f, 131,
+                                   qladd_output_arg, .43f, 126);
+      const int64_t channels_after_split =
+          (axis == 1 || axis == -3) ? conv1_output_channels / 2 : conv1_output_channels;
+
+      auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, channels_after_split, 3, 3});
+      builder.AddQLinearConvNode<uint8_t>(qladd_output_arg, .43f, 126,
+                                          conv2_weight_arg, .02f, 126,
+                                          output_arg, .37f, 131);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      18);
+  }
+}
+
+TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
+  for (int64_t axis = -4LL; axis < 4; axis++) {
+    auto build_test_case = [&, axis](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({2, 23, 16, 16}, 0, 31);
+      auto* conv_output_arg = builder.MakeIntermediate();
+      auto* split_output1_arg = builder.MakeIntermediate();
+      auto* split_output2_arg = builder.MakeIntermediate();
+      auto* qlconcat_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+
+      constexpr int64_t conv1_output_channels = 32;
+      auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
+      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                            conv1_weight_arg, .02f, 126,
+                                                            conv_output_arg, .37f, 131);
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+      Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      }
+      split_node.AddAttribute("axis", static_cast<int64_t>(axis));
+
+      Node& qlconcat_node = builder.AddQLinearConcatLike(
+          "QLinearConcat", qlconcat_output_arg, .37f, 131,
+          {std::make_tuple(split_output1_arg, .37f, uint8_t(131)), std::make_tuple(split_output2_arg, .37f, uint8_t(131))});
+      qlconcat_node.AddAttribute("axis", static_cast<int64_t>(axis));
+
+      auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, conv1_output_channels, 3, 3});
+      builder.AddQLinearConvNode<uint8_t>(qlconcat_output_arg, .43f, 126,
+                                          conv2_weight_arg, .02f, 126,
+                                          output_arg, .37f, 131);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      18);
+  }
+}
+
+TEST(NhwcTransformerTests, ConvPad) {
+  DNNL_GTEST_SKIP();
+
+  std::vector<std::string> pad_modes{"constant", "reflect", "edge"};
+  for (const auto& mode : pad_modes) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 23, 13, 13}, 0, 31);
+      auto* conv1_output_arg = builder.MakeIntermediate();
+      auto* pads_const = builder.MakeScalarInitializer<uint8_t>(131);
+      auto* pads_arg = builder.Make1DInitializer<int64_t>({0, 0, 1, 2, 0, 0, 3, 4});
+      auto* pad_output_arg = builder.MakeIntermediate();
+      auto* conv2_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+
+      auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
+      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                             conv1_weight_arg, .02f, 126,
+                                                             conv1_output_arg, .37f, 131);
+      conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      Node& pad_node = builder.AddNode("Pad", {conv1_output_arg, pads_arg, pads_const}, {pad_output_arg});
+      pad_node.AddAttribute("mode", mode);
+
+      auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 3, 3});
+      builder.AddQLinearConvNode<uint8_t>(pad_output_arg, .37f, 131,
+                                          conv2_weight_arg, .015f, 129,
+                                          conv2_output_arg, .37f, 131);
+      builder.AddDequantizeLinearNode<uint8_t>(conv2_output_arg, .37f, 131, output_arg);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  }
+}
+
+TEST(NhwcTransformerTests, ConvBlockActivation) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](uint32_t extra_edges) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<uint8_t>({1, 10, 13, 13}, 0, 31);
+      auto* input2_arg = builder.MakeInput<uint8_t>({1, 13, 13, 13}, 0, 31);
+      auto* concat_arg = builder.MakeIntermediate();
+      auto* conv1_output_arg = builder.MakeIntermediate();
+      auto* conv2_output_arg = builder.MakeIntermediate();
+      auto* act1_output_arg = builder.MakeIntermediate();
+      auto* act2_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+
+      // Create a convolution input that isn't directly a graph input.
+      Node& concat_node = builder.AddNode("Concat", {input1_arg, input2_arg}, {concat_arg});
+      concat_node.AddAttribute("axis", static_cast<int64_t>(1));
+
+      auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
+      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(concat_arg, .01f, 135,
+                                                             conv1_weight_arg, .02f, 126,
+                                                             conv1_output_arg, .37f, 131);
+      conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      builder.AddQLinearActivationNode("QLinearSigmoid",
+                                       conv1_output_arg, .37f, 131,
+                                       act1_output_arg, .37f, 131);
+
+      auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 1, 1});
+      builder.AddQLinearConvNode<uint8_t>(concat_arg, .01f, 135,
+                                          conv2_weight_arg, .015f, 129,
+                                          conv2_output_arg, .37f, 131);
+      builder.AddQLinearActivationNode("QLinearLeakyRelu",
+                                       conv2_output_arg, .37f, 131,
+                                       act2_output_arg, .37f, 131);
+      builder.AddQLinearBinaryNode("QLinearAdd",
+                                   act1_output_arg, .37f, 131,
+                                   act2_output_arg, .37f, 131,
+                                   output_arg, .39f, 126);
+
+      // Create extra uses of the various NodeArgs to exercise the transformer.
+      if ((extra_edges & 1) != 0) {
+        builder.AddDequantizeLinearNode<uint8_t>(concat_arg, .01f, 135, builder.MakeOutput());
+      }
+      if ((extra_edges & 2) != 0) {
+        builder.AddDequantizeLinearNode<uint8_t>(conv1_output_arg, .37f, 131, builder.MakeOutput());
+      }
+      if ((extra_edges & 4) != 0) {
+        builder.AddDequantizeLinearNode<uint8_t>(conv2_output_arg, .37f, 131, builder.MakeOutput());
+      }
+      if ((extra_edges & 8) != 0) {
+        builder.AddDequantizeLinearNode<uint8_t>(act1_output_arg, .37f, 131, builder.MakeOutput());
+      }
+      if ((extra_edges & 16) != 0) {
+        builder.AddDequantizeLinearNode<uint8_t>(act2_output_arg, .37f, 131, builder.MakeOutput());
+      }
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  // Add extra uses of the edges that cause the transformer to insert additional
+  // Transpose operations.
+  for (uint32_t extra_edges = 0; extra_edges < 32; extra_edges++) {
+    test_case(extra_edges);
+  }
+}
+
+TEST(NhwcTransformerTests, ConvMixTensorRanks) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<uint8_t>({1, 10, 7}, 0, 31);
+    auto* input2_arg = builder.MakeInput<uint8_t>({1, 12, 7, 7}, 0, 31);
+    auto* conv1_output_arg = builder.MakeIntermediate();
+    auto* conv2_output_arg = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {1, 10, 3});
+    builder.AddQLinearConvNode<uint8_t>(input1_arg, .01f, 135,
+                                        conv1_weight_arg, .02f, 126,
+                                        conv1_output_arg, .37f, 131);
+
+    auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {1, 12, 3, 3});
+    builder.AddQLinearConvNode<uint8_t>(input2_arg, .01f, 135,
+                                        conv2_weight_arg, .02f, 126,
+                                        conv2_output_arg, .37f, 131);
+    // Broadcast add {1, 1, 5} to {1, 1, 5, 5}.
+    builder.AddQLinearBinaryNode("QLinearAdd",
+                                 conv1_output_arg, .37f, 131,
+                                 conv2_output_arg, .37f, 131,
+                                 output_arg, .39f, 126);
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 4);
+  };
+
+  // Generate a graph with QLinearAdd that broadcasts adds a 1D tensor to a
+  // 2D tensor and verify that the transformer handles the mixed tensor ranks.
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+static std::vector<MLFloat16> ARangeOfFP16Values(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
+  std::vector<MLFloat16> val(detail::SizeFromDims(shape));
+  float start = min.ToFloat();
+  float end = max.ToFloat();
+  float step = (end - start) / 128;
+  float value = start;
+  for (size_t i = 0; i < val.size(); ++i) {
+    value += step;
+    if (value > end) {
+      value = start;
+    }
+    val[i] = MLFloat16(value);
+  }
+  return val;
+}
+
+static NodeArg* MakeInputARangeFP16(ModelTestBuilder& builder, const std::vector<int64_t>& shape,
+                                    MLFloat16 min, MLFloat16 max) {
+  return builder.MakeInput<MLFloat16>(shape, ARangeOfFP16Values(shape, min, max));
+}
+
+static NodeArg* MakeInitializerARangeFP16(ModelTestBuilder& builder, const std::vector<int64_t>& shape,
+                                          MLFloat16 min, MLFloat16 max) {
+  return builder.MakeInitializer<MLFloat16>(shape, ARangeOfFP16Values(shape, min, max));
+}
+
+class NhwcTransformerTestsFp16 : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    if (!MlasFp16AccelerationSupported()) {
+      GTEST_SKIP() << "Skipping test because FP16 acceleration support was not detected.";
+    }
+  }
+};
+
+TEST_F(NhwcTransformerTestsFp16, ConvFp16) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = MakeInputARangeFP16(builder, input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+      auto* output_arg = builder.MakeOutput();
+      auto* weight_arg = MakeInitializerARangeFP16(builder, weights_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+
+      builder.AddConvNode(input_arg, weight_arg, output_arg);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 12, 37}, {32, 12, 5});
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3});
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+}
+
+TEST_F(NhwcTransformerTestsFp16, FusedConvWithSumFp16) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 8, 7, 7}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* weight_arg = MakeInitializerARangeFP16(builder, {16, 8, 3, 3}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* bias_arg = MakeInitializerARangeFP16(builder, {16}, MLFloat16(-0.5f), MLFloat16(0.5f));
+    auto* sum_arg = MakeInputARangeFP16(builder, {1, 16, 5, 5}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const int expected_nhwc_fused_conv = HasFp16NhwcFusedConvKernel() ? 1 : 0;
+    const int expected_transposes = HasFp16NhwcFusedConvKernel() ? 3 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 0.02,
+                    /*relative_per_sample_tolerance*/ 0.02);
+}
+
+TEST_F(NhwcTransformerTestsFp16, ConvMaxPoolFp16) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = MakeInputARangeFP16(builder, input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+      auto* conv_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+      auto* conv_weight_arg = MakeInitializerARangeFP16(builder, weights_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+
+      builder.AddConvNode(input_arg, conv_weight_arg, conv_output_arg);
+      Node& pool_node = builder.AddNode("MaxPool", {conv_output_arg}, {output_arg});
+      std::vector<int64_t> pads((weights_shape.size() - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(weights_shape.size() - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+      EXPECT_EQ(op_to_count["com.ms.internal.nhwc.MaxPool"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({5, 12, 37}, {128, 12, 5});
+  test_case({3, 14, 13, 13}, {64, 14, 3, 3});
+  test_case({1, 15, 11, 13, 15}, {31, 15, 5, 3, 3});
+}
+
+TEST_F(NhwcTransformerTestsFp16, ConvGlobalAveragePoolFp16) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv1_output_arg = builder.MakeIntermediate();
+    auto* conv2_output_arg = builder.MakeIntermediate();
+    auto* gavgpool1_output_arg = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    auto* conv1_weight_arg = MakeInitializerARangeFP16(builder, {30, 23, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv2_weight_arg = MakeInitializerARangeFP16(builder, {16, 30, 1, 1}, MLFloat16(-1.5f), MLFloat16(1.5f));
+
+    Node& conv1_node = builder.AddConvNode(input_arg, conv1_weight_arg, conv1_output_arg);
+    conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    builder.AddNode("GlobalAveragePool", {conv1_output_arg}, {gavgpool1_output_arg});
+    builder.AddConvNode(gavgpool1_output_arg, conv2_weight_arg, conv2_output_arg);
+    builder.AddNode("GlobalAveragePool", {conv2_output_arg}, {output_arg});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 2);
+    EXPECT_EQ(op_to_count["com.ms.internal.nhwc.GlobalAveragePool"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
+TEST_F(NhwcTransformerTestsFp16, ConvAveragePoolFp16) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv1_output_arg = builder.MakeIntermediate();
+    auto* conv2_output_arg = builder.MakeIntermediate();
+    auto* avgpool1_output_arg = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    auto* conv1_weight_arg = MakeInitializerARangeFP16(builder, {30, 23, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv2_weight_arg = MakeInitializerARangeFP16(builder, {16, 30, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
+
+    Node& conv1_node = builder.AddConvNode(input_arg, conv1_weight_arg, conv1_output_arg);
+    conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    Node& avgpool_node1 = builder.AddNode(
+        "AveragePool", {conv1_output_arg}, {avgpool1_output_arg});
+    avgpool_node1.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    avgpool_node1.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    builder.AddConvNode(avgpool1_output_arg, conv2_weight_arg, conv2_output_arg);
+    Node& avgpool_node2 = builder.AddNode(
+        "AveragePool", {conv2_output_arg}, {output_arg});
+    avgpool_node2.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    avgpool_node2.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 2);
+    EXPECT_EQ(op_to_count["com.ms.internal.nhwc.AveragePool"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+#endif  // DISABLE_CONTRIB_OPS
+
+}  // namespace test
+}  // namespace onnxruntime

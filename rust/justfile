@@ -1,0 +1,13 @@
+
+
+vendor:
+    mkdir -p ./onnxruntime-sys/vendor/onnxruntime-src
+    cp -rf ../onnxruntime ./onnxruntime-sys/vendor/onnxruntime-src
+    cp -rf ../cmake ./onnxruntime-sys/vendor/onnxruntime-src
+    rm -rf ./onnxruntime-sys/vendor/onnxruntime-src/cmake/external/onnx
+    cp -rf ../include ./onnxruntime-sys/vendor/onnxruntime-src
+    mkdir -p ./onnxruntime-sys/vendor/onnxruntime-src/tools
+    cp -rf ../tools/ci_build ./onnxruntime-sys/vendor/onnxruntime-src/tools
+    cp -rf ../samples ./onnxruntime-sys/vendor/onnxruntime-src
+    cp -f ../requirements.txt.in ./onnxruntime-sys/vendor/onnxruntime-src
+    cp -f ../VERSION_NUMBER ./onnxruntime-sys/vendor/onnxruntime-src

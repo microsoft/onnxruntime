@@ -1,0 +1,470 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/util/math.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
+
+#if defined(ENABLE_STRIDED_TENSORS) && defined(USE_CUDA)
+#include "test/providers/kernel_compute_test_utils.h"
+#endif
+
+#ifdef USE_WEBGPU
+#include "test/util/include/default_providers.h"
+#endif
+
+namespace onnxruntime {
+namespace test {
+
+TEST(ExpandOpTest, Expand_3x3) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {1}, {1.0f});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<float>("result", {3, 3},
+                        {1.0f, 1.0f, 1.0f,
+                         1.0f, 1.0f, 1.0f,
+                         1.0f, 1.0f, 1.0f});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<float>("result", {3, 3},
+                        {1.0f, 2.0f, 3.0f,
+                         1.0f, 2.0f, 3.0f,
+                         1.0f, 2.0f, 3.0f});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {3, 1}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<float>("result", {3, 3},
+                        {1.0f, 1.0f, 1.0f,
+                         2.0f, 2.0f, 2.0f,
+                         3.0f, 3.0f, 3.0f});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x3_int32) {
+  OpTester test("Expand", 8);
+  test.AddInput<int32_t>("data_0", {1}, {1});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<int32_t>("result", {3, 3},
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_int32) {
+  OpTester test("Expand", 8);
+  test.AddInput<int32_t>("data_0", {3}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<int32_t>("result", {3, 3},
+                          {1, 2, 3,
+                           1, 2, 3,
+                           1, 2, 3});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_int32) {
+  OpTester test("Expand", 8);
+  test.AddInput<int32_t>("data_0", {3, 1}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<int32_t>("result", {3, 3},
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x3_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1}, {1});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 2, 3,
+                           1, 2, 3,
+                           1, 2, 3});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3, 1}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1x3x1_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1, 3, 1, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int64_t>("data_1", {4}, {3, 1, 3, 1});
+  test.AddOutput<int64_t>("result", {3, 3, 3, 3},
+                          {1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+                           1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+                           1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9});
+  test.Run();
+}
+
+#ifdef USE_WEBGPU
+TEST(ExpandOpTest, Expand_3x3_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1}, {1});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_3x1_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 2, 3,
+                           1, 2, 3,
+                           1, 2, 3});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_1x3_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3, 1}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_3x1x3x1_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1, 3, 1, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int64_t>("data_1", {4}, {3, 1, 3, 1});
+  test.AddOutput<int64_t>("result", {3, 3, 3, 3},
+                          {1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+                           1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+                           1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_3x3_int64_webgpu_max_num_pending_dispatches) {
+  OpTester test("Expand", 8);
+
+  test.AddInput<int64_t>("data_0", {1}, {1});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
+
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxNumPendingDispatches, "32"));
+
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
+
+TEST(ExpandOpTest, Expand_3x3_float16) {
+  OpTester test("Expand", 8);
+  test.AddInput<MLFloat16>("data_0", {1}, {MLFloat16(1.0f)});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<MLFloat16>("result", {3, 3},
+                            {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                             MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                             MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_float16) {
+  OpTester test("Expand", 8);
+  test.AddInput<MLFloat16>("data_0", {3}, {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<MLFloat16>("result", {3, 3},
+                            {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                             MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                             MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_float16) {
+  OpTester test("Expand", 8);
+  test.AddInput<MLFloat16>("data_0", {3, 1}, {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<MLFloat16>("result", {3, 3},
+                            {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                             MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+                             MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f)});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_2x2x1x2x1_float) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {2, 2, 1, 2, 1}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<int64_t>("data_1", {5}, {1, 2, 2, 2, 2});
+  test.AddOutput<float>("result", {2, 2, 2, 2, 2},
+                        {1.0f, 1.0f, 2.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f,
+                         3.0f, 3.0f, 4.0f, 4.0f, 3.0f, 3.0f, 4.0f, 4.0f,
+                         5.0f, 5.0f, 6.0f, 6.0f, 5.0f, 5.0f, 6.0f, 6.0f,
+                         7.0f, 7.0f, 8.0f, 8.0f, 7.0f, 7.0f, 8.0f, 8.0f});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1x8_float) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {3, 2, 1}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("data_1", {3}, {3, 1, 8});
+  test.AddOutput<float>("result", {3, 2, 8},
+                        {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                         3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f,
+                         4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                         5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f,
+                         6.0f, 6.0f, 6.0f, 6.0f, 6.0f, 6.0f, 6.0f, 6.0f});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x3_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {1}, {true});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<bool>("result", {3, 3},
+                       {true, true, true,
+                        true, true, true,
+                        true, true, true});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {3}, {false, true, false});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<bool>("result", {3, 3},
+                       {false, true, false,
+                        false, true, false,
+                        false, true, false});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {3, 1}, {false, true, false});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<bool>("result", {3, 3},
+                       {false, false, false,
+                        true, true, true,
+                        false, false, false});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x4_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {3, 1}, {false, true, false});
+  test.AddInput<int64_t>("data_1", {2}, {1, 4});
+  test.AddOutput<bool>("result", {3, 4},
+                       {false, false, false, false,
+                        true, true, true, true,
+                        false, false, false, false});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_4x1_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {1, 4}, {false, true, false, false});
+  test.AddInput<int64_t>("data_1", {2}, {4, 1});
+  test.AddOutput<bool>("result", {4, 4},
+                       {false, true, false, false,
+                        false, true, false, false,
+                        false, true, false, false,
+                        false, true, false, false});
+  test.Run();
+}
+
+// uint8 is a 1-byte-per-element type packed 4-per-u32 in the WebGPU storage buffer, like bool.
+// These cases cover the three packed-byte shader paths: per-element assembly (output last dim not
+// divisible by 4), splat (output last dim divisible by 4, input last dim 1), and whole-word copy
+// (input last dim divisible by 4). Some cases vary values within each packed u32 to catch
+// byte-position bugs.
+TEST(ExpandOpTest, Expand_3x3_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {1}, {5});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<uint8_t>("result", {3, 3},
+                          {5, 5, 5,
+                           5, 5, 5,
+                           5, 5, 5});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {3}, {11, 22, 33});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<uint8_t>("result", {3, 3},
+                          {11, 22, 33,
+                           11, 22, 33,
+                           11, 22, 33});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {3, 1}, {11, 22, 33});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<uint8_t>("result", {3, 3},
+                          {11, 11, 11,
+                           22, 22, 22,
+                           33, 33, 33});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x4_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {3, 1}, {11, 22, 33});
+  test.AddInput<int64_t>("data_1", {2}, {1, 4});
+  test.AddOutput<uint8_t>("result", {3, 4},
+                          {11, 11, 11, 11,
+                           22, 22, 22, 22,
+                           33, 33, 33, 33});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_4x1_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {1, 4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("data_1", {2}, {4, 1});
+  test.AddOutput<uint8_t>("result", {4, 4},
+                          {10, 20, 30, 40,
+                           10, 20, 30, 40,
+                           10, 20, 30, 40,
+                           10, 20, 30, 40});
+  test.Run();
+}
+
+#ifndef USE_TENSORRT
+TEST(ExpandOpTest, Expand_scalar_float) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {}, {3.0f});
+  test.AddInput<int64_t>("data_1", {0}, {});
+  test.AddOutput<float>("result", {}, {3.0f});
+  test.Run();
+}
+#endif
+
+TEST(ExpandOpTest, Expand_scalar_int32) {
+  OpTester test("Expand", 8);
+  test.AddInput<int32_t>("data_0", {}, {9});
+  test.AddInput<int64_t>("data_1", {3}, {2, 3, 4});
+  test.AddOutput<int32_t>("result", {2, 3, 4},
+                          {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                           9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
+  test.Run();
+}
+
+#if defined(ENABLE_STRIDED_TENSORS) && defined(USE_CUDA)
+TEST(ExpandOpTest, Strided) {
+#ifdef USE_CUDA
+  const char* provider = kCudaExecutionProvider;
+#endif
+  // Generate contiguous output.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {3, 1}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {2}, {1, 3}, {}, true);
+    test.AddOutput<float>("output", {3, 3}, {1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f});
+    test.Run();
+  }
+
+  // Strided 2D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {3, 1}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {2}, {1, 3}, {}, true);
+    test.AddOutput<float>("output", {3, 3}, {1.f, 2.f, 3.f}, {1, 0});
+    test.Run({0});
+  }
+
+  // Strided 3D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1, 3, 1}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {3}, {2, 1, 3}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3}, {1.f, 2.f, 3.f}, {0, 1, 0});
+    test.Run({0});
+  }
+
+  // Strided 4D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1, 1, 3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
+    test.AddInput<int64_t>("input_1", {4}, {2, 3, 1, 1}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}, {0, 0, 3, 1});
+    test.Run({0});
+  }
+
+  // Strided 2D -> 3D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1, 3}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {3}, {2, 3, 1}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3}, {1.f, 2.f, 3.f}, {0, 0, 1});
+    test.Run({0});
+  }
+
+  // Strided 1Element -> 4D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1}, {1.f});
+    test.AddInput<int64_t>("input_1", {4}, {2, 3, 3, 3}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3, 3}, {1.f}, {0, 0, 0, 0});
+    test.Run({0});
+  }
+}
+#endif
+
+}  // namespace test
+}  // namespace onnxruntime

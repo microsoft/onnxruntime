@@ -1,0 +1,15 @@
+# it's used to check the cache stats after building with ccache
+parameters:
+- name: CacheDir
+  displayName: Cache Directory
+  type: string
+
+steps:
+  - script: |
+      ccache -sv
+      ccache -z
+      ls -l $CCACHE_DIR
+      du -sh $CCACHE_DIR
+    displayName: Show Cache stats
+    env:
+      CCACHE_DIR: ${{ parameters.CacheDir }}

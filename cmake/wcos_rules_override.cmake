@@ -1,0 +1,2 @@
+set(CMAKE_C_STANDARD_LIBRARIES_INIT onecoreuap.lib)
+set(CMAKE_CXX_STANDARD_LIBRARIES_INIT onecoreuap.lib)

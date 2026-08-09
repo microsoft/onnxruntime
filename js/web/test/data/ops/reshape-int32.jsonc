@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Reshape with '0' and '-1' in the shape tensor input",
+    "operator": "Reshape",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [2, 2],
+            "type": "float32"
+          },
+          {
+            "data": [-1, 0],
+            "dims": [2],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar to 1D",
+        "inputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar to 2D",
+        "inputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1],
+            "dims": [2],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1],
+            "dims": [1, 1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar to 2D with -1 in shape hints",
+        "inputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          },
+          {
+            "data": [-1, 1],
+            "dims": [2],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1],
+            "dims": [1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

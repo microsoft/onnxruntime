@@ -1,0 +1,16 @@
+# It's used to replace clean-agent-build-directory-step.yml
+
+steps:
+- task: PublishTestResults@2
+  displayName: 'Publish unit test results'
+  inputs:
+    testResultsFiles: '**/*.results.xml'
+    searchFolder: '$(Build.BinariesDirectory)'
+    testRunTitle: 'Unit Test Run'
+  condition: succeededOrFailed()
+
+
+- script: docker system df && docker system prune -a -f && docker system df
+  displayName: Clean docker images
+  condition: eq(variables['Agent.OS'], 'Linux')
+  continueOnError: true

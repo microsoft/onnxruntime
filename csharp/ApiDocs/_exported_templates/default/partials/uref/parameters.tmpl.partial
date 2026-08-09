@@ -1,0 +1,28 @@
+{{!Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license. See LICENSE file in the project root for full license information.}}
+
+{{#properties.0}}
+<h6 class="parameters">Properties</h6>
+<table class="table table-bordered table-striped table-condensed">
+  <thead>
+    <tr>
+      <th>{{__global.type}}</th>
+      <th>{{__global.name}}</th>
+      <th>{{__global.description}}</th>
+    </tr>
+  </thead>
+  <tbody>
+{{/properties.0}}
+{{#properties}}
+    <tr>
+      <td>{{{type.specName.0.value}}}</td>
+      <td><em class="text-break">{{{id}}}</em></td>
+      <td>
+        {{{description}}}
+        {{>partials/parameters}}
+      </td>
+    </tr>
+{{/properties}}
+{{#properties.0}}
+  </tbody>
+</table>
+{{/properties.0}}

@@ -1,0 +1,68 @@
+jobs:
+- job: 'build'
+  pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+  strategy:
+    maxParallel: 2
+    matrix:
+      release:
+        BuildConfig: 'RelWithDebInfo'
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:
+
+  - template: templates/jobs/win-ci-prebuild-steps.yml
+    parameters:
+      EnvSetupScript: $(EnvSetupScript)
+      DownloadCUDA: false
+      BuildArch: x64
+      BuildConfig: $(BuildConfig)
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
+      WithCache: true
+      Today: $(Today)
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 6.10.x
+    inputs:
+      versionSpec: 6.10.x
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --use_full_protobuf --fuzz_testing'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+      platform: 'x64'
+      configuration: $(BuildConfig)
+      msbuildArgs: $(MsbuildArguments)
+      msbuildArchitecture: $(buildArch)
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      createLogFile: true
+
+  - task: CmdLine@2
+    displayName: 'Run fuzz testing '
+    inputs:
+      script: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t  /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx"  1 m'
+      workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+      failOnStderr: false # Optional

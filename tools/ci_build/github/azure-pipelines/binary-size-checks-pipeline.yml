@@ -1,0 +1,13 @@
+parameters:
+- name: DoBuildWithDebugInfo
+  displayName: Create additional build with debug information?
+  type: boolean
+  default: false
+
+stages:
+- template: templates/android-binary-size-check-stage.yml
+  parameters:
+    Name: MinimalBaseline
+    BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
+    BinarySizeThresholdInBytes: 1306224
+    DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}

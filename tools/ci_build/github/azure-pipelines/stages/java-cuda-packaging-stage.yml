@@ -1,0 +1,31 @@
+stages:
+- stage: Jar_Packaging_GPU
+  dependsOn:
+  - Linux_C_API_Packaging_GPU
+  - Windows_Packaging_CUDA
+  - Windows_Packaging_TensorRT
+  jobs:
+  - job: Jar_Packaging_GPU
+    workspace:
+      clean: all
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-win-x64-tensorrt
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-linux-x64-tensorrt
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+        
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
+        artifactName: onnxruntime-java-gpu
+    pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    dependsOn: []
+    condition: succeeded()
+    steps:
+    - template: ../templates/jar-packaging.yml
+      parameters:
+        package_type: gpu

@@ -1,0 +1,31 @@
+[
+  {
+    "name": "Sub with no attributes",
+    "operator": "Sub",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2,4] T[2,4] (int32)",
+        "inputs": [
+          {
+            "data": [1, 2, 1, 3, 2, 3, 1, 2],
+            "dims": [2, 4],
+            "type": "int32"
+          },
+          {
+            "data": [2, 1, 1, 2, 2, 3, 1, 4],
+            "dims": [2, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-1, 1, 0, 1, 0, 0, 0, -2],
+            "dims": [2, 4],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  }
+]

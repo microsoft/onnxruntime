@@ -1,0 +1,117 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">netcoreapp3.1</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
+    <Platform>AnyCPU</Platform>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <!-- arbitrary version for testing locally. when used in a CI CurrentOnnxRuntimeVersion should always be specified and match the package being tested -->
+    <CurrentOnnxRuntimeVersion Condition="'$(CurrentOnnxRuntimeVersion)' == ''">1.15.0</CurrentOnnxRuntimeVersion>
+    <PackageName Condition="'$(PACKAGENAME)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
+    <LangVersion>default</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+    <!--internal build related properties for Linux -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
+    <!--internal build related properties for Windows -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsMacOSBuild)'=='true'">
+    <!--internal build related properties for OSX -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.21.12" /> <!-- should match version ORT native build uses -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.0" />
+    <!-- use Newtonsoft.Json dependency of Microsoft.NET.Test.Sdk at a more recent version -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="$(PACKAGENAME)" Version="$(CurrentOnnxRuntimeVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
+
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\EqualityComparers.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\AssertUtils.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxMl.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxData.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TestDataLoader.cs" />
+
+    <!-- Works in CI builds-->
+    <None Include="$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.dll;$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.pdb;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.so;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.dylib">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <!-- Works for local builds-->
+    <None Include="$(NativeBuildOutputDir)\custom_op*.dll;$(NativeBuildOutputDir)\custom_op*.pdb;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <!-- -->
+
+    <!-- test data for non-mobile scenarios -->
+    <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\overridable_initializer.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\custom_op_library\custom_op_test.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\lora\two_params_lora_model.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\lora\two_params_lora_model.onnx_adapter">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <!-- test data as embedded resources for mobile scenarios -->
+    <EmbeddedResource Include="..\..\testdata\*">
+        <Link>TestData\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\onnxruntime\test\testdata\overridable_initializer.onnx">
+        <Link>TestData\overridable_initializer.onnx</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
+        <Link>TestData\capi_symbolic_dims.onnx</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <Target Name="DefineBuildEnvironmentVariables" BeforeTargets="Build">
+    <WriteLinesToFile File="$(OutputPath)\Properties.txt" Lines="@(BuildEnvVars)" Overwrite="true" />
+  </Target>
+
+  <ItemGroup>
+    <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
+  </ItemGroup>
+
+</Project>

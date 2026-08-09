@@ -1,0 +1,25 @@
+diff --git a/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp b/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
+--- a/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
++++ b/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
+@@ -750,6 +750,7 @@ struct WGPUBufferImpl final : public EventSource,
+   WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
+   // Injection constructor used when we already have a backing Buffer.
+   WGPUBufferImpl(const EventSource* source, ImportedFromJSTag tag);
++  ~WGPUBufferImpl();
+
+   void Destroy();
+   const void* GetConstMappedRange(size_t offset, size_t size);
+@@ -1444,6 +1445,12 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, ImportedFromJSTag tag)
+     : EventSource(source),
+       RefCountedWithExternalCount(tag),
+       mMapState(WGPUBufferMapState_Unmapped) {}
+
++WGPUBufferImpl::~WGPUBufferImpl() {
++  if (!IsImported()) {
++    Destroy();
++  }
++}
++
+ void WGPUBufferImpl::Destroy() {
+   emwgpuBufferDestroy(this);
+   AbortPendingMap("Buffer was destroyed before mapping was resolved.");

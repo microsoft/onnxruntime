@@ -1,0 +1,40 @@
+parameters:
+  FolderPath: ''
+  DisplayName: ''
+  DoEsrp: 'false'
+
+steps:
+- ${{ if eq(parameters['DoEsrp'], 'true') }}:
+  - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
+    displayName: 'ESRP CodeSigning'
+    inputs:
+      ConnectedServiceName: 'OnnxrunTimeCodeSign_20240611'
+      UseMSIAuthentication: true
+      AppRegistrationClientId: '62b7cfed-4d25-454f-880e-010dc21455ac'
+      AppRegistrationTenantId: '975f013f-7f24-47e8-a7d3-abc4752bf346'
+      EsrpClientId: "53d54d02-978d-4305-8572-583cf6711c4f"
+      AuthAKVName: 'ortbuildkeyvault'
+      AuthSignCertName: 'esrpcodesign'
+      FolderPath: ${{ parameters.FolderPath }}
+      Pattern: '*.nupkg'
+      SessionTimeout: 90
+      ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+      MaxConcurrency: 25
+      signConfigType: inlineSignParams
+      inlineOperation: |
+        [
+            {
+                "keyCode": "CP-401405",
+                "operationSetCode": "NuGetSign",
+                "parameters": [ ],
+                "toolName": "sign",
+                "toolVersion": "6.2.9304.0"
+            },
+            {
+                "keyCode": "CP-401405",
+                "operationSetCode": "NuGetVerify",
+                "parameters": [ ],
+                "toolName": "sign",
+                "toolVersion": "6.2.9304.0"
+            }
+        ]

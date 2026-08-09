@@ -1,0 +1,4 @@
+-r requirements.txt
+# Please manually install torch>=1.13.0 with CUDA enabled for the CUDA version installed in your system.
+# Instructions can be found here: https://pytorch.org/get-started/locally/
+onnxruntime-gpu>=1.17.1

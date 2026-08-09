@@ -1,0 +1,21 @@
+
+:½
+
+X
+Badd0_outadd0"Add
+1
+add0_outYgelu"Gelu*
+approximate"tanh Gelu_Add_FusionZ#
+X
+
+batch
+seqlen
+€Z
+B
+	
+€b#
+Y
+
+batch
+seqlen
+€B

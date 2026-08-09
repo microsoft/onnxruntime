@@ -1,0 +1,104 @@
+parameters:
+- name: EnvSetupScript
+  type: string
+  default: setup_env.bat
+
+- name: BuildConfig
+  type: string
+
+- name: BuildArch
+  type: string
+
+- name: DownloadCUDA
+  type: boolean
+  default: false
+
+- name: DownloadTRT
+  type: boolean
+  default: false
+
+- name: WITHCACHE
+  type: boolean
+  default: false
+
+- name: MachinePool
+  type: string
+
+- name: Today
+  type: string
+
+- name: CudaVersion
+  type: string
+  default: '12.8'
+  values:
+    - 13.0
+    - 12.8
+
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.12'
+    addToPath: true
+    architecture: ${{parameters.BuildArch}}
+
+- task: PipAuthenticate@1
+  displayName: 'Pip Authenticate'
+  inputs:
+    artifactFeeds: 'PublicPackages/ORT-Nightly'
+
+
+- ${{ if eq(parameters.BuildArch, 'x64') }}:
+  - script: |
+      @echo off
+      set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+      for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
+        if exist "%%i\VC\Auxiliary\Build\vcvars64.bat" (
+          set vcvarsall="%%i\VC\Auxiliary\Build\vcvars64.bat"
+        )
+      )
+
+      @echo %vcvarsall% will be used as the VC compiler
+      @echo ##vso[task.setvariable variable=vcvarsall]%vcvarsall%
+    displayName: 'locate vcvarsall via vswhere'
+
+- task: BatchScript@1
+  displayName: 'Setup VC env'
+  inputs:
+    filename: '$(vcvarsall)'
+    modifyEnvironment: true
+    workingFolder: '$(Build.BinariesDirectory)'
+
+- script: |
+    python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+  workingDirectory: '$(Build.BinariesDirectory)'
+  displayName: 'Install python modules'
+
+
+- template: set-winenv.yml
+  parameters:
+    CudaVersion: ${{ parameters.CudaVersion }}
+    EnvSetupScript: ${{parameters.EnvSetupScript}}
+    DownloadCUDA: ${{parameters.DownloadCUDA}}
+    DownloadTRT: ${{parameters.DownloadTRT}}
+
+- ${{ if eq(parameters.WITHCACHE, true) }}:
+  - powershell: |
+      if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
+      {
+        choco install ccache -y --version 4.7.4
+        $ccache_path = (Get-Command ccache).Source
+        $ccache_parent_dir = (Split-Path -parent $ccache_path)
+        Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
+        Get-ChildItem $ccache_parent_dir
+      }
+
+      "ccache info:"
+      ccache --version
+      ccache --show-config
+
+      "cl.exe from path: $((Get-Command cl).Path). Version:"
+      (cl.exe -?) -match 'Compiler Version'
+      "C:\ProgramData\chocolatey\bin\cl.exe version:"
+      (C:\ProgramData\chocolatey\bin\cl.exe -?) -match 'Compiler Version'
+
+    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc

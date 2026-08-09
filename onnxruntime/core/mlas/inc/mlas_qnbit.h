@@ -1,0 +1,411 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    mlas_qnbit.h
+
+Abstract:
+
+    This module contains the public data structures and procedure prototypes
+    for blocked n-bit quantized GEMM.
+
+    N-bit block quantization is used to compress weight tensors of large
+    language models.
+
+--*/
+
+#pragma once
+
+#include "mlas.h"
+#include "mlas_gemm_postprocessor.h"
+
+/**
+ * @brief Define compute types of block quantization, in order of decreasing accuracy.
+ */
+typedef enum {
+    SQNBIT_CompFp32,  /*!< input fp32, accumulator fp32 */
+    HQNBIT_CompFp16,  /*!< input fp16, accumulator fp16 */
+    BHQNBIT_CompBf16, /*!< input bf16, accumulator fp32 */
+    SQNBIT_CompInt8,  /*!< input int8, accumulator int32, input fp32 */
+    HQNBIT_CompInt8,  /*!< input int8, accumulator int32, input fp16 */
+} MLAS_QNBIT_GEMM_COMPUTE_TYPE;
+
+/**
+ * @brief Data parameters for float/n-bit quantized int GEMM routine.
+ *
+ * @tparam  T   data type of input A
+ */
+template <typename T>
+struct MLAS_QNBIT_GEMM_DATA_PARAMS {
+    const T* A = nullptr;                         ///< address of A (float32/16 matrix)
+    size_t lda = 0;                               ///< leading dimension of A
+    /// Optional fp16 A source for the CompInt8 path. When set (and the platform
+    /// provides a fp16 A quantizer), the workspace init quantizes A directly from
+    /// fp16 and `A` above is ignored, avoiding a separate fp16 -> fp32 copy of A.
+    const MLAS_FP16* AFp16 = nullptr;
+    const void* QuantBDataWorkspace;              ///< address of quantized B (quantized n-bit int values)
+    const std::byte* PackedQuantBData = nullptr;  /// address of packed quantized B data
+    const T* QuantBScale = nullptr;               ///< address of scale values of quantized B, one per block
+    const void* QuantBZeroPoint = nullptr;        ///< optional address of zero point values of quantized B, one per block
+    const T* QuantBBlkSum = nullptr;              ///< optional address of scale * zp, one per block
+
+    /// <summary>
+    /// Address of scale * accumulate(quant - zp), one per block, where `scale`, `quant`, `zp` are respectively
+    /// an individual block's scale, quantized values, and zero point for the input `B`.
+    /// When converting the activation input (A) to uint8, we first convert the values to int8 and then
+    /// add a "bias" of +128 to convert the range of values from [-128, +127] to [0, +255].
+    /// This input helps to "de-bias" the output of the +128 bias added to the activation input.
+    /// This input is to be used only when A is quantized to uint8.
+    /// </summary>
+    const T* BlkUnsignedQuantAZeroPointCorrection = nullptr;
+
+    const T* Bias = nullptr;  ///< optional address of Bias, vector size N
+    T* C = nullptr;           ///< address of result matrix
+    /// Optional fp16 output for the CompInt8 path. When set (and the platform provides
+    /// a fp16 C epilogue), each worker converts its output tile to fp16 as it is
+    /// produced and writes it here, so `C` above can point at a small scratch instead
+    /// of a full fp32 copy of the result. Uses the same leading dimension `ldc`.
+    MLAS_FP16* CFp16 = nullptr;
+    size_t ldc = 0;           ///< leading dimension of C
+
+    ///< optional post processing to apply to result matrix
+    MLAS_GEMM_POSTPROCESSOR<T>* PostProcessor = nullptr;
+
+    const float* BZpCorr = nullptr;       ///< optional: BZpCorrection for KleidiAI asymmetric path (N * BlockCountK floats)
+    const float* AFloatBlkSum = nullptr;  ///< optional: float-domain A block sums for KleidiAI asymmetric path (M * BlockCountK floats)
+};
+
+/**
+ * @brief Batched GEMM:  C = A * B + Bias
+ *        A must be a float32/16 matrix
+ *        B must be a quantized and packed n-bit int matrix
+ *
+ *        Call MlasIsQNBitGemmAvailable() with the same parameters to determine whether this function may be called.
+ *
+ *        Call MlasQNBitGemmPackQuantBDataSize() with the same parameters to determine whether
+ *          MLAS_QNBIT_GEMM_DATA_PARAMS::QuantBData in `DataParams` should point to a buffer packed with
+ *          MlasQNBitGemmPackQuantBData().
+ *
+ *        Call MlasQNBitGemmBatchWorkspaceSize() with the same parameters to determine whether `Workspace` should
+ *          point to an intermediate workspace buffer.
+ *
+ * @tparam          T               data type of input A
+ * @param[in]       M               row size of matrix A and C
+ * @param[in]       N               column size of matrix B and C
+ * @param[in]       K               column size of matrix A and row size of matrix B
+ * @param[in]       BatchN          number of batches
+ * @param[in]       BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]       BlkLen          number of quantized values per block
+ * @param[in]       ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[inout]    DataParams      An array (size BatchN) of parameter blocks
+ * @param[in]       Workspace       Address of intermediate workspace buffer.
+                                    If MlasQNBitGemmBatchWorkspaceSize() returns a non-zero value, this must be a
+                                    buffer with at least that many bytes. Otherwise, it may be nullptr.
+ * @param[in]       ThreadPool      optional thread pool to use
+ * @param[in]       BackendKernelSelectorConfig  backend kernel selector configuration
+ */
+template <typename T>
+void MLASCALL
+MlasQNBitGemmBatch(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<T>* DataParams,
+    void* Workspace,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+/**
+ * @brief Determines whether a float32/16 quantized n-bit int GEMM implementation is available on the current platform.
+ *
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ */
+bool MLASCALL
+MlasIsQNBitGemmAvailable(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+/**
+ * @brief Whether the current platform can quantize a fp16 activation matrix directly to
+ *        int8 for the CompInt8 path. When true, a fp16 MatMulNBits can set
+ *        MLAS_QNBIT_GEMM_DATA_PARAMS::AFp16 and skip converting A to fp32 before the int8
+ *        GEMM; the quantized A is bit-identical to converting A to fp32 first and using
+ *        the float quantizer. Independent of BlkBitWidth/BlkLen; pair with
+ *        MlasIsQNBitGemmAvailable(..., SQNBIT_CompInt8) to confirm the GEMM itself runs.
+ */
+bool MLASCALL
+MlasQNBitGemmFp16DirectQuantASupported();
+
+/**
+ * @brief Whether the given compute path can write its result directly as fp16 for the
+ *        given weight bit width. When true, a fp16 MatMulNBits can set
+ *        MLAS_QNBIT_GEMM_DATA_PARAMS::CFp16 instead of allocating a full fp32 copy of
+ *        the result; each worker converts its output strip to fp16 in place. The fp16
+ *        result is bit-identical to computing in fp32 and converting with
+ *        MlasConvertFloatToHalfBuffer. Supported for CompInt8 (2, 4 and 8 bit) and for
+ *        the 4 bit CompFp32 path.
+ */
+bool MLASCALL
+MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth, MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType);
+
+/**
+ * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM
+ * implementation. If zero, no intermediate workspace is required.
+ *
+ * @param[in]   M               row size of matrix A and C
+ * @param[in]   N               column size of matrix B and C
+ * @param[in]   K               column size of matrix A and row size of matrix B
+ * @param[in]   BatchN          number of batches
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   HasZeroPoint    whether zero points are provided
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
+ */
+size_t MLASCALL
+MlasQNBitGemmBatchWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+/**
+ * @brief Gets the size in bytes of the packed quantized B data.
+ * If non-zero, the quantized B data must first be packed by calling MlasQNBitGemmPackQuantBData() with a buffer of
+ * this size, and then that packed quantized B data buffer must be passed to MlasQNBitGemmBatch().
+ * If zero, MlasQNBitGemmPackQuantBData() must not be called and the quantized B data must be directly passed to
+ * MlasQNBitGemmBatch().
+ *
+ * @param[in]   N               column size of matrix B and C
+ * @param[in]   K               column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   HasZeroPoint    whether zero points are provided
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
+ */
+size_t MLASCALL
+MlasQNBitGemmPackQuantBDataSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+/**
+ * @brief Packs the quantized B data in a format that the kernel expects.
+ *
+ * If the function is called without QuantBScale and QuantBZeroPoint,
+ * it just packs QuantBData into PackedQuantBDataAndOrBlkSum.
+ *
+ * If the function is called with QuantBData, QuantBScale, and QuantBZeroPoint
+ * additional BlkSum (Scale * zeropoint) is computed and stored at the second part of PackedQuantBDataAndOrBlkSum.
+ *
+ * Because ORT OpKernel::PrePack is called for each input (in this case, QuantBData,
+ * QuantBScale, and QuantBZeroPoint) separately, this function may be called 3 times, first with QuantBData,
+ * and then QuantBScale and QuantBZeroPoint. When the function is called with QuantBScale without QuantBZeroPoint,
+ * BlkSum is computed with default zero point 8 and stored at the second part of PackedQuantBDataAndOrBlkSum.
+ * If there is a third call with QuantBZeroPoint, BlkSum is recomputed/adjusted with provided zeropoint.
+ *
+ * @param[in]   N                               column size of matrix B and C
+ * @param[in]   K                               column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth                     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen                          number of quantized values per block
+ * @param[in]   ComputeType                     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   QuantBData                      quantized B data
+ * @param[in]   PackedQuantBDataAndOrBlkSum     buffer to store packed quantized B data and/or BlkSum
+ * @param[in]   QuantBScale                     quantized B scale
+ * @param[in]   HasZeroPoint                    whether QuantBZeroPoint is provided
+ * @param[in]   QuantBZeroPoint                 quantized B zero point
+ * @param[in]   ThreadPool          thread pool to use (no parallel if nullptr)
+ */
+void MLASCALL
+MlasQNBitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const void* QuantBData,
+    void* PackedQuantBDataAndOrBlkSum,
+    const void* QuantBScale,
+    bool HasZeroPoint,
+    const void* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+/**
+ * @brief Returns true if scales are packed when calling MlasQNBitGemmPackQuantBData the first time.
+ *
+ * @param[in]   K               column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   HasZeroPoint    whether QuantBZeroPoint is provided
+ * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
+ */
+bool MLASCALL
+MlasQNBitGemmScalesPacked(
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    bool HasZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+/**
+ * @brief Determines whether the Lut (Lookup Table) GEMM optimization path is available.
+ *
+ * @param[in]   N               column size of matrix B
+ * @param[in]   K               row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 2 means 2 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @return      true if Lut GEMM is available for the given parameters
+ */
+bool MLASCALL
+MlasIsLutGemmAvailable(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen
+);
+
+/**
+ * @brief Initializes kernel configuration for Lut GEMM.
+ *
+ * @param[in]   M               row size of output matrix
+ * @param[in]   N               column size of matrix B
+ * @param[in]   nbits           quantized value bit width
+ * @param[in]   block_size      number of quantized values per block
+ * @param[in]   has_zero_point  whether zero points are provided
+ */
+void MLASCALL
+MlasInitLutGemmKernelConfig(
+    size_t M,
+    size_t N,
+    size_t nbits,
+    size_t block_size,
+    bool has_zero_point
+);
+
+/**
+ * @brief Clears the cached LUT GEMM kernel configuration.
+ *        Call this when the model dimensions change or to reset state between operations.
+ *        Primarily used in testing scenarios to ensure clean state between test runs.
+ */
+void MLASCALL
+MlasClearLutGemmKernelConfig();
+
+/**
+ * @brief Gets the total size in bytes of the prepacked buffer for Lut GEMM.
+ *        This buffer contains packed quantized B data followed by packed scales and zero points.
+ *
+ * @param[in]   N               column size of matrix B
+ * @param[in]   K               row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 2 means 2 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   HasZeroPoint    whether zero points are provided
+ * @return      Total size in bytes of the prepacked buffer
+ */
+size_t MLASCALL
+MlasLutGemmPackedSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint
+);
+
+/**
+ * @brief Packs quantized B data and/or scales/zero points into a buffer for Lut GEMM.
+ *        If QuantBScale is nullptr, only packs B data. If QuantBData is nullptr, only packs scales.
+ *
+ * @param[in]   N                   column size of matrix B
+ * @param[in]   K                   row size of matrix B
+ * @param[in]   BlkBitWidth         quantized value bit width (e.g., 2 means 2 bit ints)
+ * @param[in]   BlkLen              number of quantized values per block
+ * @param[in]   HasZeroPoint        whether zero points are provided
+ * @param[in]   QuantBData          quantized B data (nullptr to skip B packing)
+ * @param[in]   QuantBScale         quantized B scales (nullptr to skip scale packing)
+ * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false).
+ *                                  When IsFloatZeroPoint is false, this is packed uint8 data.
+ *                                  When IsFloatZeroPoint is true, this is a float array with one
+ *                                  value per quantization group, shape (N, ceil(K/BlkLen)).
+ *                                  Only the first K/BlkLen groups per row are used by the packer.
+ * @param[in]   IsFloatZeroPoint    if true, QuantBZeroPoint is interpreted as const float*
+ * @param[out]  PackedBuf           output buffer (must be at least MlasLutGemmPackedSize bytes)
+ * @param[in]   ThreadPool          thread pool for parallel packing
+ */
+void MLASCALL
+MlasLutGemmPack(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
+    std::byte* PackedBuf,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Executes TMAC compute using Lut (Lookup Table) based GEMM.
+ *
+ * This function handles generating the look up tables and accumulating the matmul results.
+ * Results will be stored in C.
+ *
+ * @param[in]   A               activation matrix
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   PackedBuf       packed buffer containing weights and scales/zp (from MlasLutGemmPack)
+ * @param[out]  C               output matrix
+ * @param[in]   K               inner dimension
+ * @param[in]   M               batch size (number of rows in activation)
+ * @param[in]   N               column size of matrix B
+ * @param[in]   HasZeroPoint    whether zero points are provided
+ * @param[in]   threadpool      thread pool for parallel computation
+ * @param[in]   Bias            optional bias vector of length N (one value per output feature).
+ *                              When non-null, it is broadcast-added to every row of the [M, N]
+ *                              output. The addition is fused into the per-tile compute loop so
+ *                              it inherits the same multi-threading as the GEMM itself.
+ *                              Pass nullptr if no bias is to be applied.
+ */
+void MLASCALL
+MlasLutGemm(
+    const void* A,
+    size_t BlkLen,
+    const void* PackedBuf,
+    void* C,
+    size_t K,
+    size_t M,
+    size_t N,
+    bool HasZeroPoint,
+    MLAS_THREADPOOL* threadpool,
+    const float* Bias = nullptr
+);

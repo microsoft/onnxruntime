@@ -1,0 +1,26 @@
+parameters:
+  - name: QnnSDKVersion
+    type: string
+    default: '2.42.0.251225'
+
+steps:
+  - powershell: |
+      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }} $(Agent.TempDirectory)
+    displayName: 'Download QNN SDK v${{ parameters.QnnSDKVersion }}'
+
+  - powershell: |
+      echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)\qnn-v${{ parameters.QnnSDKVersion }}"
+    displayName: Set QnnSDKRootDir
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        echo $(QnnSDKRootDir)
+    displayName: 'Print QnnSDKRootDir after downloading QNN SDK'
+
+  - task: CmdLine@2
+    displayName: 'Print contents of QNN SDK'
+    inputs:
+      script: |
+        dir $(QnnSDKRootDir)
+

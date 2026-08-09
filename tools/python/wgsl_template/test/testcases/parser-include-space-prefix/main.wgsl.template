@@ -1,0 +1,8 @@
+// Test #include with space at beginning of line
+ #include "constants.wgsl.template"
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    let value = PI * f32(index);
+}

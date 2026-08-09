@@ -1,0 +1,7 @@
+{
+  "type": "build",
+  "description": "Build test for complex padding operation template with conditional parameters",
+  "generators": {
+    "static-cpp-literal": {}
+  }
+}

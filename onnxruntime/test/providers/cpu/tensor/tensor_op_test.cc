@@ -1,0 +1,600 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <limits>
+
+#include "gtest/gtest.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+#include "test/providers/provider_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
+using namespace ONNX_NAMESPACE;
+namespace onnxruntime {
+namespace test {
+
+using ExpectResult = OpTester::ExpectResult;
+
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
+// Those tests will fallback to other EPs.
+
+TEST(TensorOpTest, Reshape) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
+  test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyDim) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
+  test.AddInput<int64_t>("shape", {0}, {}, true);
+  test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
+  // TensorRT doesn't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyInput) {
+  OpTester test("Reshape");
+  test.AddInput<float>("data", {0, 10}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {0, 10, 1}, false);
+  test.AddOutput<float>("reshaped", {0, 10, 1}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The input tensor cannot be reshaped to the requested shape. Input shape:{1,0}, requested shape:{1,0,-1}";
+  }
+
+  {
+    OpTester test("Reshape");
+    test.AddInput<float>("data", {1, 0}, std::vector<float>());
+    test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
+    test.AddOutput<float>("reshaped", {1, 0, 1}, {});
+    // TensorRT, QNN don't support empty dimension
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             "The input tensor cannot be reshaped to the requested shape",
+             {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  }
+
+  {
+    OpTester test("Reshape");
+    test.AddInput<float>("data", {1, 0}, std::vector<float>());
+    test.AddInput<int64_t>("shape", {3}, {1, 1, -1}, false);
+    test.AddOutput<float>("reshaped", {1, 1, 0}, {});
+    // TensorRT, QNN don't support empty dimension
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  }
+}
+
+TEST(TensorOpTest, ReshapeWithInitializer) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
+  test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
+  test.Run();
+}
+
+#ifdef USE_WEBGPU
+TEST(TensorOpTest, Reshape_int64_webgpu) {
+  OpTester test("Reshape", 25);
+
+  test.AddInput<int64_t>("data", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("shape", {3}, {3, 1, 2});
+  test.AddOutput<int64_t>("reshaped", {3, 1, 2}, {1, 2, 3, 4, 5, 6});
+
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(TensorOpTest, Reshape_uint8_webgpu) {
+  OpTester test("Reshape", 25);
+
+  // Values span the full byte range.
+  test.AddInput<uint8_t>("data", {2, 3}, {1, 2, 10, 100, 200, 255});
+  test.AddInput<int64_t>("shape", {3}, {3, 1, 2});
+  test.AddOutput<uint8_t>("reshaped", {3, 1, 2}, {1, 2, 10, 100, 200, 255});
+
+  // Run on a WebGPU-only session and disable CPU-EP fallback. ORT implicitly adds a CPU EP for
+  // fallback, so without this the Reshape node would silently run on CPU (and the test would still
+  // pass) if WebGPU did not support uint8.
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(ConfigOptions{});
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  test.Config(options)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
+
+TEST(TensorOpTest, Reshape_WithOutAllowZero) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {0, 3});
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRank) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f));
+  test.AddInput<int64_t>("shape", {4}, {2, 3, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRankOneZero) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f));
+  test.AddInput<int64_t>("shape", {4}, {0, 3, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRankTwoZeroes) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f));
+  test.AddInput<int64_t>("shape", {4}, {0, 0, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, Reshape_WithAllowZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {0, 3});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "The input tensor cannot be reshaped to the requested shape",
+           {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
+  test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
+  // TensorRT, QNN don't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "The input tensor cannot be reshaped to the requested shape",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
+
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim and unknown dim (-1): infer unknown from non-zero product.
+// Input: {2, 0, 3} (0 elements), shape: {0, -1} → output: {0, 6}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 0, 3}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 6}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim and unknown dim: input {4, 0}, shape {0, 2, -1} → output {0, 2, 2}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {4, 0}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {0, 2, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 2, 2}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim, unknown dim, and multi-dim non-zero product.
+// Input: {3, 0, 5} (0 elements), shape: {0, -1} → non-zero product of input is 3*5=15, output: {0, 15}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDimMultiDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {3, 0, 5}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 15}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, ReshapeHelper_RejectsRequestedShapeOverflow) {
+  TensorShape input_shape({1});
+  TensorShapeVector requested_shape{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()};
+
+  try {
+    ReshapeHelper(input_shape, requested_shape);
+    FAIL() << "Expected ReshapeHelper to throw";
+  } catch (const OnnxRuntimeException& exception) {
+    const std::string message = exception.what();
+    const std::string max_dim = std::to_string(std::numeric_limits<int64_t>::max());
+    EXPECT_NE(message.find("The requested shape has too many elements."), std::string::npos);
+    EXPECT_NE(message.find("Input shape:"), std::string::npos);
+    EXPECT_NE(message.find("1"), std::string::npos);
+    EXPECT_NE(message.find("requested shape:"), std::string::npos);
+    EXPECT_NE(message.find(max_dim), std::string::npos);
+    EXPECT_NE(message.rfind(max_dim), std::string::npos);
+    EXPECT_NE(message.find(max_dim), message.rfind(max_dim));
+  }
+}
+
+TEST(TensorOpTest, ReshapeSixDimNewShape) {
+  // CoreML has a 5D limit for the new shape. With the CoreML EP enabled, this should fall back to the CPU EP.
+  OpTester test("Reshape", 14);
+  test.AddInput<float>("data", {8, 8, 8}, std::vector<float>(8 * 8 * 8, 1.0f));
+
+  const auto target_shape = std::vector<int64_t>{2, 4, 4, 2, 8, 1};
+  test.AddInput<int64_t>("shape", {static_cast<int64_t>(target_shape.size())}, target_shape, true);
+  test.AddOutput<float>("reshaped", target_shape, std::vector<float>(8 * 8 * 8, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, ReshapeSixDimInputShape) {
+  // CoreML has a 5D limit for the new shape. With the CoreML EP enabled, this should fall back to the CPU EP.
+  OpTester test("Reshape", 14);
+  test.AddInput<float>("data", {2, 4, 4, 2, 8, 1}, std::vector<float>(8 * 8 * 8, 1.0f));
+
+  const auto target_shape = std::vector<int64_t>{8, 8, 8};
+  test.AddInput<int64_t>("shape", {static_cast<int64_t>(target_shape.size())}, target_shape, true);
+  test.AddOutput<float>("reshaped", target_shape, std::vector<float>(8 * 8 * 8, 1.0f));
+  test.Run();
+}
+
+#if defined(USE_DNNL)
+TEST(TensorOpTest, Reshape_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
+  test.AddOutput<BFloat16>("reshaped", {1, 3, 2}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyDim_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {1, 1}, MakeBFloat16({1.0f}));
+  test.AddInput<int64_t>("shape", {0}, {});
+  test.AddOutput<BFloat16>("reshaped", {}, MakeBFloat16({1.0f}));
+  // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyInput_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+  test.AddInput<BFloat16>("data", {0, 10}, std::vector<BFloat16>());
+  test.AddInput<int64_t>("shape", {3}, {0, 10, 1}, false);
+  test.AddOutput<BFloat16>("reshaped", {0, 10, 1}, std::vector<BFloat16>());
+  // TensorRT doesn't support empty dimension
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZero_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<int64_t>("shape", {2}, {0, 3});
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<BFloat16>("reshaped", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<int64_t>("shape", {2}, {0, 3});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<BFloat16>("reshaped", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, ReshapeWithInitializer_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
+  test.AddOutput<BFloat16>("reshaped", {1, 3, 2}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  {
+    OpTester test("Reshape", 14);
+    test.AddInput<BFloat16>("data", {1, 0}, std::vector<BFloat16>());
+    test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
+    test.AddOutput<BFloat16>("reshaped", {1, 0, 1}, {});
+    // TensorRT doesn't support empty dimension
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+    execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+  }
+
+  {
+    OpTester test("Reshape", 14);
+    test.AddInput<BFloat16>("data", {1, 0}, std::vector<BFloat16>());
+    test.AddInput<int64_t>("shape", {3}, {1, 1, -1}, false);
+    test.AddOutput<BFloat16>("reshaped", {1, 1, 0}, {});
+    // TensorRT doesn't support empty dimension
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+    execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+  }
+}
+
+TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {0, 3, 4}, std::vector<BFloat16>());
+  test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
+  test.AddOutput<BFloat16>("reshaped", {3, 4, 0}, std::vector<BFloat16>());
+  // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {0, 3, 4}, std::vector<BFloat16>());
+  test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<BFloat16>("reshaped", {3, 4, 0}, std::vector<BFloat16>());
+
+  // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddOutput<BFloat16>("reshaped", {1, 6}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Reshape", 14);
+
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<BFloat16>("reshaped", {1, 6}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
+
+TEST(TensorOpTest, ShapeTest2D) {
+  OpTester test("Shape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddOutput<int64_t>("shape", {2}, {2, 3});
+  // TensorRT: volume of dimensions is not consistent with weights size
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, ShapeTest3D) {
+  OpTester test("Shape");
+
+  test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
+  test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
+  // TensorRT: volume of dimensions is not consistent with weights size
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+}  // namespace test
+}  // namespace onnxruntime

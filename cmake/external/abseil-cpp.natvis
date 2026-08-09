@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <!-- 2-parameter form: InlinedVector<T, N> (allocator defaulted) -->
+  <Type Name="absl::lts_20250814::InlinedVector&lt;*,*&gt;">
+    <!-- Metadata layout:
+         metadata_.value stores (size << 1) | is_allocated_bit -->
+    <Intrinsic Name="_meta_value" Expression="storage_.metadata_.value"/>
+    <Intrinsic Name="_size" Expression="_meta_value() >> 1"/>
+    <Intrinsic Name="_is_allocated" Expression="(_meta_value() &amp; 1) == 1"/>
+    <Intrinsic Name="_inline_capacity" Expression="$T2"/>
+    <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
+    <Intrinsic Name="_allocated_data" Expression="storage_.data_.allocated.allocated_data"/>
+    <Intrinsic Name="_heap_capacity" Expression="storage_.data_.allocated.allocated_capacity"/>
+    <Intrinsic Name="_capacity" Expression="_is_allocated() ? _heap_capacity() : _inline_capacity()"/>
+    <Intrinsic Name="_data" Expression="_is_allocated() ? _allocated_data() : _inlined_data()"/>
+
+    <!-- Distinct quick summaries -->
+    <DisplayString Condition="_is_allocated()">size={_size()} cap={_capacity()} (heap)</DisplayString>
+    <DisplayString Condition="!_is_allocated()">size={_size()} cap={_capacity()} (inline)</DisplayString>
+
+    <Expand>
+      <!-- Diagnostics / metadata -->
+      <Item Name="[size]" ExcludeView="simple">_size()</Item>
+      <Item Name="[capacity]" ExcludeView="simple">_capacity()</Item>
+      <Item Name="[inline_capacity]" ExcludeView="simple">_inline_capacity()</Item>
+      <Item Name="[storage_kind]" Condition="_is_allocated()" ExcludeView="simple">"heap"</Item>
+      <Item Name="[storage_kind]" Condition="!_is_allocated()" ExcludeView="simple">"inline"</Item>
+      <Item Name="[data]" Condition="_size() == 0" ExcludeView="simple">"empty"</Item>
+      <Item Name="[data]" ExcludeView="simple">_data()</Item>
+      <Item Name="[front]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[0]</Item>
+      <Item Name="[back]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[_size()-1]</Item>
+      <Item Name="[WARNING]" Condition="_size() &gt; _capacity()" ExcludeView="simple">"CORRUPT: size &gt; capacity"</Item>
+
+      <!-- Elements -->
+      <IndexListItems>
+        <Size>_size()</Size>
+        <ValueNode>_data()[$i]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+
+  <!-- 3-parameter form: InlinedVector<T, N, A> -->
+  <Type Name="absl::lts_20250814::InlinedVector&lt;*,*,*&gt;">
+    <Intrinsic Name="_meta_value" Expression="storage_.metadata_.value"/>
+    <Intrinsic Name="_size" Expression="_meta_value() >> 1"/>
+    <Intrinsic Name="_is_allocated" Expression="(_meta_value() &amp; 1) == 1"/>
+    <Intrinsic Name="_inline_capacity" Expression="$T2"/>
+    <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
+    <Intrinsic Name="_allocated_data" Expression="storage_.data_.allocated.allocated_data"/>
+    <Intrinsic Name="_heap_capacity" Expression="storage_.data_.allocated.allocated_capacity"/>
+    <Intrinsic Name="_capacity" Expression="_is_allocated() ? _heap_capacity() : _inline_capacity()"/>
+    <Intrinsic Name="_data" Expression="_is_allocated() ? _allocated_data() : _inlined_data()"/>
+
+    <DisplayString Condition="_is_allocated()">size={_size()} cap={_capacity()} (heap)</DisplayString>
+    <DisplayString Condition="!_is_allocated()">size={_size()} cap={_capacity()} (inline)</DisplayString>
+
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">_size()</Item>
+      <Item Name="[capacity]" ExcludeView="simple">_capacity()</Item>
+      <Item Name="[inline_capacity]" ExcludeView="simple">_inline_capacity()</Item>
+      <!-- Replaced ternary expression with conditional items to avoid literal-in-expression error -->
+      <Item Name="[storage_kind]" Condition="_is_allocated()" ExcludeView="simple">"heap"</Item>
+      <Item Name="[storage_kind]" Condition="!_is_allocated()" ExcludeView="simple">"inline"</Item>
+      <Item Name="[data]" Condition="_size() == 0" ExcludeView="simple">"empty"</Item>
+      <Item Name="[data]" Condition="_size() &gt; 0" ExcludeView="simple">_data()</Item>
+      <Item Name="[front]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[0]</Item>
+      <Item Name="[back]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[_size()-1]</Item>
+      <Item Name="[WARNING]" Condition="_size() &gt; _capacity()" ExcludeView="simple">"CORRUPT: size &gt; capacity"</Item>
+      <!-- (Allocator object access intentionally omitted: internal layout is unstable) -->
+
+      <IndexListItems>
+        <Size>_size()</Size>
+        <ValueNode>_data()[$i]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+</AutoVisualizer>

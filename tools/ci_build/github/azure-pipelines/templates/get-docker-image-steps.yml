@@ -1,0 +1,92 @@
+# calls tools/ci_build/get_docker_image.py
+
+parameters:
+- name: Dockerfile
+  type: string
+- name: Context
+  type: string
+- name: DockerBuildArgs
+  type: string
+  default: ""
+- name: Repository
+  type: string
+- name: UseImageCacheContainerRegistry
+  type: boolean
+  default: true
+- name: UsePipelineCache
+  type: boolean
+  default: false
+- name: CheckOutManyLinux
+  type: boolean
+  default: false
+- name: ScriptName
+  type: string
+  default: "tools/ci_build/get_docker_image.py"
+- name: IMAGE_CACHE_DIR
+  type: string
+  default: $(Agent.TempDirectory)/docker
+
+steps:
+- ${{ if eq(parameters.CheckOutManyLinux, true) }}:
+    - checkout: manylinux
+    - script: |
+        set -e -x
+        mv manylinux onnxruntime
+        mv onnxruntime ..
+        cd ..
+        rmdir $(Build.SourcesDirectory)
+        mv onnxruntime $(Build.SourcesDirectory)
+      displayName: "Move Manylinux source code to ORT folder"
+    # It makes the files in context keep consistent before and after docker build step.
+    - task: PythonScript@0
+      inputs:
+        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/patch_manylinux.py
+        arguments: --dockerfile "${{ parameters.Dockerfile }}" --context "${{ parameters.Context }}"
+        pythonInterpreter: /usr/bin/python3
+      displayName: patch manylinux
+
+- script: |
+    docker version
+    docker image ls
+    docker system df
+    docker info  |grep '^\s* Docker Root'
+    df -h
+  displayName: Check Docker Images
+
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
+  - template: with-container-registry-steps.yml
+    parameters:
+      Steps:
+      - script: |
+          ${{ parameters.ScriptName }} \
+            --dockerfile "${{ parameters.Dockerfile }}" \
+            --context "${{ parameters.Context }}" \
+            --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+            --container-registry onnxruntimebuildcache \
+            --repository "${{ parameters.Repository }}"
+        displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      ContainerRegistry: onnxruntimebuildcache
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
+  # the difference is no --container-registry
+  - template: with-container-registry-steps.yml
+    parameters:
+      Steps:
+      - script: |
+          ${{ parameters.ScriptName }} \
+            --dockerfile "${{ parameters.Dockerfile }}" \
+            --context "${{ parameters.Context }}" \
+            --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+            --repository "${{ parameters.Repository }}"
+        displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      ContainerRegistry: onnxruntimebuildcache
+
+- script: |
+    docker version
+    docker image ls
+    docker system df
+    df -h
+  displayName: Check Docker Images

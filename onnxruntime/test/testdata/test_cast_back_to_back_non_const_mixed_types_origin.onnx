@@ -1,0 +1,49 @@
+
+onnx-tests:Å
+
+uvcast_0"Cast*	
+to 
+
+vwcast_1"Cast*	
+to 
+
+wxcast_2"Cast*	
+to 
+!
+xrescast_3"Cast*	
+to 
+ 
+ww2cast_4"Cast*	
+to 
+#
+w2res2cast_5"Cast*	
+to 
+ 
+xx2cast_6"Cast*	
+to	 
+!
+x2x3cast_7"Cast*	
+to 
+#
+x3res3cast_8"Cast*	
+to  test-cast-back-to-back-non-constZ
+u
+
+
+
+b
+res
+
+
+
+b
+res2
+
+
+
+b
+res3
+
+
+
+B

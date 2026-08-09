@@ -1,0 +1,60 @@
+---
+
+# NOTE:
+#     The check is a multiline string here. Comment must not be moved into the string.
+#     Be sure to keep the disabled rules alphabetically sorted.
+#
+# Checks that are turned off:
+#
+# -cppcoreguidelines-macro-usage: There are a lot of false-positives like Function-like macro 'Foo' used; consider a 'constexpr' template function
+# -cppcoreguidelines-pro-type-reinterpret-cast: Originally turned off.
+# -google-readability-todo: Not enforced.
+# -google-runtime-references: https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#c-code-style.
+# -modernize-concat-nested-namespaces: We don't use it.
+# -modernize-use-trailing-return-type: Stylistic preference we do not enforce.
+# -readability-identifier-length: A lot of numerical code rely on short names to improve readability.
+# -readability-uppercase-literal-suffix: We accept lowercase suffixes
+
+Checks: >
+  -*,
+  cppcoreguidelines-*,
+  google-*,
+  readability-*,
+  modernize-*,
+  bugprone-*,
+  performance-*,
+  misc-*,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -google-readability-todo,
+  -google-runtime-references,
+  -modernize-concat-nested-namespaces,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-uppercase-literal-suffix,
+WarningsAsErrors: ""
+HeaderFilterRegex: '.*onnxruntime\/core\/.*'
+AnalyzeTemporaryDtors: false
+FormatStyle: none
+CheckOptions:
+  - key: google-readability-braces-around-statements.ShortStatementLines
+    value: "1"
+  - key: google-readability-function-size.StatementThreshold
+    value: "800"
+  - key: google-readability-namespace-comments.ShortNamespaceLines
+    value: "10"
+  - key: google-readability-namespace-comments.SpacesBeforeComments
+    value: "2"
+  - key: modernize-loop-convert.MaxCopySize
+    value: "16"
+  - key: modernize-loop-convert.MinConfidence
+    value: reasonable
+  - key: modernize-loop-convert.NamingStyle
+    value: CamelCase
+  - key: modernize-pass-by-value.IncludeStyle
+    value: google
+  - key: modernize-replace-auto-ptr.IncludeStyle
+    value: google
+  - key: modernize-use-nullptr.NullMacros
+    value: "NULL"
+---

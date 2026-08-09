@@ -1,0 +1,602 @@
+#!/usr/bin/env python
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
+import tempfile
+import unittest
+from importlib.util import find_spec
+from pathlib import Path
+from typing import ClassVar
+
+import numpy as np
+import onnx
+from onnx import TensorProto, helper
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+
+from onnxruntime.quantization import quant_utils
+
+
+class TestOpMatMul4Bits(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmul4bits.")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def fill_int4_data(self, shape: int | tuple[int, ...], symmetric: bool) -> np.ndarray:
+        line = np.zeros(shape)
+        line = line.reshape(-1)
+
+        if symmetric:
+            v = -2.0
+            for i in range(line.shape[0]):
+                if v == 0 or v == -3 or v == 3:
+                    v += 1
+                line[i] = v
+                v += 1
+                if v >= 8:
+                    v = -8
+        else:
+            v = 0.0
+            for i in range(line.shape[0]):
+                line[i] = v
+                v += 1
+                if v >= 16:
+                    v = 0
+
+        return line.reshape(shape)
+
+    def input_feeds(
+        self,
+        n: int,
+        name2shape: dict[str, int | tuple[int, ...]],
+        low: int = -1,
+        high: int = 2,
+        dtype: type = np.float32,
+    ) -> TestDataFeeds:
+        input_data_list = []
+        for _i in range(n):
+            inputs = {}
+            for name, shape in name2shape.items():
+                inputs.update({name: np.random.randint(low, high, shape).astype(dtype)})
+            input_data_list.extend([inputs])
+        dr = TestDataFeeds(input_data_list)
+        return dr
+
+    def construct_model_matmul(self, output_model_path: str, symmetric: bool) -> None:
+        #      (input)
+        #         |
+        #       MatMul
+        #         |
+        #      (output)
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+
+        def make_matmul(
+            input_name, weight_shape: int | tuple[int, ...], weight_name: str, output_name: str, node_name: str
+        ):
+            weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+            initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
+            return onnx.helper.make_node(
+                "MatMul",
+                [input_name, weight_name],
+                [output_name],
+                node_name,
+            )
+
+        in_features = 52
+        out_features = 288
+        # make MatMul node
+        matmul_node = make_matmul(
+            input_name,
+            [in_features, out_features],
+            "linear1.weight",
+            output_name,
+            "MatMul_0",
+        )
+
+        # make graph
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, in_features])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [-1, out_features])
+        graph_name = "matmul_4bits_test"
+        graph = helper.make_graph(
+            [matmul_node],
+            graph_name,
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        # blocked quantization requires DQ op set >= 21
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10  # use stable onnx ir version
+
+        onnx.save(model, output_model_path)
+
+    def construct_model_gather(
+        self,
+        output_model_path: str,
+        symmetric: bool,
+        tdata: TensorProto.DataType,
+        tind: TensorProto.DataType,
+        vocab_size: int = 545,
+        embedding_len: int = 228,
+    ) -> None:
+        #      (input)
+        #         |
+        #       Gather
+        #         |
+        #      (output)
+        indices_name = "input"
+        output_name = "output"
+        initializers = []
+
+        def make_gather(
+            indices_name, data_shape: int | tuple[int, ...], data_name: str, output_name: str, node_name: str
+        ):
+            weight_data = self.fill_int4_data(data_shape, symmetric).astype(
+                np.float32 if tdata == TensorProto.FLOAT else np.float16
+            )
+            initializers.append(onnx.numpy_helper.from_array(weight_data, name=data_name))
+            kwargs = {"axis": 0}
+            return onnx.helper.make_node(
+                "Gather",
+                [data_name, indices_name],
+                [output_name],
+                node_name,
+                **kwargs,
+            )
+
+        gather_node = make_gather(
+            indices_name,
+            (vocab_size, embedding_len),
+            "linear1.weight",
+            output_name,
+            "Gather_0",
+        )
+
+        # make graph
+        input_tensor = helper.make_tensor_value_info(indices_name, tind, [-1, 1000])
+        output_tensor = helper.make_tensor_value_info(output_name, tdata, [-1, 1000, embedding_len])
+        graph_name = "gather_4bits_test"
+        graph = helper.make_graph(
+            [gather_node],
+            graph_name,
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        # QDQ and gather requires op set >= 21. The tool should automatically update the opset.
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 19)])
+        model.ir_version = 9  # use stable onnx ir version
+
+        onnx.save(model, output_model_path)
+
+    def quant_test(
+        self,
+        model_fp32_path: str,
+        data_reader: TestDataFeeds,
+        block_size: int,
+        is_symmetric: bool,
+        quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] = ("MatMul",),
+        quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
+        rtol: float = 0.01,
+        atol: float = 0.05,
+        extra_quant_nodes: dict | None = None,
+    ):
+        use_qdq = quant_format == quant_utils.QuantFormat.QDQ
+        name_prefix = "QDQ" if use_qdq else "QOperator"
+        model_int4_path = str(
+            Path(self._tmp_model_dir.name).joinpath(f"{name_prefix}_{block_size}_{is_symmetric}.onnx").absolute()
+        )
+
+        # Quantize fp32 model to int4 model
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
+
+        model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
+        quant_config = matmul_nbits_quantizer.DefaultWeightOnlyQuantConfig(
+            block_size=block_size,
+            is_symmetric=is_symmetric,
+            quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
+            quant_axes=quant_axes,
+        )
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, algo_config=quant_config)
+        quant.process()
+        quant.model.save_model_to_file(model_int4_path, False)
+
+        if "Gather" in op_types_to_quantize:
+            quant_nodes = {"GatherBlockQuantized": 1}
+        else:
+            quant_nodes = {"DequantizeLinear": 1, "MatMul": 1} if use_qdq else {"MatMulNBits": 1}
+        if extra_quant_nodes:
+            quant_nodes.update(extra_quant_nodes)
+        check_op_type_count(self, model_int4_path, **quant_nodes)
+
+        if use_qdq:
+            dq_qtype = TensorProto.INT4 if is_symmetric else TensorProto.UINT4
+            dqnode_io_qtypes = (
+                {
+                    "DequantizeLinear": [
+                        ["i", 0, dq_qtype],
+                    ]
+                }
+                if is_symmetric
+                else {
+                    "DequantizeLinear": [
+                        ["i", 0, dq_qtype],
+                        ["i", 2, dq_qtype],
+                    ]
+                }
+            )
+            check_qtype_by_node_type(self, model_int4_path, dqnode_io_qtypes)
+            for op in quant.model.opset_import():
+                if op.domain in [None, "", "ai.onnx"] and op.version < 21:
+                    self.fail(f"In QDQ format {op.domain} opset should be >= 21")
+
+        data_reader.rewind()
+
+        try:
+            check_model_correctness(self, model_fp32_path, model_int4_path, data_reader.get_next(), rtol, atol)
+        except Exception as exception:
+            if "4b quantization not yet supported on this hardware platform!" in exception.args[0]:
+                # Currently we don't have int4 quantization support on all platforms, has to tolerate this exception
+                pass
+            else:
+                raise exception
+
+    def quant_test_with_algo(
+        self,
+        algorithm: str,
+        model_fp32_path: str,
+        data_reader: TestDataFeeds,
+        block_size: int,
+        is_symmetric: bool,
+        extra_quant_nodes: dict | None = None,
+    ):
+        model_int4_path = str(
+            Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute()
+        )
+
+        # Quantize fp32 model to int4 model
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
+
+        algo_config = None
+        if algorithm == "RTN":
+            # test RTN algorithm
+            algo_config = matmul_nbits_quantizer.RTNWeightOnlyQuantConfig()
+        elif algorithm == "GPTQ":
+            # test GPTQ algorithm
+            algo_config = matmul_nbits_quantizer.GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
+        elif algorithm == "HQQ":
+            # test HQQ algorithm
+            algo_config = matmul_nbits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
+
+        model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
+        bits = 4
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(
+            model, bits, block_size, is_symmetric, algo_config=algo_config
+        )
+        quant.process()
+        quant.model.save_model_to_file(model_int4_path, False)
+
+        quant_nodes = {"MatMulNBits": 1}
+        if extra_quant_nodes:
+            quant_nodes.update(extra_quant_nodes)
+        check_op_type_count(self, model_int4_path, **quant_nodes)
+
+        data_reader.rewind()
+
+        try:
+            check_model_correctness(self, model_fp32_path, model_int4_path, data_reader.get_next())
+        except Exception as exception:
+            if "4b quantization not yet supported on this hardware platform!" in exception.args[0]:
+                # Currently we don't have int4 quantization support on all platforms, has to tolerate this exception
+                pass
+            else:
+                raise exception
+
+    def test_quantize_matmul_int4_symmetric(self):
+        np.random.seed(13)
+
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=True)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, True)
+
+    def test_quantize_matmul_int4_offsets(self):
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, False)
+
+    def test_quantize_gather_int4_symmetric(self):
+        np.random.seed(13)
+
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("gather_fp32_symmetric.onnx").absolute())
+        self.construct_model_gather(model_fp32_path, True, TensorProto.FLOAT, TensorProto.INT32)
+        data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int32)
+        # cover rounding error
+        self.quant_test(model_fp32_path, data_reader, 32, True, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
+
+    def test_quantize_gather_int4_offsets(self):
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("gather_fp32_offset.onnx").absolute())
+        self.construct_model_gather(model_fp32_path, False, TensorProto.FLOAT16, TensorProto.INT64)
+        data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int64)
+        # cover rounding error
+        self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
+
+    def test_quantize_matmul_int4_symmetric_qdq(self):
+        np.random.seed(13)
+
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=True)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, True, quant_utils.QuantFormat.QDQ)
+
+    def test_quantize_matmul_int4_offsets_qdq(self):
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, False, quant_utils.QuantFormat.QDQ)
+
+    def test_quantize_matmul_int4_using_rtn_algo(self):
+        if not find_spec("neural_compressor"):
+            self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        if not find_spec("torch"):
+            self.skipTest("skip test_quantize_matmul_int4_using_rtn_algo since torch is not installed")
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test_with_algo("RTN", model_fp32_path, data_reader, 32, False)
+
+    def test_quantize_matmul_int4_using_gptq_algo(self):
+        if not find_spec("neural_compressor"):
+            self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        if not find_spec("torch"):
+            self.skipTest("skip test_quantize_matmul_int4_using_gptq_algo since torch is not installed")
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test_with_algo("GPTQ", model_fp32_path, data_reader, 32, False)
+
+    def test_quantize_matmul_int4_using_hqq_algo(self):
+        if not find_spec("torch"):
+            self.skipTest("skip test_hqq_quant since torch is not installed")
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
+
+    def construct_model_matmul_3d(self, output_model_path: str, symmetric: bool, weight_shape: tuple) -> None:
+        #      (input)
+        #         |
+        #       MatMul  (weight has shape [1, K, N] -- unit leading dim)
+        #         |
+        #      (output)
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+
+        weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(weight_data, name="linear1.weight"))
+        matmul_node = onnx.helper.make_node(
+            "MatMul",
+            [input_name, "linear1.weight"],
+            [output_name],
+            "MatMul_0",
+        )
+
+        # weight_shape = (b1, ..., K, N) -> input shape (-1, K),
+        # ONNX MatMul output shape = [b1, ..., -1, N] (leading batch dims of B come first)
+        k = weight_shape[-2]
+        n = weight_shape[-1]
+        leading = list(weight_shape[:-2])
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, k])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [*leading, -1, n])
+        graph = helper.make_graph(
+            [matmul_node],
+            "matmul_4bits_3d_test",
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, output_model_path)
+
+    # The output-restoration helper builds an ONNX-broadcast-correct target shape
+    # dynamically (Shape/Gather/Max/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
+    # works for arbitrary activation rank, including 1-D activations. The op-count
+    # expectations below reflect those helper ops.
+    _RESHAPE_HELPER_OP_COUNTS: ClassVar[dict[str, int]] = {
+        "Reshape": 3,
+        "Shape": 2,
+        "Gather": 1,
+        "Sub": 2,
+        "Max": 2,
+        "ConstantOfShape": 1,
+        "Slice": 1,
+        "Concat": 1,
+    }
+
+    def test_quantize_matmul_int4_3d_weight_default(self):
+        """Test that Default quantizer handles weight with unit leading dim, e.g. shape [1, K, N]."""
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)  # unit leading dim
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_default.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+
+    def test_quantize_matmul_int4_3d_weight_default_qdq(self):
+        """Test QDQ format with unit leading dim 3D weight."""
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_default_qdq.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(
+            model_fp32_path,
+            data_reader,
+            32,
+            True,
+            quant_utils.QuantFormat.QDQ,
+            extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS,
+        )
+
+    def test_quantize_matmul_int4_3d_weight_hqq(self):
+        """Test that HQQ quantizer handles weight with unit leading dim, e.g. shape [1, K, N]."""
+        if not find_spec("torch"):
+            self.skipTest("skip test since torch is not installed")
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_hqq.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=False, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test_with_algo(
+            "HQQ", model_fp32_path, data_reader, 32, False, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS
+        )
+
+    def construct_model_matmul_3d_activation(
+        self, output_model_path: str, symmetric: bool, weight_shape: tuple, batch: int = 2, seq: int = 100
+    ) -> None:
+        """Build a model with batched 3-D activation [batch, seq, K] and 3-D weight [1, K, N].
+
+        ONNX MatMul([batch, seq, K], [1, K, N]) -> [batch, seq, N]. The quantized graph
+        must preserve this shape; a naive reshape that flattens batch dims would
+        produce [1, batch*seq, N] and is observably wrong.
+        """
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+        weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(weight_data, name="linear1.weight"))
+        matmul_node = onnx.helper.make_node(
+            "MatMul",
+            [input_name, "linear1.weight"],
+            [output_name],
+            "MatMul_0",
+        )
+        k = weight_shape[-2]
+        n = weight_shape[-1]
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [batch, seq, k])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [batch, seq, n])
+        graph = helper.make_graph(
+            [matmul_node], "matmul_4bits_3d_activation_test", [input_tensor], [output_tensor], initializer=initializers
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, output_model_path)
+
+    def test_quantize_matmul_int4_3d_weight_3d_activation_preserves_shape(self):
+        """ONNX MatMul([B,S,K],[1,K,N]) must yield [B,S,N] after quantization.
+
+        When activation rank >= weight rank, MatMulNBits already produces the
+        correct output shape, so the post-op reshape is elided as a no-op.
+        The quantized graph therefore contains only MatMulNBits:1 and no
+        reshape helper ops (Reshape/Shape/Gather/Sub/Max/ConstantOfShape/Slice/Concat).
+        """
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        batch, seq = 2, 100
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_act.onnx").absolute())
+        self.construct_model_matmul_3d_activation(
+            model_fp32_path, symmetric=True, weight_shape=weight_shape, batch=batch, seq=seq
+        )
+        data_reader = self.input_feeds(1, {"input": (batch, seq, weight_shape[-2])})
+        # When activation rank (3) >= weight rank (3), no reshape helpers are needed.
+        # Assert explicitly that none of the helper ops appear in the quantized graph.
+        no_reshape_helpers = {
+            "Shape": 0,
+            "Gather": 0,
+            "Sub": 0,
+            "Max": 0,
+            "ConstantOfShape": 0,
+            "Slice": 0,
+            "Concat": 0,
+            "Reshape": 0,
+        }
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=no_reshape_helpers)
+
+        # The check_model_correctness inside quant_test runs both the FP32 and
+        # quantized models on the same input and compares outputs. If the
+        # quantized graph collapsed batch dims (output [1, B*S, N] instead of
+        # [B, S, N]), that comparison would fail before we even reach here.
+
+    def construct_model_matmul_3d_weight_1d_activation(
+        self, output_model_path: str, symmetric: bool, weight_shape: tuple
+    ) -> None:
+        """Build a model with 1-D activation [K] and 3-D weight [1, K, N].
+
+        ONNX MatMul([K], [1, K, N]) -> [1, N]. The quantized graph must preserve
+        this output shape; the reshape helper computes extra_count=1 (since
+        a_rank_eff=max(1,2)=2 and rank_b_orig=3) so a single leading 1 is prepended.
+        """
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+        weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(weight_data, name="linear1.weight"))
+        matmul_node = onnx.helper.make_node(
+            "MatMul",
+            [input_name, "linear1.weight"],
+            [output_name],
+            "MatMul_0",
+        )
+        k = weight_shape[-2]
+        n = weight_shape[-1]
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [k])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, n])
+        graph = helper.make_graph(
+            [matmul_node],
+            "matmul_4bits_1d_activation_test",
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, output_model_path)
+
+    def test_quantize_matmul_int4_3d_weight_1d_activation_preserves_shape(self):
+        """ONNX MatMul([K],[1,K,N]) must yield [1,N] after quantization.
+
+        When the activation is 1-D, ONNX MatMul promotes it to rank-2 internally
+        before broadcasting against the weight. The reshape helper must use
+        max(rank(A), 2) as the effective activation rank so that exactly one
+        leading 1 is prepended, giving output shape [1, N].
+        """
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_1d_act.onnx").absolute())
+        self.construct_model_matmul_3d_weight_1d_activation(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (weight_shape[-2],)})
+        # rank(A)=1, rank(B_orig)=3: a_rank_eff=max(1,2)=2, extra_count=1, so the
+        # reshape helper IS emitted. Verify the full helper op-count and that
+        # check_model_correctness confirms the output shape is [1, N].
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+
+    def test_quantize_matmul_int4_4d_weight_default(self):
+        """Test that Default quantizer handles weight with two unit leading dims, e.g. shape [1, 1, K, N].
+
+        For activation rank 2 and weight rank 4, extra_count = max(4 - max(2, 2), 0) = 2,
+        so the reshape helper prepends two leading 1s to the MatMulNBits output.
+        """
+        np.random.seed(42)
+        weight_shape = (1, 1, 52, 288)  # two unit leading dims
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_4d_default.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+
+
+if __name__ == "__main__":
+    unittest.main()
+    # TODO(fajin): add 8bit quantization test after enabling kenrels
