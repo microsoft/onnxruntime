@@ -994,10 +994,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             "is what makes the rotation matter instead of cancelling.\n"
             "\n"
             "`rows` are the candidate rows a DSV4Compressor produced this step; row `j` lands "
-            "in cache slot `first_slot + j`, and slots outside `[first_slot, last_slot]` keep "
-            "what `past_cache` held:\n"
+            "in cache slot `first_slot + j`, and slots below `first_slot` keep what "
+            "`past_cache` held:\n"
             "  present_cache[b, c] = rows[b, c - first_slot[b]] if first_slot[b] <= c <= "
-            "last_slot[b] else past_cache[b, c]\n"
+            "last_slot[b] else past_cache[b, c],  for c <= last_slot[b]\n"
+            "Slots above `last_slot` are unspecified: no step has ever written them, and a "
+            "query can only reach `(past_lens[b] + s + 1) / ratio <= last_slot[b] + 1` rows, "
+            "so they are never read. On a long-context export they are almost the whole "
+            "cache, and producing them would dominate the operator.\n"
             "Every row is then scored against every head and the heads are folded together "
             "with the per-head `weights`:\n"
             "  score[b, s, c] = sum_h Relu(dot(query[b, s, h], present_cache[b, c])) * "
@@ -1033,7 +1037,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7, "weights", "Per-head scoring weights, shape (batch, seq, num_heads).", "T")
         .Input(8, "past_lens", "Tokens already generated per sequence, shape (batch).", "I")
         .Output(0, "selection", "Selected cache rows, shape (batch, seq, topk).", "I")
-        .Output(1, "present_cache", "Updated indexer cache, same shape as past_cache.", "T")
+        .Output(1, "present_cache",
+                "Updated indexer cache, same shape as past_cache. Only slots up to "
+                "last_slot are defined.",
+                "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                         "Constrain the activation type to float tensors.")
         .TypeConstraint("M", {"tensor(float)"}, "Constrain the rotary tables to float tensors.")
