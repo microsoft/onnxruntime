@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <memory>
+#include <optional>
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/common.h"
@@ -484,10 +485,11 @@ Status CreateBinaryOpKernel(FuncManager&, const OpKernelInfo& info, std::unique_
   return Status::OK();
 }
 
-// A single opset version range for an op registration. end <= 0 means "since start" (open-ended).
+// A single opset version range for an op registration, inclusive on both ends: [begin, end].
+// A nullopt end means "since begin" (open-ended, no upper opset bound).
 struct VersionRange {
-  int start;
-  int end;
+  int begin;
+  std::optional<int> end;
 };
 
 // Registers every opset version range of one binary elementwise op. Passing a non-null
@@ -507,10 +509,10 @@ void RegisterBinaryOp(KernelRegistry& kernel_registry,
     if (t1_type_constraints != nullptr) {
       builder.TypeConstraint("T1", *t1_type_constraints);
     }
-    if (r.end > 0) {
-      builder.SinceVersion(r.start, r.end);
+    if (r.end.has_value()) {
+      builder.SinceVersion(r.begin, *r.end);
     } else {
-      builder.SinceVersion(r.start);
+      builder.SinceVersion(r.begin);
     }
     ORT_THROW_IF_ERROR(kernel_registry.Register({builder.Build(), kernel_create_fn}));
   }
@@ -532,24 +534,24 @@ void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enab
   static const std::vector<MLDataType> bool_type{DataTypeImpl::GetTensorType<bool>()};
 
   // Arithmetic + comparison ops: int64 is meaningful, so gate it on enable_int64.
-  RegisterBinaryOp(kernel_registry, "Add", CreateBinaryOpKernel<Add>, int64_capable, {{7, 12}, {13, 13}, {14, 0}});
-  RegisterBinaryOp(kernel_registry, "Sub", CreateBinaryOpKernel<Sub>, int64_capable, {{7, 12}, {13, 13}, {14, 0}});
-  RegisterBinaryOp(kernel_registry, "Mul", CreateBinaryOpKernel<Mul>, int64_capable, {{7, 12}, {13, 13}, {14, 0}});
-  RegisterBinaryOp(kernel_registry, "Div", CreateBinaryOpKernel<Div>, int64_capable, {{7, 12}, {13, 13}, {14, 0}});
-  RegisterBinaryOp(kernel_registry, "Max", CreateBinaryOpKernel<Max>, int64_capable, {{8, 11}, {12, 12}, {13, 0}});
-  RegisterBinaryOp(kernel_registry, "Min", CreateBinaryOpKernel<Min>, int64_capable, {{8, 11}, {12, 12}, {13, 0}});
-  RegisterBinaryOp(kernel_registry, "Equal", CreateBinaryOpKernel<Equal>, int64_capable, {{7, 10}, {11, 12}, {13, 18}, {19, 0}});
-  RegisterBinaryOp(kernel_registry, "Greater", CreateBinaryOpKernel<Greater>, int64_capable, {{7, 8}, {9, 12}, {13, 0}});
-  RegisterBinaryOp(kernel_registry, "Less", CreateBinaryOpKernel<Less>, int64_capable, {{7, 8}, {9, 12}, {13, 0}});
-  RegisterBinaryOp(kernel_registry, "GreaterOrEqual", CreateBinaryOpKernel<GreaterOrEqual>, int64_capable, {{12, 15}, {16, 0}});
-  RegisterBinaryOp(kernel_registry, "LessOrEqual", CreateBinaryOpKernel<LessOrEqual>, int64_capable, {{12, 15}, {16, 0}});
+  RegisterBinaryOp(kernel_registry, "Add", CreateBinaryOpKernel<Add>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Sub", CreateBinaryOpKernel<Sub>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Mul", CreateBinaryOpKernel<Mul>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Div", CreateBinaryOpKernel<Div>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Max", CreateBinaryOpKernel<Max>, int64_capable, {{8, 11}, {12, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Min", CreateBinaryOpKernel<Min>, int64_capable, {{8, 11}, {12, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Equal", CreateBinaryOpKernel<Equal>, int64_capable, {{7, 10}, {11, 12}, {13, 18}, {19, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Greater", CreateBinaryOpKernel<Greater>, int64_capable, {{7, 8}, {9, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Less", CreateBinaryOpKernel<Less>, int64_capable, {{7, 8}, {9, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "GreaterOrEqual", CreateBinaryOpKernel<GreaterOrEqual>, int64_capable, {{12, 15}, {16, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "LessOrEqual", CreateBinaryOpKernel<LessOrEqual>, int64_capable, {{12, 15}, {16, std::nullopt}});
 
   // Ops for which int64 is not meaningful, registered through the same path for consistency.
   // Pow gains a second "T1" (exponent) type constraint from opset 12.
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{7, 11}});
-  RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{12, 12}, {13, 14}, {15, 0}}, &number_types);
-  RegisterBinaryOp(kernel_registry, "PRelu", CreateBinaryOpKernel<PRelu>, float_types, {{7, 8}, {9, 15}, {16, 0}});
-  RegisterBinaryOp(kernel_registry, "And", CreateBinaryOpKernel<And>, bool_type, {{7, 0}});
+  RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{12, 12}, {13, 14}, {15, std::nullopt}}, &number_types);
+  RegisterBinaryOp(kernel_registry, "PRelu", CreateBinaryOpKernel<PRelu>, float_types, {{7, 8}, {9, 15}, {16, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "And", CreateBinaryOpKernel<And>, bool_type, {{7, std::nullopt}});
 }
 
 }  // namespace webgpu
