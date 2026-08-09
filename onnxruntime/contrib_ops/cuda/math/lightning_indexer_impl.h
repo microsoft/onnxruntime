@@ -30,11 +30,11 @@ struct LightningIndexerParams {
   // `capacity` whenever the bound is unknown. During CUDA graph capture it may instead
   // come from a conservative request-level maximum supplied by the engine.
   int score_capacity;
-  int ratio;          // tokens per compressed row
-  int topk;           // k, the width of the selection
-  int max_seq_len;    // L, the logical offset that marks a compressed row
-  float scale;        // folded into the per-head weight
-  bool rotate_fp4;    // Hadamard-rotate the query and simulate the FP4 round trip
+  int ratio;        // tokens per compressed row
+  int topk;         // k, the width of the selection
+  int max_seq_len;  // L, the logical offset that marks a compressed row
+  float scale;      // folded into the per-head weight
+  bool rotate_fp4;  // Hadamard-rotate the query and simulate the FP4 round trip
 };
 
 // Scratch the launcher needs, in elements.

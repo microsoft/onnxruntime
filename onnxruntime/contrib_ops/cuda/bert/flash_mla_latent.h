@@ -27,14 +27,14 @@ namespace cuda {
 // host-side gate and the workspace sizing can be evaluated before any buffer exists.
 struct FlashMlaLatentConfig {
   int batch_size = 0;
-  int num_heads = 0;      // query heads per rank; becomes FlashMLA's `ngroups`
-  int kv_num_heads = 0;   // must be 1 -- the latent cache is MQA
-  int head_size = 0;      // must be 576
-  int v_head_size = 0;    // must be 512
-  int block_size = 0;     // page size; must be 64
+  int num_heads = 0;     // query heads per rank; becomes FlashMLA's `ngroups`
+  int kv_num_heads = 0;  // must be 1 -- the latent cache is MQA
+  int head_size = 0;     // must be 576
+  int v_head_size = 0;   // must be 512
+  int block_size = 0;    // page size; must be 64
   int max_num_blocks_per_seq = 0;
-  int seqlen_q = 0;       // query tokens per sequence; must be uniform across the batch
-  int num_sm_parts = 0;   // filled in by ComputeFlashMlaNumSmParts
+  int seqlen_q = 0;      // query tokens per sequence; must be uniform across the batch
+  int num_sm_parts = 0;  // filled in by ComputeFlashMlaNumSmParts
   float scale = 0.f;
 };
 

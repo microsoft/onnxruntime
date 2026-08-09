@@ -38,12 +38,12 @@ size_t AlignUp(size_t bytes) { return (bytes + kAlign - 1) / kAlign * kAlign; }
 // Byte offsets of each slice of the workspace. Kept in one place so the sizing function and the
 // launcher cannot disagree.
 struct WorkspaceLayout {
-  size_t seqlens_k;     // int[batch]
-  size_t tile_md;       // int[num_sm_parts * TileSchedulerMetaDataSize]
-  size_t num_splits;    // int[batch + 1]
-  size_t lse;           // float[batch * seqlen_q * num_heads]
-  size_t lse_accum;     // float[(batch + num_sm_parts) * num_heads * seqlen_q]
-  size_t o_accum;       // float[(batch + num_sm_parts) * num_heads * seqlen_q * v_head_size]
+  size_t seqlens_k;   // int[batch]
+  size_t tile_md;     // int[num_sm_parts * TileSchedulerMetaDataSize]
+  size_t num_splits;  // int[batch + 1]
+  size_t lse;         // float[batch * seqlen_q * num_heads]
+  size_t lse_accum;   // float[(batch + num_sm_parts) * num_heads * seqlen_q]
+  size_t o_accum;     // float[(batch + num_sm_parts) * num_heads * seqlen_q * v_head_size]
   size_t total;
 };
 
@@ -235,78 +235,81 @@ Status LaunchFlashMlaLatentAttention(const T* query, const T* key_cache, const i
   } else {
     static_assert(sizeof(T) == 2, "FlashMLA is instantiated for bf16 only.");
 
-  const WorkspaceLayout w = ComputeWorkspaceLayout(config);
-  auto* base = reinterpret_cast<uint8_t*>(workspace);
-  int* seqlens_k = reinterpret_cast<int*>(base + w.seqlens_k);
-  int* tile_md = reinterpret_cast<int*>(base + w.tile_md);
-  int* num_splits = reinterpret_cast<int*>(base + w.num_splits);
+    const WorkspaceLayout w = ComputeWorkspaceLayout(config);
+    auto* base = reinterpret_cast<uint8_t*>(workspace);
+    int* seqlens_k = reinterpret_cast<int*>(base + w.seqlens_k);
+    int* tile_md = reinterpret_cast<int*>(base + w.tile_md);
+    int* num_splits = reinterpret_cast<int*>(base + w.num_splits);
 
-  {
-    constexpr int kThreads = 128;
-    const int blocks = (config.batch_size + kThreads - 1) / kThreads;
-    BuildSeqlensKKernel<<<blocks, kThreads, 0, stream>>>(seqlens_k, past_seqlens, config.batch_size,
-                                                         config.seqlen_q);
-  }
+    {
+      constexpr int kThreads = 128;
+      const int blocks = (config.batch_size + kThreads - 1) / kThreads;
+      // clang-format rewrites `Name<<<` on a non-template kernel into `> > >`.
+      // clang-format off
+      BuildSeqlensKKernel<<<blocks, kThreads, 0, stream>>>(
+          seqlens_k, past_seqlens, config.batch_size, config.seqlen_q);
+      // clang-format on
+    }
 
-  Mla_metadata_params meta{};
-  meta.seqlens_k_ptr = seqlens_k;
-  meta.tile_scheduler_metadata_ptr = tile_md;
-  meta.num_splits_ptr = num_splits;
-  meta.batch_size = config.batch_size;
-  meta.block_size_n = config.block_size;
-  meta.fixed_overhead_num_blocks = kFixedOverheadNumBlocks;
-  meta.num_sm_parts = config.num_sm_parts;
-  get_mla_metadata_func(meta, stream);
+    Mla_metadata_params meta{};
+    meta.seqlens_k_ptr = seqlens_k;
+    meta.tile_scheduler_metadata_ptr = tile_md;
+    meta.num_splits_ptr = num_splits;
+    meta.batch_size = config.batch_size;
+    meta.block_size_n = config.block_size;
+    meta.fixed_overhead_num_blocks = kFixedOverheadNumBlocks;
+    meta.num_sm_parts = config.num_sm_parts;
+    get_mla_metadata_func(meta, stream);
 
-  // Strides are in elements, not bytes. The query heads become FlashMLA's `ngroups`, so the
-  // flattened query axis is seqlen_q * num_heads and `h` (the KV head count) is 1.
-  const int64_t page_stride = static_cast<int64_t>(config.block_size) * config.head_size;
+    // Strides are in elements, not bytes. The query heads become FlashMLA's `ngroups`, so the
+    // flattened query axis is seqlen_q * num_heads and `h` (the KV head count) is 1.
+    const int64_t page_stride = static_cast<int64_t>(config.block_size) * config.head_size;
 
-  Flash_fwd_mla_params p{};
-  p.b = config.batch_size;
-  p.seqlen_q = config.seqlen_q * config.num_heads;
-  p.d = config.head_size;
-  p.d_v = config.v_head_size;
-  p.h = 1;
-  p.h_h_k_ratio = 1;
-  p.ngroups = config.num_heads;
-  p.is_causal = true;
-  p.scale_softmax = config.scale;
-  // log2(e), spelled out rather than taken from M_LOG2E, which MSVC only defines with
-  // _USE_MATH_DEFINES. The kernel exponentiates base 2, so it wants the scale pre-multiplied.
-  p.scale_softmax_log2 = config.scale * 1.4426950408889634f;
-  p.cu_seqlens_k = seqlens_k;  // despite the name, upstream reads this as a per-sequence length
+    Flash_fwd_mla_params p{};
+    p.b = config.batch_size;
+    p.seqlen_q = config.seqlen_q * config.num_heads;
+    p.d = config.head_size;
+    p.d_v = config.v_head_size;
+    p.h = 1;
+    p.h_h_k_ratio = 1;
+    p.ngroups = config.num_heads;
+    p.is_causal = true;
+    p.scale_softmax = config.scale;
+    // log2(e), spelled out rather than taken from M_LOG2E, which MSVC only defines with
+    // _USE_MATH_DEFINES. The kernel exponentiates base 2, so it wants the scale pre-multiplied.
+    p.scale_softmax_log2 = config.scale * 1.4426950408889634f;
+    p.cu_seqlens_k = seqlens_k;  // despite the name, upstream reads this as a per-sequence length
 
-  p.q_ptr = const_cast<T*>(query);
-  p.k_ptr = const_cast<T*>(key_cache);
-  p.v_ptr = const_cast<T*>(key_cache);  // the value is the leading d_v channels of the same row
-  p.o_ptr = output;
-  p.softmax_lse_ptr = base + w.lse;
+    p.q_ptr = const_cast<T*>(query);
+    p.k_ptr = const_cast<T*>(key_cache);
+    p.v_ptr = const_cast<T*>(key_cache);  // the value is the leading d_v channels of the same row
+    p.o_ptr = output;
+    p.softmax_lse_ptr = base + w.lse;
 
-  p.q_batch_stride = static_cast<int64_t>(config.head_size) * config.num_heads * config.seqlen_q;
-  p.k_batch_stride = page_stride;  // indexed through block_table, so this is the per-page stride
-  p.v_batch_stride = page_stride;
-  p.o_batch_stride = static_cast<int64_t>(config.v_head_size) * config.num_heads * config.seqlen_q;
-  p.q_row_stride = config.head_size;
-  p.k_row_stride = config.head_size;
-  p.v_row_stride = config.head_size;
-  p.o_row_stride = config.v_head_size;
-  p.q_head_stride = config.head_size;
-  p.k_head_stride = config.head_size;
-  p.v_head_stride = config.head_size;
+    p.q_batch_stride = static_cast<int64_t>(config.head_size) * config.num_heads * config.seqlen_q;
+    p.k_batch_stride = page_stride;  // indexed through block_table, so this is the per-page stride
+    p.v_batch_stride = page_stride;
+    p.o_batch_stride = static_cast<int64_t>(config.v_head_size) * config.num_heads * config.seqlen_q;
+    p.q_row_stride = config.head_size;
+    p.k_row_stride = config.head_size;
+    p.v_row_stride = config.head_size;
+    p.o_row_stride = config.v_head_size;
+    p.q_head_stride = config.head_size;
+    p.k_head_stride = config.head_size;
+    p.v_head_stride = config.head_size;
 
-  p.block_table = const_cast<int*>(block_table);
-  p.block_table_batch_stride = config.max_num_blocks_per_seq;
-  p.page_block_size = config.block_size;
+    p.block_table = const_cast<int*>(block_table);
+    p.block_table_batch_stride = config.max_num_blocks_per_seq;
+    p.page_block_size = config.block_size;
 
-  p.tile_scheduler_metadata_ptr = tile_md;
-  p.num_sm_parts = config.num_sm_parts;
-  p.num_splits_ptr = num_splits;
-  p.softmax_lseaccum_ptr = base + w.lse_accum;
-  p.oaccum_ptr = base + w.o_accum;
+    p.tile_scheduler_metadata_ptr = tile_md;
+    p.num_sm_parts = config.num_sm_parts;
+    p.num_splits_ptr = num_splits;
+    p.softmax_lseaccum_ptr = base + w.lse_accum;
+    p.oaccum_ptr = base + w.o_accum;
 
-  run_mha_fwd_splitkv_mla<cutlass::bfloat16_t, cutlass::bfloat16_t, kFlashMlaHeadSize>(p, stream);
-  return CUDA_CALL(cudaGetLastError());
+    run_mha_fwd_splitkv_mla<cutlass::bfloat16_t, cutlass::bfloat16_t, kFlashMlaHeadSize>(p, stream);
+    return CUDA_CALL(cudaGetLastError());
   }
 #endif
 }

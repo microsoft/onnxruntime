@@ -314,9 +314,8 @@ void Run(const __nv_bfloat16* compact_input, const int64_t* offsets,
          kQuantBlockSize, 0, stream>>>(compact_input, offsets, fc1_a, fc1_sfa, masked_m);
   LaunchGemm<kFc1OutputSize, kHiddenSize, kFc1BlockN>(fc1_a, fc1_sfa, fc1_weights, fc1_weight_scales,
                                                       fc1_output, masked_m, stream);
-  InterleavedSwiGLUKernel
-      <<<dim3(kInterSize / kQuantBlockSize, kMaxTokensPerExpert, kNumExperts),
-         kQuantBlockSize, 0, stream>>>(fc1_output, fc2_a, fc2_sfa, masked_m, alpha, beta, limit);
+  InterleavedSwiGLUKernel<<<dim3(kInterSize / kQuantBlockSize, kMaxTokensPerExpert, kNumExperts),
+                            kQuantBlockSize, 0, stream>>>(fc1_output, fc2_a, fc2_sfa, masked_m, alpha, beta, limit);
   LaunchGemm<kHiddenSize, kInterSize, kFc2BlockN>(fc2_a, fc2_sfa, fc2_weights, fc2_weight_scales,
                                                   fc2_output, masked_m, stream);
   UnpackOutputKernel<kHiddenSize><<<dim3(32, kNumExperts), 256, 0, stream>>>(
