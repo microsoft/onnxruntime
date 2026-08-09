@@ -1480,18 +1480,18 @@ Status LaunchLinearAttentionKernel(
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,
     const float*, const float*, float*, const float*, float*,
-  int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
 
 template Status LaunchLinearAttentionKernel<half>(
     cudaStream_t, const half*, const half*, const half*,
     const half*, const half*, half*, const half*, half*,
-  int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchLinearAttentionKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-  int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
 #endif
 
 }  // namespace cuda
