@@ -1243,23 +1243,40 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     DSV4SwiGLU, 1,
     OpSchema()
         .SetDoc(
-            "The clamped SwiGLU of DeepSeek-V4's shared expert, on a gate/up pair that has "
-            "already been split into two tensors:\n"
+            "The clamped SwiGLU of DeepSeek-V4's shared expert:\n"
             "  g = Min(gate, limit)\n"
             "  l = Clip(up, -limit, limit)\n"
             "  output = g * Sigmoid(g) * l\n"
             "with the arithmetic done in float regardless of T. A `limit` of zero disables "
-            "both clamps.")
+            "both clamps.\n"
+            "\n"
+            "`up` is optional. When it is omitted, `gate` carries both halves of one "
+            "`[.., 2 * inter]` projection -- gate first, then up -- and the split is done "
+            "internally, so a fused sibling GEMM needs no `Split` node.")
         .Attr("limit", "Clamp applied to both halves; zero disables it.", AttributeProto::FLOAT,
               0.0f)
-        .Input(0, "gate", "Gate half of the projection.", "T")
-        .Input(1, "up", "Up half of the projection, same shape as gate.", "T")
-        .Output(0, "output", "Activated tensor, same shape as the inputs.", "T")
+        .Input(0, "gate", "Gate half of the projection, or both halves concatenated.", "T")
+        .Input(1, "up", "Up half of the projection, same shape as gate.", "T", OpSchema::Optional)
+        .Output(0, "output", "Activated tensor, shaped like one half of the projection.", "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                         "Constrain the activation type to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (hasInputShape(ctx, 0)) propagateShapeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          if (ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+            return;
+          }
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() == 0) fail_shape_inference("gate must not be a scalar.");
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < in.dim_size(); ++i) *out->add_dim() = in.dim(i);
+          const auto& last = in.dim(in.dim_size() - 1);
+          auto* d = out->add_dim();
+          if (last.has_dim_value()) {
+            if (last.dim_value() % 2 != 0) fail_shape_inference("gate's last dim must be even.");
+            d->set_dim_value(last.dim_value() / 2);
+          }
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(

@@ -11,8 +11,8 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-// The clamped SwiGLU DeepSeek-V4 uses in its shared expert, on a gate/up pair that has
-// already been split into two tensors.
+// The clamped SwiGLU DeepSeek-V4 uses in its shared expert, on a gate/up pair given either
+// as two tensors or as the two halves of one `[.., 2 * inter]` projection.
 template <typename T>
 class DSV4SwiGLU final : public CudaKernel {
  public:
