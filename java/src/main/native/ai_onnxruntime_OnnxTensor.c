@@ -114,10 +114,17 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
       code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(char*) * length, (void**)&strings));
 
       if (code == ORT_OK) {
+        jobject* javaStrings = (jobject*)calloc(length, sizeof(jobject));
+        if ((javaStrings == NULL) && (length != 0)) {
+            api->AllocatorFree(allocator, (void*)strings);
+            api->ReleaseValue(ortValue);
+            throwOrtException(jniEnv, 1, "Not enough memory");
+            return (jlong) NULL;
+        }
         // Copy the java strings into the buffers
         for (jsize i = 0; i < length; i++) {
-            jobject javaString = (*jniEnv)->GetObjectArrayElement(jniEnv, stringArr, i);
-            strings[i] = (*jniEnv)->GetStringUTFChars(jniEnv, javaString, NULL);
+            javaStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv, stringArr, i);
+            strings[i] = (*jniEnv)->GetStringUTFChars(jniEnv, javaStrings[i], NULL);
         }
 
         // Assign the strings into the Tensor
@@ -125,9 +132,10 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
 
         // Release the Java strings
         for (int i = 0; i < length; i++) {
-            jobject javaString = (*jniEnv)->GetObjectArrayElement(jniEnv, stringArr, i);
-            (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaString, strings[i]);
+            (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaStrings[i], strings[i]);
+            (*jniEnv)->DeleteLocalRef(jniEnv, javaStrings[i]);
         }
+        free(javaStrings);
 
         // Release the buffers
         OrtErrorCode freeCode = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));

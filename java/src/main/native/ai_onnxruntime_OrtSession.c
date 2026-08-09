@@ -456,11 +456,13 @@ cleanup_output_values:
   // Release the Java output strings
   for (int i = 0; i < numOutputs; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaOutputStrings[i], outputNames[i]);
+    (*jniEnv)->DeleteLocalRef(jniEnv, javaOutputStrings[i]);
   }
 
   // Release the Java input strings
   for (int i = 0; i < numInputs; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaInputStrings[i], inputNames[i]);
+    (*jniEnv)->DeleteLocalRef(jniEnv, javaInputStrings[i]);
   }
 
   // Release the buffers

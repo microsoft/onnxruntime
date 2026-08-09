@@ -60,6 +60,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtCUDAProviderOptions_appl
       (*jniEnv)->ReleaseStringUTFChars(jniEnv,key,keys[i]);
       jobject value = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
       (*jniEnv)->ReleaseStringUTFChars(jniEnv,value,values[i]);
+      (*jniEnv)->DeleteLocalRef(jniEnv, key);
+      (*jniEnv)->DeleteLocalRef(jniEnv, value);
     }
     free((void*)keys);
     free((void*)values);
