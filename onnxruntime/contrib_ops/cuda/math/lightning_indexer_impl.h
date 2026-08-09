@@ -27,8 +27,8 @@ struct LightningIndexerParams {
   // Rows of that cache any query in this step can actually see, so the scoring GEMM and
   // everything downstream of it stop there.  The select kernel discards rows above a
   // query's own `visible` anyway, so this only removes work, never an input.  Equal to
-  // `capacity` whenever the bound is unknown -- notably while a CUDA graph is being
-  // captured, since a replay would otherwise reuse a bound taken at capture time.
+  // `capacity` whenever the bound is unknown. During CUDA graph capture it may instead
+  // come from a conservative request-level maximum supplied by the engine.
   int score_capacity;
   int ratio;          // tokens per compressed row
   int topk;           // k, the width of the selection

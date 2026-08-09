@@ -7,6 +7,7 @@
 
 #include "contrib_ops/cuda/math/lightning_indexer_impl.h"
 #include "core/common/inlined_containers.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 using namespace onnxruntime::cuda;
@@ -29,31 +30,34 @@ constexpr int64_t kMinScoreRows = 256;
 //
 // The bound has to reach the host because cuBLAS takes `m` there, and `past_lens` lives on
 // the device.  One synchronised copy per node buys back two orders of magnitude of GEMM, so
-// the trade is heavily favourable, but it is only legal outside graph capture: a captured
-// launch would freeze whatever bound held at capture time and then replay it against a
-// longer sequence.  While capturing, leave the full capacity in place.  A step that is
-// replayed from a captured graph therefore keeps the unclamped cost -- on DeepSeek-V4-Flash
-// that is batch-1 speculative decode, while prefill and batch-8 decode both execute the
-// kernel and do get the clamp.
+// the trade is heavily favourable. During graph capture the live device value cannot be
+// used because replay would freeze it. The engine may instead provide a conservative
+// request-level maximum through ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST; without one,
+// capture keeps the full capacity exactly as before.
 Status ClampScoreCapacity(OpKernelContext* context, const Tensor& past_lens,
                           LightningIndexerParams& params) {
   cudaStream_t stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
   cudaStreamCaptureStatus capture = cudaStreamCaptureStatusNone;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
-  if (capture != cudaStreamCaptureStatusNone) {
-    return Status::OK();
-  }
-
-  const int batch = params.batch;
-  InlinedVector<int64_t> lens(static_cast<size_t>(batch));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(lens.data(), past_lens.Data<int64_t>(),
-                                       sizeof(int64_t) * batch, cudaMemcpyDeviceToHost,
-                                       stream));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
   int64_t longest = 0;
-  for (int b = 0; b < batch; ++b) {
-    longest = std::max(longest, lens[b]);
+  if (capture != cudaStreamCaptureStatusNone) {
+    longest = ParseEnvironmentVariableWithDefault<int64_t>(
+        "ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST", 0);
+    if (longest <= 0) {
+      return Status::OK();
+    }
+  } else {
+    const int batch = params.batch;
+    InlinedVector<int64_t> lens(static_cast<size_t>(batch));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(lens.data(), past_lens.Data<int64_t>(),
+                                         sizeof(int64_t) * batch, cudaMemcpyDeviceToHost,
+                                         stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+    for (int b = 0; b < batch; ++b) {
+      longest = std::max(longest, lens[b]);
+    }
   }
   // The last query of the step sees the most, and one spare row keeps the bound safe
   // against any rounding in the select kernel's own arithmetic.
