@@ -128,7 +128,12 @@ do
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
   python3_dir=$(dirname "$PYTHON_EXE")
   ls "$python3_dir"
-  ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
+  PIP_REQUIREMENTS=(-r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt)
+  if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then
+    # mypy 1.19+ dependencies do not support free-threaded CPython 3.13.
+    PIP_REQUIREMENTS+=("mypy<1.19")
+  fi
+  "${PYTHON_EXE}" -m pip install "${PIP_REQUIREMENTS[@]}"
   PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
