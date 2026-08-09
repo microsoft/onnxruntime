@@ -29,6 +29,9 @@ Abstract:
 #define MLAS_SVE_TARGET
 #endif
 
+
+#define kMlasSvePackedBBlockWidth 16
+
 typedef svfloat32_t MLAS_SVFLOAT32;
 typedef svint32_t MLAS_SVINT32;
 typedef svuint32_t MLAS_SVUINT32;
@@ -140,6 +143,65 @@ MlasSveLogisticKernel(
     const float* Input,
     float* Output,
     size_t N
+);
+
+
+MLAS_SVE_TARGET
+MLASCALL
+size_t
+MlasSgemmKernelAdd_sve(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+);
+
+MLAS_SVE_TARGET
+MLASCALL
+size_t
+MlasSgemmKernelZero_sve(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+);
+
+void MLAS_SVE_TARGET MLASCALL
+MlasSveScatterStore(float* d, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
+MlasSveZeroInitialize(float* d);
+
+void MLAS_SVE_TARGET MLASCALL
+MlasSveLoadStore(float* D, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
+MlasSveTranspose(float*& D, const float*& b, size_t ldb, size_t& x);
+
+template <unsigned N>
+void
+MlasSveTransposePackBNx4(
+    float* D,
+    const float* B,
+    size_t ldb
+);
+
+template <unsigned N>
+void
+MlasSveTransposePackBNx8(
+    float* D,
+    const float* B,
+    size_t ldb
 );
 
 //MLAS API for SVE intrinsics
@@ -349,6 +411,13 @@ MLAS_SVFLOAT32
 MlasSveBroadcastFloat32(const float* Value)
 {
     return svld1_f32(svptrue_b32(), Value);
+}
+
+MLAS_SVBOOL
+MLAS_FORCEINLINE
+MlasSveptrue(void)
+{
+    return svptrue_b32();
 }
 
 MLAS_SVE_TARGET
