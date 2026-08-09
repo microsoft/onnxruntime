@@ -1140,14 +1140,28 @@ int PagedLatentSplitGranularity() {
   return gran;
 }
 
+// How many CTAs per SM the split aims for. Measured on DSV4 decode (48 base CTAs, 132 SMs), by
+// target verify time: 2 waves is the optimum, 4 is -0.9%, 8 is +1.6%, 16 is +2.6%, and the other
+// direction is far worse -- forcing 3 splits through the granularity costs +16%. Raising this
+// also moves the split boundaries, so it is a numerics change, not a free knob.
+int PagedLatentSplitWaves() {
+  const static int waves = []() -> int {
+    const char* v = std::getenv("ORT_PAGED_LATENT_SPLIT_WAVES");
+    const int parsed = (v != nullptr) ? std::atoi(v) : 0;
+    return parsed > 0 ? parsed : 2;
+  }();
+  return waves;
+}
+
 int ComputePagedLatentSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count) {
   const int base_ctas = token_count * num_heads;
-  if (base_ctas <= 0 || base_ctas >= 2 * multi_processor_count) {
+  const int target_ctas = PagedLatentSplitWaves() * multi_processor_count;
+  if (base_ctas <= 0 || base_ctas >= target_ctas) {
     return 1;
   }
   const int gran = PagedLatentSplitGranularity();
-  const int by_occupancy = (2 * multi_processor_count + base_ctas - 1) / base_ctas;
+  const int by_occupancy = (target_ctas + base_ctas - 1) / base_ctas;
   const int by_length = (max_kv_len + gran - 1) / gran;
   return std::max(1, std::min(std::min(by_occupancy, by_length), kLatentMaxSplits));
 }
