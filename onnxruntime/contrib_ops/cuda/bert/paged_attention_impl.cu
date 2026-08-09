@@ -1228,7 +1228,32 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
   const int kv_capacity = max_num_blocks_per_seq * block_size;
   const int* selected = is_sparse ? kv_indices + static_cast<int64_t>(token_id) * max_selected_kv : nullptr;
 
-  const int kv_end_full = is_sparse ? max_selected_kv : (past_seqlens[batch_id] + s + 1);
+  int kv_end_full;
+  if (is_sparse) {
+    // The selection list is padded out to a static width that the export sizes from its context
+    // capacity, so serving a short context leaves most of it dead. Entries after the last live
+    // slot are padding by definition, so one coalesced pass over the list bounds the tile loop
+    // below exactly -- interior padding is untouched and still handled per slot.
+    int* scan_sh = reinterpret_cast<int*>(red_sh);
+    int local_last = -1;
+    for (int i = tid; i < max_selected_kv; i += kLatentThreads) {
+      if (selected[i] >= 0) {
+        local_last = i;
+      }
+    }
+    scan_sh[tid] = local_last;
+    __syncthreads();
+    for (int stride = kLatentThreads / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        scan_sh[tid] = max(scan_sh[tid], scan_sh[tid + stride]);
+      }
+      __syncthreads();
+    }
+    kv_end_full = scan_sh[0] + 1;
+    __syncthreads();
+  } else {
+    kv_end_full = past_seqlens[batch_id] + s + 1;
+  }
   int kv_begin_full = 0;
   if (!is_sparse && local_window_size > 0) {
     // local_window_size counts the current token, matching mha_varlen_fwd's window_size_left = W-1.
@@ -1282,6 +1307,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
     const int tile_len = min(kLatentTile, kv_end - tile_begin);
 
     // ---- QK over the full head_size (compressed_kv and k_pe together) ----
+    int any_mapped = 0;
     for (int t = warp_id; t < tile_len; t += kNumWarps) {
       // Dense: the tile covers positions [tile_begin, tile_begin + tile_len). Sparse: it covers
       // slots of this token's selection list, and a negative or out-of-capacity entry is padding.
@@ -1290,17 +1316,20 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
       const int block_id = block_index >= 0 ? block_table[batch_id * max_num_blocks_per_seq + block_index] : -1;
       const int block_offset = block_id >= 0 ? (pos % block_size) : 0;
       float dot = 0.0f;
+      // `block_id` is warp-uniform (every lane resolved the same slot), so the cross-lane
+      // reduction can live inside the branch and padding costs no shuffles.
       if (block_id >= 0) {
+        any_mapped = 1;
         const TCACHE* k_ptr = key_cache +
                               (static_cast<int64_t>(block_id) * block_size + block_offset) * token_stride_in_page +
                               head_offset_in_page;
         for (int c = lane_id; c < head_size; c += 32) {
           dot += q_sh[c] * CacheToFloat<TCACHE>(k_ptr[c]);
         }
-      }
 #pragma unroll
-      for (int offset = 16; offset > 0; offset >>= 1) {
-        dot += __shfl_xor_sync(0xFFFFFFFFU, dot, offset);
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          dot += __shfl_xor_sync(0xFFFFFFFFU, dot, offset);
+        }
       }
       if (lane_id == 0) {
         block_id_sh[t] = block_id;
@@ -1309,7 +1338,13 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
                                     : (softcap > 0.0f ? softcap * tanhf(dot * softcap_scale) : dot * scale);
       }
     }
-    __syncthreads();
+    // A sparse selection list is mostly padding whenever the context is far short of the
+    // export's capacity, so most tiles are entirely unmapped. Folding that answer into the
+    // barrier that ends the QK pass skips the block-wide max reduction below, which would
+    // otherwise spend eight more barriers deriving the same -FLT_MAX.
+    if (!__syncthreads_or(any_mapped)) {
+      continue;
+    }
 
     // ---- tile max ----
     float local_max = -FLT_MAX;
