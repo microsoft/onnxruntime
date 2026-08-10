@@ -1104,8 +1104,18 @@ class TestGQACPUQuantizedKVWithBias(unittest.TestCase):
 
 
 def create_oscar2bit_gqa_graph(
-    batch_size, q_len, past_len, present_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
-    meta_fp16=False, io_fp16=False,
+    batch_size,
+    q_len,
+    past_len,
+    present_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    k_rho,
+    v_rho,
+    meta_fp16=False,
+    io_fp16=False,
 ):
     """ONNX graph for GroupQueryAttention with the 2-bit PER_GROUP (OSCAR) KV cache.
 
@@ -1162,8 +1172,17 @@ def create_oscar2bit_gqa_graph(
 
 
 def run_oscar2bit_gqa_prompt_test(
-    batch_size, seq_len, num_heads, kv_num_heads, head_size, group_size, k_rho=1.0, v_rho=1.0, atol=2e-3,
-    meta_fp16=False, io_fp16=False,
+    batch_size,
+    seq_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=2e-3,
+    meta_fp16=False,
+    io_fp16=False,
 ):
     """Prompt-phase parity: ORT 2-bit PER_GROUP GQA vs the codec-matched FP32 reference."""
     np.random.seed(42)
@@ -1188,8 +1207,18 @@ def run_oscar2bit_gqa_prompt_test(
     total_seq = np.array([seq_len], dtype=np.int32)
 
     onnx_model_str = create_oscar2bit_gqa_graph(
-        batch_size, seq_len, seq_len, seq_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
-        meta_fp16=meta_fp16, io_fp16=io_fp16,
+        batch_size,
+        seq_len,
+        seq_len,
+        seq_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
+        meta_fp16=meta_fp16,
+        io_fp16=io_fp16,
     )
     sess = InferenceSession(onnx_model_str, SessionOptions(), providers=["CPUExecutionProvider"])
     feeds = {
@@ -1222,8 +1251,17 @@ def run_oscar2bit_gqa_prompt_test(
 
 
 def run_oscar2bit_gqa_decode_test(
-    batch_size, prompt_len, num_heads, kv_num_heads, head_size, group_size, k_rho=1.0, v_rho=1.0, atol=2e-3,
-    meta_fp16=False, io_fp16=False,
+    batch_size,
+    prompt_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=2e-3,
+    meta_fp16=False,
+    io_fp16=False,
 ):
     """Incremental-decode parity: prompt, then one decode step that reuses the prompt's
     present cache as past. Exercises ConcatQuant2BitStateChunkGQA with a populated
@@ -1241,8 +1279,18 @@ def run_oscar2bit_gqa_decode_test(
     past0 = np.zeros((batch_size, kv_num_heads, s, phs), dtype=np.uint8)
 
     model1 = create_oscar2bit_gqa_graph(
-        batch_size, s, s, s, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
-        meta_fp16=meta_fp16, io_fp16=io_fp16,
+        batch_size,
+        s,
+        s,
+        s,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
+        meta_fp16=meta_fp16,
+        io_fp16=io_fp16,
     )
     sess1 = InferenceSession(model1, SessionOptions(), providers=["CPUExecutionProvider"])
     out1 = sess1.run(
@@ -1264,8 +1312,18 @@ def run_oscar2bit_gqa_decode_test(
     v2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, kv_hidden_size)).astype(io_np)
 
     model2 = create_oscar2bit_gqa_graph(
-        batch_size, 1, s, s + 1, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
-        meta_fp16=meta_fp16, io_fp16=io_fp16,
+        batch_size,
+        1,
+        s,
+        s + 1,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
+        meta_fp16=meta_fp16,
+        io_fp16=io_fp16,
     )
     sess2 = InferenceSession(model2, SessionOptions(), providers=["CPUExecutionProvider"])
     out2 = sess2.run(
@@ -1423,8 +1481,17 @@ class TestGQACPUQuantizedKVOscar2Bit(unittest.TestCase):
         node = helper.make_node(
             op_type="GroupQueryAttention",
             inputs=[
-                "query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length",
-                "", "", "", "attention_bias",  # attention_bias at index 10
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "seqlens_k",
+                "total_sequence_length",
+                "",
+                "",
+                "",
+                "attention_bias",  # attention_bias at index 10
             ],
             outputs=["output", "present_key", "present_value"],
             name="GroupQueryAttention_0",
@@ -1446,7 +1513,9 @@ class TestGQACPUQuantizedKVOscar2Bit(unittest.TestCase):
             helper.make_tensor_value_info("past_value", TensorProto.UINT8, [batch_size, kv_num_heads, seq_len, phs]),
             helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
             helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
-            helper.make_tensor_value_info("attention_bias", TensorProto.FLOAT16, [batch_size, num_heads, seq_len, seq_len]),
+            helper.make_tensor_value_info(
+                "attention_bias", TensorProto.FLOAT16, [batch_size, num_heads, seq_len, seq_len]
+            ),
         ]
         graph_output = [
             helper.make_tensor_value_info("output", TensorProto.FLOAT16, [batch_size, seq_len, hidden_size]),
@@ -1489,8 +1558,18 @@ def _mixed_kv_ref(kv_bnsh, group_size, rho, sink, recent):
 
 
 def create_oscar2bit_mixed_gqa_graph(
-    batch_size, q_len, past_len, present_len, hp_past_len, hp_present_len,
-    num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
+    batch_size,
+    q_len,
+    past_len,
+    present_len,
+    hp_past_len,
+    hp_present_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    k_rho,
+    v_rho,
     io_fp16=False,
 ):
     """GroupQueryAttention graph for the OSCAR mixed-precision (Option C split-tensor) cache:
@@ -1507,9 +1586,24 @@ def create_oscar2bit_mixed_gqa_graph(
     node = helper.make_node(
         op_type="GroupQueryAttention",
         inputs=[
-            "query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length",
-            "", "", "", "", "", "", "", "", "",  # indices 7..15 (unused optional inputs)
-            "past_hp_key", "past_hp_value",       # indices 16, 17
+            "query",
+            "key",
+            "value",
+            "past_key",
+            "past_value",
+            "seqlens_k",
+            "total_sequence_length",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",  # indices 7..15 (unused optional inputs)
+            "past_hp_key",
+            "past_hp_value",  # indices 16, 17
         ],
         outputs=["output", "present_key", "present_value", "", "present_hp_key", "present_hp_value"],
         name="GroupQueryAttention_0",
@@ -1539,8 +1633,12 @@ def create_oscar2bit_mixed_gqa_graph(
         helper.make_tensor_value_info("output", io_dtype, [batch_size, q_len, hidden_size]),
         helper.make_tensor_value_info("present_key", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
         helper.make_tensor_value_info("present_value", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
-        helper.make_tensor_value_info("present_hp_key", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]),
-        helper.make_tensor_value_info("present_hp_value", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]),
+        helper.make_tensor_value_info(
+            "present_hp_key", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]
+        ),
+        helper.make_tensor_value_info(
+            "present_hp_value", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]
+        ),
     ]
 
     graph = helper.make_graph([node], "Oscar2BitMixedGQA_Graph", graph_input, graph_output)
@@ -1558,8 +1656,18 @@ def _mixed_session(model_str, sink, recent):
 
 
 def run_oscar2bit_mixed_prompt_test(
-    batch_size, seq_len, num_heads, kv_num_heads, head_size, group_size, sink, recent,
-    k_rho=1.0, v_rho=1.0, atol=2e-3, io_fp16=False,
+    batch_size,
+    seq_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    sink,
+    recent,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=2e-3,
+    io_fp16=False,
 ):
     """Prompt-phase parity for the mixed-precision cache: sink+recent exact, middle 2-bit."""
     np.random.seed(42)
@@ -1583,8 +1691,19 @@ def run_oscar2bit_mixed_prompt_test(
     hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=io_np)
 
     model = create_oscar2bit_mixed_gqa_graph(
-        batch_size, seq_len, seq_len, seq_len, 0, hp_present_len,
-        num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho, io_fp16=io_fp16,
+        batch_size,
+        seq_len,
+        seq_len,
+        seq_len,
+        0,
+        hp_present_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
+        io_fp16=io_fp16,
     )
     sess = _mixed_session(model, sink, recent)
     out_ort = sess.run(
@@ -1609,14 +1728,27 @@ def run_oscar2bit_mixed_prompt_test(
     if np.any(np.isnan(out_ort)):
         raise AssertionError(f"NaN in output (mixed 2-bit, sink={sink}, recent={recent})")
     np.testing.assert_allclose(
-        out_ort, out_ref, atol=atol, rtol=0.1,
+        out_ort,
+        out_ref,
+        atol=atol,
+        rtol=0.1,
         err_msg=f"mixed 2-bit prompt mismatch (sink={sink}, recent={recent}, group_size={group_size})",
     )
 
 
 def run_oscar2bit_mixed_decode_test(
-    batch_size, prompt_len, num_heads, kv_num_heads, head_size, group_size, sink, recent,
-    k_rho=1.0, v_rho=1.0, atol=2e-3, io_fp16=False,
+    batch_size,
+    prompt_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    sink,
+    recent,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=2e-3,
+    io_fp16=False,
 ):
     """Incremental-decode parity for the mixed cache: prompt then one decode step, feeding
     present + present_hp back as past + past_hp. Exercises the recent-window slide and the
@@ -1636,19 +1768,33 @@ def run_oscar2bit_mixed_decode_test(
     hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=io_np)
 
     model1 = create_oscar2bit_mixed_gqa_graph(
-        batch_size, s, s, s, 0, hp_prompt_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
+        batch_size,
+        s,
+        s,
+        s,
+        0,
+        hp_prompt_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
         io_fp16=io_fp16,
     )
     sess1 = _mixed_session(model1, sink, recent)
     out1 = sess1.run(
         None,
         {
-            "query": q1, "key": k1, "value": v1,
+            "query": q1,
+            "key": k1,
+            "value": v1,
             "past_key": np.zeros((batch_size, kv_num_heads, s, phs), dtype=np.uint8),
             "past_value": np.zeros((batch_size, kv_num_heads, s, phs), dtype=np.uint8),
             "seqlens_k": np.array([s - 1] * batch_size, dtype=np.int32),
             "total_sequence_length": np.array([s], dtype=np.int32),
-            "past_hp_key": hp_empty, "past_hp_value": hp_empty.copy(),
+            "past_hp_key": hp_empty,
+            "past_hp_value": hp_empty.copy(),
         },
     )
     present_k, present_v, present_hp_k, present_hp_v = out1[1], out1[2], out1[3], out1[4]
@@ -1658,18 +1804,33 @@ def run_oscar2bit_mixed_decode_test(
     v2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, kv_hidden_size)).astype(io_np)
 
     model2 = create_oscar2bit_mixed_gqa_graph(
-        batch_size, 1, s, s + 1, hp_prompt_len, hp_decode_len,
-        num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho, io_fp16=io_fp16,
+        batch_size,
+        1,
+        s,
+        s + 1,
+        hp_prompt_len,
+        hp_decode_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
+        io_fp16=io_fp16,
     )
     sess2 = _mixed_session(model2, sink, recent)
     out_ort = sess2.run(
         None,
         {
-            "query": q2, "key": k2, "value": v2,
-            "past_key": present_k, "past_value": present_v,
+            "query": q2,
+            "key": k2,
+            "value": v2,
+            "past_key": present_k,
+            "past_value": present_v,
             "seqlens_k": np.array([s] * batch_size, dtype=np.int32),
             "total_sequence_length": np.array([s + 1], dtype=np.int32),
-            "past_hp_key": present_hp_k, "past_hp_value": present_hp_v,
+            "past_hp_key": present_hp_k,
+            "past_hp_value": present_hp_v,
         },
     )[0].astype(np.float32)
 
@@ -1685,7 +1846,10 @@ def run_oscar2bit_mixed_decode_test(
     if np.any(np.isnan(out_ort)):
         raise AssertionError("NaN in output (mixed 2-bit decode)")
     np.testing.assert_allclose(
-        out_ort, out_ref, atol=atol, rtol=0.1,
+        out_ort,
+        out_ref,
+        atol=atol,
+        rtol=0.1,
         err_msg=f"mixed 2-bit decode mismatch (sink={sink}, recent={recent}, group_size={group_size})",
     )
 
@@ -1729,8 +1893,19 @@ def _unrotate_out(out_input, R_V, num_heads, kv_num_heads, head_size):
 
 
 def _canonical_mixed_rot_reference(
-    q_input, k_bnsh, v_bnsh, R_K, R_V, num_heads, kv_num_heads, head_size,
-    group_size, k_rho, v_rho, sink, recent,
+    q_input,
+    k_bnsh,
+    v_bnsh,
+    R_K,
+    R_V,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    k_rho,
+    v_rho,
+    sink,
+    recent,
 ):
     """Canonical OSCAR two-basis attention reference.
 
@@ -1747,8 +1922,12 @@ def _canonical_mixed_rot_reference(
     for batch_index in range(batch):
         for head_index in range(num_heads):
             kv_head = head_index // groups
-            k_rot = _rotate_bnsh(k_bnsh[batch_index:batch_index + 1, kv_head:kv_head + 1], R_K[kv_head:kv_head + 1])[0, 0]
-            v_rot = _rotate_bnsh(v_bnsh[batch_index:batch_index + 1, kv_head:kv_head + 1], R_V[kv_head:kv_head + 1])[0, 0]
+            k_rot = _rotate_bnsh(
+                k_bnsh[batch_index : batch_index + 1, kv_head : kv_head + 1], R_K[kv_head : kv_head + 1]
+            )[0, 0]
+            v_rot = _rotate_bnsh(
+                v_bnsh[batch_index : batch_index + 1, kv_head : kv_head + 1], R_V[kv_head : kv_head + 1]
+            )[0, 0]
             k_hist = quantize_dequantize_oscar2bit(k_rot[None, None], group_size, k_rho)[0, 0]
             v_hist = quantize_dequantize_oscar2bit(v_rot[None, None], group_size, v_rho)[0, 0]
             # GroupQueryAttention builds the complete prompt cache once; each causal query
@@ -1791,8 +1970,18 @@ def _canonical_mixed_rot_reference(
 
 
 def create_oscar2bit_mixed_rot_gqa_graph(
-    batch_size, q_len, past_len, present_len, hp_past_len, hp_present_len,
-    num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
+    batch_size,
+    q_len,
+    past_len,
+    present_len,
+    hp_past_len,
+    hp_present_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    k_rho,
+    v_rho,
 ):
     """Like create_oscar2bit_mixed_gqa_graph but also wires oscar_rotation_k/v at inputs 18/19."""
     hidden_size = num_heads * head_size
@@ -1802,10 +1991,26 @@ def create_oscar2bit_mixed_rot_gqa_graph(
     node = helper.make_node(
         op_type="GroupQueryAttention",
         inputs=[
-            "query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length",
-            "", "", "", "", "", "", "", "", "",  # indices 7..15 (unused optional inputs)
-            "past_hp_key", "past_hp_value",       # indices 16, 17
-            "oscar_rotation_k", "oscar_rotation_v",  # indices 18, 19
+            "query",
+            "key",
+            "value",
+            "past_key",
+            "past_value",
+            "seqlens_k",
+            "total_sequence_length",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",  # indices 7..15 (unused optional inputs)
+            "past_hp_key",
+            "past_hp_value",  # indices 16, 17
+            "oscar_rotation_k",
+            "oscar_rotation_v",  # indices 18, 19
         ],
         outputs=["output", "present_key", "present_value", "", "present_hp_key", "present_hp_value"],
         name="GroupQueryAttention_0",
@@ -1828,8 +2033,12 @@ def create_oscar2bit_mixed_rot_gqa_graph(
         helper.make_tensor_value_info("past_value", TensorProto.UINT8, [batch_size, kv_num_heads, past_len, phs]),
         helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
         helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
-        helper.make_tensor_value_info("past_hp_key", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_past_len, head_size]),
-        helper.make_tensor_value_info("past_hp_value", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_past_len, head_size]),
+        helper.make_tensor_value_info(
+            "past_hp_key", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_past_len, head_size]
+        ),
+        helper.make_tensor_value_info(
+            "past_hp_value", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_past_len, head_size]
+        ),
         helper.make_tensor_value_info("oscar_rotation_k", TensorProto.FLOAT, [kv_num_heads, head_size, head_size]),
         helper.make_tensor_value_info("oscar_rotation_v", TensorProto.FLOAT, [kv_num_heads, head_size, head_size]),
     ]
@@ -1837,8 +2046,12 @@ def create_oscar2bit_mixed_rot_gqa_graph(
         helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, q_len, hidden_size]),
         helper.make_tensor_value_info("present_key", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
         helper.make_tensor_value_info("present_value", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
-        helper.make_tensor_value_info("present_hp_key", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_present_len, head_size]),
-        helper.make_tensor_value_info("present_hp_value", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_present_len, head_size]),
+        helper.make_tensor_value_info(
+            "present_hp_key", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_present_len, head_size]
+        ),
+        helper.make_tensor_value_info(
+            "present_hp_value", TensorProto.FLOAT, [batch_size, kv_num_heads, hp_present_len, head_size]
+        ),
     ]
 
     graph = helper.make_graph([node], "Oscar2BitMixedRotGQA_Graph", graph_input, graph_output)
@@ -1849,8 +2062,17 @@ def create_oscar2bit_mixed_rot_gqa_graph(
 
 
 def run_oscar2bit_mixed_rot_prompt_test(
-    batch_size, seq_len, num_heads, kv_num_heads, head_size, group_size, sink, recent,
-    k_rho=1.0, v_rho=1.0, atol=2e-3,
+    batch_size,
+    seq_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    sink,
+    recent,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=2e-3,
 ):
     """Prompt-phase parity for the mixed cache WITH the OSCAR spectral rotation (R_K/R_V).
 
@@ -1879,8 +2101,18 @@ def run_oscar2bit_mixed_rot_prompt_test(
     hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=np.float32)
 
     model = create_oscar2bit_mixed_rot_gqa_graph(
-        batch_size, seq_len, seq_len, seq_len, 0, hp_present_len,
-        num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
+        batch_size,
+        seq_len,
+        seq_len,
+        seq_len,
+        0,
+        hp_present_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
     )
     sess = _mixed_session(model, sink, recent)
     out_ort = sess.run(
@@ -1901,21 +2133,44 @@ def run_oscar2bit_mixed_rot_prompt_test(
     )[0]
 
     out_ref = _canonical_mixed_rot_reference(
-        query, k_bnsh, v_bnsh, r_k, r_v, num_heads, kv_num_heads, head_size,
-        group_size, k_rho, v_rho, sink, recent,
+        query,
+        k_bnsh,
+        v_bnsh,
+        r_k,
+        r_v,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
+        sink,
+        recent,
     )
 
     if np.any(np.isnan(out_ort)):
         raise AssertionError(f"NaN in output (mixed 2-bit rotated, sink={sink}, recent={recent})")
     np.testing.assert_allclose(
-        out_ort, out_ref, atol=atol, rtol=0.1,
+        out_ort,
+        out_ref,
+        atol=atol,
+        rtol=0.1,
         err_msg=f"mixed 2-bit rotated prompt mismatch (sink={sink}, recent={recent}, group_size={group_size})",
     )
 
 
 def run_oscar2bit_mixed_rot_identity_test(
-    batch_size, seq_len, num_heads, kv_num_heads, head_size, group_size, sink, recent,
-    k_rho=1.0, v_rho=1.0, atol=1e-5,
+    batch_size,
+    seq_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    sink,
+    recent,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=1e-5,
 ):
     """Identity-rotation sanity: passing R = I must reproduce the no-rotation mixed output exactly."""
     np.random.seed(321)
@@ -1934,29 +2189,56 @@ def run_oscar2bit_mixed_rot_identity_test(
     hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=np.float32)
 
     inputs_common = {
-        "query": query, "key": key_input, "value": value_input,
-        "past_key": past_k, "past_value": past_v,
+        "query": query,
+        "key": key_input,
+        "value": value_input,
+        "past_key": past_k,
+        "past_value": past_v,
         "seqlens_k": np.array([seq_len - 1] * batch_size, dtype=np.int32),
         "total_sequence_length": np.array([seq_len], dtype=np.int32),
-        "past_hp_key": hp_empty, "past_hp_value": hp_empty.copy(),
+        "past_hp_key": hp_empty,
+        "past_hp_value": hp_empty.copy(),
     }
 
     rot_model = create_oscar2bit_mixed_rot_gqa_graph(
-        batch_size, seq_len, seq_len, seq_len, 0, hp_present_len,
-        num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
+        batch_size,
+        seq_len,
+        seq_len,
+        seq_len,
+        0,
+        hp_present_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
     )
     out_rot = _mixed_session(rot_model, sink, recent).run(
         None, {**inputs_common, "oscar_rotation_k": eye, "oscar_rotation_v": eye}
     )[0]
 
     plain_model = create_oscar2bit_mixed_gqa_graph(
-        batch_size, seq_len, seq_len, seq_len, 0, hp_present_len,
-        num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho,
+        batch_size,
+        seq_len,
+        seq_len,
+        seq_len,
+        0,
+        hp_present_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
     )
     out_plain = _mixed_session(plain_model, sink, recent).run(None, inputs_common)[0]
 
     np.testing.assert_allclose(
-        out_rot, out_plain, atol=atol, rtol=0,
+        out_rot,
+        out_plain,
+        atol=atol,
+        rtol=0,
         err_msg="identity rotation must match the no-rotation mixed output",
     )
 
@@ -2011,15 +2293,17 @@ class TestGQACPUQuantizedKVOscar2BitMixed(unittest.TestCase):
         run_oscar2bit_mixed_prompt_test(1, 12, 2, 2, 128, 64, sink=0, recent=4, atol=2e-2, io_fp16=True)
 
     def test_mixed_fp16_gqa_ratio_rho(self):
-        run_oscar2bit_mixed_prompt_test(2, 20, 4, 2, 128, 64, sink=4, recent=8, k_rho=0.96, v_rho=0.92,
-                                        atol=2e-2, io_fp16=True)
+        run_oscar2bit_mixed_prompt_test(
+            2, 20, 4, 2, 128, 64, sink=4, recent=8, k_rho=0.96, v_rho=0.92, atol=2e-2, io_fp16=True
+        )
 
     def test_mixed_fp16_decode_step(self):
         run_oscar2bit_mixed_decode_test(1, 10, 2, 2, 128, 64, sink=2, recent=4, atol=2e-2, io_fp16=True)
 
     def test_mixed_fp16_decode_gqa_rho(self):
-        run_oscar2bit_mixed_decode_test(2, 12, 4, 2, 128, 64, sink=4, recent=4, k_rho=0.96, v_rho=0.92,
-                                        atol=2e-2, io_fp16=True)
+        run_oscar2bit_mixed_decode_test(
+            2, 12, 4, 2, 128, 64, sink=4, recent=4, k_rho=0.96, v_rho=0.92, atol=2e-2, io_fp16=True
+        )
 
     def test_mixed_fp16_decode_all_hp(self):
         run_oscar2bit_mixed_decode_test(1, 5, 2, 2, 128, 64, sink=4, recent=4, atol=2e-2, io_fp16=True)

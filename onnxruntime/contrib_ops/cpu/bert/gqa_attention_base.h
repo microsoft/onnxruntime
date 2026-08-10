@@ -308,9 +308,9 @@ class GQAAttentionBase {
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
   int kv_cache_bit_width_;
-  int kv_quant_group_size_;  // group size for PER_GROUP (OSCAR 2-bit) quant; 0 means whole head
-  float k_quant_rho_;        // percentile clip for K in PER_GROUP mode (1.0 = no clip)
-  float v_quant_rho_;        // percentile clip for V in PER_GROUP mode (1.0 = no clip)
+  int kv_quant_group_size_;          // group size for PER_GROUP (OSCAR 2-bit) quant; 0 means whole head
+  float k_quant_rho_;                // percentile clip for K in PER_GROUP mode (1.0 = no clip)
+  float v_quant_rho_;                // percentile clip for V in PER_GROUP mode (1.0 = no clip)
   bool kv_quant_meta_fp16_ = false;  // OSCAR: store per-group scale/zero as fp16 (else fp32)
   bool kv_quant_enabled_;
   int kv_quant_sink_ = 0;    // OSCAR: leading tokens kept in high precision (session config)
