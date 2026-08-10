@@ -53,6 +53,13 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     }
   }
 
+  // GetCapability may probe nodes that are not ultimately assigned to this EP.
+  // Record per-node weights and workspace as pending here; CommitResourcesForNode()
+  // promotes them only after the capability is accepted, while ResetForNewPass()
+  // discards state from rejected or superseded capabilities.
+  //
+  // Prefer a matching profiling row when available. Otherwise, estimate known
+  // initializer/output bytes and use the safety-margin portion as fallback workspace.
   ResourceCount ComputeResourceCount(const Node& node) override {
     if (node_stats_) {
       const auto node_name = MakeUniqueNodeName(node);
@@ -241,12 +248,24 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // Weights committed from previous partitioning iterations.
   // These persist across GetCapability passes.
   InlinedHashSet<std::string> committed_weights_;
-  // Flat set of all pending weight names for O(1) membership checks.
+
+  // Initializers already counted during the current GetCapability pass. This
+  // prevents a shared initializer from being charged to multiple probed nodes.
   InlinedHashSet<std::string> pending_weights_;
-  // Same pending weights keyed by node index, used by CommitResourcesForNode.
+
+  // Initializers tentatively charged to each node. CommitResourcesForNode()
+  // uses this mapping to move accepted-node initializers into committed_weights_.
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
+
+  // Selected workspace bytes for each probed node. The value may be fallback,
+  // profiled, estimated, or max(profiled, estimated).
   InlinedHashMap<NodeIndex, size_t> pending_workspace_by_node_;
+
+  // Source corresponding to pending_workspace_by_node_, retained so accepted
+  // nodes can be included in the final workspace-source coverage report.
   InlinedHashMap<NodeIndex, WorkspaceEstimateSource> pending_workspace_source_by_node_;
+
+  // Workspace total and source counts for nodes ultimately accepted by the EP.
   size_t committed_workspace_estimate_ = 0;
   WorkspaceEstimateSourceCounts workspace_source_counts_;
 };
