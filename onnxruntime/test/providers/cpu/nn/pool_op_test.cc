@@ -14,7 +14,7 @@ namespace test {
 // Execution providers excluded from the four opset-18 AveragePool ceil_mode +
 // count_include_pad parity tests below. Shared by all four tests to prevent scoping
 // drift. Two rationales:
-//   - Most EPs (kTensorrt, kNvTensorRTRTX, kAcl, kOpenVINO, kDml, kWebGpu, kDnnl,
+//   - Most EPs (kTensorrt, kAcl, kOpenVINO, kDml, kWebGpu, kDnnl,
 //     kCoreML, kQnn) do not implement the clamped-window divisor (PyTorch #183528),
 //     so they return the pre-fix full-kernel-size average and would fail these tests.
 //   - kCuda / kCudaNHWC DO support the semantics, but these opset-18 cases are
@@ -27,7 +27,7 @@ namespace test {
 // kCuda/kCudaNHWC because there CUDA is the tested target. Pick the one matching your intent.
 static const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCountIncludePadTests = {
     kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-    kNvTensorRTRTXExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+    kAclExecutionProvider, kOpenVINOExecutionProvider,
     kDmlExecutionProvider, kWebGpuExecutionProvider, kDnnlExecutionProvider,
     kCoreMLExecutionProvider, kQnnExecutionProvider};
 
@@ -1300,7 +1300,7 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 // tested targets. Opposite kCuda intent — pick the one matching your test.
 // ---------------------------------------------------------------------------
 const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCipTests = {
-    kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kDnnlExecutionProvider,
+    kTensorrtExecutionProvider, kDnnlExecutionProvider,
     kOpenVINOExecutionProvider, kAclExecutionProvider, kCoreMLExecutionProvider,
     kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider};
 
