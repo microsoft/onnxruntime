@@ -2563,7 +2563,12 @@ namespace {
 // Builds a WebGPU EP with int64 enabled; returns nullptr if the EP is unavailable in this build.
 std::unique_ptr<IExecutionProvider> MakeWebGpuInt64Provider() {
   ConfigOptions provider_options{};
-  EXPECT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  const auto status = provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1");
+  if (!status.IsOK()) {
+    ADD_FAILURE() << "Failed to set WebGPU provider option '" << webgpu::options::kEnableInt64
+                  << "': " << status.ErrorMessage();
+    return nullptr;
+  }
   return WebGpuExecutionProviderWithOptions(provider_options);
 }
 
