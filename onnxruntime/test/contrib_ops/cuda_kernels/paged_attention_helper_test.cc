@@ -5,7 +5,7 @@
 #include <gmock/gmock.h>
 
 #include "core/framework/tensor_shape.h"
-#include "contrib_ops/cuda/bert/paged_attention_helper.h"
+#include "contrib_ops/cpu/bert/paged_attention_helper.h"
 
 namespace onnxruntime {
 namespace test {
