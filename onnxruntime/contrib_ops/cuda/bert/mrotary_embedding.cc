@@ -6,6 +6,8 @@
 #include "contrib_ops/cuda/bert/mrotary_embedding.h"
 #include "contrib_ops/cuda/bert/mrotary_embedding_impl.h"
 
+#include <limits>
+
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -34,13 +36,25 @@ REGISTER_KERNEL_TYPED(BFloat16)
 template <typename T>
 MRotaryEmbedding<T>::MRotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
-  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
-  num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
+  const int64_t rotary_embedding_dim_attr = info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0);
+  const int64_t num_heads_attr = info.GetAttrOrDefault<int64_t>("num_heads", 0);
+  ORT_ENFORCE(rotary_embedding_dim_attr >= 0 && rotary_embedding_dim_attr <= std::numeric_limits<int>::max(),
+              "rotary_embedding_dim must be in range [0, ", std::numeric_limits<int>::max(),
+              "]. Actual value: ", rotary_embedding_dim_attr);
+  ORT_ENFORCE(num_heads_attr >= 0 && num_heads_attr <= std::numeric_limits<int>::max(),
+              "num_heads must be in range [0, ", std::numeric_limits<int>::max(),
+              "]. Actual value: ", num_heads_attr);
+  rotary_embedding_dim = static_cast<int>(rotary_embedding_dim_attr);
+  num_heads = static_cast<int>(num_heads_attr);
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
   is_packed_batching = (info.GetAttrOrDefault<int64_t>("is_packed_batching", 0) == 1);
   mrope_layout = info.GetAttrOrDefault<int64_t>("mrope_layout", 0);
   ORT_ENFORCE(info.GetAttrs<int64_t>("mrope_section", mrope_section).IsOK(),
               "MRotaryEmbedding: 'mrope_section' attribute is required");
+
+  if (rotary_embedding_dim > 0) {
+    ORT_ENFORCE(num_heads > 0, "num_heads must be provided if rotary_embedding_dim is specified");
+  }
 }
 
 template <typename T>
@@ -62,6 +76,9 @@ Status MRotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
                                           &parameters));
 
   Tensor* output = context->Output(0, input->Shape());
+  if (input->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   if (is_packed_batching == false && parameters.sequence_length > parameters.max_sequence_length) {
     ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in MRotaryEmbedding is not currently supported");

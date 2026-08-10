@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -210,6 +212,160 @@ TEST(ContribOpMRotaryEmbeddingTest, InterleavedRank4) {
 
   RunMRotaryEmbeddingTests({1, 2, 2, 6}, kInputData, kPositionIds, kCosCache, kSinCache, expected_output,
                            {1, 1, 1}, 1, 1, 0.5f);
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, RejectsOddRotaryEmbeddingDim) {
+  OpTester test("MRotaryEmbedding", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+  test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(3));
+  test.AddAttribute<int64_t>("mrope_layout", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(1));
+  test.AddAttribute<std::vector<int64_t>>("mrope_section", {1, 0, 0});
+
+  test.AddInput<float>("input", {1, 1, 3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("position_ids", {3, 1, 1}, {0, 0, 0});
+  test.AddInput<float>("cos_cache", {1, 1}, {1.0f});
+  test.AddInput<float>("sin_cache", {1, 1}, {0.0f});
+  test.AddOutput<float>("output", {1, 1, 3}, {0.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "effective rotary_embedding_dim must be positive and even for non-empty inputs",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, RejectsMropeSectionSumOverflow) {
+  OpTester test("MRotaryEmbedding", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+  test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("mrope_layout", static_cast<int64_t>(1));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<std::vector<int64_t>>(
+      "mrope_section", {std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 3});
+
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<int64_t>("position_ids", {3, 1, 1}, {0, 0, 0});
+  test.AddInput<float>("cos_cache", {1, 1}, {1.0f});
+  test.AddInput<float>("sin_cache", {1, 1}, {0.0f});
+  test.AddOutput<float>("output", {1, 1, 2}, {0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "sum of 'mrope_section'",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, CudaRejectsNegativeRotaryEmbeddingDimAttribute) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("MRotaryEmbedding", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+  test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(-1));
+  test.AddAttribute<int64_t>("mrope_layout", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<std::vector<int64_t>>("mrope_section", {1, 0, 0});
+
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<int64_t>("position_ids", {3, 1, 1}, {0, 0, 0});
+  test.AddInput<float>("cos_cache", {1, 1}, {1.0f});
+  test.AddInput<float>("sin_cache", {1, 1}, {0.0f});
+  test.AddOutput<float>("output", {1, 1, 2}, {0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "rotary_embedding_dim must be in range",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, CudaPositionIdsOOBPassthroughAllStreams) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  const std::vector<float> cos_cache = {
+      1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f};
+  const std::vector<float> sin_cache = {
+      0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f};
+
+  for (int stream = 0; stream < 3; ++stream) {
+    for (const int64_t invalid_position_id : {-1, 2}) {
+      SCOPED_TRACE("stream=" + std::to_string(stream) +
+                   " invalid_position_id=" + std::to_string(invalid_position_id));
+
+      std::vector<int64_t> position_ids = {0, 0, 0};
+      position_ids[static_cast<size_t>(stream)] = invalid_position_id;
+
+      OpTester test("MRotaryEmbedding", 1, kMSDomain);
+      test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+      test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(6));
+      test.AddAttribute<int64_t>("mrope_layout", static_cast<int64_t>(0));
+      test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+      test.AddAttribute<std::vector<int64_t>>("mrope_section", {1, 1, 1});
+
+      test.AddInput<float>("input", {1, 1, 1, 6}, input_data);
+      test.AddInput<int64_t>("position_ids", {3, 1, 1}, position_ids);
+      test.AddInput<float>("cos_cache", {2, 3}, cos_cache);
+      test.AddInput<float>("sin_cache", {2, 3}, sin_cache);
+      test.AddOutput<float>("output", {1, 1, 1, 6}, input_data);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, CudaEmptyRank3Input) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("MRotaryEmbedding", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+  test.AddAttribute<int64_t>("mrope_layout", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<std::vector<int64_t>>("mrope_section", {0, 0, 0});
+
+  test.AddInput<float>("input", {1, 1, 0}, std::vector<float>{});
+  test.AddInput<int64_t>("position_ids", {3, 1, 1}, {0, 0, 0});
+  test.AddInput<float>("cos_cache", {1, 0}, std::vector<float>{});
+  test.AddInput<float>("sin_cache", {1, 0}, std::vector<float>{});
+  test.AddOutput<float>("output", {1, 1, 0}, std::vector<float>{});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, CudaEmptyRank4Input) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("MRotaryEmbedding", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(6));
+  test.AddAttribute<int64_t>("mrope_layout", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<std::vector<int64_t>>("mrope_section", {1, 1, 1});
+
+  test.AddInput<float>("input", {1, 2, 0, 6}, std::vector<float>{});
+  test.AddInput<int64_t>("position_ids", {3, 1, 0}, std::vector<int64_t>{});
+  test.AddInput<float>("cos_cache", {1, 3}, {1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("sin_cache", {1, 3}, {0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 0, 6}, std::vector<float>{});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace

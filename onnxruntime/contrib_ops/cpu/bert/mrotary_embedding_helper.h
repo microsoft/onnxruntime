@@ -61,8 +61,8 @@ inline void ComputeDimAssignments(const int mrope_section[3], MRopeLayout layout
   } else {
     // Interleaved: everything defaults to T (0); H and W punch in every 3rd slot.
     for (int dim = 1; dim < 3; ++dim) {
-      const int length = mrope_section[dim] * 3;
-      for (int i = dim; i < length && i < half_rotary_embedding_dim; i += 3) {
+      const int64_t length = static_cast<int64_t>(mrope_section[dim]) * 3;
+      for (int64_t i = dim; i < length && i < half_rotary_embedding_dim; i += 3) {
         dim_assignment[static_cast<size_t>(i)] = static_cast<int8_t>(dim);
       }
     }
@@ -161,7 +161,12 @@ Status CheckInputs(const T* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MRotaryEmbedding: rotary_embedding_dim must be less ",
                            "than or equal to head_size");
   }
-  if ((effective_rotary_dim / 2) != static_cast<int>(cos_cache_dims[1])) {
+  if (input->Shape().Size() > 0 && (effective_rotary_dim <= 0 || (effective_rotary_dim % 2) != 0)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MRotaryEmbedding: effective rotary_embedding_dim must be positive and even for ",
+                           "non-empty inputs, got ", effective_rotary_dim);
+  }
+  if (static_cast<int64_t>(effective_rotary_dim / 2) != cos_cache_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MRotaryEmbedding: Input 'cos_cache' dimension 1 should ",
                            "be same as head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }
@@ -187,7 +192,7 @@ Status CheckInputs(const T* input,
   }
 
   const int half_rotary_embedding_dim = effective_rotary_dim / 2;
-  int section_sum = 0;
+  int64_t section_sum = 0;
   int mrope_section[3] = {0, 0, 0};
   for (int i = 0; i < 3; ++i) {
     if (mrope_section_attr[static_cast<size_t>(i)] < 0 ||
@@ -196,9 +201,9 @@ Status CheckInputs(const T* input,
                              "MRotaryEmbedding: 'mrope_section' values must be non-negative and fit in int32");
     }
     mrope_section[i] = static_cast<int>(mrope_section_attr[static_cast<size_t>(i)]);
-    section_sum += mrope_section[i];
+    section_sum += mrope_section_attr[static_cast<size_t>(i)];
   }
-  if (section_sum != half_rotary_embedding_dim) {
+  if (section_sum != static_cast<int64_t>(half_rotary_embedding_dim)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "MRotaryEmbedding: sum of 'mrope_section' (", section_sum,
                            ") must equal rotary_embedding_dim / 2 (", half_rotary_embedding_dim, ")");

@@ -95,8 +95,8 @@ __global__ void MRotaryEmbeddingBSNH(
     }
   } else {
     // Interleaved: T everywhere by default; H/W punch in every 3rd column.
-    const int h_length = mrope_section.y * 3;
-    const int w_length = mrope_section.z * 3;
+    const int64_t h_length = static_cast<int64_t>(mrope_section.y) * 3;
+    const int64_t w_length = static_cast<int64_t>(mrope_section.z) * 3;
     if (cache_idx % 3 == 1 && cache_idx < h_length) {
       stream = 1;
     } else if (cache_idx % 3 == 2 && cache_idx < w_length) {
@@ -111,9 +111,11 @@ __global__ void MRotaryEmbeddingBSNH(
   if (i == 0) {
     CUDA_KERNEL_ASSERT(position_id >= 0 && position_id < static_cast<int64_t>(max_sequence_length));
   }
-#else
-  (void)max_sequence_length;
 #endif
+  if (position_id < 0 || position_id >= static_cast<int64_t>(max_sequence_length)) {
+    output_data[i] = use_smem ? smem[i] : input_data[i];
+    return;
+  }
   const int64_t cache_offset = position_id * half_rotary_embedding_dim;
   const T cos_value = static_cast<T>(static_cast<float>(cos_cache[cache_offset + cache_idx]) * scale);
   const T sin_value = static_cast<T>(static_cast<float>(sin_cache[cache_offset + cache_idx]) * scale);
