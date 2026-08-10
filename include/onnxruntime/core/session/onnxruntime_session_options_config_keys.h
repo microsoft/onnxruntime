@@ -438,6 +438,24 @@ static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.la
 /// </summary>
 static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.name_based_layer_assignment";
 
+/// <summary>
+/// Provides input shape overrides for workspace estimation in dynamic-shape models.
+/// When set, the framework propagates these shapes for workspace pre-computation
+/// (Level-1 budget estimation and Level-2 DeclareWorkspaceRequirements).
+///
+/// Format: "input_name:[d0,d1,...];input_name2:[d0,d1,...]"
+/// Example: "input_ids:[8,4096];attention_mask:[8,4096]"
+///
+/// Each input_name must match a model graph input. Dimensions must be positive integers.
+/// Unknown/symbolic dimensions in the model will be replaced by the corresponding override
+/// value and propagated through a separate shape-inference graph for estimation purposes only.
+/// Although an override may describe a maximum input shape, downstream inferred shapes are
+/// estimation hints, not guaranteed upper bounds: operator shape transformations are not
+/// necessarily monotonic. Runtime shapes are not constrained by this setting, and consumers
+/// must retain runtime bounds checks and allocation fallbacks.
+/// </summary>
+static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
