@@ -848,6 +848,13 @@ TEST(MultiHeadAttentionTest, SelfAttention_PastPresentBufferShare_UsingDMMHAInsi
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU | DISABLE_DML);
 }
 
+TEST(MultiHeadAttentionTest, SelfAttention_PastPresentBufferShare_ConcatKVInPlace) {
+  AttentionTestData data;
+  GetSelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA(data);
+  data.cache_indir_data.clear();
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU | DISABLE_DML);
+}
+
 TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA) {
   // Whisper decoder cross attention with past_kv used directly as K and V, no mask, and bias
   // Used in decoder-with-past's cross-attention layers

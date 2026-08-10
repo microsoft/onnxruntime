@@ -226,12 +226,10 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   if (use_decoder_masked_multihead_attention) {
     // Kernel only works for token generation with beam search
     kernel_type = AttentionKernelType::AttentionKernel_DecoderAttention;
+  }
 
-    // No production use-case will incur this copy cost as the implementation of
-    // DecoderMaskedMultiHeadAttention is written in such a way that the past and present buffers
-    // must be shared to have parity in the outputs.
-    // This is just to circumvent the OpTester's limitation of not being able to bind a specific
-    // buffer to inputs/outputs.
+  if (parameters.past_present_share_buffer) {
+    // Buffer-sharing kernels append in place. Copy the past cache when the runtime did not alias the outputs.
     auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
     auto* past_value_data = (past_value == nullptr) ? nullptr : past_value->Data<T>();
     auto* present_key_data = (present_key == nullptr) ? nullptr : present_key->MutableData<T>();
@@ -549,11 +547,11 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   data.allow_debug_info = kernel_options_->AllowDebugInfo();
 
   // For past-present buffer sharing.
+  IAllocatorUniquePtr<void> seqlens_k_buffer;
   if (parameters.past_present_share_buffer) {
-    std::vector<int64_t> seqlens_k(parameters.batch_size, parameters.total_sequence_length - 1);
-    size_t seqlens_k_bytes = 0;
-    seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-    auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, GetComputeStream(context));
+    std::vector<int> seqlens_k(parameters.batch_size, parameters.total_sequence_length);
+    const size_t seqlens_k_bytes = sizeof(seqlens_k[0]) * seqlens_k.size();
+    seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, GetComputeStream(context));
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
       CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice));
