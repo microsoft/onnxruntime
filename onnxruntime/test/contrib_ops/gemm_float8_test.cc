@@ -51,6 +51,23 @@ std::vector<MLFloat16> _Cvt(const std::vector<float>& tensor) {
   return fp16_data;
 }
 
+TEST(GemmFloat8OpTest, FloatWithFloat16C) {
+  OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("transA", int64_t{0});
+  test.AddAttribute("transB", int64_t{0});
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+  test.AddAttribute("activation", "NONE");
+  test.AddAttribute("dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  test.AddInput<float>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<MLFloat16>("C", {2, 3}, _Cvt({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddOutput<float>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(GemmFloat8OpTest, Float16) {
   OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
   test.AddAttribute("transA", (int64_t)0);
@@ -87,8 +104,8 @@ std::vector<Float8E4M3FN> _TypedCvt(const std::vector<float>& tensor) {
   return out;
 }
 
-template <typename ab_type, typename out_type>
-void TestGemmFloat8WithFloat8(int64_t dtype) {
+template <typename ab_type, typename c_type, typename out_type>
+void TestGemmFloat8WithFloat8(int64_t dtype, bool has_scales = false) {
   int min_cuda_architecture = 11080;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support Matrix Multiplication for FLOAT8";
@@ -103,7 +120,12 @@ void TestGemmFloat8WithFloat8(int64_t dtype) {
   test.AddAttribute("dtype", dtype);
   test.AddInput<ab_type>("A", {2, 4}, _TypedCvt<ab_type>(std::vector<float>({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f})));
   test.AddInput<ab_type>("B", {3, 4}, _TypedCvt<ab_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
-  test.AddInput<out_type>("C", {2, 3}, _TypedCvt<out_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+  test.AddInput<c_type>("C", {2, 3}, _TypedCvt<c_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+  if (has_scales) {
+    test.AddInput<float>("scaleA", {1}, {1.0f});
+    test.AddInput<float>("scaleB", {1}, {1.0f});
+    test.AddInput<float>("scaleY", {1}, {1.0f});
+  }
   test.AddOutput<out_type>("Y", {2, 3}, _TypedCvt<out_type>(std::vector<float>({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f})));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -111,11 +133,43 @@ void TestGemmFloat8WithFloat8(int64_t dtype) {
 }
 
 TEST(GemmFloat8OpTest, Float8E4M3FNToFloat) {
-  TestGemmFloat8WithFloat8<Float8E4M3FN, float>(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  TestGemmFloat8WithFloat8<Float8E4M3FN, float, float>(
+      static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
 }
 
 TEST(GemmFloat8OpTest, Float8E4M3FNToFloat8E4M3FN) {
-  TestGemmFloat8WithFloat8<Float8E4M3FN, Float8E4M3FN>(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN));
+  TestGemmFloat8WithFloat8<Float8E4M3FN, float, Float8E4M3FN>(
+      static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN));
+}
+
+TEST(GemmFloat8OpTest, ScaledFloat8E4M3FNWithFloatCToFloat8E4M3FN) {
+  TestGemmFloat8WithFloat8<Float8E4M3FN, float, Float8E4M3FN>(
+      static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN), true);
+}
+
+TEST(GemmFloat8OpTest, ScaledFloat8E4M3FNToFloat8E4M3FNWithoutC) {
+  if (!HasCudaEnvironment(11080)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support Matrix Multiplication for FLOAT8";
+    return;
+  }
+
+  OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("transA", int64_t{0});
+  test.AddAttribute("transB", int64_t{1});
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+  test.AddAttribute("activation", "NONE");
+  test.AddAttribute("dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN));
+  test.AddInput<Float8E4M3FN>("A", {2, 4}, _TypedCvt<Float8E4M3FN>({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<Float8E4M3FN>("B", {3, 4}, _TypedCvt<Float8E4M3FN>({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("scaleA", {1}, {1.0f});
+  test.AddInput<float>("scaleB", {1}, {1.0f});
+  test.AddInput<float>("scaleY", {1}, {1.0f});
+  test.AddOutput<Float8E4M3FN>("Y", {2, 3}, _TypedCvt<Float8E4M3FN>({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 #endif
