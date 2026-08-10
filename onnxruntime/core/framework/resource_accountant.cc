@@ -22,21 +22,20 @@
 
 namespace onnxruntime {
 
-// Use this accountant if your resource can be counted with size_t type
-// This accountant uses NodeAllocationStats to compute resource consumption per node
-// which can be collected and saved to a file OR loaded from a file and used for partitioning.
-// This is currently used for CUDA EP.
-class SizeBasedStatsAccountant : public IResourceAccountant {
+// Accounts for resources represented as byte counts. Per-node costs can come from
+// profiling statistics, ad-hoc fallback estimation, or an operator-specific estimator.
+// This is currently used by CUDA EP.
+class SizeBasedResourceAccountant : public IResourceAccountant {
  public:
-  SizeBasedStatsAccountant() = default;
-  ~SizeBasedStatsAccountant() = default;
+  SizeBasedResourceAccountant() = default;
+  ~SizeBasedResourceAccountant() = default;
 
-  SizeBasedStatsAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  SizeBasedResourceAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(threshold), node_stats_(std::move(node_stats)) {}
 
-  explicit SizeBasedStatsAccountant(size_t threshold) : IResourceAccountant(threshold) {}
+  explicit SizeBasedResourceAccountant(size_t threshold) : IResourceAccountant(threshold) {}
 
-  explicit SizeBasedStatsAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  explicit SizeBasedResourceAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(), node_stats_(std::move(node_stats)) {}
 
   ResourceCount GetConsumedAmount() const noexcept override {
@@ -374,16 +373,16 @@ Status CreateAccountants(
 
       if (cuda_memory_limit && loaded_stats) {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeBasedStatsAccountant>(*cuda_memory_limit,
-                                                                        std::move(*loaded_stats)));
+                             std::make_unique<SizeBasedResourceAccountant>(*cuda_memory_limit,
+                                                                           std::move(*loaded_stats)));
       } else if (cuda_memory_limit) {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeBasedStatsAccountant>(*cuda_memory_limit));
+                             std::make_unique<SizeBasedResourceAccountant>(*cuda_memory_limit));
       } else if (loaded_stats) {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeBasedStatsAccountant>(std::move(*loaded_stats)));
+                             std::make_unique<SizeBasedResourceAccountant>(std::move(*loaded_stats)));
       } else {
-        map.insert_or_assign(kCudaExecutionProvider, std::make_unique<SizeBasedStatsAccountant>());
+        map.insert_or_assign(kCudaExecutionProvider, std::make_unique<SizeBasedResourceAccountant>());
       }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid format for: ",

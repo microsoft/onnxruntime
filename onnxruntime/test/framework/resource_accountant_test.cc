@@ -38,7 +38,7 @@ size_t GetSizeT(const ResourceCount& rc) {
   return value != nullptr ? *value : 0;
 }
 
-// Helper to create a real SizeBasedStatsAccountant in ad-hoc mode (no stats file) via factory.
+// Helper to create a real SizeBasedResourceAccountant in ad-hoc mode (no stats file) via factory.
 // Must be called from within a TEST body (or via ASSERT_NO_FATAL_FAILURE) because it uses ASSERT_*.
 void CreateAdHocAccountant(
     size_t limit_kb,
