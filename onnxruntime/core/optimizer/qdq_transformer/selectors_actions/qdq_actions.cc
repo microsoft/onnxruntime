@@ -46,29 +46,25 @@ bool IsDQWeightSigned(int32_t dt_weight) {
 // Compute the effective block_size for per-tensor/per-channel DQ nodes that lack a block_size attribute.
 // session_block_size: 0 = default (32), positive = explicit, -1 = min-padding heuristic.
 int64_t ComputeEffectiveBlockSize(int64_t session_block_size, int64_t K) {
-  // MatMulNBits CPU kernel currently only supports block_size in [16, 256] correctly.
-  constexpr int64_t kMinBlockSize = 16;
-  constexpr int64_t kMaxBlockSize = 256;
-
   if (session_block_size > 0) {
-    // Explicit block_size — must be power-of-2 and within [kMinBlockSize, kMaxBlockSize].
-    ORT_ENFORCE(session_block_size >= kMinBlockSize &&
-                    ((session_block_size & (session_block_size - 1)) == 0),
-                "Explicit qdq_matmulnbits_block_size must be a power-of-2 and >= ",
-                kMinBlockSize, ", got: ", session_block_size);
-    ORT_ENFORCE(session_block_size <= kMaxBlockSize,
-                "Explicit qdq_matmulnbits_block_size must be <= ",
-                kMaxBlockSize, ", got: ", session_block_size);
+    ORT_ENFORCE(IsValidMatMulNBitsBlockSize(session_block_size),
+                "Explicit qdq_matmulnbits_block_size must be a power-of-two in [",
+                kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
+                "], got: ", session_block_size);
     return session_block_size;
   }
 
   if (session_block_size == -1) {
-    // Heuristic: largest power-of-2 <= min(K, kMaxBlockSize) that minimizes padding.
-    // Capped at kMaxBlockSize because CPU EP only supports block_size up to kMaxBlockSize correctly.
+    // Heuristic: largest supported power-of-two that minimizes padding.
     // We want ceil(K / B) * B - K to be minimized (least wasted padding).
-    int64_t best_bs = kMinBlockSize;
-    int64_t best_padding = (((K + (kMinBlockSize - 1)) / kMinBlockSize) * kMinBlockSize) - K;
-    for (int64_t bs = kMinBlockSize * 2; bs <= std::min(K, kMaxBlockSize); bs *= 2) {
+    int64_t best_bs = kMatMulNBitsMinBlockSize;
+    int64_t best_padding = (((K + (kMatMulNBitsMinBlockSize - 1)) /
+                             kMatMulNBitsMinBlockSize) *
+                            kMatMulNBitsMinBlockSize) -
+                           K;
+    for (int64_t bs = kMatMulNBitsMinBlockSize * 2;
+         bs <= std::min(K, kMatMulNBitsMaxBlockSize);
+         bs *= 2) {
       int64_t padding = (((K + bs - 1) / bs) * bs) - K;
       if (padding <= best_padding) {
         best_padding = padding;
@@ -87,15 +83,8 @@ int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_bl
   const auto& dq_attrs = dq_node.GetAttributes();
   const auto bs_iter = dq_attrs.find("block_size");
   if (bs_iter != dq_attrs.end() && bs_iter->second.i() > 0) {
-    // Blockwise DQ feeding MatMulNBits must use a power-of-two block_size in [16, 256].
-    // Keep this contract explicit here as a fail-fast defense if selector logic changes.
-    constexpr int64_t kMinBlockSize = 16;
-    constexpr int64_t kMaxBlockSize = 256;
-    const int64_t block_size = bs_iter->second.i();
-    ORT_ENFORCE(block_size >= kMinBlockSize && block_size <= kMaxBlockSize && ((block_size - 1) & block_size) == 0,
-                "DQ block_size must be a power-of-two in [", kMinBlockSize, ", ", kMaxBlockSize,
-                "] for MatMulNBits fusion. Got: ", block_size);
-    return block_size;
+    // ProcessNewNode validates model-provided values before using them.
+    return bs_iter->second.i();
   }
 
   // Derive K from the weight input shape if available. Shape information may be missing even
@@ -649,7 +638,21 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    Node& replacement_node) const {
   const auto* dq_node = selected_nodes.Input(0);
 
-  int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
+  const auto& dq_attributes = dq_node->GetAttributes();
+  const auto block_size_iter = dq_attributes.find("block_size");
+  if (block_size_iter != dq_attributes.end()) {
+    const int64_t block_size = block_size_iter->second.i();
+    ORT_RETURN_IF_NOT(IsValidMatMulNBitsBlockSize(block_size),
+                      "DQ block_size must be a power-of-two in [",
+                      kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
+                      "] for MatMulNBits fusion. Got: ", block_size);
+  }
+
+  const int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
+  ORT_RETURN_IF_NOT(IsValidMatMulNBitsBlockSize(effective_bs),
+                    "Effective block_size must be a power-of-two in [",
+                    kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
+                    "] for MatMulNBits fusion. Got: ", effective_bs);
 
   TransposedQuantizedTensors transposed;
   ORT_RETURN_IF_ERROR(TransposeDQWeightsForMatMulNBits(
