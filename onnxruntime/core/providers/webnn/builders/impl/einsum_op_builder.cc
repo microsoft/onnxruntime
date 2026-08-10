@@ -790,7 +790,7 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
       !IsDataTypeSupportedByWebNNOp(op_type, decompose_wnn_op_type, input0_type,
                                     wnn_limits, wnn_input0_name, "inputs", logger) ||
       !IsRankSupportedByWebNNOp(wnn_limits, decompose_wnn_op_type, wnn_input0_name,
-                            input0_shape.size(), node.Name(), logger)) {
+                                input0_shape.size(), node.Name(), logger)) {
     return false;
   }
 
@@ -799,7 +799,7 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
     return IsDataTypeSupportedByWebNNOp(op_type, decompose_wnn_op_type, input1_type,
                                         wnn_limits, wnn_input1_name, "inputs", logger) &&
            IsRankSupportedByWebNNOp(wnn_limits, decompose_wnn_op_type, wnn_input1_name,
-                                input1_shape.size(), node.Name(), logger);
+                                    input1_shape.size(), node.Name(), logger);
   }
 
   return true;

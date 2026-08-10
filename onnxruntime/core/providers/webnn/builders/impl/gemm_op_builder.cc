@@ -303,8 +303,8 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
 
       // For DequantizeLinear, input indices: 0 (x), 1 (scale), 2 (zero_point)
       if (!IsRankSupportedByWebNNOp(wnn_limits, "dequantizeLinear",
-                                (i < 2) ? "input" : "zeroPoint",
-                                shape.size(), node.Name(), logger)) {
+                                    (i < 2) ? "input" : "zeroPoint",
+                                    shape.size(), node.Name(), logger)) {
         return false;
       }
     }
