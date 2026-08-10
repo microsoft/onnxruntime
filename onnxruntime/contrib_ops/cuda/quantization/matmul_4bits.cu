@@ -9,6 +9,7 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/quantization/matmul_4bits_batched.cuh"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 // Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
@@ -995,84 +996,6 @@ bool TryMatMulSmallM4Bits(
   return true;
 }
 
-// Small-M launcher (half/bf16): picks CtaM >= m from {2,4,8,16} so a single block streams the
-// weight once, and CtaN columns/warp (largest of {4,2,1} dividing N/kCols) to reuse each activation
-// load across columns. Returns false for float or out-of-range m so the caller falls back.
-template <class T>
-bool TryMatMulBatched4Bits(
-    T* output,
-    const T* a_data,
-    const uint8_t* b_data_quant,
-    const T* scales_data,
-    const uint8_t* zero_points,
-    int m,
-    int n,
-    int k,
-    int block_size,
-    size_t /*shared_mem_size*/,
-    cudaStream_t stream) {
-  if constexpr (std::is_same<T, float>::value) {
-    return false;
-  } else {
-    if (m < 2 || m > kSmallMMax) {
-      return false;
-    }
-    // CtaM = smallest of {2,4,8,16} >= m, streaming the weight once per block row. Non-power-of-2 CtaM
-    // (10/12/14) compile to materially slower code, so the row-tile is rounded up (M>8 uses CtaM=16).
-    // CtaN = 2 columns/warp where N allows (halves activation L2 traffic); CtaN=4 lost to register
-    // pressure so it is not used by default.
-    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
-                                 : (m <= 8)   ? 8
-                                              : 16;
-    const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
-    dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
-    dim3 blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
-
-#define BatchedDispatch(BS, CM, CN)                                                          \
-  if (nullptr != zero_points) {                                                              \
-    MatMulFloat4BatchedKernel<T, BS, true, CM, CN><<<blocks, threads, 0, stream>>>(          \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS); \
-  } else {                                                                                   \
-    MatMulFloat4BatchedKernel<T, BS, false, CM, CN><<<blocks, threads, 0, stream>>>(         \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS); \
-  }
-#define BatchedDispatchN(CM, CN)  \
-  if (16 == block_size) {         \
-    BatchedDispatch(16, CM, CN)   \
-  } else if (32 == block_size) {  \
-    BatchedDispatch(32, CM, CN)   \
-  } else if (64 == block_size) {  \
-    BatchedDispatch(64, CM, CN)   \
-  } else if (128 == block_size) { \
-    BatchedDispatch(128, CM, CN)  \
-  } else {                        \
-    return false;                 \
-  }
-#define BatchedDispatchM(CN)          \
-  switch (cta_m) {                    \
-    case 2:                           \
-      BatchedDispatchN(2, CN) break;  \
-    case 4:                           \
-      BatchedDispatchN(4, CN) break;  \
-    case 8:                           \
-      BatchedDispatchN(8, CN) break;  \
-    default:                          \
-      BatchedDispatchN(16, CN) break; \
-  }
-
-    if (cta_n == 2) {
-      BatchedDispatchM(2)
-    } else {
-      BatchedDispatchM(1)
-    }
-
-#undef BatchedDispatchM
-#undef BatchedDispatchN
-#undef BatchedDispatch
-    return true;
-  }
-}
-
 template <class T>
 bool TryMatMul4Bits(
     T* output,
@@ -1111,10 +1034,12 @@ bool TryMatMul4Bits(
 
   // The register-tiled batched path (half/bf16, 2 <= m <= cap) launches with no shared memory, so try
   // it before the shared-memory budget gate that only constrains the shared-memory kernels below.
-  if (m >= 2) {
-    if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                                 m, n, k, block_size, 0, stream)) {
-      return true;
+  if constexpr (!std::is_same<T, float>::value) {
+    if (m >= 2) {
+      if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+                                   m, n, k, block_size, 0, stream)) {
+        return true;
+      }
     }
   }
 
