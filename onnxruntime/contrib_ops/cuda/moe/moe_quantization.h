@@ -140,6 +140,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // fc2 GEMV -> finalize) instead of dequantizing to dense weights. Falls back to the
   // dequant path for unsupported shapes (prefill / large batch).
   bool enable_fp4_gemv_ = false;
+  // Read once during op construction so ORT_DISABLE_FP4_GEMV_SKIP_EXPAND follows the same
+  // session-scoped configuration model as the other FP4 GEMV environment options.
+  bool fp4_gemv_skip_expand_ = true;
   bool enable_fp4_cutlass_gemm_ = false;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
