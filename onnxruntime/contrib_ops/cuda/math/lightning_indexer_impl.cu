@@ -8,6 +8,7 @@
 #include <cuda_fp16.h>
 
 #include "contrib_ops/cuda/math/dsv4_common.cuh"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
@@ -372,8 +373,22 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
   // it -- prefill -- the arithmetic is large, cuBLAS wins, and the host clamp on `score_capacity`
   // is exact anyway because prefill is not graph-captured.
   constexpr int kMaxFusedScoreSeq = 32;
+  // ...and few enough rows, which is the bound that actually matters. The fused scorer's cost is
+  // linear in the rows it scores and the GEMM's is not: 28.7 us at a 1K context but 933 us at
+  // 256K, against a GEMM that is 84.8 us over the whole 65,664-row capacity. Bounding `seq_len`
+  // alone therefore picked the wrong kernel at long context and cost 58% of the 256K decode step.
+  //
+  // The default is 0 -- always cuBLAS -- because the fused scorer only ever existed to work
+  // around a bound the host could not see under graph capture, and once the engine supplies one
+  // through ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST the GEMM is faster at every context measured
+  // (batch-1 step time 17.79 vs 17.98 ms at 1K, 18.85 vs 19.99 at 16K, and 30.17 vs 47.71 at
+  // 256K). With no bound supplied it scores the full capacity and is still ahead from 64K up.
+  // Raise this to re-enable the fused path for a capture whose promised extent is small.
+  static const int64_t kMaxFusedScoreRows = ParseEnvironmentVariableWithDefault<int64_t>(
+      "ORT_LIGHTNING_INDEXER_FUSED_SCORE_MAX_ROWS", 0);
   const size_t fused_shared = static_cast<size_t>(LightningIndexerScoreSharedFloats(p)) * sizeof(float);
-  const bool fused_score = p.seq_len <= kMaxFusedScoreSeq && fused_shared <= 48u * 1024u;
+  const bool fused_score = p.seq_len <= kMaxFusedScoreSeq && fused_shared <= 48u * 1024u &&
+                           p.score_capacity <= kMaxFusedScoreRows;
 
   const int64_t cache_elems = LightningIndexerCacheElems(p) / p.batch;
   const int cache_blocks = static_cast<int>(
