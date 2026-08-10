@@ -3,13 +3,15 @@ description: "C API implementation and review guidance for public C API updates.
 applyTo: "include/onnxruntime/core/session/onnxruntime_c_api.h,include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
 ---
 
-# C API Additions
+# C API Updates
 
 ## API Structs and Initializers
 
-For ordinary public C API additions, append the new function pointer to the end of the applicable API struct and its
-corresponding initializer. Never insert or reorder existing members. The append-only API structs are `OrtApi`,
-`OrtModelEditorApi`, `OrtCompileApi`, and `OrtInteropApi` in
+Preserve ABI compatibility for all shipped public C API members: do not remove, reorder, or change existing
+function-pointer signatures within a shipped C API struct.
+
+For a new public C API function, append its function pointer to the end of the applicable API struct and corresponding
+initializer. The append-only API structs are `OrtApi`, `OrtModelEditorApi`, `OrtCompileApi`, and `OrtInteropApi` in
 [`onnxruntime_c_api.h`](../../include/onnxruntime/core/session/onnxruntime_c_api.h), and `OrtEpApi` in
 [`onnxruntime_ep_c_api.h`](../../include/onnxruntime/core/session/onnxruntime_ep_c_api.h).
 
@@ -20,7 +22,7 @@ or `plugin_ep/ep_api.cc`.
 ## Release Versioning
 
 Do not bump `ORT_API_VERSION`, rename the current `OrtApi` version table, or add release-boundary markers or
-`static_assert` entries for an ordinary API addition. Those changes are made during release preparation. See
+`static_assert` entries when adding a public C API function. Those changes are made during release preparation. See
 [Versioning](../../docs/Versioning.md) for the release versioning process.
 
 ## C++ Wrappers
