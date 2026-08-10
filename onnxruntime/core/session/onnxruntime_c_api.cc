@@ -1211,6 +1211,35 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAss
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetHardwareDevices, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_result_maybenull_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetHardwareDevices requires a valid (non-null) `devices` output "
+                                 "parameter into which to store the pointer to the hardware device array.");
+  }
+
+  if (num_hardware_devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetHardwareDevices requires a valid (non-null) "
+                                 "`num_hardware_devices` output parameter into which to store the number of hardware "
+                                 "devices.");
+  }
+
+  *devices = ep_subgraph->hardware_devices.data();
+  *num_hardware_devices = ep_subgraph->hardware_devices.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(devices);
+  ORT_UNUSED_PARAMETER(num_hardware_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 struct OrtIoBinding {
   std::unique_ptr<::onnxruntime::IOBinding> binding_;
   explicit OrtIoBinding(std::unique_ptr<::onnxruntime::IOBinding>&& binding) : binding_(std::move(binding)) {}
@@ -4920,6 +4949,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::GetExperimentalFunction,
     &OrtApis::KernelContext_GetSyncStream,
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::EpAssignedSubgraph_GetHardwareDevices,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -37,9 +37,11 @@ struct Utils {
   struct ExampleEpHooks {
     using ResetSyncCountFn = void (*)();
     using GetSyncCountFn = uint64_t (*)();
+    using SetFusedNodeHardwareDeviceFn = void (*)(const OrtHardwareDevice*);
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
+    SetFusedNodeHardwareDeviceFn set_fused_node_hardware_device{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

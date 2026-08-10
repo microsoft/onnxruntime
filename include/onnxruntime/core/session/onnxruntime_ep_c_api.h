@@ -665,6 +665,23 @@ struct OrtNodeFusionOptions {
    */
   bool drop_constant_initializers;
 
+  /** \brief Optional hardware device that executes this fused subgraph.
+   *
+   * A plugin execution provider may set this to indicate the exact hardware device on which the fused subgraph
+   * will run. This is used for observability (e.g., OrtApi::EpAssignedSubgraph_GetHardwareDevices) and is
+   * particularly useful for execution providers that internally manage multiple devices (e.g., OpenVINO in
+   * HETERO/MULTI/AUTO mode), where the specific device cannot be inferred from the execution provider alone.
+   *
+   * If left as nullptr, ONNX Runtime falls back to the first OrtEpDevice the execution provider was registered
+   * with. Existing execution providers are not required to set this field.
+   *
+   * The pointed-to OrtHardwareDevice must be one owned by ONNX Runtime (e.g., obtained from an OrtEpDevice via
+   * OrtApi::EpDevice_Device) and must outlive the session. ONNX Runtime does not take ownership.
+   *
+   * \since Version 1.29.
+   */
+  const OrtHardwareDevice* fused_node_hardware_device;
+
   // const OrtNode* fused_node_schema;
 };
 
