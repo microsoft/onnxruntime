@@ -5,7 +5,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <mma.h>
+#include <type_traits>
 
 #include "contrib_ops/cuda/math/dsv4_common.cuh"
 #include "core/platform/env_var_utils.h"
@@ -97,12 +100,17 @@ __global__ void LightningIndexerCacheKernel(const LightningIndexerParams p,
 //
 // One block per (batch, token, head): a decode step has only one token per sequence, so
 // splitting by head is what keeps the launch from collapsing onto a single SM.
+//
+// `q_bf` is the same row in bf16 for the tensor-core scorer, and is exact rather than a
+// narrowing: after the FP4 simulation every value is a grid point of {0, .5, 1, 1.5, 2, 3, 4, 6}
+// times a power-of-two block scale, which is three significant bits against bf16's eight.
 template <typename CudaT>
 __global__ void LightningIndexerQueryKernel(const LightningIndexerParams p,
                                             const CudaT* __restrict__ query,
                                             const float* __restrict__ cos_table,
                                             const float* __restrict__ sin_table,
-                                            float* __restrict__ q_out) {
+                                            float* __restrict__ q_out,
+                                            __nv_bfloat16* __restrict__ q_bf) {
   extern __shared__ float smem[];
   float* s_row = smem;
   float* s_rope = s_row + p.head_dim;
@@ -138,6 +146,10 @@ __global__ void LightningIndexerQueryKernel(const LightningIndexerParams p,
 
   float* dst = q_out + row * d;
   for (int t = tid; t < d; t += kThreads) dst[t] = s_row[t];
+  if (q_bf != nullptr) {
+    __nv_bfloat16* dstb = q_bf + row * d;
+    for (int t = tid; t < d; t += kThreads) dstb[t] = __float2bfloat16(s_row[t]);
+  }
 }
 
 // Fold the per-head scores into one number per cache row and key it for the selection.
@@ -263,6 +275,156 @@ __global__ void LightningIndexerScoreKernel(const LightningIndexerParams p,
   }
 }
 
+// Rows of the cache one tensor-core block scores per pass, and the WMMA tile edge. The query
+// rows are re-read once per (tile, token), so the tile is what amortises them: at a 256K context
+// 32 rows re-read 196 MB per launch and 64 rows halve that. It costs 52 KB of shared, which is
+// over the 48 KB default and needs the opt-in at the launch site.
+constexpr int kMmaScoreRows = 64;
+constexpr int kMmaTile = 16;
+// Padding on the shared row stride. Without it a `col_major` fragment load walks one bf16
+// column at a 256-byte row stride, which is an exact multiple of the 128-byte bank period, so
+// all sixteen rows land in the same bank and every load serialises sixteen ways.
+constexpr int kMmaPad = 8;
+
+inline int LightningIndexerMmaStride(const LightningIndexerParams& p) {
+  return p.head_dim + kMmaPad;
+}
+
+// Shared bytes the tensor-core scorer needs: the query rows for one token, the cache tile, the
+// per-head scores for that tile, and one weight per (token, head).
+inline int64_t LightningIndexerScoreMmaSharedBytes(const LightningIndexerParams& p) {
+  const int64_t stride = LightningIndexerMmaStride(p);
+  return (static_cast<int64_t>(p.num_heads) + kMmaScoreRows) * stride * sizeof(__nv_bfloat16) +
+         static_cast<int64_t>(p.num_heads) * kMmaScoreRows * sizeof(float) +
+         static_cast<int64_t>(p.seq_len) * p.num_heads * sizeof(float);
+}
+
+// Score and reduce in one pass, on tensor cores, bounded by what the queries can actually reach.
+//
+// This is the shape the op wants everywhere. cuBLAS takes its row count on the host, and under
+// CUDA graph capture that cannot be the live extent -- replay would freeze it -- so the GEMM ends
+// up scoring the whole export capacity, of which a short context reaches under 1%. Taking the
+// bound from `past_lens` on the device instead keeps the launch replay-invariant (the grid is
+// sized by capacity and blocks past the live extent simply exit) while the work follows the
+// sequence. The scalar version of this idea did that and lost anyway, because a hand-rolled dot
+// product cannot reach the tensor cores the GEMM was using: 933 us against 84.8 at 256K.
+//
+// bf16 in, fp32 accumulate, and the products are the same ones the float path computes: the
+// cache is stored in bf16 already, and the query is an FP4 grid point times a power-of-two
+// scale. Only the summation order differs.
+//
+// One block owns a tile of cache rows for every token of the step, so the tile is read once and
+// reused across the (few) query positions a decode step has. Prefill keeps the GEMM: there `n`
+// is thousands of columns wide and amortises the same read far better.
+template <typename CudaT>
+__global__ void LightningIndexerScoreMmaKernel(const LightningIndexerParams p,
+                                               const __nv_bfloat16* __restrict__ query,
+                                               const __nv_bfloat16* __restrict__ cache,
+                                               const CudaT* __restrict__ weights,
+                                               const int64_t* __restrict__ past_lens,
+                                               uint32_t* __restrict__ keys) {
+  namespace wmma = nvcuda::wmma;
+  extern __shared__ char mma_smem[];
+  const int stride = p.head_dim + kMmaPad;
+  __nv_bfloat16* s_q = reinterpret_cast<__nv_bfloat16*>(mma_smem);
+  __nv_bfloat16* s_c = s_q + static_cast<int64_t>(p.num_heads) * stride;
+  float* s_acc = reinterpret_cast<float*>(s_c + static_cast<int64_t>(kMmaScoreRows) * stride);
+  float* s_w = s_acc + static_cast<int64_t>(p.num_heads) * kMmaScoreRows;
+
+  const int b = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int warp = tid >> 5;
+  const int64_t past = past_lens[b];
+
+  // The last query of the step sees the most, so it bounds the tile loop; each token clamps
+  // again on the way out.
+  int64_t widest = LightningIndexerVisibleRows(past, p.seq_len - 1, p.ratio);
+  if (widest > p.score_capacity) widest = p.score_capacity;
+  if (widest <= 0) return;
+
+  for (int i = tid; i < p.seq_len * p.num_heads; i += kThreads) {
+    s_w[i] = DSV4Conv<CudaT>::ToFloat(weights[static_cast<int64_t>(b) * p.seq_len * p.num_heads + i]) *
+             p.scale;
+  }
+
+  const int head_blocks = p.num_heads / kMmaTile;
+  const int row_chunks = kMmaScoreRows / kMmaTile;
+  const int frag_tiles = head_blocks * row_chunks;
+  const int query_elems = p.num_heads * p.head_dim;
+
+  for (int64_t tile = static_cast<int64_t>(blockIdx.x) * kMmaScoreRows; tile < widest;
+       tile += static_cast<int64_t>(gridDim.x) * kMmaScoreRows) {
+    const int rows = static_cast<int>(min(widest - tile, static_cast<int64_t>(kMmaScoreRows)));
+    const __nv_bfloat16* src = cache + (static_cast<int64_t>(b) * p.capacity + tile) * p.head_dim;
+    // Rows past the live extent are zeroed rather than skipped: the fragment covers the whole
+    // tile, and their columns of the product are thrown away below. Walked as (row, dim) rather
+    // than one flat index because the flat form needs an integer division by a runtime
+    // `head_dim` on every element.
+    for (int r = warp; r < kMmaScoreRows; r += kWarps) {
+      const __nv_bfloat16* row_src = src + static_cast<int64_t>(r) * p.head_dim;
+      __nv_bfloat16* row_dst = s_c + r * stride;
+      for (int d = lane; d < p.head_dim; d += 32) {
+        row_dst[d] = r < rows ? row_src[d] : __float2bfloat16(0.0f);
+      }
+    }
+
+    for (int s = 0; s < p.seq_len; ++s) {
+      int64_t visible = LightningIndexerVisibleRows(past, s, p.ratio);
+      if (visible > p.score_capacity) visible = p.score_capacity;
+      if (tile >= visible) continue;
+      const int64_t token = static_cast<int64_t>(b) * p.seq_len + s;
+      const __nv_bfloat16* q_row = query + token * query_elems;
+      for (int h = warp; h < p.num_heads; h += kWarps) {
+        const __nv_bfloat16* src_head = q_row + static_cast<int64_t>(h) * p.head_dim;
+        __nv_bfloat16* dst_head = s_q + h * stride;
+        for (int d = lane; d < p.head_dim; d += 32) dst_head[d] = src_head[d];
+      }
+      __syncthreads();
+
+      for (int t = warp; t < frag_tiles; t += kWarps) {
+        const int hb = t / row_chunks;
+        const int rc = t - hb * row_chunks;
+        wmma::fragment<wmma::accumulator, kMmaTile, kMmaTile, kMmaTile, float> acc;
+        wmma::fill_fragment(acc, 0.0f);
+        for (int k = 0; k < p.head_dim; k += kMmaTile) {
+          wmma::fragment<wmma::matrix_a, kMmaTile, kMmaTile, kMmaTile, __nv_bfloat16,
+                         wmma::row_major>
+              a;
+          wmma::fragment<wmma::matrix_b, kMmaTile, kMmaTile, kMmaTile, __nv_bfloat16,
+                         wmma::col_major>
+              c;
+          wmma::load_matrix_sync(a, s_q + hb * kMmaTile * stride + k, stride);
+          wmma::load_matrix_sync(c, s_c + rc * kMmaTile * stride + k, stride);
+          wmma::mma_sync(acc, a, c, acc);
+        }
+        // Stored row-per-cache-row so that the reduction below reads consecutive heads: the
+        // head-major layout puts a whole warp on one bank.
+        wmma::store_matrix_sync(s_acc + static_cast<int64_t>(rc) * kMmaTile * p.num_heads +
+                                    hb * kMmaTile,
+                                acc, p.num_heads, wmma::mem_col_major);
+      }
+      __syncthreads();
+
+      const int live = static_cast<int>(min(visible - tile, static_cast<int64_t>(rows)));
+      const float* w_row = s_w + static_cast<int64_t>(s) * p.num_heads;
+      for (int r = warp; r < live; r += kWarps) {
+        const float* acc_row = s_acc + static_cast<int64_t>(r) * p.num_heads;
+        float part = 0.0f;
+        for (int h = lane; h < p.num_heads; h += 32) {
+          part += fmaxf(acc_row[h], 0.0f) * w_row[h];
+        }
+#pragma unroll
+        for (int off = 16; off > 0; off >>= 1) {
+          part += __shfl_xor_sync(0xffffffffu, part, off);
+        }
+        if (lane == 0) keys[token * p.score_capacity + tile + r] = FloatToKey(part);
+      }
+      __syncthreads();
+    }
+  }
+}
+
 // Keep the `topk` best-scoring rows a query is allowed to see.
 //
 // Attention over the selected rows does not depend on their order, so this only has to produce
@@ -366,29 +528,56 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
                               const T* past_cache, const T* weights, const int64_t* past_lens,
                               int64_t* selection, T* present_cache,
                               float* query_scratch, float* cache_scratch, float* score_scratch,
-                              uint32_t* key_scratch) {
+                              uint32_t* key_scratch, void* query_bf16_scratch) {
   using CudaT = typename ::onnxruntime::cuda::ToCudaType<T>::MappedType;
 
-  // A step short enough that the fused scorer is not giving up meaningful GEMM efficiency. Above
-  // it -- prefill -- the arithmetic is large, cuBLAS wins, and the host clamp on `score_capacity`
-  // is exact anyway because prefill is not graph-captured.
+  // A step short enough that scoring row-by-row is not giving up meaningful GEMM efficiency.
+  // Above it -- prefill -- `n` is thousands of columns wide, the GEMM amortises its cache reads
+  // over all of them, and the host clamp on `score_capacity` is exact anyway because prefill is
+  // not graph-captured.
   constexpr int kMaxFusedScoreSeq = 32;
-  // ...and few enough rows, which is the bound that actually matters. The fused scorer's cost is
-  // linear in the rows it scores and the GEMM's is not: 28.7 us at a 1K context but 933 us at
-  // 256K, against a GEMM that is 84.8 us over the whole 65,664-row capacity. Bounding `seq_len`
-  // alone therefore picked the wrong kernel at long context and cost 58% of the 256K decode step.
+
+  // Which scorer runs comes down to whether the host knows how many rows this step can reach.
   //
-  // The default is 0 -- always cuBLAS -- because the fused scorer only ever existed to work
-  // around a bound the host could not see under graph capture, and once the engine supplies one
-  // through ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST the GEMM is faster at every context measured
-  // (batch-1 step time 17.79 vs 17.98 ms at 1K, 18.85 vs 19.99 at 16K, and 30.17 vs 47.71 at
-  // 256K). With no bound supplied it scores the full capacity and is still ahead from 64K up.
-  // Raise this to re-enable the fused path for a capture whose promised extent is small.
+  // When it does -- prefill, or a capture the engine bounded through
+  // ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST -- cuBLAS gets a tight `m` and wins at every context
+  // measured (batch-1 step time 17.79 ms at 1K, 18.85 at 16K, 20.72 at 64K, 30.17 at 256K).
+  //
+  // When it does not, `score_capacity` is the whole export capacity and the GEMM scores rows no
+  // query can reach: 20.06 / 21.01 / 22.34 / 30.21 on the same four points. The tensor-core
+  // scorer below takes its bound from `past_lens` on the device instead, so the launch stays
+  // replay-invariant while the work follows the sequence, and it needs no promise from the
+  // engine: 18.48 / 19.43 / 21.06 / 31.16. It is ahead everywhere except 256K, where re-reading
+  // the query rows once per row tile is what it cannot amortise away.
+  //
+  // `kMmaScoreRows` is that amortisation, and it is two-sided: 32 rows measured
+  // 18.17 / 19.21 / 20.75 / 31.99 and 64 rows 18.48 / 19.43 / 21.06 / 31.16, so the tile trades
+  // short context against long. 64 keeps the worst case level with the previous release.
+  //
+  // bf16 operands are exact here rather than a narrowing: the cache is stored in bf16, and the
+  // query is an FP4 grid point times a power-of-two block scale.
+  // `ORT_LIGHTNING_INDEXER_MMA_SCORE`: 1 (default) picks it only when the host bound is not
+  // exact, 0 disables it, 2 forces it wherever it is legal -- which is how the parity test
+  // reaches it, since a test never captures a graph and so always has an exact bound.
+  static const int mma_mode =
+      ParseEnvironmentVariableWithDefault<int>("ORT_LIGHTNING_INDEXER_MMA_SCORE", 1);
+  const size_t mma_shared = static_cast<size_t>(LightningIndexerScoreMmaSharedBytes(p));
+  const bool mma_score = mma_mode > 0 && (mma_mode > 1 || !p.score_capacity_exact) &&
+                         std::is_same<T, BFloat16>::value && p.rotate_fp4 &&
+                         p.seq_len <= kMaxFusedScoreSeq && p.num_heads % kMmaTile == 0 &&
+                         p.head_dim % kMmaTile == 0 &&
+                         mma_shared <= static_cast<size_t>(prop.sharedMemPerBlockOptin);
+
+  // The scalar predecessor of the tensor-core path, kept reachable for A/B. Its cost is linear
+  // in the rows it scores and it cannot reach the tensor cores, so it is off by default: 933 us
+  // at a 256K context against 84.8 for the GEMM over the whole 65,664-row capacity.
   static const int64_t kMaxFusedScoreRows = ParseEnvironmentVariableWithDefault<int64_t>(
       "ORT_LIGHTNING_INDEXER_FUSED_SCORE_MAX_ROWS", 0);
   const size_t fused_shared = static_cast<size_t>(LightningIndexerScoreSharedFloats(p)) * sizeof(float);
-  const bool fused_score = p.seq_len <= kMaxFusedScoreSeq && fused_shared <= 48u * 1024u &&
+  const bool fused_score = !mma_score && p.seq_len <= kMaxFusedScoreSeq &&
+                           fused_shared <= 48u * 1024u &&
                            p.score_capacity <= kMaxFusedScoreRows;
+  const bool gemm_score = !mma_score && !fused_score;
 
   const int64_t cache_elems = LightningIndexerCacheElems(p) / p.batch;
   const int cache_blocks = static_cast<int>(
@@ -396,7 +585,7 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
   LightningIndexerCacheKernel<CudaT><<<dim3(cache_blocks, p.batch), kThreads, 0, stream>>>(
       p, reinterpret_cast<const CudaT*>(rows), first_slot, last_slot,
       reinterpret_cast<const CudaT*>(past_cache), reinterpret_cast<CudaT*>(present_cache),
-      fused_score ? nullptr : cache_scratch);
+      gemm_score ? cache_scratch : nullptr);
 
   const size_t q_shared = LightningIndexerQuerySharedFloats(p) * sizeof(float);
   if (q_shared > 48u * 1024u) {
@@ -406,9 +595,25 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
   }
   LightningIndexerQueryKernel<CudaT>
       <<<dim3(p.num_heads, p.seq_len, p.batch), kThreads, q_shared, stream>>>(
-          p, reinterpret_cast<const CudaT*>(query), cos_table, sin_table, query_scratch);
+          p, reinterpret_cast<const CudaT*>(query), cos_table, sin_table, query_scratch,
+          mma_score ? reinterpret_cast<__nv_bfloat16*>(query_bf16_scratch) : nullptr);
 
-  if (fused_score) {
+  if (mma_score) {
+    // Grid sized by the replay-invariant capacity and grid-strided, so the launch is identical
+    // on every step while the tiles actually visited follow `past_lens`.
+    const int tile_blocks = static_cast<int>(std::min<int64_t>(
+        1024, (static_cast<int64_t>(p.score_capacity) + kMmaScoreRows - 1) / kMmaScoreRows));
+    if (mma_shared > 48u * 1024u) {
+      CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+          reinterpret_cast<const void*>(&LightningIndexerScoreMmaKernel<CudaT>),
+          cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(mma_shared)));
+    }
+    LightningIndexerScoreMmaKernel<CudaT>
+        <<<dim3(tile_blocks, p.batch), kThreads, mma_shared, stream>>>(
+            p, reinterpret_cast<const __nv_bfloat16*>(query_bf16_scratch),
+            reinterpret_cast<const __nv_bfloat16*>(present_cache),
+            reinterpret_cast<const CudaT*>(weights), past_lens, key_scratch);
+  } else if (fused_score) {
     // Grid-strided over row tiles so the launch stays sized by the replay-invariant capacity
     // while the work done is sized by the device-side visible count.
     const int tile_blocks = static_cast<int>(std::min<int64_t>(
@@ -449,7 +654,7 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
   template Status LaunchLightningIndexer<T>(                                                    \
       cudaStream_t, cublasHandle_t, const cudaDeviceProp&, bool, const LightningIndexerParams&, \
       const T*, const float*, const float*, const T*, const int64_t*, const int64_t*,           \
-      const T*, const T*, const int64_t*, int64_t*, T*, float*, float*, float*, uint32_t*);
+      const T*, const T*, const int64_t*, int64_t*, T*, float*, float*, float*, uint32_t*, void*);
 
 INSTANTIATE(float)
 INSTANTIATE(MLFloat16)

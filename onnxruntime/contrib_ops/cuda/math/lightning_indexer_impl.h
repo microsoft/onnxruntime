@@ -30,6 +30,10 @@ struct LightningIndexerParams {
   // `capacity` whenever the bound is unknown. During CUDA graph capture it may instead
   // come from a conservative request-level maximum supplied by the engine.
   int score_capacity;
+  // Whether `score_capacity` is a real bound on this step rather than the export capacity. It
+  // is false exactly when the step is graph-captured and the engine promised no request-level
+  // maximum, which is the case the tensor-core scorer exists for.
+  bool score_capacity_exact;
   int ratio;        // tokens per compressed row
   int topk;         // k, the width of the selection
   int max_seq_len;  // L, the logical offset that marks a compressed row
@@ -54,6 +58,11 @@ inline int64_t LightningIndexerScoreElems(const LightningIndexerParams& p) {
 }
 inline int64_t LightningIndexerKeyElems(const LightningIndexerParams& p) {
   return static_cast<int64_t>(p.batch) * p.seq_len * p.capacity;
+}
+// The same query rows in bf16, for the tensor-core scorer. Allocated whether or not that path
+// runs, for the same reason as the buffers above: a capturing step must not be the first to ask.
+inline int64_t LightningIndexerQueryBf16Bytes(const LightningIndexerParams& p) {
+  return LightningIndexerQueryElems(p) * 2;
 }
 
 // Rows of the cache a query at offset `s` of this step is allowed to see.  The launcher
@@ -84,7 +93,7 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
                               const T* past_cache, const T* weights, const int64_t* past_lens,
                               int64_t* selection, T* present_cache,
                               float* query_scratch, float* cache_scratch, float* score_scratch,
-                              uint32_t* key_scratch);
+                              uint32_t* key_scratch, void* query_bf16_scratch);
 
 }  // namespace cuda
 }  // namespace contrib

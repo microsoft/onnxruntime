@@ -71,6 +71,7 @@ Status ClampScoreCapacity(OpKernelContext* context, const Tensor& past_lens,
   while (rounded < needed) rounded <<= 1;
 
   params.score_capacity = static_cast<int>(std::clamp<int64_t>(rounded, 1, params.capacity));
+  params.score_capacity_exact = true;
   return Status::OK();
 }
 
@@ -194,6 +195,7 @@ Status LightningIndexer<T>::ComputeInternal(OpKernelContext* context) const {
   params.num_rows = static_cast<int>(num_rows);
   params.capacity = static_cast<int>(capacity);
   params.score_capacity = static_cast<int>(capacity);
+  params.score_capacity_exact = false;
   params.ratio = static_cast<int>(ratio_);
   params.topk = static_cast<int>(topk_);
   params.max_seq_len = static_cast<int>(max_seq_len_);
@@ -210,14 +212,15 @@ Status LightningIndexer<T>::ComputeInternal(OpKernelContext* context) const {
       static_cast<size_t>(LightningIndexerScoreElems(params)), context->GetComputeStream());
   auto key_scratch = GetScratchBuffer<uint32_t>(
       static_cast<size_t>(LightningIndexerKeyElems(params)), context->GetComputeStream());
-
+  auto query_bf16_scratch = GetScratchBuffer<uint8_t>(
+      static_cast<size_t>(LightningIndexerQueryBf16Bytes(params)), context->GetComputeStream());
   return LaunchLightningIndexer<T>(
       Stream(context), GetCublasHandle(context), GetDeviceProp(), UseTF32(), params,
       query->Data<T>(), cos_table->Data<float>(), sin_table->Data<float>(), rows->Data<T>(),
       first_slot->Data<int64_t>(), last_slot->Data<int64_t>(), past_cache->Data<T>(),
       weights->Data<T>(), past_lens->Data<int64_t>(), selection->MutableData<int64_t>(),
       present_cache->MutableData<T>(), query_scratch.get(), cache_scratch.get(),
-      score_scratch.get(), key_scratch.get());
+      score_scratch.get(), key_scratch.get(), query_bf16_scratch.get());
 }
 
 }  // namespace cuda
