@@ -311,7 +311,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   if (softmax_lse_buffer != nullptr) {
-    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+    data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
   }
   if (workspace_buffer != nullptr) {
     data.workspace_buffer = reinterpret_cast<CudaT*>(workspace_buffer.get());

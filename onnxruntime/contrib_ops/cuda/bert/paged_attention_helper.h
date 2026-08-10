@@ -150,7 +150,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   }
   if (value_cache_dims[3] != head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'value_cache' dimension 3 should be same as head_size, got ",
                            value_cache_dims[3]);
   }
   return Status::OK();

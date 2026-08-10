@@ -254,6 +254,11 @@ inline Status CheckCacheIndirection(
                            "Input 'cache_indirection' dimension 1 should be num_beams, got ",
                            cache_indir_dims[1]);
   }
+  if (batch_beam_size % num_beams != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'cache_indirection' dimension 1 should divide batch_beam_size, got ",
+                           cache_indir_dims[1]);
+  }
   if (cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' dimension 0 should be batch_size, got ",

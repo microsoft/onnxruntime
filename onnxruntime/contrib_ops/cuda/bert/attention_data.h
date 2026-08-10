@@ -270,7 +270,7 @@ struct PagedAttentionData {
   const T* sin_cache = nullptr;
 
   // Flash buffers
-  T* softmax_lse = nullptr;
+  float* softmax_lse = nullptr;
   int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
 
   // Fused op buffers
