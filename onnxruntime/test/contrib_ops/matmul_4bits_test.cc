@@ -301,6 +301,8 @@ void RunTest(const TestOptions& opts,
 
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
+  } else if (opts.force_fp32) {
+    test.ConfigEp(DefaultCpuExecutionProvider());
   }
 
   if (opts.disable_cpu_ep_fallback || opts.force_fp32) {
