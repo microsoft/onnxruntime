@@ -147,31 +147,37 @@ dispatches by bit width:
 first applies a guard common to all fused kernels:
 
 ```
-n % kColsPerThreadBlock (8) == 0   and   k % 8 == 0   and   m <= 1
+n % kColsPerThreadBlock (8) == 0   and   k % 8 == 0   and   m <= 16
 ```
 
-i.e. the fast path is a **GEMV** (single token). If the guard passes it then
-chooses between the router specialization (§4.2) and the generic kernel (§4.1).
+i.e. the fused path handles a single token or a small batch. If the guard passes,
+it chooses between the M=1 kernel (§4.1), the small-M batched kernels (§4.2),
+and the router specialization (§4.3).
 
-### 4.1 Generic 4-bit GEMV kernel
+### 4.1 Generic 4-bit M=1 GEMV kernel
 
-`MatMulFloatInt4Kernel<T, block_size, has_zero_point>`:
+`MatMulFloat4BitsKernelM1<T, block_size, has_zero_point>` is implemented in
+`matmul_4bits_m1_impl.cuh` and instantiated by the dtype-specific translation
+units:
 
-- **Launch:** grid `(ceil(N / 8), M)`, block `(warpSize, 8)` — one **warp per
+- **Launch:** grid `(ceil(N / 8), 1)`, block `(warpSize, 8)` — one **warp per
   output column** (`kColsPerThreadBlock = 8` warps per block).
 - **Scales / zero points** are staged into shared memory once per thread block
-  (hence the `shared_mem_size > sharedMemPerBlock` bail-out in
-  `TryMatMul4Bits`).
-- **Inner loop:** each lane consumes `kElementsPerThreadPerIteration = 8`
-  weights per step; a warp covers `warpSize × 8 = 256` `K` elements per
-  iteration via `AccumulateEightElements4b` (a `prmt` + `lop3`-based int4→half2
-  conversion). A 3-tier macro unroll (`×16`, `×4`, `×1`) plus a scalar remainder
-  step walks all of `K`, followed by a warp-shuffle reduction.
-- **Supported `block_size`:** 16 / 32 / 64 / 128 (others throw).
+  and the launcher returns `false` if the total requirement exceeds the per-block limit.
+- **Inner loop:** each lane consumes eight packed int4 weights per iteration,
+  followed by a warp reduction.
+- **Supported `block_size`:** 16 / 32 / 64 / 128.
 - **Bias:** not supported — the kernel returns `false` to `TryMatMul4Bits` when
   `bias != nullptr` (see §7 for how bias is then handled).
 
-### 4.2 Router GEMV specialization
+### 4.2 Small-M batched GEMV
+
+For `2 <= M <= 16`, `TryMatMul4Bits` first attempts the register-tiled
+half/BF16 batched kernel and then the shared-memory `MatMulFloatInt4KernelSmallM`
+path. These paths dequantize each packed weight word once and reuse it across
+multiple activation rows.
+
+### 4.3 Router GEMV specialization
 
 `MatMulFloatInt4RouterKernel<T, BlockSize>` is a specialization for MoE-router
 GEMVs (`output(1, N) = A(1, K) · dequant(B(N, K)) + bias(N)`). It is selected by
@@ -278,7 +284,7 @@ Prepacked weights are intentionally strict:
 
 ## 7. Bias Handling
 
-Only the router specialization (§4.2) fuses bias inside the GEMV. For every other
+Only the router specialization (§4.3) fuses bias inside the GEMV. For every other
 fast-path shape, `TryMatMul4Bits` / `TryMatMul8Bits` return `false` when bias is
 present. `ComputeInternal` then:
 
@@ -294,7 +300,7 @@ present. `ComputeInternal` then:
 
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
-| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.2); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
