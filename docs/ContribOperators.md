@@ -1477,7 +1477,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : Q</dt>
-<dd>TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)</dd>
+<dd>TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COLS)</dd>
 <dt><tt>scale_input</tt> : S</dt>
 <dd>scale of the input</dd>
 </dl>
@@ -5752,7 +5752,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : F</dt>
-<dd>TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)</dd>
+<dd>TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COLS)</dd>
 <dt><tt>scale_input</tt> : S</dt>
 <dd>scale of the input</dd>
 </dl>
