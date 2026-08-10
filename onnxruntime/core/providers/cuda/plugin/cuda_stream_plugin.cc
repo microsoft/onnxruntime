@@ -61,6 +61,14 @@ CudaSyncStream::~CudaSyncStream() {
     has_deferred_cpu_buffers = !deferred_cpu_buffers_.empty();
   }
 
+  // Clear arena back-pointers before this stream object can disappear.
+  if (cuda_stream_ != nullptr) {
+    OrtStatus* arena_status = factory_.ResetDeviceArenaChunksUsingStream(device_id_, this);
+    if (arena_status != nullptr) {
+      Ort::GetApi().ReleaseStatus(arena_status);
+    }
+  }
+
   if (has_deferred_cpu_buffers) {
     if (cuda_stream_ != nullptr) {
       OrtStatus* status = OnSessionRunEndImpl(this);

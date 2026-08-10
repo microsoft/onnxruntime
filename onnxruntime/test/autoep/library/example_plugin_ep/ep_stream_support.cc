@@ -40,6 +40,12 @@ OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* 
 // callback for EP library to release any internal state
 /*static*/
 void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
+  auto& impl = *static_cast<StreamImpl*>(this_ptr);
+  if (auto* arena = impl.factory_->GetArenaAllocator(); arena != nullptr) {
+    // Reset stream-tagged chunks before the stream object is deleted.
+    arena->ResetChunksUsingStream(this_ptr);
+  }
+
   delete static_cast<StreamImpl*>(this_ptr);
 }
 
