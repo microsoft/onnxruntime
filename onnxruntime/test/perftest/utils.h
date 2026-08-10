@@ -36,11 +36,12 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& te
 void ListEpDevices(const Ort::Env& env);
 
 // Returns the OrtEpDevice instances that were added to the session.
+// If compute_stream is non-null, a sync stream is created for the first EP that has a single selected device and
+// supports sync streams. It is stored in *compute_stream and passed to that EP via the user_compute_stream option.
 std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
                                                                Ort::SessionOptions& session_options,
-                                                               const PerformanceTestConfig& test_config);
-
-bool UsesNvidiaDevice(Ort::Env& env, const PerformanceTestConfig& test_config);
+                                                               const PerformanceTestConfig& test_config,
+                                                               Ort::SyncStream* compute_stream = nullptr);
 
 struct PluginEpAllocatorSelection {
   Ort::UnownedAllocator allocator;
