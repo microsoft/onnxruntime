@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
 
     <!-- Package info -->
+        <!-- Sentinel default; CI packs one package per RID and overrides this via
+          -p:PackageId=Microsoft.ML.OnnxRuntime.EP.Cuda<major>.<rid> (see pack_nuget.py). -->
     <PackageId>Microsoft.ML.OnnxRuntime.EP.Cuda</PackageId>
     <!-- Sentinel default; overridden via -p:Version=<x.y.z> when packing (see pack_nuget.py). -->
     <Version>0.0.0-dev</Version>

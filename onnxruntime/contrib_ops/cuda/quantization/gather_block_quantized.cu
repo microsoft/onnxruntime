@@ -61,6 +61,8 @@ __global__ void GatherBlockQuantizedKernel(
   int64_t offset = 0;
   if (zero_points) {
     offset = get_val(zero_points, block_id, bits, sign);
+  } else if constexpr (std::is_same_v<T1, uint8_t>) {
+    offset = int64_t{1} << (bits - 1);
   }
 
   // unpack the raw quantized code for this element:
