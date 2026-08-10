@@ -53,7 +53,7 @@ ARCH=$(uname -m)
 
 if [ "$ARCH" == "aarch64" ] && [ "$BUILD_DEVICE" == "GPU" ]; then
   # Each CUDA compiler process handles all requested architectures and can use several GB.
-  BUILD_ARGS+=("--parallel" "2")
+  BUILD_ARGS+=("--parallel" "8")
 else
   BUILD_ARGS+=("--parallel")
 fi
