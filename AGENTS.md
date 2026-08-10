@@ -9,6 +9,8 @@ requirements for both implementation and review.
 For code reviews, follow the [code-review skill](.agents/skills/code-review/SKILL.md) in addition to all matching
 path-scoped instructions and relevant domain skills.
 
+See [Extending Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
+
 ## Build, Test, and Lint
 
 See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
