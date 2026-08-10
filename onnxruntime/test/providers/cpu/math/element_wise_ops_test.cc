@@ -2739,7 +2739,8 @@ TEST(MathOpTest, Div_Int64_WebGpu) {
   RunWebGpuNoCpuFallback(test, std::move(provider));
 }
 
-// Comparison ops take int64 inputs and produce a bool output (T = int64 constraint only).
+// Comparison ops here use int64 inputs and produce a bool output. These
+// cases validate int64 kernel selection on WebGPU (with CPU fallback disabled).
 TEST(MathOpTest, Greater_Int64_WebGpu) {
   auto provider = MakeWebGpuInt64Provider();
   if (provider == nullptr) {
