@@ -139,7 +139,7 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 // Variant of the two-pass NHWC EP used to validate that the resource accountant
 // is updated correctly across the NHWC two-pass partitioning flow.
 //
-// It reports kCudaExecutionProvider as its type so that the SizeBasedStatsAccountant
+// It reports kCudaExecutionProvider as its type so that the SizeBasedResourceAccountant
 // (which CreateAccountants registers under kCudaExecutionProvider) is wired to it,
 // mirroring the real in-tree CUDA EP. Like the CUDA EP, it attaches accounting costs
 // only to first-pass (newly claimed) capabilities. Second-pass survivors are already
