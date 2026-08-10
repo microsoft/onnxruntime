@@ -238,11 +238,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       ORT_RETURN_IF(kv_cache_bit_width_ != 4 && kv_cache_bit_width_ != 8,
                     "kv_cache_bit_width must be 4 or 8 when quantization is enabled, got ", kv_cache_bit_width_);
     }
-    constexpr bool is_float = std::is_same_v<T, float>;
-    // The OSCAR PER_GROUP (2-bit) path bridges half<->float at the kernel boundary, so it
-    // accepts MLFloat16 Q/KV. The INT8/INT4 MLAS quant paths remain float-only.
-    ORT_RETURN_IF(!is_float && !is_per_group_quant,
-                  "CPU GroupQueryAttention only supports float Q dtype with INT8/INT4 quantized KV cache");
     // PER_GROUP computes scale/zero dynamically at append time and stores them in the cache,
     // so k_scale / v_scale inputs are not required.
     if (!is_per_group_quant) {

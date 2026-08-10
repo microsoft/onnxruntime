@@ -1693,12 +1693,12 @@ def run_oscar2bit_mixed_decode_test(
 def _make_rotation(kv_num_heads, head_size, seed):
     """Per-kv-head random orthogonal matrices R [kv_num_heads, head_size, head_size] (float32)."""
     rng = np.random.default_rng(seed)
-    R = np.zeros((kv_num_heads, head_size, head_size), dtype=np.float32)
+    rot = np.zeros((kv_num_heads, head_size, head_size), dtype=np.float32)
     for h in range(kv_num_heads):
         q, r = np.linalg.qr(rng.standard_normal((head_size, head_size)))
         q = q * np.sign(np.diag(r))  # fix sign ambiguity for a deterministic orthogonal matrix
-        R[h] = q.astype(np.float32)
-    return R
+        rot[h] = q.astype(np.float32)
+    return rot
 
 
 def _rotate_bnsh(x_bnsh, R):
@@ -1869,8 +1869,8 @@ def run_oscar2bit_mixed_rot_prompt_test(
     k_bnsh = key_input.reshape(batch_size, seq_len, kv_num_heads, head_size).transpose(0, 2, 1, 3)
     v_bnsh = value_input.reshape(batch_size, seq_len, kv_num_heads, head_size).transpose(0, 2, 1, 3)
 
-    R_K = _make_rotation(kv_num_heads, head_size, seed=1)
-    R_V = _make_rotation(kv_num_heads, head_size, seed=2)
+    r_k = _make_rotation(kv_num_heads, head_size, seed=1)
+    r_v = _make_rotation(kv_num_heads, head_size, seed=2)
 
     phs = oscar2bit_packed_head_size(head_size, group_size)
     hp_present_len = min(seq_len, sink + recent)
@@ -1895,13 +1895,13 @@ def run_oscar2bit_mixed_rot_prompt_test(
             "total_sequence_length": np.array([seq_len], dtype=np.int32),
             "past_hp_key": hp_empty,
             "past_hp_value": hp_empty.copy(),
-            "oscar_rotation_k": R_K,
-            "oscar_rotation_v": R_V,
+            "oscar_rotation_k": r_k,
+            "oscar_rotation_v": r_v,
         },
     )[0]
 
     out_ref = _canonical_mixed_rot_reference(
-        query, k_bnsh, v_bnsh, R_K, R_V, num_heads, kv_num_heads, head_size,
+        query, k_bnsh, v_bnsh, r_k, r_v, num_heads, kv_num_heads, head_size,
         group_size, k_rho, v_rho, sink, recent,
     )
 
