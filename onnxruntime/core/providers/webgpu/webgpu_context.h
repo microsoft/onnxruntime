@@ -96,6 +96,14 @@ struct WebGpuContextConfig {
 #endif  // !NDEBUG
   };
   bool validation_mode_explicitly_set{false};
+  bool enable_robustness{
+#ifndef NDEBUG
+      true  // for debug builds, enable robust buffer access by default
+#else
+      false  // for release builds, disable robust buffer access for performance by default
+#endif
+  };
+  bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
@@ -171,6 +179,7 @@ class WebGpuContext final {
  public:
   Status Wait(wgpu::Future f);
 
+  const wgpu::Instance& Instance() const { return instance_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
@@ -344,6 +353,7 @@ class WebGpuContext final {
 
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
+  bool enable_robustness_ = false;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
