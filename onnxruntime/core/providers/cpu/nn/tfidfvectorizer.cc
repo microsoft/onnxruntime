@@ -323,7 +323,7 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
              !int_map->empty() &&
              ngram_size <= max_gram_length &&
              ngram_item < ngram_row_end;
-             ++ngram_size, ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_size)) {
+             ++ngram_size, ngram_item = AdvanceElementPtr(ngram_item, SafeInt<size_t>(skip_distance), elem_size)) {
           int64_t val = (elem_size == 4) ? int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} : *reinterpret_cast<const int64_t*>(ngram_item);
           auto hit = int_map->find(val);
           if (hit == int_map->end()) {
