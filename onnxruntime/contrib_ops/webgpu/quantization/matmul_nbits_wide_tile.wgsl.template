@@ -196,8 +196,10 @@ $MAIN {
   let row = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * kTileM;
   let col = (workgroup_idx % uniforms.num_N_tile) * kTileN;
 
-#if subgroup_min_size >= tile_m || (subgroup_min_size > 0 && tile_m % subgroup_min_size == 0)
+#if subgroup_min_size >= tile_m
   let capped_sg_id = min(sg_id, kTileM - 1u);
+#elif subgroup_min_size > 0 && tile_m % subgroup_min_size == 0
+  let capped_sg_id = min(sg_id, subgroup_min_size - 1u);
 #endif
 
   var results : array<output_element_t, kTileM>;

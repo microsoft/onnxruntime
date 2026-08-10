@@ -268,10 +268,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     const uint32_t num_N_tile = CeilDiv(N, tile_n);
     const uint32_t num_M_tile = CeilDiv(dispatch_M, tile_m);
 
+    bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+
     // The template shuffles tile_m lanes in bands of subgroup_min_size when that's a
     // width it supports; otherwise (including when Subgroups isn't supported) it falls
     // back to a direct reduction.
-    const uint32_t subgroup_min_size = context.HasFeature(wgpu::FeatureName::Subgroups)
+    // NOTE: NVIDIA GPUs prefer direct reduction.
+    const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia)
                                            ? context.AdapterInfo().subgroupMinSize
                                            : 0u;
 
