@@ -519,9 +519,11 @@ void RegisterBinaryOp(KernelRegistry& kernel_registry,
 }
 }  // namespace
 
-// Registers every binary elementwise op through a single path so int64 support (behind the
-// enableInt64 provider option) is applied and maintained consistently. int64 is enabled only
-// for ops whose low-32-bit i32 shader semantics are meaningful (arithmetic + comparison).
+// Registers the binary elementwise ops through a single path so int64 support (behind the
+// enableInt64 provider option) is applied and maintained consistently. int64 is currently enabled
+// for the arithmetic and comparison ops whose low-32-bit i32 shader semantics are meaningful and
+// implemented (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less, GreaterOrEqual, LessOrEqual).
+// Pow is a known gap (see the TODO below); PRelu/And have no int64 form.
 //
 // NOTE: int64 in the WebGPU shader operates on the low 32 bits only (i32 element type). Values
 // outside the int32 range [-2^31, 2^31-1] produce incorrect results. This is acceptable for the
@@ -546,10 +548,14 @@ void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enab
   RegisterBinaryOp(kernel_registry, "GreaterOrEqual", CreateBinaryOpKernel<GreaterOrEqual>, int64_capable, {{12, 15}, {16, std::nullopt}});
   RegisterBinaryOp(kernel_registry, "LessOrEqual", CreateBinaryOpKernel<LessOrEqual>, int64_capable, {{12, 15}, {16, std::nullopt}});
 
-  // Ops for which int64 is not meaningful, registered through the same path for consistency.
+  // TODO: the ONNX Pow schema allows int64 inputs, but the WebGPU Pow shader does not handle int64
+  // yet, so Pow stays on the non-int64 numeric constraints. Add schema-supported int64 Pow in a
+  // follow-up and move it up to the int64-capable group above.
   // Pow gains a second "T1" (exponent) type constraint from opset 12.
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{7, 11}});
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{12, 12}, {13, 14}, {15, std::nullopt}}, &number_types);
+
+  // PRelu (float) and And (bool) have no int64 form, so they keep their existing type constraints.
   RegisterBinaryOp(kernel_registry, "PRelu", CreateBinaryOpKernel<PRelu>, float_types, {{7, 8}, {9, 15}, {16, std::nullopt}});
   RegisterBinaryOp(kernel_registry, "And", CreateBinaryOpKernel<And>, bool_type, {{7, std::nullopt}});
 }

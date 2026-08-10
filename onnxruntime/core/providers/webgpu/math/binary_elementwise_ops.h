@@ -74,9 +74,10 @@ class BinaryElementwise : public WebGpuKernel {
   const GetAdditionalImplementationFunction get_additional_impl_;
 };
 
-// Registers every binary elementwise op (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
+// Registers the binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
 // GreaterOrEqual, LessOrEqual, Pow, PRelu, And) through a single path. int64 support (behind the
-// enableInt64 provider option) is enabled for the ops whose i32 shader semantics are meaningful.
+// enableInt64 provider option) is enabled for the arithmetic/comparison ops whose i32 shader
+// semantics are meaningful; Pow int64 is a known gap (TODO) and PRelu/And have no int64 form.
 void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 // Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
