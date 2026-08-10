@@ -65,7 +65,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
                                bool has_zero_points, bool has_bias,
                                bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
                                bool broadcast_a_row = false,
-                               bool acc_f32 = true) : Program{"DP4AMatMulNBitsSmallMProgram"},
+                               bool acc_f32 = false) : Program{"DP4AMatMulNBitsSmallMProgram"},
                                                                tile_size_k_vec_(tile_size_k_vec),
                                                                tile_size_(tile_size),
                                                                nbits_(nbits),

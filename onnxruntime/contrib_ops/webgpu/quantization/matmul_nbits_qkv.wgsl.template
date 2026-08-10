@@ -29,7 +29,10 @@ var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
 #if acc_f32
 alias acc_element_t = f32;
 #else
-alias acc_element_t = output_element_t;
+// This template has no single "output" binding (q_output/k_output/v_output instead), so
+// output_element_t does not exist here; the three outputs always share one dtype (single
+// TypeConstraint T1 in the op schema), so any of them works as the f16 alias target.
+alias acc_element_t = q_output_element_t;
 #endif
 var<workgroup> q_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
 var<workgroup> k_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
