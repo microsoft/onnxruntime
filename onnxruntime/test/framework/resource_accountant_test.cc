@@ -206,12 +206,8 @@ TEST(ResourceAccountantTest, Level1WorkspaceEstimateReplacesFallbackEstimate) {
   IResourceAccountant* accountant = nullptr;
   ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
-  auto resource_count = accountant->ComputeResourceCount(*h.node_a);
-  EXPECT_EQ(GetSizeT(resource_count), size_t{3000});
-  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{1000});
-
-  resource_count = accountant->UpdateResourceCountWithWorkspaceEstimate(
-      h.node_a->Index(), resource_count, /*workspace_bytes=*/250);
+  auto resource_count = accountant->ComputeResourceCount(
+      *h.node_a, /*workspace_estimate=*/250);
   EXPECT_EQ(GetSizeT(resource_count), size_t{2250});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{250});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
@@ -485,17 +481,15 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   ASSERT_STATUS_OK(CreateAccountants(config, stats_dir / "dummy_model.onnx", acc_map));
   auto* accountant = acc_map->at(kCudaExecutionProvider).get();
 
-  auto cost_a = accountant->ComputeResourceCount(*h.node_a);
-  cost_a = accountant->UpdateResourceCountWithWorkspaceEstimate(
-      h.node_a->Index(), cost_a, /*workspace_bytes=*/250);
+  auto cost_a = accountant->ComputeResourceCount(
+      *h.node_a, /*workspace_estimate=*/250);
   EXPECT_EQ(GetSizeT(cost_a), size_t{1000});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{400});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
             WorkspaceEstimateSource::kProfileAndEstimator);
 
-  auto cost_b = accountant->ComputeResourceCount(*h.node_b);
-  cost_b = accountant->UpdateResourceCountWithWorkspaceEstimate(
-      h.node_b->Index(), cost_b, /*workspace_bytes=*/800);
+  auto cost_b = accountant->ComputeResourceCount(
+      *h.node_b, /*workspace_estimate=*/800);
   EXPECT_EQ(GetSizeT(cost_b), size_t{900});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_b->Index()), size_t{800});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_b->Index()),
