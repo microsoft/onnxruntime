@@ -9,6 +9,7 @@
 #include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
+#include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
 template <typename T>
@@ -24,29 +25,11 @@ class RNN : public OpKernel {
     ORT_ENFORCE(allowed_directions.find(direction_) != allowed_directions.end());
     const int num_directions = direction_ == "bidirectional" ? 2 : 1;
 
-    activation_alpha_ = info.GetAttrsOrDefault("activation_alpha", std::vector<float>(num_directions, 0.0F));
-    activation_beta_ = info.GetAttrsOrDefault("activation_beta", std::vector<float>(num_directions, 0.0F));
+    const auto activation_alpha = info.GetAttrsOrDefault<float>("activation_alpha");
+    const auto activation_beta = info.GetAttrsOrDefault<float>("activation_beta");
     ORT_ENFORCE(info.GetAttrs("activations", activations_).IsOK());
     // TODO: is it optional or not?
     ORT_ENFORCE(info.GetAttr("hidden_size", &hidden_size_).IsOK());
-
-    if (num_directions == 1) {
-      // ONNX RNN defaults may be provided as 2 entries for unidirectional models.
-      if (activation_alpha_.size() == 2) {
-        activation_alpha_.resize(1);
-      }
-      if (activation_beta_.size() == 2) {
-        activation_beta_.resize(1);
-      }
-    }
-
-    const auto value_or_values = [](size_t count) { return count == 1 ? "value" : "values"; };
-    ORT_ENFORCE(activation_alpha_.size() == static_cast<size_t>(num_directions),
-                "RNN op: activation_alpha must have ", num_directions, " ", value_or_values(static_cast<size_t>(num_directions)),
-                ". Actual: ", activation_alpha_.size(), " ", value_or_values(activation_alpha_.size()));
-    ORT_ENFORCE(activation_beta_.size() == static_cast<size_t>(num_directions),
-                "RNN op: activation_beta must have ", num_directions, " ", value_or_values(static_cast<size_t>(num_directions)),
-                ". Actual: ", activation_beta_.size(), " ", value_or_values(activation_beta_.size()));
 
     if (activations_.size() == 2 && num_directions == 1) {
       // ONNX RNN default activations are {"Tanh", "Tanh"}
@@ -60,6 +43,8 @@ class RNN : public OpKernel {
                   "RNN op: Invalid activation attribute - ", activations_[direction]);
     }
 
+    activation_funcs_ = rnn::detail::ActivationFuncs(activations_, activation_alpha, activation_beta);
+
     ORT_ENFORCE(layout_ == 0,
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
 
@@ -69,11 +54,7 @@ class RNN : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  // optional, default values tied to the activation function
-  std::vector<float> activation_alpha_;
-
-  // optional, default values tied to the activation function
-  std::vector<float> activation_beta_;
+  rnn::detail::ActivationFuncs activation_funcs_;
 
   // optional, default = "Tanh"
   std::vector<std::string> activations_;
