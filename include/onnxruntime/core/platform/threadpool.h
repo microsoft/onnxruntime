@@ -451,6 +451,7 @@ class ThreadPool {
 
   std::string StopProfiling();
 
+  const unsigned int creator_pid_;
   ThreadOptions thread_options_;
 
   // If a thread pool is created with degree_of_parallelism != 1 then an underlying
