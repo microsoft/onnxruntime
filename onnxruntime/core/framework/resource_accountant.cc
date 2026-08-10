@@ -53,13 +53,20 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     }
   }
 
-  // GetCapability may probe nodes that are not ultimately assigned to this EP.
-  // Record per-node weights and workspace as pending here; CommitResourcesForNode()
-  // promotes them only after the capability is accepted, while ResetForNewPass()
-  // discards state from rejected or superseded capabilities.
+  // Computes the initial resource cost for a candidate node.
   //
-  // Prefer a matching profiling row when available. Otherwise, estimate known
-  // initializer/output bytes and use the safety-margin portion as fallback workspace.
+  // If profiling statistics are available, returns their total cost, including
+  // profiled temporary allocations. Otherwise, computes known initializer and
+  // output-tensor bytes and adds fallback workspace.
+  //
+  // An operator-specific Level-1 workspace estimate may subsequently replace
+  // fallback workspace or be maximized with profiled workspace through
+  // UpdateResourceCountWithWorkspaceEstimate().
+  //
+  // GetCapability may probe nodes that are not ultimately assigned to this EP,
+  // so per-node weights and workspace remain pending. CommitResourcesForNode()
+  // promotes them after acceptance, while ResetForNewPass() discards state from
+  // rejected or superseded capabilities.
   ResourceCount ComputeResourceCount(const Node& node) override {
     if (node_stats_) {
       const auto node_name = MakeUniqueNodeName(node);
