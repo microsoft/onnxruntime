@@ -43,6 +43,14 @@ Training-specific code (gradient ops, loss functions, optimizers, `TrainingSessi
 
 `csharp/`, `java/`, `js/`, `objectivec/`, `rust/` — each wraps the C API (`include/onnxruntime/core/session/onnxruntime_c_api.h`).
 
+## General Code Conventions
+
+### Code Comments
+
+Keep code comments concise. Add a comment only when it explains rationale, an invariant, a constraint, or subtle behavior
+that is not clear from the immediate context. Do not narrate obvious code or document the sequence of approaches taken
+to reach the current implementation; that history belongs in the pull request or commit message when relevant.
+
 ## C++ Conventions
 
 **Style**: Google C++ Style with modifications. Max line length 120 (aim for 80). See `docs/Coding_Conventions_and_Standards.md` for full details.
