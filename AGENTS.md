@@ -1,5 +1,14 @@
 # Agent Instructions for ONNX Runtime
 
+## Path-Scoped Instructions
+
+Before implementing or reviewing changes, inspect `.github/instructions/**/*.instructions.md` and parse each file's
+`applyTo` scope. Apply every instruction whose scope matches any target or changed path. Matching instructions are
+requirements for both implementation and review.
+
+For code reviews, follow the [code-review skill](.agents/skills/code-review/SKILL.md) in addition to all matching
+path-scoped instructions and relevant domain skills.
+
 ## Build, Test, and Lint
 
 See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
