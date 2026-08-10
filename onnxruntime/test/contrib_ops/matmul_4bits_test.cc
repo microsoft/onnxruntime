@@ -486,7 +486,7 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
 
 TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
 #if !defined(MLAS_TARGET_AMD64_IX86)
-  GTEST_SKIP() << "Adaptive QNBit compute is currently supported only on x86/x64.";
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
 #else
   TestOptions opts{};
   opts.N = 256;
@@ -505,7 +505,7 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
 
 TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32DynamicMetadata) {
 #if !defined(MLAS_TARGET_AMD64_IX86)
-  GTEST_SKIP() << "Adaptive QNBit compute is currently supported only on x86/x64.";
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
 #else
   TestOptions opts{};
   opts.M = 256;
@@ -744,7 +744,7 @@ TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
 
 TEST(MatMulNBits, SharedPrepackedWeights_ForceFp32) {
 #if !defined(MLAS_TARGET_AMD64_IX86)
-  GTEST_SKIP() << "Adaptive QNBit compute is currently supported only on x86/x64.";
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
 #else
   auto opts = MakeSharingTestOptions(64, 64, /*block_size*/ 32, /*accuracy_level*/ 4,
                                      /*has_zero_point*/ true, /*has_bias*/ true,
