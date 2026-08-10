@@ -77,7 +77,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  cudaStream_t stream_;  // Device stream if required by IO bindings
+  cudaStream_t stream_{nullptr};  // Device stream if required by IO bindings
 #endif
   Ort::ArenaCfg cuda_mempool_arena_cfg_{nullptr};
 };

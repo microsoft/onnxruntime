@@ -115,19 +115,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         perftest::utils::UsesNvidiaDevice(env, performance_test_config) &&
         device_memory_name_.empty()) {
       device_memory_name_ = CUDA;
-      //Initialize external CUDA stream for Nvidia EP device
+      // Initialize external CUDA stream for Nvidia EP device
       std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
       for (size_t index = 0; index < ep_devices.size(); ++index) {
         Ort::ConstEpDevice& device = ep_devices[index];
         const auto hardware_device = device.Device();
-        if(hardware_device.Type() == OrtDevice::GPU && hardware_device.VendorId() == OrtDevice::VendorIds::NVIDIA) {
+        if (hardware_device.Type() == OrtDevice::GPU && hardware_device.VendorId() == OrtDevice::VendorIds::NVIDIA) {
           if (ext_stream_ == nullptr) {
-              ext_stream_ = device.CreateSyncStream();
+            ext_stream_ = device.CreateSyncStream();
           }
         }
       }
     }
-    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config, performance_test_config.run_config.enable_cuda_io_binding ? &ext_compute_stream_ : nullptr);
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config, performance_test_config.run_config.enable_cuda_io_binding ? &ext_stream_ : nullptr);
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
