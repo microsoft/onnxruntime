@@ -2858,5 +2858,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* GatedAdd_ver1_doc = R"DOC(
+Adds one tensor to another tensor scaled by a per-row gate:
+
+  output = X + round_to_T(Y * gate)
+
+X and Y have shape (..., C), and gate has shape (..., 1). The gate is broadcast
+over C. For reduced-precision types, the product is rounded to T before the add,
+matching separate ONNX Mul and Add operators.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedAdd, 1,
+    OpSchema()
+        .SetDoc(GatedAdd_ver1_doc)
+        .Input(0, "X", "Unscaled input with shape (..., C).", "T")
+        .Input(1, "Y", "Input scaled by gate, with the same shape as X.", "T")
+        .Input(2, "gate", "Per-row gate with shape (..., 1).", "T")
+        .Output(0, "output", "Gated sum with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
 }  // namespace contrib
 }  // namespace onnxruntime
