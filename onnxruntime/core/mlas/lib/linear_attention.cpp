@@ -55,12 +55,15 @@ MlasLinearAttentionBufferSizePerThread(
     //
     // v_head_size floats hold the retrieval / delta vector. k_head_size floats
     // are reserved so a fused kernel can materialize exp(g_t) without growing
-    // the contract. Round up so each thread's slice starts on a cache line.
+    // the contract. Round up so each thread's slice starts on the preferred
+    // buffer alignment, which is queried rather than assumed to be 64.
     //
     const size_t Bytes = (static_cast<size_t>(k_head_size) +
                           static_cast<size_t>(v_head_size)) * sizeof(float);
 
-    return (Bytes + 63) & ~size_t(63);
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+
+    return (Bytes + BufferAlignment - 1) & ~(BufferAlignment - 1);
 }
 
 void

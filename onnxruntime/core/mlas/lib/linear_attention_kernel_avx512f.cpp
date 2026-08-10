@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    linear_attention_kernel_avx512.cpp
+    linear_attention_kernel_avx512f.cpp
 
 Abstract:
 
@@ -21,15 +21,16 @@ Abstract:
     With dec[i] = exp(g_t[i]) (or 1 when the rule has no decay), and the
     pre-weighted vectors k'[i] = dec[i]*k[i] and q'_g[i] = dec[i]*q_g[i]:
 
-        retrieved[j] = sum_i k'[i] * S_old[i,j]
+        retrieved[j] = sum_i (k'[i] * S_old[i,j])
         upd[j]       = beta * (v[j] - retrieved[j])     (= v[j] with no beta)
         S_new[i,j]   = dec[i] * S_old[i,j] + k[i] * upd[j]
-        o_g[j]       = scale * ( sum_i q'_g[i] * S_old[i,j] + (q_g . k) * upd[j] )
+        o_g[j]       = scale * ( sum_i (q'_g[i] * S_old[i,j]) + (q_g . k) * upd[j] )
 
     The last line is the load-bearing one: the readout is expressible from
     S_old plus a rank-1 correction, so it never needs the written-back S_new.
-    Pass 1 accumulates `retrieved` and every head's a_g = sum_i q'_g[i]*S_old[i,:]
-    from a single read of S_old; pass 2 writes S_new in place.
+    Note the rank-1 term sits outside the sum. Pass 1 accumulates `retrieved`
+    and every head's a_g = sum_i (q'_g[i] * S_old[i,:]) from a single read of
+    S_old; pass 2 writes S_new in place.
 
     Both kernels are templated on HAS_DECAY. Without decay the pre-weighting
     disappears (k' = k, q' = q, so the kernels read the input vectors directly
@@ -375,7 +376,7 @@ FusedTokenAvx512(
 }  // namespace
 
 void
-MlasLinearAttentionProcessHeadAvx512(
+MlasLinearAttentionProcessHeadAvx512F(
     const MLAS_LINEAR_ATTENTION_WORK* Work
 )
 {
@@ -445,6 +446,6 @@ MlasLinearAttentionProcessHeadAvx512(
     }
 }
 
-const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512 = {
-    MlasLinearAttentionProcessHeadAvx512
+const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F = {
+    MlasLinearAttentionProcessHeadAvx512F
 };

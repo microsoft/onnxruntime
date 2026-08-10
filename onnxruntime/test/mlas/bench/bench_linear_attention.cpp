@@ -22,13 +22,12 @@
 namespace {
 
 MLAS_THREADPOOL* GetBenchThreadPool() {
-  static OrtThreadPoolParams tpo;
-  static bool init = [&]() {
-    tpo.thread_pool_size = 8;
-    tpo.auto_set_affinity = true;
-    return true;
+  static OrtThreadPoolParams tpo = []() {
+    OrtThreadPoolParams params{};
+    params.thread_pool_size = 8;
+    params.auto_set_affinity = true;
+    return params;
   }();
-  (void)init;
   static std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));

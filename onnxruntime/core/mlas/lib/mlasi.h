@@ -1602,7 +1602,7 @@ extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 //
 struct MLAS_LINEAR_ATTENTION_DISPATCH;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
-extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
 
 //
 // Quantized depthwise convolution kernels.
