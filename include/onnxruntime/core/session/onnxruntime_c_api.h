@@ -307,7 +307,6 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
-ORT_RUNTIME_CLASS(NvTensorRtRtxProviderOptions);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(DnnlProviderOptions);
@@ -1175,9 +1174,7 @@ typedef struct OrtGraphicsInteropConfig {
   /** \brief Additional API-specific options (optional).
    *
    * Can be used for future extensibility without changing the struct layout.
-   * For example, D3D12 fence sharing flags or provider-specific options like
-   * onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data
-   * for Vulkan interop for the NvTensorRTRTX provider.
+   * For example, D3D12 fence sharing flags or other provider-specific options.
    */
   const OrtKeyValuePairs* additional_options;
 } OrtGraphicsInteropConfig;
