@@ -1225,7 +1225,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
         .Attr("causal",
-              "Whether to apply a causal mask. Default value is 1. Set to 0 for bidirectional attention.",
+              "Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
         .Attr("scale",

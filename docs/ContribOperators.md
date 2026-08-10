@@ -2618,7 +2618,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>causal</tt> : int</dt>
-<dd>Whether to apply a causal mask. Default value is 1. Set to 0 for bidirectional attention.</dd>
+<dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>

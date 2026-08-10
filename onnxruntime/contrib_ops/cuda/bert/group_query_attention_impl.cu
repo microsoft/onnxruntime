@@ -1796,6 +1796,12 @@ Status QkvToContext(
     }
   }
 
+  if (parameters.k_quant_type != KVQuantizationType::NONE ||
+      parameters.v_quant_type != KVQuantizationType::NONE) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "No available GroupQueryAttention kernel supports the quantized KV cache.");
+  }
+
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
 }
 

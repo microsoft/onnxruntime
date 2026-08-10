@@ -64,7 +64,9 @@ class GroupQueryAttention final : public WebGpuKernel {
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
 
-    if (info.GetAttrOrDefault<int64_t>("causal", 1) == 0) {
+    const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
+    ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
+    if (causal == 0) {
       ORT_NOT_IMPLEMENTED("GroupQueryAttention (WebGPU): causal=0 is not implemented.");
     }
 

@@ -204,11 +204,29 @@ TEST(GroupQueryAttentionTest, BidirectionalMask_CUDA) {
   RunGQACausalMaskTest<MLFloat16>(GqaTargetEp::kCuda, 0, std::vector<float>(16, 2.0f));
 }
 
+TEST(GroupQueryAttentionTest, InvalidCausalValue_CPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kCpu, 2, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
+TEST(GroupQueryAttentionTest, InvalidCausalValue_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 2, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
 #ifdef USE_WEBGPU
 TEST(GroupQueryAttentionTest, BidirectionalMaskNotImplemented_WebGPU) {
   RunGQACausalMaskTest<float>(
       GqaTargetEp::kWebGpu, 0, std::vector<float>(16, 2.0f),
       OpTester::ExpectResult::kExpectFailure, "GroupQueryAttention (WebGPU): causal=0 is not implemented.");
+}
+
+TEST(GroupQueryAttentionTest, InvalidCausalValue_WebGPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kWebGpu, 2, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
 }
 #endif
 

@@ -101,7 +101,9 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;
-  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("causal", 1) == 1;
+  const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
+  ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
+  is_unidirectional_ = causal == 1;
   const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
   // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
   // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.
@@ -802,6 +804,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
         !disable_memory_efficient_attention_ &&
+        !is_inputs_quantized &&
         !has_attention_bias &&
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;

@@ -93,7 +93,9 @@ class GQAAttentionBase {
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
-    causal_ = info.GetAttrOrDefault<int64_t>("causal", 1) == 1;
+    const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
+    ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
+    causal_ = causal == 1;
 
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
 
