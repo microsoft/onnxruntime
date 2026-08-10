@@ -192,9 +192,7 @@ $MAIN {
   let row = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * kTileM;
   let col = (workgroup_idx % uniforms.num_N_tile) * kTileN;
 
-  // Utilizing an f32 accumulator mitigated precision loss with minimal
-  // performance impact compared to an f16 accumulator.
-  var results : array<f32, kTileM>;
+  var results : array<output_element_t, kTileM>;
   for (var block_idx = 0u; block_idx < uniforms.n_blocks_per_col; block_idx++) {
     // Load `a` elements into workgroup memory, TileM x KAVecSizeForBlock32 (block32)
     let a_row_idx = local_idx / KAVecSizeForBlock32;
@@ -215,8 +213,8 @@ $MAIN {
         let a_data0 = a_data_tile[m_idx][b_idx * 2u];
         let a_data1 = a_data_tile[m_idx][b_idx * 2u + 1u];
 
-        results[m_idx] += f32(dot(a_data0, b_dequantized[0])) +
-                          f32(dot(a_data1, b_dequantized[1]));
+        results[m_idx] += dot(a_data0, b_dequantized[0]) +
+                          dot(a_data1, b_dequantized[1]);
       }
     }
     workgroupBarrier();
@@ -238,9 +236,9 @@ $MAIN {
   #endif
   for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
   #if has_bias
-    write_output(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]) + bias_value);
+    write_output(batch, row + m_idx, col + local_idx, results[m_idx] + bias_value);
   #else
-    write_output(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
+    write_output(batch, row + m_idx, col + local_idx, results[m_idx]);
   #endif
   }
 }  // MAIN

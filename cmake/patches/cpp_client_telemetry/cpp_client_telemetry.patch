@@ -1,5 +1,26 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
+@@ -25,2 +25,9 @@
+ if(APPLE)
++  if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT BUILD_IOS)
++    set(BUILD_IOS ON)
++    set(IOS_PLAT "${CMAKE_OSX_SYSROOT}")
++    set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}")
++    set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
++    set(FORCE_RESET_OSX_DEPLOYMENT_TARGET OFF CACHE BOOL "Keep the CMake iOS deployment target" FORCE)
++  endif()
+   message(STATUS "BUILD_IOS:              ${BUILD_IOS}")
+@@ -363,7 +363,9 @@
+    AND NOT BUILD_APPLE_HTTP)
+   set(MATSDK_NEEDS_CURL ON)
+   add_definitions(-DHAVE_MAT_CURL_HTTP_CLIENT)
+-  find_package(CURL REQUIRED)
++  if(NOT TARGET CURL::libcurl)
++    find_package(CURL REQUIRED)
++  endif()
+   if(MATSDK_USE_VCPKG_DEPS)
+     list(APPEND LIBS CURL::libcurl)
+   else()
 @@ -389,7 +389,7 @@
    message(STATUS "Using vcpkg-provided sqlite3, zlib, nlohmann-json")
  else()
@@ -8,6 +29,18 @@
 +  include_directories(${CMAKE_CURRENT_SOURCE_DIR})
    message(STATUS "Using vendored sqlite3, zlib, nlohmann-json")
  endif()
+
+--- a/lib/system/EventProperties.cpp
++++ b/lib/system/EventProperties.cpp
+@@ -449,7 +449,7 @@
+     evt_prop* EventProperties::pack()
+     {
+         size_t size = m_storage->properties.size() + m_storage->propertiesPartB.size() + 1;
+-        evt_prop * result = static_cast<evt_prop *>(calloc(sizeof(evt_prop), size));
++        evt_prop * result = static_cast<evt_prop *>(calloc(size, sizeof(evt_prop)));
+         if (result==nullptr)
+         {
+             LOG_ERROR("Unable to allocate memory to pack EventProperties");
 
 --- a/lib/CMakeLists.txt
 +++ b/lib/CMakeLists.txt
@@ -52,3 +85,30 @@
    elseif(PAL_IMPLEMENTATION STREQUAL "WIN32")
      # Windows legacy: vendored sqlite/zlib headers are included via
      # include_directories in the PAL section above; link only ${LIBS}
+
+--- a/lib/pal/posix/sysinfo_utils_mac.mm
++++ b/lib/pal/posix/sysinfo_utils_mac.mm
+@@ -8,6 +8,7 @@
+ #include <unistd.h>
+ #include <uuid/uuid.h>
+ #include <vector>
++#include <TargetConditionals.h>
+ #import <Foundation/Foundation.h>
+ 
+ #define EMPTY_GUID "00000000-0000-0000-0000-000000000000"
+@@ -37,6 +38,9 @@
+ 
+ std::string GetDeviceId()
+ {
++#if !TARGET_OS_OSX
++    return {EMPTY_GUID};
++#else
+     uuid_t uuidBytes;
+     const struct timespec spec = {1, 0};
+     int hostUUIDResult = gethostuuid(uuidBytes, &spec);
+@@ -49,4 +53,5 @@
+     }
+ 
+     return {EMPTY_GUID};
++#endif
+ }

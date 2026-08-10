@@ -37,6 +37,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
+  * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
@@ -51,6 +52,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
+  * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
@@ -936,6 +938,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
 <dt><tt>ndim</tt> : int</dt>
 <dd>Spatial dimensionality: 1, 2, or 3. Default is 1.</dd>
+<dt><tt>state_window</tt> : int</dt>
+<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) are not written. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward.</dd>
 </dl>
 
 #### Inputs (2 - 4)
@@ -948,7 +952,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional per-channel bias with shape (channels).</dd>
 <dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1). If not provided, padding is zero.</dd>
+<dd>Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1), or (W, batch_size, channels, k_1 - 1) when state_window = W > 0, in which case only slot W-1 is read. If not provided, padding is zero.</dd>
 </dl>
 
 #### Outputs
@@ -957,7 +961,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Convolution output with same shape as input.</dd>
 <dt><tt>present_state</tt> : T</dt>
-<dd>Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1). Contains the last (k-1) values from the virtual input along the causal axis.</dd>
+<dd>Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1), or (W, batch_size, channels, k_1 - 1) when state_window = W > 0. Slot W-1 contains the last (k-1) values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j).</dd>
 </dl>
 
 #### Type Constraints
@@ -2046,6 +2050,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GatedRMSNorm"></a><a name="com.microsoft.gatedrmsnorm">**com.microsoft.GatedRMSNorm**</a>
+
+  Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
+  
+    Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+  
+  The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
+  length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
+  per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
+  All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+  the reference implementation, so this replaces the exported
+  SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
+  single launch.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon added to the mean of squares before the reciprocal square root.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor with shape (..., H * C). Normalization is applied over each contiguous group of C elements.</dd>
+<dt><tt>scale</tt> : T</dt>
+<dd>Normalization weight with shape (C).</dd>
+<dt><tt>gate</tt> : T</dt>
+<dd>Gate tensor with the same shape as X.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.GatedRelativePositionBias"></a><a name="com.microsoft.gatedrelativepositionbias">**com.microsoft.GatedRelativePositionBias**</a>
 
   query_layer = (query_layer + query_bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(1, 2)
@@ -2813,6 +2868,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of query heads. Always required.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads and uses 1/sqrt(d_k). Set explicitly to override.</dd>
+<dt><tt>state_window</tt> : int</dt>
+<dd>Number of trailing per-token recurrent states held by past_state and present_state. When 0 (default) the state tensors are 4D and hold only the state after the last token, i.e. the backward-compatible (B, H_kv, d_k, d_v). When W > 0 both are 5D with a LEADING axis of extent W, right-aligned: slot j is the state after token (T - W + j), so slot W-1 is always the state after the last token (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (B, H_kv, d_k, d_v) block. Slots below max(0, W - T) are not written. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward.</dd>
 <dt><tt>update_rule</tt> : string</dt>
 <dd>The update rule for the linear attention recurrence. One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
@@ -2827,7 +2884,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>value</tt> : T</dt>
 <dd>Value vectors with 3D packed shape (B, T, H_kv * d_v).</dd>
 <dt><tt>past_state</tt> (optional) : S</dt>
-<dd>Recurrent state from previous step with shape (B, H_kv, d_k, d_v). Always 4D. If not provided, defaults to zeros.</dd>
+<dd>Recurrent state from previous step with shape (B, H_kv, d_k, d_v), or (W, B, H_kv, d_k, d_v) when state_window = W > 0, in which case only slot W-1 is read. If not provided, defaults to zeros.</dd>
 <dt><tt>decay</tt> (optional) : T</dt>
 <dd>Exponential decay gate in log-space. 3D packed shape: (B, T, H_kv * d_k) for per-key-dimension decay (GLA/RWKV-6), or (B, T, H_kv) for per-head scalar decay (DeltaNet/RetNet). Required for 'gated' and 'gated_delta' modes.</dd>
 <dt><tt>beta</tt> (optional) : T</dt>
@@ -2840,7 +2897,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). Standard GQA emits one output per query head; inverse GQA, where H_kv exceeds H_q, emits one per KV head.</dd>
 <dt><tt>present_state</tt> : S</dt>
-<dd>Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.</dd>
+<dd>Updated recurrent state with shape (B, H_kv, d_k, d_v), or (W, B, H_kv, d_k, d_v) when state_window = W > 0. Slot W-1 is the state after the last token; slot j is the state after token (T - W + j).</dd>
 </dl>
 
 #### Type Constraints
@@ -2850,6 +2907,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>S</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain state types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.LinearAttentionGate"></a><a name="com.microsoft.linearattentiongate">**com.microsoft.LinearAttentionGate**</a>
+
+  Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
+  
+    decay = decay_scale * Softplus(a + dt_bias)
+    beta  = Sigmoid(b)                            (only when b is provided)
+  
+  Reference implementations compute the decay in float32 because exp(decay) inside the
+  recurrence exponentially amplifies any precision loss. Exporters therefore emit
+  Cast -> Add -> Softplus -> Mul -> Cast, which is five kernel launches on a tensor with
+  only num_heads elements per token. This operator keeps the intermediates in float32
+  registers so a single launch replaces the whole chain.
+  
+  dt_bias and decay_scale are float32 per-head vectors of length H. decay_scale is the
+  already-negated -exp(A_log) factor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>a</tt> : T</dt>
+<dd>Decay gate projection with shape (B, T, H).</dd>
+<dt><tt>dt_bias</tt> : TF</dt>
+<dd>Per-head float32 bias added to a, with shape (H).</dd>
+<dt><tt>decay_scale</tt> : TF</dt>
+<dd>Per-head float32 multiplier applied to Softplus(a + dt_bias), with shape (H). For gated DeltaNet this is -exp(A_log).</dd>
+<dt><tt>b</tt> (optional) : T</dt>
+<dd>Update-rate projection with shape (B, T, H). Required when the beta output is requested.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>decay</tt> : T</dt>
+<dd>decay_scale * Softplus(a + dt_bias) with shape (B, T, H).</dd>
+<dt><tt>beta</tt> (optional) : T</dt>
+<dd>Sigmoid(b) with shape (B, T, H).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain gate input and output types to float tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain the per-head parameters to float32.</dd>
 </dl>
 
 
@@ -4234,21 +4343,37 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_cache_dtype</tt> : string</dt>
+<dd>Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' (the default) means the cache tensor's own element type is also the logical type. 'float16', 'bfloat16', 'int8' and 'float8e4m3fn' name that same type explicitly and must agree with the tensor. 'int4' and 'float4e2m1' name sub-byte types packed two per byte into a uint8 cache, where the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i occupies the low-order bits of byte i. Every value is a signed, zero-symmetric type: quantization uses a scale with no zero point, so unsigned logical types are not expressible.</dd>
+<dt><tt>k_quant_type</tt> : string</dt>
+<dd>Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then 'k_scale' is required. Default value is 'NONE'.</dd>
+<dt><tt>kv_cache_layout</tt> : string</dt>
+<dd>Physical layout of the KV cache: 'SEPARATE' or 'LATENT'. 'SEPARATE' (the default) uses distinct 'key_cache' and 'value_cache' tensors. 'LATENT' selects absorbed Multi-head Latent Attention: there is a single cache, 'value' and 'value_cache' must be absent, 'kv_num_heads' must be 1, and V for every head is the leading 'v_head_size' channels of the same 'key_cache' row that supplies K. Default value is 'SEPARATE'.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>Epsilon used by the Q/K RMSNorm when 'q_norm_weight' and 'k_norm_weight' are provided. Default value is 1e-6.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>rotary_offset</tt> : int</dt>
+<dd>First channel within head_size covered by rotary embedding, so RoPE is applied to [rotary_offset, rotary_offset + rotary_dim) and channels outside that range are copied through. Must be a multiple of 8. MLA sets this to kv_lora_rank so that RoPE only touches the positional suffix of the latent row. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_cache_dtype</tt> : string</dt>
+<dd>Logical element type stored in 'value_cache', with the same values and packing rule as 'k_cache_dtype'. Default value is '' (use the cache tensor's element type).</dd>
+<dt><tt>v_head_size</tt> : int</dt>
+<dd>Width of the value head, which may be narrower than head_size. Only valid when 'kv_cache_layout' is 'LATENT' (DeepSeek-V3 uses head_size=576 and v_head_size=512). When v_head_size differs from head_size the 'scale' attribute is required, because the 1/sqrt(head_size) default no longer matches the pre-absorption head width. Default value is 0, meaning the same as head_size.</dd>
+<dt><tt>v_quant_type</tt> : string</dt>
+<dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
 
-#### Inputs (8 - 10)
+#### Inputs (8 - 17)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -4256,11 +4381,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (num_tokens, kv_hidden_size) </dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (num_tokens, kv_hidden_size)</dd>
-<dt><tt>key_cache</tt> : T</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
-<dt><tt>value_cache</tt> : T</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
+<dd>Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
+<dt><tt>key_cache</tt> : T_CACHE</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
+<dt><tt>value_cache</tt> (optional) : T_CACHE</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
@@ -4271,17 +4396,31 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+<dt><tt>slot_mapping</tt> (optional) : S</dt>
+<dd>1D tensor with shape (num_tokens). For each query token, the flat slot index (block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for prefix-cache hits or rejected speculative tokens. When absent, slots are derived from 'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still required, because it defines the read path.</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the softmax denominator but contributes no value, so attention can 'do nothing'.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>1D tensor with shape (head_size). RMSNorm gain applied to each query head before rotary embedding. Must be provided together with 'k_norm_weight'.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>1D tensor with shape (head_size). RMSNorm gain applied to each key head before rotary embedding and before the key is written to the KV cache. Must be provided together with 'q_norm_weight'.</dd>
+<dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Dequantization scale of the key cache. Shape is (1) when 'k_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
+<dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
+<dt><tt>attention_metadata</tt> (optional) : S</dt>
+<dd>1D tensor with shape (2) holding [max_query_len_bound, max_kv_len_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. The op can otherwise obtain these only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The values are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
 </dl>
 
 #### Outputs (1 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
-<dt><tt>key_cache_out</tt> (optional) : T</dt>
+<dd>2D output tensor with shape (num_tokens, num_heads * v_head_size), which is (num_tokens, hidden_size) unless 'kv_cache_layout' is 'LATENT' with a narrower v_head_size.</dd>
+<dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
 <dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
-<dt><tt>value_cache_out</tt> (optional) : T</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
+<dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 </dl>
 
 #### Type Constraints
@@ -4289,6 +4428,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
+<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn)</dt>
+<dd>Constrain the KV cache to float or quantized tensors.</dd>
+<dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
+<dd>Constrain KV cache scales to float tensors.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>
 <dd>Constrain Positional inputs to int tensor.</dd>
 </dl>
