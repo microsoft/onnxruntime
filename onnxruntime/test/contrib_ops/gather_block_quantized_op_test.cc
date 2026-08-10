@@ -473,7 +473,7 @@ TEST(GatherBlockQuantizedOpTest, ShapeMismatch) {
 #endif
 
 template <typename T1, typename T2, typename Tind>
-void Test_InvalidIndices_WithZeroPoints() {
+void Test_InvalidIndices_WithZeroPoints(bool expect_safe_cuda_output = false) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -495,12 +495,16 @@ void Test_InvalidIndices_WithZeroPoints() {
   constexpr int64_t quantize_axis = 2;
   constexpr int64_t block_size = 16;
   constexpr int64_t bits = 4;
+  if (expect_safe_cuda_output) {
+    output.assign(output.size(), 0.0f);
+  }
   RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
-                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false, true);
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape,
+                                expect_safe_cuda_output, true);
 }
 
 template <typename T1, typename T2, typename Tind>
-void Test_NegativeInvalidIndices_WithZeroPoints() {
+void Test_NegativeInvalidIndices_WithZeroPoints(bool expect_safe_cuda_output = false) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -522,8 +526,12 @@ void Test_NegativeInvalidIndices_WithZeroPoints() {
   constexpr int64_t quantize_axis = 2;
   constexpr int64_t block_size = 16;
   constexpr int64_t bits = 4;
+  if (expect_safe_cuda_output) {
+    output.assign(output.size(), 0.0f);
+  }
   RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
-                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false, true);
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape,
+                                expect_safe_cuda_output, true);
 }
 
 #ifndef USE_CUDA
@@ -535,24 +543,24 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
 #endif
 
 #ifdef USE_CUDA
-TEST(GatherBlockQuantizedOpTest, InvalidIndices_Cuda) {
+TEST(GatherBlockQuantizedOpTest, InvalidIndicesSafelyHandled_Cuda) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
 
-  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
-  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>();
-  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>(true);
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>(true);
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>(true);
 }
 
-TEST(GatherBlockQuantizedOpTest, NegativeInvalidIndices_Cuda) {
+TEST(GatherBlockQuantizedOpTest, NegativeInvalidIndicesSafelyHandled_Cuda) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
 
-  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
-  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>();
-  Test_NegativeInvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>(true);
+  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>(true);
+  Test_NegativeInvalidIndices_WithZeroPoints<uint8_t, float, int32_t>(true);
 }
 #endif
 
