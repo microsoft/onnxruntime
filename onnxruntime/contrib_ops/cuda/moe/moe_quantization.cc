@@ -63,6 +63,10 @@ bool Fp4GemvAutotuneLogEnabled() {
   return onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_AUTOTUNE_LOG", 0) == 1;
 }
 
+bool Fp4GemvSkipExpandDisabled() {
+  return onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_FP4_GEMV_SKIP_EXPAND", 0) == 1;
+}
+
 const char* QMoEGemvConfigName(onnxruntime::llm::kernels::moe_gemv::MoeGemvConfig config) {
   using onnxruntime::llm::kernels::moe_gemv::MoeGemvConfig;
   if (config == MoeGemvConfig::kCtaN16) {
@@ -309,6 +313,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // ORT_FP4_SM80_GEMM constructor-plumbed decision below).
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
+      fp4_gemv_skip_expand_ = !Fp4GemvSkipExpandDisabled();
 #else
       use_fp4_dequant_fallback_ = true;
 #endif
@@ -351,6 +356,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
+      fp4_gemv_skip_expand_ = !Fp4GemvSkipExpandDisabled();
 #endif
     } else if (quant_type_ == "wfp4afp8") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "WFP4AFP8 (W4A8) quantization requires expert_weight_bits=4");
@@ -1432,13 +1438,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       using MoeGemvConfig = gemv::MoeGemvConfig;
 
-      // Choose the fc1 (SwiGLU) and fc2 GEMV tiling configs. CtaN/Threads are pure tiling
-      // knobs (numerically bit-exact), so the only goal is picking the fastest. Reuse a
-      // cached per-shape result when available; otherwise profile on a non-captured (warmup)
-      // call and freeze the choice for CUDA-graph replay. During capture (or when autotune is
-      // off) fall back to the default tiling.
-      MoeGemvConfig fc1_config = MoeGemvConfig::kDefault;
-      MoeGemvConfig fc2_config = MoeGemvConfig::kDefault;
+      // Choose the fc1 (SwiGLU) and fc2 GEMV tiling configs. Every config computes the same
+      // dot products with the same accumulation dtype, so the only goal is picking the
+      // fastest; Threads does set the K partition, so the low bits of the output can move
+      // between configs (see MoeGemvConfig). Reuse a cached per-shape result when available;
+      // otherwise start from the shape-derived analytic default and, when autotune is on,
+      // profile on a non-captured (warmup) call and freeze the choice for CUDA-graph replay.
+      // During capture (or when autotune is off, which is the shipping default) the analytic
+      // default is what actually runs.
+      const int multi_processor_count = GetDeviceProp().multiProcessorCount;
+      MoeGemvConfig fc1_config =
+          gemv::Fp4MoeGemvDefaultConfig(expanded, fc1_n, hidden, multi_processor_count);
+      MoeGemvConfig fc2_config =
+          gemv::Fp4MoeGemvDefaultConfig(expanded, hidden, inter, multi_processor_count);
 
       const int64_t row_bucket =
           onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(expanded);
@@ -1461,19 +1473,22 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       auto run_fused = [&](auto* t_ptr) {
         using T = std::remove_pointer_t<decltype(t_ptr)>;
-        ck::expandInputRowsKernelLauncher<T, T>(
-            static_cast<const T*>(input->DataRaw()), static_cast<T*>(p_act_buf.get()),
-            nullptr, nullptr, p_r2u, num_rows, hidden, static_cast<int>(k_), num_experts,
-            quant_params, false, p_efto, nullptr, nullptr, nullptr, stream);
+        const bool skip_expand = fp4_gemv_skip_expand_;
+        if (!skip_expand) {
+          ck::expandInputRowsKernelLauncher<T, T>(
+              static_cast<const T*>(input->DataRaw()), static_cast<T*>(p_act_buf.get()),
+              nullptr, nullptr, p_r2u, num_rows, hidden, static_cast<int>(k_), num_experts,
+              quant_params, false, p_efto, nullptr, nullptr, nullptr, stream);
+        }
 
         auto launch_fc1 = [&](MoeGemvConfig cfg) {
           gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<T>(
-              static_cast<const T*>(p_act_buf.get()),
+              skip_expand ? static_cast<const T*>(input->DataRaw()) : static_cast<const T*>(p_act_buf.get()),
               gemv_fc1_weight,
               static_cast<const T*>(gemv_fp4_fc1_scales_.get()),
               static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
               p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
-              fc1_gemv_sm80_layout, stream);
+              fc1_gemv_sm80_layout, skip_expand ? p_r2u : nullptr, num_rows, stream);
         };
         auto launch_fc2 = [&](MoeGemvConfig cfg) {
           gemv::launch_moe_gemv_fp4_symmetric<T>(
@@ -1514,7 +1529,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             return elapsed_ms;
           };
 
-          // fc1 reads p_act_buf (populated by the expand above).
+          // fc1 reads the original input through p_r2u when skip-expand is enabled; otherwise
+          // it reads p_act_buf populated by the expand above.
           const bool log_tune = enable_fp4_gemv_autotune_log_;
           float best_fc1 = std::numeric_limits<float>::max();
           for (MoeGemvConfig cfg : kCandidates) {

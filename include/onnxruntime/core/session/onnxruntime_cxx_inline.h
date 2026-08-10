@@ -1360,6 +1360,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessEnabled(this->p_, use_weightless));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>

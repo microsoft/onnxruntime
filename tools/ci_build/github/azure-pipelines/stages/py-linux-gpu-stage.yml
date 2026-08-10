@@ -57,7 +57,7 @@ stages:
   dependsOn: []
   jobs:
   - job: ${{ parameters.stage_name }}
-    timeoutInMinutes: 360
+    timeoutInMinutes: 480
     workspace:
       clean: all
     pool:
