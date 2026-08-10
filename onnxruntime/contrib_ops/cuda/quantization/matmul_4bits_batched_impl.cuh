@@ -8,73 +8,14 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_batched.cuh"
+#include "contrib_ops/cuda/quantization/matmul_4bits_common.cuh"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 namespace {
 
-constexpr int kColsPerThreadBlock = 8;
-constexpr int kElementsPerThreadPerIteration = 8;
-constexpr int kWarpSize = onnxruntime::cuda::GPU_WARP_SIZE;
 constexpr int kSmallMMax = 16;
-
-template <typename T>
-__device__ __forceinline__ T WarpUniform(T value) {
-  struct {
-    union {
-      T value;
-      uint32_t as_int;
-    };
-  } packed;
-  packed.value = value;
-  packed.as_int = onnxruntime::cuda::WARP_SHFL(packed.as_int, 0);
-  return packed.value;
-}
-
-#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
-__device__ __forceinline__ void Convert8xInt4To8xHalfs(uint32_t value, half2* half_2x4) {
-  uint32_t* output = reinterpret_cast<uint32_t*>(half_2x4);
-  constexpr uint32_t kImmLut = (0xf0 & 0xcc) | 0xaa;
-  constexpr uint32_t kBottomMask = 0x000f000f;
-  constexpr uint32_t kTopMask = 0x00f000f0;
-  constexpr uint32_t kI4sToF16sMagicNum = 0x64006400;
-  const uint32_t top_i4s = value >> 8;
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(output[0])
-               : "r"(value), "n"(kBottomMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(output[1])
-               : "r"(value), "n"(kTopMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(output[2])
-               : "r"(top_i4s), "n"(kBottomMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(output[3])
-               : "r"(top_i4s), "n"(kTopMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
-
-  constexpr uint32_t kFp16TopMagicNum = 0x64006400;
-  constexpr uint32_t kOneSixteenth = 0x2c002c00;
-  constexpr uint32_t kNeg64 = 0xd400d400;
-  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(output[0]) : "r"(output[0]), "r"(kFp16TopMagicNum));
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(output[1]) : "r"(output[1]), "r"(kOneSixteenth), "r"(kNeg64));
-  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(output[2]) : "r"(output[2]), "r"(kFp16TopMagicNum));
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(output[3]) : "r"(output[3]), "r"(kOneSixteenth), "r"(kNeg64));
-}
-#endif
-
-__device__ __forceinline__ void Convert8xInt4To8xBF16s(uint32_t value, __nv_bfloat162* bf16_2x4) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  bf16_2x4[0] = __floats2bfloat162_rn(static_cast<float>((value >> 0) & 0xF),
-                                      static_cast<float>((value >> 16) & 0xF));
-  bf16_2x4[1] = __floats2bfloat162_rn(static_cast<float>((value >> 4) & 0xF),
-                                      static_cast<float>((value >> 20) & 0xF));
-  bf16_2x4[2] = __floats2bfloat162_rn(static_cast<float>((value >> 8) & 0xF),
-                                      static_cast<float>((value >> 24) & 0xF));
-  bf16_2x4[3] = __floats2bfloat162_rn(static_cast<float>((value >> 12) & 0xF),
-                                      static_cast<float>((value >> 28) & 0xF));
-#endif
-}
 
 template <class T>
 struct DequantizedEight;
