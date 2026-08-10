@@ -29,7 +29,7 @@ Distinguish defects introduced by the change from pre-existing issues. Prioritiz
 - portability across supported platforms and configurations;
 - missing tests for behavior changed by the diff.
 
-Do not report style issues already enforced by repository formatting or linting.
+Do not report formatting issues already enforced by repository tooling.
 
 ## 3. Report findings
 
