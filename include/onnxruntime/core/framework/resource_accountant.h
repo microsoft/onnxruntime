@@ -73,15 +73,12 @@ class IResourceAccountant {
   virtual ResourceCount GetConsumedAmount() const = 0;
   virtual void AddConsumedAmount(const ResourceCount& amount) = 0;
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
-  virtual ResourceCount ComputeResourceCount(const Node& node) = 0;
 
-  // Combines an EP/kernel-specific Level-1 estimate with a previously computed
-  // node cost. The estimator replaces fallback workspace or is maximized with
-  // profiled workspace. The returned cost is used for the capability's budget.
-  virtual ResourceCount UpdateResourceCountWithWorkspaceEstimate(
-      size_t /*node_index*/, const ResourceCount& resource_count, size_t /*workspace_bytes*/) {
-    return resource_count;
-  }
+  // Computes the complete resource cost for a candidate node. When supplied,
+  // the Level-1 workspace estimate replaces fallback workspace or is maximized
+  // with profiled workspace.
+  virtual ResourceCount ComputeResourceCount(
+      const Node& node, std::optional<size_t> level1_workspace_estimate = std::nullopt) = 0;
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;

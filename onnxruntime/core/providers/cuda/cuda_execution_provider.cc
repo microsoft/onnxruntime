@@ -3537,7 +3537,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     } else {
       auto* node = graph.GetNode(node_index);
-      auto resource_count_variant = resource_accountant->ComputeResourceCount(*node);
+      std::optional<size_t> level1_workspace_estimate;
 
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
@@ -3555,14 +3555,15 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   *node, input_a_shape->GetDims(), GetDeviceProp())
                             : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
         if (ws.has_value()) {
-          resource_count_variant = resource_accountant->UpdateResourceCountWithWorkspaceEstimate(
-              node->Index(), resource_count_variant, *ws);
+          level1_workspace_estimate = *ws;
           LOGS(logger, VERBOSE) << "Level-1 workspace estimate for " << node->Name()
                                 << ": " << *ws << " bytes";
         }
       }
 #endif
 
+      const auto resource_count_variant =
+          resource_accountant->ComputeResourceCount(*node, level1_workspace_estimate);
       const auto resource_count = std::get<size_t>(resource_count_variant);
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count

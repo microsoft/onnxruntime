@@ -53,30 +53,35 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     }
   }
 
-  // Computes the initial resource cost for a candidate node.
+  // Computes the resource cost for a candidate node.
   //
-  // If profiling statistics are available, returns their total cost, including
-  // profiled temporary allocations. Otherwise, computes known initializer and
-  // output-tensor bytes and adds fallback workspace.
-  //
-  // An operator-specific Level-1 workspace estimate may subsequently replace
-  // fallback workspace or be maximized with profiled workspace through
-  // UpdateResourceCountWithWorkspaceEstimate().
+  // If profiling statistics are available, uses their non-workspace cost and
+  // profiled temporary allocations. If a Level-1 estimate is also provided,
+  // uses the maximum of the profiled and estimated workspace. Without profiling,
+  // computes known initializer/output bytes and uses the Level-1 estimate or,
+  // when none is provided, fallback workspace.
   //
   // GetCapability may probe nodes that are not ultimately assigned to this EP,
   // so per-node weights and workspace remain pending. CommitResourcesForNode()
   // promotes them after acceptance, while ResetForNewPass() discards state from
   // rejected or superseded capabilities.
-  ResourceCount ComputeResourceCount(const Node& node) override {
+  ResourceCount ComputeResourceCount(
+      const Node& node, std::optional<size_t> level1_workspace_estimate) override {
     if (node_stats_) {
       const auto node_name = MakeUniqueNodeName(node);
       auto hit = node_stats_->find(node_name);
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
-        pending_workspace_by_node_.insert_or_assign(node.Index(), stats.total_temp_allocations);
-        pending_workspace_source_by_node_.insert_or_assign(node.Index(), WorkspaceEstimateSource::kProfile);
+        const bool has_estimator = level1_workspace_estimate.has_value();
+        const size_t selected_workspace =
+            has_estimator ? std::max(stats.total_temp_allocations, *level1_workspace_estimate)
+                          : stats.total_temp_allocations;
+        pending_workspace_by_node_.insert_or_assign(node.Index(), selected_workspace);
+        pending_workspace_source_by_node_.insert_or_assign(
+            node.Index(),
+            has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator : WorkspaceEstimateSource::kProfile);
         return stats.input_sizes + stats.initializers_sizes +
-               stats.total_dynamic_sizes + stats.total_temp_allocations;
+               stats.total_dynamic_sizes + selected_workspace;
       }
     }
 
@@ -147,38 +152,20 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
       output_size += size;
     }
 
-    // Apply the existing safety multiplier for workspace/temp allocations we can't see.
-    // Max-shape inference makes tensor sizes concrete but does not, by itself, make
-    // kernel workspace requirements known.
+    // Use the safety-margin portion as fallback workspace when no Level-1
+    // estimate is available. Max-shape inference makes tensor sizes concrete
+    // but does not, by itself, make kernel workspace requirements known.
     constexpr size_t kAdHocSafetyMultiplierPercent = 150;
     SafeInt<size_t> estimated = total_size + output_size;
-    size_t node_cost = static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
-    const size_t workspace_estimate = node_cost - static_cast<size_t>(estimated);
-    pending_workspace_by_node_.insert_or_assign(node.Index(), workspace_estimate);
-    pending_workspace_source_by_node_.insert_or_assign(node.Index(), WorkspaceEstimateSource::kFallback);
-    return node_cost;
-  }
-
-  ResourceCount UpdateResourceCountWithWorkspaceEstimate(
-      NodeIndex node_index, const ResourceCount& resource_count, size_t workspace_bytes) override {
-    if (!std::holds_alternative<size_t>(resource_count)) {
-      return resource_count;
-    }
-
-    const size_t current_cost = std::get<size_t>(resource_count);
-    const size_t current_workspace = GetPendingWorkspaceEstimate(node_index);
-    const auto current_source = GetPendingWorkspaceEstimateSource(node_index);
-    ORT_ENFORCE(current_cost >= current_workspace);
-
-    const bool has_profile = current_source == WorkspaceEstimateSource::kProfile ||
-                             current_source == WorkspaceEstimateSource::kProfileAndEstimator;
-    const size_t selected_workspace = has_profile ? std::max(current_workspace, workspace_bytes) : workspace_bytes;
-    pending_workspace_by_node_.insert_or_assign(node_index, selected_workspace);
+    const size_t fallback_workspace =
+        static_cast<size_t>(estimated * (kAdHocSafetyMultiplierPercent - 100) / 100);
+    const size_t selected_workspace = level1_workspace_estimate.value_or(fallback_workspace);
+    pending_workspace_by_node_.insert_or_assign(node.Index(), selected_workspace);
     pending_workspace_source_by_node_.insert_or_assign(
-        node_index,
-        has_profile ? WorkspaceEstimateSource::kProfileAndEstimator : WorkspaceEstimateSource::kEstimator);
-    return static_cast<size_t>(
-        SafeInt<size_t>(current_cost - current_workspace) + selected_workspace);
+        node.Index(),
+        level1_workspace_estimate.has_value() ? WorkspaceEstimateSource::kEstimator
+                                              : WorkspaceEstimateSource::kFallback);
+    return static_cast<size_t>(estimated + selected_workspace);
   }
 
   void ResetPendingResourcesImpl() override {
