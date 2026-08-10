@@ -9,7 +9,8 @@ Support external initializer data without filesystem access through two separate
 - Allow an application to provide an external initializer file as a buffer when creating an inference session.
 
 Together, these capabilities support models whose initializer data makes the complete model exceed the protobuf 2 GB
-limit.
+limit. Compiling execution providers hit the same limit through EPContext node data; that path is covered separately
+below.
 
 Compilation produces two buffers:
 
@@ -122,6 +123,30 @@ that happens, fall back to copying that individual initializer into owned storag
 initializers in the same buffer still borrow directly. Reject a null buffer, a filename mismatch, and out-of-range
 slices. Valid overlapping slices are allowed.
 
+## Compiling EPs and EPContext node data
+
+Compiling execution providers wrap each fused subgraph in an `EPContext` node whose provider binary is carried in the
+node's `ep_cache_context` attribute. This data is a node attribute, not an initializer, so the initializer-buffer path
+above does not cover it, and the same 2 GB limit applies independently.
+
+Embed mode cannot represent data at or above 2 GB. The blob lives inside the node's `AttributeProto` within the
+`ModelProto`, and `OrtApi::CreateOpAttr` takes an `int` length, so a plugin EP cannot even create such an attribute. Whether to embed remains the caller's choice. Today the
+EP creates the `EPContext` node itself (plugin EPs through `OrtModelEditorApi::CreateNode`, in-tree EPs by building the
+`Node` directly) and chooses both whether to embed and, when not embedding, where the data goes; the existing write
+callback (`OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc` retrieved via `OrtEpContextConfig`) is
+opt-in, so ORT cannot force an arbitrary EP to route through it.
+
+Add a dedicated `CreateEpContextNode` function that takes the cache-context bytes as a pointer and a
+`size_t` length, rather than through a string attribute, and reject the generic `CreateNode` for the `EPContext`
+op type in the `com.microsoft` domain. Honor the caller's embed choice; ORT does not override it. When embedding, the
+2 GB protobuf limit applies to the embedded bytes: calling with a size at or above 2 GB while embedding is an error and
+ORT returns a failure rather than silently switching to non-embedded output.
+When not embedding, ORT owns making the write consistent: if an EPContext write callback is configured
+it routes the bytes through it, otherwise it writes them to a file alongside a file output model, and stores only the
+logical name in the attribute.
+Migrate the in-tree EPs that build `EPContext` nodes directly onto the same internal path
+so their data flows through the same ORT-controlled write.
+
 ## Validation
 
 Reject an empty or absolute logical filename, null allocator or output pointers, invalid thresholds, a non-power-of-two
@@ -144,3 +169,10 @@ the ONNX signed 64-bit external-data fields.
 - Verify invalid arguments, allocation failure, checked-arithmetic failure, and unchanged outputs on failure.
 - Exercise aggregate external-data sizes beyond 2 GB with a counting or sparse test sink so routine CI does not require
   a 2 GB allocation.
+- Compile a model with a compiling EP that produces non-embedded EPContext data through `CreateEpContextNode`, and
+  verify the bytes are routed through the configured EPContext write callback while the `ep_cache_context` attribute
+  holds only the logical name.
+- Verify the generic `CreateNode` rejects the `EPContext` op type, and that the caller's embed choice is honored (data
+  embedded when requested, routed through the write callback when not).
+- Verify that `CreateEpContextNode` with an embedded payload at or above 2 GB returns an error rather than falling back
+  to non-embedded output.
