@@ -374,17 +374,36 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
   return result;
 }
 
+static bool HasUnsupportedNestedSubnode(const onnxruntime::GraphViewer& graph_viewer) {
+  for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(node_idx);
+    if (node == nullptr) continue;
+
+    if (node->Domain() == kMSDomain || node->OpType().rfind("MGXKernel_", 0) == 0) {
+      return true;
+    }
+
+    if (node->OpType() == "If" || node->OpType() == "Loop" || node->OpType() == "Scan") {
+      for (const auto& entry : node->GetAttributeNameToSubgraphMap()) {
+        const auto* subgraph = entry.second;
+        if (subgraph != nullptr && HasUnsupportedNestedSubnode(subgraph->GetGraphViewer())) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
 
-  if (optype == "If" || optype == "Loop") {
-    for (const auto& entry : node->GetAttributeWithBlocks()) {
-      const auto& subgraph = entry.second;
-      for (const auto& sub_node : subgraph.Nodes()) {
-        if (sub_node.Domain() == kMSDomain || sub_node.OpType().rfind("MGXKernel_", 0) == 0) {
-          return true;
-        }
+  if (optype == "If" || optype == "Loop" || optype == "Scan") {
+    for (const auto& entry : node->GetAttributeNameToSubgraphMap()) {
+      const auto* subgraph = entry.second;
+      if (subgraph != nullptr && HasUnsupportedNestedSubnode(subgraph->GetGraphViewer())) {
+        return true;
       }
     }
   }
