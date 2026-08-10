@@ -1798,6 +1798,23 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
         self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
 
+        # OrtDeviceVendorId mirrors OrtDevice::VendorIds in ortdevice.h. The CoreML factory and Apple
+        # hardware discovery both use VendorIds::APPLE, so the Python value must match the C++ constant.
+        self.assertEqual(onnxrt.OrtDeviceVendorId.APPLE, 0x106B)
+
+        # When Apple accelerator hardware is available, also verify the vendor ID returned by get_hardware_devices().
+        apple_accelerator = next(
+            (
+                device
+                for device in onnxrt.get_hardware_devices()
+                if device.type in (onnxrt.OrtHardwareDeviceType.GPU, onnxrt.OrtHardwareDeviceType.NPU)
+                and device.vendor == "Apple"
+            ),
+            None,
+        )
+        if apple_accelerator is not None:
+            self.assertEqual(apple_accelerator.vendor_id, onnxrt.OrtDeviceVendorId.APPLE)
+
     def test_ort_memory_info(self):
         cpu_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",

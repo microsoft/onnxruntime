@@ -45,6 +45,7 @@ class OrtDeviceVendorId(IntEnum):
 
     NONE = 0x0000
     AMD = 0x1002
+    APPLE = 0x106B
     NVIDIA = 0x10DE
     ARM = 0x13B5
     MICROSOFT = 0x1414
