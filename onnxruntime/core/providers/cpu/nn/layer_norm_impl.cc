@@ -25,8 +25,8 @@ template <typename T>
 inline constexpr bool is_narrow_float_v = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
 
 // Batch-convert a narrow float buffer to f32.
-// MLFloat16 uses the optimised MLAS path; BFloat16 uses the scalar loop from float16.h
-// (portable, uses round-to-nearest-even on the return trip via BFloat16(float)).
+// MLFloat16 uses the optimised MLAS vectorised path; BFloat16 uses a portable
+// scalar loop (upper 16 bits → f32, no hardware bf16 instructions).
 template <typename T>
 void NarrowToFloat(const T* src, float* dst, size_t count) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -38,6 +38,8 @@ void NarrowToFloat(const T* src, float* dst, size_t count) {
 }
 
 // Batch-convert f32 back to a narrow float buffer.
+// MLFloat16 uses the MLAS vectorised path; BFloat16 uses a portable scalar
+// truncate-to-nearest-even loop (no hardware bf16 instructions on AVX2).
 template <typename T>
 void FloatToNarrow(const float* src, T* dst, size_t count) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -138,6 +140,14 @@ inline Eigen::Index ToEigenIndex(int64_t v) {
   return narrow<Eigen::Index>(v);
 }
 
+// Write a statistic value (mean or 1/denom) into the output buffer.
+// U is the stat output type — always float for narrow-float T (the ONNX spec
+// constrains Mean/InvStdDev to float, and the contrib schema does the same).
+template <typename U>
+ORT_FORCEINLINE void WriteStat(U* dst, ptrdiff_t index, double v) {
+  dst[index] = gsl::narrow_cast<U>(v);
+}
+
 template <typename U>
 void ComputeJob(
     const MLFloat16* X_data,
@@ -215,12 +225,11 @@ void ComputeJob(
   }
 
   if (mean_data != nullptr) {
-    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-    mean_data[task_idx] = MLFloat16(mean);
+    WriteStat<U>(mean_data, task_idx, static_cast<double>(mean));
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1.0f / std_dev);
+    WriteStat<U>(inv_std_dev_data, task_idx, static_cast<double>(1.0f / std_dev));
   }
 }
 
@@ -289,25 +298,13 @@ void ComputeJob(
   }
 
   if (mean_data != nullptr) {
-    mean_data[task_idx] = BFloat16(mean);
+    WriteStat<U>(mean_data, task_idx, static_cast<double>(mean));
   }
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = BFloat16(1.0f / std_dev);
+    WriteStat<U>(inv_std_dev_data, task_idx, static_cast<double>(1.0f / std_dev));
   }
 }
 
-// Write a statistic value (mean or 1/denom) into the output buffer,
-// converting from double to the target type U (including MLFloat16 and BFloat16).
-template <typename U>
-ORT_FORCEINLINE void WriteStat(U* dst, ptrdiff_t index, double v) {
-  if constexpr (std::is_same_v<U, MLFloat16>) {
-    dst[index] = MLFloat16(static_cast<float>(v));
-  } else if constexpr (std::is_same_v<U, BFloat16>) {
-    dst[index] = BFloat16(static_cast<float>(v));
-  } else {
-    dst[index] = gsl::narrow_cast<U>(v);
-  }
-}
 template <typename T>
 struct NormalizationMath {
   static double LoadInput(const T* ptr, int64_t offset) {

@@ -125,6 +125,8 @@ void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, I
 }
 
 // Batch-convert a narrow float buffer to f32.
+// MLFloat16 uses the MLAS vectorised path; BFloat16 uses a portable scalar
+// widen (upper 16 bits → f32, no hardware bf16 instructions on AVX2).
 template <typename T>
 void NarrowToFloat(const T* src, float* dst, size_t count) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -136,6 +138,8 @@ void NarrowToFloat(const T* src, float* dst, size_t count) {
 }
 
 // Batch-convert f32 back to a narrow float buffer.
+// MLFloat16 uses the MLAS vectorised path; BFloat16 uses a portable scalar
+// truncate-to-nearest-even loop (no hardware bf16 instructions on AVX2).
 template <typename T>
 void FloatToNarrow(const float* src, T* dst, size_t count) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
