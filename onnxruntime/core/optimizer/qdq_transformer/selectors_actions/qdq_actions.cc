@@ -638,9 +638,12 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    Node& replacement_node) const {
   const auto* dq_node = selected_nodes.Input(0);
 
+  // Graph::Resolve fills in the schema default (block_size = 0) for DQ nodes that do not declare
+  // one, so presence of the attribute alone does not mean the DQ is blockwise. Only a positive
+  // value is model-provided; zero means per-tensor/per-channel and the block size is derived below.
   const auto& dq_attributes = dq_node->GetAttributes();
   const auto block_size_iter = dq_attributes.find("block_size");
-  if (block_size_iter != dq_attributes.end()) {
+  if (block_size_iter != dq_attributes.end() && block_size_iter->second.i() > 0) {
     const int64_t block_size = block_size_iter->second.i();
     ORT_RETURN_IF_NOT(IsValidMatMulNBitsBlockSize(block_size),
                       "DQ block_size must be a power-of-two in [",
