@@ -10,6 +10,7 @@
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
 #include "core/util/force_inline.h"
+#include "core/util/narrow_float_utils.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_helper.h"
 
@@ -121,32 +122,6 @@ void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, I
     }
     dest = std::move(float_ptr);
     is_packed = true;
-  }
-}
-
-// Batch-convert a narrow float buffer to f32.
-// MLFloat16 uses the MLAS vectorised path; BFloat16 uses a portable scalar
-// widen (upper 16 bits → f32, no hardware bf16 instructions on AVX2).
-template <typename T>
-void NarrowToFloat(const T* src, float* dst, size_t count) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    MlasConvertHalfToFloatBuffer(src, dst, count);
-  } else {
-    static_assert(std::is_same_v<T, BFloat16>);
-    BFloat16ToFloat(src, dst, count);
-  }
-}
-
-// Batch-convert f32 back to a narrow float buffer.
-// MLFloat16 uses the MLAS vectorised path; BFloat16 uses a portable scalar
-// truncate-to-nearest-even loop (no hardware bf16 instructions on AVX2).
-template <typename T>
-void FloatToNarrow(const float* src, T* dst, size_t count) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    MlasConvertFloatToHalfBuffer(src, dst, count);
-  } else {
-    static_assert(std::is_same_v<T, BFloat16>);
-    FloatToBFloat16(src, dst, count);
   }
 }
 
