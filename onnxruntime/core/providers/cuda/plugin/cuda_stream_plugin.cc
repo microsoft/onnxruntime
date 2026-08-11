@@ -61,14 +61,6 @@ CudaSyncStream::~CudaSyncStream() {
     has_deferred_cpu_buffers = !deferred_cpu_buffers_.empty();
   }
 
-  // Clear arena back-pointers before this stream object can disappear.
-  if (cuda_stream_ != nullptr) {
-    OrtStatus* arena_status = factory_.ResetDeviceArenaChunksUsingStream(device_id_, this);
-    if (arena_status != nullptr) {
-      Ort::GetApi().ReleaseStatus(arena_status);
-    }
-  }
-
   if (has_deferred_cpu_buffers) {
     if (cuda_stream_ != nullptr) {
       OrtStatus* status = OnSessionRunEndImpl(this);
@@ -310,7 +302,18 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 }
 
 /*static*/ void ORT_API_CALL CudaSyncStream::ReleaseImpl(OrtSyncStreamImpl* this_ptr) noexcept {
-  delete static_cast<CudaSyncStream*>(this_ptr);
+  auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+  if (stream->cuda_stream_ != nullptr) {
+    OrtStatus* status = OnSessionRunEndImpl(this_ptr);
+    if (status != nullptr) {
+      // Keep the wrapper alive when synchronization fails because arena chunks
+      // may still refer to it and must not become globally reusable.
+      Ort::GetApi().ReleaseStatus(status);
+      return;
+    }
+  }
+
+  delete stream;
 }
 
 /*static*/ CudaSyncStream* CudaSyncStream::FromCudaStream(cudaStream_t stream) {

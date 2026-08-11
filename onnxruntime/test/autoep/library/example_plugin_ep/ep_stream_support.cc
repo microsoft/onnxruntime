@@ -43,10 +43,13 @@ void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noex
   auto& impl = *static_cast<StreamImpl*>(this_ptr);
   if (auto* arena = impl.factory_->GetArenaAllocator(); arena != nullptr) {
     // Reset stream-tagged chunks before the stream object is deleted.
-    arena->ResetChunksUsingStream(this_ptr);
+    OrtStatus* status = arena->ResetChunksUsingStream(this_ptr);
+    if (status != nullptr) {
+      impl.ort_api.ReleaseStatus(status);
+    }
   }
 
-  delete static_cast<StreamImpl*>(this_ptr);
+  delete &impl;
 }
 
 //
