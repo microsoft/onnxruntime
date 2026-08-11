@@ -161,14 +161,14 @@ void GatherNDImpl(
       const TIndex* const indices_data,                \
       int64_t* const input_slice_offsets_data);
 
-#define SPECIALIZED_VALIDATE_IMPL(TIndex) \
+#define SPECIALIZED_VALIDATE_IMPL(TIndex)                                              \
   template GatherNDValidationResult ValidateIndicesAndReturnFirstInvalidIndex<TIndex>( \
-      cudaStream_t stream, \
-      const int64_t batch_dims, \
-      const TArray<int64_t> input_dims, \
-      const size_t num_slices, \
-      const size_t num_slice_dims, \
-      const TIndex* const indices_data, \
+      cudaStream_t stream,                                                             \
+      const int64_t batch_dims,                                                        \
+      const TArray<int64_t> input_dims,                                                \
+      const size_t num_slices,                                                         \
+      const size_t num_slice_dims,                                                     \
+      const TIndex* const indices_data,                                                \
       GatherNDValidationResult* device_result);
 
 #define SPECIALIZED_IMPL(T) \
