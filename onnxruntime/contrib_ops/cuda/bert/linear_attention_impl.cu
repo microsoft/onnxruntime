@@ -1411,8 +1411,10 @@ Status LaunchLinearAttentionKernel(
   if (recurrent_smem_exceeds_device) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "LinearAttention: recurrent kernel requires ", recurrent_smem_size,
-                           " bytes of shared memory per block, but the device supports ",
-                           max_shared_memory_per_block, " bytes.");
+                           " bytes of opt-in shared memory per block, but the device supports ",
+                           max_shared_memory_per_block,
+                           " bytes. No compatible fallback exists (column kernel requires d_k in {64,128} and d_v % ",
+                           kColsPerBlock, " == 0).");
   }
 
   auto launch_fixed = [&](auto dk_tag, auto dv_tag) -> Status {
