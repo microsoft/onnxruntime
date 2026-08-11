@@ -12,8 +12,7 @@
 
 static const std::vector<std::string> qgemm_arg_names = {"M", "N", "K", "Batch", "Threads"};
 
-void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
-  constexpr bool b_is_signed = true;
+void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed, bool b_is_signed = true) {
   constexpr uint8_t a_zero_point = 29;
   constexpr uint8_t b_zero_point = 179;
 
@@ -111,3 +110,9 @@ BENCHMARK_CAPTURE(QGEMM, UnsignedANoPackB, false, false)->Apply(QGemmSize)->UseR
 BENCHMARK_CAPTURE(QGEMM, SignedAPackB, true, true)->Apply(QGemmSize)->UseRealTime();
 #endif
 BENCHMARK_CAPTURE(QGEMM, SignedANoPackB, false, true)->Apply(QGemmSize)->UseRealTime();
+
+// U8U8 (unsigned A, *unsigned* B). Every capture above uses signed B, so without
+// these the U8U8 dispatch -- a distinct kernel selection from U8S8 -- had no
+// benchmark coverage at all.
+BENCHMARK_CAPTURE(QGEMM, UnsignedABPackB, true, false, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, UnsignedABNoPackB, false, false, false)->Apply(QGemmSize)->UseRealTime();
