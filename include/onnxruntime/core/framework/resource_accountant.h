@@ -35,6 +35,11 @@ enum class WorkspaceEstimateSource {
   kProfileAndEstimator,
 };
 
+struct WorkspaceEstimateSelection {
+  size_t bytes = 0;
+  WorkspaceEstimateSource source = WorkspaceEstimateSource::kNone;
+};
+
 struct WorkspaceEstimateSourceCounts {
   size_t fallback = 0;
   size_t profile = 0;
@@ -107,18 +112,16 @@ class IResourceAccountant {
   // was called. Default no-op for accountants without a resource breakdown.
   virtual void CommitResourcesForNode(size_t /*node_index*/) {}
 
-  // Returns the pending workspace estimate recorded while computing a node's cost.
+  // Returns the pending workspace selection recorded while computing a node's cost.
   // Used when layout transformation defers committing first-pass capabilities.
-  virtual size_t GetPendingWorkspaceEstimate(size_t /*node_index*/) const { return 0; }
-
-  virtual WorkspaceEstimateSource GetPendingWorkspaceEstimateSource(size_t /*node_index*/) const {
-    return WorkspaceEstimateSource::kNone;
+  virtual WorkspaceEstimateSelection GetPendingWorkspaceEstimateSelection(
+      size_t /*node_index*/) const {
+    return {};
   }
 
   // Commits a workspace estimate whose original pending state is no longer available.
   // Used for nodes that survive a layout-transformation second pass.
-  virtual void AddCommittedWorkspaceEstimate(
-      size_t /*workspace_bytes*/, WorkspaceEstimateSource /*source*/) {}
+  virtual void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection /*selection*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 

@@ -1845,7 +1845,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
   {
-    size_t total_level2_workspace = 0;
+    SafeInt<size_t> total_level2_workspace = 0;
     size_t nodes_with_workspace = 0;
     for (const auto& node : graph_viewer_->Nodes()) {
       auto* kernel = GetMutableKernel(node.Index());
@@ -1858,7 +1858,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
           gsl::make_span(resolved), requirements));
 
       if (!requirements.empty()) {
-        size_t node_workspace = 0;
+        SafeInt<size_t> node_workspace = 0;
         for (const auto& req : requirements) {
           node_workspace += req.size_bytes;
           LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
@@ -1870,13 +1870,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         ++nodes_with_workspace;
         LOGS(logger_, INFO) << "Level-2 workspace: node '" << node.Name()
                             << "' (" << node.OpType() << "): " << requirements.size()
-                            << " slot(s), " << node_workspace << " bytes total";
+                            << " slot(s), " << static_cast<size_t>(node_workspace) << " bytes total";
       }
     }
     if (total_level2_workspace > 0) {
       LOGS(logger_, INFO) << "Level-2 workspace estimation summary: "
                           << nodes_with_workspace << " kernel(s) declared workspace, "
-                          << "total estimated workspace: " << total_level2_workspace << " bytes";
+                          << "total estimated workspace: "
+                          << static_cast<size_t>(total_level2_workspace) << " bytes";
     }
   }
 
