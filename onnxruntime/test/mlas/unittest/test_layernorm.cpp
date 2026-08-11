@@ -282,8 +282,67 @@ class MlasLayerNormTest : public MlasTestBase {
     }
   }
 
-  // Benchmark: compare kernel vs scalar reference in-process
-  void Benchmark(size_t norm_size, size_t warmup, size_t iters) {
+  // -----------------------------------------------------------------------
+  // True scalar fp32 baseline — reproduces the fallback path from
+  // onnxruntime/core/providers/cpu/nn/layer_norm_impl.cc (ComputeJob)
+  // that runs when MlasLayerNormF32() returns false on x86-64 prior to
+  // this PR. This is the code the AVX2 kernel actually replaces.
+  //
+  // IMPORTANT: This is fp32 throughout (no fp64 accumulation), matching
+  // the production fallback. Do NOT confuse with ReferenceLayerNorm above
+  // which uses fp64 accumulation for correctness testing.
+  // -----------------------------------------------------------------------
+  static void ScalarFp32Baseline(
+      const float* input,
+      const float* scale,
+      const float* bias,
+      float* output,
+      float* mean_out,
+      float* inv_std_out,
+      size_t norm_size,
+      float epsilon,
+      bool simplified) {
+    float mean = 0.0f;
+    float std_dev = 0.0f;
+
+    if (simplified) {
+      // RMSNorm: sum of squares, single pass
+      float sum_sq = 0.0f;
+      for (size_t h = 0; h < norm_size; h++) {
+        output[h] = input[h];
+        sum_sq += input[h] * input[h];
+      }
+      std_dev = sqrtf(sum_sq / static_cast<float>(norm_size) + epsilon);
+    } else {
+      // Welford's online algorithm — matches layer_norm_impl.cc exactly
+      float M2 = 0.0f;
+      for (size_t h = 0; h < norm_size; h++) {
+        output[h] = input[h];
+        float delta = input[h] - mean;
+        mean += delta / static_cast<float>(h + 1);
+        float delta2 = input[h] - mean;
+        M2 += delta * delta2;
+      }
+      std_dev = sqrtf(M2 / static_cast<float>(norm_size) + epsilon);
+    }
+
+    float inv_denom = 1.0f / std_dev;
+    for (size_t h = 0; h < norm_size; h++) {
+      if (simplified) {
+        output[h] = output[h] * inv_denom * scale[h];
+      } else if (bias == nullptr) {
+        output[h] = (output[h] - mean) * inv_denom * scale[h];
+      } else {
+        output[h] = (output[h] - mean) * inv_denom * scale[h] + bias[h];
+      }
+    }
+
+    if (mean_out != nullptr) *mean_out = mean;
+    if (inv_std_out != nullptr) *inv_std_out = inv_denom;
+  }
+
+  // Benchmark: AVX2 kernel vs true scalar fp32 baseline
+  void Benchmark(size_t norm_size, size_t warmup, size_t iters, bool simplified) {
     std::vector<float> input(norm_size);
     std::vector<float> scale(norm_size);
     std::vector<float> output(norm_size);
@@ -294,58 +353,84 @@ class MlasLayerNormTest : public MlasTestBase {
       scale[i] = 1.0f + (static_cast<float>(i % 31) - 15.0f) * 0.001f;
     }
 
-    // Warmup + measure: kernel path
+    // Warmup + measure: AVX2 kernel
     for (size_t i = 0; i < warmup; i++) {
       MlasLayerNormF32(input.data(), scale.data(), nullptr,
                        output.data(), &mean_out, &inv_std_out,
-                       norm_size, 1e-5f, false);
+                       norm_size, 1e-5f, simplified);
     }
     std::vector<double> kernel_us(iters);
     for (size_t i = 0; i < iters; i++) {
       auto t0 = std::chrono::high_resolution_clock::now();
       MlasLayerNormF32(input.data(), scale.data(), nullptr,
                        output.data(), &mean_out, &inv_std_out,
-                       norm_size, 1e-5f, false);
+                       norm_size, 1e-5f, simplified);
       auto t1 = std::chrono::high_resolution_clock::now();
       kernel_us[i] = std::chrono::duration<double, std::micro>(t1 - t0).count();
     }
 
-    // Warmup + measure: scalar reference
+    // Warmup + measure: scalar fp32 baseline (the actual code being replaced)
     for (size_t i = 0; i < warmup; i++) {
-      ReferenceLayerNorm(input.data(), scale.data(), nullptr,
+      ScalarFp32Baseline(input.data(), scale.data(), nullptr,
                          output.data(), &mean_out, &inv_std_out,
-                         norm_size, 1e-5f, false);
+                         norm_size, 1e-5f, simplified);
     }
     std::vector<double> scalar_us(iters);
     for (size_t i = 0; i < iters; i++) {
       auto t0 = std::chrono::high_resolution_clock::now();
-      ReferenceLayerNorm(input.data(), scale.data(), nullptr,
+      ScalarFp32Baseline(input.data(), scale.data(), nullptr,
                          output.data(), &mean_out, &inv_std_out,
-                         norm_size, 1e-5f, false);
+                         norm_size, 1e-5f, simplified);
       auto t1 = std::chrono::high_resolution_clock::now();
       scalar_us[i] = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    }
+
+    // Also measure the fp64 reference for context (the independent oracle baseline)
+    for (size_t i = 0; i < warmup; i++) {
+      ReferenceLayerNorm(input.data(), scale.data(), nullptr,
+                         output.data(), &mean_out, &inv_std_out,
+                         norm_size, 1e-5f, simplified);
+    }
+    std::vector<double> fp64_us(iters);
+    for (size_t i = 0; i < iters; i++) {
+      auto t0 = std::chrono::high_resolution_clock::now();
+      ReferenceLayerNorm(input.data(), scale.data(), nullptr,
+                         output.data(), &mean_out, &inv_std_out,
+                         norm_size, 1e-5f, simplified);
+      auto t1 = std::chrono::high_resolution_clock::now();
+      fp64_us[i] = std::chrono::duration<double, std::micro>(t1 - t0).count();
     }
 
     auto stats = [](std::vector<double>& v) {
       std::sort(v.begin(), v.end());
       size_t n = v.size();
       double sum = std::accumulate(v.begin(), v.end(), 0.0);
-      double mean = sum / static_cast<double>(n);
+      double mean_val = sum / static_cast<double>(n);
       double sq = 0;
-      for (auto x : v) sq += (x - mean) * (x - mean);
-      struct S { double p50, p95, mean, stdev; };
-      return S{v[n / 2], v[static_cast<size_t>(n * 0.95)], mean,
+      for (auto x : v) sq += (x - mean_val) * (x - mean_val);
+      struct S {
+        double p50, p95, mean, stdev;
+      };
+      return S{v[n / 2], v[static_cast<size_t>(n * 0.95)], mean_val,
                std::sqrt(sq / static_cast<double>(n))};
     };
 
     auto ks = stats(kernel_us);
     auto ss = stats(scalar_us);
-    printf("BENCH norm_size=%zu iters=%zu\n", norm_size, iters);
-    printf("  kernel:  p50=%.2fus p95=%.2fus mean=%.2fus stdev=%.2fus\n",
+    auto fs = stats(fp64_us);
+    const char* mode = simplified ? "RMSNorm" : "LayerNorm";
+    printf("BENCH %s norm_size=%zu iters=%zu\n", mode, norm_size, iters);
+    printf("  avx2_kernel:     p50=%.3fus p95=%.3fus mean=%.3fus stdev=%.3fus\n",
            ks.p50, ks.p95, ks.mean, ks.stdev);
-    printf("  scalar:  p50=%.2fus p95=%.2fus mean=%.2fus stdev=%.2fus\n",
+    printf("  scalar_fp32:     p50=%.3fus p95=%.3fus mean=%.3fus stdev=%.3fus\n",
            ss.p50, ss.p95, ss.mean, ss.stdev);
-    printf("  speedup: %.2fx (p50)\n", ss.p50 / ks.p50);
+    printf("  fp64_ref:        p50=%.3fus p95=%.3fus mean=%.3fus stdev=%.3fus\n",
+           fs.p50, fs.p95, fs.mean, fs.stdev);
+    printf("  speedup_vs_fp32: %.2fx (p50)  %.2fx (p95)\n",
+           ss.p50 / ks.p50, ss.p95 / ks.p95);
+    printf("  speedup_vs_fp64: %.2fx (p50)  [inflated — NOT the true baseline]\n",
+           fs.p50 / ks.p50);
+    printf("\n");
   }
 };
 
@@ -442,8 +527,14 @@ TEST_F(MlasLayerNormEdgeTest, NanInf) {
 class MlasLayerNormBenchTest : public MlasTestFixture<MlasLayerNormTest> {};
 
 TEST_F(MlasLayerNormBenchTest, DISABLED_Benchmark) {
-  for (size_t n : {128, 256, 768, 1024, 4096}) {
-    mlas_tester->Benchmark(n, /*warmup=*/50, /*iters=*/200);
+  // Representative shapes: small/tail sizes + LLM-realistic hidden dims
+  printf("\n=== LayerNorm (full) ===\n");
+  for (size_t n : {7, 15, 128, 256, 768, 1024, 2048, 4096}) {
+    mlas_tester->Benchmark(n, /*warmup=*/100, /*iters=*/1000, /*simplified=*/false);
+  }
+  printf("\n=== RMSNorm (simplified) ===\n");
+  for (size_t n : {7, 15, 128, 256, 768, 1024, 2048, 4096}) {
+    mlas_tester->Benchmark(n, /*warmup=*/100, /*iters=*/1000, /*simplified=*/true);
   }
 }
 
