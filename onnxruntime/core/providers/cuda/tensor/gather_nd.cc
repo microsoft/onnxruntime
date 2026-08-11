@@ -65,7 +65,8 @@ Status GatherNDBase::PrepareCompute(
                     "num_slices = ", num_slices, ", num_batches = ", num_batches);
   const auto num_slices_per_batch = num_slices / num_batches;
 
-  const TIndex* const indices_data = indices_tensor->Data<TIndex>();
+  const TIndex* indices_data = indices_tensor->Data<TIndex>();
+  IAllocatorUniquePtr<TIndex> indices_device_buffer;
 
   // Use on-device validation kernel to avoid full D2H copy for large indices tensors
   // This kernel records only the first invalid index into a 1-element device buffer,
@@ -87,21 +88,33 @@ Status GatherNDBase::PrepareCompute(
   } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
     // Use on-device kernel for CUDA tensors to avoid full D2H transfer
     TArray<int64_t> input_dims(input_shape.GetDims());
-    int64_t error_index = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
+    auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
+    const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
         cuda_stream,
         batch_dims,
         input_dims,
         num_slices,
         num_slice_dims,
-        indices_data);
+        indices_data,
+        validation_result_buffer.get());
 
-    if (error_index != -1) {
+    if (validation_result.position != -1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid index found, index = ", error_index);
+                             "invalid index found, index = ", validation_result.value);
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Unsupported device type for indices tensor in CUDA GatherND");
+  }
+
+  if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
+    indices_device_buffer = GetScratchBuffer<TIndex>(indices_tensor->Shape().Size(), alloc_stream);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_device_buffer.get(),
+                                         indices_data,
+                                         indices_tensor->Shape().Size() * sizeof(TIndex),
+                                         cudaMemcpyHostToDevice,
+                                         cuda_stream));
+    indices_data = indices_device_buffer.get();
   }
 
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);

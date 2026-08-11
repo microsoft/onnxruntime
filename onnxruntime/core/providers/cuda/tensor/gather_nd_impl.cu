@@ -15,7 +15,7 @@ __global__ void _ValidateIndicesKernel(
     const size_t num_slices,
     const size_t num_slice_dims,
     const TIndex* const indices_data,
-    int64_t* error_index) {  // Will store first invalid index found (atomically set, or -1 if all valid)
+    GatherNDValidationResult* result) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(slice_idx, num_slices)
 
   const TIndex* const slice_indices = indices_data + slice_idx * num_slice_dims;
@@ -26,29 +26,28 @@ __global__ void _ValidateIndicesKernel(
     const int64_t lower_limit = -upper_limit;
 
     if (!(index >= lower_limit && index < upper_limit)) {
-      // Found invalid index, atomically set error_index if not already set
-      // Use compare-and-swap with -1 to record the first invalid index
-      atomicCAS((unsigned long long*)error_index, 0xFFFFFFFFFFFFFFFFULL, (unsigned long long)index);
+      if (atomicCAS(reinterpret_cast<unsigned long long*>(&result->position),
+                    0xFFFFFFFFFFFFFFFFULL,
+                    static_cast<unsigned long long>(slice_idx * num_slice_dims + dim_idx)) ==
+          0xFFFFFFFFFFFFFFFFULL) {
+        result->value = index;
+      }
       return;
     }
   }
 }
 
 template <typename TIndex>
-int64_t ValidateIndicesAndReturnFirstInvalidIndex(
+GatherNDValidationResult ValidateIndicesAndReturnFirstInvalidIndex(
     cudaStream_t stream,
     const int64_t batch_dims,
     const TArray<int64_t> input_dims,
     const size_t num_slices,
     const size_t num_slice_dims,
-    const TIndex* const indices_data) {
-  // Allocate device buffer to store error result (initialized to -1, meaning "all valid")
-  int64_t* device_error_index;
-  CUDA_CALL_THROW(cudaMalloc(&device_error_index, sizeof(int64_t)));
-
-  // Initialize to -1 (no error found)
-  int64_t init_value = -1;
-  CUDA_CALL_THROW(cudaMemcpyAsync(device_error_index, &init_value, sizeof(int64_t),
+    const TIndex* const indices_data,
+    GatherNDValidationResult* device_result) {
+  const GatherNDValidationResult init_value{-1, 0};
+  CUDA_CALL_THROW(cudaMemcpyAsync(device_result, &init_value, sizeof(init_value),
                                   cudaMemcpyHostToDevice, stream));
 
   // Launch validation kernel
@@ -59,18 +58,14 @@ int64_t ValidateIndicesAndReturnFirstInvalidIndex(
       num_slices,
       num_slice_dims,
       indices_data,
-      device_error_index);
+      device_result);
 
-  // Copy result back to host
-  int64_t host_error_index = -1;
-  CUDA_CALL_THROW(cudaMemcpyAsync(&host_error_index, device_error_index, sizeof(int64_t),
+  GatherNDValidationResult host_result{-1, 0};
+  CUDA_CALL_THROW(cudaMemcpyAsync(&host_result, device_result, sizeof(host_result),
                                   cudaMemcpyDeviceToHost, stream));
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
 
-  // Clean up device memory
-  CUDA_CALL_THROW(cudaFree(device_error_index));
-
-  return host_error_index;
+  return host_result;
 }
 
 template <typename TIndex>
@@ -166,21 +161,21 @@ void GatherNDImpl(
       const TIndex* const indices_data,                \
       int64_t* const input_slice_offsets_data);
 
-#define SPECIALIZED_VALIDATE_IMPL(TIndex)                             \
-  template int64_t ValidateIndicesAndReturnFirstInvalidIndex<TIndex>( \
-      cudaStream_t stream,                                            \
-      const int64_t batch_dims,                                       \
-      const TArray<int64_t> input_dims,                               \
-      const size_t num_slices,                                        \
-      const size_t num_slice_dims,                                    \
-      const TIndex* const indices_data);
+#define SPECIALIZED_VALIDATE_IMPL(TIndex) \
+  template GatherNDValidationResult ValidateIndicesAndReturnFirstInvalidIndex<TIndex>( \
+      cudaStream_t stream, \
+      const int64_t batch_dims, \
+      const TArray<int64_t> input_dims, \
+      const size_t num_slices, \
+      const size_t num_slice_dims, \
+      const TIndex* const indices_data, \
+      GatherNDValidationResult* device_result);
 
 #define SPECIALIZED_IMPL(T) \
   template void GatherNDImpl<T>(cudaStream_t stream, const size_t num_slices, const void* input_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data);
 
 SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int32_t)
 SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int64_t)
-
 SPECIALIZED_VALIDATE_IMPL(int32_t)
 SPECIALIZED_VALIDATE_IMPL(int64_t)
 
