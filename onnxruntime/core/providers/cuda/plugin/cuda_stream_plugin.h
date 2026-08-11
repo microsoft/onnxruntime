@@ -68,6 +68,10 @@ class CudaSyncStream : public OrtSyncStreamImpl {
 
   OrtStatus* CleanupDeferredCPUBuffers() noexcept;
 
+  /// Drain the stream via OnSessionRunEnd with the stream's own device selected.
+  /// Returns false if the stream could not be drained.
+  bool DrainOnOwningDevice() noexcept;
+
   CudaEpFactory& factory_;
   int device_id_;
   bool enable_cudnn_ = true;

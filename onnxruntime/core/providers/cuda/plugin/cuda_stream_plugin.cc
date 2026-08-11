@@ -301,19 +301,61 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   return stream->CleanupDeferredCPUBuffers();
 }
 
-/*static*/ void ORT_API_CALL CudaSyncStream::ReleaseImpl(OrtSyncStreamImpl* this_ptr) noexcept {
-  auto* stream = static_cast<CudaSyncStream*>(this_ptr);
-  if (stream->cuda_stream_ != nullptr) {
-    OrtStatus* status = OnSessionRunEndImpl(this_ptr);
-    if (status != nullptr) {
-      // Keep the wrapper alive when synchronization fails because arena chunks
-      // may still refer to it and must not become globally reusable.
-      Ort::GetApi().ReleaseStatus(status);
-      return;
+/// Run OnSessionRunEnd on the stream's own device. Release happens at teardown on a
+/// thread whose current device is arbitrary, and stream calls made against the wrong
+/// device fail with an invalid-handle error, so the device is selected explicitly.
+/// Returns false if the stream could not be drained, leaving no sticky error latched.
+bool CudaSyncStream::DrainOnOwningDevice() noexcept {
+  // Synchronizing a stream that is mid graph capture is not permitted and would abort
+  // the capture. FlushImpl applies the same guard. Nothing is in flight to drain yet,
+  // so treat this as success rather than quarantining the wrapper.
+  if (!owns_stream_) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    if (cudaStreamIsCapturing(cuda_stream_, &capture_status) == cudaSuccess &&
+        capture_status == cudaStreamCaptureStatusActive) {
+      return true;
     }
   }
 
-  delete stream;
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  bool drained = false;
+  if (cudaSetDevice(device_id_) == cudaSuccess) {
+    OrtStatus* status = OnSessionRunEndImpl(this);
+    drained = status == nullptr;
+    Ort::GetApi().ReleaseStatus(status);
+  }
+
+  if (!drained) {
+    // Do not leave a sticky error behind for the next kernel launch to trip over.
+    static_cast<void>(cudaGetLastError());
+  }
+
+  if (restore_prev_device) {
+    static_cast<void>(cudaSetDevice(prev_device));
+  }
+
+  return drained;
+}
+
+/*static*/ void ORT_API_CALL CudaSyncStream::ReleaseImpl(OrtSyncStreamImpl* this_ptr) noexcept {
+  auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+
+  if (stream->cuda_stream_ == nullptr || stream->DrainOnOwningDevice()) {
+    delete stream;
+    return;
+  }
+
+  // The stream could not be drained, so device work may still be in flight and arena
+  // chunks may still refer to this stream. Keep the wrapper alive so those chunks never
+  // become globally reusable, but drop it from the lookup map first: the raw
+  // cudaStream_t value can be recycled by a later stream creation, and a stale entry
+  // would resolve that new handle to this abandoned wrapper.
+  if (stream->registered_) {
+    UnregisterStream(stream->cuda_stream_);
+    stream->registered_ = false;
+  }
 }
 
 /*static*/ CudaSyncStream* CudaSyncStream::FromCudaStream(cudaStream_t stream) {
