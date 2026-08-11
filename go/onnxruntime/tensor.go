@@ -18,6 +18,7 @@ type Tensor struct {
 	shape  []int64
 	pinner runtime.Pinner
 	keep   any
+	goData unsafe.Pointer
 	owned  bool
 	closed bool
 }
@@ -46,6 +47,7 @@ func CreateTensor[T TensorElement](shape []int64, data []T) (*Tensor, error) {
 	t := &Tensor{dtype: dtype, shape: copyShape(shape), owned: false}
 	t.pinner.Pin(&data[0])
 	t.keep = data
+	t.goData = unsafe.Pointer(&data[0])
 
 	var cShape *C.int64_t
 	if len(shape) > 0 {
@@ -99,6 +101,7 @@ func NewTensorFromBytes(dtype TensorElementDataType, shape []int64, data []byte)
 	t := &Tensor{dtype: dtype, shape: copyShape(shape), owned: false}
 	t.pinner.Pin(&data[0])
 	t.keep = data
+	t.goData = unsafe.Pointer(&data[0])
 
 	var cShape *C.int64_t
 	if len(shape) > 0 {
@@ -280,12 +283,20 @@ func NewSequence(elements []*Tensor) (*Tensor, error) {
 	}
 
 	var out *C.OrtValue
-	if err := checkStatus(C.ort_CreateValue(&values[0], C.size_t(len(values)),
-		C.ONNX_TYPE_SEQUENCE, &out)); err != nil {
-		return nil, wrapErr("create sequence", err)
+	createErr := checkStatus(C.ort_CreateValue(&values[0], C.size_t(len(values)),
+		C.ONNX_TYPE_SEQUENCE, &out))
+	runtime.KeepAlive(elements)
+	if createErr != nil {
+		return nil, wrapErr("create sequence", createErr)
 	}
 
-	return &Tensor{value: out, dtype: TensorElementDataTypeUndefined, owned: true}, nil
+	sequence := &Tensor{value: out, dtype: TensorElementDataTypeUndefined, owned: false}
+	for _, element := range elements {
+		if element.goData != nil {
+			sequence.pinner.Pin(element.goData)
+		}
+	}
+	return sequence, nil
 }
 
 // NewMap creates a map value from key and value tensors.
@@ -367,6 +378,7 @@ func (t *Tensor) Close() error {
 		t.pinner.Unpin()
 	}
 	t.keep = nil
+	t.goData = nil
 	return nil
 }
 
