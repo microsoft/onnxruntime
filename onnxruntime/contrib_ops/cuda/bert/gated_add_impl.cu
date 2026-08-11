@@ -9,6 +9,7 @@
 
 #include "contrib_ops/cuda/bert/gated_add_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -47,16 +48,16 @@ __device__ __forceinline__ __nv_bfloat16 RoundedMulAdd(
       __fadd_rn(__bfloat162float(x), __bfloat162float(product)));
 }
 
-template <typename T>
+template <typename T, typename IndexT, typename DivModT>
 __global__ void GatedAddKernel(T* output,
                                const T* x,
                                const T* y,
                                const T* gate,
-                               int64_t count,
-                               int64_t hidden_size) {
-  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+                               IndexT count,
+                               DivModT hidden_size) {
+  const IndexT index = static_cast<IndexT>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < count) {
-    output[index] = RoundedMulAdd(x[index], y[index], gate[index / hidden_size]);
+    output[index] = RoundedMulAdd(x[index], y[index], gate[hidden_size.div(index)]);
   }
 }
 
@@ -78,8 +79,14 @@ Status LaunchGatedAddKernel(cudaStream_t stream,
   const int64_t blocks = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
                     "GatedAdd launch requires too many blocks");
-  GatedAddKernel<T><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
-      output, x, y, gate, count, hidden_size);
+  if (count <= std::numeric_limits<int>::max()) {
+    GatedAddKernel<T, int, onnxruntime::cuda::fast_divmod><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
+        output, x, y, gate, static_cast<int>(count),
+        onnxruntime::cuda::fast_divmod(static_cast<int>(hidden_size)));
+  } else {
+    GatedAddKernel<T, int64_t, onnxruntime::cuda::DivMod<int64_t>><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
+        output, x, y, gate, count, onnxruntime::cuda::DivMod<int64_t>(hidden_size));
+  }
   return CUDA_CALL(cudaGetLastError());
 }
 

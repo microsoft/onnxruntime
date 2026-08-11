@@ -39,14 +39,19 @@ std::vector<T> ToTensorType(const std::vector<float>& data) {
 }
 
 template <typename T>
-void RunGatedAddTest(int batch_size, int sequence_length, int hidden_size) {
+void RunGatedAddTest(const std::vector<int64_t>& input_dims) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
     GTEST_SKIP() << "CUDA EP not available";
   }
 
-  const int rows = batch_size * sequence_length;
-  const size_t count = static_cast<size_t>(rows) * hidden_size;
+  ASSERT_FALSE(input_dims.empty());
+  int64_t rows = 1;
+  for (size_t axis = 0; axis + 1 < input_dims.size(); ++axis) {
+    rows *= input_dims[axis];
+  }
+  const int64_t hidden_size = input_dims.back();
+  const size_t count = static_cast<size_t>(rows * hidden_size);
   std::mt19937 generator(42);
   std::uniform_real_distribution<float> distribution(-3.0f, 3.0f);
   std::vector<float> x(count);
@@ -65,13 +70,16 @@ void RunGatedAddTest(int batch_size, int sequence_length, int hidden_size) {
     expected[index] = RoundToType<T>(x_value + product);
   }
 
-  const std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-  const std::vector<int64_t> gate_dims = {batch_size, sequence_length, 1};
+  std::vector<int64_t> gate_dims = input_dims;
+  gate_dims.back() = 1;
   OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
   tester.AddInput<T>("X", input_dims, ToTensorType<T>(x));
   tester.AddInput<T>("Y", input_dims, ToTensorType<T>(y));
   tester.AddInput<T>("gate", gate_dims, ToTensorType<T>(gate));
   tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected));
+  if constexpr (!std::is_same_v<T, float>) {
+    tester.SetOutputTolerance(0.0f, 0.0f);
+  }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
@@ -81,18 +89,62 @@ void RunGatedAddTest(int batch_size, int sequence_length, int hidden_size) {
 }  // namespace
 
 TEST(ContribOpGatedAddTest, Float) {
-  RunGatedAddTest<float>(2, 3, 7);
+  RunGatedAddTest<float>({2, 3, 7});
+}
+
+TEST(ContribOpGatedAddTest, RankOne) {
+  RunGatedAddTest<float>({7});
+}
+
+TEST(ContribOpGatedAddTest, EmptyOuterDimension) {
+  RunGatedAddTest<float>({0, 7});
+}
+
+TEST(ContribOpGatedAddTest, ZeroHiddenDimension) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("X", {2, 3, 0}, {});
+  tester.AddInput<float>("Y", {2, 3, 0}, {});
+  tester.AddInput<float>("gate", {2, 3, 1}, std::vector<float>(6));
+  tester.AddOutput<float>("output", {2, 3, 0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "X last dimension must be positive",
+             {}, nullptr, &execution_providers);
 }
 
 TEST(ContribOpGatedAddTest, Float16) {
-  RunGatedAddTest<MLFloat16>(1, 4, 2048);
+  RunGatedAddTest<MLFloat16>({1, 4, 2048});
 }
 
 TEST(ContribOpGatedAddTest, BFloat16) {
   if (!CudaHasBF16Support()) {
     GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
   }
-  RunGatedAddTest<BFloat16>(1, 4, 2048);
+  RunGatedAddTest<BFloat16>({1, 4, 2048});
+}
+
+TEST(ContribOpGatedAddTest, MismatchedYShape) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("X", {1, 2, 3}, std::vector<float>(6));
+  tester.AddInput<float>("Y", {1, 2, 4}, std::vector<float>(8));
+  tester.AddInput<float>("gate", {1, 2, 1}, std::vector<float>(2));
+  tester.AddOutput<float>("output", {1, 2, 3}, std::vector<float>(6));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "Y must have the same shape as X",
+             {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
