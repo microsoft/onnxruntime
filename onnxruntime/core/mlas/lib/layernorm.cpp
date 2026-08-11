@@ -36,22 +36,22 @@ bool
         return false;
     }
 
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
     //
-    // Skip the SIMD kernel for very short rows where it cannot win.
+    // Skip the AVX2 kernel for very short rows where it cannot win.
     //
-    // Measured on AMD EPYC 9V74 (AVX2/FMA, no AVX-512): for NormSize < 8
-    // the AVX2 kernel performs zero 256-bit iterations and falls entirely
-    // into its scalar tail, yet still pays vector register setup and
-    // horizontal reduction overhead. RMSNorm regresses 5-22% for N=1..7;
-    // full LayerNorm regresses 6-29% for N=1..2 (the Welford scalar path's
-    // per-element division makes it expensive enough that the AVX2 two-pass
-    // tail wins from N >= 3, but below 8 there is no SIMD benefit by
-    // definition). The threshold of 8 (== one ymm register width) is the
-    // natural boundary: below it, no vectorization is possible.
+    // For NormSize < 8 the AVX2 kernel performs zero 256-bit iterations
+    // and falls entirely into its scalar tail, yet still pays vector
+    // register setup and horizontal reduction overhead.
+    //
+    // This threshold is x86-specific. Other platforms (e.g. RISC-V RVV)
+    // use variable-length vectors and handle short rows natively, so they
+    // must not be gated here.
     //
     if (NormSize < 8) {
         return false;
     }
+#endif
 
     kernel(Input, Scale, Bias, Output, MeanOut, InvStdDevOut, NormSize, Epsilon, Simplified);
     return true;

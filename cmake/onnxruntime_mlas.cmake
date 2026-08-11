@@ -240,6 +240,8 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+
     set(mlas_platform_srcs_avx512
       ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
