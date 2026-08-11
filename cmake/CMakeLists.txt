@@ -96,6 +96,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
+option(onnxruntime_USE_APPLE_ACCELERATE "Build with Apple Accelerate/BNNS/vDSP support in MLAS" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
@@ -609,6 +610,12 @@ if(onnxruntime_USE_KLEIDIAI)
   if(NOT is_kleidiai_supported_result)
     message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
     set(onnxruntime_USE_KLEIDIAI OFF)
+  endif()
+endif()
+
+if(onnxruntime_USE_APPLE_ACCELERATE)
+  if(NOT APPLE)
+    message(FATAL_ERROR "onnxruntime_USE_APPLE_ACCELERATE is only supported on Apple platforms (macOS, iOS).")
   endif()
 endif()
 
