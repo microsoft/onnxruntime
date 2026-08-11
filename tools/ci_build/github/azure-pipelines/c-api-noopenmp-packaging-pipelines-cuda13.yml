@@ -86,7 +86,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: Permissive
+      networkIsolationPolicy: Permissive,AzureContainerRegistry
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
