@@ -1286,6 +1286,7 @@ Status LaunchLinearAttentionKernel(
     int row_split,
     int multiprocessor_count,
     int max_threads_per_block,
+    size_t max_shared_memory_per_block,
     int state_window) {
   // Grid: one block per (batch, kv_head)
   const dim3 grid(batch_size, kv_num_heads, 1);
@@ -1314,11 +1315,15 @@ Status LaunchLinearAttentionKernel(
   // shared-memory state amortization, so the split is only applied below that point.
   const bool recurrent_grid_underfills_gpu =
       static_cast<int64_t>(batch_size) * kv_num_heads < multiprocessor_count;
+  const size_t recurrent_smem_size =
+      (static_cast<size_t>(d_k) * d_v + d_k + std::max(d_k, d_v)) * sizeof(float);
+  const bool recurrent_smem_exceeds_device = recurrent_smem_size > max_shared_memory_per_block;
   // Only the v2 (column-per-thread) kernel below has been validated at prefill lengths, so the
-  // occupancy-based override is limited to the shapes it accepts; everything else keeps the
-  // original seq_len cutoff.
+  // occupancy and shared-memory overrides are limited to the shapes it accepts; everything else
+  // keeps the original seq_len cutoff.
   const bool prefill_column_split =
-      recurrent_grid_underfills_gpu && d_k <= 128 && (d_v % kColsPerBlock) == 0;
+      (recurrent_grid_underfills_gpu || recurrent_smem_exceeds_device) &&
+      d_k <= 128 && (d_v % kColsPerBlock) == 0;
 
   if ((seq_len <= decode_seq_threshold || prefill_column_split) &&
       (d_k == 64 || d_k == 128 || d_k == 256)) {
@@ -1403,6 +1408,13 @@ Status LaunchLinearAttentionKernel(
     }
   }
 
+  if (recurrent_smem_exceeds_device) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearAttention: recurrent kernel requires ", recurrent_smem_size,
+                           " bytes of shared memory per block, but the device supports ",
+                           max_shared_memory_per_block, " bytes.");
+  }
+
   auto launch_fixed = [&](auto dk_tag, auto dv_tag) -> Status {
     constexpr int DK = decltype(dk_tag)::value;
     constexpr int DV = decltype(dv_tag)::value;
@@ -1455,7 +1467,7 @@ Status LaunchLinearAttentionKernel(
   const dim3 block(threads, 1, 1);
 
   // Shared memory: state[d_k*d_v] + k_buf[d_k] + scratch[max(d_k,d_v)]
-  size_t smem_size = (static_cast<size_t>(d_k) * d_v + d_k + std::max(d_k, d_v)) * sizeof(float);
+  const size_t smem_size = recurrent_smem_size;
 
   // Request extended shared memory if needed (default limit is 48 KB)
   if (smem_size > 48 * 1024) {
@@ -1480,18 +1492,18 @@ Status LaunchLinearAttentionKernel(
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,
     const float*, const float*, float*, const float*, float*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, size_t, int);
 
 template Status LaunchLinearAttentionKernel<half>(
     cudaStream_t, const half*, const half*, const half*,
     const half*, const half*, half*, const half*, half*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, size_t, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchLinearAttentionKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, size_t, int);
 #endif
 
 }  // namespace cuda
