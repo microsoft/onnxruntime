@@ -669,8 +669,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-  active_sessions_[session_id_] = this;
+  // Scope the lock so that it is not held across WindowsTelemetry::RegisterInternalCallback below.
+  // Holding active_sessions_mutex_ while taking the telemetry callback registry lock would invert
+  // the order used by the ETW dispatch path and can deadlock the process. See the destructor.
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_[session_id_] = this;
+  }
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
   callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
@@ -928,8 +933,13 @@ InferenceSession::~InferenceSession() {
   }
 
   // Unregister the session and ETW callbacks
+  //
+  // The ETW callbacks must be unregistered without holding active_sessions_mutex_. The telemetry
+  // callback registry has its own lock, and an ETW capture-state notification arriving on an
+  // OS-owned thread dispatches callback_ML_ORT_provider_ (which takes active_sessions_mutex_ via
+  // LogAllSessions) while holding that registry lock. Acquiring the two in the opposite order here
+  // would form a lock cycle and deadlock the process.
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   if (callback_ML_ORT_provider_ != nullptr) {
     WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
   }
@@ -937,7 +947,10 @@ InferenceSession::~InferenceSession() {
     logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
   }
 #endif
-  active_sessions_.erase(session_id_);
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_.erase(session_id_);
+  }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
