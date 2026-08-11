@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -263,6 +265,27 @@ Status CheckInputs(void* params,
   parameters->num_sparse_layout = static_cast<int>(block_row_indices_dim[0]);
   parameters->stride_row_indices = static_cast<int>(block_row_indices_dim[1]);
   parameters->stride_col_indices = static_cast<int>(block_col_indices_dim[1]);
+
+  // Buffer sizes and kernel strides are computed as products of these dimensions, and the Triton kernels
+  // take 32-bit strides. Reject shapes whose products do not fit in int32 so that the sizes and offsets
+  // derived from them cannot wrap.
+  constexpr int64_t max_int32 = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+  const int64_t q_elements = static_cast<int64_t>(batch_size) * sequence_length *
+                             (num_heads + 2 * static_cast<int64_t>(kv_num_heads)) * head_size;
+  if (q_elements > max_int32) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "batch_size * sequence_length * (num_heads + 2 * kv_num_heads) * head_size shall not "
+                           "exceed ",
+                           max_int32, ". Got ", q_elements);
+  }
+
+  const int64_t kv_cache_elements = static_cast<int64_t>(batch_size) * kv_num_heads *
+                                    max_cache_sequence_length * head_size;
+  if (kv_cache_elements > max_int32) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "batch_size * kv_num_heads * max_cache_sequence_length * head_size shall not exceed ",
+                           max_int32, ". Got ", kv_cache_elements);
+  }
 
   return Status::OK();
 }
