@@ -271,6 +271,26 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
+#if !defined(__wasm__)
+      // Lazily create the subgroup-matrix 1x1-Conv impl once so the device
+      // capability query is not repeated on every inference step. It computes a
+      // plain (non-activation-fused) matmul, so only attempt it when no activation
+      // is fused; on the channels-last path B is the (possibly constant) weight, so
+      // an odd-N weight can be padded/cached, whereas channels-first B is the
+      // activation input and is never constant.
+      std::call_once(impl_init_flag_, [&]() {
+        impl_ = CreateSubgroupMatrixConv1x1Impl(context);
+      });
+      if (impl_ != nullptr && activation_.activation_kind_ == ActivationKind::None) {
+        bool handled = false;
+        ORT_RETURN_IF_ERROR(impl_->Compute(context, matmul_inputs, output,
+                                           matmul_input_reshapes[0], matmul_input_reshapes[1],
+                                           is_channels_last && w_is_constant_, handled));
+        if (handled) {
+          return Status::OK();
+        }
+      }
+#endif
       return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
     }
   }
