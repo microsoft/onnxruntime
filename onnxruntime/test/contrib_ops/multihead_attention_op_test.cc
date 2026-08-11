@@ -615,8 +615,10 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesInvalidSeqstartVal
   tester.AddOptionalInputEdge<int32_t>();
   tester.AddOptionalInputEdge<int32_t>();
 
+  // Every value row is identical, so any convex combination of the attended
+  // rows produces the same result regardless of how the offsets are clamped.
   tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.0f));
+                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.3f));
   tester.AddOptionalOutputEdge<float>();
   tester.AddOptionalOutputEdge<float>();
   tester.AddOptionalOutputEdge<float>();
