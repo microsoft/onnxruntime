@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/lean_attention/lean_api.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -229,19 +230,23 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   }
 
   if (parameters.past_present_share_buffer) {
-    // Buffer-sharing kernels append in place. Copy the past cache when the runtime did not alias the outputs.
+    // Buffer-sharing kernels append the new KV in place into present_key/present_value and never read
+    // past_key/past_value, so they assume the runtime aliased past onto present. Nothing else copies the
+    // past cache forward. When the buffers are not actually aliased (e.g. OpTester cannot bind a specific
+    // buffer to both an input and an output), the untouched history slots would be garbage, so seed them
+    // here. When they are aliased the pointers compare equal and this is a no-op.
     auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
     auto* past_value_data = (past_value == nullptr) ? nullptr : past_value->Data<T>();
     auto* present_key_data = (present_key == nullptr) ? nullptr : present_key->MutableData<T>();
     auto* present_value_data = (present_value == nullptr) ? nullptr : present_value->MutableData<T>();
 
-    if (present_key_data != past_key_data) {
-      DUMP_STRING("Copying past_key to present_key for OpTester");
+    if (past_key_data != nullptr && present_key_data != nullptr && present_key_data != past_key_data) {
+      DUMP_STRING("Copying past_key to present_key");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, stream));
     }
-    if (present_value_data != past_value_data) {
-      DUMP_STRING("Copying past_value to present_value for OpTester");
+    if (past_value_data != nullptr && present_value_data != nullptr && present_value_data != past_value_data) {
+      DUMP_STRING("Copying past_value to present_value");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, stream));
     }
@@ -549,12 +554,14 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   // For past-present buffer sharing.
   IAllocatorUniquePtr<void> seqlens_k_buffer;
   if (parameters.past_present_share_buffer) {
-    std::vector<int> seqlens_k(parameters.batch_size, parameters.total_sequence_length);
-    const size_t seqlens_k_bytes = sizeof(seqlens_k[0]) * seqlens_k.size();
+    const size_t seqlens_k_bytes = sizeof(int) * static_cast<size_t>(parameters.batch_size);
     seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, GetComputeStream(context));
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice));
+      // Fill on the compute stream. A host-to-device copy would both race with the
+      // asynchronous launches below and be illegal during CUDA graph capture.
+      onnxruntime::cuda::Fill<int32_t>(stream, data.seqlens_k_total, parameters.total_sequence_length,
+                                       parameters.batch_size);
     }
   }
 
