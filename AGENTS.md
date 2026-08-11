@@ -1,15 +1,16 @@
 # Agent Instructions for ONNX Runtime
 
+This file contains repository-wide guidance for coding agents. See
+[Extending Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
+
 ## Path-Scoped Instructions
 
 Before implementing or reviewing changes, inspect `.github/instructions/**/*.instructions.md` and parse each file's
-`applyTo` scope. Apply every instruction whose scope matches any target or changed path. Matching instructions are
-requirements for both implementation and review.
+`applyTo` scope. Apply every instruction whose scope matches any target or changed path. Unless explicitly stated
+otherwise, matching instructions apply to both implementation and review.
 
 For code reviews, follow the [code-review skill](.agents/skills/code-review/SKILL.md) in addition to all matching
 path-scoped instructions and relevant domain skills.
-
-See [Extending Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
 
 ## Build, Test, and Lint
 
