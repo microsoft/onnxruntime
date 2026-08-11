@@ -28,18 +28,20 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status MRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("position_ids", ShaderUsage::None);
+  const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::None);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::None);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::None);
   const auto& output = shader.AddOutput("output", ShaderUsage::None);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/mrotary_embedding.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_PARAMETER(position_ids_use_storage_type, true),
                              WGSL_TEMPLATE_PARAMETER(sectioned, mrope_layout_ == MRopeLayout::kSectioned),
                              WGSL_TEMPLATE_PARAMETER(transposed, transposed_),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(input, input),
                              WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(position_ids, position_ids),
                              WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 

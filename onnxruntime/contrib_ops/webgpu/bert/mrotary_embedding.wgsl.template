@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param interleaved
+#param position_ids_use_storage_type
 #param sectioned
 #param transposed
 
@@ -57,7 +58,7 @@ $MAIN {
       (stream * uniforms.batch_size + batch) * uniforms.sequence_length + sequence;
   // int64 values are stored as vec2<u32>; read both words so negative and
   // otherwise out-of-range values pass through unchanged.
-  let position_id_bits = position_ids[position_ids_idx];
+  let position_id_bits = position_ids.getByOffset(position_ids_idx, position_ids_use_storage_type);
   if (position_id_bits.y != 0u || position_id_bits.x >= uniforms.max_sequence_length) {
     output.setByOffset(global_idx, input.getByOffset(global_idx));
     return;
