@@ -213,13 +213,14 @@ CUtensorMap MakeTensorMap(void* pointer, CUtensorMapDataType dtype, uint32_t ele
 
 // Mirrors DeepGEMM's sm90_m_grouped_fp8_gemm_masked_1d2d host launcher: SFB is a plain pointer,
 // A/B/D/SFA move through TMA. SHAPE_M stays dynamic (0) because the scheduler derives each
-// expert's row count from masked_m.
-template <int N, int K, int BlockN>
+// expert's row count from masked_m -- an expert with masked_m == 0 contributes no tile, so the
+// number of experts costs scheduling only, not GEMM work.
+template <int NumExperts, int N, int K, int BlockN>
 void LaunchGemm(const __nv_fp8_e4m3* a, const float* sfa, const __nv_fp8_e4m3* b, const float* sfb,
                 __nv_bfloat16* d, int* masked_m, cudaStream_t stream) {
   using Config = Fp8Config<static_cast<uint32_t>(BlockN), static_cast<uint32_t>(K)>;
   auto kernel = &deep_gemm::sm90_fp8_gemm_1d2d_impl<
-      cute::UMMA::Major::K, 0, N, K, kNumExperts,
+      cute::UMMA::Major::K, 0, N, K, NumExperts,
       kBlockM, BlockN, kBlockK,
       Config::kSwizzleA, Config::kSwizzleB, Config::kSwizzleD,
       Config::kStages, Config::kTmaThreads, Config::kMathThreads,
@@ -229,19 +230,19 @@ void LaunchGemm(const __nv_fp8_e4m3* a, const float* sfa, const __nv_fp8_e4m3* b
 
   // A: K-major [G * kPaddedTokensPerExpert, K], tile (BLOCK_M, BLOCK_K).
   auto map_a = MakeTensorMap(const_cast<__nv_fp8_e4m3*>(a), CU_TENSOR_MAP_DATA_TYPE_UINT8, 1,
-                             K, kNumExperts * kPaddedTokensPerExpert, kBlockK, kBlockM, K,
+                             K, NumExperts * kPaddedTokensPerExpert, kBlockK, kBlockM, K,
                              Config::kSwizzleA);
   // B: K-major [G * N, K], tile (BLOCK_N, BLOCK_K).
   auto map_b = MakeTensorMap(const_cast<__nv_fp8_e4m3*>(b), CU_TENSOR_MAP_DATA_TYPE_UINT8, 1,
-                             K, kNumExperts * N, kBlockK, BlockN, K, Config::kSwizzleB);
+                             K, NumExperts * N, kBlockK, BlockN, K, Config::kSwizzleB);
   // D: [G * kPaddedTokensPerExpert, N], tile (BLOCK_M, BLOCK_N).
   auto map_d = MakeTensorMap(d, CU_TENSOR_MAP_DATA_TYPE_BFLOAT16, 2, N,
-                             kNumExperts * kPaddedTokensPerExpert, BlockN, kBlockM, N,
+                             NumExperts * kPaddedTokensPerExpert, BlockN, kBlockM, N,
                              Config::kSwizzleD);
   // SFA: MN-major [G * K / 128, kPaddedTokensPerExpert], one scale row per 128-channel K chunk.
   auto map_sfa = MakeTensorMap(const_cast<float*>(sfa), CU_TENSOR_MAP_DATA_TYPE_FLOAT32, 4,
                                kPaddedTokensPerExpert,
-                               CeilDiv(static_cast<uint32_t>(K), kBlockK) * kNumExperts,
+                               CeilDiv(static_cast<uint32_t>(K), kBlockK) * NumExperts,
                                kBlockM, 1, kPaddedTokensPerExpert, 0);
 
   CUDA_CALL_THROW(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -269,57 +270,92 @@ constexpr size_t AlignBytes(size_t bytes) {
   return (bytes + kBufferAlign - 1) / kBufferAlign * kBufferAlign;
 }
 
-constexpr size_t kPackedRows = static_cast<size_t>(kNumExperts) * kPaddedTokensPerExpert;
-constexpr size_t kFc1ABytes = AlignBytes(kPackedRows * kHiddenSize * sizeof(__nv_fp8_e4m3));
-constexpr size_t kFc1SfaBytes =
-    AlignBytes(static_cast<size_t>(kNumExperts) * (kHiddenSize / kQuantBlockSize) *
-               kPaddedTokensPerExpert * sizeof(float));
-constexpr size_t kFc1OutBytes = AlignBytes(kPackedRows * kFc1OutputSize * sizeof(__nv_bfloat16));
-constexpr size_t kFc2ABytes = AlignBytes(kPackedRows * kInterSize * sizeof(__nv_fp8_e4m3));
-constexpr size_t kFc2SfaBytes =
-    AlignBytes(static_cast<size_t>(kNumExperts) * (kInterSize / kQuantBlockSize) *
-               kPaddedTokensPerExpert * sizeof(float));
-constexpr size_t kFc2OutBytes = AlignBytes(kPackedRows * kHiddenSize * sizeof(__nv_bfloat16));
-constexpr size_t kMaskedBytes = AlignBytes(kNumExperts * sizeof(int));
+// Every buffer is expert-major over kPaddedTokensPerExpert rows, so the whole layout scales
+// linearly with the expert count.
+struct WorkspaceLayout {
+  size_t fc1_a;
+  size_t fc1_sfa;
+  size_t fc1_out;
+  size_t fc2_a;
+  size_t fc2_sfa;
+  size_t fc2_out;
+  size_t masked;
+
+  explicit constexpr WorkspaceLayout(int num_experts)
+      : fc1_a(AlignBytes(static_cast<size_t>(num_experts) * kPaddedTokensPerExpert * kHiddenSize *
+                         sizeof(__nv_fp8_e4m3))),
+        fc1_sfa(AlignBytes(static_cast<size_t>(num_experts) * (kHiddenSize / kQuantBlockSize) *
+                           kPaddedTokensPerExpert * sizeof(float))),
+        fc1_out(AlignBytes(static_cast<size_t>(num_experts) * kPaddedTokensPerExpert *
+                           kFc1OutputSize * sizeof(__nv_bfloat16))),
+        fc2_a(AlignBytes(static_cast<size_t>(num_experts) * kPaddedTokensPerExpert * kInterSize *
+                         sizeof(__nv_fp8_e4m3))),
+        fc2_sfa(AlignBytes(static_cast<size_t>(num_experts) * (kInterSize / kQuantBlockSize) *
+                           kPaddedTokensPerExpert * sizeof(float))),
+        fc2_out(AlignBytes(static_cast<size_t>(num_experts) * kPaddedTokensPerExpert * kHiddenSize *
+                           sizeof(__nv_bfloat16))),
+        masked(AlignBytes(static_cast<size_t>(num_experts) * sizeof(int))) {}
+
+  constexpr size_t Total() const {
+    return fc1_a + fc1_sfa + fc1_out + fc2_a + fc2_sfa + fc2_out + masked;
+  }
+};
+
+template <int NumExperts>
+void RunImpl(const __nv_bfloat16* compact_input, const int64_t* offsets,
+             const __nv_fp8_e4m3* fc1_weights, const float* fc1_weight_scales,
+             const __nv_fp8_e4m3* fc2_weights, const float* fc2_weight_scales,
+             __nv_bfloat16* compact_output, float alpha, float beta, float limit,
+             void* workspace, cudaStream_t stream) {
+  constexpr WorkspaceLayout layout(NumExperts);
+  auto* cursor = static_cast<uint8_t*>(workspace);
+  auto* fc1_a = reinterpret_cast<__nv_fp8_e4m3*>(cursor);
+  cursor += layout.fc1_a;
+  auto* fc1_sfa = reinterpret_cast<float*>(cursor);
+  cursor += layout.fc1_sfa;
+  auto* fc1_output = reinterpret_cast<__nv_bfloat16*>(cursor);
+  cursor += layout.fc1_out;
+  auto* fc2_a = reinterpret_cast<__nv_fp8_e4m3*>(cursor);
+  cursor += layout.fc2_a;
+  auto* fc2_sfa = reinterpret_cast<float*>(cursor);
+  cursor += layout.fc2_sfa;
+  auto* fc2_output = reinterpret_cast<__nv_bfloat16*>(cursor);
+  cursor += layout.fc2_out;
+  auto* masked_m = reinterpret_cast<int*>(cursor);
+
+  PackInputKernel<kHiddenSize>
+      <<<dim3(kHiddenSize / kQuantBlockSize, kMaxTokensPerExpert, NumExperts),
+         kQuantBlockSize, 0, stream>>>(compact_input, offsets, fc1_a, fc1_sfa, masked_m);
+  LaunchGemm<NumExperts, kFc1OutputSize, kHiddenSize, kFc1BlockN>(
+      fc1_a, fc1_sfa, fc1_weights, fc1_weight_scales, fc1_output, masked_m, stream);
+  InterleavedSwiGLUKernel<<<dim3(kInterSize / kQuantBlockSize, kMaxTokensPerExpert, NumExperts),
+                            kQuantBlockSize, 0, stream>>>(fc1_output, fc2_a, fc2_sfa, masked_m, alpha, beta, limit);
+  LaunchGemm<NumExperts, kHiddenSize, kInterSize, kFc2BlockN>(
+      fc2_a, fc2_sfa, fc2_weights, fc2_weight_scales, fc2_output, masked_m, stream);
+  UnpackOutputKernel<kHiddenSize><<<dim3(32, NumExperts), 256, 0, stream>>>(
+      fc2_output, offsets, compact_output);
+}
 
 }  // namespace
 
-size_t GetWorkspaceSize() {
-  return kFc1ABytes + kFc1SfaBytes + kFc1OutBytes + kFc2ABytes + kFc2SfaBytes + kFc2OutBytes +
-         kMaskedBytes;
+size_t GetWorkspaceSize(int num_experts) {
+  ORT_ENFORCE(NumExpertsSupported(num_experts), "DeepGEMM: unsupported expert count ", num_experts);
+  return WorkspaceLayout(num_experts).Total();
 }
 
 void Run(const __nv_bfloat16* compact_input, const int64_t* offsets,
          const __nv_fp8_e4m3* fc1_weights, const float* fc1_weight_scales,
          const __nv_fp8_e4m3* fc2_weights, const float* fc2_weight_scales,
-         __nv_bfloat16* compact_output, float alpha, float beta, float limit,
+         __nv_bfloat16* compact_output, int num_experts, float alpha, float beta, float limit,
          void* workspace, cudaStream_t stream) {
-  auto* cursor = static_cast<uint8_t*>(workspace);
-  auto* fc1_a = reinterpret_cast<__nv_fp8_e4m3*>(cursor);
-  cursor += kFc1ABytes;
-  auto* fc1_sfa = reinterpret_cast<float*>(cursor);
-  cursor += kFc1SfaBytes;
-  auto* fc1_output = reinterpret_cast<__nv_bfloat16*>(cursor);
-  cursor += kFc1OutBytes;
-  auto* fc2_a = reinterpret_cast<__nv_fp8_e4m3*>(cursor);
-  cursor += kFc2ABytes;
-  auto* fc2_sfa = reinterpret_cast<float*>(cursor);
-  cursor += kFc2SfaBytes;
-  auto* fc2_output = reinterpret_cast<__nv_bfloat16*>(cursor);
-  cursor += kFc2OutBytes;
-  auto* masked_m = reinterpret_cast<int*>(cursor);
-
-  PackInputKernel<kHiddenSize>
-      <<<dim3(kHiddenSize / kQuantBlockSize, kMaxTokensPerExpert, kNumExperts),
-         kQuantBlockSize, 0, stream>>>(compact_input, offsets, fc1_a, fc1_sfa, masked_m);
-  LaunchGemm<kFc1OutputSize, kHiddenSize, kFc1BlockN>(fc1_a, fc1_sfa, fc1_weights, fc1_weight_scales,
-                                                      fc1_output, masked_m, stream);
-  InterleavedSwiGLUKernel<<<dim3(kInterSize / kQuantBlockSize, kMaxTokensPerExpert, kNumExperts),
-                            kQuantBlockSize, 0, stream>>>(fc1_output, fc2_a, fc2_sfa, masked_m, alpha, beta, limit);
-  LaunchGemm<kHiddenSize, kInterSize, kFc2BlockN>(fc2_a, fc2_sfa, fc2_weights, fc2_weight_scales,
-                                                  fc2_output, masked_m, stream);
-  UnpackOutputKernel<kHiddenSize><<<dim3(32, kNumExperts), 256, 0, stream>>>(
-      fc2_output, offsets, compact_output);
+  if (num_experts == kNumExpertsWorld8) {
+    RunImpl<kNumExpertsWorld8>(compact_input, offsets, fc1_weights, fc1_weight_scales, fc2_weights,
+                               fc2_weight_scales, compact_output, alpha, beta, limit, workspace, stream);
+  } else {
+    ORT_ENFORCE(num_experts == kNumExpertsWorld4, "DeepGEMM: unsupported expert count ", num_experts);
+    RunImpl<kNumExpertsWorld4>(compact_input, offsets, fc1_weights, fc1_weight_scales, fc2_weights,
+                               fc2_weight_scales, compact_output, alpha, beta, limit, workspace, stream);
+  }
 }
 
 }  // namespace onnxruntime::llm::kernels::deep_gemm_sm90

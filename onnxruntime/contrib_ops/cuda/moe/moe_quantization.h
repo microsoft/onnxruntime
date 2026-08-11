@@ -143,6 +143,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_fp4_gemv_ = false;
   bool enable_fp4_cutlass_gemm_ = false;
   bool enable_dsv4_deep_gemm_ = false;
+  // Per-rank expert count DeepGEMM was built for (32 or 64); 0 when the static shapes rule it out.
+  int dsv4_deep_gemm_num_experts_ = 0;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
   // native FP4xFP4 runner (m_moe_runner) and decode/oversized shapes fall back to the fused GEMV
