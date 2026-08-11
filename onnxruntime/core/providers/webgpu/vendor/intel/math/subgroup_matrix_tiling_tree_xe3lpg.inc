@@ -1,6 +1,6 @@
 // Auto-generated. Do not edit.
-// Distilled decision tree (depth 12, 1024 leaves, 43 tilings)
-// approximating the offline GBM cost model for arch: xe3lpg.
+// Distilled decision tree (depth 12, 1024 leaves) approximating the offline
+// GBM cost model for arch: xe3lpg.
 //
 // Generated from sweep timing data by training a gradient boosting cost model,
 // labeling a dense problem grid, and distilling into a depth-capped decision tree.
@@ -4120,4 +4120,4 @@ inline SubgroupMatrixTiling PredictSgmmTilingTree(uint32_t M, uint32_t N, uint32
   }
 }
 
-}  // namespace sgmm_tree::xe3lpg
+}  // namespace onnxruntime::webgpu::intel::xe3lpg
