@@ -437,6 +437,24 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     EXPECT_NE(outputs[1].Get<Tensor>().Data<MLFloat16>(), key_cache_value.Get<Tensor>().Data<MLFloat16>());
     EXPECT_NE(outputs[2].Get<Tensor>().Data<MLFloat16>(), value_cache_value.Get<Tensor>().Data<MLFloat16>());
   }
+
+  // Verify K/V scatter actually landed at slot `past_seqlen` in both caches.
+  // The input caches are initialized to 0.01 / 0.02; the new K/V are 0.03 / 0.04.
+  // Without this, a scatter regression on either path (alias or non-alias)
+  // would still leave `output[0]` non-zero and pointer identity intact, so
+  // the smoke-only version of this test could not distinguish "scatter ran"
+  // from "scatter silently didn't run". Downloading from the bound output
+  // tensors covers both the aliased path (output backed by the input cache
+  // buffer) and the non-aliased path (output backed by a separate buffer).
+  Tensor cpu_key_cache_out(DataTypeImpl::GetType<MLFloat16>(),
+                           TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+  Tensor cpu_value_cache_out(DataTypeImpl::GetType<MLFloat16>(),
+                             TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+  ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[1].Get<Tensor>(), cpu_key_cache_out));
+  ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[2].Get<Tensor>(), cpu_value_cache_out));
+  const size_t cache_update_offset = static_cast<size_t>(past_seqlen * head_size);
+  EXPECT_NEAR(cpu_key_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
+  EXPECT_NEAR(cpu_value_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.04f, 1e-3f);
 }
 
 void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
