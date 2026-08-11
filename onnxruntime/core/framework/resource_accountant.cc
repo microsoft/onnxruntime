@@ -76,12 +76,16 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         const size_t selected_workspace =
             has_estimator ? std::max(stats.total_temp_allocations, *level1_workspace_estimate)
                           : stats.total_temp_allocations;
-        pending_workspace_by_node_.insert_or_assign(node.Index(), selected_workspace);
-        pending_workspace_source_by_node_.insert_or_assign(
+        pending_workspace_selection_by_node_.insert_or_assign(
             node.Index(),
-            has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator : WorkspaceEstimateSource::kProfile);
-        return stats.input_sizes + stats.initializers_sizes +
-               stats.total_dynamic_sizes + selected_workspace;
+            WorkspaceEstimateSelection{
+                selected_workspace,
+                has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
+                              : WorkspaceEstimateSource::kProfile});
+        const SafeInt<size_t> resource_count =
+            SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
+            stats.total_dynamic_sizes + selected_workspace;
+        return static_cast<size_t>(resource_count);
       }
     }
 
@@ -160,19 +164,19 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     const size_t fallback_workspace =
         static_cast<size_t>(estimated * (kAdHocSafetyMultiplierPercent - 100) / 100);
     const size_t selected_workspace = level1_workspace_estimate.value_or(fallback_workspace);
-    pending_workspace_by_node_.insert_or_assign(node.Index(), selected_workspace);
-    pending_workspace_source_by_node_.insert_or_assign(
+    pending_workspace_selection_by_node_.insert_or_assign(
         node.Index(),
-        level1_workspace_estimate.has_value() ? WorkspaceEstimateSource::kEstimator
-                                              : WorkspaceEstimateSource::kFallback);
+        WorkspaceEstimateSelection{
+            selected_workspace,
+            level1_workspace_estimate.has_value() ? WorkspaceEstimateSource::kEstimator
+                                                  : WorkspaceEstimateSource::kFallback});
     return static_cast<size_t>(estimated + selected_workspace);
   }
 
   void ResetPendingResourcesImpl() override {
     pending_weights_.clear();
     pending_weights_by_node_.clear();
-    pending_workspace_by_node_.clear();
-    pending_workspace_source_by_node_.clear();
+    pending_workspace_selection_by_node_.clear();
   }
 
   void CommitResourcesForNode(NodeIndex node_index) override {
@@ -185,27 +189,21 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
       pending_weights_by_node_.erase(it);
     }
 
-    auto workspace_it = pending_workspace_by_node_.find(node_index);
-    if (workspace_it != pending_workspace_by_node_.end()) {
-      CommitWorkspaceEstimate(workspace_it->second, GetPendingWorkspaceEstimateSource(node_index));
-      pending_workspace_by_node_.erase(workspace_it);
-      pending_workspace_source_by_node_.erase(node_index);
+    auto workspace_it = pending_workspace_selection_by_node_.find(node_index);
+    if (workspace_it != pending_workspace_selection_by_node_.end()) {
+      CommitWorkspaceEstimate(workspace_it->second);
+      pending_workspace_selection_by_node_.erase(workspace_it);
     }
   }
 
-  size_t GetPendingWorkspaceEstimate(NodeIndex node_index) const override {
-    auto it = pending_workspace_by_node_.find(node_index);
-    return it == pending_workspace_by_node_.end() ? 0 : it->second;
+  WorkspaceEstimateSelection GetPendingWorkspaceEstimateSelection(
+      NodeIndex node_index) const override {
+    auto it = pending_workspace_selection_by_node_.find(node_index);
+    return it == pending_workspace_selection_by_node_.end() ? WorkspaceEstimateSelection{} : it->second;
   }
 
-  WorkspaceEstimateSource GetPendingWorkspaceEstimateSource(NodeIndex node_index) const override {
-    auto it = pending_workspace_source_by_node_.find(node_index);
-    return it == pending_workspace_source_by_node_.end() ? WorkspaceEstimateSource::kNone : it->second;
-  }
-
-  void AddCommittedWorkspaceEstimate(
-      size_t workspace_bytes, WorkspaceEstimateSource source) override {
-    CommitWorkspaceEstimate(workspace_bytes, source);
+  void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection selection) override {
+    CommitWorkspaceEstimate(selection);
   }
 
   WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const override {
@@ -217,9 +215,10 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   }
 
  private:
-  void CommitWorkspaceEstimate(size_t workspace_bytes, WorkspaceEstimateSource source) {
-    committed_workspace_estimate_ += workspace_bytes;
-    switch (source) {
+  void CommitWorkspaceEstimate(WorkspaceEstimateSelection selection) {
+    committed_workspace_estimate_ =
+        static_cast<size_t>(SafeInt<size_t>(committed_workspace_estimate_) + selection.bytes);
+    switch (selection.source) {
       case WorkspaceEstimateSource::kFallback:
         ++workspace_source_counts_.fallback;
         break;
@@ -251,13 +250,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // uses this mapping to move accepted-node initializers into committed_weights_.
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
 
-  // Selected workspace bytes for each probed node. The value may be fallback,
-  // profiled, estimated, or max(profiled, estimated).
-  InlinedHashMap<NodeIndex, size_t> pending_workspace_by_node_;
-
-  // Source corresponding to pending_workspace_by_node_, retained so accepted
-  // nodes can be included in the final workspace-source coverage report.
-  InlinedHashMap<NodeIndex, WorkspaceEstimateSource> pending_workspace_source_by_node_;
+  // Selected workspace bytes and source for each probed node. Keeping them in
+  // one value prevents the reported source from diverging from the selected size.
+  InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pending_workspace_selection_by_node_;
 
   // Workspace total and source counts for nodes ultimately accepted by the EP.
   size_t committed_workspace_estimate_ = 0;

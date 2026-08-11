@@ -380,8 +380,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // be committed after the drop step below. The costs must be captured here because
     // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
     InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
-    InlinedHashMap<NodeIndex, size_t> pass1_workspace_estimates;
-    InlinedHashMap<NodeIndex, WorkspaceEstimateSource> pass1_workspace_sources;
+    InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pass1_workspace_estimates;
     if (params.resource_accountant != nullptr) {
       for (const auto& capability : capabilities) {
         const auto& sub_graph = *capability->sub_graph;
@@ -390,9 +389,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
             const NodeIndex node_index = sub_graph.nodes[i];
             pass1_node_costs.insert_or_assign(node_index, sub_graph.GetNodeCost(i));
             pass1_workspace_estimates.insert_or_assign(
-                node_index, params.resource_accountant->GetPendingWorkspaceEstimate(node_index));
-            pass1_workspace_sources.insert_or_assign(
-                node_index, params.resource_accountant->GetPendingWorkspaceEstimateSource(node_index));
+                node_index, params.resource_accountant->GetPendingWorkspaceEstimateSelection(node_index));
           }
         }
       }
@@ -491,11 +488,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           params.resource_accountant->AddConsumedAmount(cost_it->second);
           auto workspace_it = pass1_workspace_estimates.find(node_index);
           if (workspace_it != pass1_workspace_estimates.end()) {
-            auto source_it = pass1_workspace_sources.find(node_index);
-            const auto source = source_it == pass1_workspace_sources.end()
-                                    ? WorkspaceEstimateSource::kNone
-                                    : source_it->second;
-            params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second, source);
+            params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
           }
         }
       }
