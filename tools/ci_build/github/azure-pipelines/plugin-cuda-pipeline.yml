@@ -55,6 +55,22 @@ parameters:
   - dev
   default: dev
 
+# CUDA 13.x always compresses fatbins with -compress-mode=size. Enabling this makes the
+# CUDA 12.8 build match it, which shrinks the binary a lot but raises the minimum driver
+# to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61).
+- name: enable_cuda_fatbin_size_compression
+  displayName: 'Compress CUDA fatbins for size (CUDA 12.8 only; needs r550+ driver)'
+  type: boolean
+  default: false
+
+# The fpA_intB GEMM/GEMV kernels are the largest single component of the binary after
+# flash attention. They are opt-in at run time (ORT_FPA_INTB_GEMM / ep.cuda.fpa_intb_gemm),
+# but MatMulNBits still uses them automatically when the weights are prepacked.
+- name: enable_fpa_intb_gemm
+  displayName: 'Build fpA_intB GEMM CUDA kernels'
+  type: boolean
+  default: true
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -72,9 +88,9 @@ variables:
   # Non-dev package versions (release, RC) must use Release build type
   - name: invalidBuildTypeConfig
     value: ${{ and(ne(parameters.package_type, 'dev'), ne(parameters.cmake_build_type, 'Release')) }}
-  # aarch64 is only available for CUDA 13.x
-  - name: invalidAArch64Config
-    value: ${{ and(eq(parameters.build_linux_aarch64, true), ne(parameters.cuda_version, '13.x')) }}
+  # ARM64 is only available for CUDA 13.x
+  - name: invalidArm64Config
+    value: ${{ and(or(eq(parameters.build_windows_arm64, true), eq(parameters.build_linux_aarch64, true)), ne(parameters.cuda_version, '13.x')) }}
 
 extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
@@ -106,7 +122,7 @@ extends:
 
     stages:
       # Validate parameter combinations
-      - ${{ if or(eq(variables['invalidBuildTypeConfig'], 'True'), eq(variables['invalidAArch64Config'], 'True')) }}:
+      - ${{ if or(eq(variables['invalidBuildTypeConfig'], 'True'), eq(variables['invalidArm64Config'], 'True')) }}:
         - stage: Validate_Parameters
           displayName: 'Validate Parameters'
           dependsOn: []
@@ -123,11 +139,11 @@ extends:
                   echo "##vso[task.logissue type=error]Non-dev package version requires Release build type."
                   exit 1
                 displayName: 'ERROR: Non-dev package version requires Release build type'
-            - ${{ if eq(variables['invalidAArch64Config'], 'True') }}:
+            - ${{ if eq(variables['invalidArm64Config'], 'True') }}:
               - script: |
-                  echo "##vso[task.logissue type=error]Linux aarch64 build is only available for CUDA 13.x."
+                  echo "##vso[task.logissue type=error]Windows ARM64 and Linux aarch64 builds are only available for CUDA 13.x."
                   exit 1
-                displayName: 'ERROR: aarch64 requires CUDA 13.x'
+                displayName: 'ERROR: ARM64 requires CUDA 13.x'
       - ${{ else }}:
         - template: stages/plugin-cuda-packaging-stage.yml
           parameters:
@@ -140,14 +156,20 @@ extends:
             package_type: ${{ parameters.package_type }}
             version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
+            enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
+            enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
             ${{ if eq(parameters.cuda_version, '12.8') }}:
+              cuda_major: '12'
               python_package_name: 'onnxruntime-ep-cuda12'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
-              cmake_x64_cuda_archs: '61-real;75-real;86-real;89-real;120-real;120-virtual'
-              cmake_arm64_cuda_archs: '61-real;75-real;86-real;89-real;120-real;120-virtual'
+              cmake_windows_x64_cuda_archs: '61-real;75-real;86-real;89-real;120-real'
+              cmake_linux_x64_cuda_archs: '75-real;80-real;86-real;89-real;90-real;120-real'
             ${{ if eq(parameters.cuda_version, '13.x') }}:
+              cuda_major: '13'
               python_package_name: 'onnxruntime-ep-cuda13'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
               docker_base_image_aarch64: 'onnxruntimebuildcache.azurecr.io/public/azureml/onnxruntime_build_cuda13_aarch64_almalinux9_gcc14:20260323.1'
-              cmake_x64_cuda_archs: '75-real;80-real;86-real;89-real;90-real;120-real;120-virtual'
-              cmake_arm64_cuda_archs: '110-real;120-real;121-real;120-virtual'
+              cmake_windows_x64_cuda_archs: '75-real;80-real;86-real;89-real;120-real'
+              cmake_windows_arm64_cuda_archs: '120-real;121-real'
+              cmake_linux_x64_cuda_archs: '75-real;80-real;86-real;89-real;90-real;120-real'
+              cmake_linux_aarch64_cuda_archs: '89-real;90-real;100-real;103-real;120-real;121-real'

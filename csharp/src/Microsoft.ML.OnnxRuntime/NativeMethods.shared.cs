@@ -490,6 +490,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetExperimentalFunction;
         public IntPtr KernelContext_GetSyncStream;
         // v1.29 APIs
+        public IntPtr SessionOptionsSetWeightlessSourceModelBuffer;
         public IntPtr SetSeed;
     }
 

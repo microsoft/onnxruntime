@@ -688,6 +688,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
   // PrepareQKV (and therefore the fused QK-Norm prologue). Disable it when q/k norm weights are
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
+  // FlashDecoding can handle multi-token decode (sequence_length >= 1): its causal masking and
+  // split-KV reduction match regular FlashAttention (verified to fp16 tolerance, including MTP-style decode).
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
   data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
