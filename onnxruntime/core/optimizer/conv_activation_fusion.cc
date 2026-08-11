@@ -100,12 +100,18 @@ class ConvActivationSelector : public NodeSelector {
 
     // QuickGeluFusion collapses `x * sigmoid(alpha * x)` into a kMSDomain QuickGelu node.
     // With alpha == 1 that is SiLU/Swish, which follows nearly every Conv in the YOLO model
-    // family. Only the WebGPU EP has a fused-Conv kernel that understands QuickGelu, and only
-    // through the NHWC Conv: a kOnnxDomain Conv fuses into kMSDomain::FusedConv, for which
-    // WebGPU registers no kernel.
+    // family. HardSwish (MobileNetV3/EfficientNet-lite) and Elu are plain ONNX-domain ops that
+    // the shared selector below deliberately omits, because the CPU and JS FusedConv kernels
+    // do not implement them. Only the WebGPU EP has a fused-Conv kernel that understands these,
+    // and only through the NHWC Conv: a kOnnxDomain Conv fuses into kMSDomain::FusedConv, for
+    // which WebGPU registers no kernel.
     auto is_supported_webgpu_ep_activation = [&node](const Node& activation_node) {
-      return node.Domain() == kMSInternalNHWCDomain &&
-             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain);
+      if (node.Domain() != kMSInternalNHWCDomain) {
+        return false;
+      }
+      return graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSwish", {14, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Elu", {6, 22});
     };
 
     if (!ConvFusionDataTypeCheck(node)) {
@@ -197,6 +203,9 @@ class FuseConvActivationAction : public ReplaceWithNew {
       activation_params.push_back(alpha);
       activation_params.push_back(beta);
     } else if (activation_op_type == "QuickGelu") {
+      auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
+      activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
+    } else if (activation_op_type == "Elu") {
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
       activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
     }

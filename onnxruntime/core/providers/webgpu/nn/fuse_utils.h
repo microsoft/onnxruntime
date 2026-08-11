@@ -25,7 +25,9 @@ enum class ActivationKind {
   HardSigmoid,
   LeakyRelu,
   Tanh,
-  QuickGelu
+  QuickGelu,
+  HardSwish,
+  Elu
 };
 
 using Activation = struct Activation {
@@ -55,6 +57,9 @@ using Activation = struct Activation {
     struct {
       float alpha_;
     } QuickGelu;
+    struct {
+      float alpha_;
+    } Elu;
     float values_[2];
   };
   ActivationParameters activation_params_ = {};

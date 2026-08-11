@@ -18,6 +18,9 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
       activation.activation_kind_ = ActivationKind::Tanh;
     } else if (activation_type == "Sigmoid") {
       activation.activation_kind_ = ActivationKind::Sigmoid;
+    } else if (activation_type == "HardSwish") {
+      // ONNX HardSwish fixes alpha/beta at 1/6 and 1/2, so it carries no parameters.
+      activation.activation_kind_ = ActivationKind::HardSwish;
     } else {
       // The remaining activation types have additional parameters to be pulled out.
       size_t activation_params_count;
@@ -32,6 +35,9 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
         activation_params_count = 2;
       } else if (activation_type == "QuickGelu") {
         activation.activation_kind_ = ActivationKind::QuickGelu;
+        activation_params_count = 1;
+      } else if (activation_type == "Elu") {
+        activation.activation_kind_ = ActivationKind::Elu;
         activation_params_count = 1;
       } else {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
@@ -82,6 +88,14 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
       // QuickGelu(x, alpha) = x * sigmoid(alpha * x). alpha == 1 makes this SiLU/Swish.
       return "value = value * (" + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-(" +
              base_type_cast(activation.activation_params_.QuickGelu.alpha_) + " * value))));";
+    case ActivationKind::HardSwish:
+      // HardSwish(x) = x * clamp(x/6 + 1/2, 0, 1). ONNX fixes the two constants.
+      return "value = value * clamp(value * " + value_type_cast(1.0f / 6.0f) + " + " + value_type_cast(0.5) + ", " +
+             value_type_cast(0.0) + ", " + value_type_cast(1.0) + ");";
+    case ActivationKind::Elu:
+      // Elu(x, alpha) = x for x >= 0, else alpha * (exp(x) - 1).
+      return "value = select(" + base_type_cast(activation.activation_params_.Elu.alpha_) + " * (exp(value) - " +
+             value_type_cast(1.0) + "), value, value >= " + value_type_cast(0.0) + ");";
     default:
       return "";
   }

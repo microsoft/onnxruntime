@@ -56,14 +56,19 @@ bool IsDeviceSupported(const ComputeContextBase& context) {
 
 // The im2col-matmul shader applies the activation inline in its epilogue, but it only
 // supports kinds that need no runtime parameters. Parameterized kinds (Clip, LeakyRelu,
-// HardSigmoid, or a QuickGelu with a non-unit alpha) would need extra uniforms, so those
+// HardSigmoid, Elu, or a QuickGelu with a non-unit alpha) would need extra uniforms, so those
 // keep using the general conv path instead.
+//
+// Keeping a fusable-but-unsupported kind out of this list is not free: the graph-level fusion
+// still fires, so the conv loses this fast path and falls back to the general one. Prefer to
+// extend the shader over adding a parameterized kind to the selector alone.
 bool IsActivationSupported(const Activation& activation) {
   switch (activation.activation_kind_) {
     case ActivationKind::None:
     case ActivationKind::Relu:
     case ActivationKind::Sigmoid:
     case ActivationKind::Tanh:
+    case ActivationKind::HardSwish:
       return true;
     case ActivationKind::QuickGelu:
       return activation.activation_params_.QuickGelu.alpha_ == 1.0f;
@@ -81,6 +86,7 @@ static_assert(static_cast<int>(ActivationKind::Relu) == 1, "im2col_matmul.wgsl.t
 static_assert(static_cast<int>(ActivationKind::Sigmoid) == 2, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::HardSwish) == 8, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);

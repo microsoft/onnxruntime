@@ -7,7 +7,8 @@
 #param use_subgroup
 #param vec_size
 // Activation folded into the epilogue. Mirrors ActivationKind in nn/fuse_utils.h:
-//   0 = None, 1 = Relu, 2 = Sigmoid, 6 = Tanh, 7 = QuickGelu (alpha is always 1 here).
+//   0 = None, 1 = Relu, 2 = Sigmoid, 6 = Tanh, 7 = QuickGelu (alpha is always 1 here),
+//   8 = HardSwish.
 // Only parameterless kinds reach this shader; see IsActivationSupported in im2col_matmul.cc,
 // which also static_asserts these values.
 #param activation_kind
@@ -155,6 +156,8 @@ $MAIN {
     output_data = tanh(output_data);
 #elif activation_kind == 7
     output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));
+#elif activation_kind == 8
+    output_data = output_data * clamp(output_data * output_element_t(0.16666667) + output_element_t(0.5), output_element_t(0), output_element_t(1));
 #endif
     write_output(batch, m_base + m_idx, n_base, output_data);
   }
