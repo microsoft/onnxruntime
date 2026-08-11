@@ -20,7 +20,7 @@
 
 #include <gtest/gtest.h>
 
-#include "contrib_ops/cuda/quantization/matmul_4bits_common.cuh"
+#include "contrib_ops/cuda/quantization/matmul_4bits_cols_per_block.h"
 
 namespace onnxruntime {
 namespace test {
