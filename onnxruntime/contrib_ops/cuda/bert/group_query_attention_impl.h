@@ -166,11 +166,6 @@ Status LaunchGetSequenceLengths(
     cudaStream_t stream,
     const int max_threads_per_block);
 
-Status ValidateGqaSeqLensInputValues(cudaStream_t stream,
-                                     const int32_t* seq_lens,
-                                     int32_t batch_size,
-                                     int32_t max_sequence_length);
-
 // Evicts the oldest evict_counts[b] entries of a windowed (sliding_window_cache) KV cache by
 // left-shifting the retained entries to the front, so the cache keeps holding the most recent
 // tokens contiguously at indices [0, L). Must run before the new tokens are appended.

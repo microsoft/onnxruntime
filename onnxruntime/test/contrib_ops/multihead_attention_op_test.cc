@@ -588,12 +588,10 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
              {}, nullptr, &execution_providers);
 }
 
-TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartRejectsInvalidSeqstartValues) {
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesInvalidSeqstartValues) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA execution provider not available";
   }
-
-  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS", "1"}}};
 
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 256;
@@ -625,9 +623,7 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartRejectsInvalidSeqstartValue
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "invalid seqstart_q",
-             {}, nullptr, &execution_providers);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {

@@ -29,8 +29,6 @@ limitations under the License.
 #include <cuda_fp16.h>
 
 #include <cassert>
-#include <vector>
-
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "core/platform/env_var_utils.h"
 
 using namespace onnxruntime::cuda;
 
@@ -65,37 +62,6 @@ using onnxruntime::contrib::cuda::GroupQueryAttentionData;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-Status ValidateGqaSeqLensInputValues(cudaStream_t stream,
-                                     const int32_t* seq_lens,
-                                     int32_t batch_size,
-                                     int32_t max_sequence_length) {
-  if (seq_lens == nullptr) {
-    return Status::OK();
-  }
-
-  constexpr char kValidateSeqLensEnvVar[] = "ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS";
-  if (!ParseEnvironmentVariableWithDefault<bool>(kValidateSeqLensEnvVar, false)) {
-    return Status::OK();
-  }
-
-  std::vector<int32_t> seq_lens_host(static_cast<size_t>(batch_size));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seq_lens_host.data(),
-                                       seq_lens,
-                                       static_cast<size_t>(batch_size) * sizeof(int32_t),
-                                       cudaMemcpyDeviceToHost,
-                                       stream));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-
-  for (int32_t i = 0; i < batch_size; ++i) {
-    const int32_t value = seq_lens_host[static_cast<size_t>(i)];
-    ORT_RETURN_IF_NOT(value >= 0 && value < max_sequence_length,
-                      "seqlens_k[", i, "] has invalid sequence length ", value,
-                      ". Expected range [0, ", max_sequence_length, ").");
-  }
-
-  return Status::OK();
-}
 
 // ============================================================================
 // QKV Preprocessing Helpers

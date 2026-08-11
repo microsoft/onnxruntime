@@ -737,11 +737,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 #endif
 
   auto cuda_stream = Stream(context);
-  ORT_RETURN_IF_ERROR(ValidateGqaSeqLensInputValues(
-      cuda_stream,
-      total_seq_lens_minus_one->Data<int>(),
-      parameters.batch_size,
-      parameters.seqlen_present_kv_cache));
 
   // Derive bounded device-side lengths for every path, including fast decode, so raw input values
   // never control KV-cache or attention indexing.
