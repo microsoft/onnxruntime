@@ -3525,24 +3525,36 @@ static Status ExpectQuickGeluPresent(Graph& graph) {
   return Status::OK();
 }
 
+// Every case in this group is built as exactly `Conv -> <activation>`, so assert that shape up
+// front: a builder that silently produced something else would otherwise be indistinguishable
+// from a fusion that did not fire.
+static Status ExpectUnfusedConvActivationPair(Graph& graph) {
+  ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2,
+                    "expected a Conv + activation pair before fusion, got ", graph.NumberOfNodes(),
+                    " nodes");
+  return Status::OK();
+}
+
 // TestGraphTransformer() builds its Model in memory with an explicit opset map. The internal
 // NHWC domain is auto-imported only when a model is loaded from a proto (see model.cc), so
 // build the model here to declare the domain the layout transformer would have introduced.
+// `opset_version` is a parameter because the activations differ in when they were introduced:
+// the ONNX-domain Gelu only exists at opset 20+, while HardSwish needs 14+.
 static Status RunConvActivationFusion(const std::function<void(ModelTestBuilder&)>& build_test_case,
                                       const logging::Logger& logger,
-                                      const std::function<Status(Graph&)>& post_graph_checker) {
-  constexpr int kOpsetVersion = 13;
+                                      const std::function<Status(Graph&)>& post_graph_checker,
+                                      int opset_version = 13) {
   const std::unordered_map<std::string, int> domain_to_version{
-      {kOnnxDomain, kOpsetVersion}, {kMSDomain, 1}, {kMSInternalNHWCDomain, kOpsetVersion}};
+      {kOnnxDomain, opset_version}, {kMSDomain, 1}, {kMSInternalNHWCDomain, opset_version}};
 
-  Model model("ConvQuickGeluFusionTest", false, ModelMetaData(), PathString(),
+  Model model("ConvActivationFusionTest", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
   build_test_case(builder);
   builder.SetGraphOutputs();
   ORT_RETURN_IF_ERROR(graph.Resolve());
-  ORT_RETURN_IF_ERROR(ExpectQuickGeluPresent(graph));
+  ORT_RETURN_IF_ERROR(ExpectUnfusedConvActivationPair(graph));
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
@@ -3594,6 +3606,215 @@ TEST_F(GraphTransformationTests, NoFuseOnnxDomainConvQuickGeluForWebGpuEp) {
   };
 
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectQuickGeluPresent));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Coverage for the activations fused on top of QuickGelu: HardSwish, Elu, the three Gelu
+// spellings and Softplus. Each needs three things to hold, and each is a separate failure mode:
+//   1. the selector accepts it behind an NHWC Conv on WebGPU,
+//   2. its attributes survive into `activation_params` (a shader reading the wrong parameter
+//      computes a plausible-looking wrong answer rather than crashing),
+//   3. it stays unfused wherever no fused kernel can execute it.
+// ---------------------------------------------------------------------------------------------
+
+// Generalises BuildConvQuickGeluGraph over the activation op, its domain and its attributes.
+// `extra_input` covers FastGelu's optional bias, which must block fusion.
+static void BuildConvActivationGraph(ModelTestBuilder& builder, const std::string& act_op,
+                                     const std::string& act_domain, const std::string& ep,
+                                     const std::function<void(Node&)>& decorate = nullptr,
+                                     bool extra_input = false) {
+  auto* input = builder.MakeInput<float>({1, 5, 5, 2}, -1.0f, 1.0f);
+  auto* weight = builder.MakeInitializer<float>({3, 2, 3, 3}, -1.0f, 1.0f);
+  auto* conv_out = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+
+  Node& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+  conv.SetExecutionProviderType(ep);
+
+  std::vector<NodeArg*> act_inputs{conv_out};
+  if (extra_input) {
+    act_inputs.push_back(builder.MakeInitializer<float>({3}, -1.0f, 1.0f));
+  }
+
+  Node& activation = builder.AddNode(act_op, act_inputs, {output}, act_domain);
+  if (decorate) {
+    decorate(activation);
+  }
+  activation.SetExecutionProviderType(ep);
+}
+
+// Asserts the pair collapsed to a single NHWC Conv carrying `activation` and exactly
+// `expected_params` as its activation_params.
+static Status ExpectFusedInto(Graph& graph, const std::string& activation,
+                              const std::vector<float>& expected_params) {
+  ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 1, "expected ", activation,
+                    " to be folded into Conv, got ", graph.NumberOfNodes(), " nodes");
+  const Node& fused = *graph.Nodes().begin();
+  ORT_RETURN_IF_NOT(fused.OpType() == "Conv" && fused.Domain() == kMSInternalNHWCDomain,
+                    "expected an NHWC Conv, got ", fused.Domain(), ".", fused.OpType());
+
+  const auto* activation_attr = graph_utils::GetNodeAttribute(fused, "activation");
+  ORT_RETURN_IF_NOT(activation_attr != nullptr && activation_attr->s() == activation,
+                    "fused Conv should carry activation ", activation, ", got ",
+                    activation_attr == nullptr ? "<none>" : activation_attr->s());
+
+  const auto* params = graph_utils::GetNodeAttribute(fused, "activation_params");
+  if (expected_params.empty()) {
+    ORT_RETURN_IF_NOT(params == nullptr || params->floats_size() == 0, activation,
+                      " takes no parameters, but activation_params was set");
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(params != nullptr, activation, " should carry activation_params");
+  ORT_RETURN_IF_NOT(static_cast<size_t>(params->floats_size()) == expected_params.size(),
+                    activation, " expected ", expected_params.size(), " activation_params, got ",
+                    params->floats_size());
+  for (size_t i = 0; i < expected_params.size(); ++i) {
+    ORT_RETURN_IF_NOT(params->floats(static_cast<int>(i)) == expected_params[i], activation,
+                      " activation_params[", i, "] expected ", expected_params[i], ", got ",
+                      params->floats(static_cast<int>(i)));
+  }
+  return Status::OK();
+}
+
+// Asserts the activation is still a standalone node, i.e. fusion correctly declined.
+static std::function<Status(Graph&)> ExpectNotFused(const std::string& act_op) {
+  return [act_op](Graph& graph) -> Status {
+    int count = 0;
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == act_op) {
+        ++count;
+      }
+    }
+    ORT_RETURN_IF_NOT(count == 1, "expected ", act_op, " to be left unfused, found ", count,
+                      " such nodes in a graph of ", graph.NumberOfNodes());
+    return Status::OK();
+  };
+}
+
+TEST_F(GraphTransformationTests, FuseNhwcConvHardSwishForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "HardSwish", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "HardSwish", {}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// Elu is the first fused activation to carry an attribute, so a dropped alpha would silently
+// change the negative half of the curve.
+TEST_F(GraphTransformationTests, FuseNhwcConvEluPreservesAlphaForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Elu", kOnnxDomain, kWebGpuExecutionProvider,
+                             [](Node& node) { node.AddAttribute("alpha", 0.5f); });
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Elu", {0.5f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// An absent alpha must resolve to the ONNX default of 1.0, not to zero.
+TEST_F(GraphTransformationTests, FuseNhwcConvEluDefaultsAlphaForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Elu", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Elu", {1.0f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// The ONNX-domain Gelu only exists at opset 20+. `approximate` is a string attribute but
+// activation_params is a float list, so the exact (erf) form must arrive as 0.0.
+TEST_F(GraphTransformationTests, FuseNhwcConvOnnxGeluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Gelu", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Gelu", {0.0f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 20));
+}
+
+// ...and the tanh approximation as 1.0. These select different shader formulas, so a flag lost
+// here produces a numerically close but wrong result that no shape or type check would catch.
+TEST_F(GraphTransformationTests, FuseNhwcConvOnnxGeluTanhForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Gelu", kOnnxDomain, kWebGpuExecutionProvider,
+                             [](Node& node) { node.AddAttribute("approximate", "tanh"); });
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Gelu", {1.0f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 20));
+}
+
+// Models exported below opset 20 have no Gelu op at all; GeluFusion rewrites the erf
+// decomposition into this kMSDomain node, which is always the exact form.
+TEST_F(GraphTransformationTests, FuseNhwcConvContribGeluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Gelu", kMSDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Gelu", {0.0f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+TEST_F(GraphTransformationTests, FuseNhwcConvFastGeluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "FastGelu", kMSDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "FastGelu", {}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// FastGelu's optional second input is a bias, so the two-input form is not a pure elementwise
+// activation. Fusing it would drop the bias entirely.
+TEST_F(GraphTransformationTests, NoFuseNhwcConvFastGeluWithBiasForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "FastGelu", kMSDomain, kWebGpuExecutionProvider, nullptr,
+                             /*extra_input=*/true);
+  };
+
+  ASSERT_STATUS_OK(
+      RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("FastGelu"), 17));
+}
+
+TEST_F(GraphTransformationTests, FuseNhwcConvSoftplusForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Softplus", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Softplus", {}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// Selu is deliberately absent: the selector only runs once the activation is already assigned to
+// the same EP as the Conv, and the WebGPU EP registers no Selu kernel. Listing it would be dead
+// code today, so this pins the exclusion rather than leaving it to be re-added by guesswork.
+TEST_F(GraphTransformationTests, NoFuseNhwcConvSeluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Selu", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Selu"), 17));
+}
+
+// The CPU and JS FusedConv kernels cannot evaluate any of the newly added activations, so the
+// shared selector must not have picked them up. HardSwish stands in for the group.
+TEST_F(GraphTransformationTests, NoFuseNhwcConvHardSwishForCpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "HardSwish", kOnnxDomain, kCpuExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(
+      RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("HardSwish"), 17));
+}
+
+TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Gelu", kOnnxDomain, kCpuExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Gelu"), 20));
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
