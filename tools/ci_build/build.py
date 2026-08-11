@@ -878,6 +878,9 @@ def generate_build_tree(
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
+    if args.use_apple_accelerate:
+        cmake_args += ["-Donnxruntime_USE_APPLE_ACCELERATE=ON"]
+
     if args.use_webnn:
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")

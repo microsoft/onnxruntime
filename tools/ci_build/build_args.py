@@ -756,6 +756,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     coreml_group = parser.add_argument_group("CoreML Execution Provider (Apple)")
     coreml_group.add_argument("--use_coreml", action="store_true", help="Enable CoreML EP (Apple platforms).")
 
+    # --- Apple Accelerate ---
+    parser.add_argument(
+        "--use_apple_accelerate", action="store_true", help="Enable Apple Accelerate framework in MLAS (Apple platforms)."
+    )
+
     # --- QNN ---
     qnn_group = parser.add_argument_group("QNN Execution Provider (Qualcomm)")
     qnn_group.add_argument(

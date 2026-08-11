@@ -1177,7 +1177,6 @@ if(onnxruntime_USE_APPLE_ACCELERATE)
     message(FATAL_ERROR "Apple Accelerate framework not found. Ensure you are building with an Apple SDK.")
   endif()
   target_link_libraries(onnxruntime_mlas PRIVATE ${APPLE_ACCELERATE_LIB})
-  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_APPLE_ACCELERATE=1)
 endif()
 
 # set up source group for MLAS source files

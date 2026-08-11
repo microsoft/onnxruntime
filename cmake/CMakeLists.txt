@@ -615,7 +615,8 @@ endif()
 
 if(onnxruntime_USE_APPLE_ACCELERATE)
   if(NOT APPLE)
-    message(FATAL_ERROR "onnxruntime_USE_APPLE_ACCELERATE is only supported on Apple platforms (macOS, iOS).")
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE was set but it is not supported on this platform. It will be disabled.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
   endif()
 endif()
 
