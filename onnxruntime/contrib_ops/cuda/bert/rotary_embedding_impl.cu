@@ -10,6 +10,7 @@ Kernel implementation for rotary embeddings.
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include <cuda_fp16.h>
+#include <limits>
 
 using namespace onnxruntime::cuda;
 
@@ -39,8 +40,14 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
 
   const int i = threadIdx.x;
 
-  const T* input_data = input + b * in_strides.x + s * in_strides.z + n * in_strides.y;
-  T* output_data = output + b * out_strides.x + s * out_strides.z + n * out_strides.y;
+  // Offsets are computed in 64-bit: a tensor can legally hold more than INT32_MAX elements, so
+  // b * in_strides.x can wrap even when each individual stride fits in an int.
+  const T* input_data = input + static_cast<int64_t>(b) * in_strides.x +
+                        static_cast<int64_t>(s) * in_strides.z +
+                        static_cast<int64_t>(n) * in_strides.y;
+  T* output_data = output + static_cast<int64_t>(b) * out_strides.x +
+                   static_cast<int64_t>(s) * out_strides.z +
+                   static_cast<int64_t>(n) * out_strides.y;
 
   [[maybe_unused]] extern __shared__ char smem_[];
   [[maybe_unused]] T* smem = reinterpret_cast<T*>(smem_);
@@ -84,7 +91,7 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
     }
     position_id = static_cast<int>(base_pos) + s;
   } else if (position_ids_format == 1) {
-    int64_t pos = position_ids[b * sequence_length + s];
+    int64_t pos = position_ids[static_cast<int64_t>(b) * sequence_length + s];
 #if !defined(NDEBUG)
     if (i == 0) {
       CUDA_KERNEL_ASSERT(pos >= 0 && pos < static_cast<int64_t>(max_sequence_length));
@@ -101,7 +108,7 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
     int past = (past_sequence_lengths == nullptr) ? 0 : past_sequence_lengths[b];
     position_id = past + s;
   }
-  const int cache_offset = position_id * half_rotary_embedding_dim;
+  const int64_t cache_offset = static_cast<int64_t>(position_id) * half_rotary_embedding_dim;
   const T* cos_data = cos_cache + cache_offset;
   const T* sin_data = sin_cache + cache_offset;
 
@@ -134,6 +141,15 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
                                    const int rotary_embedding_dim, const int max_sequence_length,
                                    const int position_ids_format, const bool interleaved,
                                    const int max_threads_per_block, const bool is_input_bnsh_format) {
+  // Guard the packed strides themselves: these products are computed in int and are what the
+  // kernel offsets are built from.
+  ORT_RETURN_IF_NOT(static_cast<int64_t>(num_heads) * sequence_length * head_size <=
+                        static_cast<int64_t>(std::numeric_limits<int>::max()),
+                    "RotaryEmbedding: num_heads * sequence_length * head_size overflows int32");
+  ORT_RETURN_IF_NOT(static_cast<int64_t>(num_heads) * head_size <=
+                        static_cast<int64_t>(std::numeric_limits<int>::max()),
+                    "RotaryEmbedding: num_heads * head_size overflows int32");
+
   int4 in_strides;
   int4 out_strides;
   if (is_input_bnsh_format) {
