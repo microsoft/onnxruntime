@@ -1282,7 +1282,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k_quant_rho", "Magnitude percentile (0,1] used to clip outliers before computing per-group K min/max in PER_GROUP mode. 1.0 (default) disables clipping.", AttributeProto::FLOAT, 1.0f)
         .Attr("v_quant_rho", "Magnitude percentile (0,1] used to clip outliers before computing per-group V min/max in PER_GROUP mode. 1.0 (default) disables clipping.", AttributeProto::FLOAT, 1.0f)
         .Attr("kv_quant_metadata_fp16",
-              "PER_GROUP (OSCAR 2-bit) only: store the per-group scale/zero metadata as fp16 (1) instead of fp32 (0, default)."
+              "PER_GROUP (OSCAR 2-bit) only: store the per-group scale/zero metadata as fp16 (1) instead of fp32 (0, default). "
               "fp16 shrinks the packed history row from head_size/4 + num_groups*8 to head_size/4 + num_groups*4 bytes.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
