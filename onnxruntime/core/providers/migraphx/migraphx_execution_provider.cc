@@ -658,6 +658,43 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
   clusters.erase(it, clusters.end());
 }
 
+// Control-flow operators whose bodies MIGraphX parses natively
+// (parse_loop.cpp / parse_if.cpp / parse_scan.cpp). We must NOT fuse nodes
+// inside these bodies, because MIGraphX's parser recurses into the serialized
+// body attribute and expects to find real ONNX operators, not synthetic
+// MGXKernel_* operators that GetSubGraph would otherwise produce for the body
+// (see onnx_parser.cpp "Unknown operator" error).
+static const std::set<std::string> mgx_control_flow_ops = {"If", "Loop", "Scan"};
+
+static bool IsNodeSupported(const std::set<std::string>& op_set,
+                            const onnxruntime::GraphViewer& graph_viewer,
+                            const NodeIndex node_idx,
+                            const logging::Logger& logger);
+
+// Check whether every node in a (sub)graph is supported by MIGraphX.
+static bool IsSubGraphFullySupported(const GraphViewer& graph_viewer,
+                                     const std::set<std::string>& op_set,
+                                     const logging::Logger& logger) {
+  for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    if (!IsNodeSupported(op_set, graph_viewer, node_idx, logger)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool IsControlFlowOpBodySupported(const Node& node,
+                                         const std::set<std::string>& op_set,
+                                         const logging::Logger& logger) {
+  for (const auto& subgraph : node.GetSubgraphs()) {
+    auto sub_viewer = subgraph->CreateGraphViewer();
+    if (!IsSubGraphFullySupported(*sub_viewer, op_set, logger)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool IsNodeSupported(const std::set<std::string>& op_set,
                             const onnxruntime::GraphViewer& graph_viewer,
                             const NodeIndex node_idx,
@@ -693,6 +730,14 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
     // not supported, then check the constant folding capability of migraphx
     // to see whether it is supported
     return false;
+  }
+
+  // handle control-flow operators that are directly supported by MIGraphX, but
+  // only if every node in the body is supported too.
+  if (mgx_control_flow_ops.count(optype) != 0) {
+    if (!IsControlFlowOpBodySupported(*node, op_set, logger)) {
+      return false;
+    }
   }
 
   return true;
@@ -1079,6 +1124,17 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
                                          const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                          IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // MIGraphX supports Loop/If/Scan control-flow operations natively and recurses into their body
+  // subgraphs when parsing the serialized model. Don't partition them below
+  // but pass them as-is to MIGraphX. See also IsNodeSupported() above.
+  if (graph_viewer.IsSubgraph()) {
+    const Node* parent = graph_viewer.ParentNode();
+    if (parent != nullptr && mgx_control_flow_ops.count(parent->OpType()) != 0) {
+      return result;
+    }
+  }
+
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
   graph_viewer.ToProto(*model_proto->mutable_graph(), true, true);
