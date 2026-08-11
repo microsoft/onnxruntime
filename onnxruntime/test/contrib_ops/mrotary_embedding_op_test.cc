@@ -53,8 +53,17 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetAvailableGpuExecutionProvide
 }
 
 std::unique_ptr<IExecutionProvider> CreateGpuExecutionProvider(const std::string& provider_type) {
-  return provider_type == kCudaExecutionProvider ? DefaultCudaExecutionProvider()
-                                                 : DefaultWebGpuExecutionProvider();
+  if (provider_type == kCudaExecutionProvider) {
+    return DefaultCudaExecutionProvider();
+  }
+  if (provider_type == kWebGpuExecutionProvider) {
+    return DefaultWebGpuExecutionProvider();
+  }
+  return nullptr;
+}
+
+TEST(ContribOpMRotaryEmbeddingTest, UnknownGpuExecutionProviderReturnsNull) {
+  EXPECT_EQ(CreateGpuExecutionProvider("UnknownExecutionProvider"), nullptr);
 }
 
 void RunMRotaryEmbeddingTest(const std::vector<int64_t>& input_shape,
