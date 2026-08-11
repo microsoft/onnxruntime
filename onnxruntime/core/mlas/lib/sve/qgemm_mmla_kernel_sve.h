@@ -57,6 +57,25 @@ Abstract:
 
 #pragma once
 
+//
+// Column groups the M == 1 path keeps live. Each group is one accumulator plus
+// one B vector, and the single A quad is shared by all of them, so widening
+// this trades registers for fewer A loads and fewer passes. Overridable from
+// the build for tuning.
+//
+#if !defined(MLAS_SVE_QGEMM_M1_COLGROUPS)
+#define MLAS_SVE_QGEMM_M1_COLGROUPS 4
+#endif
+
+//
+// Set to 0 to route M == 1 back through the shared row-pair tail path, for
+// A/B measurement of the dedicated single-row path against its predecessor
+// from a single source tree.
+//
+#if !defined(MLAS_SVE_QGEMM_M1_LEAN)
+#define MLAS_SVE_QGEMM_M1_LEAN 1
+#endif
+
 #include <algorithm>
 #include <cstring>
 #include <arm_sve.h>
@@ -141,6 +160,47 @@ MlasQGemmSveLoadASingleRow(const int8_t* aptr)
     uint64_t Row;
     std::memcpy(&Row, aptr, sizeof(Row));
     return svreinterpret_s8_u64(svzip1_u64(svdup_n_u64(Row), svdup_n_u64(0)));
+}
+
+//
+// Same, for Rows == 1, but cheaper: replicate the row's 8 bytes to *both*
+// halves of every segment instead of zero-filling the upper half. The mmla's
+// "row 1" lanes then recompute row 0, and are discarded by the store (which
+// only writes r1 when r1 < Rows). One `dup` replaces memcpy + 2 dup + zip, and
+// this sits in the K loop, so it is the hottest of the M == 1 savings.
+//
+static MLAS_FORCEINLINE svint8_t
+MlasQGemmSveLoadASingleRowDup(const int8_t* aptr)
+{
+    uint64_t Row;
+    std::memcpy(&Row, aptr, sizeof(Row));
+    return svreinterpret_s8_u64(svdup_n_u64(Row));
+}
+
+//
+// Store one output row from an accumulator pair. Rows == 1 only: uzp1 gathers
+// row 0's halves across all segments, and uzp2 (row 1) is never computed --
+// unlike MlasQGemmSveStoreAccPair, which builds both and then discards one.
+//
+static MLAS_FORCEINLINE void
+MlasQGemmSveStoreSingleRow(int32_t* C, size_t ColBase, size_t ColsValid, bool ZeroMode,
+                           svint32_t tA, svint32_t tB)
+{
+    if (ColsValid == 0) {
+        return;
+    }
+
+    const svint32_t Row0 = svreinterpret_s32_u64(
+        svuzp1_u64(svreinterpret_u64_s32(tA), svreinterpret_u64_s32(tB)));
+
+    const svbool_t pg = svwhilelt_b32_u64(uint64_t(0), uint64_t(ColsValid));
+
+    int32_t* d0 = C + ColBase;
+    svint32_t v0 = Row0;
+    if (!ZeroMode) {
+        v0 = svadd_s32_x(pg, v0, svld1_s32(pg, d0));
+    }
+    svst1_s32(pg, d0, v0);
 }
 
 //
@@ -539,8 +599,84 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
         return Rows;
     }
 
+#if MLAS_SVE_QGEMM_M1_LEAN
+    if (Rows == 1) {
+        //
+        // Dedicated single-row path.
+        //
+        // mmla cannot beat udot at M == 1: only one of the two A rows is real,
+        // so 32 MACs/instruction degrade to 16 -- exactly udot's rate. Parity is
+        // therefore the ceiling here, and the entire job of this path is to
+        // strip the per-call overhead that the shared row-pair path pays and
+        // that a single row has almost no work to amortise:
+        //
+        //   * RowSum needs no [rs0,rs0,rs1,rs1] pattern (there is no row 1), so
+        //     svdup replaces building a 4-int array on the stack and reloading
+        //     it with ld1rq;
+        //   * the A quad is loaded with one dup instead of memcpy + 2 dup + zip
+        //     -- this is inside the K loop, so it is the dominant saving;
+        //   * the store skips uzp2 entirely rather than computing row 1 and
+        //     throwing it away.
+        //
+        // All three are safe for the same reason: the mmla's row-1 lanes are
+        // computed but never stored, so whatever lands in them is irrelevant.
+        //
+        // The body below declares exactly 4 accumulators. Widening the group
+        // count needs matching accumulator/pointer variables (SVE types are
+        // sizeless, so they cannot live in an array) -- assert rather than let
+        // a larger ColsPerPass silently stride past columns it never computed.
+        static_assert(MLAS_SVE_QGEMM_M1_COLGROUPS == 4,
+                      "M=1 path body implements 4 column groups; add accumulators to widen");
+
+        const size_t ColsPerPass = MLAS_SVE_QGEMM_M1_COLGROUPS * ColsPerAcc;
+        const svint32_t rp = svdup_n_s32(RowSumBuffer[0]);
+
+        for (size_t nn = 0; nn < CountN; nn += ColsPerPass) {
+            const size_t c0 = nn;
+            const size_t c1 = nn + ColsPerAcc;
+            const size_t c2 = nn + 2 * ColsPerAcc;
+            const size_t c3 = nn + 3 * ColsPerAcc;
+
+            const size_t v0 = (CountN > c0) ? std::min(ColsPerAcc, CountN - c0) : 0;
+            const size_t v1 = (CountN > c1) ? std::min(ColsPerAcc, CountN - c1) : 0;
+            const size_t v2 = (CountN > c2) ? std::min(ColsPerAcc, CountN - c2) : 0;
+            const size_t v3 = (CountN > c3) ? std::min(ColsPerAcc, CountN - c3) : 0;
+
+            const int8_t* bp0 = MlasQGemmSveBPtr(
+                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c0, CountN, ColsPerAcc));
+            const int8_t* bp1 = MlasQGemmSveBPtr(
+                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c1, CountN, ColsPerAcc));
+            const int8_t* bp2 = MlasQGemmSveBPtr(
+                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc));
+            const int8_t* bp3 = MlasQGemmSveBPtr(
+                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc));
+
+            svint32_t acc0 = MlasQGemmSveSeed(rp, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc1 = MlasQGemmSveSeed(rp, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc2 = MlasQGemmSveSeed(rp, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc3 = MlasQGemmSveSeed(rp, c3, v3, ColumnSumBuffer, ZeroPointB);
+
+            for (size_t kb = 0; kb < PackedCountK; ++kb) {
+                const size_t koff = kb * 64;
+                // Rows == 1: the packed group holds 8 bytes per k-block.
+                const svint8_t q = MlasQGemmSveLoadASingleRowDup(PackedA + kb * 8);
+
+                acc0 = MlasQGemmMmlaSve<AUnsigned>(acc0, q, svld1_s8(pgB, bp0 + koff));
+                acc1 = MlasQGemmMmlaSve<AUnsigned>(acc1, q, svld1_s8(pgB, bp1 + koff));
+                acc2 = MlasQGemmMmlaSve<AUnsigned>(acc2, q, svld1_s8(pgB, bp2 + koff));
+                acc3 = MlasQGemmMmlaSve<AUnsigned>(acc3, q, svld1_s8(pgB, bp3 + koff));
+            }
+
+            MlasQGemmSveStoreSingleRow(C, c0, v0 + v1, ZeroMode, acc0, acc1);
+            MlasQGemmSveStoreSingleRow(C, c2, v2 + v3, ZeroMode, acc2, acc3);
+        }
+
+        return Rows;
+    }
+#endif  // MLAS_SVE_QGEMM_M1_LEAN
+
     //
-    // Tail path for Rows in {4,2,1}: process one row-pair at a time against 4
+    // Tail path for Rows in {4,2}: process one row-pair at a time against 4
     // column groups. B is re-read per row-pair, but these partial groups are
     // rare (only the final M-tile) and small, so the simpler form is fine.
     //
