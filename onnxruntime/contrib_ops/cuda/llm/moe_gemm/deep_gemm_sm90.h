@@ -9,12 +9,19 @@
 
 namespace onnxruntime::llm::kernels::deep_gemm_sm90 {
 
-constexpr int kNumExperts = 32;
+// A DSV4 rank owns 256 / world experts; eight and four ranks are the two shipped splits, and
+// the grouped GEMM takes the count as a template argument, so both are instantiated.
+constexpr int kNumExpertsWorld8 = 32;
+constexpr int kNumExpertsWorld4 = 64;
 constexpr int kPaddedTokensPerExpert = 64;
 constexpr int kMaxTokensPerExpert = 8;
 constexpr int kHiddenSize = 4096;
 constexpr int kInterSize = 2048;
 constexpr int kFc1OutputSize = 4096;
+
+constexpr bool NumExpertsSupported(int64_t num_experts) {
+  return num_experts == kNumExpertsWorld8 || num_experts == kNumExpertsWorld4;
+}
 
 // The FP8 1D2D kernel scales A per (row, 128 contiguous K) and B per [128 N, 128 K] block.
 constexpr int kQuantBlockSize = 128;
@@ -25,7 +32,7 @@ constexpr size_t WeightScaleCount(int num_experts, int n, int k) {
   return static_cast<size_t>(num_experts) * (n / kQuantBlockSize) * (k / kQuantBlockSize);
 }
 
-size_t GetWorkspaceSize();
+size_t GetWorkspaceSize(int num_experts);
 
 // Quantizes the activations to e4m3 on the fly, runs both grouped GEMMs against the
 // prepacked e4m3 expert weights, and writes bf16 rows back into the compact expert-major
@@ -34,7 +41,7 @@ size_t GetWorkspaceSize();
 void Run(const __nv_bfloat16* compact_input, const int64_t* expert_first_token_offset,
          const __nv_fp8_e4m3* fc1_weights, const float* fc1_weight_scales,
          const __nv_fp8_e4m3* fc2_weights, const float* fc2_weight_scales,
-         __nv_bfloat16* compact_output, float alpha, float beta, float limit,
+         __nv_bfloat16* compact_output, int num_experts, float alpha, float beta, float limit,
          void* workspace, cudaStream_t stream);
 
 }  // namespace onnxruntime::llm::kernels::deep_gemm_sm90

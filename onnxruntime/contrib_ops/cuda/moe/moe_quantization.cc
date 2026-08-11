@@ -168,20 +168,21 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
 #endif
 }
 
-bool StaticDsv4DeepGemmShapeSupported(const OpKernelInfo& op_kernel_info) {
+// Returns the per-rank expert count DeepGEMM would run, or 0 if the static shapes rule it out.
+int StaticDsv4DeepGemmNumExperts(const OpKernelInfo& op_kernel_info) {
 #if !defined(HAS_SM90_OR_LATER)
   ORT_UNUSED_PARAMETER(op_kernel_info);
-  return false;
+  return 0;
 #else
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   if (op_kernel_info.GetInputCount() <= 5) {
-    return false;
+    return 0;
   }
 
   const auto fc1_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(2).GetTensorTypeAndShapeInfo().GetShape();
   const auto fc2_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(5).GetTensorTypeAndShapeInfo().GetShape();
   if (fc1_shape.size() != 3 || fc2_shape.size() != 3) {
-    return false;
+    return 0;
   }
 
   const int64_t fc1_e = fc1_shape[0];
@@ -193,7 +194,7 @@ bool StaticDsv4DeepGemmShapeSupported(const OpKernelInfo& op_kernel_info) {
 #else
   const auto& input_defs = op_kernel_info.node().InputDefs();
   if (input_defs.size() <= 5 || input_defs[2] == nullptr || input_defs[5] == nullptr) {
-    return false;
+    return 0;
   }
 
   const auto* fc1_shape = input_defs[2]->Shape();
@@ -208,16 +209,17 @@ bool StaticDsv4DeepGemmShapeSupported(const OpKernelInfo& op_kernel_info) {
       !TryGetStaticDim(fc1_shape, 0, fc1_e) || !TryGetStaticDim(fc1_shape, 1, fc1_k) ||
       !TryGetStaticDim(fc1_shape, 2, fc1_packed_n) || !TryGetStaticDim(fc2_shape, 0, fc2_e) ||
       !TryGetStaticDim(fc2_shape, 1, fc2_k) || !TryGetStaticDim(fc2_shape, 2, fc2_packed_n)) {
-    return false;
+    return 0;
   }
 #endif
 
-  return fc1_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&
-         fc1_k == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
-         fc1_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize &&
-         fc2_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&
-         fc2_k == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
-         fc2_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
+  const bool supported =
+      onnxruntime::llm::kernels::deep_gemm_sm90::NumExpertsSupported(fc1_e) && fc2_e == fc1_e &&
+      fc1_k == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
+      fc1_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize &&
+      fc2_k == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
+      fc2_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
+  return supported ? static_cast<int>(fc1_e) : 0;
 #endif
 }
 }  // namespace
@@ -333,10 +335,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #endif
   is_fp16_ = is_fp16;
 
+  dsv4_deep_gemm_num_experts_ = StaticDsv4DeepGemmNumExperts(op_kernel_info);
   enable_dsv4_deep_gemm_ =
       quant_type_ == "fp4" && !is_fp16_ && sm_ == 90 && GetDeviceProp().multiProcessorCount == 132 && k_ == 6 &&
       activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
-      StaticDsv4DeepGemmShapeSupported(op_kernel_info) &&
+      dsv4_deep_gemm_num_experts_ > 0 &&
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DSV4_FP4_DEEPGEMM", 0) == 1;
 
   if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8") {
@@ -893,7 +896,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool use_dsv4_deep_gemm =
       enable_dsv4_deep_gemm_ && moe_params.num_rows > 0 &&
       moe_params.num_rows <= onnxruntime::llm::kernels::deep_gemm_sm90::kMaxTokensPerExpert &&
-      moe_params.num_experts == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&
+      moe_params.num_experts == dsv4_deep_gemm_num_experts_ &&
       moe_params.hidden_size == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
       moe_params.inter_size == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
       is_fused_swiglu && swiglu_fusion == 1 && !use_awq && fc1_experts_bias_optional == nullptr &&
@@ -2046,7 +2049,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                    : onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
     const auto& shape = tensor.Shape();
     ORT_ENFORCE(shape.NumDimensions() == 3 &&
-                    shape[0] == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&
+                    shape[0] == dsv4_deep_gemm_num_experts_ &&
                     shape[1] == (weight ? expected_k : expected_n) &&
                     shape[2] == (weight ? expected_n / 2 : expected_k / 32),
                 "QMoE DSV4 DeepGEMM received an unexpected ", fc1 ? "fc1" : "fc2", weight ? " weight" : " scale",
@@ -2747,7 +2750,7 @@ void QMoE::TryBuildDsv4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr
     return;
   }
 
-  constexpr int num_experts = onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts;
+  const int num_experts = dsv4_deep_gemm_num_experts_;
   const int n = fc == 1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize
                         : onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
   const int k = fc == 1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize
