@@ -85,6 +85,10 @@ inline void RunWebGpuFusionTransformerTest(
     }
   };
 
+  // ASSERT_NO_FATAL_FAILURE here is load-bearing. run_model returns void, so a failed ASSERT_*
+  // inside it -- including any inside check_transformed_graph -- only returns from the lambda.
+  // These wrappers are what propagate such a failure and stop the test; replacing them with bare
+  // calls would let execution continue past a failed assertion.
   std::vector<OrtValue> baseline_fetches;
   ASSERT_NO_FATAL_FAILURE(run_model(baseline_level, baseline_fetches, /*level_transformer=*/nullptr));
 

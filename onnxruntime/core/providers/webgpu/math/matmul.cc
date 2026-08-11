@@ -161,10 +161,16 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
     TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
 
-    MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias};
+    // Standalone MatMul has no channels-last notion; the bias is indexed as bias[row + i].
+    // Named so the constructor argument and the cache hint below cannot drift apart.
+    constexpr bool is_channels_last = false;
+    MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias, is_channels_last};
 
     program
-        .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+        // Always None here, but MatMulNaiveProgram bakes the activation into its WGSL and is shared
+        // with the fused-conv path, so the activation belongs in the cache key at every call site.
+        // Same for is_channels_last, which selects between bias[col] and bias[row + i].
+        .CacheHint(Activation().ToString(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
 

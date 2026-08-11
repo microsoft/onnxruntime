@@ -92,6 +92,7 @@
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/optimizer/webgpu_fusion_test_util.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -3166,6 +3167,324 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #endif
   }
 }
+
+// Regression test for a pipeline-cache key collision on the small-matmul conv path.
+//
+// A 1x1 convolution with fewer than 8 channels on each side is lowered to MatMulNaiveProgram, which
+// bakes the activation expression directly into its WGSL. That program's cache hint omitted the
+// activation entirely, so two convolutions with identical shapes but different activations hashed
+// to the same key: whichever compiled first was served to both, and the second silently computed
+// the wrong activation. The collision this test covers is on the activation *kind*. Parameter-valued
+// collisions -- two activations of the same kind whose float parameters format identically in the
+// key -- are a separate mechanism, addressed by the max_digits10 setprecision in Activation::ToString
+// and covered here by WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache (end to end)
+// and by ActivationCacheKeyTest (the formatter itself).
+//
+// Deliberately self-contained rather than built on the Conv+activation parity helper below, so the
+// fix and its regression test can travel as a single commit.
+#if defined(USE_WEBGPU)
+namespace {
+// Runs a model containing two 1x1 convolutions that differ *only* in their activation, and
+// requires the fused results to match the unfused baseline.
+//
+// Both convolutions live in the same graph, so at Level2 both fused shaders are compiled inside a
+// single session against a single pipeline cache. That is what makes the collision observable: a
+// test that ran one activation per session would not catch it, because each session would only
+// ever need one MatMulNaive variant.
+void RunWebGpuSmallMatMulConvActivationPairTest(const std::string& activation_a,
+                                                const std::string& activation_b) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // C_in = 4 and C_out = 6 put both matmul dimensions under the < 8 threshold that selects
+    // MatMulNaiveProgram; the 1x1 kernel with unit stride and no padding is what routes there.
+    auto* input = builder.MakeInput<float>({1, 4, 8, 8}, -3.0f, 3.0f);
+
+    // Distinct weights so the two branches cannot be collapsed into one by common subexpression
+    // elimination. The shapes are identical, so both convolutions produce the same cache key for
+    // everything except the activation.
+    auto* weight_a = builder.MakeInitializer<float>({6, 4, 1, 1}, -0.5f, 0.5f);
+    auto* bias_a = builder.MakeInitializer<float>({6}, -0.5f, 0.5f);
+    auto* weight_b = builder.MakeInitializer<float>({6, 4, 1, 1}, -0.5f, 0.5f);
+    auto* bias_b = builder.MakeInitializer<float>({6}, -0.5f, 0.5f);
+
+    auto* conv_a_out = builder.MakeIntermediate();
+    auto* conv_b_out = builder.MakeIntermediate();
+    auto* output_a = builder.MakeOutput();
+    auto* output_b = builder.MakeOutput();
+
+    builder.AddNode("Conv", {input, weight_a, bias_a}, {conv_a_out});
+    builder.AddNode(activation_a, {conv_a_out}, {output_a});
+    builder.AddNode("Conv", {input, weight_b, bias_b}, {conv_b_out});
+    builder.AddNode(activation_b, {conv_b_out}, {output_b});
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    std::set<std::string> fused_activations;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr) {
+        fused_activations.insert(activation_attr->s());
+      }
+    }
+    // Without this the test could pass trivially if fusion ever stopped firing, because an unfused
+    // graph matches the unfused baseline by construction.
+    ASSERT_THAT(fused_activations, ::testing::UnorderedElementsAre(activation_a, activation_b))
+        << "expected both convolutions to absorb their activation, so that two MatMulNaive "
+           "variants are compiled in one session";
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 /*opset_version=*/17,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+// Companion to the helper above, for a collision on the activation *parameters* rather than the
+// kind. Two HardSigmoid activations of the same kind whose alphas differ are still distinct shaders,
+// so they must still be distinct cache entries.
+//
+// Picking the parameters is the whole difficulty. The key was written by an unconfigured
+// std::stringstream (6 *significant* digits) while the WGSL is written by std::to_string (6 *decimal
+// places*), so a collision needs two alphas that agree to 6 significant digits yet differ as floats.
+// That bounds their relative difference at ~1e-5, which is far below the tolerance any float32
+// comparison can use -- so with an activation like LeakyRelu, whose output is alpha*x, the wrong
+// shader produces a difference too small to detect end to end at any input scale.
+//
+// HardSigmoid is what makes it observable, because clamp(alpha * value + beta, 0, 1) pins the output
+// to [0, 1] regardless of how large alpha is. A tiny relative difference in alpha becomes a large
+// absolute difference in the intermediate, and the clamp turns that into a full-scale 0-vs-1 swing:
+//
+//   conv output = 8.0 exactly
+//   alpha_a * 8 + beta = 8000120 - 8000160 = -40 -> clamp -> 0.0
+//   alpha_b * 8 + beta = 8000200 - 8000160 = +40 -> clamp -> 1.0
+//
+// Every intermediate above is an exactly representable float32 (all are integers well inside the
+// range where the spacing is 0.5), so the outcome does not depend on rounding, and evaluating
+// alpha * value + beta as a fused multiply-add cannot change it either. The convolutions are shaped
+// so their output is exactly 8.0 for the same reason.
+//
+// The output channel count is deliberately 5, which makes GetMaxComponents(N) == 1. Do not raise it
+// to 6 for tidiness: at N == 6 the components become 2, and MatMulNaiveProgram then indexes its
+// component-reduced bias array with an element-unit `col` (bias[col], versus the output's
+// col / components on the next line). Two of the six channels would read past the end of the bias,
+// pick up no bias, and land on 4.0 instead of 8.0 -- and 4.0 clamps to 0.0 under both alphas, so
+// those channels would silently stop discriminating. Keeping components == 1 keeps every channel on
+// exactly 8.0 and every element of the output sensitive to the collision.
+void RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(float alpha_first, float alpha_second) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  // Chosen so that alpha * 8 lands 40 below / 40 above the clamp's lower edge.
+  constexpr float kBeta = -8000160.0f;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // N = 5 output channels and K = 4 input channels, so N < 8 && K < 8 routes to
+    // MatMulNaiveProgram, and GetMaxComponents(5) == 1 keeps the bias indexing in bounds.
+    auto* input = builder.MakeInput<float>({1, 4, 8, 8}, std::vector<float>(1 * 4 * 8 * 8, 1.0f));
+
+    // Both convolutions output exactly 8.0, by different routes: 4 * (1.0 * 1.0) + 4.0 and
+    // 4 * (1.0 * 0.5) + 6.0. The weights have to differ, or common subexpression elimination folds
+    // the two convolutions into one and only a single MatMulNaive variant is ever compiled.
+    auto* weight_a = builder.MakeInitializer<float>({5, 4, 1, 1}, std::vector<float>(5 * 4, 1.0f));
+    auto* bias_a = builder.MakeInitializer<float>({5}, std::vector<float>(5, 4.0f));
+    auto* weight_b = builder.MakeInitializer<float>({5, 4, 1, 1}, std::vector<float>(5 * 4, 0.5f));
+    auto* bias_b = builder.MakeInitializer<float>({5}, std::vector<float>(5, 6.0f));
+
+    auto* conv_a_out = builder.MakeIntermediate();
+    auto* conv_b_out = builder.MakeIntermediate();
+    auto* output_a = builder.MakeOutput();
+    auto* output_b = builder.MakeOutput();
+
+    builder.AddNode("Conv", {input, weight_a, bias_a}, {conv_a_out});
+    Node& activation_a = builder.AddNode("HardSigmoid", {conv_a_out}, {output_a});
+    activation_a.AddAttribute("alpha", alpha_first);
+    activation_a.AddAttribute("beta", kBeta);
+
+    builder.AddNode("Conv", {input, weight_b, bias_b}, {conv_b_out});
+    Node& activation_b = builder.AddNode("HardSigmoid", {conv_b_out}, {output_b});
+    activation_b.AddAttribute("alpha", alpha_second);
+    activation_b.AddAttribute("beta", kBeta);
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    std::vector<float> fused_alphas;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr == nullptr || activation_attr->s() != "HardSigmoid") {
+        continue;
+      }
+      const auto* params_attr = graph_utils::GetNodeAttribute(node, "activation_params");
+      ASSERT_NE(params_attr, nullptr) << "fused HardSigmoid must carry its parameters";
+      ASSERT_GT(params_attr->floats_size(), 0);
+      fused_alphas.push_back(params_attr->floats(0));
+    }
+    // Without this the test could pass trivially if fusion stopped firing: unfused, both branches
+    // run the standalone HardSigmoid kernel, which takes its parameters as uniforms and so has no
+    // collision to expose in the first place.
+    ASSERT_THAT(fused_alphas, ::testing::UnorderedElementsAre(alpha_first, alpha_second))
+        << "expected both convolutions to absorb their HardSigmoid, so that two MatMulNaive "
+           "variants differing only in activation parameters are compiled in one session";
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 /*opset_version=*/17,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+// The channels-last and channels-first convolution paths share MatMulNaiveProgram but index the
+// bias differently -- bias[col] versus bias[row + i]. Unlike the activation, is_channels_last cannot
+// be made to vary inside a single session, because a session's preferred layout is fixed by its EP.
+//
+// The pipeline cache is not per-session, though. WebGpuContextFactory keeps its contexts in a
+// process-global map keyed by context id and reference counted, so two sessions that are alive at
+// the same time share one context and therefore one program cache. (Sequentially created sessions
+// do not: the refcount drops to zero in between and the context, cache included, is destroyed.)
+// Two concurrent sessions with opposite preferred layouts is therefore the configuration in which
+// this collision is reachable, and it is what this test builds.
+//
+// Both sessions run the same model, shaped so that every other component of the cache key agrees
+// between the two layouts:
+//
+//   input {1, C=3, H=3, W=1}, kernel {M=3, C=3, 1, 1}, bias {3}
+//
+//                     channels-last     channels-first
+//     N (matmul)      M     = 3         H*W   = 3
+//     K (matmul)      C     = 3         C     = 3
+//     components      1                 1
+//     output_number   1                 1
+//     input ranks     3, 3              3, 3
+//
+// leaving is_channels_last as the only difference. components == 1 matters for a second reason: it
+// keeps both bias indexings in bounds, so the sole difference between the two shaders is which bias
+// element each output element receives.
+//
+// The two layouts transpose the roles of row and col, so serving one shader for both indexes the
+// bias by the spatial position instead of the channel (or vice versa). With well separated bias
+// values that is wrong on 6 of the 9 output elements.
+void RunWebGpuConcurrentLayoutConvCacheTest(bool channels_last_first) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 17;
+  Model model("WebGpuLayoutCacheTester", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+
+  auto* input = builder.MakeInput<float>({1, 3, 3, 1},
+                                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f});
+  auto* weight = builder.MakeInitializer<float>({3, 3, 1, 1},
+                                                std::vector<float>{1.0f, 0.0f, 0.0f,
+                                                                   0.0f, 1.0f, 0.0f,
+                                                                   0.0f, 0.0f, 1.0f});
+  // Separated by far more than any tolerance, so receiving the wrong element is unmistakable.
+  auto* bias = builder.MakeInitializer<float>({3}, std::vector<float>{100.0f, 200.0f, 300.0f});
+  auto* output = builder.MakeOutput();
+  builder.AddNode("Conv", {input, weight, bias}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  RunOptions run_options;
+
+  // Reference values from the CPU EP, which has no such cache and no layout-dependent indexing.
+  std::vector<OrtValue> expected_fetches;
+  {
+    InferenceSessionWrapper cpu_session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(cpu_session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(cpu_session.Initialize());
+    ASSERT_STATUS_OK(cpu_session.Run(run_options, builder.feeds_, builder.output_names_, &expected_fetches));
+  }
+
+  // Both sessions must be constructed before either runs, and both must stay alive until both have
+  // run: that is what holds the shared context's reference count above zero and keeps one program
+  // cache in play for the whole test.
+  InferenceSessionWrapper session_first{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_first.RegisterExecutionProvider(DefaultWebGpuExecutionProvider(channels_last_first)));
+  ASSERT_STATUS_OK(session_first.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_first.Initialize());
+
+  InferenceSessionWrapper session_second{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_second.RegisterExecutionProvider(DefaultWebGpuExecutionProvider(!channels_last_first)));
+  ASSERT_STATUS_OK(session_second.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_second.Initialize());
+
+  // A convolution that fell back to the CPU EP would agree with the reference no matter what the
+  // cache did, so check the assignment rather than assume it.
+  for (const auto* session : {&session_first, &session_second}) {
+    bool saw_webgpu_conv = false;
+    for (const auto& node : session->GetGraph().Nodes()) {
+      if (node.OpType() == "Conv" || node.OpType() == "NhwcConv" || node.OpType() == "FusedConv") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kWebGpuExecutionProvider);
+        saw_webgpu_conv = node.GetExecutionProviderType() == kWebGpuExecutionProvider;
+      }
+    }
+    ASSERT_TRUE(saw_webgpu_conv) << "expected the convolution to run on the WebGPU EP";
+  }
+
+  std::vector<OrtValue> fetches_first;
+  ASSERT_STATUS_OK(session_first.Run(run_options, builder.feeds_, builder.output_names_, &fetches_first));
+  std::vector<OrtValue> fetches_second;
+  ASSERT_STATUS_OK(session_second.Run(run_options, builder.feeds_, builder.output_names_, &fetches_second));
+
+  ASSERT_EQ(expected_fetches.size(), fetches_first.size());
+  ASSERT_EQ(expected_fetches.size(), fetches_second.size());
+  for (size_t i = 0; i < expected_fetches.size(); ++i) {
+    auto first = CompareOrtValue(fetches_first[i], expected_fetches[i], 2e-3, 2e-3, false);
+    EXPECT_EQ(first.first, COMPARE_RESULT::SUCCESS)
+        << "first session (channels_last=" << channels_last_first << "): " << first.second;
+    auto second = CompareOrtValue(fetches_second[i], expected_fetches[i], 2e-3, 2e-3, false);
+    EXPECT_EQ(second.first, COMPARE_RESULT::SUCCESS)
+        << "second session (channels_last=" << !channels_last_first << "): " << second.second;
+  }
+}
+
+}  // namespace
+
+// Relu and Sigmoid disagree on every input, so if one shader is served for both the mismatch is
+// unmissable. Both orderings run so a collision in either direction fails.
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationsInPipelineCache) {
+  RunWebGpuSmallMatMulConvActivationPairTest("Relu", "Sigmoid");
+  RunWebGpuSmallMatMulConvActivationPairTest("Sigmoid", "Relu");
+}
+
+// 1000015 and 1000025 are 160 float32 ULPs apart, yet both format as "1.00002e+06" at the
+// stringstream default of 6 significant digits -- so before the fix they produced one cache key and
+// two different shaders. Both orderings run so a collision in either direction fails.
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache) {
+  RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000015.0f, 1000025.0f);
+  RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000025.0f, 1000015.0f);
+}
+
+// Two concurrent sessions with opposite preferred layouts share one process-global pipeline cache,
+// so the shader's choice between bias[col] and bias[row + i] has to be part of the key. Both
+// orderings run so a collision in either direction fails.
+TEST_F(GraphTransformationTests, WebGpuConcurrentLayoutConvsDistinguishedInPipelineCache) {
+  RunWebGpuConcurrentLayoutConvCacheTest(/*channels_last_first=*/true);
+  RunWebGpuConcurrentLayoutConvCacheTest(/*channels_last_first=*/false);
+}
+#endif  // defined(USE_WEBGPU)
 
 TEST_F(GraphTransformationTests, FuseConvClip11Activation) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_clip11.onnx";
