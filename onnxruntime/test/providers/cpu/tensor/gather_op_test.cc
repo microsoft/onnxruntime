@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_provider_options.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
