@@ -741,7 +741,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       cuda_stream,
       total_seq_lens_minus_one->Data<int>(),
       parameters.batch_size,
-      parameters.total_sequence_length));
+      parameters.seqlen_present_kv_cache));
 
   // Derive bounded device-side lengths for every path, including fast decode, so raw input values
   // never control KV-cache or attention indexing.
