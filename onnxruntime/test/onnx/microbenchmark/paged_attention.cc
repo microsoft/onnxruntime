@@ -396,16 +396,16 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
 // -----------------------------------------------------------------------------
 
 // Args: {batch, num_heads, kv_num_heads, head_size, seq_len, fused}
-#define REGISTER_PREFILL(BATCH, NH, NKV, H)                                                        \
-  BENCHMARK(BM_PagedAttentionPrefill)                                                              \
-      ->ArgNames({"B", "nH", "nKV", "H", "T", "fused"})                                            \
-      ->Args({BATCH, NH, NKV, H, 128, 1})                                                          \
-      ->Args({BATCH, NH, NKV, H, 128, 0})                                                          \
-      ->Args({BATCH, NH, NKV, H, 512, 1})                                                          \
-      ->Args({BATCH, NH, NKV, H, 512, 0})                                                          \
-      ->Args({BATCH, NH, NKV, H, 1024, 1})                                                         \
-      ->Args({BATCH, NH, NKV, H, 1024, 0})                                                         \
-      ->Unit(benchmark::kMicrosecond)                                                              \
+#define REGISTER_PREFILL(BATCH, NH, NKV, H)             \
+  BENCHMARK(BM_PagedAttentionPrefill)                   \
+      ->ArgNames({"B", "nH", "nKV", "H", "T", "fused"}) \
+      ->Args({BATCH, NH, NKV, H, 128, 1})               \
+      ->Args({BATCH, NH, NKV, H, 128, 0})               \
+      ->Args({BATCH, NH, NKV, H, 512, 1})               \
+      ->Args({BATCH, NH, NKV, H, 512, 0})               \
+      ->Args({BATCH, NH, NKV, H, 1024, 1})              \
+      ->Args({BATCH, NH, NKV, H, 1024, 0})              \
+      ->Unit(benchmark::kMicrosecond)                   \
       ->UseManualTime()
 
 REGISTER_PREFILL(1, 16, 16, 64);
