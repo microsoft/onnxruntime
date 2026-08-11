@@ -29,6 +29,7 @@
 #include "core/providers/migraphx/gpu_data_transfer.h"
 #include "core/providers/migraphx/migraphx_call.h"
 #include "core/providers/migraphx/migraphx_stream_handle.h"
+#include "core/framework/tensorprotoutils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -374,6 +375,27 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
   return result;
 }
 
+static std::pair<const void*, size_t> GetRawData(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  if (onnxruntime::utils::HasRawData(tensor_proto)) {
+    const auto& raw = tensor_proto.raw_data();
+    return {raw.data(), raw.size()};
+  }
+  return {nullptr, 0};
+}
+
+// Read a scalar int64 value from a graph initializer. Returns false if the named
+// input is not an int64 initializer or holds no scalar value.
+static bool GetConstantInt64Scalar(const GraphViewer& graph_viewer,
+                                   const std::string& name, int64_t& out) {
+  const ONNX_NAMESPACE::TensorProto* t = nullptr;
+  if (!graph_viewer.GetInitializedTensor(name, t) || t == nullptr) {
+    return false;
+  }
+  const auto [raw_data, raw_data_len] = GetRawData(*t);
+  auto status = onnxruntime::utils::UnpackTensor<int64_t>(*t, raw_data, raw_data_len, &out, 1);
+  return status.IsOK();
+}
+
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
@@ -575,6 +597,18 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   } else if (optype == "TopK") {
     if (!canEvalNodeArgument(graph_viewer, node, {1}, input_nodes)) {
       return true;
+    }
+  } else if (optype == "Loop") {
+    // MIGraphX only supports a constant number of loop iterations and clamps
+    // to 65535 iterations. Consider any other loops as unsupported.
+    const auto& args = node->InputDefs();
+    if (args.empty() || args[0]->Name().empty()) {
+      return true;  // no maximum number of iterations
+    }
+    const std::string& m_name = args[0]->Name();
+    int64_t m_val = 0;
+    if (!GetConstantInt64Scalar(graph_viewer, m_name, m_val) || m_val > 65535) {
+      return true;  // not a readable constant or too many iterations
     }
   } else if (optype == "Unsqueeze" || optype == "Squeeze") {
     const auto& args = node->InputDefs();
