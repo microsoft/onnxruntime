@@ -18,9 +18,9 @@ Abstract:
 
 #include "arm_neon.h"
 
-// This file is enabled in cmake only if ARM64 is defined and not on Apple platforms
-// The cmake condition is equivalent to MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64.
-// Therefore omit the MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64 macro in this file.
+// This file is enabled in cmake for ARM64 targets: on non-Apple platforms when
+// MLAS_F16VEC_INTRINSICS_SUPPORTED is set, and on Apple ARM64 via MLAS_CAST_F16_NEON_SUPPORTED.
+// The intrinsics used (vcvt_f32_f16 / vcvt_f16_f32) require FEAT_FP16 (-march=armv8.2-a+fp16).
 
 MLAS_FORCEINLINE
 size_t

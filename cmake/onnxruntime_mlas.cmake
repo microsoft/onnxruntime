@@ -664,6 +664,15 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/gelu_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         endif()
 
+        # Enable the f16<->f32 cast kernel on Apple ARM64. All Apple Silicon
+        # supports FEAT_FP16; the file needs -march=armv8.2-a+fp16 because
+        # Apple Clang's default arm64 target is armv8.0-a.
+        if (APPLE)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/cast_kernel_neon.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp
+                                      PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        endif()
+
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
             set_target_properties(onnxruntime_mlas_arm64 PROPERTIES OSX_ARCHITECTURES "arm64")

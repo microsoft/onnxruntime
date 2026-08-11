@@ -101,6 +101,16 @@ Abstract:
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 #endif //
+
+//
+// Apple ARM64 supports the f16<->f32 cast kernel (FEAT_FP16 is present on all
+// Apple Silicon). The full fp16 arithmetic family (MLAS_F16VEC_INTRINSICS_SUPPORTED)
+// stays disabled on Apple; only the cast path is enabled here.
+//
+#if defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+#define MLAS_CAST_F16_NEON_SUPPORTED
+#endif
+
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
