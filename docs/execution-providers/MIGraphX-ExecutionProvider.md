@@ -32,10 +32,22 @@ For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx
 
 ## Requirements
 
-Below is the matrix of supported ROCm versions corresponding to Ubuntu builds. 
+Below is the matrix of supported ROCm versions of Linux based builds. 
 
-As of ROCm 6.0.2 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
+This is an ever expanding and evolving list of supported wheels with prebuilt MIGraphX EP variants
+
+### Notes for ROCm 7.14 
+As of ROCm 7.14 Links for prebuild Python wheels will now come from [ROCm Frameworks](https://rocm.frameworks.amd.com/)  instead of the old repo.radeon manylinux location. 
+ROCm 7.14 also marks the last release where the built-in execution provider support will be used. Moving forward all sources used for MIGraphX Provider will use the plug-in EP methodology and builds will be sourced via [AMDGPU Repo](https://github.com/onnxruntime/onnxruntime-ep-amdgpu) 
+
+### Notes ROCm 6.4.1
+ROCm 6.4.1 marked the point where wheels were now built with manylinux support
+
+### Notes for ROCm 6.0.2
+Marking ROCm 6.0.2 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
 All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon.com/rocm/manylinux) for each corresponding to the ROCm release
+
+### Build Matrix
 
 |ONNX Runtime Version|MIGraphX ROCm Release| Python 3.8 | Python 3.9 | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
 |---|---|---|---|---|---|---|---|---|
