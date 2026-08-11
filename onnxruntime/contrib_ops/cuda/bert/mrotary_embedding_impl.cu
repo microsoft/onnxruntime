@@ -46,8 +46,7 @@ __global__ void MRotaryEmbeddingBSNH(
     const int3 mrope_section,
     const int mrope_layout,
     const float scale,
-    MRotaryEmbeddingStrides in_strides, MRotaryEmbeddingStrides out_strides
-) {
+    MRotaryEmbeddingStrides in_strides, MRotaryEmbeddingStrides out_strides) {
   // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
   const int b = blockIdx.y;
   const int s = blockIdx.x;
