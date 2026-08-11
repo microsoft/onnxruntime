@@ -416,6 +416,21 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
   ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
 }
 
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_StringDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {1};
+  std::vector<uint8_t> raw_data(sizeof(std::string), 0);
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "string_type_param", &dims, adapters::TensorDataType::STRING, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->raw_data()->size(), sizeof(std::string));
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+}
+
 #endif  // ORT_NO_EXCEPTIONS
 
 #ifdef USE_CUDA

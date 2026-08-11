@@ -159,6 +159,8 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   const auto data_type = param.data_type();
   ORT_ENFORCE(data_type != TensorDataType::UNDEFINED,
               "Lora Param '", name, "': data_type is UNDEFINED");
+  ORT_ENFORCE(data_type != TensorDataType::STRING,
+              "Lora Param '", name, "': STRING data_type is not supported");
 
   const auto* dims = param.dims();
   ORT_ENFORCE(dims != nullptr && dims->size() > 0,
