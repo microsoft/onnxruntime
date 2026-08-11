@@ -328,9 +328,9 @@ void BM_PagedAttentionPrefill(benchmark::State& state) {
   }
 }
 
-// Decode benchmarks (T == 1). The fused paged-prefill kernel is not eligible in
-// this regime (routing goes through the split-K decode path), so we only run
-// fused=1 here.
+// Decode benchmarks (T == 1). The fused paged-prefill kernel is expected to be
+// ineligible in this regime (T < 32 routes through the split-K decode path),
+// but we still A/B on the env-var toggle so the caller can confirm empirically.
 void BM_PagedAttentionDecode(benchmark::State& state) {
   PABenchCase c{
       static_cast<int>(state.range(0)),
@@ -341,7 +341,8 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
       static_cast<int>(state.range(4)),
       /*block_size=*/256,
   };
-  SetFusedEnv(true);
+  const bool fused = state.range(5) != 0;
+  SetFusedEnv(fused);
 
   auto ctx = Setup(c);
   if (ctx == nullptr) {
@@ -418,12 +419,14 @@ REGISTER_PREFILL(2, 32, 4, 128);
 
 #undef REGISTER_PREFILL
 
-// Args: {batch, num_heads, kv_num_heads, head_size, past_seqlen}
+// Args: {batch, num_heads, kv_num_heads, head_size, past_seqlen, fused}
 #define REGISTER_DECODE(BATCH, NH, NKV, H)                                                         \
   BENCHMARK(BM_PagedAttentionDecode)                                                               \
-      ->ArgNames({"B", "nH", "nKV", "H", "past"})                                                  \
-      ->Args({BATCH, NH, NKV, H, 512})                                                             \
-      ->Args({BATCH, NH, NKV, H, 2048})                                                            \
+      ->ArgNames({"B", "nH", "nKV", "H", "past", "fused"})                                         \
+      ->Args({BATCH, NH, NKV, H, 512, 1})                                                          \
+      ->Args({BATCH, NH, NKV, H, 512, 0})                                                          \
+      ->Args({BATCH, NH, NKV, H, 2048, 1})                                                         \
+      ->Args({BATCH, NH, NKV, H, 2048, 0})                                                         \
       ->Unit(benchmark::kMicrosecond)                                                              \
       ->UseManualTime()
 
