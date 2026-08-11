@@ -702,56 +702,67 @@ bool TryMatMul4Bits(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream) {
-  if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > SmallMCap<T>()) {
+  if (k % 8 != 0 || m > SmallMCap<T>()) {
     return false;
   }
 
-  if (IsSupportedRouterGemvShape(zero_points, m, n, k, block_size) &&
-      !IsRouterGemvSpecializationDisabled()) {
-    const dim3 blocks(n / kColsPerThreadBlock, 1);
-    const dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
-    if (block_size == 32) {
-      MatMulFloatInt4RouterKernel<T, 32><<<blocks, threads, 0, stream>>>(
-          output, a_data, b_data_quant, scales_data, bias_data, n, k);
-    } else {
-      MatMulFloatInt4RouterKernel<T, 64><<<blocks, threads, 0, stream>>>(
-          output, a_data, b_data_quant, scales_data, bias_data, n, k);
-    }
-    return true;
-  }
-
-  if (bias_data != nullptr) {
-    return false;
-  }
-
-  // The register-tiled batched path (half/bf16, 2 <= m <= cap) launches with no shared memory, so try
-  // it before the shared-memory budget gate that only constrains the shared-memory kernels below.
-  if constexpr (!std::is_same<T, float>::value) {
-    if (m >= 2) {
-      if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                                   m, n, k, block_size, 0, stream)) {
-        return true;
+  // Router and small-M paths require n % 8 == 0.
+  if (n % kColsPerThreadBlock == 0) {
+    if (IsSupportedRouterGemvShape(zero_points, m, n, k, block_size) &&
+        !IsRouterGemvSpecializationDisabled()) {
+      const dim3 blocks(n / kColsPerThreadBlock, 1);
+      const dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
+      if (block_size == 32) {
+        MatMulFloatInt4RouterKernel<T, 32><<<blocks, threads, 0, stream>>>(
+            output, a_data, b_data_quant, scales_data, bias_data, n, k);
+      } else {
+        MatMulFloatInt4RouterKernel<T, 64><<<blocks, threads, 0, stream>>>(
+            output, a_data, b_data_quant, scales_data, bias_data, n, k);
       }
+      return true;
     }
-  }
 
-  // Float, and any half/bf16 shape the batched path rejected, falls back to the shared-memory small-M
-  // kernel. m == 1 uses the single-row kernel below; larger m used the dequantize + cuBLAS path
-  // (returned false above).
-  if (m >= 2) {
-    int blocks_per_K = (k + block_size - 1) / block_size;
-    size_t shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
-                             static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
-    if (shared_mem_size > shared_mem_per_block) {
+    if (bias_data != nullptr) {
       return false;
     }
-    return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                                   m, n, k, block_size, shared_mem_size, stream);
+
+    // The register-tiled batched path (half/bf16, 2 <= m <= cap) launches with no shared memory, so try
+    // it before the shared-memory budget gate that only constrains the shared-memory kernels below.
+    if constexpr (!std::is_same<T, float>::value) {
+      if (m >= 2) {
+        if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+                                     m, n, k, block_size, 0, stream)) {
+          return true;
+        }
+      }
+    }
+
+    // Float, and any half/bf16 shape the batched path rejected, falls back to the shared-memory small-M
+    // kernel. m == 1 uses the single-row kernel below; larger m used the dequantize + cuBLAS path
+    // (returned false above).
+    if (m >= 2) {
+      int blocks_per_K = (k + block_size - 1) / block_size;
+      size_t shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
+                               static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
+      if (shared_mem_size > shared_mem_per_block) {
+        return false;
+      }
+      return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+                                     m, n, k, block_size, shared_mem_size, stream);
+    }
+  } else if (m >= 2) {
+    // m >= 2 paths do not support n not divisible by 8.
+    return false;
+  } else if (bias_data != nullptr) {
+    // M=1 GEMV does not support fused bias.
+    return false;
   }
 
+  // M=1 path: SelectColsPerBlock handles n-divisibility check internally.
   return TryMatMul4BitsM1<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                             n, k, block_size, shared_mem_per_block, stream);
+                             n, k, block_size, shared_mem_per_block, sm_count, stream);
 }
 
 template bool TryMatMul4Bits<float>(
@@ -766,6 +777,7 @@ template bool TryMatMul4Bits<float>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template bool TryMatMul4Bits<half>(
@@ -780,6 +792,7 @@ template bool TryMatMul4Bits<half>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template bool TryMatMul4Bits<nv_bfloat16>(
@@ -794,6 +807,7 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template <typename T>

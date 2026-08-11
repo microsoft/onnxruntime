@@ -14,8 +14,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <class T, int block_size, bool has_zero_point>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4BitsKernelM1(
+template <class T, int block_size, bool has_zero_point, int cols_per_block = kColsPerThreadBlock>
+__global__ void __launch_bounds__(kWarpSize* cols_per_block) MatMulFloat4BitsKernelM1(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -29,25 +29,25 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
   const int m_id = blockIdx.y;
   const int lane_id = threadIdx.x;
   const int warp_id = WarpUniform(threadIdx.y);
-  const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
+  const int n_id = n_block_id * cols_per_block + warp_id;
   constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
 
   extern __shared__ char shared_buffer[];
   T* b_scale_vec = (T*)shared_buffer;
-  int offset = n_block_id * kColsPerThreadBlock * blocks_per_K;
-  for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * blocks_per_K;
-       i += kColsPerThreadBlock * kWarpSize) {
+  int offset = n_block_id * cols_per_block * blocks_per_K;
+  for (int i = warp_id * kWarpSize + lane_id; i < cols_per_block * blocks_per_K;
+       i += cols_per_block * kWarpSize) {
     b_scale_vec[i] = scales_data[offset + i];
   }
 
   uint8_t* b_zp_vec;
   (void)b_zp_vec;
   if constexpr (has_zero_point) {
-    b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
+    b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + cols_per_block * blocks_per_K);
     const int b_zp_k = (blocks_per_K + 1) / 2;
-    int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
-    for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k;
-         i += kColsPerThreadBlock * kWarpSize) {
+    int zp_offset = n_block_id * cols_per_block * b_zp_k;
+    for (int i = warp_id * kWarpSize + lane_id; i < cols_per_block * b_zp_k;
+         i += cols_per_block * kWarpSize) {
       b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
       b_zp_vec[2 * i + 1] = (zero_points[zp_offset + i] >> 4);
     }
@@ -119,28 +119,40 @@ bool TryMatMul4BitsM1(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream) {
-  if (n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+  const int cols_per_block = SelectColsPerBlock(n, sm_count);
+  if (n % cols_per_block != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
 
   const int blocks_per_K = (k + block_size - 1) / block_size;
   const size_t shared_mem_size =
-      sizeof(T) * blocks_per_K * kColsPerThreadBlock +
-      static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
+      sizeof(T) * blocks_per_K * cols_per_block +
+      static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cols_per_block * 2 : 0);
   if (shared_mem_size > shared_mem_per_block) {
     return false;
   }
 
-  dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, 1);
-  dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
-#define MATMUL_FLOAT4B_M1_DISPATCH(bs)                                                    \
-  if (zero_points != nullptr) {                                                           \
-    MatMulFloat4BitsKernelM1<T, bs, true><<<blocks, threads, shared_mem_size, stream>>>(  \
-        output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K);   \
-  } else {                                                                                \
-    MatMulFloat4BitsKernelM1<T, bs, false><<<blocks, threads, shared_mem_size, stream>>>( \
-        output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);       \
+  dim3 blocks((n + cols_per_block - 1) / cols_per_block, 1);
+  dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, cols_per_block);
+
+#define MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, cpb)                                                       \
+  if (zero_points != nullptr) {                                                                        \
+    MatMulFloat4BitsKernelM1<T, bs, true, cpb><<<blocks, threads, shared_mem_size, stream>>>(          \
+        output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K);                \
+  } else {                                                                                             \
+    MatMulFloat4BitsKernelM1<T, bs, false, cpb><<<blocks, threads, shared_mem_size, stream>>>(         \
+        output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);                    \
+  }
+
+#define MATMUL_FLOAT4B_M1_DISPATCH(bs)        \
+  if (cols_per_block == 8) {                  \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 8)    \
+  } else if (cols_per_block == 4) {           \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 4)    \
+  } else {                                    \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 2)    \
   }
 
   if (block_size == 16) {
@@ -155,6 +167,7 @@ bool TryMatMul4BitsM1(
     ORT_THROW("block size ", block_size, " is not supported");
   }
 #undef MATMUL_FLOAT4B_M1_DISPATCH
+#undef MATMUL_FLOAT4B_M1_DISPATCH_COLS
   return true;
 }
 
