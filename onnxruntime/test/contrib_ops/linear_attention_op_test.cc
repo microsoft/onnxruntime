@@ -1591,7 +1591,7 @@ static void RunLinearAttentionStateWindowTest(int B, int q_H, int kv_H, int n_k,
                           false, 0.005f, 0.005f);
   tester.AddOutput<float>("present_state", {W, B, kv_H, dk, dv}, expected_state_window,
                           false, 0.005f, 0.005f);
- 
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -1645,7 +1645,10 @@ TEST(ContribOpLinearAttentionTest, RejectsKvNumHeadsOverflow) {
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOutput<float>("output", {1, 1, 0}, {});
-  tester.AddOutput<float>("present_state", {1, 1, 0, 0}, {});
+  // present_state carries H_kv as its second dimension, so it must be declared with the
+  // oversized attribute value for shape inference to agree. The tensor is still empty
+  // because d_k and d_v are both 0, and the kernel rejects the attribute before any use.
+  tester.AddOutput<float>("present_state", {1, 4294967296LL, 0, 0}, {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
