@@ -57,25 +57,6 @@ Abstract:
 
 #pragma once
 
-//
-// Column groups the M == 1 path keeps live. Each group is one accumulator plus
-// one B vector, and the single A quad is shared by all of them, so widening
-// this trades registers for fewer A loads and fewer passes. Overridable from
-// the build for tuning.
-//
-#if !defined(MLAS_SVE_QGEMM_M1_COLGROUPS)
-#define MLAS_SVE_QGEMM_M1_COLGROUPS 4
-#endif
-
-//
-// Set to 0 to route M == 1 back through the shared row-pair tail path, for
-// A/B measurement of the dedicated single-row path against its predecessor
-// from a single source tree.
-//
-#if !defined(MLAS_SVE_QGEMM_M1_LEAN)
-#define MLAS_SVE_QGEMM_M1_LEAN 1
-#endif
-
 #include <algorithm>
 #include <cstring>
 #include <arm_sve.h>
@@ -147,19 +128,6 @@ static MLAS_FORCEINLINE svint8_t
 MlasQGemmSveLoadARowPair(const int8_t* aptr)
 {
     return svld1rq_s8(svptrue_b8(), aptr);
-}
-
-//
-// Same, for a lone row (Rows == 1): the packed group holds only 8 bytes per
-// k-block, so the quad is [row0 k0..k7, zero] - the zero half lands in the
-// mmla's "row 1" lanes, which are never stored.
-//
-static MLAS_FORCEINLINE svint8_t
-MlasQGemmSveLoadASingleRow(const int8_t* aptr)
-{
-    uint64_t Row;
-    std::memcpy(&Row, aptr, sizeof(Row));
-    return svreinterpret_s8_u64(svzip1_u64(svdup_n_u64(Row), svdup_n_u64(0)));
 }
 
 //
@@ -599,7 +567,6 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
         return Rows;
     }
 
-#if MLAS_SVE_QGEMM_M1_LEAN
     if (Rows == 1) {
         //
         // Dedicated single-row path.
@@ -621,14 +588,10 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
         // All three are safe for the same reason: the mmla's row-1 lanes are
         // computed but never stored, so whatever lands in them is irrelevant.
         //
-        // The body below declares exactly 4 accumulators. Widening the group
-        // count needs matching accumulator/pointer variables (SVE types are
-        // sizeless, so they cannot live in an array) -- assert rather than let
-        // a larger ColsPerPass silently stride past columns it never computed.
-        static_assert(MLAS_SVE_QGEMM_M1_COLGROUPS == 4,
-                      "M=1 path body implements 4 column groups; add accumulators to widen");
-
-        const size_t ColsPerPass = MLAS_SVE_QGEMM_M1_COLGROUPS * ColsPerAcc;
+        // Four column groups, matching the four accumulators declared below.
+        // (SVE types are sizeless, so accumulators cannot live in an array;
+        // widening the group count means adding variables here.)
+        const size_t ColsPerPass = 4 * ColsPerAcc;
         const svint32_t rp = svdup_n_s32(RowSumBuffer[0]);
 
         for (size_t nn = 0; nn < CountN; nn += ColsPerPass) {
@@ -673,15 +636,14 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
 
         return Rows;
     }
-#endif  // MLAS_SVE_QGEMM_M1_LEAN
 
     //
     // Tail path for Rows in {4,2}: process one row-pair at a time against 4
     // column groups. B is re-read per row-pair, but these partial groups are
     // rare (only the final M-tile) and small, so the simpler form is fine.
     //
-    const size_t RowPairs = (Rows == 1) ? 1 : (Rows / 2);
-    const size_t AStride = (Rows == 1) ? 8 : (RowPairs * 16);
+    const size_t RowPairs = Rows / 2;
+    const size_t AStride = RowPairs * 16;
     const size_t ColsPerPass = 4 * ColsPerAcc;
 
     for (size_t nn = 0; nn < CountN; nn += ColsPerPass) {
@@ -721,9 +683,7 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
 
             for (size_t kb = 0; kb < PackedCountK; ++kb) {
                 const size_t koff = kb * 64;
-                const svint8_t q = (Rows == 1)
-                    ? MlasQGemmSveLoadASingleRow(aptr + kb * AStride)
-                    : MlasQGemmSveLoadARowPair(aptr + kb * AStride);
+                const svint8_t q = MlasQGemmSveLoadARowPair(aptr + kb * AStride);
 
                 acc0 = MlasQGemmMmlaSve<AUnsigned>(
                     acc0, q, svld1_s8(pgB, bp0 + koff));
