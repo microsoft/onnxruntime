@@ -69,6 +69,9 @@ bool IsActivationSupported(const Activation& activation) {
     case ActivationKind::Sigmoid:
     case ActivationKind::Tanh:
     case ActivationKind::HardSwish:
+    case ActivationKind::Gelu:
+    case ActivationKind::GeluTanh:
+    case ActivationKind::Softplus:
       return true;
     case ActivationKind::QuickGelu:
       return activation.activation_params_.QuickGelu.alpha_ == 1.0f;
@@ -87,6 +90,9 @@ static_assert(static_cast<int>(ActivationKind::Sigmoid) == 2, "im2col_matmul.wgs
 static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::HardSwish) == 8, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Gelu) == 10, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::GeluTanh) == 11, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Softplus) == 12, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);

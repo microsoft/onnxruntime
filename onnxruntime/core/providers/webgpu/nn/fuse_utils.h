@@ -27,7 +27,13 @@ enum class ActivationKind {
   Tanh,
   QuickGelu,
   HardSwish,
-  Elu
+  Elu,
+  // Gelu's `approximate` attribute is resolved to one of these two kinds at fusion time rather
+  // than carried as a runtime parameter, which keeps both forms usable by the parameterless-only
+  // im2col fast path.
+  Gelu,
+  GeluTanh,
+  Softplus
 };
 
 using Activation = struct Activation {
@@ -67,7 +73,19 @@ using Activation = struct Activation {
 };
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation);
+
+// Returns the statement that applies the activation to a variable named `value`.
 std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type);
+
+// Returns module-scope WGSL that GetActivationSnippet's output depends on, or "" when the
+// activation is expressible as a single self-contained expression.
+//
+// Not every activation fits in one expression: WGSL has no `erf` builtin, and its `tanh`
+// overflows for large inputs, so those have to be open-coded as functions. Callers must emit
+// this into shader.AdditionalImplementation() *before* any code containing the snippet, because
+// WGSL has no forward declarations. Emitting it unconditionally is safe: it is empty for every
+// activation that does not need it.
+std::string GetActivationDeclaration(const Activation& activation, std::string value_type, std::string base_type);
 // Status AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables);
 // Status AppendActivationUniforms(const Activation& activation, std::vector<float>& data);
 

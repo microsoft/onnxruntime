@@ -32,7 +32,7 @@ Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_help
 //   8 | #param vec_size
 //   9 | // Activation folded into the epilogue. Mirrors ActivationKind in nn/fuse_utils.h:
 //  10 | //   0 = None, 1 = Relu, 2 = Sigmoid, 6 = Tanh, 7 = QuickGelu (alpha is always 1 here),
-//  11 | //   8 = HardSwish.
+//  11 | //   8 = HardSwish, 10 = Gelu (erf), 11 = Gelu (tanh approximation), 12 = Softplus.
 //  12 | // Only parameterless kinds reach this shader; see IsActivationSupported in im2col_matmul.cc,
 //  13 | // which also static_asserts these values.
 //  14 | #param activation_kind
@@ -336,16 +336,57 @@ ss << "    output_data = output_data * (output_element_t(1) / (output_element_t(
 } else if (__param_activation_kind == 8) {
 // 160 |     output_data = output_data * clamp(output_data * output_element_t(0.16666667) + output_element_t(0.5), output_element_t(0), output_element_t(1));
 ss << "    output_data = output_data * clamp(output_data * output_element_t(0.16666667) + output_element_t(0.5), output_element_t(0), output_element_t(1));\n";
-// 161 | #endif
+// 161 | #elif activation_kind == 10
+} else if (__param_activation_kind == 10) {
+// 162 |     {
+ss << "    {\n";
+// 163 |       // Gelu(x) = 0.5x(1 + erf(x/sqrt(2))); erf via Abramowitz & Stegun 7.1.26, matching
+ss << "\n";
+// 164 |       // GetActivationDeclaration in nn/fuse_utils.cc so both conv paths agree numerically.
+// 165 |       let gelu_x = output_data * output_element_t(0.70710678118654752);
+ss << "      let gelu_x = output_data * output_element_t(0.70710678118654752);\n";
+// 166 |       let gelu_a = abs(gelu_x);
+ss << "      let gelu_a = abs(gelu_x);\n";
+// 167 |       let gelu_t = output_element_t(1) / (output_element_t(1) + output_element_t(0.3275911) * gelu_a);
+ss << "      let gelu_t = output_element_t(1) / (output_element_t(1) + output_element_t(0.3275911) * gelu_a);\n";
+// 168 |       let gelu_erf = sign(gelu_x) * (output_element_t(1) - ((((output_element_t(1.061405429) * gelu_t + output_element_t(-1.453152027)) * gelu_t + output_element_t(1.421413741)) * gelu_t + output_element_t(-0.284496736)) * gelu_t + output_element_t(0.254829592)) * gelu_t * exp(-gelu_a * gelu_a));
+ss << "      let gelu_erf = sign(gelu_x) * (output_element_t(1) - ((((output_element_t(1.061405429) * gelu_t + output_element_t(-1.453152027)) * gelu_t + output_element_t(1.421413741)) * gelu_t + output_element_t(-0.284496736)) * gelu_t + output_element_t(0.254829592)) * gelu_t * exp(-gelu_a * gelu_a));\n";
+// 169 |       output_data = output_element_t(0.5) * output_data * (output_element_t(1) + gelu_erf);
+ss << "      output_data = output_element_t(0.5) * output_data * (output_element_t(1) + gelu_erf);\n";
+// 170 |     }
+ss << "    }\n";
+// 171 | #elif activation_kind == 11
+} else if (__param_activation_kind == 11) {
+// 172 |     {
+ss << "    {\n";
+// 173 |       // Gelu(approximate="tanh") / FastGelu. The built-in tanh() returns NaN past ~11.09 in f16
+ss << "\n";
+// 174 |       // and this argument is cubic, so tanh is open-coded in an overflow-free form.
+// 175 |       let gelu_arg = output_data * (output_element_t(0.035677408136300125) * output_data * output_data + output_element_t(0.79788456080286535));
+ss << "      let gelu_arg = output_data * (output_element_t(0.035677408136300125) * output_data * output_data + output_element_t(0.79788456080286535));\n";
+// 176 |       let gelu_e = exp(output_element_t(-2) * abs(gelu_arg));
+ss << "      let gelu_e = exp(output_element_t(-2) * abs(gelu_arg));\n";
+// 177 |       let gelu_tanh = sign(gelu_arg) * ((output_element_t(1) - gelu_e) / (output_element_t(1) + gelu_e));
+ss << "      let gelu_tanh = sign(gelu_arg) * ((output_element_t(1) - gelu_e) / (output_element_t(1) + gelu_e));\n";
+// 178 |       output_data = output_data * (output_element_t(0.5) + output_element_t(0.5) * gelu_tanh);
+ss << "      output_data = output_data * (output_element_t(0.5) + output_element_t(0.5) * gelu_tanh);\n";
+// 179 |     }
+ss << "    }\n";
+// 180 | #elif activation_kind == 12
+} else if (__param_activation_kind == 12) {
+// 181 |     // softplus(x) = log(1 + exp(x)), arranged so the exp() cannot overflow.
+// 182 |     output_data = max(output_data, output_element_t(0)) + log(output_element_t(1) + exp(-abs(output_data)));
+ss << "    output_data = max(output_data, output_element_t(0)) + log(output_element_t(1) + exp(-abs(output_data)));\n";
+// 183 | #endif
 }
-// 162 |     write_output(batch, m_base + m_idx, n_base, output_data);
+// 184 |     write_output(batch, m_base + m_idx, n_base, output_data);
 ss << "    write_output(batch, m_base + m_idx, n_base, output_data);\n";
-// 163 |   }
+// 185 |   }
 ss << "  }\n";
-// 164 | }  // MAIN
+// 186 | }  // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 165 | 
+// 187 | 
 
 
   return Status::OK();

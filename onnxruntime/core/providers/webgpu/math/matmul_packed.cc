@@ -31,6 +31,8 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
+  // Emitted before MatMulWriteFnSourceForMatMul, which is where apply_activation lands.
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
   ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);

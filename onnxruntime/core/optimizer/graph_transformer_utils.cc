@@ -349,6 +349,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                      onnxruntime::kAclExecutionProvider,
                                                                      onnxruntime::kCudaExecutionProvider,
                                                                      onnxruntime::kDmlExecutionProvider};
+      // Same as above plus WebGPU. WebGPU registers a com.microsoft.Gelu kernel, so it can consume the fused
+      // node; the JS EP does not, which is why cpu_acl_cuda_dml_js_webgpu_eps is not reused here.
+      const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                            onnxruntime::kAclExecutionProvider,
+                                                                            onnxruntime::kCudaExecutionProvider,
+                                                                            onnxruntime::kDmlExecutionProvider,
+                                                                            onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
                                                                                onnxruntime::kAclExecutionProvider,
                                                                                onnxruntime::kCudaExecutionProvider,
@@ -401,7 +408,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_acl_js_webgpu_eps));
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_eps, level));
+      // WebGPU is included so that the erf-based GELU decomposition emitted by pre-opset-20 exporters collapses
+      // into a single com.microsoft.Gelu node, which both reduces dispatches and lets ConvActivationFusion fold
+      // it into the preceding NHWC Conv. At opset 20+ the Level1 instance handles this with the ONNX-domain op.
+      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));

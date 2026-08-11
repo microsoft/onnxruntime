@@ -100,18 +100,32 @@ class ConvActivationSelector : public NodeSelector {
 
     // QuickGeluFusion collapses `x * sigmoid(alpha * x)` into a kMSDomain QuickGelu node.
     // With alpha == 1 that is SiLU/Swish, which follows nearly every Conv in the YOLO model
-    // family. HardSwish (MobileNetV3/EfficientNet-lite) and Elu are plain ONNX-domain ops that
-    // the shared selector below deliberately omits, because the CPU and JS FusedConv kernels
-    // do not implement them. Only the WebGPU EP has a fused-Conv kernel that understands these,
-    // and only through the NHWC Conv: a kOnnxDomain Conv fuses into kMSDomain::FusedConv, for
-    // which WebGPU registers no kernel.
+    // family. HardSwish (MobileNetV3/EfficientNet-lite), Elu, Gelu and Softplus are plain
+    // ONNX-domain ops that the shared selector below deliberately omits, because the CPU and JS
+    // FusedConv kernels do not implement them. Only the WebGPU EP has a fused-Conv kernel that
+    // understands these, and only through the NHWC Conv: a kOnnxDomain Conv fuses into
+    // kMSDomain::FusedConv, for which WebGPU registers no kernel.
+    //
+    // Gelu reaches this point under three spellings, all of which occur in practice: the
+    // ONNX-domain op (opset 20+), the kMSDomain op that GeluFusion produces from the erf pattern
+    // when a model is exported at a lower opset, and kMSDomain FastGelu for the tanh
+    // approximation. Every op listed here must have a WebGPU kernel of its own, otherwise it is
+    // assigned to a different EP and the provider-match check above already rejected it.
     auto is_supported_webgpu_ep_activation = [&node](const Node& activation_node) {
       if (node.Domain() != kMSInternalNHWCDomain) {
         return false;
       }
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "FastGelu", {1}, kMSDomain)) {
+        // FastGelu's optional second input is a bias added along the last axis. Only the
+        // single-input form is a pure elementwise activation that can move into the conv.
+        return activation_node.InputDefs().size() == 1;
+      }
       return graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Gelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSwish", {14, 22}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Elu", {6, 22});
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Elu", {6, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Gelu", {20}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Softplus", {1, 22});
     };
 
     if (!ConvFusionDataTypeCheck(node)) {
@@ -208,6 +222,13 @@ class FuseConvActivationAction : public ReplaceWithNew {
     } else if (activation_op_type == "Elu") {
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
       activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
+    } else if (activation_op_type == "Gelu") {
+      // ONNX Gelu selects its formula with a string attribute, but activation_params is a float
+      // list, so forward it as a 0/1 flag. The kMSDomain Gelu has no such attribute and is
+      // always the exact erf form, which the nullptr default already gives.
+      const auto* approximate_attr = graph_utils::GetNodeAttribute(*activation, "approximate");
+      const bool tanh_approximation = approximate_attr != nullptr && approximate_attr->s() == "tanh";
+      activation_params.push_back(tanh_approximation ? 1.0f : 0.0f);
     }
 
     if (!activation_params.empty()) {
