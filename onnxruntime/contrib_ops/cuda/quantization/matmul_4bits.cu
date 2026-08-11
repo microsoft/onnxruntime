@@ -758,9 +758,15 @@ bool TryMatMul4Bits(
   } else if (bias_data != nullptr) {
     // M=1 GEMV does not support fused bias.
     return false;
+  } else if (n % kColsPerThreadBlock != 0) {
+    // Preserve upstream routing: the M=1 GEMV only accepts shapes where n is
+    // divisible by 8, matching the original gate. SelectColsPerBlock may pick a
+    // smaller cols_per_block for occupancy, but we never claim shapes that the
+    // pre-existing code would have declined.
+    return false;
   }
 
-  // M=1 path: SelectColsPerBlock handles n-divisibility check internally.
+  // M=1 path: SelectColsPerBlock handles sub-8 cols_per_block selection internally.
   return TryMatMul4BitsM1<T>(output, a_data, b_data_quant, scales_data, zero_points,
                              n, k, block_size, shared_mem_per_block, sm_count, stream);
 }

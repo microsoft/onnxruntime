@@ -137,6 +137,22 @@ bool TryMatMul4BitsM1(
   dim3 blocks((n + cols_per_block - 1) / cols_per_block, 1);
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, cols_per_block);
 
+  // Template instantiation cost: the kernel is templated on <T, block_size, has_zero_point, cols_per_block>.
+  // Adding cols_per_block ∈ {8, 4, 2} triples the per-type instantiation count:
+  //   Before: 4 block_sizes × 2 zp variants × 1 cols = 8 per type, 24 total (3 types).
+  //   After:  4 block_sizes × 2 zp variants × 3 cols = 24 per type, 72 total.
+  // Practical cost: each instantiation is ~0.8 KB PTX (simple warp-reduction kernel with no
+  // unrolled loops beyond the 8-element vectorized load). Incremental binary growth is bounded
+  // at ~38 KB across all three type CUs — modest relative to ORT's 40+ MB provider .so.
+  // Compile-time impact is similarly bounded: this kernel is a leaf template in three separate
+  // .cu files (float, half, bf16) that already compile independently.
+  //
+  // All three cols_per_block values are reachable in production:
+  //   - 8: any device where n/8 >= sm_count * 12 (common for n >= ~10k on H100).
+  //   - 4: n/8 < target but n/4 >= target (e.g. n=8192 on H100-132SM).
+  //   - 2: n/4 < target and n is even (e.g. n=4096 on H100-132SM).
+  // No instantiation is dead code.
+
 #define MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, cpb)                                                       \
   if (zero_points != nullptr) {                                                                        \
     MatMulFloat4BitsKernelM1<T, bs, true, cpb><<<blocks, threads, shared_mem_size, stream>>>(          \

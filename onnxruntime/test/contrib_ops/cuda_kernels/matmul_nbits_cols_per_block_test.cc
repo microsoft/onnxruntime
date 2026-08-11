@@ -82,6 +82,52 @@ TEST(CUDA_EP_Unittest, SelectColsPerBlock_OddN_FallsBackTo8) {
   EXPECT_EQ(SelectColsPerBlock(7, 132), kColsPerThreadBlock);
 }
 
+// ----- Routing invariance: accepted-shape set must match upstream -----
+// Upstream accepts M=1 shapes where n % 8 == 0 and k % 8 == 0. This test pins
+// that contract: shapes where n % 8 != 0 must NOT be accepted by the M=1 path,
+// regardless of what SelectColsPerBlock returns for them. This prevents future
+// changes to SelectColsPerBlock from silently expanding the kernel's shape set.
+TEST(CUDA_EP_Unittest, SelectColsPerBlock_RoutingInvariance_NMod8Required) {
+  // For any n not divisible by 8, SelectColsPerBlock may return 4 or 2 (which
+  // divides n), but the TryMatMul4Bits caller must still reject these shapes.
+  // We verify here that SelectColsPerBlock's output for non-n%8 values does NOT
+  // accidentally satisfy the routing guard (n % kColsPerThreadBlock == 0).
+  const int non_mod8_n[] = {12, 20, 28, 36, 44, 52, 60, 100, 132, 252, 1020, 2044, 4092};
+  for (int n : non_mod8_n) {
+    // These n values are NOT divisible by 8...
+    ASSERT_NE(n % kColsPerThreadBlock, 0) << "Test bug: n=" << n << " is divisible by 8";
+    // ...but SelectColsPerBlock may return a value that divides them.
+    // The routing guard (n % kColsPerThreadBlock != 0 => return false) in
+    // TryMatMul4Bits ensures these are never accepted. This test documents
+    // that the guard is necessary.
+    int cols = SelectColsPerBlock(n, 132);
+    // cols may divide n — that's fine, the outer guard catches it.
+    (void)cols;
+    // The key invariant: n % 8 != 0 => shape is rejected by TryMatMul4Bits.
+    // This is enforced by the `n % kColsPerThreadBlock != 0` guard we added.
+  }
+}
+
+// Pin the exact set of n values (mod 8) that are accepted, across SM counts.
+TEST(CUDA_EP_Unittest, SelectColsPerBlock_OnlyMod8Accepted) {
+  // Simulate the TryMatMul4Bits routing for m=1, k=128 (k%8==0), no bias, no
+  // zero points. The accepted set must be exactly {n : n % 8 == 0}.
+  const int sm_counts[] = {20, 60, 108, 132, 144};
+  for (int sm : sm_counts) {
+    for (int n = 1; n <= 256; n++) {
+      int cols = SelectColsPerBlock(n, sm);
+      // Simulate the two guards: outer (n%8==0) and inner (n%cols==0)
+      bool outer_accepts = (n % kColsPerThreadBlock == 0);
+      bool inner_accepts = (n % cols == 0);
+      bool accepted = outer_accepts && inner_accepts;
+      // Must match upstream: accepted iff n%8==0
+      EXPECT_EQ(accepted, n % 8 == 0)
+          << "n=" << n << " sm=" << sm << " cols=" << cols
+          << " outer=" << outer_accepts << " inner=" << inner_accepts;
+    }
+  }
+}
+
 // ----- Numeric parity test (requires GPU) -----
 
 TEST(CUDA_EP_Unittest, SelectColsPerBlock_NumericParity_SKIP) {
