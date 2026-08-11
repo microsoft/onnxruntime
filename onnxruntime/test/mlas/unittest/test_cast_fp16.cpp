@@ -73,13 +73,13 @@ class MlasCastFp16Test : public MlasTestBase {
     // Raw fp16 bit patterns
     const uint16_t kPosZero = 0x0000;
     const uint16_t kNegZero = 0x8000;
-    const uint16_t kPosInf  = 0x7C00;
-    const uint16_t kNegInf  = 0xFC00;
-    const uint16_t kQNaN    = 0x7E00;  // quiet NaN
-    const uint16_t kSNaN    = 0x7C01;  // signalling NaN (payload 0x001)
-    const uint16_t kDenormMin  = 0x0001;  // smallest positive denormal
-    const uint16_t kDenormMid  = 0x0200;  // mid-range positive denormal
-    const uint16_t kNegDenorm  = 0x8001;  // smallest negative denormal
+    const uint16_t kPosInf = 0x7C00;
+    const uint16_t kNegInf = 0xFC00;
+    const uint16_t kQNaN = 0x7E00;       // quiet NaN
+    const uint16_t kSNaN = 0x7C01;       // signalling NaN (payload 0x001)
+    const uint16_t kDenormMin = 0x0001;  // smallest positive denormal
+    const uint16_t kDenormMid = 0x0200;  // mid-range positive denormal
+    const uint16_t kNegDenorm = 0x8001;  // smallest negative denormal
 
     std::vector<uint16_t> special_bits = {
         kPosZero, kNegZero, kPosInf, kNegInf, kQNaN, kSNaN,
