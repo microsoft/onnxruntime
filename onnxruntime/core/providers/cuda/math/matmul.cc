@@ -14,11 +14,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Experimental opt-in: this path is currently slower than cuBLAS in-model, but
-// remains available for further tuning of small-N decode shapes.
-static bool SmallNGemvEnabled() {
-  static const bool enabled = ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
-  return enabled;
+bool SmallNGemvEnabledFromEnvironment() {
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
@@ -334,9 +331,9 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     if constexpr (std::is_same<T, MLFloat16>::value) {
       // cuBLAS tiles this class of shape onto a handful of CTAs and spends
       // several microseconds on a few hundred KiB of weights.
-      if (SmallNGemvEnabled() && !transa && !transb && alpha_ == 1.0f &&
-          lda == static_cast<int>(helper.K()) && ldb == static_cast<int>(helper.N()) &&
-          ldc == static_cast<int>(helper.N()) &&
+      if (small_n_gemv_enabled_ && !transa && !transb && alpha_ == 1.0f &&
+          static_cast<int64_t>(lda) == helper.K() && static_cast<int64_t>(ldb) == helper.N() &&
+          static_cast<int64_t>(ldc) == helper.N() &&
           CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), left_X->DataRaw(), right_X->DataRaw(),
                            Y->MutableDataRaw())) {
         const int m = static_cast<int>(helper.M());

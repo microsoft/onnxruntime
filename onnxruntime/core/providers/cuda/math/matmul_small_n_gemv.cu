@@ -23,7 +23,7 @@ constexpr int kMaxSplitK = 32;
 template <int M>
 __global__ void SmallNGemvSplitKKernel(const half* __restrict__ a, const half* __restrict__ b,
                                        half* __restrict__ c, int n, int k,
-                                       float* __restrict__ ws, unsigned int* __restrict__ counter,
+                                       volatile float* __restrict__ ws, unsigned int* __restrict__ counter,
                                        int split_k) {
   constexpr int TY = kThreads / kTx;
   const int tx = static_cast<int>(threadIdx.x) % kTx;
@@ -80,7 +80,6 @@ __global__ void SmallNGemvSplitKKernel(const half* __restrict__ a, const half* _
   }
   __syncthreads();
   if (!is_last) return;
-  if (threadIdx.x == 0) counter[blockIdx.x] = 0u;  // leave it ready for the next launch
 
   if (ty == 0 && active) {
 #pragma unroll
