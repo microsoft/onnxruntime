@@ -57,27 +57,46 @@ MlasLayerNormKernelAvx2(
 
     if (Simplified) {
         //
-        // RMSNorm: accumulate sum and sum-of-squares. The sum is only
-        // needed for the MeanOut optional output (the normalisation itself
-        // does not subtract the mean), but the caller may request it.
+        // RMSNorm: accumulate sum-of-squares for the inverse RMS
+        // denominator. The sum (for the mean) is only needed when the
+        // caller requests MeanOut — the normalisation itself never
+        // subtracts the mean. Skip the sum accumulation when MeanOut
+        // is null to avoid ~1 extra vaddps per 8-element iteration.
+        // The check is outside the hot loop so it is branch-free inside.
         //
 
-        __m256 vsum = _mm256_setzero_ps();
         __m256 vsumsq = _mm256_setzero_ps();
         size_t i = 0;
-        for (; i + 8 <= n; i += 8) {
-            __m256 vx = _mm256_loadu_ps(Input + i);
-            vsum = _mm256_add_ps(vsum, vx);
-            vsumsq = _mm256_fmadd_ps(vx, vx, vsumsq);
-        }
+        float sum_val = 0.0f;
+        float sumsq_val;
 
-        // Horizontal reduce sum.
-        __m128 hi_sum = _mm256_extractf128_ps(vsum, 1);
-        __m128 lo_sum = _mm256_castps256_ps128(vsum);
-        __m128 r_sum = _mm_add_ps(lo_sum, hi_sum);
-        r_sum = _mm_add_ps(r_sum, _mm_movehl_ps(r_sum, r_sum));
-        r_sum = _mm_add_ss(r_sum, _mm_movehdup_ps(r_sum));
-        float sum_val = _mm_cvtss_f32(r_sum);
+        if (MeanOut != nullptr) {
+            //
+            // Caller wants the mean: accumulate both sum and sum-of-squares.
+            //
+            __m256 vsum = _mm256_setzero_ps();
+            for (; i + 8 <= n; i += 8) {
+                __m256 vx = _mm256_loadu_ps(Input + i);
+                vsum = _mm256_add_ps(vsum, vx);
+                vsumsq = _mm256_fmadd_ps(vx, vx, vsumsq);
+            }
+
+            // Horizontal reduce sum.
+            __m128 hi_sum = _mm256_extractf128_ps(vsum, 1);
+            __m128 lo_sum = _mm256_castps256_ps128(vsum);
+            __m128 r_sum = _mm_add_ps(lo_sum, hi_sum);
+            r_sum = _mm_add_ps(r_sum, _mm_movehl_ps(r_sum, r_sum));
+            r_sum = _mm_add_ss(r_sum, _mm_movehdup_ps(r_sum));
+            sum_val = _mm_cvtss_f32(r_sum);
+        } else {
+            //
+            // No mean requested: sum-of-squares only.
+            //
+            for (; i + 8 <= n; i += 8) {
+                __m256 vx = _mm256_loadu_ps(Input + i);
+                vsumsq = _mm256_fmadd_ps(vx, vx, vsumsq);
+            }
+        }
 
         // Horizontal reduce sum-of-squares.
         __m128 hi_sq = _mm256_extractf128_ps(vsumsq, 1);
@@ -85,14 +104,16 @@ MlasLayerNormKernelAvx2(
         __m128 r_sq = _mm_add_ps(lo_sq, hi_sq);
         r_sq = _mm_add_ps(r_sq, _mm_movehl_ps(r_sq, r_sq));
         r_sq = _mm_add_ss(r_sq, _mm_movehdup_ps(r_sq));
-        float sumsq_val = _mm_cvtss_f32(r_sq);
+        sumsq_val = _mm_cvtss_f32(r_sq);
 
         for (; i < n; i++) {
-            sum_val += Input[i];
+            if (MeanOut != nullptr) {
+                sum_val += Input[i];
+            }
             sumsq_val += Input[i] * Input[i];
         }
 
-        mean_val = sum_val / static_cast<float>(n);
+        mean_val = (MeanOut != nullptr) ? sum_val / static_cast<float>(n) : 0.0f;
         inv_denom = 1.0f / sqrtf(sumsq_val / static_cast<float>(n) + Epsilon);
     } else {
         //

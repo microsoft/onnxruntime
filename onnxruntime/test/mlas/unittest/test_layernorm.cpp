@@ -43,6 +43,33 @@ Abstract:
 // ---------------------------------------------------------------------------
 // fp64-accumulated scalar reference (not dependent on MLAS)
 // ---------------------------------------------------------------------------
+//
+// Variance formula: Var = E[x²] - mean²  (two-pass equivalent, single loop).
+//
+// This reference deliberately uses the two-pass/naive formula rather than
+// Welford's online algorithm.  The choice is intentional and safe for two
+// independent reasons:
+//
+//   1. fp64 precision.  The catastrophic cancellation that makes
+//      "E[x²] - mean²" dangerous in fp32 (it produced NaN and 100% relative
+//      error in the fp32 kernel, and is exactly what drove the Welford
+//      redesign) does not bite here.  At float32 magnitudes the subtracted
+//      terms differ by at most ~2^53 ULPs in fp64, well inside its dynamic
+//      range.  The result is accurate to single-precision even for the
+//      adversarial near-max scenarios exercised below.
+//
+//   2. Independent oracle.  A reference that uses a *different* algorithm
+//      from the kernel cross-checks the kernel's result rather than merely
+//      repeating its logic.  If the reference mirrored Welford's update
+//      equations, a shared conceptual mistake (e.g. off-by-one in the
+//      running count, wrong initialisation) could cause both to produce the
+//      same wrong answer and the test would not catch it.  The two-pass
+//      formula and Welford's algorithm are algebraically equivalent but
+//      computationally independent; agreement between them is a meaningful
+//      check.
+//
+// Do NOT "fix" this to Welford: the apparent inconsistency with the kernel
+// is intentional.
 
 static void ReferenceLayerNorm(
     const float* input,
@@ -692,7 +719,6 @@ TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
 
   const float eps = 1e-5f;
   double worst_avx2 = 0.0;
-  (void)0;
 
   // -------------------------------------------------------------------
   // SCENARIO 1: Large N with benign data
