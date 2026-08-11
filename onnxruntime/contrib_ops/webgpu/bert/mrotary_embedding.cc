@@ -28,71 +28,19 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status MRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-  const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::None);
+  shader.AddInput("position_ids", ShaderUsage::None);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::None);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::None);
   const auto& output = shader.AddOutput("output", ShaderUsage::None);
 
-  auto& body = shader.MainFunctionBody();
-  body << "  if (global_idx >= uniforms.output_size) { return; }\n"
-          "  let channel = global_idx % uniforms.head_size;\n";
-
-  if (transposed_) {
-    body << "  let sequence = (global_idx / uniforms.head_size) % uniforms.sequence_length;\n"
-            "  let batch = global_idx / (uniforms.head_size * uniforms.sequence_length * uniforms.num_heads);\n";
-  } else {
-    body << "  let sequence = (global_idx / (uniforms.head_size * uniforms.num_heads)) % uniforms.sequence_length;\n"
-            "  let batch = global_idx / (uniforms.head_size * uniforms.num_heads * uniforms.sequence_length);\n";
-  }
-
-  body << "  if (channel >= uniforms.rotary_embedding_dim) {\n"
-       << "    " << output.SetByOffset("global_idx", input.GetByOffset("global_idx")) << "\n"
-       << "    return;\n"
-          "  }\n"
-          "  let half_rotary_embedding_dim = uniforms.rotary_embedding_dim / 2u;\n";
-
-  if (interleaved_) {
-    body << "  let cache_idx = channel / 2u;\n"
-            "  let pair_idx = select(channel - 1u, channel + 1u, channel % 2u == 0u);\n"
-            "  let sign = select(input_element_t(1.0), input_element_t(-1.0), channel % 2u == 0u);\n";
-  } else {
-    body << "  let cache_idx = channel % half_rotary_embedding_dim;\n"
-            "  let pair_idx = (channel + half_rotary_embedding_dim) % uniforms.rotary_embedding_dim;\n"
-            "  let sign = select(input_element_t(1.0), input_element_t(-1.0), channel < half_rotary_embedding_dim);\n";
-  }
-
-  body << "  var stream = 0u;\n";
-  if (mrope_layout_ == MRopeLayout::kSectioned) {
-    body << "  if (cache_idx >= uniforms.mrope_section[0] &&\n"
-            "      cache_idx < uniforms.mrope_section[0] + uniforms.mrope_section[1]) {\n"
-            "    stream = 1u;\n"
-            "  } else if (cache_idx >= uniforms.mrope_section[0] + uniforms.mrope_section[1]) {\n"
-            "    stream = 2u;\n"
-            "  }\n";
-  } else {
-    body << "  if (cache_idx % 3u == 1u && cache_idx / 3u < uniforms.mrope_section[1]) {\n"
-            "    stream = 1u;\n"
-            "  } else if (cache_idx % 3u == 2u && cache_idx / 3u < uniforms.mrope_section[2]) {\n"
-            "    stream = 2u;\n"
-            "  }\n";
-  }
-
-  body << "  let position_ids_idx = (stream * uniforms.batch_size + batch) * uniforms.sequence_length + sequence;\n"
-       << "  let position_id_bits = " << position_ids.GetByOffset("position_ids_idx", true) << ";\n"
-       << "  if (position_id_bits.y != 0u || position_id_bits.x >= uniforms.max_sequence_length) {\n"
-       << "    " << output.SetByOffset("global_idx", input.GetByOffset("global_idx")) << "\n"
-       << "    return;\n"
-          "  }\n"
-          "  let cache_offset = position_id_bits.x * half_rotary_embedding_dim + cache_idx;\n"
-          "  let scale = input_element_t(uniforms.scale);\n"
-       << "  let cos_value = " << cos_cache.GetByOffset("cache_offset") << " * scale;\n"
-       << "  let sin_value = " << sin_cache.GetByOffset("cache_offset") << " * scale;\n"
-       << "  let head_offset = global_idx - channel;\n"
-       << "  let value = " << input.GetByOffset("global_idx") << " * cos_value + sign * "
-       << input.GetByOffset("head_offset + pair_idx") << " * sin_value;\n"
-       << "  " << output.SetByOffset("global_idx", "value") << "\n";
-
-  return Status::OK();
+  return WGSL_TEMPLATE_APPLY(shader, "bert/mrotary_embedding.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_PARAMETER(sectioned, mrope_layout_ == MRopeLayout::kSectioned),
+                             WGSL_TEMPLATE_PARAMETER(transposed, transposed_),
+                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 
 MRotaryEmbedding::MRotaryEmbedding(const OpKernelInfo& info) : WebGpuKernel(info) {
