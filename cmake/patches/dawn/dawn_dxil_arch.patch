@@ -1,0 +1,62 @@
+diff --git a/third_party/CopyWindowsSDKDLL.cmake b/third_party/CopyWindowsSDKDLL.cmake
+--- a/third_party/CopyWindowsSDKDLL.cmake
++++ b/third_party/CopyWindowsSDKDLL.cmake
+@@ -69,6 +69,42 @@ function(DetectWindowsSDK out_sdk_path out_sdk_version)
+     set(${out_sdk_version} ${sdk_version} PARENT_SCOPE)
+ endfunction()
+ 
++# Function to detect the Windows SDK binary subdirectory to use
++# The DLLs copied by AddCopyWindowsSDKDLLTarget are loaded in-process at runtime, so they must
++# match the architecture Dawn is built for, not the architecture of the build host.
++# Returns "x86", "x64" or "arm64" via the output parameter.
++function(DetectWindowsSDKArch out_sdk_arch)
++    if (CMAKE_VS_PLATFORM_NAME)
++        # Visual Studio generators: Win32, x64, ARM64 or ARM64EC.
++        set(target_arch "${CMAKE_VS_PLATFORM_NAME}")
++    elseif (CMAKE_CXX_COMPILER_ARCHITECTURE_ID)
++        # MSVC with other generators (e.g. Ninja): X86, x64, ARM64 or ARM64EC.
++        set(target_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
++    elseif (CMAKE_C_COMPILER_ARCHITECTURE_ID)
++        set(target_arch "${CMAKE_C_COMPILER_ARCHITECTURE_ID}")
++    else()
++        # Last resort for toolchains that do not set the compiler architecture id.
++        set(target_arch "${CMAKE_SYSTEM_PROCESSOR}")
++    endif()
++
++    string(TOLOWER "${target_arch}" target_arch_lower)
++    if (target_arch_lower MATCHES "^(win32|x86|i386|i686)$")
++        set(sdk_arch "x86")
++    elseif (target_arch_lower MATCHES "^(x64|amd64|x86_64)$")
++        set(sdk_arch "x64")
++    elseif (target_arch_lower MATCHES "^(arm64|arm64ec|aarch64)$")
++        # ARM64EC code runs inside an ARM64 process, so it uses the ARM64 SDK binaries.
++        set(sdk_arch "arm64")
++    else()
++        # Keep the previous behavior for anything unrecognized.
++        message(WARNING "Unrecognized target architecture '${target_arch}', assuming the x64 Windows SDK binaries")
++        set(sdk_arch "x64")
++    endif()
++
++    message(STATUS "Using the ${sdk_arch} Windows SDK binaries for target architecture '${target_arch}'")
++    set(${out_sdk_arch} ${sdk_arch} PARENT_SCOPE)
++endfunction()
++
+ # Function to add a target that copies a DLL from Windows SDK to main build directory
+ # Parameters:
+ #   - target_name: Name of the custom target to create
+@@ -79,8 +115,14 @@ function(AddCopyWindowsSDKDLLTarget target_name dll_name)
+     endif()
+ 
+     DetectWindowsSDK(WIN10_SDK_PATH WIN10_SDK_VERSION)
++    DetectWindowsSDKArch(WIN10_SDK_ARCH)
+ 
+-    set(DLL_PATH "${WIN10_SDK_PATH}/bin/${WIN10_SDK_VERSION}/x64/${dll_name}")
++    set(DLL_PATH "${WIN10_SDK_PATH}/bin/${WIN10_SDK_VERSION}/${WIN10_SDK_ARCH}/${dll_name}")
++
++    if (NOT EXISTS "${DLL_PATH}")
++        message(WARNING "${dll_name} was not found at '${DLL_PATH}'. Check that the "
++                        "${WIN10_SDK_ARCH} binaries of Windows SDK ${WIN10_SDK_VERSION} are installed.")
++    endif()
+ 
+     # Copy directly to main build directory
+     get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)

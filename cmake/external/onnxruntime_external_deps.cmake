@@ -785,6 +785,18 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
+          # The dawn_dxil_arch.patch contains the following changes:
+          #
+          # - (private) Copy the Windows SDK DLLs matching the target architecture
+          #   AddCopyWindowsSDKDLLTarget() hardcodes the "x64" Windows SDK bin subdirectory, so an
+          #   ARM64 build gets an x64 dxil.dll (and an x64 d3dcompiler_47.dll) next to otherwise
+          #   correct ARM64 binaries. dxil.dll is loaded in-process by dxcompiler.dll, so on Windows
+          #   on ARM the load fails with "DynamicLib.Open: dxil.dll Windows Error: 87", Dawn cannot
+          #   create a D3D12 device, and the WebGPU EP silently falls back to CPU. This patch selects
+          #   the SDK subdirectory from the target architecture instead. x64 builds are unaffected.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxil_arch.patch &&
+
           # The dawn_parallel_build_fix.patch contains the following changes:
           #
           # - (private) Fix parallel build race condition in emdawnwebgpu header copy
