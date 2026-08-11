@@ -7,6 +7,12 @@ def headersDir = System.properties['headersDir']
 def publishDir = System.properties['publishDir']
 def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
+def telemetryJavaSrcDir = System.properties['telemetryJavaSrcDir']
+def telemetryResourceDir = System.properties['telemetryResourceDir']
+if ((telemetryJavaSrcDir == null) != (telemetryResourceDir == null)) {
+	throw new GradleException('telemetryJavaSrcDir and telemetryResourceDir must be set together')
+}
+def telemetryEnabled = telemetryJavaSrcDir != null
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def releaseVersionSuffix = System.properties['releaseVersionSuffix'] ?: ""
 // Expected format for qnnVersion: major.minor.patch (e.g., 2.26.0)
@@ -91,6 +97,9 @@ android {
 		versionName = project.version
 
 		testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+		if (telemetryEnabled) {
+			consumerProguardFiles 'src/main/android-telemetry/consumer-rules.pro'
+		}
 	}
 
 	android {
@@ -117,11 +126,26 @@ android {
 			jniLibs.srcDirs = [jniLibsDir]
 			java {
 				srcDirs = ['src/main/java', 'src/main/android']
+				if (telemetryEnabled) {
+					srcDirs += ['src/main/android-telemetry/java', telemetryJavaSrcDir]
+				}
+			}
+			if (telemetryEnabled) {
+				manifest.srcFile 'src/main/android-telemetry/AndroidManifest.xml'
+				resources.srcDirs += [telemetryResourceDir]
 			}
 		}
 	}
 
 	namespace 'ai.onnxruntime'
+}
+
+configurations {
+	javadocClasspath {
+		canBeConsumed = false
+		canBeResolved = true
+		extendsFrom compileOnly
+	}
 }
 
 task sourcesJar(type: Jar) {
@@ -132,6 +156,7 @@ task sourcesJar(type: Jar) {
 task javadoc(type: Javadoc) {
 	source = android.sourceSets.main.java.srcDirs
 	classpath += project.files(android.getBootClasspath())
+	classpath += configurations.javadocClasspath
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
@@ -145,6 +170,9 @@ artifacts {
 }
 
 dependencies {
+	if (telemetryEnabled) {
+		compileOnly 'androidx.annotation:annotation:1.7.1'
+	}
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
 	testImplementation 'com.google.protobuf:protobuf-java:3.25.5'

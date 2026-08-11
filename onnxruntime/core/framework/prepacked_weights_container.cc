@@ -15,6 +15,7 @@ PrePackedWeights PrePackedWeights::CreateReferringCopy() const {
   }
 
   copy.buffer_sizes_ = buffer_sizes_;
+  copy.has_kernel_owned_packed_weights_ = has_kernel_owned_packed_weights_;
   return copy;
 }
 

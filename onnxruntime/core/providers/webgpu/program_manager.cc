@@ -224,11 +224,14 @@ Status ProgramManager::Build(const ProgramBase& program,
           device.CreateComputePipelineAsync(
               &pipeline_descriptor,
               wgpu::CallbackMode::WaitAnyOnly,
-              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message, CreateComputePipelineContext* context) {
+              // Note: Don't throw from a Dawn callback.
+              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
+                 CreateComputePipelineContext* context) noexcept {
                 if (status == wgpu::CreatePipelineAsyncStatus::Success) {
                   context->pipeline = std::move(pipeline);
                 } else {
-                  context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ", std::string_view{message});
+                  context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ",
+                                                    std::string_view{message});
                 }
               },
               &create_pipeline_context)));

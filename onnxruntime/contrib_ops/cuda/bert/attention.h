@@ -27,6 +27,8 @@ class Attention final : public CudaKernel, public AttentionBase {
   bool disable_fused_self_attention_;
   bool enable_trt_flash_attention_;
   bool disable_memory_efficient_attention_;
+  bool enable_cudnn_flash_attention_;
+  bool auto_enable_cudnn_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
   mutable std::once_flag fused_fp16_runner_created_;
 

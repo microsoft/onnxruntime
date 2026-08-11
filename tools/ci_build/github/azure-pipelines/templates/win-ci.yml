@@ -157,11 +157,23 @@ stages:
           host_cpu_arch: 'x64'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
+        # Download and install JDK 17 explicitly instead of relying on a
+        # preinstalled JDK, which is no longer guaranteed to be present on the
+        # onnxruntime-Win-CPU-VS2022-Latest agent pool image.
+        - powershell: |
+            $jdkUrl = "https://aka.ms/download-jdk/microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip"
+            $jdkZip = "$(Agent.TempDirectory)\microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip"
+            Write-Host "Downloading JDK 17 from $jdkUrl"
+            Invoke-WebRequest -Uri $jdkUrl -OutFile $jdkZip
+          displayName: 'Download Microsoft Build of OpenJDK 17'
         - task: JavaToolInstaller@0
           inputs:
             versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
-            jdkSourceOption: 'PreInstalled'
+            jdkSourceOption: 'LocalDirectory'
+            jdkFile: '$(Agent.TempDirectory)\microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip'
+            jdkDestinationDirectory: '$(Agent.ToolsDirectory)\jdk17'
+            cleanDestinationDirectory: true
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml

@@ -3055,13 +3055,13 @@ struct OrtEpFactory {
    *
    * Required and optional keys:
    *   - "num_models"                 — number of models in this variant (>= 1) (required)
-   *   - "<i>.ep_compatibility_info"  — compatibility string for model i (required per model)
-   *   - "<i>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
-   *   - "<i>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
+   *   - "\<i\>.ep_compatibility_info"  — compatibility string for model i (required per model)
+   *   - "\<i\>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
+   *   - "\<i\>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
    *
-   * where <i> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
+   * where \<i\> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
    *
-   * The implementer should loop from 0 to num_models - 1 and validate each "<i>.ep_compatibility_info" entry.
+   * The implementer should loop from 0 to num_models - 1 and validate each "\<i\>.ep_compatibility_info" entry.
    * An advanced implementation may additionally consider "role" or other metadata when ranking candidates.
    *
    * **Why this function exists:**
@@ -3074,7 +3074,7 @@ struct OrtEpFactory {
    *
    * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
    *
-   * \note The implementer should validate each "<i>.ep_compatibility_info" in the candidate (e.g., by calling
+   * \note The implementer should validate each "\<i\>.ep_compatibility_info" in the candidate (e.g., by calling
    * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
    *
    * \param[in] this_ptr The OrtEpFactory instance.

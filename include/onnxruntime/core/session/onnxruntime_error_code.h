@@ -83,6 +83,12 @@ typedef enum OrtErrorCode {
    * A requested resource could not be found.
    */
   ORT_NOT_FOUND,
+  /**
+   * The execution provider's hardware device has been reset.
+   *
+   * The caller should stop using the existing session (and release it) and create a new session.
+   */
+  ORT_DEVICE_RESET,
 } OrtErrorCode;
 
 #ifdef __cplusplus

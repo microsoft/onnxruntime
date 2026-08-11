@@ -12,7 +12,7 @@ namespace webgpu {
 
 class ConcatProgram final : public Program<ConcatProgram> {
  public:
-  ConcatProgram(size_t axis) : Program{"Concat"}, axis_{axis} {
+  ConcatProgram(size_t axis, bool is_int64) : Program{"Concat"}, axis_{axis}, is_int64_{is_int64} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -23,6 +23,7 @@ class ConcatProgram final : public Program<ConcatProgram> {
 
  private:
   size_t axis_;
+  bool is_int64_;
 };
 
 class Concat final : public WebGpuKernel, public ConcatBase {
@@ -32,6 +33,12 @@ class Concat final : public WebGpuKernel, public ConcatBase {
 
   Status ComputeInternal(ComputeContext& context) const override;
 };
+
+// Create Concat kernel info with appropriate type constraints based on int64 support
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateConcatVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateConcatKernelInfo(bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

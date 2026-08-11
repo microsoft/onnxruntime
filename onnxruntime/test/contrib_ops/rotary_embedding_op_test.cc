@@ -1172,5 +1172,36 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_Negative_WebGPU_Pas
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Test that cos_cache dimension exceeding hidden_size is rejected when rotary_embedding_dim=0
+// and head_size is inferred from the cache (rank-3 input without num_heads). This exercises the
+// `effective_rotary_dim > hidden_size` guard, which covers the inference path that the
+// exact-width check cannot catch (head_size == effective_rotary_dim by construction there).
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsCosCacheExceedsHiddenSize_NoNumHeads) {
+  int batch_size = 1;
+  int sequence_length = 1;
+  int hidden_size = 64;
+  int half_rotary_dim = 64;  // cos_cache_dims[1]*2 = 128 > hidden_size; head_size inferred to 128
+  int max_sequence_length = 2;
+
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  // num_heads intentionally NOT set so head_size stays 0 on entry and is inferred from cos_cache.
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 42.0f));
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {max_sequence_length, half_rotary_dim},
+                       std::vector<float>(max_sequence_length * half_rotary_dim, 0.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, half_rotary_dim},
+                       std::vector<float>(max_sequence_length * half_rotary_dim, 1.0f));
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "exceeds input hidden_size", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -2018,17 +2018,24 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int in
 }
 #endif
 
-ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const void* data_elem, size_t num_elems,
-                                      size_t elem_size) {
-  auto len = narrow<size_t>(tensor.Shape().Size());
-  if (num_elems < len) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array is too short");
-  }
-  if (!is_string) {
-    memcpy(tensor.MutableDataRaw(), data_elem, elem_size * num_elems);
+// Copies the contents of `data_elem` into `tensor`.
+//
+// Both the element type and the number of elements to copy are derived from `tensor`:
+//   - For numeric tensors, tensor.SizeInBytes() bytes are copied. This is packing-aware,
+//     so sub-byte types (e.g. int4/uint4) copy only their packed storage size rather than
+//     one byte per logical element.
+//   - For string tensors, exactly tensor.Shape().Size() std::string elements are copied.
+//
+// Assumption: `data_elem` points to a buffer that holds at least as many elements as
+// `tensor`'s shape, with a matching element type. All current callers satisfy this because
+// they size the tensor from the same source data.
+ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, _In_ const void* data_elem) {
+  if (!tensor.IsDataTypeString()) {
+    memcpy(tensor.MutableDataRaw(), data_elem, tensor.SizeInBytes());
   } else {
+    const auto len = narrow<size_t>(tensor.Shape().Size());
     const std::string* strings = reinterpret_cast<const std::string*>(data_elem);
-    auto str_span = gsl::make_span(strings, num_elems);
+    auto str_span = gsl::make_span(strings, len);
     auto* dst = tensor.MutableData<std::string>();
     std::copy(str_span.begin(), str_span.end(), dst);
   }
@@ -2036,10 +2043,9 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const
 }
 
 ORT_STATUS_PTR CreateTensorAndPopulate(MLDataType element_type, const int64_t* shape, size_t shape_len,
-                                       const void* data, size_t num_elements, _Inout_ OrtAllocator* allocator, OrtValue& result) {
+                                       const void* data, _Inout_ OrtAllocator* allocator, OrtValue& result) {
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(element_type, shape, shape_len, allocator, result));
-  ORT_API_RETURN_IF_ERROR(PopulateTensorWithData(*result.GetMutable<Tensor>(), utils::IsDataTypeString(element_type),
-                                                 data, num_elements, element_type->Size()));
+  ORT_API_RETURN_IF_ERROR(PopulateTensorWithData(*result.GetMutable<Tensor>(), data));
   return nullptr;
 }
 
@@ -2057,7 +2063,6 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_valu
   auto result = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(one_tensor.DataType(), tensor_shape.GetDims().data(),
                                                                   tensor_shape.NumDimensions(), one_tensor.DataRaw(),
-                                                                  narrow<size_t>(one_tensor.Shape().Size()),
                                                                   allocator, *result));
   *out = result.release();
   return nullptr;
@@ -2105,7 +2110,6 @@ static ORT_STATUS_PTR OrtGetValueImplMapHelper(_In_ const OrtValue* p_ml_value, 
   std::vector<TKey> vec_keys;
   std::vector<TVal> vec_vals;
   const void* data_ptr;
-  size_t data_size;
   MLDataType element_type;
   switch (index) {
     case 0: {  // user is requesting keys
@@ -2113,20 +2117,18 @@ static ORT_STATUS_PTR OrtGetValueImplMapHelper(_In_ const OrtValue* p_ml_value, 
       vec_keys.reserve(static_cast<size_t>(num_kv_pairs));
       std::transform(data.cbegin(), data.cend(), std::back_inserter(vec_keys), [](const auto& k) { return k.first; });
       data_ptr = vec_keys.data();
-      data_size = vec_keys.size();
     } break;
     case 1: {  // user is requesting values
       element_type = DataTypeImpl::TensorTypeFromONNXEnum(GetONNXTensorElementDataType<TVal>())->GetElementType();
       vec_vals.reserve(static_cast<size_t>(num_kv_pairs));
       std::transform(data.cbegin(), data.cend(), std::back_inserter(vec_vals), [](const auto& k) { return k.second; });
       data_ptr = vec_vals.data();
-      data_size = vec_vals.size();
     } break;
     default:
       return OrtApis::CreateStatus(ORT_FAIL, "Invalid index requested for map type.");
   }
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(element_type, dims.data(), dims.size(), data_ptr,
-                                                                  data_size, allocator, *result));
+                                                                  allocator, *result));
   *out = result.release();
   return nullptr;
 }
@@ -4401,7 +4403,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_28 = {
+static constexpr OrtApi ort_api_1_to_29 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4916,8 +4918,8 @@ static constexpr OrtApi ort_api_1_to_28 = {
     // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::GetExperimentalFunction,
-
     &OrtApis::KernelContext_GetSyncStream,
+    // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4951,16 +4953,16 @@ static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_OpenVINO_V2
 static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeof(void*) == 279, "Size of version 18 API cannot change");
 // no additions in version 19, 20, and 21
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
-
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
 static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*) == 418, "Size of version 25 API cannot change");
 // no additions in version 26
-// no additions in version 27
+static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 421, "Size of version 27 API cannot change");
+static_assert(offsetof(OrtApi, KernelContext_GetSyncStream) / sizeof(void*) == 423, "Size of version 28 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.28.0",
+static_assert(std::string_view(ORT_VERSION) == "1.29.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
@@ -4976,7 +4978,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.28.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_28;
+    return &ort_api_1_to_29;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

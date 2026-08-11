@@ -103,6 +103,19 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
 
+/**
+ * Computes ReduceSum for an arbitrary set of axes. This is the general fallback
+ * for axis layouts that cannot be flattened into one of the optimized matrix
+ * reductions above.
+ */
+template <typename T>
+Status reduce_sum_nd(cudaStream_t stream, const T* input, T* output,
+                     gsl::span<const int64_t> dims, gsl::span<const int64_t> axes);
+
+/** Computes ArgMax/ArgMin indices over the last dimension in a row-major matrix. */
+template <typename TIn, bool IsArgMax>
+Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* output, int m, int n);
+
 /** Apply unary elementwise division. */
 template <typename T>
 void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count);
