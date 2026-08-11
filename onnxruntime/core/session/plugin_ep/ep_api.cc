@@ -25,6 +25,7 @@
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_opschema.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
@@ -1198,6 +1199,16 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_result_maybenull_ const void** source_model_data,
+                    _Out_ size_t* source_model_data_length) {
+  API_IMPL_BEGIN
+  *source_model_data = session_options->weightless_source_model_data;
+  *source_model_data_length = session_options->weightless_source_model_data_size;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1287,6 +1298,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
