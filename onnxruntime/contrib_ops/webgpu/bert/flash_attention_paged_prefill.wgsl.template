@@ -1,0 +1,77 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param qkv_head_size
+#param qkv_num_heads
+
+#use .getByOffset .getByIndices .setByOffset
+
+const head_size : u32 = qkv_head_size;
+const num_heads : u32 = qkv_num_heads;
+const head_size_vec : u32 = head_size / 4u;
+
+fn paged_kv_offset(block_id: u32, slot: u32, kv_head: u32, vec_idx: u32) -> u32 {
+  return (((block_id * uniforms.block_size + slot) * uniforms.kv_num_heads + kv_head) * head_size_vec) + vec_idx;
+}
+
+$MAIN {
+  let q_idx = global_idx % uniforms.new_sequence_length;
+  let batch_head_idx = global_idx / uniforms.new_sequence_length;
+  let head_idx = batch_head_idx % num_heads;
+  let batch_idx = batch_head_idx / num_heads;
+  if (batch_idx >= uniforms.batch_size) {
+    return;
+  }
+
+  let q_len = u32(seqlens_q[batch_idx]);
+  if (q_idx >= q_len) {
+    return;
+  }
+
+  let total_kv_len = u32(seqlens_k[batch_idx]) + 1u;
+  let past_len = total_kv_len - q_len;
+  let causal_kv_len = past_len + q_idx + 1u;
+  let kv_head_idx = head_idx / uniforms.n_reps;
+
+  var running_max = -3.4028234663852886e+38f;
+  var running_sum = 0.0f;
+  var accumulator: array<q_value_t, head_size_vec>;
+  for (var vec_idx = 0u; vec_idx < head_size_vec; vec_idx++) {
+    accumulator[vec_idx] = q_value_t(0);
+  }
+
+  for (var sequence_idx = 0u; sequence_idx < causal_kv_len; sequence_idx++) {
+    let block_offset = sequence_idx / uniforms.block_size;
+    let slot = sequence_idx % uniforms.block_size;
+    let block_id = u32(block_table.getByIndices(vec2<u32>(batch_idx, block_offset)));
+
+    var score = 0.0f;
+    for (var vec_idx = 0u; vec_idx < head_size_vec; vec_idx++) {
+      let q_offset = (batch_idx * uniforms.new_sequence_length * num_heads + q_idx * num_heads + head_idx) *
+                         head_size_vec + vec_idx;
+      let q_value = q.getByOffset(q_offset);
+      let k_value = key_cache.getByOffset(paged_kv_offset(block_id, slot, kv_head_idx, vec_idx));
+      score += f32(dot(q_value, k_value));
+    }
+    score *= uniforms.alpha;
+
+    let next_max = max(running_max, score);
+    let previous_scale = exp(running_max - next_max);
+    let current_scale = exp(score - next_max);
+    let next_sum = running_sum * previous_scale + current_scale;
+
+    for (var vec_idx = 0u; vec_idx < head_size_vec; vec_idx++) {
+      let value = value_cache.getByOffset(paged_kv_offset(block_id, slot, kv_head_idx, vec_idx));
+      accumulator[vec_idx] = accumulator[vec_idx] * q_element_t(previous_scale) + value * q_element_t(current_scale);
+    }
+
+    running_max = next_max;
+    running_sum = next_sum;
+  }
+
+  for (var vec_idx = 0u; vec_idx < head_size_vec; vec_idx++) {
+    let output_offset = (batch_idx * uniforms.new_sequence_length * num_heads + q_idx * num_heads + head_idx) *
+                            head_size_vec + vec_idx;
+    output.setByOffset(output_offset, accumulator[vec_idx] / q_element_t(running_sum));
+  }
+}

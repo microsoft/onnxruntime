@@ -170,6 +170,78 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool use_seqlens_q_;
 };
 
+// Dedicated single-kernel prefill program for PagedAttention. It mirrors the
+// dense FlashAttentionProgram workgroup algorithm but reads K/V tiles through
+// block_table instead of materializing dense K/V scratch tensors.
+class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPagedPrefillProgram> {
+ public:
+  FlashAttentionPagedPrefillProgram(bool is_qualcomm,
+                                    bool is_fp16,
+                                    int qkv_head_size,
+                                    int qkv_num_heads,
+                                    bool is_unidirectional,
+                                    bool is_nvidia,
+                                    bool is_apple,
+                                    bool has_subgroups,
+                                    bool q_BNSH,
+                                    bool use_seqlen_k,
+                                    bool use_seqlens_q)
+      : Program{"FlashAttentionPagedPrefill"},
+        is_qualcomm_(is_qualcomm),
+        is_fp16_(is_fp16),
+        qkv_head_size_(qkv_head_size),
+        qkv_num_heads_(qkv_num_heads),
+        is_unidirectional_(is_unidirectional),
+        is_nvidia_(is_nvidia),
+        use_shm_path_(is_apple || is_nvidia || !has_subgroups),
+        q_BNSH_(q_BNSH),
+        use_seqlen_k_(use_seqlen_k),
+        use_seqlens_q_(use_seqlens_q) {
+    const int element_size = is_fp16 ? 2 : 4;
+    constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
+    const int max_k_from_shm = kMinWorkgroupStorageBudgetBytes / (2 * element_size * qkv_head_size);
+    max_k_step_ = use_shm_path_ && max_k_from_shm >= 32 ? 32 : 16;
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  int max_k_step() const { return max_k_step_; }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool is_qualcomm_;
+  bool is_fp16_;
+  int qkv_head_size_;
+  int qkv_num_heads_;
+  bool is_unidirectional_;
+  bool is_nvidia_;
+  bool use_shm_path_;
+  bool q_BNSH_;
+  bool use_seqlen_k_;
+  int max_k_step_;
+  bool use_seqlens_q_;
+};
+
+Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                         const Tensor* q,
+                                         const Tensor* key_cache,
+                                         const Tensor* value_cache,
+                                         const Tensor* block_table,
+                                         Tensor* output,
+                                         const Tensor* seqlen_k,
+                                         const Tensor* seqlens_q,
+                                         const WebgpuAttentionParameters& parameters,
+                                         uint32_t block_size,
+                                         uint32_t max_num_blocks_per_seq);
+
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
   FlashAttentionDecodeQKVProgram(const std::string& kernel_name,
@@ -196,10 +268,7 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"block_size", ProgramUniformVariableDataType::Uint32},
-                                          {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -267,7 +336,10 @@ class FlashAttentionPagedDecodeQKVProgram final : public Program<FlashAttentionP
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;

@@ -557,6 +557,16 @@ TEST(PagedAttention, EndToEnd_Prefill_SingleBatch_NoPast) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+TEST(PagedAttention, EndToEnd_Prefill_PagedFlashAttention) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 32;
+  c.cumulative_seqlens_q = {0, 32};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
 // Multi-batch decode with differing past lengths — exercises variable-length
 // packing across batches.
 TEST(PagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {

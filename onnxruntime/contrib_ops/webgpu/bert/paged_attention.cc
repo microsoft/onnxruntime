@@ -751,11 +751,13 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                   static_cast<uint64_t>(max_seqlen_q) *
                                   static_cast<uint64_t>(parameters.hidden_size) * sizeof(MLFloat16);
   const bool use_direct_paged_decode = max_seqlen_q < 32;
+  const bool use_direct_paged_prefill = max_seqlen_q >= 32;
+  const bool use_direct_paged_attention = use_direct_paged_decode || use_direct_paged_prefill;
   const uint64_t kv_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
                                    static_cast<uint64_t>(parameters.kv_num_heads) *
                                    static_cast<uint64_t>(max_kv_len) *
                                    static_cast<uint64_t>(parameters.head_size) * sizeof(MLFloat16);
-  if (!use_direct_paged_decode && kv_padded_bytes > max_storage_buffer_binding_size) {
+  if (!use_direct_paged_attention && kv_padded_bytes > max_storage_buffer_binding_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention (WebGPU): k_padded/v_padded scratch requires ",
                            kv_padded_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
@@ -820,7 +822,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                           static_cast<int64_t>(parameters.num_heads),
                           static_cast<int64_t>(parameters.head_size)}));
 
-  if (!use_direct_paged_decode) {
+  if (!use_direct_paged_attention) {
     k_padded = context.CreateGPUTensor(
         dtype, TensorShape({batch_size_i64,
                             static_cast<int64_t>(parameters.kv_num_heads),
@@ -874,14 +876,14 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       &q_padded,
       /*K=*/nullptr, /*V=*/nullptr, /*attention_bias=*/nullptr,
       &output_padded,
-      /*past_key=*/use_direct_paged_decode ? key_cache_out : &k_padded, /*present_key=*/nullptr,
-      /*past_value=*/use_direct_paged_decode ? value_cache_out : &v_padded, /*present_value=*/nullptr,
+      /*past_key=*/use_direct_paged_attention ? key_cache_out : &k_padded, /*present_key=*/nullptr,
+      /*past_value=*/use_direct_paged_attention ? value_cache_out : &v_padded, /*present_value=*/nullptr,
       fa_params, context, &seqlen_k_gpu,
       /*cos_cache=*/nullptr, /*sin_cache=*/nullptr, /*head_sink=*/nullptr,
       /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu,
-      use_direct_paged_decode ? block_table : nullptr,
-      use_direct_paged_decode ? static_cast<uint32_t>(parameters.block_size) : 0u,
-      use_direct_paged_decode ? static_cast<uint32_t>(parameters.max_num_blocks_per_seq) : 0u));
+      use_direct_paged_attention ? block_table : nullptr,
+      use_direct_paged_attention ? static_cast<uint32_t>(parameters.block_size) : 0u,
+      use_direct_paged_attention ? static_cast<uint32_t>(parameters.max_num_blocks_per_seq) : 0u));
 
   ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, &output_padded,
                                       cumulative_seqlens_q, output));
