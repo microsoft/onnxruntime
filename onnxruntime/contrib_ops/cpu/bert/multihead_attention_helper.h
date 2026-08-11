@@ -158,7 +158,7 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
 
   if (past_key_dims[1] != kv_num_heads) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' dimension 1 should be same as number of heads, got ",
+                           "Input 'past_key' dimension 1 should be same as number of key/value heads, got ",
                            past_key_dims[1]);
   }
   if (past_value_dims[1] != kv_num_heads) {
