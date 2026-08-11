@@ -74,23 +74,6 @@ static int BF16UlpDistance(BFloat16 a, BFloat16 b) {
   return std::abs(to_signed(a.val) - to_signed(b.val));
 }
 
-/// Compute bf16 ULP of a given float value (distance to next bf16).
-static float BF16Ulp(float v) {
-  BFloat16 bf = F32ToBF16(v);
-  float rounded = BF16ToF32(bf);
-  // Find adjacent bf16
-  uint16_t bits = bf.val;
-  float next;
-  if (bits == 0x7F7FU || bits == 0xFF7FU) {
-    // At max representable
-    next = rounded;
-  } else {
-    BFloat16 adj = BFloat16::FromBits(static_cast<uint16_t>(bits + 1));
-    next = BF16ToF32(adj);
-  }
-  return std::abs(next - rounded);
-}
-
 // ========================================================================
 // fp64 Oracle — LayerNorm and RMSNorm
 // ========================================================================
@@ -439,32 +422,6 @@ class BF16LayerNormPrecisionTest : public MlasTestBase {
     for (size_t i = 0; i < f32_values.size(); i++) {
       bf16_out[i] = F32ToBF16(f32_values[i]);
     }
-  }
-
-  /// Report error decomposition for a test case.
-  static void ReportErrors(
-      const char* label,
-      const OracleResult& oracle,
-      const std::vector<float>& kernel_output,
-      size_t N) {
-    // Representation error floor
-    ErrorStats rep_err = MeasureRepresentationError(oracle.output);
-
-    // Kernel error vs oracle
-    ErrorStats kern_err = ComputeErrors(oracle.output, kernel_output);
-
-    printf("  [%s] N=%zu\n", label, N);
-    printf(
-        "    Representation floor: max_abs=%.3e max_rel=%.3e "
-        "max_ulp=%d rms=%.3e\n",
-        rep_err.max_abs_error, rep_err.max_rel_error,
-        rep_err.max_bf16_ulp_distance, rep_err.rms_error);
-    printf(
-        "    Kernel error:         max_abs=%.3e max_rel=%.3e "
-        "max_ulp=%d rms=%.3e (%zu/%zu differ)\n",
-        kern_err.max_abs_error, kern_err.max_rel_error,
-        kern_err.max_bf16_ulp_distance, kern_err.rms_error,
-        kern_err.error_count, kern_err.total_count);
   }
 
  public:
