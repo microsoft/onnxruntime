@@ -1521,6 +1521,17 @@ __global__ void CopyCrossQKSingleDecodeStepKernel(
   const int head = *(cross_qk_layer_head_pairs + 1);
 
   target += ((int64_t)bbm * layer_head_pair_count + pair) * max_length * frames + ((int64_t)token_index * frames);
+
+  // The pairs come from a model input, so the indices are untrusted. For an out-of-range pair, zero the output
+  // slice rather than indexing qk_layer_pointers: returning early would leave uninitialized scratch memory in
+  // the cross_qk output.
+  if (layer < 0 || layer >= num_layers || head < 0 || head >= num_heads) {
+    for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
+      target[tid] = (T)0;
+    }
+    return;
+  }
+
   T* src = qk_layer_pointers[layer] + ((int64_t)bbm * num_heads + head) * frames;
 
   for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
