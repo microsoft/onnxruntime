@@ -18,6 +18,21 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+struct MRotaryEmbeddingStrides {
+  int64_t batch;
+  int64_t head;
+  int64_t sequence;
+};
+
+__host__ __device__ constexpr int64_t ComputeOffset(
+    int batch, int sequence, int head, MRotaryEmbeddingStrides strides) {
+  return static_cast<int64_t>(batch) * strides.batch +
+         static_cast<int64_t>(sequence) * strides.sequence +
+         static_cast<int64_t>(head) * strides.head;
+}
+
+static_assert(ComputeOffset(2, 0, 0, {1073741824, 524288, 2}) == 2147483648LL);
+
 template <typename T, bool use_smem>
 __global__ void MRotaryEmbeddingBSNH(
     T* output,                    // BxSxNxH
@@ -31,7 +46,7 @@ __global__ void MRotaryEmbeddingBSNH(
     const int3 mrope_section,
     const int mrope_layout,
     const float scale,
-    int4 in_strides, int4 out_strides  // strides in bnsh coord, h is always contiguous
+    MRotaryEmbeddingStrides in_strides, MRotaryEmbeddingStrides out_strides
 ) {
   // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
   const int b = blockIdx.y;
@@ -41,8 +56,8 @@ __global__ void MRotaryEmbeddingBSNH(
 
   const int i = threadIdx.x;
 
-  const T* input_data = input + b * in_strides.x + s * in_strides.z + n * in_strides.y;
-  T* output_data = output + b * out_strides.x + s * out_strides.z + n * out_strides.y;
+  const T* input_data = input + ComputeOffset(b, s, n, in_strides);
+  T* output_data = output + ComputeOffset(b, s, n, out_strides);
 
   [[maybe_unused]] extern __shared__ char smem_[];
   [[maybe_unused]] T* smem = reinterpret_cast<T*>(smem_);
@@ -137,20 +152,17 @@ Status LaunchMRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inp
                                     const int max_threads_per_block, const bool is_input_bnsh_format) {
   ORT_ENFORCE(head_size <= max_threads_per_block, "head_size must be <= max_threads_per_block");
 
-  int4 in_strides;
-  int4 out_strides;
+  MRotaryEmbeddingStrides in_strides;
+  MRotaryEmbeddingStrides out_strides;
   if (is_input_bnsh_format) {
-    int in_head_stride = sequence_length * head_size;
-    int out_head_stride = sequence_length * head_size;
-    in_strides = int4{num_heads * in_head_stride, in_head_stride, in_head_stride / sequence_length, 1};
-    out_strides = int4{num_heads * out_head_stride, out_head_stride, out_head_stride / sequence_length, 1};
+    const int64_t head_stride = static_cast<int64_t>(sequence_length) * head_size;
+    in_strides = {static_cast<int64_t>(num_heads) * head_stride, head_stride, head_size};
+    out_strides = in_strides;
   } else {
-    int in_head_stride = head_size;
-    int out_head_stride = head_size;
-    in_strides = int4{sequence_length * num_heads * in_head_stride, in_head_stride, num_heads * in_head_stride, 1};
-    out_strides = int4{sequence_length * num_heads * out_head_stride, out_head_stride, num_heads * out_head_stride, 1};
+    const int64_t sequence_stride = static_cast<int64_t>(num_heads) * head_size;
+    in_strides = {static_cast<int64_t>(sequence_length) * sequence_stride, head_size, sequence_stride};
+    out_strides = in_strides;
   }
-  ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must be contiguous");
 
   int tpb = (head_size + 31) / 32 * 32;
 

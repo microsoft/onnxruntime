@@ -2006,7 +2006,7 @@ combined vector.
 
 For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
 so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
-(or omitting it) reduces this op to standard RoPE.
+reduces this op to standard RoPE.
 
 `mrope_layout` selects how the three sections are combined:
   - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
