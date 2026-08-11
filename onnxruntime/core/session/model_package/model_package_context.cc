@@ -33,7 +33,8 @@ bool IsModelPackagePathSessionOption(std::string_view key) {
   // Session-option config keys whose values are path references (sha256:<hex>, relative, or
   // absolute) that must be resolved against the model package. Add new path-valued keys here.
   return key == kOrtSessionOptionsModelExternalInitializersFileFolderPath ||
-         key == kOrtSessionOptionEpContextFilePath;
+         key == kOrtSessionOptionEpContextFilePath ||
+         key == kOrtSessionOptionEpContextSourceModelPath;
 }
 
 namespace {

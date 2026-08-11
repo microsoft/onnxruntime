@@ -37,6 +37,22 @@ def debug_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
+def print_ep_devices(ep_devices):
+    """Print the EP and hardware properties for each discovered device."""
+
+    for index, ep_device in enumerate(ep_devices):
+        device = ep_device.device
+        print(f"  EP device [{index}]:")
+        print(f"    EP: name={ep_device.ep_name!r}, vendor={ep_device.ep_vendor!r}")
+        print(f"    EP metadata: {ep_device.ep_metadata!r}")
+        print(f"    EP options: {ep_device.ep_options!r}")
+        print(
+            f"    Hardware: type={device.type!r}, vendor_id={device.vendor_id}, "
+            f"vendor={device.vendor!r}, device_id={device.device_id}"
+        )
+        print(f"    Hardware metadata: {device.metadata!r}")
+
+
 def create_mul_model(output_dir: Path) -> Path:
     """Create a simple Mul model in `output_dir` and return the path to the saved .onnx file."""
     x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
@@ -105,20 +121,27 @@ def test_registration_and_inference():
     print(f"OK: Registered EP library as '{registration_name}'")
 
     try:
-        # Discover devices
-        all_devices = ort.get_ep_devices()
-        debug_print(f"  All devices: {[(d.ep_name, getattr(d, 'device_id', 'N/A')) for d in all_devices]}")
-        webgpu_devices = [d for d in all_devices if d.ep_name == ep_name]
-        print(f"Found {len(webgpu_devices)} WebGPU device(s)")
+        # Get EP devices
+        all_ep_devices = ort.get_ep_devices()
 
-        if not webgpu_devices:
-            print("SKIP: No WebGPU devices available — skipping inference test")
+        if VERBOSE:
+            print("\n--- ORT EP devices ---")
+            print_ep_devices(all_ep_devices)
+
+        webgpu_ep_devices = [d for d in all_ep_devices if d.ep_name == ep_name]
+        print(f"Found {len(webgpu_ep_devices)} WebGPU EP device(s)")
+
+        if not webgpu_ep_devices:
+            print("SKIP: No WebGPU EP devices available — skipping inference test")
             return
+
+        # WebGPU selects the GPU independently, so any non-virtual WebGPU EP device is sufficient here.
+        webgpu_ep_device = webgpu_ep_devices[0]
 
         # Create session with WebGPU EP
         sess_options = ort.SessionOptions()
         sess_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-        sess_options.add_provider_for_devices(webgpu_devices, {})
+        sess_options.add_provider_for_devices([webgpu_ep_device], {})
         assert sess_options.has_providers(), "SessionOptions should have providers after add_provider_for_devices"
         print("OK: Session options configured with WebGPU EP")
 
