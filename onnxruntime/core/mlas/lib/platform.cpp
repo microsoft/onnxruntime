@@ -16,10 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-// sve/mlasi_sve.h is GCC/clang-only (#pragma GCC target, SVE intrinsics) and its
-// kernel TUs are not built on Windows, where MLAS_USE_SVE covers only the QGEMM
-// path via frozen machine code.
-#if defined(MLAS_USE_SVE) && !defined(_WIN32)
+#ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
 #if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
@@ -743,12 +740,7 @@ Return Value:
     }
 #endif
 
-// The SVE elementwise kernels are intrinsics TUs, built only where an SVE
-// toolchain exists. On Windows MLAS_USE_SVE selects the frozen QGEMM kernels
-// only, so these routines keep their existing defaults.
-// NOTE: rs_sve_eltwise makes these portable too; drop this _WIN32 guard when
-// that work merges rather than carrying it over.
-#if defined(MLAS_USE_SVE) && !defined(_WIN32)
+#if defined(MLAS_USE_SVE)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         this->ErfKernelRoutine = MlasSveErfKernel;
         this->LogisticKernelRoutine = MlasSveLogisticKernel;

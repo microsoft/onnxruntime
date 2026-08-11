@@ -581,14 +581,6 @@ if(onnxruntime_USE_SVE)
       message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
       set(onnxruntime_USE_SVE OFF)
     endif()
-  elseif(MSVC AND onnxruntime_target_platform STREQUAL "ARM64")
-    # No SVE toolchain support is needed here. Only the QGEMM path is built on
-    # Windows, and its compute kernels come from frozen machine code
-    # (aarch64/qgemm_mmla_sve_asm.S) assembled by armasm64 via the cl.exe
-    # preprocessing step; the driver/pack TUs are plain C++. The SVE
-    # *intrinsics* sources -- and ORT_SVE_ABI_FLAGS, which is a GCC flag --
-    # are used only on the branch above.
-    message(STATUS "SVE enabled (portable machine-code kernels)")
   else()
     message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
     set(onnxruntime_USE_SVE OFF)
