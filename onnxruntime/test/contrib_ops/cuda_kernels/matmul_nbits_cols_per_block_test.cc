@@ -25,9 +25,9 @@
 namespace onnxruntime {
 namespace test {
 
-using onnxruntime::contrib::cuda::SelectColsPerBlock;
 using onnxruntime::contrib::cuda::kColsPerThreadBlock;
 using onnxruntime::contrib::cuda::kTargetCtasPerSm;
+using onnxruntime::contrib::cuda::SelectColsPerBlock;
 
 // ----- Selection logic tests -----
 

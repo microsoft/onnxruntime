@@ -153,22 +153,22 @@ bool TryMatMul4BitsM1(
   //   - 2: n/4 < target and n is even (e.g. n=4096 on H100-132SM).
   // No instantiation is dead code.
 
-#define MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, cpb)                                                       \
-  if (zero_points != nullptr) {                                                                        \
-    MatMulFloat4BitsKernelM1<T, bs, true, cpb><<<blocks, threads, shared_mem_size, stream>>>(          \
-        output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K);                \
-  } else {                                                                                             \
-    MatMulFloat4BitsKernelM1<T, bs, false, cpb><<<blocks, threads, shared_mem_size, stream>>>(         \
-        output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);                    \
+#define MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, cpb)                                               \
+  if (zero_points != nullptr) {                                                                \
+    MatMulFloat4BitsKernelM1<T, bs, true, cpb><<<blocks, threads, shared_mem_size, stream>>>(  \
+        output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K);        \
+  } else {                                                                                     \
+    MatMulFloat4BitsKernelM1<T, bs, false, cpb><<<blocks, threads, shared_mem_size, stream>>>( \
+        output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);            \
   }
 
-#define MATMUL_FLOAT4B_M1_DISPATCH(bs)        \
-  if (cols_per_block == 8) {                  \
-    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 8)    \
-  } else if (cols_per_block == 4) {           \
-    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 4)    \
-  } else {                                    \
-    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 2)    \
+#define MATMUL_FLOAT4B_M1_DISPATCH(bs)     \
+  if (cols_per_block == 8) {               \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 8) \
+  } else if (cols_per_block == 4) {        \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 4) \
+  } else {                                 \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 2) \
   }
 
   if (block_size == 16) {
