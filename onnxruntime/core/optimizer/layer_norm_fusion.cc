@@ -61,6 +61,36 @@ static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t ran
   return true;
 }
 
+static bool IsShapeProvablyBroadcastableTo(const TensorShapeProto& source_shape,
+                                           const TensorShapeProto& target_shape) {
+  if (source_shape.dim_size() > target_shape.dim_size()) {
+    return false;
+  }
+
+  const int target_offset = target_shape.dim_size() - source_shape.dim_size();
+  for (int i = 0; i < source_shape.dim_size(); ++i) {
+    const auto& source_dim = source_shape.dim(i);
+    const auto& target_dim = target_shape.dim(target_offset + i);
+    if (source_dim.has_dim_value()) {
+      if (source_dim.dim_value() == 1 ||
+          (target_dim.has_dim_value() && source_dim.dim_value() == target_dim.dim_value())) {
+        continue;
+      }
+
+      return false;
+    }
+
+    if (source_dim.has_dim_param() && target_dim.has_dim_param() &&
+        !source_dim.dim_param().empty() && source_dim.dim_param() == target_dim.dim_param()) {
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
 static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, const Graph& graph) {
   const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
   std::vector<int64_t> axes_values;
@@ -814,6 +844,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
+
+    if (x_input->Shape() == nullptr || !IsShapeProvablyBroadcastableTo(*scale->Shape(), *x_input->Shape())) {
+      continue;
+    }
 
     // CPU doesn't support fp16
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
