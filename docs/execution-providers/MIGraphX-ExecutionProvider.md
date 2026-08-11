@@ -111,20 +111,25 @@ These flags can be invoked via the Provider Options struct [link](https://github
 
 Items are added as a python dictionary when invoking the MIGraphX execution provider when using python
 
-|Session Option Flag | Values | Description|
-|---|---|---|
-| device_id | INT | Select the device ID specified for the session run (default will be device 0) | 
-| migraphx_fp16_enable | 1 or 0 | Enable FP16 quantization mode via the MIGraphX API of the input model. |
-| migraphx_bf16_enable | 1 or 0 | Enable bf16 quantization mode via the MIGraphX API of the input model. |
-| migraphx_int8_enable | 1 or 0 | Enable int8 static quantization mode of the input model via the MIGraphX API. Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=valid path).|
-| migraphx_fp8_enable  | 1 or 0 | Enable fp8 static quantization mode of the input model via the MIGraphX API. Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=valid path).|
-| migraphx_int8_calibration_table_name | <absolute path to calibration table> | Path to a set of input calibration data for int8 static model quantization. |
-| migraphx_int8_use_native_calibration_table | 1 or 0 | Use a calibration table from Nvidia native int8 format or json dumped format. |
-| migraphx_exhaustive_tune | 1 or 0 (default 0) | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost.|
-| migraphx_mem_limit | INT | Set the memory limit used for memory arena. Default uses ORTs default_memory_arena_cfg value. |
-| migraphx_external_alloc | Address | Address of external memory allocator function used for this EP. Useful for reading in larger models weights. |
-| migraphx_external_free | Address  | Address of external memory deallocator function used for this EP. Useful for unloadng what was allocated with the migraphx_external_alloc input. |
-| migraphx_external_empty_cache | Address  | Address of external memory cache used for this model. Useful for caching results of externally allocated models. |
+|Session Option Flag | Values | Added (ROCm) | Description|
+|---|---|---|---|
+| device_id | INT | 5.2 | Select the device ID specified for the session run (default will be device 0) | 
+| migraphx_fp16_enable | 1 or 0 | 5.2 | Enable FP16 quantization mode via the MIGraphX API of the input model. |
+| migraphx_bf16_enable | 1 or 0 | 7.0 | Enable bf16 quantization mode via the MIGraphX API of the input model. |
+| migraphx_int8_enable | 1 or 0 | 5.2 | Enable int8 static quantization mode of the input model via the MIGraphX API. Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=valid path).|
+| migraphx_fp8_enable  | 1 or 0 | 6.3 | Enable fp8 static quantization mode of the input model via the MIGraphX API. Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=valid path).|
+| migraphx_int8_calibration_table_name | <absolute path to calibration table> | 6.0 | Path to a set of input calibration data for int8 static model quantization. |
+| migraphx_int8_use_native_calibration_table | 1 or 0 | 6.0 | Use a calibration table from Nvidia native int8 format or json dumped format. |
+| migraphx_exhaustive_tune | 1 or 0 (default 0) | 6.2 | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost.|
+| migraphx_mem_limit | INT | 6.4 | Set the memory limit used for memory arena. Default uses ORTs default_memory_arena_cfg value. |
+| migraphx_arena_extend_strategy | kNextPowerOfTwo (default) or kSameAsRequested | 6.4 | Strategy used to extend the memory arena. |
+| migraphx_external_alloc | Address | 6.4 | Address of external memory allocator function used for this EP. Useful for reading in larger models weights. |
+| migraphx_external_free | Address  | 6.4 | Address of external memory deallocator function used for this EP. Useful for unloadng what was allocated with the migraphx_external_alloc input. |
+| migraphx_external_empty_cache | Address  | 6.4 | Address of external memory cache used for this model. Useful for caching results of externally allocated models. |
+| migraphx_model_cache_dir | <string> | 6.4 | Directory used to read and write the compiled MIGraphX (.mxr) model cache. Session equivalent of the ORT_MIGRAPHX_MODEL_CACHE_PATH environment variable. |
+| migraphx_max_dynamic_batch | INT | 7.1 | Maximum dynamic batch size to compile for models with a dynamic batch dimension. |
+| migraphx_compile_batches | <string> | 7.2 | Comma-separated list of batch sizes to compile for (e.g. "1,4,8,16,32"). |
+| migraphx_hip_graph_enable | 1 or 0 | 7.2 | Enable HIP graph capture and replay for the compiled MIGraphX model. |
 
 |             |                 |             |
 | Depricated  | Release Removed | Description |
@@ -153,18 +158,22 @@ This will start an inference session and supersede inputs invoked via 'Session()
 
 Users can invoke Environment and Session variables in the same run but Environment variables will take precident. 
 
-|Environment Option Flag | Values | Description|
-|---|---|---|
-| ORT_MIGRAPHX_DUMP_MODEL_OPS | 1 or 0 | Enable dumping of model operators during parsing. | 
-| ORT_MIGRAPHX_FP16_ENABLE | 1 or 0 | Enable FP16 quantization mode via the MIGraphX API of the input model. |
-| ORT_MIGRAPHX_BF16_ENABLE | 1 or 0 | Enable BF16 quantization mode via the MIGraphX API of the input model. |
-| ORT_MIGRAPHX_INT8_ENABLE | 1 or 0 | Enable int8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=<valid path>).|
-| ORT_MIGRAPHX_FP8_ENABLE  | 1 or 0 | Enable fp8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set (reuses migraphx_int8_calibration_table_name=<valid path>).|
-| ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME | <absolute path to calibration table> | Path to a set of input calibration data for int8 static model quantization. |
-| ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE | 1 or 0 | Use a calibration table from Nvidia native int8 format or json dumped format. |
-| ORT_MIGRAPHX_EXHAUSTIVE_TUNE | 1 or 0 (default 0) | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost. |
-| ORT_MIGRAPHX_CACHE_PATH | <string> | Path to read and write model specific data such as weights or other model specific data |
-| ORT_MIGRAPHX_MODEL_CACHE_PATH | <string> | Path to read and write .mxr path occurs after MIGraphX model compile complete |
+|Environment Option Flag | Values | Added (ROCm) | Description|
+|---|---|---|---|
+| ORT_MIGRAPHX_DUMP_MODEL_OPS | 1 or 0 | 5.2 | Enable dumping of model operators during parsing. | 
+| ORT_MIGRAPHX_FP16_ENABLE | 1 or 0 | 5.2 | Enable FP16 quantization mode via the MIGraphX API of the input model. |
+| ORT_MIGRAPHX_BF16_ENABLE | 1 or 0 | 7.0 | Enable BF16 quantization mode via the MIGraphX API of the input model. |
+| ORT_MIGRAPHX_INT8_ENABLE | 1 or 0 | 6.0 | Enable int8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=<valid path>).|
+| ORT_MIGRAPHX_FP8_ENABLE  | 1 or 0 | 6.3 | Enable fp8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set (reuses migraphx_int8_calibration_table_name=<valid path>).|
+| ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME | <absolute path to calibration table> | 6.0 | Path to a set of input calibration data for int8 static model quantization. |
+| ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE | 1 or 0 | 6.0 | Use a calibration table from Nvidia native int8 format or json dumped format. |
+| ORT_MIGRAPHX_EXHAUSTIVE_TUNE | 1 or 0 (default 0) | 6.2 | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost. |
+| ORT_MIGRAPHX_CACHE_PATH | <string> | 6.0 | Path to read and write model specific data such as weights or other model specific data |
+| ORT_MIGRAPHX_MODEL_CACHE_PATH | <string> | 6.4 | Path to read and write .mxr path occurs after MIGraphX model compile complete |
+| ORT_MIGRAPHX_MAX_DYNAMIC_BATCH | INT | 7.1 | Maximum dynamic batch size to compile for models with a dynamic batch dimension. |
+| ORT_MIGRAPHX_COMPILE_BATCHES | <string> | 7.2 | Comma-separated list of batch sizes to compile for (e.g. "1,4,8,16,32"). |
+| ORT_MIGRAPHX_HIP_GRAPH_ENABLE | 1 or 0 | 7.2 | Enable HIP graph capture and replay for the compiled MIGraphX model. |
+| ORT_MIGRAPHX_COALESCE_IO | 1 or 0 | 7.14 | Coalesce all host-resident inputs into a single Host-to-Device (H2D) transfer via the pinned-copy path. Requires ORT_MIGRAPHX_HIP_GRAPH_ENABLE=1; ignored (with a warning) when hipGraph is disabled. |
 |             |                      |             |
 | Depricated  | ROCm Version removed | Description |
 | ORT_MIGRAPHX_SAVE_COMPILED_MODEL | ROCm 6.4 | Enable saving a model as an MIGraphX (.mxr) format after compile. ( 0 or 1) |
