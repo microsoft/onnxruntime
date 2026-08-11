@@ -1992,6 +1992,100 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* MRotaryEmbedding_ver1_doc = R"DOC(
+MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
+Qwen family of vision-language models (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).
+
+Unlike standard RoPE which uses a single 1D position per token, M-RoPE derives three positions per token
+(temporal T, height H, width W), each of which indexes into the same cos/sin cache. The half_rotary_embedding_dim
+axis of the cache is partitioned into 3 contiguous or interleaved sections (specified by `mrope_section`); each
+section is populated using the cos/sin values gathered with the corresponding T/H/W position, and the sections
+are then concatenated (or interleaved) to produce a single per-token cos/sin vector of length
+half_rotary_embedding_dim. The standard RoPE rotation (as in RotaryEmbedding) is then applied using this
+combined vector.
+
+For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
+so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
+reduces this op to standard RoPE.
+
+`mrope_layout` selects how the three sections are combined:
+  - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
+    `mrope_section` (i.e. [T]*section[0] + [H]*section[1] + [W]*section[2]). This is used by Qwen2-VL and
+    Qwen2.5-VL.
+  - 1 (Interleaved): the half_rotary_embedding_dim axis is filled starting from T at every position, then H
+    overwrites every 3rd position starting at offset 1 for the first `section[1]*3` positions, and W overwrites
+    every 3rd position starting at offset 2 for the first `section[2]*3` positions. This is used by Qwen3-VL,
+    Qwen3-VL-MoE, Qwen3.5, and Qwen3.5-MoE.
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MRotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(MRotaryEmbedding_ver1_doc)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1.0",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("interleaved",
+              "Indicates whether the input has real and imaginary parts interleaved along the last "
+              "(head_size) axis. Default value is 0 (False), meaning the first half of the rotary "
+              "portion consists of real values and the second half consists of imaginary values.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Rotary embedding dimension. Default value is 0, meaning the whole head_size is rotated.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("num_heads",
+              "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("is_packed_batching",
+              "ragged batch inputs or not. Default value is 0",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("mrope_section",
+              "3 non-negative integers [section_t, section_h, section_w] describing how the "
+              "half_rotary_embedding_dim axis of the cos/sin cache is divided among the temporal, "
+              "height, and width position streams. section_t + section_h + section_w must equal "
+              "rotary_embedding_dim / 2 (or head_size / 2 when rotary_embedding_dim is 0). Required.",
+              AttributeProto::INTS)
+        .Attr("mrope_layout",
+              "How the 3 sections are combined to form the per-token cos/sin vector: 0 (default) for "
+              "Sectioned/Chunked layout (Qwen2-VL, Qwen2.5-VL) or 1 for Interleaved layout (Qwen3-VL, "
+              "Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape "
+               "(batch_size, num_heads, sequence_length, head_size)",
+               "T")
+        .Input(1,
+               "position_ids",
+               "3D tensor with shape (3, batch_size, sequence_length) containing the temporal, height, "
+               "and width position id streams (in that order along dim 0).",
+               "M")
+        .Input(2,
+               "cos_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or "
+               "(max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Input(3,
+               "sin_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or "
+               "(max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Output(0,
+                "output",
+                "tensor with same shape as input.",
+                "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain position_ids to integer tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
 constexpr const char* GemmaRotaryEmbedding_ver1_doc = R"DOC(
 GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
 
@@ -2477,9 +2571,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "after position (seq_len - W + j), so slot W-1 is always the state after the last "
               "position (identical to the W = 0 tensor) and is the slot past_state is read from. "
               "The window axis leads the batch axis so that each slot is one contiguous "
-              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) are not "
-              "written. A window lets a speculative decoder roll the state back to an accepted "
-              "prefix without replaying the forward.",
+              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) hold no "
+              "position from this call and are filled with zeros. A window lets a speculative "
+              "decoder roll the state back to an accepted prefix without replaying the forward. "
+              "Valid range is [0, 8].",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0,
@@ -2522,6 +2617,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
+          const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          if (state_window < 0 || state_window > kMaxStateWindow) {
+            fail_shape_inference("CausalConvWithState: state_window must be in [0, ", kMaxStateWindow,
+                                 "], got ", state_window);
+          }
+
           // Output 0: same shape as input (batch_size, channels, ...)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
@@ -2543,10 +2644,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             // the last W positions (slot W-1 == the W = 0 tensor). The window axis leads the batch
             // axis so a slot is one contiguous (batch_size, channels, ...) block. W = 0 keeps the
             // legacy (batch_size, channels, ...) shape for backward compatibility.
-            const int64_t window = getAttribute(ctx, "state_window", 0);
             TensorShapeProto state_shape;
-            if (window > 0) {
-              state_shape.add_dim()->set_dim_value(window);
+            if (state_window > 0) {
+              state_shape.add_dim()->set_dim_value(state_window);
             }
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
             *state_shape.add_dim() = input_shape.dim(1);  // channels
@@ -2616,8 +2716,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "(T - W + j), so slot W-1 is always the state after the last token (identical to the "
               "W = 0 tensor) and is the slot past_state is read from. The window axis leads the "
               "batch axis so that each slot is one contiguous (B, H_kv, d_k, d_v) block. Slots "
-              "below max(0, W - T) are not written. A window lets a speculative decoder roll the "
-              "state back to an accepted prefix without replaying the forward.",
+              "below max(0, W - T) hold no token from this call and are filled with zeros. A "
+              "window lets a speculative decoder roll the state back to an accepted prefix "
+              "without replaying the forward. Valid range is [0, 8].",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0,
@@ -2676,6 +2777,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
+          const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          if (state_window < 0 || state_window > kMaxStateWindow) {
+            fail_shape_inference("LinearAttention: state_window must be in [0, ", kMaxStateWindow,
+                                 "], got ", state_window);
+          }
+
           // Read required attributes
           auto* q_num_heads_attr = ctx.getAttribute("q_num_heads");
           auto* kv_num_heads_attr = ctx.getAttribute("kv_num_heads");
@@ -2717,10 +2824,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               // Already validated in Output 0 block above; skip if shapes are invalid.
               return;
             }
-            const int64_t window = getAttribute(ctx, "state_window", 0);
             TensorShapeProto state_shape;
-            if (window > 0) {
-              state_shape.add_dim()->set_dim_value(window);  // W
+            if (state_window > 0) {
+              state_shape.add_dim()->set_dim_value(state_window);  // W
             }
             *state_shape.add_dim() = query_shape.dim(0);         // B
             state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv

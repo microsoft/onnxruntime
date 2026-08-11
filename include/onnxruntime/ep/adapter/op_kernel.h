@@ -11,10 +11,10 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-
+#include <gsl/gsl>
 #include <gsl/span>
 
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/workspace_requirement.h"
