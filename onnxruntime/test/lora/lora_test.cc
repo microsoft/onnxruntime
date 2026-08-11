@@ -253,6 +253,15 @@ const adapters::Parameter* BuildAdapterAndGetParam(flatbuffers::FlatBufferBuilde
   const auto* adapter = adapters::GetAdapter(fbb.GetBufferPointer());
   return adapter->parameters()->Get(0);
 }
+
+void ExpectUnsupportedLoraParameterType(const adapters::Parameter& param) {
+  try {
+    adapters::utils::CreateOrtValueOverLoraParameter(param);
+    FAIL() << "Expected unsupported LoRA parameter data_type to be rejected";
+  } catch (const OnnxRuntimeException& ex) {
+    EXPECT_NE(std::string(ex.what()).find("not a supported LoRA parameter type"), std::string::npos);
+  }
+}
 }  // namespace
 
 TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_RawDataSizeMismatch) {
@@ -413,7 +422,59 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
   ASSERT_NE(param, nullptr);
   ASSERT_EQ(param->data_type(), adapters::TensorDataType::UNDEFINED);
 
-  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+  ExpectUnsupportedLoraParameterType(*param);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_StringDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  // Provide raw_data sized to pass the old size check: shape [2] * sizeof(std::string).
+  // The guard must reject the type before reaching the size check.
+  std::vector<int64_t> dims = {2};
+  std::vector<uint8_t> raw_data(2 * sizeof(std::string), 0x41);
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "string_type_param", &dims, adapters::TensorDataType::STRING, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->data_type(), adapters::TensorDataType::STRING);
+
+  ExpectUnsupportedLoraParameterType(*param);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndeclaredDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {2};
+  std::vector<uint8_t> raw_data(2, 0);
+  constexpr int32_t undeclared_data_type = 21;
+  const auto data_type = static_cast<adapters::TensorDataType>(undeclared_data_type);
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "undeclared_type_param", &dims, data_type, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(static_cast<int32_t>(param->data_type()), undeclared_data_type);
+
+  ExpectUnsupportedLoraParameterType(*param);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_BoolDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {1};
+  std::vector<uint8_t> raw_data = {2};
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "bool_type_param", &dims, adapters::TensorDataType::BOOL, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->data_type(), adapters::TensorDataType::BOOL);
+
+  ExpectUnsupportedLoraParameterType(*param);
 }
 
 #endif  // ORT_NO_EXCEPTIONS
