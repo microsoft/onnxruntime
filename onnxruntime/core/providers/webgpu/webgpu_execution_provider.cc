@@ -446,13 +446,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   }
 
   // Register Cast kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(6, 8, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(9, 12, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(13, 18, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(19, 20, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(21, 22, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(23, 23, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(24, 24, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(6, 8, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(9, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(13, 18, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(19, 20, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(21, 22, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(23, 23, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(24, 24, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(25, enable_int64)));
 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
