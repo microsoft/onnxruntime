@@ -18,6 +18,7 @@ Abstract:
 #include "test_util.h"
 #include "mlas.h"
 #include "mlas_float16.h"
+#include "core/mlas/lib/mlasi.h"
 
 #include <cmath>
 #include <cstring>
@@ -74,11 +75,15 @@ class MlasCastFp16Test : public MlasTestBase {
     const uint16_t kNegZero = 0x8000;
     const uint16_t kPosInf  = 0x7C00;
     const uint16_t kNegInf  = 0xFC00;
-    const uint16_t kNaN     = 0x7E00;  // quiet NaN
-    const uint16_t kDenorm  = 0x0001;  // smallest positive denormal
+    const uint16_t kQNaN    = 0x7E00;  // quiet NaN
+    const uint16_t kSNaN    = 0x7C01;  // signalling NaN (payload 0x001)
+    const uint16_t kDenormMin  = 0x0001;  // smallest positive denormal
+    const uint16_t kDenormMid  = 0x0200;  // mid-range positive denormal
+    const uint16_t kNegDenorm  = 0x8001;  // smallest negative denormal
 
     std::vector<uint16_t> special_bits = {
-        kPosZero, kNegZero, kPosInf, kNegInf, kNaN, kDenorm};
+        kPosZero, kNegZero, kPosInf, kNegInf, kQNaN, kSNaN,
+        kDenormMin, kDenormMid, kNegDenorm};
     const size_t n = special_bits.size();
 
     // F16 -> F32: convert via dispatch and via scalar reference
@@ -111,6 +116,7 @@ class MlasCastFp16Test : public MlasTestBase {
         std::numeric_limits<float>::infinity(),
         -std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::signaling_NaN(),
         1.0009765625f};
     const size_t m = f32_input.size();
 
@@ -136,22 +142,22 @@ class MlasCastFp16Test : public MlasTestBase {
 
   // Verify the vectorised kernel is dispatched (non-null function pointer)
   // on platforms that define MLAS_F16VEC_INTRINSICS_SUPPORTED or
-  // MLAS_CAST_F16_NEON_SUPPORTED.
+  // MLAS_CAST_F16_NEON_SUPPORTED.  The dispatch table pointers are what
+  // cast.cpp checks at runtime to decide between the NEON kernel and the
+  // scalar fallback, so asserting non-null here genuinely proves dispatch.
   void TestKernelIsDispatched() {
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || \
-    (defined(__APPLE__) && defined(MLAS_TARGET_ARM64))
-    // On these platforms, the dispatch table must have a non-null kernel.
-    // We verify this indirectly: convert a known value and confirm the
-    // output matches the vectorised result (not just the scalar fallback).
-    // A direct function-pointer check is not exposed in the public API, so
-    // we rely on the platform constructor having set the pointers.
-    const uint16_t one_h = 0x3C00;  // fp16 1.0
-    _mlas_fp16_ input;
-    std::memcpy(&input, &one_h, sizeof(uint16_t));
-    float output = 0.0f;
-    MlasConvertHalfToFloatBuffer(
-        reinterpret_cast<const MLAS_FP16*>(&input), &output, 1);
-    ASSERT_EQ(output, 1.0f) << "Kernel dispatch sanity check failed";
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(MLAS_CAST_F16_NEON_SUPPORTED)
+    ASSERT_NE(GetMlasPlatform().CastF16ToF32Kernel, nullptr)
+        << "Expected non-null CastF16ToF32Kernel on this platform";
+    ASSERT_NE(GetMlasPlatform().CastF32ToF16Kernel, nullptr)
+        << "Expected non-null CastF32ToF16Kernel on this platform";
+#else
+    // On platforms without a vectorised cast kernel, both pointers must be
+    // null so that cast.cpp falls through to the scalar loop.
+    ASSERT_EQ(GetMlasPlatform().CastF16ToF32Kernel, nullptr)
+        << "CastF16ToF32Kernel should be null on this platform";
+    ASSERT_EQ(GetMlasPlatform().CastF32ToF16Kernel, nullptr)
+        << "CastF32ToF16Kernel should be null on this platform";
 #endif
   }
 };
