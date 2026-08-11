@@ -173,18 +173,21 @@ function(setup_mlas_source_for_windows)
       endif()
 
       if (onnxruntime_USE_SVE)
-        # SVE i8mm QGEMM: plain C++ driver TUs plus portable machine-code
-        # compute kernels. kai_asm_macros.h resolves to armasm64 directives
-        # (AREA/PROC/DCD) during the cl.exe preprocessing step applied to
-        # mlas_platform_preprocess_srcs below, so no SVE toolchain support
-        # is required.
+        # Portable machine-code SVE kernels: plain C++ dispatch/driver layers
+        # plus hex-encoded assembly. kai_asm_macros.h resolves to armasm64
+        # directives (AREA/PROC/DCD) during the cl.exe preprocessing step
+        # applied to mlas_platform_preprocess_srcs below, so no SVE toolchain
+        # support is required for either the elementwise or the QGEMM kernels.
         target_sources(onnxruntime_mlas PRIVATE
+          ${MLAS_SRC_DIR}/sve/mlasi_sve.h
+          ${MLAS_SRC_DIR}/sve/elementwise_sve_dispatch.cpp
           ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve.h
           ${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp
           ${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp
         )
         set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
         set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
+        list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/qgemm_mmla_sve_asm.S)
         list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
@@ -575,11 +578,22 @@ else()
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_dispatch.cpp)
+          # The portable machine-code variant is the production default;
+          # configure with -Donnxruntime_SVE_ELEMENTWISE_ASM=OFF to build the
+          # SVE intrinsics reference implementation instead (the regeneration
+          # source for elementwise_sve_asm.S).
+          option(onnxruntime_SVE_ELEMENTWISE_ASM
+                 "Build the portable machine-code SVE elementwise kernels instead of the intrinsics reference" ON)
+          if (onnxruntime_SVE_ELEMENTWISE_ASM)
+            # Portable machine-code variant (same symbols as the intrinsics TUs).
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 -DMLAS_SVE_SUMEXP_FEXPA=1 ${ORT_SVE_ABI_FLAGS} ")
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
+          endif()
           # SVE i8mm QGEMM: the driver/pack/dispatch TUs are plain C++ (no
           # SVE compiler support required); the svmmla compute kernels come
           # from either the generated KleidiAI-style machine code (portable,
