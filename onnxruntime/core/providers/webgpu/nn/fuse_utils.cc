@@ -26,8 +26,8 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
     } else if (activation_type == "Gelu" || activation_type == "FastGelu") {
       // Gelu's `approximate` attribute arrives as a 0/1 flag in activation_params: 0 selects the
       // exact erf form, 1 the tanh approximation. Contrib FastGelu is always the tanh form and
-      // carries no parameters. Resolving the choice to a kind here, rather than keeping it as a
-      // runtime parameter, leaves both forms parameterless for IsActivationSupported.
+      // carries no parameters. The flag picks between two different expressions rather than
+      // scaling one, so it is resolved to a kind here instead of being kept as a uniform.
       bool tanh_approximation = activation_type == "FastGelu";
       if (!tanh_approximation) {
         std::vector<float> approximate_param;

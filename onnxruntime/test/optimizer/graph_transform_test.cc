@@ -3816,6 +3816,165 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
 
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Gelu"), 20));
 }
+
+#if defined(USE_WEBGPU)
+namespace {
+
+// Adds the activation that consumes `conv_out` and produces `output`.
+using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, NodeArg*)>;
+
+// Runs one Conv+activation model twice on the WebGPU EP and requires the two results to agree:
+// once at Level1, where ConvActivationFusion does not run so the activation stays a separate node,
+// and once at Level2, where the pair collapses into a single Conv that evaluates the activation in
+// its own shader epilogue. The op-count tests above only inspect the graph; this is what actually
+// executes the fused kernel, so a wrong WGSL expression or a dropped activation parameter shows up
+// here as a numeric mismatch rather than passing silently.
+void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
+                                   const std::string& expected_activation,
+                                   int opset_version) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto build_test_case = [&add_activation](ModelTestBuilder& builder) {
+    // Inputs span both signs so the negative half of the asymmetric activations is covered, and
+    // the channel counts are large enough to stay representative of a real convolution.
+    auto* input = builder.MakeInput<float>({1, 4, 14, 14}, -3.0f, 3.0f);
+    auto* weight = builder.MakeInitializer<float>({8, 4, 3, 3}, -0.5f, 0.5f);
+    auto* bias = builder.MakeInitializer<float>({8}, -0.5f, 0.5f);
+    auto* conv_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    // Plain NCHW ONNX Conv: the session's layout transform rewrites it to NHWC after partitioning,
+    // which is the form ConvActivationFusion matches.
+    builder.AddNode("Conv", {input, weight, bias}, {conv_out});
+    add_activation(builder, conv_out, output);
+  };
+
+  auto check_transformed_graph = [&expected_activation](InferenceSessionWrapper& session) {
+    bool fused = false;
+    std::ostringstream graph_description;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      graph_description << " " << node.Domain() << "." << node.OpType()
+                        << "[" << node.GetExecutionProviderType() << "]";
+      if (node.OpType() != "Conv") {
+        continue;
+      }
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr && activation_attr->s() == expected_activation) {
+        fused = true;
+      }
+    }
+    // Without this the test would still pass when fusion silently stopped firing, because an
+    // unfused graph trivially matches the unfused baseline.
+    ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
+                       << ", so the fused kernel was never executed. Graph was:"
+                       << graph_description.str();
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 opset_version,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+ConvActivationBuilder SimpleActivation(const std::string& op_type,
+                                       const std::string& domain = kOnnxDomain,
+                                       const std::function<void(Node&)>& decorate = nullptr) {
+  return [op_type, domain, decorate](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    Node& activation = builder.AddNode(op_type, {conv_out}, {output}, domain);
+    if (decorate) {
+      decorate(activation);
+    }
+  };
+}
+
+}  // namespace
+
+// Relu carries no parameters and predates this work, so it pins the harness itself: a failure here
+// means the parity setup is wrong rather than any particular activation.
+TEST_F(GraphTransformationTests, WebGpuConvReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+// The parameterized activations are the interesting ones: their alpha/beta/min/max reach the shader
+// through uniforms, so a mis-wired uniform slot changes the result instead of failing to compile.
+TEST_F(GraphTransformationTests, WebGpuConvLeakyReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.15f); }),
+      "LeakyRelu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvHardSigmoidFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("HardSigmoid", kOnnxDomain,
+                       [](Node& node) {
+                         node.AddAttribute("alpha", 0.3f);
+                         node.AddAttribute("beta", 0.4f);
+                       }),
+      "HardSigmoid", 17);
+}
+
+// Elu's alpha only affects x < 0, so a dropped parameter would leave half the tensor correct.
+TEST_F(GraphTransformationTests, WebGpuConvEluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("Elu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.7f); }),
+      "Elu", 17);
+}
+
+// Clip takes its bounds as inputs rather than attributes, and both bounds ride the same two uniform
+// slots as alpha/beta, so it is the one that catches a slot ordering mistake.
+TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
+  auto add_clip = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* min_value = builder.MakeScalarInitializer<float>(-0.25f);
+    auto* max_value = builder.MakeScalarInitializer<float>(0.75f);
+    builder.AddNode("Clip", {conv_out, min_value, max_value}, {output});
+  };
+  RunWebGpuConvActivationParity(add_clip, "Clip", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvHardSwishFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("HardSwish"), "HardSwish", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvSoftplusFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("Softplus"), "Softplus", 17);
+}
+
+// Gelu resolves to two distinct activation kinds; both are open-coded in the shader, so both need
+// to be checked against the reference implementation.
+TEST_F(GraphTransformationTests, WebGpuConvGeluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("Gelu"), "Gelu", 20);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvGeluTanhFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("Gelu", kOnnxDomain,
+                       [](Node& node) { node.AddAttribute("approximate", std::string("tanh")); }),
+      "Gelu", 20);
+}
+
+// QuickGelu is how SiLU/Swish reaches the conv: exporters emit `x * sigmoid(alpha * x)`, which
+// QuickGeluFusion collapses into a QuickGelu node that ConvActivationFusion then folds in. This
+// builds that exporter-shaped pattern rather than a hand-authored QuickGelu so the test covers the
+// path YOLO-family models actually take, with a non-default alpha to pin the uniform.
+TEST_F(GraphTransformationTests, WebGpuConvQuickGeluFusionMatchesUnfusedResults) {
+  auto add_quick_gelu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* alpha = builder.MakeScalarInitializer<float>(1.4f);
+    auto* scaled = builder.MakeIntermediate();
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {conv_out, alpha}, {scaled});
+    builder.AddNode("Sigmoid", {scaled}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuConvActivationParity(add_quick_gelu, "QuickGelu", 17);
+}
+#endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, FuseConvMulNoBias) {

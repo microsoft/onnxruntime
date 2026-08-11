@@ -52,7 +52,12 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
       {"K_tiles", ProgramUniformVariableDataType::Uint32},
       {"dilations", ProgramUniformVariableDataType::Uint32},
       {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32});
+      {"strides", ProgramUniformVariableDataType::Uint32},
+      // Activation parameters (alpha/beta/min/max), uploaded rather than baked into the shader
+      // source so that a single compiled shader serves every parameter value. Unused, and zero,
+      // for kinds that take no parameters.
+      {"activation_param_a", ProgramUniformVariableDataType::Float32},
+      {"activation_param_b", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_bias_;

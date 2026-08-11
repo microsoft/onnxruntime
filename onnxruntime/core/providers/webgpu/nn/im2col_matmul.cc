@@ -54,27 +54,30 @@ bool IsDeviceSupported(const ComputeContextBase& context) {
   return false;
 }
 
-// The im2col-matmul shader applies the activation inline in its epilogue, but it only
-// supports kinds that need no runtime parameters. Parameterized kinds (Clip, LeakyRelu,
-// HardSigmoid, Elu, or a QuickGelu with a non-unit alpha) would need extra uniforms, so those
-// keep using the general conv path instead.
+// The im2col-matmul shader applies the activation inline in its epilogue. Parameterized kinds
+// read their alpha/beta/min/max from the activation_param_a/_b uniforms, so they are supported
+// here too; only kinds whose expression the shader has no branch for are rejected.
 //
-// Keeping a fusable-but-unsupported kind out of this list is not free: the graph-level fusion
-// still fires, so the conv loses this fast path and falls back to the general one. Prefer to
-// extend the shader over adding a parameterized kind to the selector alone.
+// This list must stay in step with the `activation_kind` branches in im2col_matmul.wgsl.template.
+// Rejecting a kind is not free: the graph-level fusion still fires, so the conv silently loses
+// this fast path and falls back to the general one. A newly added ActivationKind therefore
+// defaults to false rather than to a silently missing activation.
 bool IsActivationSupported(const Activation& activation) {
   switch (activation.activation_kind_) {
     case ActivationKind::None:
     case ActivationKind::Relu:
     case ActivationKind::Sigmoid:
+    case ActivationKind::Clip:
+    case ActivationKind::HardSigmoid:
+    case ActivationKind::LeakyRelu:
     case ActivationKind::Tanh:
+    case ActivationKind::QuickGelu:
     case ActivationKind::HardSwish:
+    case ActivationKind::Elu:
     case ActivationKind::Gelu:
     case ActivationKind::GeluTanh:
     case ActivationKind::Softplus:
       return true;
-    case ActivationKind::QuickGelu:
-      return activation.activation_params_.QuickGelu.alpha_ == 1.0f;
     default:
       return false;
   }
@@ -87,9 +90,13 @@ bool IsActivationSupported(const Activation& activation) {
 static_assert(static_cast<int>(ActivationKind::None) == 0, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Relu) == 1, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Sigmoid) == 2, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Clip) == 3, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::HardSigmoid) == 4, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::LeakyRelu) == 5, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::HardSwish) == 8, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Elu) == 9, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Gelu) == 10, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::GeluTanh) == 11, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Softplus) == 12, "im2col_matmul.wgsl.template mirrors ActivationKind");
@@ -200,7 +207,11 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {CeilDiv(CeilDiv(im2col_k, 4u), 4u)},
                                          {dilations},
                                          {pads},
-                                         {strides}});
+                                         {strides},
+                                         {activation.activation_params_.values_[0]},
+                                         {activation.activation_params_.values_[1]}});
+  // The parameter values live in uniforms, so they must not be part of the cache hint: one
+  // compiled shader now serves every alpha/beta/min/max.
   im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup,
                               static_cast<uint32_t>(activation.activation_kind_));
 

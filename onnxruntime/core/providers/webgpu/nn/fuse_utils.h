@@ -28,9 +28,9 @@ enum class ActivationKind {
   QuickGelu,
   HardSwish,
   Elu,
-  // Gelu's `approximate` attribute is resolved to one of these two kinds at fusion time rather
-  // than carried as a runtime parameter, which keeps both forms usable by the parameterless-only
-  // im2col fast path.
+  // Gelu's `approximate` attribute selects between two different expressions rather than scaling
+  // one, so it is resolved to a kind at fusion time instead of being passed as a runtime
+  // parameter. Numeric parameters (alpha, beta, min, max) travel as uniforms instead.
   Gelu,
   GeluTanh,
   Softplus
@@ -86,8 +86,6 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
 // WGSL has no forward declarations. Emitting it unconditionally is safe: it is empty for every
 // activation that does not need it.
 std::string GetActivationDeclaration(const Activation& activation, std::string value_type, std::string base_type);
-// Status AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables);
-// Status AppendActivationUniforms(const Activation& activation, std::vector<float>& data);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
