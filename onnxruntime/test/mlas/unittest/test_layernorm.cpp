@@ -145,6 +145,8 @@ class MlasLayerNormTest : public MlasTestBase {
   // Other platforms (RISC-V RVV, future ARM SVE, etc.): variable-length
   //   vectors handle short rows natively, so the kernel dispatches for
   //   any NormSize ≥ 1.
+  //
+  // Keep in sync: core/mlas/lib/layernorm.cpp (production dispatch threshold).
   static constexpr size_t kKernelDispatchThreshold =
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
       8;
@@ -271,16 +273,13 @@ class MlasLayerNormTest : public MlasTestBase {
 
     // Zero-variance: all inputs equal, so (x - mean) should be ~0.
     //
-    // Different implementations compute variance differently:
-    //   - AVX2 Welford:  M2 accumulates delta·delta2 which is exactly 0
-    //     for constant input → var = 0, inv_std = 1/sqrt(eps).
-    //   - RVV two-pass:  computes E[x²] - mean² in fp32.  For constant
-    //     input c, this is c²-c² which is exactly 0 when c² is
-    //     representable.  But fp32 accumulation rounding for large c could
-    //     yield a tiny residual (positive or negative).  A negative residual
-    //     makes var+eps slightly smaller → inv_std slightly larger, but
-    //     the output (x-mean)*inv_std*scale stays near zero because
-    //     x-mean ≈ 0.
+    // The kernel uses centered two-pass: mean = sum(x)/n (accumulated in
+    // double), then var = sum((x - mean)^2)/n in fp32.  For constant
+    // input, every (x - mean) term is exactly 0 → var = 0, inv_std =
+    // 1/sqrt(eps).  Fp32 accumulation rounding in the second pass could
+    // yield a tiny positive residual for large constant values, but the
+    // output (x - mean) * inv_std * scale stays near zero because
+    // (x - mean) ≈ 0.
     //
     // We therefore check:
     //   1. All outputs and statistics are finite (no NaN/Inf).
@@ -461,7 +460,7 @@ class MlasLayerNormTest : public MlasTestBase {
     if (inv_std_out != nullptr) *inv_std_out = inv_denom;
   }
 
-  // Benchmark: AVX2 kernel vs true scalar fp32 baseline
+  // Benchmark: SIMD kernel vs true scalar fp32 baseline
   void Benchmark(size_t norm_size, size_t warmup, size_t iters, bool simplified) {
     std::vector<float> input(norm_size);
     std::vector<float> scale(norm_size);
@@ -643,10 +642,10 @@ TEST_F(MlasLayerNormEdgeTest, NanInf) {
 // ---------------------------------------------------------------------------
 // Adversarial numeric precision tests
 //
-// Purpose: compare WELFORD SIMD AVX2 kernel vs scalar Welford fp32 baseline
-// vs fp64 reference on inputs designed to stress catastrophic cancellation
-// and accumulation error. The test prints a comparison table for human review
-// and asserts a defensible tolerance.
+// Purpose: compare the centered two-pass AVX2 kernel (double-precision mean,
+// fp32 variance) vs scalar fp32 baseline vs fp64 reference on inputs designed
+// to stress catastrophic cancellation and accumulation error.  The test prints
+// a comparison table for human review and asserts a defensible tolerance.
 // ---------------------------------------------------------------------------
 
 class MlasLayerNormPrecisionTest : public MlasTestFixture<MlasLayerNormTest> {};
@@ -1038,9 +1037,9 @@ TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
       // condition = 1e5 — moderate cancellation stress
       {"catastrophic_1e5_cond1e5", 1e5f, 1.0f},
       // condition = 1e9 — beyond fp32 precision; only finiteness is checked
-      {"catastrophic_1e6 (two-pass=NaN)", 1e6f, 1e-3f},
+      {"catastrophic_1e6", 1e6f, 1e-3f},
       // condition = 1e9 — beyond fp32 precision; only finiteness is checked
-      {"catastrophic_1e7 (two-pass=100%err)", 1e7f, 1e-2f},
+      {"catastrophic_1e7", 1e7f, 1e-2f},
   };
 
   for (const auto& sc : scenarios) {
@@ -1050,7 +1049,7 @@ TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
         input[i] = sc.base + (static_cast<float>(i % 100) - 50.0f) * sc.spread;
       }
 
-      // Welford SIMD AVX2
+      // Centered two-pass SIMD kernel
       std::vector<float> out_avx2(N);
       float mean_avx2, inv_std_avx2;
       bool used = MlasLayerNormF32(input.data(), scale.data(), nullptr,
@@ -1058,7 +1057,7 @@ TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
                                    N, eps, false);
       ASSERT_TRUE(used) << sc.name << " N=" << N << ": kernel must dispatch";
 
-      // 1. No NaN/Inf — the critical improvement over two-pass
+      // 1. No NaN/Inf — the critical improvement over uncentered E[x²]-mean²
       for (size_t i = 0; i < N; i++) {
         ASSERT_TRUE(std::isfinite(out_avx2[i]))
             << sc.name << " N=" << N << ": NaN/Inf at output[" << i << "]";

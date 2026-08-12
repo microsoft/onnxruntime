@@ -48,6 +48,9 @@ bool
     // use variable-length vectors and handle short rows natively, so they
     // must not be gated here.
     //
+    // Keep in sync: test/mlas/unittest/test_layernorm.cpp kKernelDispatchThreshold.
+    //
+    //
     if (NormSize < 8) {
         return false;
     }
