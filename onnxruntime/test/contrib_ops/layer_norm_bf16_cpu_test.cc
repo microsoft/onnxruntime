@@ -689,10 +689,9 @@ TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_LargerHiddenSize) {
 }
 
 // =============================================================================
-// PrePack path: scale/bias as constant initializers (converted at session init)
-// In real models, scale and bias are always initializers, so PrePack converts
-// them to f32 once.  These tests verify the prepacked result matches the
-// non-prepacked (graph-input) result.
+// PrePack A/B: run each case with is_initializer=false (graph-input path) and
+// is_initializer=true (PrePack path) against the same reference.  Both must
+// produce identical results — that is the property PrePack must preserve.
 // =============================================================================
 
 TEST(LayerNormBFloat16CpuTest, LayerNorm17_PrePack_ScaleBiasInitializers) {
@@ -710,15 +709,17 @@ TEST(LayerNormBFloat16CpuTest, LayerNorm17_PrePack_ScaleBiasInitializers) {
   auto bias_rt = RoundTripBF16(bias_f32);
   auto ref = LayerNormRef(x_rt, gamma_rt, bias_rt, norm_size, epsilon);
 
-  OpTester test("LayerNormalization", 17);
-  test.AddAttribute<float>("epsilon", epsilon);
-  test.AddInput<BFloat16>("X", x_dims, ToBFloat16(x_f32));
-  // Mark scale and bias as initializers to trigger PrePack
-  test.AddInput<BFloat16>("Scale", {norm_size}, ToBFloat16(gamma_f32), /*is_initializer=*/true);
-  test.AddInput<BFloat16>("B", {norm_size}, ToBFloat16(bias_f32), /*is_initializer=*/true);
-  test.AddOutput<BFloat16>("Y", x_dims, ToBFloat16(ref.output));
+  for (bool is_initializer : {false, true}) {
+    SCOPED_TRACE(is_initializer ? "PrePack (initializer)" : "Non-PrePack (graph input)");
+    OpTester test("LayerNormalization", 17);
+    test.AddAttribute<float>("epsilon", epsilon);
+    test.AddInput<BFloat16>("X", x_dims, ToBFloat16(x_f32));
+    test.AddInput<BFloat16>("Scale", {norm_size}, ToBFloat16(gamma_f32), is_initializer);
+    test.AddInput<BFloat16>("B", {norm_size}, ToBFloat16(bias_f32), is_initializer);
+    test.AddOutput<BFloat16>("Y", x_dims, ToBFloat16(ref.output));
 
-  RunBF16CpuOnly(test, kBF16AbsTolerance, "Y");
+    RunBF16CpuOnly(test, kBF16AbsTolerance, "Y");
+  }
 }
 
 TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_PrePack_GammaBetaInitializers) {
@@ -744,16 +745,18 @@ TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_PrePack_GammaBetaInitializers) {
   }
   auto ref = LayerNormRef(added, gamma_rt, beta_rt, hidden_size, epsilon);
 
-  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  // Mark gamma and beta as initializers to trigger PrePack
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32), /*is_initializer=*/true);
-  test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32), /*is_initializer=*/true);
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
+  for (bool is_initializer : {false, true}) {
+    SCOPED_TRACE(is_initializer ? "PrePack (initializer)" : "Non-PrePack (graph input)");
+    OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("epsilon", epsilon);
+    test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
+    test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
+    test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32), is_initializer);
+    test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32), is_initializer);
+    test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
 
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
+    RunBF16CpuOnly(test, kBF16AbsTolerance);
+  }
 }
 
 // =============================================================================
