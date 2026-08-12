@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/graph/graph_utils.h"
@@ -252,6 +254,30 @@ static bool NodeArgExists(const NodeArg* node_arg) {
   return node_arg != nullptr && node_arg->Exists();
 }
 
+static bool ProjectionTensorShapesMatch(bool quantization_used,
+                                        int64_t q_hidden_size,
+                                        int64_t kv_hidden_size,
+                                        const TensorProto& q_tensor,
+                                        const TensorProto& k_tensor,
+                                        const TensorProto& v_tensor) {
+  const int expected_rank = quantization_used ? 3 : 2;
+  if (q_tensor.dims_size() != expected_rank || k_tensor.dims_size() != expected_rank ||
+      v_tensor.dims_size() != expected_rank) {
+    return false;
+  }
+
+  if (quantization_used) {
+    return q_tensor.dims(0) == q_hidden_size && k_tensor.dims(0) == kv_hidden_size &&
+           v_tensor.dims(0) == kv_hidden_size && q_tensor.dims(1) == k_tensor.dims(1) &&
+           q_tensor.dims(1) == v_tensor.dims(1) && q_tensor.dims(2) == k_tensor.dims(2) &&
+           q_tensor.dims(2) == v_tensor.dims(2);
+  }
+
+  return q_tensor.dims(1) == q_hidden_size && k_tensor.dims(1) == kv_hidden_size &&
+         v_tensor.dims(1) == kv_hidden_size && q_tensor.dims(0) == k_tensor.dims(0) &&
+         q_tensor.dims(0) == v_tensor.dims(0);
+}
+
 struct RotaryEmbeddingArgs {
   NodeArg* cos_cache_arg = nullptr;
   NodeArg* sin_cache_arg = nullptr;
@@ -481,9 +507,29 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t head_size = past_key_values_key_arg->Shape()->dim(3).dim_value();
     int64_t num_heads = node.GetAttributes().at("num_heads").i();
     int64_t kv_num_heads = node.GetAttributes().at("kv_num_heads").i();
-    int64_t q_hidden_size = num_heads * head_size;
-    int64_t kv_hidden_size = kv_num_heads * head_size;
-    int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
+    if (head_size <= 0 || num_heads <= 0 || kv_num_heads <= 0) {
+      DEBUG_LOG("GQA head attributes and cache head size must be positive");
+      continue;
+    }
+
+    constexpr int64_t max_int64 = std::numeric_limits<int64_t>::max();
+    if (num_heads > max_int64 / head_size || kv_num_heads > max_int64 / head_size) {
+      DEBUG_LOG("GQA hidden size calculation overflowed");
+      continue;
+    }
+    const int64_t q_hidden_size = num_heads * head_size;
+    const int64_t kv_hidden_size = kv_num_heads * head_size;
+    if (kv_hidden_size > (max_int64 - q_hidden_size) / 2) {
+      DEBUG_LOG("GQA output hidden size calculation overflowed");
+      continue;
+    }
+    const int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
+
+    if (!ProjectionTensorShapesMatch(quantization_used, q_hidden_size, kv_hidden_size,
+                                     *q_proj_tensor, *k_proj_tensor, *v_proj_tensor)) {
+      DEBUG_LOG("GQA projection tensor shapes do not match the head attributes");
+      continue;
+    }
 
     // Ensure the output shape has 3 dimensions [batch_size, sequence_length, hidden_size]
     if (matmul_or_nbits_output_shape->dim_size() == 3) {

@@ -962,7 +962,8 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                                bool include_position_ids,
                                                int64_t q_interleaved = 0,
                                                int64_t k_interleaved = 0,
-                                               int64_t rotary_embedding_dim = 0) {
+                                               int64_t rotary_embedding_dim = 0,
+                                               int64_t gqa_num_heads = 2) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
@@ -1047,7 +1048,7 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                seqlens_k, total_sequence_length},
                               {gqa_output},
                               kMSDomain);
-  gqa.AddAttribute("num_heads", num_heads);
+  gqa.AddAttribute("num_heads", gqa_num_heads);
   gqa.AddAttribute("kv_num_heads", kv_num_heads);
 }
 
@@ -1353,6 +1354,17 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwa
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
                                         check_fused_graph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedProjectionSizesTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 0, 0, 0, 3);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
