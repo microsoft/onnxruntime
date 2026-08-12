@@ -2912,6 +2912,44 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalData) {
   ASSERT_EQ(split_node_ptr->OutputDefs().size(), 16u);
 }
 
+TEST_F(GraphTest, RejectsUnregisteredInMemoryInitializerCopy) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("source");
+
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("malformed_initializer");
+  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  initializer->add_dims(1);
+  ExternalDataInfo::SetExternalLocationToProto(
+      utils::kTensorProtoNativeEndianMemoryAddressTag, 1, sizeof(std::string), *initializer);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Identity");
+  node->add_input(initializer->name());
+  node->add_output("output");
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  std::shared_ptr<Model> source_model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), source_model, nullptr, *logger_));
+  Model destination_model("destination", false, DefaultLoggingManager().DefaultLogger());
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(source_model->MainGraph().ValidateInMemoryInitializers(),
+                                      "arbitrary in-memory references");
+
+  EXPECT_THROW(graph_utils::MakeInitializerCopyIfNotExist(
+                   source_model->MainGraph(), destination_model.MainGraph(), "malformed_initializer", true),
+               OnnxRuntimeException);
+}
+
 // Test for shape inference with in-memory external data using InferenceSession
 // This test more accurately reproduces the issue by going through the full session initialization
 // which includes graph optimizations that trigger the in-memory externalization
