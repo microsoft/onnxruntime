@@ -1848,9 +1848,45 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   {
     SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
     size_t nodes_with_workspace = 0;
+    size_t compared_nodes = 0;
+    size_t level2_larger = 0;
+    size_t reservation_larger = 0;
+    size_t equal = 0;
+    size_t missing_reservation = 0;
+    size_t missing_declaration = 0;
+    SafeInt<size_t> level2_excess_bytes = 0;
+    SafeInt<size_t> reservation_excess_bytes = 0;
+    bool strict_verification_failed = false;
+    const bool strict_workspace_verification =
+        session_options.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1";
+
+    const SessionState* reservation_owner = this;
+    while (reservation_owner->parent_ != nullptr) {
+      reservation_owner = reservation_owner->parent_;
+    }
+    const auto graph_reservations_it = reservation_owner->workspace_reservations_.find(&graph_);
+    const NodeWorkspaceReservationMap* graph_reservations =
+        graph_reservations_it == reservation_owner->workspace_reservations_.end()
+            ? nullptr
+            : &graph_reservations_it->second;
+
     for (const auto& node : graph_viewer_->Nodes()) {
+      const WorkspaceEstimateSelection* reservation = nullptr;
+      if (graph_reservations != nullptr) {
+        const auto reservation_it = graph_reservations->find(node.Index());
+        if (reservation_it != graph_reservations->end()) {
+          reservation = &reservation_it->second;
+        }
+      }
+
       auto* kernel = GetMutableKernel(node.Index());
-      if (kernel == nullptr) continue;
+      if (kernel == nullptr) {
+        if (reservation != nullptr) {
+          ++missing_declaration;
+        }
+        continue;
+      }
 
       auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
 
@@ -1858,29 +1894,68 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
           gsl::make_span(resolved), requirements));
 
-      if (!requirements.empty()) {
-        SafeInt<size_t> node_workspace = 0;
-        for (const auto& req : requirements) {
-          node_workspace += req.size_bytes;
-          LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
-                                 << "' slot_id=" << req.slot_id
-                                 << " size=" << req.size_bytes << " bytes"
-                                 << " alignment=" << req.alignment_bytes << " bytes";
+      if (requirements.empty()) {
+        if (reservation != nullptr) {
+          ++missing_declaration;
         }
-        aggregate_declared_workspace_bytes += node_workspace;
-        ++nodes_with_workspace;
+        continue;
+      }
+
+      SafeInt<size_t> node_workspace = 0;
+      for (const auto& req : requirements) {
+        node_workspace += req.size_bytes;
         LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
-                               << "' (" << node.OpType() << "): " << requirements.size()
-                               << " slot(s), " << static_cast<size_t>(node_workspace) << " bytes total";
+                               << "' slot_id=" << req.slot_id
+                               << " size=" << req.size_bytes << " bytes"
+                               << " alignment=" << req.alignment_bytes << " bytes";
+      }
+      const size_t declared_bytes = static_cast<size_t>(node_workspace);
+      aggregate_declared_workspace_bytes += node_workspace;
+      ++nodes_with_workspace;
+      LOGS(logger_, INFO) << "Level-2 workspace: node '" << node.Name()
+                          << "' (" << node.OpType() << "): " << requirements.size()
+                          << " slot(s), " << declared_bytes << " bytes total";
+
+      if (reservation == nullptr) {
+        ++missing_reservation;
+        strict_verification_failed = strict_verification_failed || strict_workspace_verification;
+        continue;
+      }
+
+      ++compared_nodes;
+      if (declared_bytes > reservation->bytes) {
+        ++level2_larger;
+        level2_excess_bytes += declared_bytes - reservation->bytes;
+        strict_verification_failed = strict_verification_failed || strict_workspace_verification;
+        LOGS(logger_, WARNING) << "Level-2 workspace declaration for node '" << node.Name()
+                               << "' (" << node.OpType() << ") is " << declared_bytes
+                               << " bytes, exceeding its partitioning reservation of "
+                               << reservation->bytes << " bytes";
+      } else if (declared_bytes < reservation->bytes) {
+        ++reservation_larger;
+        reservation_excess_bytes += reservation->bytes - declared_bytes;
+      } else {
+        ++equal;
       }
     }
-    if (aggregate_declared_workspace_bytes > 0) {
+    if (nodes_with_workspace > 0 || missing_declaration > 0) {
       LOGS(logger_, INFO) << "Level-2 workspace declaration summary for graph '"
                           << graph_viewer_->Name() << "': "
                           << nodes_with_workspace << " kernel(s) declared workspace, "
                           << "aggregate declared workspace bytes: "
-                          << static_cast<size_t>(aggregate_declared_workspace_bytes);
+                          << static_cast<size_t>(aggregate_declared_workspace_bytes)
+                          << ", compared=" << compared_nodes
+                          << ", Level-2 larger=" << level2_larger
+                          << ", reservation larger=" << reservation_larger
+                          << ", equal=" << equal
+                          << ", missing reservation=" << missing_reservation
+                          << ", missing declaration=" << missing_declaration
+                          << ", Level-2 excess=" << static_cast<size_t>(level2_excess_bytes) << " bytes"
+                          << ", reservation excess=" << static_cast<size_t>(reservation_excess_bytes) << " bytes";
     }
+    ORT_RETURN_IF(strict_verification_failed,
+                  "Level-2 workspace verification failed: one or more declarations exceed "
+                  "the workspace reserved during graph partitioning.");
   }
 
   ORT_RETURN_IF_ERROR(

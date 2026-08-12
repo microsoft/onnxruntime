@@ -479,6 +479,12 @@ static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.n
 /// </summary>
 static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
 
+/// Controls whether a Level-2 workspace declaration larger than the workspace reservation selected during
+/// partitioning fails session initialization. The default value is "0", which logs a warning and retains
+/// existing runtime allocation behavior. Set to "1" for strict constrained-memory validation.
+static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
+    "session.strict_workspace_verification";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
