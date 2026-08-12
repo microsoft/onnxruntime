@@ -20,11 +20,6 @@ namespace onnxruntime {
 
 namespace {
 
-// True for 16-bit float types that require widen-to-f32 arithmetic.
-// All compute is f32; the 16-bit type is storage only.
-template <typename T>
-inline constexpr bool is_narrow_float_v = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
-
 template <typename T,
           typename U,
           typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
@@ -679,7 +674,7 @@ Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
                               bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
 
-  is_packed = false;
+  is_packed = true;
   if (input_idx == 1) {  // scale
     prepacked_scale_fp32_shape_ = tensor.Shape();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed);

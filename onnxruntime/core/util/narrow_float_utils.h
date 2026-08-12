@@ -37,4 +37,10 @@ void FloatToNarrow(const float* src, T* dst, size_t count) {
   }
 }
 
+// Type trait: true for MLFloat16 and BFloat16 — the narrow-float types that
+// need widen-to-f32 conversion before arithmetic.
+template <typename T>
+inline constexpr bool is_narrow_float_v = std::is_same_v<T, MLFloat16> ||
+                                          std::is_same_v<T, BFloat16>;
+
 }  // namespace onnxruntime

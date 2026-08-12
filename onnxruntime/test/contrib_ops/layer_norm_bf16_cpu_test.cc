@@ -140,21 +140,34 @@ std::vector<float> RoundTripBF16(const std::vector<float>& data) {
   return result;
 }
 
+// Round-trip f32 values through fp16 to match the kernel's input precision.
+std::vector<float> RoundTripFP16(const std::vector<float>& data) {
+  std::vector<float> result(data.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    result[i] = MLFloat16(data[i]).ToFloat();
+  }
+  return result;
+}
+
 // Run an OpTester with CPU-EP only.  If the CPU EP doesn't have the kernel,
 // session build fails — no silent fallback to float.
-void RunBF16CpuOnly(OpTester& test, float abs_tol, const char* output_name = "output") {
+// When pre_packed_counter is non-null, RunWithConfig populates it with the
+// number of weights that were pre-packed during session initialization.
+void RunBF16CpuOnly(OpTester& test, float abs_tol, const char* output_name = "output",
+                    size_t* pre_packed_counter = nullptr) {
   test.SetOutputAbsErr(output_name, abs_tol);
   auto cpu = DefaultCpuExecutionProvider();
   if (!cpu) {
     GTEST_SKIP() << "CPU EP not available in this build.";
   }
   test.ConfigEp(std::move(cpu))
-      .RunWithConfig();
+      .RunWithConfig(pre_packed_counter);
 }
 
 // Run with per-output tolerances: bf16 tolerance for Y, f32 tolerance for stats.
 void RunBF16CpuOnlyMultiOutput(OpTester& test,
-                               const std::vector<std::pair<const char*, float>>& tols) {
+                               const std::vector<std::pair<const char*, float>>& tols,
+                               size_t* pre_packed_counter = nullptr) {
   for (auto& [name, tol] : tols) {
     test.SetOutputAbsErr(name, tol);
   }
@@ -163,7 +176,7 @@ void RunBF16CpuOnlyMultiOutput(OpTester& test,
     GTEST_SKIP() << "CPU EP not available in this build.";
   }
   test.ConfigEp(std::move(cpu))
-      .RunWithConfig();
+      .RunWithConfig(pre_packed_counter);
 }
 
 }  // anonymous namespace
@@ -336,6 +349,50 @@ TEST(LayerNormBFloat16CpuTest, LayerNorm17_MeanInvStdDev_LargerNorm) {
   test.AddOutput<float>("InvStdDev", stat_dims, ref.inv_std_dev);
 
   RunBF16CpuOnlyMultiOutput(test, {{"Y", kBF16AbsTolerance},
+                                   {"Mean", kF32StatTolerance},
+                                   {"InvStdDev", kF32StatTolerance}});
+}
+
+// =============================================================================
+// LayerNormalization (core ONNX opset 17) — MLFloat16 T, float U stat outputs
+// This covers the pre-existing fp16 path: stats are written at float precision
+// via WriteStat<U>.  Before this PR, stats were round-tripped through MLFloat16.
+// The fp16 tolerance here is tighter than bf16 because fp16 has a 10-bit
+// mantissa (1 ULP at unit scale ≈ 2^-10 ≈ 0.001).
+// =============================================================================
+
+// fp16 output tolerance: 2 fp16 ULP at unit scale.
+// MLFloat16 has a 10-bit stored mantissa; 1 ULP at unit scale ≈ 2^-10 ≈ 0.000977.
+constexpr float kFP16AbsTolerance = 0.002f;
+
+TEST(LayerNormBFloat16CpuTest, LayerNorm17_MLFloat16_MeanInvStdDev_FloatPrecision) {
+  constexpr float epsilon = 1e-05f;
+  constexpr int64_t norm_size = 8;
+  constexpr int64_t num_rows = 3;
+  std::vector<int64_t> x_dims{num_rows, norm_size};
+  std::vector<int64_t> stat_dims{num_rows, 1};
+
+  RandomValueGenerator random{628};
+  std::vector<float> x_f32 = random.Uniform<float>(x_dims, -5.0f, 5.0f);
+  std::vector<int64_t> gamma_dims{norm_size};
+  std::vector<float> gamma_f32 = random.Uniform<float>(gamma_dims, -2.0f, 2.0f);
+  std::vector<float> bias_f32 = random.Uniform<float>(gamma_dims, -1.0f, 1.0f);
+
+  auto x_rt = RoundTripFP16(x_f32);
+  auto gamma_rt = RoundTripFP16(gamma_f32);
+  auto bias_rt = RoundTripFP16(bias_f32);
+  auto ref = LayerNormRef(x_rt, gamma_rt, bias_rt, norm_size, epsilon);
+
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<MLFloat16>("X", x_dims, ToFloat16(x_f32));
+  test.AddInput<MLFloat16>("Scale", {norm_size}, ToFloat16(gamma_f32));
+  test.AddInput<MLFloat16>("B", {norm_size}, ToFloat16(bias_f32));
+  test.AddOutput<MLFloat16>("Y", x_dims, ToFloat16(ref.output));
+  test.AddOutput<float>("Mean", stat_dims, ref.mean);
+  test.AddOutput<float>("InvStdDev", stat_dims, ref.inv_std_dev);
+
+  RunBF16CpuOnlyMultiOutput(test, {{"Y", kFP16AbsTolerance},
                                    {"Mean", kF32StatTolerance},
                                    {"InvStdDev", kF32StatTolerance}});
 }
@@ -718,7 +775,13 @@ TEST(LayerNormBFloat16CpuTest, LayerNorm17_PrePack_ScaleBiasInitializers) {
     test.AddInput<BFloat16>("B", {norm_size}, ToBFloat16(bias_f32), is_initializer);
     test.AddOutput<BFloat16>("Y", x_dims, ToBFloat16(ref.output));
 
-    RunBF16CpuOnly(test, kBF16AbsTolerance, "Y");
+    size_t pre_packed_counter = 0;
+    RunBF16CpuOnly(test, kBF16AbsTolerance, "Y", &pre_packed_counter);
+    if (is_initializer) {
+      EXPECT_EQ(pre_packed_counter, 2u) << "Scale and Bias should both be pre-packed";
+    } else {
+      EXPECT_EQ(pre_packed_counter, 0u) << "No weights should be pre-packed for graph inputs";
+    }
   }
 }
 
@@ -755,7 +818,13 @@ TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_PrePack_GammaBetaInitializers) {
     test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32), is_initializer);
     test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
 
-    RunBF16CpuOnly(test, kBF16AbsTolerance);
+    size_t pre_packed_counter = 0;
+    RunBF16CpuOnly(test, kBF16AbsTolerance, "output", &pre_packed_counter);
+    if (is_initializer) {
+      EXPECT_EQ(pre_packed_counter, 2u) << "Gamma and Beta should both be pre-packed";
+    } else {
+      EXPECT_EQ(pre_packed_counter, 0u) << "No weights should be pre-packed for graph inputs";
+    }
   }
 }
 
