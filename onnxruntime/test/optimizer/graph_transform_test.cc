@@ -3168,6 +3168,22 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
   }
 }
 
+// Regression test for a pipeline-cache key collision on the small-matmul conv path.
+//
+// A 1x1 convolution with fewer than 8 channels on each side is lowered to MatMulNaiveProgram, which
+// bakes the activation expression directly into its WGSL. That program's cache hint omitted the
+// activation entirely, so two convolutions with identical shapes but different activations hashed
+// to the same key: whichever compiled first was served to both, and the second silently computed
+// the wrong activation. The collision this test covers is on the activation *kind*, which is what
+// the hint was missing. Activation *parameters* are a separate mechanism: they travel as uniforms
+// rather than being written into the shader text, so they are deliberately excluded from the key and
+// two activations differing only in a parameter share one pipeline. That the parameters still reach
+// the shader correctly is covered by
+// WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache (end to end), and the sharing
+// rule itself by ActivationCacheKeyTest.
+//
+// Deliberately self-contained rather than built on the Conv+activation parity helper below, so the
+// fix and its regression test can travel as a single commit.
 #if defined(USE_WEBGPU)
 namespace {
 void RunWebGpuSmallMatMulConvActivationPairTest(const std::string& activation_a,
@@ -3223,6 +3239,39 @@ void RunWebGpuSmallMatMulConvActivationPairTest(const std::string& activation_a,
                                  []() { return DefaultWebGpuExecutionProvider(); });
 }
 
+// Companion to the helper above, for the activation *parameters* rather than the kind. Two
+// HardSigmoid activations whose alphas differ share one compiled pipeline, because the parameters
+// are supplied as uniforms rather than written into the shader text. This checks that each
+// convolution is nonetheless evaluated with its own alpha -- that the uniform values are bound per
+// dispatch and not carried over from whichever program was compiled first.
+//
+// Picking the parameters is the whole difficulty, because the two alphas have to be close enough
+// that they would have collided under a key that formats them, yet produce a difference large enough
+// to see. 1000015 and 1000025 are 160 float32 ULPs apart but agree to 6 significant digits, so their
+// relative difference is ~1e-5 -- far below the tolerance any float32 comparison can use. With an
+// activation like LeakyRelu, whose output is alpha*x, the output inherits that relative difference
+// and no input scale can amplify it.
+//
+// HardSigmoid is what makes it observable, because clamp(alpha * value + beta, 0, 1) pins the output
+// to [0, 1] regardless of how large alpha is. A tiny relative difference in alpha becomes a large
+// absolute difference in the intermediate, and the clamp turns that into a full-scale 0-vs-1 swing:
+//
+//   conv output = 8.0 exactly
+//   alpha_a * 8 + beta = 8000120 - 8000160 = -40 -> clamp -> 0.0
+//   alpha_b * 8 + beta = 8000200 - 8000160 = +40 -> clamp -> 1.0
+//
+// Every intermediate above is an exactly representable float32 (all are integers well inside the
+// range where the spacing is 0.5), so the outcome does not depend on rounding, and evaluating
+// alpha * value + beta as a fused multiply-add cannot change it either. The convolutions are shaped
+// so their output is exactly 8.0 for the same reason.
+//
+// The output channel count is deliberately 5, which makes GetMaxComponents(N) == 1. Do not raise it
+// to 6 for tidiness: at N == 6 the components become 2, and MatMulNaiveProgram then indexes its
+// component-reduced bias array with an element-unit `col` (bias[col], versus the output's
+// col / components on the next line). Two of the six channels would read past the end of the bias,
+// pick up no bias, and land on 4.0 instead of 8.0 -- and 4.0 clamps to 0.0 under both alphas, so
+// those channels would silently stop discriminating. Keeping components == 1 keeps every channel on
+// exactly 8.0 and every element of the output sensitive to the collision.
 void RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(float alpha_first, float alpha_second) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
@@ -3374,7 +3423,9 @@ TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationsIn
   RunWebGpuSmallMatMulConvActivationPairTest("Sigmoid", "Relu");
 }
 
-// Use distinct alpha values that match at the stringstream default precision.
+// 1000015 and 1000025 are 160 float32 ULPs apart, close enough that any key which formats them would
+// have merged them, so this is the hardest case for the shared pipeline to get right. Both orderings
+// run so a mix-up in either direction fails.
 TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache) {
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000015.0f, 1000025.0f);
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000025.0f, 1000015.0f);
@@ -3787,6 +3838,38 @@ TEST_F(GraphTransformationTests, FuseNhwcConvSoftplusForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
+// ThresholdedRelu's alpha defaults to 1.0 rather than 0, so a fusion that forgot to read the
+// attribute would still produce plausible-looking output for the default case only.
+TEST_F(GraphTransformationTests, FuseNhwcConvThresholdedReluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "ThresholdedRelu", kOnnxDomain, kWebGpuExecutionProvider,
+                             [](Node& node) { node.AddAttribute("alpha", 0.6f); });
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "ThresholdedRelu", {0.6f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+TEST_F(GraphTransformationTests, FuseNhwcConvThresholdedReluDefaultAlphaForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "ThresholdedRelu", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "ThresholdedRelu", {1.0f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// Erf carries no parameters, but it shares its WGSL helper with the exact Gelu, so fusing it is
+// what proves that helper is emitted for more than one activation kind.
+TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "Erf", kOnnxDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Erf", {}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
 // Selu is deliberately absent: the selector only runs once the activation is already assigned to
 // the same EP as the Conv, and the WebGPU EP registers no Selu kernel. Listing it would be dead
 // code today, so this pins the exclusion rather than leaving it to be re-added by guesswork.
@@ -3831,17 +3914,19 @@ using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, No
 // here as a numeric mismatch rather than passing silently.
 void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
                                    const std::string& expected_activation,
-                                   int opset_version) {
+                                   int opset_version,
+                                   const std::vector<int64_t>& input_shape = {1, 4, 14, 14},
+                                   const std::vector<int64_t>& weight_shape = {8, 4, 3, 3}) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
-  auto build_test_case = [&add_activation](ModelTestBuilder& builder) {
+  auto build_test_case = [&add_activation, &input_shape, &weight_shape](ModelTestBuilder& builder) {
     // Inputs span both signs so the negative half of the asymmetric activations is covered, and
     // the channel counts are large enough to stay representative of a real convolution.
-    auto* input = builder.MakeInput<float>({1, 4, 14, 14}, -3.0f, 3.0f);
-    auto* weight = builder.MakeInitializer<float>({8, 4, 3, 3}, -0.5f, 0.5f);
-    auto* bias = builder.MakeInitializer<float>({8}, -0.5f, 0.5f);
+    auto* input = builder.MakeInput<float>(input_shape, -3.0f, 3.0f);
+    auto* weight = builder.MakeInitializer<float>(weight_shape, -0.5f, 0.5f);
+    auto* bias = builder.MakeInitializer<float>({weight_shape[0]}, -0.5f, 0.5f);
     auto* conv_out = builder.MakeIntermediate();
     auto* output = builder.MakeOutput();
 
@@ -3973,6 +4058,35 @@ TEST_F(GraphTransformationTests, WebGpuConvQuickGeluFusionMatchesUnfusedResults)
     builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
   };
   RunWebGpuConvActivationParity(add_quick_gelu, "QuickGelu", 17);
+}
+
+// ThresholdedRelu's alpha is the threshold itself, so a slot that never reached the shader would
+// read as 0 and turn this into a plain Relu.
+TEST_F(GraphTransformationTests, WebGpuConvThresholdedReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("ThresholdedRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.8f); }),
+      "ThresholdedRelu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvErfFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("Erf"), "Erf", 17);
+}
+
+// The small-matmul path again, but with two activations that differ only in a parameter value.
+// These must NOT be distinguished: they share one compiled pipeline and read the parameter from a
+// uniform. Paired with the snippet-level assertions in
+// test/providers/webgpu/activation_snippet_test.cc, which check that the parameter never reaches
+// the shader source in the first place.
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossParameterValues) {
+  const std::vector<int64_t> input_shape{1, 4, 8, 8};
+  const std::vector<int64_t> weight_shape{6, 4, 1, 1};
+
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.01f); }),
+      "LeakyRelu", 17, input_shape, weight_shape);
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.5f); }),
+      "LeakyRelu", 17, input_shape, weight_shape);
 }
 #endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)

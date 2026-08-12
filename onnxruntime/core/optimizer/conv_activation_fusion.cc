@@ -125,7 +125,9 @@ class ConvActivationSelector : public NodeSelector {
              graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSwish", {14, 22}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Elu", {6, 22}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Gelu", {20}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Softplus", {1, 22});
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Softplus", {1, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "ThresholdedRelu", {10, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Erf", {9, 13});
     };
 
     if (!ConvFusionDataTypeCheck(node)) {
@@ -220,6 +222,9 @@ class FuseConvActivationAction : public ReplaceWithNew {
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
       activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
     } else if (activation_op_type == "Elu") {
+      auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
+      activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
+    } else if (activation_op_type == "ThresholdedRelu") {
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
       activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
     } else if (activation_op_type == "Gelu") {

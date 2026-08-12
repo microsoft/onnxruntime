@@ -136,6 +136,10 @@ Status ApplyMatMulIntel(ComputeContext& context,
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
+  // Must stay last among uniform appends: definitions pair with values by index, not by name. The
+  // conditional block below only adds an *input*, which is a separate list, so it is safe today —
+  // but adding a conditional *uniform* there would shift every activation parameter by a slot.
+  AppendActivationUniformsData(activation, program);
 
   if (has_bias) {
     auto bias_components = 1;

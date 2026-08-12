@@ -57,6 +57,7 @@ struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
   using type = struct {
     int param_activation_kind;
     int param_has_bias;
+    int param_quick_gelu_unit_alpha;
     int param_tile_m;
     int param_tile_n;
     int param_use_subgroup;

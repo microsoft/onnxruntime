@@ -180,6 +180,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
         .SetDispatchGroupSize(CeilDiv(output_size, 64u))
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
+    // Must stay last: uniform definitions are paired with values by index, not by name, so any
+    // uniform appended after this one would be read as an activation parameter. A plain MatMul has
+    // no fused activation, so this only ever supplies the two zero-length placeholders that the
+    // program's uniform definitions require.
+    AppendActivationUniformsData(Activation(), program);
 
     return context.RunProgram(program);
   }
@@ -318,6 +323,10 @@ Status ComputeMatMul(ComputeContext* context,
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddOutput(std::move(output));
+  // Must stay last among uniform appends: definitions pair with values by index, not by name. The
+  // conditional block below only adds an *input*, which is a separate list, so it is safe today —
+  // but adding a conditional *uniform* there would shift every activation parameter by a slot.
+  AppendActivationUniformsData(activation, matmul_program);
 
   if (use_bias_in_matmul) {
     auto bias_components = is_channels_last ? components : 1;

@@ -235,6 +235,8 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
                             {dispatch[0]},
                             {dispatch[1]},
                             {dispatch[2]}});
+  // Must stay last: uniform definitions pair with values by index, not by name.
+  AppendActivationUniformsData(activation, program);
 
   return program;
 }
