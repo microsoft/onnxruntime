@@ -147,8 +147,9 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
     TensorProto qkv_zp_initializer;
 
-    // We use 4 bit quantization, hence dividing by 2 since we need 1/2 of the bytes.
-    int64_t zp_elements_count = output_hidden_size * blocks / 2;
+    // We use 4 bit quantization, so each byte stores two block zero points per output row.
+    const int64_t zero_point_blocks = blocks / 2 + blocks % 2;
+    int64_t zp_elements_count = output_hidden_size * zero_point_blocks;
 
     qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
     qkv_zp_initializer.add_dims(zp_elements_count);
@@ -158,7 +159,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     merged_qkv_zp.reserve(gsl::narrow<size_t>(zp_elements_count));
 
     optimizer_utils::MergeMatMulWeightsByBlocks(q_zero_points_data, k_zero_points_data, v_zero_points_data,
-                                                merged_qkv_zp, q_hidden_size, kv_hidden_size, blocks / 2, 1);
+                                                merged_qkv_zp, q_hidden_size, kv_hidden_size, zero_point_blocks, 1);
 
     utils::SetRawDataInTensorProto(qkv_zp_initializer, merged_qkv_zp.data(), zp_elements_count * sizeof(uint8_t));
 
@@ -270,12 +271,54 @@ static bool ProjectionTensorShapesMatch(bool quantization_used,
     return q_tensor.dims(0) == q_hidden_size && k_tensor.dims(0) == kv_hidden_size &&
            v_tensor.dims(0) == kv_hidden_size && q_tensor.dims(1) == k_tensor.dims(1) &&
            q_tensor.dims(1) == v_tensor.dims(1) && q_tensor.dims(2) == k_tensor.dims(2) &&
-           q_tensor.dims(2) == v_tensor.dims(2);
+           q_tensor.dims(2) == v_tensor.dims(2) && q_tensor.dims(1) > 0 && q_tensor.dims(2) > 0;
   }
 
   return q_tensor.dims(1) == q_hidden_size && k_tensor.dims(1) == kv_hidden_size &&
          v_tensor.dims(1) == kv_hidden_size && q_tensor.dims(0) == k_tensor.dims(0) &&
          q_tensor.dims(0) == v_tensor.dims(0);
+}
+
+static bool TensorShapeMatchesRowsAndBlocks(const TensorProto& tensor, int64_t rows, int64_t blocks) {
+  if (tensor.dims_size() == 2) {
+    return tensor.dims(0) == rows && tensor.dims(1) == blocks;
+  }
+
+  if (tensor.dims_size() != 1 || blocks <= 0 || tensor.dims(0) < 0 || tensor.dims(0) % blocks != 0) {
+    return false;
+  }
+
+  return tensor.dims(0) / blocks == rows;
+}
+
+static bool QuantizedAuxiliaryTensorShapesMatch(int64_t q_hidden_size,
+                                                int64_t kv_hidden_size,
+                                                int64_t blocks,
+                                                const TensorProto& q_scale_tensor,
+                                                const TensorProto& k_scale_tensor,
+                                                const TensorProto& v_scale_tensor,
+                                                const TensorProto* q_zero_point_tensor,
+                                                const TensorProto* k_zero_point_tensor,
+                                                const TensorProto* v_zero_point_tensor) {
+  const int scale_rank = q_scale_tensor.dims_size();
+  if (k_scale_tensor.dims_size() != scale_rank || v_scale_tensor.dims_size() != scale_rank ||
+      !TensorShapeMatchesRowsAndBlocks(q_scale_tensor, q_hidden_size, blocks) ||
+      !TensorShapeMatchesRowsAndBlocks(k_scale_tensor, kv_hidden_size, blocks) ||
+      !TensorShapeMatchesRowsAndBlocks(v_scale_tensor, kv_hidden_size, blocks)) {
+    return false;
+  }
+
+  if (q_zero_point_tensor == nullptr || k_zero_point_tensor == nullptr || v_zero_point_tensor == nullptr) {
+    return q_zero_point_tensor == nullptr && k_zero_point_tensor == nullptr && v_zero_point_tensor == nullptr;
+  }
+
+  const int64_t zero_point_blocks = blocks / 2 + blocks % 2;
+  const int zero_point_rank = q_zero_point_tensor->dims_size();
+  return k_zero_point_tensor->dims_size() == zero_point_rank &&
+         v_zero_point_tensor->dims_size() == zero_point_rank &&
+         TensorShapeMatchesRowsAndBlocks(*q_zero_point_tensor, q_hidden_size, zero_point_blocks) &&
+         TensorShapeMatchesRowsAndBlocks(*k_zero_point_tensor, kv_hidden_size, zero_point_blocks) &&
+         TensorShapeMatchesRowsAndBlocks(*v_zero_point_tensor, kv_hidden_size, zero_point_blocks);
 }
 
 struct RotaryEmbeddingArgs {
@@ -528,6 +571,14 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     if (!ProjectionTensorShapesMatch(quantization_used, q_hidden_size, kv_hidden_size,
                                      *q_proj_tensor, *k_proj_tensor, *v_proj_tensor)) {
       DEBUG_LOG("GQA projection tensor shapes do not match the head attributes");
+      continue;
+    }
+
+    if (quantization_used &&
+        !QuantizedAuxiliaryTensorShapesMatch(q_hidden_size, kv_hidden_size, q_proj_tensor->dims(1),
+                                             *q_scale_tensor, *k_scale_tensor, *v_scale_tensor,
+                                             q_zero_points_tensor, k_zero_points_tensor, v_zero_points_tensor)) {
+      DEBUG_LOG("GQA quantized auxiliary tensor shapes do not match the projection tensors");
       continue;
     }
 

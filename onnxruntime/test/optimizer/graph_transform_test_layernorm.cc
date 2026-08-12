@@ -952,6 +952,32 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 }
 
+static void TestQuantizedGQAFusionRejectsInitializerShape(const std::string& initializer_name,
+                                                          logging::Logger* logger) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, initializer));
+  TensorProto malformed_initializer = *initializer;
+  malformed_initializer.clear_dims();
+  malformed_initializer.add_dims(1);
+  graph.RemoveInitializedTensor(initializer_name);
+  graph.AddInitializedTensor(malformed_initializer);
+
+  GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.at("com.microsoft.MatMulNBits"), 3);
+  EXPECT_EQ(op_to_count.at("com.microsoft.RotaryEmbedding"), 2);
+  EXPECT_EQ(op_to_count.at("com.microsoft.GroupQueryAttention"), 1);
+}
+
 enum class RotaryEmbeddingDomain {
   kOnnx,
   kMS,
@@ -1365,6 +1391,14 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedProject
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
                                         CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedScaleShape) {
+  TestQuantizedGQAFusionRejectsInitializerShape("scales_q", logger_.get());
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedZeroPointShape) {
+  TestQuantizedGQAFusionRejectsInitializerShape("zero_points_q", logger_.get());
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
