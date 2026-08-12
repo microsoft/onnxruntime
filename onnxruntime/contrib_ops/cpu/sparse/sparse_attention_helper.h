@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <initializer_list>
 #include <limits>
 
 #include "core/common/common.h"
@@ -13,6 +14,18 @@
 namespace onnxruntime {
 namespace contrib {
 namespace sparse_attention_helper {
+
+inline bool ProductExceedsInt32Max(std::initializer_list<int64_t> factors) {
+  constexpr int64_t max_int32 = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+  int64_t product = 1;
+  for (int64_t factor : factors) {
+    if (factor < 0) return true;
+    if (factor == 0) return false;
+    if (product > max_int32 / factor) return true;
+    product *= factor;
+  }
+  return false;
+}
 
 Status CheckInputs(void* params,
                    const Tensor* query,
@@ -269,22 +282,17 @@ Status CheckInputs(void* params,
   // Buffer sizes and kernel strides are computed as products of these dimensions, and the Triton kernels
   // take 32-bit strides. Reject shapes whose products do not fit in int32 so that the sizes and offsets
   // derived from them cannot wrap.
-  constexpr int64_t max_int32 = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-  const int64_t q_elements = static_cast<int64_t>(batch_size) * sequence_length *
-                             (num_heads + 2 * static_cast<int64_t>(kv_num_heads)) * head_size;
-  if (q_elements > max_int32) {
+  if (ProductExceedsInt32Max({batch_size, sequence_length,
+                              static_cast<int64_t>(num_heads) + 2 * static_cast<int64_t>(kv_num_heads), head_size})) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "batch_size * sequence_length * (num_heads + 2 * kv_num_heads) * head_size shall not "
-                           "exceed ",
-                           max_int32, ". Got ", q_elements);
+                           "exceed int32 max");
   }
 
-  const int64_t kv_cache_elements = static_cast<int64_t>(batch_size) * kv_num_heads *
-                                    max_cache_sequence_length * head_size;
-  if (kv_cache_elements > max_int32) {
+  if (ProductExceedsInt32Max({batch_size, kv_num_heads, max_cache_sequence_length, head_size})) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "batch_size * kv_num_heads * max_cache_sequence_length * head_size shall not exceed ",
-                           max_int32, ". Got ", kv_cache_elements);
+                           "batch_size * kv_num_heads * max_cache_sequence_length * head_size shall not exceed "
+                           "int32 max");
   }
 
   return Status::OK();
