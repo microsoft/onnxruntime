@@ -16,6 +16,10 @@ on:
         required: false
         type: boolean
         default: false
+      use_apple_accelerate:
+        required: false
+        type: boolean
+        default: false
       python_version:
         required: false
         type: string
@@ -67,6 +71,7 @@ jobs:
         ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
         ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
+        ${{ inputs.use_apple_accelerate && '--use_apple_accelerate' || '' }}
         --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --config ${{ matrix.build_config }}
         --osx_arch ${{ matrix.target }}

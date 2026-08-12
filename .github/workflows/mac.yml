@@ -55,6 +55,18 @@ jobs:
         ]
       python_version: "3.14"
 
+  apple_accelerate:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_apple_accelerate: true
+      # macOS arm64 only (Apple Silicon host required); only build arm64/Debug
+      # to conserve CI resources, matching the xnnpack job above.
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
+        ]
+      python_version: "3.14"
+
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
