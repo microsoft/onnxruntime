@@ -1112,6 +1112,12 @@ def parse_arguments() -> argparse.Namespace:
             parser.error("--use_apple_accelerate is not supported for visionOS builds.")
         if getattr(args, "macos", None) == "Catalyst":
             parser.error("--use_apple_accelerate is not supported for Mac Catalyst builds.")
+        if getattr(args, "android", False):
+            parser.error("--use_apple_accelerate is not supported for Android builds.")
+        if getattr(args, "build_wasm", False):
+            parser.error("--use_apple_accelerate is not supported for WebAssembly builds.")
+        if getattr(args, "rv64", False):
+            parser.error("--use_apple_accelerate is not supported for RISC-V (rv64) builds.")
         osx_arch = getattr(args, "osx_arch", None)
         if osx_arch not in ("arm64", "arm64e"):
             parser.error(f"--use_apple_accelerate requires an arm64 target architecture (got --osx_arch={osx_arch!r}).")

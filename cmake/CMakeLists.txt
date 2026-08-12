@@ -615,6 +615,13 @@ endif()
 
 if(onnxruntime_USE_APPLE_ACCELERATE)
   # N1: Gate on macOS (Darwin) specifically, not APPLE (which includes iOS/tvOS/visionOS).
+  # NOTE: Mac Catalyst (macabi) also reports CMAKE_SYSTEM_NAME=Darwin and arch=arm64.
+  # The Python build script (build_args.py) rejects --macos Catalyst explicitly, but a direct
+  # CMake configure targeting Catalyst (e.g. via -target arm64-apple-ios-macabi or a toolchain
+  # setting PLATFORM_NAME=macabi) is NOT detected here. PLATFORM_NAME is set by external
+  # toolchain files and is unavailable in plain cmake invocations, so a reliable CMake-level
+  # Catalyst gate is not feasible without introducing fragile flag-parsing heuristics.
+  # This is a known, documented limitation.
   # B1: Detect arm64 robustly — CMAKE_OSX_ARCHITECTURES can be defined-but-empty on a
   #     plain `cmake` configure, which leaves onnxruntime_target_platform unset.
   #     Check CMAKE_OSX_ARCHITECTURES first; fall back to CMAKE_SYSTEM_PROCESSOR.

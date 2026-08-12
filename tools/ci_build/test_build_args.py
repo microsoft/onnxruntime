@@ -75,40 +75,110 @@ class AppleAccelerateBuildArgsTest(unittest.TestCase):
         args = self._parse("--use_apple_accelerate", "--osx_arch", "arm64e", platform_name="macos", machine="arm64")
         self.assertTrue(args.use_apple_accelerate)
 
+    def _assert_parser_error(self, args, expected_msg_fragment, **kwargs):
+        """Assert parse_arguments calls parser.error with a message containing expected_msg_fragment."""
+        with self.assertRaises(SystemExit) as cm:
+            self._parse(*args, **kwargs)
+        self.assertEqual(cm.exception.code, 2)
+        # parser.error prints to stderr; verify message via mock
+        # We rely on argparse exit code 2 + the fragment appearing in the error path.
+        # For a stronger check, capture stderr:
+        import io
+        from contextlib import redirect_stderr
+
+        f = io.StringIO()
+        with redirect_stderr(f):
+            try:
+                self._parse(*args, **kwargs)
+            except SystemExit:
+                pass
+        self.assertIn(expected_msg_fragment, f.getvalue())
+
     def test_accelerate_rejected_on_linux(self):
-        with self.assertRaises(SystemExit):
-            self._parse("--use_apple_accelerate", platform_name="linux")
+        self._assert_parser_error(
+            ("--use_apple_accelerate",),
+            "only supported on macOS",
+            platform_name="linux",
+        )
 
     def test_accelerate_rejected_on_windows(self):
-        with self.assertRaises(SystemExit):
-            self._parse("--use_apple_accelerate", platform_name="windows")
+        self._assert_parser_error(
+            ("--use_apple_accelerate",),
+            "only supported on macOS",
+            platform_name="windows",
+        )
 
     def test_accelerate_rejected_x86_64(self):
-        with self.assertRaises(SystemExit):
-            self._parse("--use_apple_accelerate", "--osx_arch", "x86_64", platform_name="macos", machine="x86_64")
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--osx_arch", "x86_64"),
+            "requires an arm64 target architecture",
+            platform_name="macos",
+            machine="x86_64",
+        )
 
     def test_accelerate_rejected_ios(self):
-        with self.assertRaises(SystemExit):
-            self._parse("--use_apple_accelerate", "--ios", platform_name="macos", machine="arm64")
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--ios"),
+            "not supported for iOS builds",
+            platform_name="macos",
+            machine="arm64",
+        )
 
     def test_accelerate_rejected_tvos(self):
-        with self.assertRaises(SystemExit):
-            self._parse("--use_apple_accelerate", "--tvos", platform_name="macos", machine="arm64")
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--tvos"),
+            "not supported for tvOS builds",
+            platform_name="macos",
+            machine="arm64",
+        )
 
     def test_accelerate_rejected_visionos(self):
-        with self.assertRaises(SystemExit):
-            self._parse("--use_apple_accelerate", "--visionos", platform_name="macos", machine="arm64")
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--visionos"),
+            "not supported for visionOS builds",
+            platform_name="macos",
+            machine="arm64",
+        )
 
     def test_accelerate_rejected_catalyst(self):
-        with self.assertRaises(SystemExit):
-            self._parse(
-                "--use_apple_accelerate",
-                "--macos",
-                "Catalyst",
-                "--build_apple_framework",
-                platform_name="macos",
-                machine="arm64",
-            )
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--macos", "Catalyst", "--build_apple_framework"),
+            "not supported for Mac Catalyst builds",
+            platform_name="macos",
+            machine="arm64",
+        )
+
+    def test_accelerate_rejected_android(self):
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--android"),
+            "not supported for Android builds",
+            platform_name="macos",
+            machine="arm64",
+        )
+
+    def test_accelerate_rejected_build_wasm(self):
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--build_wasm"),
+            "not supported for WebAssembly builds",
+            platform_name="macos",
+            machine="arm64",
+        )
+
+    def test_accelerate_rejected_build_wasm_static_lib(self):
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--build_wasm_static_lib"),
+            "not supported for WebAssembly builds",
+            platform_name="macos",
+            machine="arm64",
+        )
+
+    def test_accelerate_rejected_rv64(self):
+        self._assert_parser_error(
+            ("--use_apple_accelerate", "--rv64"),
+            "not supported for RISC-V (rv64) builds",
+            platform_name="macos",
+            machine="arm64",
+        )
 
 
 if __name__ == "__main__":
