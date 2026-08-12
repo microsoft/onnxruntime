@@ -13,8 +13,10 @@ namespace cuda {
 struct GatherScatterElementsArgs;
 
 inline Status ValidateGatherElementsElementCount(int64_t element_count) {
-  ORT_RETURN_IF(element_count < 0 || element_count > std::numeric_limits<int32_t>::max(),
-                "CUDA GatherElements supports at most INT32_MAX output elements.");
+  constexpr int64_t max_element_count = std::numeric_limits<int32_t>::max();
+  ORT_RETURN_IF(element_count < 0 || element_count > max_element_count,
+                "CUDA GatherElements output element count ", element_count,
+                " is outside the supported range [0, ", max_element_count, "].");
   return Status::OK();
 }
 

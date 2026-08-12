@@ -10,6 +10,8 @@
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_CUDA
+#include <limits>
+
 #include "core/providers/cuda/tensor/gather_elements.h"
 #endif
 
@@ -26,7 +28,10 @@ TEST(GatherElementsOpTest, CudaElementCountRange) {
   EXPECT_FALSE(cuda::ValidateGatherElementsElementCount(
                    static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1)
                    .IsOK());
-  EXPECT_FALSE(cuda::ValidateGatherElementsElementCount(4294967301LL).IsOK());
+  const auto status = cuda::ValidateGatherElementsElementCount(4294967301LL);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("4294967301"), std::string::npos);
+  EXPECT_NE(status.ErrorMessage().find("2147483647"), std::string::npos);
 }
 #endif
 
