@@ -75,4 +75,6 @@ inline bool Int8TensorProto2Uint8(
 extern bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
                                 size_t weights_idx, size_t weight_zp_idx);
 
+void SetOptionalInput(Graph& graph, Node& node, size_t input_idx, NodeArg& input);
+
 }  // namespace onnxruntime::QDQ

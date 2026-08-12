@@ -54,6 +54,45 @@ static Status RunModel(ModelTestBuilder& helper, const std::string& model_data,
   return Status::OK();
 }
 
+TEST(CPU_U8S8_Precision_Tests, MatMulIntegerOmittedZeroPoints) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<uint8_t>({1, 2}, {1, 2});
+    auto* input_b = builder.MakeInitializer<int8_t>({2, 1}, {-128, 127});
+    auto* output = builder.MakeOutput();
+    builder.AddNode("MatMulInteger", {input_a, input_b}, {output});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    const Node* matmul = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "MatMulInteger") {
+        matmul = &node;
+        break;
+      }
+    }
+
+    ORT_RETURN_IF_NOT(matmul != nullptr, "MatMulInteger node was not found");
+    const auto& input_defs = matmul->InputDefs();
+    ORT_RETURN_IF_NOT(input_defs.size() == 4, "Expected all MatMulInteger optional input slots");
+    ORT_RETURN_IF_NOT(!input_defs[2]->Exists(), "Expected omitted A zero point input");
+    ORT_RETURN_IF_NOT(matmul->InputArgCount() == std::vector<int>({1, 1, 1, 1}),
+              "Expected synchronized MatMulInteger input counts");
+
+    const ONNX_NAMESPACE::TensorProto* weight_zp = nullptr;
+    ORT_RETURN_IF_NOT(input_defs[3]->Exists() &&
+                          graph.GetInitializedTensor(input_defs[3]->Name(), weight_zp) &&
+                          weight_zp->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                      "Expected generated uint8 B zero point input");
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<Avx2WeightS8ToU8Transformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 10, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 template <typename WeightType>
 void BuildMatMulIntegerToFloatGraph(ModelTestBuilder& helper,
                                     const std::vector<int64_t> A_dims, const std::vector<int64_t> B_dims,

@@ -73,7 +73,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 
   const ONNX_NAMESPACE::TensorProto* weight_zp_tensor_proto = nullptr;
   const auto* zp_def = input_defs.size() <= w_zp_idx ? nullptr : input_defs[w_zp_idx];
-  if (nullptr != zp_def) {
+  if (nullptr != zp_def && zp_def->Exists()) {
     if (!graph_utils::NodeArgIsConstant(graph, *zp_def) ||
         !graph.GetInitializedTensor(zp_def->Name(), weight_zp_tensor_proto) ||
         weight_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
@@ -85,9 +85,9 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 
   const ONNX_NAMESPACE::TensorProto* r_zp_tensor_proto = nullptr;
   const auto* rzp_def = input_defs.size() <= r_zp_idx ? nullptr : input_defs[r_zp_idx];
-  if (nullptr != rzp_def) {
-    if (!graph_utils::NodeArgIsConstant(graph, *input_defs[r_zp_idx]) ||
-        !graph.GetInitializedTensor(input_defs[r_zp_idx]->Name(), r_zp_tensor_proto) ||
+  if (nullptr != rzp_def && rzp_def->Exists()) {
+    if (!graph_utils::NodeArgIsConstant(graph, *rzp_def) ||
+      !graph.GetInitializedTensor(rzp_def->Name(), r_zp_tensor_proto) ||
         r_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
       LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
                             << " unable to locate recurrence tensor or its zero point value,"
@@ -137,7 +137,8 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
   QDQ::Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
-  input_defs[w_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8);
+  QDQ::SetOptionalInput(graph, op_node, w_zp_idx,
+                        graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8));
 
   ONNX_NAMESPACE::TensorProto r_proto_u8;
   r_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
@@ -148,7 +149,8 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 
   ONNX_NAMESPACE::TensorProto r_zp_proto_u8;
   QDQ::Int8TensorProto2Uint8(r_zp_tensor_proto, r_zp_proto_u8, graph, true);
-  input_defs[r_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, r_zp_proto_u8);
+  QDQ::SetOptionalInput(graph, op_node, r_zp_idx,
+                        graph_utils::AddInitializerWithOrtValue(graph, r_zp_proto_u8));
 
   return true;
 }
