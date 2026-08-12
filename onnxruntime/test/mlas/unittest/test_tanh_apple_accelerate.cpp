@@ -35,11 +35,22 @@ constexpr float kRelativeTolerance = 1e-6f;
 // for several of these special/denormal/near-zero test inputs, is
 // indistinguishable from a genuinely correct answer (tanh(+/-0) == +/-0,
 // and an FTZ-flushed near-zero result may also be exactly 0.0f) -- so a
-// no-write bug could pass silently. NaN is never a valid non-NaN-input
-// output (ExpectIeeeTanhSemantics/ExpectDenormalCompatibleSemantics both
-// call std::isnan on the result first), so any element a kernel fails to
-// overwrite is guaranteed to fail loudly instead.
-constexpr float kPoisonNaN = std::numeric_limits<float>::quiet_NaN();
+// no-write bug could pass silently.
+//
+// This is deliberately a FINITE, out-of-range sentinel (not NaN). tanh's
+// real range is [-1, 1] for every finite/infinite input, so any finite
+// magnitude far outside that range can never be a genuinely correct output
+// and is guaranteed to fail loudly if a kernel leaves it unwritten. A NaN
+// poison value was tried first and had a real no-write hole: for the two
+// NaN *inputs* in MakeSpecialValueInputs (quiet_NaN, signaling_NaN),
+// ExpectIeeeTanhSemantics's own contract requires NaN *output*, so an
+// unwritten NaN-poisoned buffer would satisfy std::isnan(value) and the
+// test would pass even though the kernel never wrote anything -- silently
+// defeating the entire poison mechanism for exactly the inputs it most
+// needs to guard. This finite sentinel has no such blind spot: it is
+// unequal to every expected output (NaN, +/-1.0f, +/-0.0f, or any
+// magnitude bounded by the input for the denormal/near-zero cases).
+constexpr float kPoisonValue = 123456.75f;
 
 // MlasTanhKernel (the portable polynomial reference) is the parity baseline
 // for ORDINARY FINITE inputs: it is the exact implementation this Apple path
@@ -134,26 +145,51 @@ std::vector<float> MakeSpecialValueInputs() {
   };
 }
 
-// Smallest-magnitude subnormal (denormal) inputs, plus the smallest normal
-// magnitude (FLT_MIN), in both signs. These probe two divergent behaviors
-// real hardware/libm implementations are free to choose between for tiny
-// inputs: an IEEE-correctly-rounded tanh(x) that rounds to exactly x (the
-// -x^3/3 correction term is unrepresentably smaller than one ULP at these
-// magnitudes), or a flush-to-zero (FTZ) implementation that treats a
-// subnormal input/result as zero. Asserted via
+// Smallest-magnitude subnormal (denormal) inputs only, in both signs.
+// FLT_MIN (the smallest positive *normal* float) is deliberately NOT
+// included here -- see MakeSmallestNormalInputs and
+// ExpectSmallestNormalSemantics below. These probe two divergent behaviors
+// real hardware/libm implementations are free to choose between for
+// subnormal inputs: an IEEE-correctly-rounded tanh(x) that rounds to
+// exactly x (the -x^3/3 correction term is unrepresentably smaller than
+// one ULP at these magnitudes), or a flush-to-zero (FTZ) implementation
+// that treats a subnormal input/result as zero. Asserted via
 // ExpectDenormalCompatibleSemantics, which intentionally only checks the
 // invariants true under EITHER behavior -- see that function's comment.
 std::vector<float> MakeDenormalInputs() {
   return {
       std::numeric_limits<float>::denorm_min(),   // smallest positive subnormal
       -std::numeric_limits<float>::denorm_min(),  // smallest negative subnormal
-      std::numeric_limits<float>::min(),          // smallest positive normal (FLT_MIN)
-      -std::numeric_limits<float>::min(),         // smallest negative normal (FLT_MIN)
+  };
+}
+
+// +/-FLT_MIN: the smallest positive *normal* float (and its negation). This
+// is intentionally kept separate from MakeDenormalInputs -- FLT_MIN is not
+// a subnormal value, so unlike true denormals, an implementation has no
+// FTZ (flush-to-zero) license here: FTZ modes flush subnormal inputs and
+// results, not normal ones, so a compliant implementation must not zero
+// this input or its result. tanh(x) evaluated in exact real arithmetic at
+// x = FLT_MIN is FLT_MIN - FLT_MIN^3/3 + O(FLT_MIN^5); FLT_MIN^3 is itself
+// far below FLT_MIN's own ULP (roughly 2^-126 vs. an ULP of roughly
+// 2^-149 at this magnitude relative to the correction term's exponent, so
+// the correction is many orders of magnitude smaller than one ULP of
+// FLT_MIN), so the correctly-rounded float32 result is exactly FLT_MIN.
+// Asserted strictly via ExpectSmallestNormalSemantics (exact value, sign
+// preserved), not the either/or FTZ-tolerant assertion used for true
+// denormals.
+std::vector<float> MakeSmallestNormalInputs() {
+  return {
+      std::numeric_limits<float>::min(),   // smallest positive normal (FLT_MIN)
+      -std::numeric_limits<float>::min(),  // smallest negative normal (FLT_MIN)
   };
 }
 
 // Asserts only the invariants that hold under BOTH plausible hardware
-// behaviors for a denormal/near-zero input:
+// behaviors for a TRUE DENORMAL (subnormal) input -- see MakeDenormalInputs.
+// Do NOT use this for +/-FLT_MIN (a normal value): see
+// ExpectSmallestNormalSemantics, which asserts strict/exact semantics
+// instead, since flush-to-zero is not a legitimate rationale for a normal
+// input.
 //   * IEEE-correctly-rounded: tanh(x) rounds to exactly x for |x| this
 //     small, so output == input (magnitude unchanged, sign preserved) is a
 //     valid outcome.
@@ -191,6 +227,22 @@ void ExpectDenormalCompatibleSemantics(float value, float input) {
   // flush-to-zero, and which sign convention if flushed to zero) this
   // build/hardware actually exhibits.
   std::cerr << "[ TanhAppleAccelerate denormal observation ] input=" << input << " output=" << value << "\n";
+}
+
+// Asserts strict, exact semantics for +/-FLT_MIN (the smallest positive
+// normal float and its negation) -- see MakeSmallestNormalInputs for why
+// this is NOT the FTZ-tolerant either/or check used for true denormals.
+// FLT_MIN is a normal value, so a flush-to-zero rationale does not apply:
+// the correctly-rounded float32 tanh(FLT_MIN) is exactly FLT_MIN (the
+// -x^3/3 correction term is many orders of magnitude below one ULP of
+// FLT_MIN), so this requires exact equality and sign preservation, not a
+// tolerance.
+void ExpectSmallestNormalSemantics(float value, float input) {
+  EXPECT_EQ(value, input) << "input=" << input << " (+/-FLT_MIN, smallest normal float -- not a denormal, so "
+                          << "flush-to-zero is not a valid rationale here), expected output to round to "
+                          << "exactly the input, got " << value;
+  EXPECT_EQ(std::signbit(value), std::signbit(input))
+      << "input=" << input << " (+/-FLT_MIN), expected sign preserved, got signbit=" << std::signbit(value);
 }
 
 }  // namespace
@@ -312,8 +364,8 @@ TEST(TanhAppleAccelerate, SpecialValuesSemanticsSingleElement) {
   for (float value : MakeSpecialValueInputs()) {
     // Poison-initialized (not 0.0f): tanh(+/-0) == +/-0, so a 0.0f-init
     // buffer could not distinguish "kernel wrote the correct answer" from
-    // "kernel never wrote anything". See kPoisonNaN's comment.
-    float output = kPoisonNaN;
+    // "kernel never wrote anything". See kPoisonValue's comment.
+    float output = kPoisonValue;
     MlasTanhKernelAppleAccelerate(&value, &output, 1);
     ExpectIeeeTanhSemantics(output, value);
   }
@@ -337,37 +389,55 @@ TEST(TanhAppleAccelerate, SpecialValuesSemanticsScalarTailBuffer) {
     // Poison-initialized (not 0.0f) for the same reason as the
     // single-element test above: tanh(+/-0) == +/-0, so a 0.0f-init
     // buffer could mask a kernel that never wrote the middle element.
-    std::array<float, 3> apple_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
+    std::array<float, 3> apple_output = {kPoisonValue, kPoisonValue, kPoisonValue};
     MlasTanhKernelAppleAccelerate(input.data(), apple_output.data(), input.size());
 
     ExpectIeeeTanhSemantics(apple_output[1], input[1]);
 
     // The ordinary finite neighbors must still match the portable baseline,
     // confirming the special value did not corrupt adjacent lanes.
-    std::array<float, 3> portable_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
+    std::array<float, 3> portable_output = {kPoisonValue, kPoisonValue, kPoisonValue};
     MlasTanhKernel(input.data(), portable_output.data(), input.size());
     ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
     ExpectMatchesPortableKernel(apple_output[2], portable_output[2], input[2]);
   }
 }
 
-// Direct semantic coverage for denormal (subnormal) and smallest-normal
-// (+/-FLT_MIN) inputs at the smallest possible buffer size (N=1). Unlike
-// the NaN/Inf/signed-zero cases above, real hardware/libm implementations
-// are free to choose between IEEE-exact tanh(x)~=x passthrough and
-// flush-to-zero (FTZ) for values this tiny, so this only asserts the
-// invariants both behaviors share (see ExpectDenormalCompatibleSemantics);
-// it does not assert a specific vForce behavior we have not observed on
-// real Apple Silicon.
+// Direct semantic coverage for TRUE DENORMAL (subnormal) inputs at the
+// smallest possible buffer size (N=1). Unlike the NaN/Inf/signed-zero cases
+// above, real hardware/libm implementations are free to choose between
+// IEEE-exact tanh(x)~=x passthrough and flush-to-zero (FTZ) for values this
+// tiny, so this only asserts the invariants both behaviors share (see
+// ExpectDenormalCompatibleSemantics); it does not assert a specific vForce
+// behavior we have not observed on real Apple Silicon. +/-FLT_MIN (a
+// normal, not subnormal, value) is intentionally NOT covered by this test
+// -- see SmallestNormalSemanticsSingleElement below, which asserts strict
+// semantics instead since FTZ is not a valid rationale for a normal input.
 TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsSingleElement) {
   for (float value : MakeDenormalInputs()) {
     // Poison-initialized (not 0.0f): a flush-to-zero result is a valid
     // outcome here (see ExpectDenormalCompatibleSemantics), so a 0.0f-init
     // buffer could not distinguish a real FTZ-to-zero result from the
     // kernel never having written anything.
-    float output = kPoisonNaN;
+    float output = kPoisonValue;
     MlasTanhKernelAppleAccelerate(&value, &output, 1);
     ExpectDenormalCompatibleSemantics(output, value);
+  }
+}
+
+// Direct semantic coverage for +/-FLT_MIN (the smallest positive normal
+// float) at the smallest possible buffer size (N=1). Deliberately separate
+// from the true-denormal test above: FLT_MIN is a normal value, so unlike
+// true subnormals, a flush-to-zero rationale does not apply, and this
+// asserts strict/exact semantics via ExpectSmallestNormalSemantics instead
+// of the either/or FTZ-tolerant check.
+TEST(TanhAppleAccelerate, SmallestNormalSemanticsSingleElement) {
+  for (float value : MakeSmallestNormalInputs()) {
+    // Poison-initialized (not 0.0f) for the same no-write-detection reason
+    // as the other single-element tests above.
+    float output = kPoisonValue;
+    MlasTanhKernelAppleAccelerate(&value, &output, 1);
+    ExpectSmallestNormalSemantics(output, value);
   }
 }
 
@@ -387,7 +457,7 @@ TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsScalarTailBuffer) {
     // single-element test above: a flush-to-zero result is a valid
     // outcome, so a 0.0f-init buffer could mask a kernel that never wrote
     // the middle element.
-    std::array<float, 3> apple_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
+    std::array<float, 3> apple_output = {kPoisonValue, kPoisonValue, kPoisonValue};
     MlasTanhKernelAppleAccelerate(input.data(), apple_output.data(), input.size());
 
     ExpectDenormalCompatibleSemantics(apple_output[1], input[1]);
@@ -395,7 +465,31 @@ TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsScalarTailBuffer) {
     // The ordinary finite neighbors must still match the portable
     // baseline, confirming the denormal/near-zero value did not corrupt
     // adjacent lanes.
-    std::array<float, 3> portable_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
+    std::array<float, 3> portable_output = {kPoisonValue, kPoisonValue, kPoisonValue};
+    MlasTanhKernel(input.data(), portable_output.data(), input.size());
+    ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
+    ExpectMatchesPortableKernel(apple_output[2], portable_output[2], input[2]);
+  }
+}
+
+// Same +/-FLT_MIN coverage as SmallestNormalSemanticsSingleElement above,
+// at a buffer size (N=3) not a multiple of the portable kernel's SIMD
+// width, flanked by ordinary finite neighbors, to also catch a kernel bug
+// where this value corrupts adjacent lanes.
+TEST(TanhAppleAccelerate, SmallestNormalSemanticsScalarTailBuffer) {
+  constexpr float kLeftNeighbor = 1.25f;
+  constexpr float kRightNeighbor = -3.5f;
+
+  for (float smallest_normal_value : MakeSmallestNormalInputs()) {
+    std::array<float, 3> input = {kLeftNeighbor, smallest_normal_value, kRightNeighbor};
+    std::array<float, 3> apple_output = {kPoisonValue, kPoisonValue, kPoisonValue};
+    MlasTanhKernelAppleAccelerate(input.data(), apple_output.data(), input.size());
+
+    ExpectSmallestNormalSemantics(apple_output[1], input[1]);
+
+    // The ordinary finite neighbors must still match the portable
+    // baseline, confirming this value did not corrupt adjacent lanes.
+    std::array<float, 3> portable_output = {kPoisonValue, kPoisonValue, kPoisonValue};
     MlasTanhKernel(input.data(), portable_output.data(), input.size());
     ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
     ExpectMatchesPortableKernel(apple_output[2], portable_output[2], input[2]);
