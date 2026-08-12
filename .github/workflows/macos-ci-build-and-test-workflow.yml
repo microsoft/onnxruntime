@@ -163,4 +163,22 @@ jobs:
         run: |
           set -e -x
           ls -l ./onnxruntime_mlas_test
+
+          # A gtest binary invoked with --gtest_filter that matches zero
+          # tests still exits 0 -- it "ran" a suite of nothing and reports
+          # success. That would make this whole step a silent no-op if the
+          # TanhAppleAccelerate.* suite were ever absent from this binary
+          # (e.g. test_tanh_apple_accelerate.cpp not compiled in because
+          # MLAS_USE_APPLE_ACCELERATE/__APPLE__/MLAS_TARGET_ARM64 didn't all
+          # evaluate true), and this CI lane would appear green while
+          # providing zero real coverage. Enumerate the filtered suite
+          # first and fail loudly if it is empty, instead of trusting the
+          # runner's own exit code.
+          listed_tests="$(./onnxruntime_mlas_test --gtest_filter="TanhAppleAccelerate.*" --gtest_list_tests)"
+          echo "${listed_tests}"
+          if ! grep -q "TanhAppleAccelerate" <<< "${listed_tests}"; then
+            echo "::error::onnxruntime_mlas_test --gtest_filter='TanhAppleAccelerate.*' matched zero tests (see --gtest_list_tests output above). This means test_tanh_apple_accelerate.cpp was not compiled into onnxruntime_mlas_test on this job -- check that MLAS_USE_APPLE_ACCELERATE, __APPLE__, and MLAS_TARGET_ARM64 all evaluate true for this build -- so the Apple Accelerate Tanh kernel has zero test coverage despite this step appearing to pass. Failing loudly instead of silently succeeding with 0 tests run." >&2
+            exit 1
+          fi
+
           ./onnxruntime_mlas_test --gtest_filter="TanhAppleAccelerate.*"

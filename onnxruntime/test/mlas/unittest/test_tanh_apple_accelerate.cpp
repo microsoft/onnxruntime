@@ -18,6 +18,7 @@
 
 #include <array>
 #include <cmath>
+#include <iostream>
 #include <limits>
 #include <random>
 #include <vector>
@@ -118,6 +119,54 @@ std::vector<float> MakeSpecialValueInputs() {
       std::numeric_limits<float>::quiet_NaN(),
       std::numeric_limits<float>::signaling_NaN(),
   };
+}
+
+// Smallest-magnitude subnormal (denormal) inputs, plus the smallest normal
+// magnitude (FLT_MIN), in both signs. These probe two divergent behaviors
+// real hardware/libm implementations are free to choose between for tiny
+// inputs: an IEEE-correctly-rounded tanh(x) that rounds to exactly x (the
+// -x^3/3 correction term is unrepresentably smaller than one ULP at these
+// magnitudes), or a flush-to-zero (FTZ) implementation that treats a
+// subnormal input/result as zero. Asserted via
+// ExpectDenormalCompatibleSemantics, which intentionally only checks the
+// invariants true under EITHER behavior -- see that function's comment.
+std::vector<float> MakeDenormalInputs() {
+  return {
+      std::numeric_limits<float>::denorm_min(),   // smallest positive subnormal
+      -std::numeric_limits<float>::denorm_min(),  // smallest negative subnormal
+      std::numeric_limits<float>::min(),          // smallest positive normal (FLT_MIN)
+      -std::numeric_limits<float>::min(),         // smallest negative normal (FLT_MIN)
+  };
+}
+
+// Asserts only the invariants that hold under BOTH plausible hardware
+// behaviors for a denormal/near-zero input:
+//   * IEEE-correctly-rounded: tanh(x) rounds to exactly x for |x| this
+//     small, so output == input (magnitude unchanged, sign preserved) is a
+//     valid outcome.
+//   * Flush-to-zero (FTZ): a fast-math/vector-unit implementation may treat
+//     a subnormal input (or a subnormal result) as zero, so output == 0
+//     with the sign of the input is also a valid outcome.
+// We deliberately do NOT assert which of these vForce actually does on
+// real Apple Silicon -- that would be inventing unverified hardware
+// behavior, which no Apple hardware is available in this environment to
+// confirm. Instead this asserts only what both behaviors share: never NaN,
+// sign preserved (tanh is odd; FTZ-to-zero still carries the input's
+// sign), and magnitude never amplified beyond the input's. The actual
+// value is printed (not merely asserted past) so a run on real hardware
+// makes which behavior applies observable.
+void ExpectDenormalCompatibleSemantics(float value, float input) {
+  EXPECT_FALSE(std::isnan(value)) << "input=" << input << " (denormal/near-zero), got NaN output";
+  EXPECT_EQ(std::signbit(value), std::signbit(input))
+      << "input=" << input << ", expected sign preserved (IEEE-exact tanh(x)~=x is odd, and "
+      << "flush-to-zero still carries the input's sign), got signbit=" << std::signbit(value);
+  EXPECT_LE(std::fabs(value), std::fabs(input))
+      << "input=" << input << ", expected |output| <= |input| (both IEEE-exact tanh(x)~=x and "
+      << "flush-to-zero satisfy this), got |output|=" << std::fabs(value);
+  // Not an assertion -- recorded so a human running this on real hardware
+  // can see which of the two behaviors (IEEE-exact passthrough vs.
+  // flush-to-zero) this build/hardware actually exhibits.
+  std::cerr << "[ TanhAppleAccelerate denormal observation ] input=" << input << " output=" << value << "\n";
 }
 
 }  // namespace
@@ -265,6 +314,49 @@ TEST(TanhAppleAccelerate, SpecialValuesSemanticsScalarTailBuffer) {
 
     // The ordinary finite neighbors must still match the portable baseline,
     // confirming the special value did not corrupt adjacent lanes.
+    std::array<float, 3> portable_output = {0.0f, 0.0f, 0.0f};
+    MlasTanhKernel(input.data(), portable_output.data(), input.size());
+    ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
+    ExpectMatchesPortableKernel(apple_output[2], portable_output[2], input[2]);
+  }
+}
+
+// Direct semantic coverage for denormal (subnormal) and smallest-normal
+// (+/-FLT_MIN) inputs at the smallest possible buffer size (N=1). Unlike
+// the NaN/Inf/signed-zero cases above, real hardware/libm implementations
+// are free to choose between IEEE-exact tanh(x)~=x passthrough and
+// flush-to-zero (FTZ) for values this tiny, so this only asserts the
+// invariants both behaviors share (see ExpectDenormalCompatibleSemantics);
+// it does not assert a specific vForce behavior we have not observed on
+// real Apple Silicon.
+TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsSingleElement) {
+  for (float value : MakeDenormalInputs()) {
+    float output = 0.0f;
+    MlasTanhKernelAppleAccelerate(&value, &output, 1);
+    ExpectDenormalCompatibleSemantics(output, value);
+  }
+}
+
+// Same denormal/near-zero coverage at a buffer size (N=3) not a multiple of
+// the portable kernel's SIMD width, with the denormal/near-zero value
+// flanked by ordinary finite neighbors, to also catch a kernel bug where a
+// tiny-magnitude value corrupts adjacent lanes (e.g. an indexing or
+// chunking off-by-one, or an FTZ mode applied to the whole vector register
+// rather than per-lane).
+TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsScalarTailBuffer) {
+  constexpr float kLeftNeighbor = 1.25f;
+  constexpr float kRightNeighbor = -3.5f;
+
+  for (float denormal_value : MakeDenormalInputs()) {
+    std::array<float, 3> input = {kLeftNeighbor, denormal_value, kRightNeighbor};
+    std::array<float, 3> apple_output = {0.0f, 0.0f, 0.0f};
+    MlasTanhKernelAppleAccelerate(input.data(), apple_output.data(), input.size());
+
+    ExpectDenormalCompatibleSemantics(apple_output[1], input[1]);
+
+    // The ordinary finite neighbors must still match the portable
+    // baseline, confirming the denormal/near-zero value did not corrupt
+    // adjacent lanes.
     std::array<float, 3> portable_output = {0.0f, 0.0f, 0.0f};
     MlasTanhKernel(input.data(), portable_output.data(), input.size());
     ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
