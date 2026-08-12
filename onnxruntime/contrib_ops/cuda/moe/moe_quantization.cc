@@ -211,8 +211,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               row_tile_size_source, " must be 0 (disabled) or an integer in [1, ",
               std::numeric_limits<int>::max(), "], got ", row_tile_size_, ".");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
-              "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 2,
+              "expert_weight_bits must be 2, 4, or 8, but got ", expert_weight_bits_);
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
@@ -255,6 +255,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
               "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
   weights_prepacked_ = (weights_prepacked_mode != 0);
+  // 2-bit int weights have no offline CUTLASS-prepack tool (cuda_quantizer emits raw [E, N, K/4]
+  // storage), so the fused int2 path always runs PrePackIntExpertWeights to lay them out. Force the
+  // prepack (weights_prepacked=false) regardless of the attribute; the raw layout is the only int2
+  // input format we accept.
+  if (quant_type_ == "int" && expert_weight_bits_ == 2) {
+    weights_prepacked_ = false;
+  }
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "nvfp4", "QMoE quant_type='nvfp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
@@ -511,9 +518,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
     }
   } else {
-    // Integer quantization (INT4/INT8)
+    // Integer quantization (INT2/INT4/INT8): a fused mixed-input grouped GEMM per weight width.
+    // uint2b_t / uint4b_t / uint8_t select the packed weight operand; the SM80 DqMma pipeline
+    // dequantizes in-register via FastInterleavedAndBiasedNumericArrayConverter.
     if (is_fp16) {
-      if (expert_weight_bits_ == 4) {
+      if (expert_weight_bits_ == 2) {
+        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint2b_t, half>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
@@ -523,7 +535,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     }
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
     else {  // BFloat16
-      if (expert_weight_bits_ == 4) {
+      if (expert_weight_bits_ == 2) {
+        m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint2b_t, __nv_bfloat16>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
@@ -608,9 +623,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
   // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
   // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  // GeGLU is gated exactly like SwiGLU (interleaved gate|up fc1, doubled fc1 output); it differs only
+  // in the gate nonlinearity, which is handled downstream by the activation kernel. All the gated
+  // layout/shape/fusion machinery below is shared between the two.
+  const bool is_gated_activation =
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu;
+
   int swiglu_fusion = swiglu_fusion_;
-  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
-      swiglu_fusion == 0) {
+  if (is_gated_activation && swiglu_fusion == 0) {
     swiglu_fusion = 1;
     LogQMoESwigluFusionRemapOnce();
   }
@@ -665,8 +686,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
-  int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
-  bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
+  int64_t pack_size = 8 / expert_weight_bits_;
+  bool is_fused_swiglu = is_gated_activation;
   MoEParameters moe_params;
   // Prefer the cached shapes when PrePack consumed the source initializer.
   const TensorShape& fc1_shape = weights_consumed_by_prepack ? fc1_weights_shape_ : fc1_experts_weights->Shape();
@@ -975,8 +996,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       } else if (is_fp8) {
         wtype = use_fp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP8;
       } else {
-        wtype = (expert_weight_bits_ == 4) ? onnxruntime::llm::nvinfer::DataType::kINT4
-                                           : onnxruntime::llm::nvinfer::DataType::kINT8;
+        // INT2 and INT4 both run the SM80 interleaved mixed-input grouped GEMM; there is no kINT2
+        // profiler tag, so 2-bit reuses kINT4 (same layout/workspace class). INT8 uses kINT8.
+        wtype = (expert_weight_bits_ == 8) ? onnxruntime::llm::nvinfer::DataType::kINT8
+                                           : onnxruntime::llm::nvinfer::DataType::kINT4;
       }
 
       using onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId;
@@ -2238,8 +2261,8 @@ void QMoE::PrePackCopyToGpu(const Tensor& tensor, cudaStream_t stream, Allocator
 // kernel-expected ``[E, K, N/(8/bits)]`` layout.
 void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                    IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
-  ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
-              "PrePackIntExpertWeights: only 4 and 8 bits are supported, got ", expert_weight_bits_);
+  ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+              "PrePackIntExpertWeights: only 2, 4 and 8 bits are supported, got ", expert_weight_bits_);
   ORT_ENFORCE(sm_ >= 75,
               "PrePackIntExpertWeights: quant_type='int' with weights_prepacked=0 requires SM75+ CUDA hardware, got SM",
               sm_);
@@ -2290,19 +2313,26 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
     src_base_gpu = reinterpret_cast<const uint8_t*>(tensor.DataRaw());
   }
 
-  IAllocatorUniquePtr<int32_t> permutation_map = this->GetTransientScratchBuffer<int32_t>(32);
+  // The LDSM row-permutation map has get_weight_quant_bits-dependent length: 16 (W8), 32 (W4),
+  // 64 (W2). preprocess_weights_for_mixed_gemm_cuda memcpy's the full map into this buffer, so it
+  // must hold the largest (W2 = 64) to avoid an out-of-bounds copy + OOB read in permute_rows_kernel.
+  IAllocatorUniquePtr<int32_t> permutation_map = this->GetTransientScratchBuffer<int32_t>(64);
 
   using onnxruntime::llm::kernels::weight_only::QuantType;
-  const QuantType quant_type = (bits == 4) ? QuantType::W4_A16 : QuantType::W8_A16;
+  const QuantType quant_type =
+      (bits == 2) ? QuantType::W2_A16 : ((bits == 4) ? QuantType::W4_A16 : QuantType::W8_A16);
 
   for (int64_t e = 0; e < num_experts; ++e) {
     const uint8_t* src_e = src_base_gpu + static_cast<size_t>(e) * per_expert_bytes;
     int8_t* dst_e = dst_all + static_cast<size_t>(e) * per_expert_bytes;
 
-    // Step 1: transpose + (for int4) unpack/zero-point bias into the
-    // transposed-int8 scratch buffer. Mirrors MatMulNBits's PrePack_B.
+    // Step 1: transpose + (for int4/int2) unpack/zero-point bias into the
+    // transposed sub-byte scratch buffer. Mirrors MatMulNBits's PrePack_B.
     if (bits == 4) {
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
+          stream, transposed_scratch_ptr, src_e, static_cast<int>(n), static_cast<int>(k));
+    } else if (bits == 2) {
+      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint2_transposed_to_int2_direct_cuda(
           stream, transposed_scratch_ptr, src_e, static_cast<int>(n), static_cast<int>(k));
     } else {
       onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
