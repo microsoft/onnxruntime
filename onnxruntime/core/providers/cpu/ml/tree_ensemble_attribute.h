@@ -244,7 +244,8 @@ struct TreeEnsembleAttributesV5 {
     size_t curr_id = 0;
     for (const auto node_mode : nodes_modes) {
       membership_values_by_id.emplace_back();
-      if (node_mode != NODE_MODE_ONNX::BRANCH_MEMBER) {
+      if (node_mode != NODE_MODE_ONNX::BRANCH_MEMBER &&
+          node_mode != NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET) {
         continue;
       }
 
@@ -338,6 +339,10 @@ struct TreeEnsembleAttributesV5 {
         visited_nodes[curr_id] = true;
 
         const auto mode = nodes_modes[curr_id];
+        ORT_ENFORCE((mode != NODE_MODE_ONNX::BRANCH_MEMBER &&
+                     mode != NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET) ||
+                        !membership_values_by_id[curr_id].empty(),
+                    "TreeEnsemble membership node ", curr_id, " must have at least one membership value.");
         ORT_ENFORCE(mode == NODE_MODE_ONNX::BRANCH_MEMBER ||
                         mode == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET ||
                         curr_id < nodes_splits.size(),
@@ -472,15 +477,21 @@ struct TreeEnsembleAttributesV5 {
     int64_t curr_treeid = 0;
     for (const int64_t& tree_root : tree_roots) {
       ORT_ENFORCE(tree_root >= 0 &&
+                      static_cast<uint64_t>(tree_root) < nodes_modes.size() &&
+                      static_cast<uint64_t>(tree_root) < nodes_featureids.size() &&
                       static_cast<uint64_t>(tree_root) < nodes_falsenodeids.size() &&
                       static_cast<uint64_t>(tree_root) < nodes_falseleafs.size() &&
                       static_cast<uint64_t>(tree_root) < nodes_truenodeids.size() &&
-                      static_cast<uint64_t>(tree_root) < nodes_trueleafs.size(),
+                      static_cast<uint64_t>(tree_root) < nodes_trueleafs.size() &&
+                      static_cast<uint64_t>(tree_root) < membership_values_by_id.size(),
                   "TreeEnsemble tree_roots contains out-of-range node index ", tree_root, ".");
       const size_t tree_root_size_t = static_cast<size_t>(tree_root);
       bool is_leaf = (nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t] &&
                       nodes_falseleafs[tree_root_size_t] && nodes_trueleafs[tree_root_size_t]);
-      transformInputOneTree(tree_root_size_t, curr_treeid, 0,
+      const int64_t root_reference = is_leaf ? nodes_falsenodeids[tree_root_size_t] : tree_root;
+      ORT_ENFORCE(root_reference >= 0,
+          "TreeEnsemble tree root ", tree_root, " references negative leaf index ", root_reference, ".");
+      transformInputOneTree(onnxruntime::narrow<size_t>(root_reference), curr_treeid, 0,
                             is_leaf,
                             membership_values_by_id, output);
       curr_treeid++;
