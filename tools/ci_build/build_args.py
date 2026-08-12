@@ -689,6 +689,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable riscv64 MLAS kernels that use the RISC-V Vector extension.",
     )
+    cpu_group.add_argument(
+        "--use_apple_accelerate",
+        action="store_true",
+        help="Enable Apple Accelerate framework in MLAS (macOS arm64 only).",
+    )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
@@ -755,13 +760,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- CoreML ---
     coreml_group = parser.add_argument_group("CoreML Execution Provider (Apple)")
     coreml_group.add_argument("--use_coreml", action="store_true", help="Enable CoreML EP (Apple platforms).")
-
-    # --- Apple Accelerate ---
-    parser.add_argument(
-        "--use_apple_accelerate",
-        action="store_true",
-        help="Enable Apple Accelerate framework in MLAS (macOS arm64 only).",
-    )
 
     # --- QNN ---
     qnn_group = parser.add_argument_group("QNN Execution Provider (Qualcomm)")

@@ -1178,6 +1178,9 @@ if(onnxruntime_USE_APPLE_ACCELERATE)
     message(FATAL_ERROR "Apple Accelerate framework not found. Ensure you are building on macOS arm64 with an Apple SDK.")
   endif()
   target_link_libraries(onnxruntime_mlas PRIVATE ${APPLE_ACCELERATE_LIB})
+  # N2: Observable contract — follow-up kernel PRs gate on this define.
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_APPLE_ACCELERATE=1)
+  message(STATUS "MLAS: Apple Accelerate framework linked; MLAS_USE_APPLE_ACCELERATE=1 defined")
 endif()
 
 # set up source group for MLAS source files

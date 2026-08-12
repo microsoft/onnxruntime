@@ -614,13 +614,32 @@ if(onnxruntime_USE_KLEIDIAI)
 endif()
 
 if(onnxruntime_USE_APPLE_ACCELERATE)
-  if(NOT APPLE)
-    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE was set but it is not supported on this platform (requires macOS arm64). It will be disabled.")
-    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
-  elseif(NOT onnxruntime_target_platform STREQUAL "arm64")
-    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires arm64 (Apple Silicon). It will be disabled on this architecture.")
-    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  # N1: Gate on macOS (Darwin) specifically, not APPLE (which includes iOS/tvOS/visionOS).
+  # B1: Detect arm64 robustly — CMAKE_OSX_ARCHITECTURES can be defined-but-empty on a
+  #     plain `cmake` configure, which leaves onnxruntime_target_platform unset.
+  #     Check CMAKE_OSX_ARCHITECTURES first; fall back to CMAKE_SYSTEM_PROCESSOR.
+  set(_ort_apple_accel_arch "")
+  if(DEFINED CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
+    list(LENGTH CMAKE_OSX_ARCHITECTURES _osx_arch_len)
+    if(_osx_arch_len EQUAL 1)
+      set(_ort_apple_accel_arch "${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+  elseif(CMAKE_SYSTEM_PROCESSOR)
+    set(_ort_apple_accel_arch "${CMAKE_SYSTEM_PROCESSOR}")
   endif()
+
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires macOS (Darwin). It will be disabled on ${CMAKE_SYSTEM_NAME}.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  elseif(NOT (_ort_apple_accel_arch STREQUAL "arm64" OR _ort_apple_accel_arch STREQUAL "arm64e"))
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires arm64 (Apple Silicon). Detected arch: '${_ort_apple_accel_arch}'. It will be disabled.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  else()
+    message(STATUS "onnxruntime_USE_APPLE_ACCELERATE enabled for macOS ${_ort_apple_accel_arch}")
+  endif()
+
+  unset(_ort_apple_accel_arch)
+  unset(_osx_arch_len)
 endif()
 
 #Dependencies begin

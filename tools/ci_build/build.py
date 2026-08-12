@@ -879,6 +879,8 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.use_apple_accelerate:
+        if not is_macOS():
+            raise BuildError("--use_apple_accelerate is only supported on macOS arm64 (Apple Silicon).")
         cmake_args += ["-Donnxruntime_USE_APPLE_ACCELERATE=ON"]
 
     if args.use_webnn:
