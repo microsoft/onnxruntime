@@ -8,9 +8,11 @@ Kernel implementation for rotary embeddings.
 */
 
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
+
 #include <cuda_fp16.h>
-#include <limits>
+
+#include "core/common/safeint.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 using namespace onnxruntime::cuda;
 
@@ -141,27 +143,23 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
                                    const int rotary_embedding_dim, const int max_sequence_length,
                                    const int position_ids_format, const bool interleaved,
                                    const int max_threads_per_block, const bool is_input_bnsh_format) {
-  // Guard the packed strides themselves: these products are computed in int and are what the
-  // kernel offsets are built from.
-  ORT_RETURN_IF_NOT(static_cast<int64_t>(num_heads) * sequence_length * head_size <=
-                        static_cast<int64_t>(std::numeric_limits<int>::max()),
+  int sequence_stride;
+  int batch_stride;
+  int heads_stride;
+  ORT_RETURN_IF_NOT(SafeMultiply(sequence_length, head_size, sequence_stride) &&
+                        SafeMultiply(num_heads, sequence_stride, batch_stride),
                     "RotaryEmbedding: num_heads * sequence_length * head_size overflows int32");
-  ORT_RETURN_IF_NOT(static_cast<int64_t>(num_heads) * head_size <=
-                        static_cast<int64_t>(std::numeric_limits<int>::max()),
+  ORT_RETURN_IF_NOT(SafeMultiply(num_heads, head_size, heads_stride),
                     "RotaryEmbedding: num_heads * head_size overflows int32");
 
   int4 in_strides;
   int4 out_strides;
   if (is_input_bnsh_format) {
-    int in_head_stride = sequence_length * head_size;
-    int out_head_stride = sequence_length * head_size;
-    in_strides = int4{num_heads * in_head_stride, in_head_stride, in_head_stride / sequence_length, 1};
-    out_strides = int4{num_heads * out_head_stride, out_head_stride, out_head_stride / sequence_length, 1};
+    in_strides = int4{batch_stride, sequence_stride, head_size, 1};
+    out_strides = int4{batch_stride, sequence_stride, head_size, 1};
   } else {
-    int in_head_stride = head_size;
-    int out_head_stride = head_size;
-    in_strides = int4{sequence_length * num_heads * in_head_stride, in_head_stride, num_heads * in_head_stride, 1};
-    out_strides = int4{sequence_length * num_heads * out_head_stride, out_head_stride, num_heads * out_head_stride, 1};
+    in_strides = int4{batch_stride, head_size, heads_stride, 1};
+    out_strides = int4{batch_stride, head_size, heads_stride, 1};
   }
   return LaunchRotaryEmbeddingKernel<T>(
       stream, output, input, position_ids, past_sequence_lengths,
