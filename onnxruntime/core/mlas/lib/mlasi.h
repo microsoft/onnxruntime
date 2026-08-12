@@ -451,7 +451,7 @@ size_t
 
 #else
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
     const float* A,
     const bfloat16_t* B,
@@ -1075,7 +1075,7 @@ typedef void(MLASCALL MLAS_QNBIT_GEMM_BATCH_OVERRIDE)(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 typedef
 bool
 (MLASCALL MLAS_SBGEMM_BATCH_OVERRIDE)(
@@ -1278,7 +1278,7 @@ extern "C" {
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
@@ -1523,7 +1523,7 @@ MlasReorderOutputNchwBlock16Avx512F(
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 #define MLAS_HGEMM_THREAD_COMPLEXITY                65536
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
 #endif
 
@@ -1788,7 +1788,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
     MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;
     MLAS_SBGEMM_PACK_B_SIZE_OVERRIDE* MlasSBGemmPackBSizeOverride = nullptr;
