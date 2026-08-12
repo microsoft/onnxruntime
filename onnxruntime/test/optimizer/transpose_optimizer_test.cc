@@ -4644,6 +4644,17 @@ TEST(TransposeOptimizerTests, TestReshapeFlattenAfterTranspose) {
                               /*expected_post_transpose_perm*/ {0, 2, 1});
 }
 
+// Identity Transpose + merging Reshape: the end state should have zero Transposes.
+// Exercises the helper's expected_transposes==0 branch and locks in that identity
+// perms are never left behind (whether removed directly or via the flatten rewrite
+// producing an identity new_perm that is dropped).
+TEST(TransposeOptimizerTests, TestReshapeFlattenDropsIdentityTranspose) {
+  TestTransposeReshapeFlatten({1, 80, 40, 40}, {0, 1, 2, 3},
+                              {1, 80, 1600},
+                              /*expected_transposes*/ 0,
+                              /*expected_reshape_shape*/ {1, 80, 1600});
+}
+
 TEST(TransposeOptimizerTests, TestReshapeFlattenContiguousMergeMultipleRuns) {
   // Pre-transpose: {2,3,4,5,6}. Transpose perm [2,3,4,0,1] => {4,5,6,2,3}.
   // Reshape({4,5,6,6}) merges last two post-transpose axes (2*3 = 6).

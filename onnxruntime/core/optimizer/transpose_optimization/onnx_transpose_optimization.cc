@@ -2811,7 +2811,14 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
       if (cursor >= rank) {
         return false;
       }
-      prod *= transposed_shape[cursor];
+      const int64_t dim = transposed_shape[cursor];
+      // Guard the multiply: if prod * dim would exceed target, we cannot land on target exactly,
+      // and continuing would risk signed overflow on large concrete dims. All dims and target are
+      // validated positive above, so target / dim is well-defined.
+      if (prod > target / dim) {
+        return false;
+      }
+      prod *= dim;
       ++cursor;
     } while (prod < target);
     if (prod != target) {
@@ -2834,21 +2841,17 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
     }
   }
 
-  // Build the new Reshape shape: one dim per run, equal to the product of the
-  // *original* (pre-transpose) dims in that run's pre-image. Because the run's
-  // pre-image is contiguous in ascending order, the product equals the
-  // requested dim — but expressed against the pre-transpose layout.
+  // Build the new Reshape shape: one dim per run. Each run's pre-image is contiguous in ascending
+  // order (verified above), so the product of its pre-transpose dims equals the corresponding
+  // requested dim — reuse requested_shape directly rather than recomputing the product, which
+  // would risk int64 overflow on large concrete dims.
   std::vector<int64_t> new_reshape_shape;
   new_reshape_shape.reserve(runs.size());
   std::vector<int64_t> run_first_orig_axis;  // first pre-transpose axis index of each run
   run_first_orig_axis.reserve(runs.size());
-  for (const auto& [run_start, run_end] : runs) {
-    int64_t prod = 1;
-    for (size_t i = run_start; i < run_end; ++i) {
-      prod *= transpose_input_shape[gsl::narrow_cast<size_t>(args.perm[i])];
-    }
-    new_reshape_shape.push_back(prod);
-    run_first_orig_axis.push_back(args.perm[run_start]);
+  for (size_t r = 0; r < runs.size(); ++r) {
+    new_reshape_shape.push_back(requested_shape[r]);
+    run_first_orig_axis.push_back(args.perm[runs[r].first]);
   }
 
   // Derive the new Transpose perm: sort runs by their pre-transpose start index
