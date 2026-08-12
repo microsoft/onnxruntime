@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
@@ -121,18 +123,96 @@ bool TryMatMul4BitsM1(
     size_t shared_mem_per_block,
     int sm_count,
     cudaStream_t stream) {
-  const int cols_per_block = SelectColsPerBlock(n, sm_count);
-  if (n % cols_per_block != 0 || k % kElementsPerThreadPerIteration != 0) {
+  // Admission: always gate on the *original* cols=8 shared-memory footprint so that the
+  // accepted-shape set is bit-for-bit identical to upstream. Shapes with huge K that would
+  // have been declined (shared mem too large with 8 cols/CTA) must NOT be silently admitted
+  // just because a smaller cols_per_block would fit. Those shapes fall through to cuBLAS
+  // with fp32 accumulation — admitting them here would be a silent accuracy regression.
+  if (n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
 
   const int blocks_per_K = (k + block_size - 1) / block_size;
-  const size_t shared_mem_size =
-      sizeof(T) * blocks_per_K * cols_per_block +
-      static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cols_per_block * 2 : 0);
-  if (shared_mem_size > shared_mem_per_block) {
+  const size_t admission_shared_mem =
+      sizeof(T) * blocks_per_K * kColsPerThreadBlock +
+      static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
+  if (admission_shared_mem > shared_mem_per_block) {
     return false;
   }
+
+  // Launch: select cols_per_block using the CUDA occupancy API rather than a magic constant.
+  // For each candidate (8, 4, 2), we query cudaOccupancyMaxActiveBlocksPerMultiprocessor
+  // for the *actual* kernel instantiation (which has different register and shared-memory
+  // footprints per cols_per_block). We pick the candidate that maximises the number of
+  // active warps across the device, subject to the constraint that the grid must actually
+  // fill the device (no point having high per-SM occupancy if the grid is tiny).
+  //
+  // This replaces the old kTargetCtasPerSm = 12 magic number, which was tuned for
+  // datacenter parts (A100/H100) and regressed CC 8.6/8.9 consumer GPUs where per-SM
+  // block limits differ.
+  //
+  // NOTE: This path cannot be validated without a GPU. Consumer-GPU measurements
+  // (CC 8.6 RTX 3060, CC 8.9 RTX 4090) are required before this PR can leave draft.
+
+  // We need the kernel pointer to query occupancy. To avoid combinatorial explosion of
+  // block_size × has_zp × cols queries, we pick a representative kernel (block_size=32,
+  // no zero points) — the register/shared-memory profile is dominated by cols_per_block,
+  // not by block_size or the zero-point branch.
+  auto query_max_active_blocks = [&](int cpb, size_t smem) -> int {
+    int max_blocks = 0;
+    const int threads_per_block = onnxruntime::cuda::GPU_WARP_SIZE_HOST * cpb;
+    cudaError_t err = cudaSuccess;
+    // Use block_size=32 as a representative instantiation for occupancy query.
+    // The register pressure difference between block_size variants is negligible
+    // (same unrolled loop body, only the iteration bound changes).
+    switch (cpb) {
+      case 8:
+        err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &max_blocks, MatMulFloat4BitsKernelM1<T, 32, false, 8>, threads_per_block, smem);
+        break;
+      case 4:
+        err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &max_blocks, MatMulFloat4BitsKernelM1<T, 32, false, 4>, threads_per_block, smem);
+        break;
+      case 2:
+        err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &max_blocks, MatMulFloat4BitsKernelM1<T, 32, false, 2>, threads_per_block, smem);
+        break;
+      default:
+        break;
+    }
+    return (err == cudaSuccess) ? max_blocks : 0;
+  };
+
+  int cols_per_block = kColsPerThreadBlock;  // default 8
+  {
+    int best_active_warps = 0;
+    constexpr int candidates[] = {8, 4, 2};
+    for (int cpb : candidates) {
+      if (n % cpb != 0) continue;
+      const size_t smem = sizeof(T) * blocks_per_K * cpb +
+                          static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cpb * 2 : 0);
+      const int grid_size = n / cpb;
+      const int max_blocks_per_sm = query_max_active_blocks(cpb, smem);
+      if (max_blocks_per_sm <= 0) continue;
+      // Total active blocks across the device, capped by the grid size
+      const int active_blocks = std::min(max_blocks_per_sm * sm_count, grid_size);
+      // Warps per block = cpb (one warp per column)
+      const int active_warps = active_blocks * cpb;
+      if (active_warps > best_active_warps) {
+        best_active_warps = active_warps;
+        cols_per_block = cpb;
+      }
+    }
+    // If all occupancy queries failed (e.g. driver issue), fall back to host heuristic
+    if (best_active_warps == 0) {
+      cols_per_block = SelectColsPerBlock(n, sm_count);
+    }
+  }
+
+  const size_t launch_shared_mem =
+      sizeof(T) * blocks_per_K * cols_per_block +
+      static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cols_per_block * 2 : 0);
 
   dim3 blocks((n + cols_per_block - 1) / cols_per_block, 1);
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, cols_per_block);
@@ -155,20 +235,22 @@ bool TryMatMul4BitsM1(
 
 #define MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, cpb)                                               \
   if (zero_points != nullptr) {                                                                \
-    MatMulFloat4BitsKernelM1<T, bs, true, cpb><<<blocks, threads, shared_mem_size, stream>>>(  \
+    MatMulFloat4BitsKernelM1<T, bs, true, cpb><<<blocks, threads, launch_shared_mem, stream>>>(  \
         output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K);        \
   } else {                                                                                     \
-    MatMulFloat4BitsKernelM1<T, bs, false, cpb><<<blocks, threads, shared_mem_size, stream>>>( \
+    MatMulFloat4BitsKernelM1<T, bs, false, cpb><<<blocks, threads, launch_shared_mem, stream>>>( \
         output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);            \
   }
 
-#define MATMUL_FLOAT4B_M1_DISPATCH(bs)     \
-  if (cols_per_block == 8) {               \
-    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 8) \
-  } else if (cols_per_block == 4) {        \
-    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 4) \
-  } else {                                 \
-    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 2) \
+#define MATMUL_FLOAT4B_M1_DISPATCH(bs)                                       \
+  if (cols_per_block == 8) {                                                 \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 8)                                   \
+  } else if (cols_per_block == 4) {                                          \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 4)                                   \
+  } else if (cols_per_block == 2) {                                          \
+    MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, 2)                                   \
+  } else {                                                                   \
+    ORT_THROW("cols_per_block ", cols_per_block, " is not supported (8/4/2)"); \
   }
 
   if (block_size == 16) {

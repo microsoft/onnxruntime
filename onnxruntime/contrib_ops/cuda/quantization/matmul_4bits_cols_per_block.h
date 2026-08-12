@@ -13,25 +13,24 @@ namespace cuda {
 
 constexpr int kColsPerThreadBlock = 8;
 
-// Target CTAs per SM for the M=1 GEMV. When the grid from 8 cols/CTA is smaller
-// than sm_count * kTargetCtasPerSm, we halve cols_per_block to double the grid,
-// improving occupancy on narrow n without changing the per-column reduction.
-constexpr int kTargetCtasPerSm = 12;
-
-// Select the number of columns per CTA (8, 4, or 2) for the M=1 kernel so that
-// the grid fills the device. The reduction within each CTA is per-column (one warp
-// per column), so changing cols_per_block only changes how many columns share a CTA's
-// __syncthreads() barrier for shared-memory loads — the arithmetic per output element
-// is identical regardless of this choice.
+// Host-only heuristic for cols-per-block selection. Used by unit tests and as a
+// fallback when the CUDA occupancy API is unavailable. The CUDA-aware path
+// (SelectColsPerBlockOccupancy in matmul_4bits_m1_impl.cuh) should be preferred
+// when a kernel function pointer is available — it queries actual register/shared-
+// memory limits per compute capability rather than guessing.
 //
-// Returns 8 when the default grid already meets the occupancy target, or when
-// sm_count is unavailable (0). Never returns less than 2 — a 1-column CTA would
-// over-subscribe activation re-reads. Deterministic for (n, sm_count).
+// Returns 8 when the default grid already meets a conservative fill target, or
+// when sm_count is unavailable (0). Never returns less than 2.
+// Deterministic for (n, sm_count).
 inline int SelectColsPerBlock(int n, int sm_count) {
   if (sm_count <= 0) {
     return kColsPerThreadBlock;  // fail safe: use default 8
   }
-  const int target = sm_count * kTargetCtasPerSm;
+  // Conservative fill target: 8 waves per SM. This is intentionally low — the
+  // real decision is made by cudaOccupancyMaxActiveBlocksPerMultiprocessor in
+  // the CUDA path. This heuristic exists only for GPU-free unit tests.
+  constexpr int kFallbackWavesPerSm = 8;
+  const int target = sm_count * kFallbackWavesPerSm;
   // Try 8, then 4, then 2. Pick the largest that fills the target.
   if ((n / 8) >= target) {
     return 8;

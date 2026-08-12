@@ -752,21 +752,14 @@ bool TryMatMul4Bits(
       return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                                      m, n, k, block_size, shared_mem_size, stream);
     }
-  } else if (m >= 2) {
-    // m >= 2 paths do not support n not divisible by 8.
-    return false;
-  } else if (bias_data != nullptr) {
-    // M=1 GEMV does not support fused bias.
-    return false;
-  } else if (n % kColsPerThreadBlock != 0) {
-    // Preserve upstream routing: the M=1 GEMV only accepts shapes where n is
-    // divisible by 8, matching the original gate. SelectColsPerBlock may pick a
-    // smaller cols_per_block for occupancy, but we never claim shapes that the
-    // pre-existing code would have declined.
+  } else {
+    // n is not divisible by 8 — reject. m >= 2 paths don't support it, and
+    // the M=1 GEMV only accepts n % 8 == 0 to preserve the upstream routing set.
     return false;
   }
 
-  // M=1 path: SelectColsPerBlock handles sub-8 cols_per_block selection internally.
+  // M=1 path (n % 8 == 0, m == 1, no bias): SelectColsPerBlock picks the
+  // grid geometry; admission is gated on the original cols=8 footprint inside.
   return TryMatMul4BitsM1<T>(output, a_data, b_data_quant, scales_data, zero_points,
                              n, k, block_size, shared_mem_per_block, sm_count, stream);
 }
