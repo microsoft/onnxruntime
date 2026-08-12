@@ -308,6 +308,12 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       const auto& cross_qk_layer_head_dims = input_tensor_cross_qk_layer_head->Shape().GetDims();
       ORT_ENFORCE(cross_qk_layer_head_dims.size() == 2 && cross_qk_layer_head_dims[1] == 2,
                   "input cross_qk_layer_head must have shape [layer_head_pair_count, 2]");
+      const int64_t max_pair_count = static_cast<int64_t>(parameters->num_layers) * parameters->num_heads;
+      ORT_ENFORCE(cross_qk_layer_head_dims[0] >= 0 &&
+                      cross_qk_layer_head_dims[0] <= max_pair_count &&
+                      cross_qk_layer_head_dims[0] < 65536,
+                  "input cross_qk_layer_head dim 0 (layer_head_pair_count) must be in [0, ",
+                  max_pair_count, "] and less than 65536");
       cross_qk_layer_head_pair_count = cross_qk_layer_head_dims[0];
       cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>();  // it is on GPU
 
