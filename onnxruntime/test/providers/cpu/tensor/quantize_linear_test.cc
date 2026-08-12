@@ -9,10 +9,19 @@
 #include "core/framework/int2.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/tensor/quantize_linear.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
 #ifdef USE_CUDA
+TEST(QuantizeLinearOpTest, CudaElementCountRange) {
+  EXPECT_STATUS_OK(cuda::ValidateQDQElementCount(static_cast<size_t>(std::numeric_limits<int32_t>::max())));
+  EXPECT_FALSE(cuda::ValidateQDQElementCount(static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1).IsOK());
+}
+
 static void RunQDQOp25CudaOnly(OpTester& test) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (cuda_ep == nullptr) {

@@ -190,10 +190,11 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   auto& y_scale = *ctx->Input<Tensor>(1);
   auto* y_zero_point = ctx->Input<Tensor>(2);
 
-  auto& y = *ctx->Output(0, x.Shape());
-
   const auto& x_shape = x.Shape();
   const auto num_of_elements = x_shape.Size();
+  ORT_RETURN_IF_ERROR(ValidateQDQElementCount(num_of_elements));
+
+  auto& y = *ctx->Output(0, x_shape);
 
   const CudaU* input = reinterpret_cast<const CudaU*>(x.Data<U>());
   T* output = y.MutableData<T>();
@@ -407,6 +408,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x.Shape();
   const auto num_of_elements = x_shape.Size();
+  ORT_RETURN_IF_ERROR(ValidateQDQElementCount(num_of_elements));
 
   auto& y = *ctx->Output(0, x_shape);
 

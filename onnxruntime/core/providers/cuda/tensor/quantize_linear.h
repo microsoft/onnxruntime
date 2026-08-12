@@ -3,11 +3,19 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+inline Status ValidateQDQElementCount(size_t element_count) {
+  ORT_RETURN_IF(element_count > static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+                "CUDA QuantizeLinear and DequantizeLinear support at most INT32_MAX elements.");
+  return Status::OK();
+}
 
 template <class T, class U>
 class QuantizeLinear final : public CudaKernel {
