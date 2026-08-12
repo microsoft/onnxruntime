@@ -24,6 +24,10 @@ Abstract:
 #include "elementwise_constants.h"
 #include "softmax.h"
 
+#if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+#include <Accelerate/Accelerate.h>
+#endif
+
 //
 // Bundles the floating point constants for use by kernels written in assembly.
 //
@@ -137,6 +141,64 @@ Return Value:
     }
 }
 
+#if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+
+void
+MLASCALL
+MlasTanhKernelAppleAccelerate(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine computes the hyperbolic tangent function using the vForce
+    library (part of Apple's Accelerate framework), available on macOS arm64
+    when onnxruntime_USE_APPLE_ACCELERATE is enabled.
+
+    vvtanhf computes each output element from only the corresponding input
+    element, so this call is safe for in-place use (Input == Output), matching
+    the aliasing contract callers already rely on for MlasTanhKernel above
+    (see e.g. providers/cpu/tensor/gelu.cc, providers/cpu/ml/svmclassifier.h,
+    and the RNN cell helpers in providers/cpu/rnn/rnn_helpers.cc, all of which
+    call MlasComputeTanh with the same buffer as both Input and Output). It
+    performs a synchronous vectorized computation on the calling thread with
+    no internal GCD/thread-pool dispatch of its own, so it does not
+    oversubscribe the ORT threadpool.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    // vvtanhf takes the element count as a pointer to a signed 32-bit int
+    // (a vForce API convention). Chunk defensively so this remains correct
+    // even if N exceeds INT32_MAX, though no current MLAS caller passes
+    // buffers that large.
+    constexpr size_t kMaxChunk = static_cast<size_t>(std::numeric_limits<int>::max());
+
+    while (N > 0) {
+        const int Chunk = static_cast<int>(std::min(N, kMaxChunk));
+        vvtanhf(Output, Input, &Chunk);
+        Input += Chunk;
+        Output += Chunk;
+        N -= static_cast<size_t>(Chunk);
+    }
+}
+
+#endif  // MLAS_USE_APPLE_ACCELERATE && __APPLE__ && MLAS_TARGET_ARM64
+
 template <>
 void
 MLASCALL
@@ -165,7 +227,9 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64) || defined(MLAS_USE_SVE)
+#if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+    MlasTanhKernelAppleAccelerate(Input, Output, N);
+#elif defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().TanhKernelRoutine(Input, Output, N);
 #else
     MlasTanhKernel(Input, Output, N);
