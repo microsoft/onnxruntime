@@ -23,6 +23,38 @@
 namespace onnxruntime {
 namespace test {
 
+namespace {
+
+void RunInvalidShapeInferenceTest(const std::vector<int64_t>& b_dims,
+                                  const std::vector<uint8_t>& b_data,
+                                  const std::vector<int64_t>& b_shape_dims,
+                                  const std::vector<int64_t>& b_shape_data,
+                                  const std::string& expected_error) {
+  OpTester test("MatMulFpQ4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("blk_quant_type", BlkQ4Zp8);
+  test.AddInput<float>("A", {1, 4}, std::vector<float>(4), true);
+  test.AddInput<uint8_t>("B", b_dims, b_data, true);
+  test.AddInput<int64_t>("B_shape", b_shape_dims, b_shape_data, true);
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
+}
+
+}  // namespace
+
+TEST(MatMulFpQ4, RejectsScalarBShape) {
+  RunInvalidShapeInferenceTest({1}, {0}, {}, {4},
+                               "B_shape input for MatMulFpQ4 must be a 1-D int64 tensor");
+}
+
+TEST(MatMulFpQ4, RejectsShortBShapeInitializer) {
+  RunInvalidShapeInferenceTest({1}, {0}, {1}, {4},
+                               "B_shape input for MatMulFpQ4 must be a 1-D int64 tensor of length 2");
+}
+
+TEST(MatMulFpQ4, RejectsScalarPackedB) {
+  RunInvalidShapeInferenceTest({}, {0}, {2}, {4, 1}, "B input for MatMulFpQ4 must be a 1-D tensor");
+}
+
 TEST(MatMulFpQ4, MatMul2DSym) {
   // (100 x 52) X (52 x 288)
   constexpr int64_t M = 100;
