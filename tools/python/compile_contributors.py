@@ -12,9 +12,14 @@ Description:
 Usage:
     python compile_contributors.py [--base <base_branch>] [--target <target_branch>] [--dir <output_dir>]
                                    [--paths <path> [<path> ...]] [--paths-file <file>]
+                                   [--sort-by {contributions,contributor}]
 
 Example:
     python compile_contributors.py --base origin/rel-1.23.2 --target origin/rel-1.24.1 --dir rel-1.24.1_report
+
+    # Sort the release-note contributor list alphabetically (case-insensitive):
+    python compile_contributors.py --base origin/rel-1.28.0 --target origin/rel-1.29.0 \
+        --dir rel-1.29.0_report --sort-by contributor
 
     # Limit to commits that touch selected areas (replace with your paths):
     # Using git pathspec syntax, ":(top)" anchors each path at repository root.
@@ -330,12 +335,25 @@ def read_pathspecs_file(pathspecs_file):
     return pathspecs
 
 
+def sort_contributors(contributors, sort_by):
+    """Sort (lowercase identity, contribution count) pairs for summary output."""
+    if sort_by == "contributor":
+        return sorted(contributors.items(), key=lambda item: item[0])
+    return sorted(contributors.items(), key=lambda item: (-item[1], item[0]))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compile contributor list from Git log comparison.")
     parser.add_argument("--base", default="origin/rel-1.23.2", help="Base branch/commit to compare from")
     parser.add_argument("--target", default="origin/rel-1.24.1", help="Target branch/commit to compare to")
     parser.add_argument("--dir", default="contributors", help="Output directory for reports and logs")
     parser.add_argument("--scan-depth", type=int, default=200, help="Depth to scan base/meta-PRs for deduplication")
+    parser.add_argument(
+        "--sort-by",
+        choices=("contributions", "contributor"),
+        default="contributions",
+        help="Sort the summary by contribution count (default) or contributor name (case-insensitive)",
+    )
     parser.add_argument(
         "--paths",
         nargs="+",
@@ -466,8 +484,7 @@ def main():
                 if not is_bot(final_author) and not is_invalid(final_author):
                     consolidated_contributors[author_lower] = consolidated_contributors.get(author_lower, 0) + count
 
-        # Sort human contributors by count descending, then alphabetically by identity for determinism
-        sorted_contributors = sorted(consolidated_contributors.items(), key=lambda x: (-x[1], x[0]))
+        sorted_contributors = sort_contributors(consolidated_contributors, args.sort_by)
 
         log_event("\n--- Summary ---", log_file)
         # Prefix only identified github logins and format as markdown links
