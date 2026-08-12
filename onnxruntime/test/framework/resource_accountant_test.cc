@@ -526,6 +526,13 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{1900});
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{1200});
   EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().profile_and_estimator, size_t{2});
+  const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
+  EXPECT_EQ(comparison.node_count, size_t{2});
+  EXPECT_EQ(comparison.profile_larger, size_t{1});
+  EXPECT_EQ(comparison.estimator_larger, size_t{1});
+  EXPECT_EQ(comparison.equal, size_t{0});
+  EXPECT_EQ(comparison.profiled_bytes, size_t{500});
+  EXPECT_EQ(comparison.level1_estimated_bytes, size_t{1050});
 }
 
 // A stats file may have incomplete coverage. Unknown nodes use the ad-hoc fallback.
