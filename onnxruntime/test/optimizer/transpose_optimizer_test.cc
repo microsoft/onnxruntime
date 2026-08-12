@@ -2282,18 +2282,18 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthNoO
 
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesStartsLengthExceedsRankNoOpt) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {2, 4, 6, 5}, 0.0f, 1.0f);
-    auto* input1_arg = MakeInput<int64_t>(builder, {{5}}, {5}, {0, 0, 0, 0, 0});
-    auto* input2_arg = MakeInput<int64_t>(builder, {{5}}, {5}, {1, 1, 1, 1, 1});
+    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {2, 4}, 0.0f, 1.0f);
+    auto* input1_arg = MakeInput<int64_t>(builder, {{3}}, {3}, {0, 0, 0});
+    auto* input2_arg = MakeInput<int64_t>(builder, {{3}}, {3}, {1, 1, 1});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* slice_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 0});
     builder.AddNode("Slice", {transpose_1_out_0, input1_arg, input2_arg}, {slice_1_out_0});
     auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 0});
   };
 
   auto pre_graph_checker = [](Graph&) { return Status::OK(); };
