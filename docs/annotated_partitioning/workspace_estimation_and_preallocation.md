@@ -2,15 +2,19 @@
 
 ## Status
 
-- **Status:** Proposed
+- **Status:** Proposed design with unmerged pilot implementations
 - **Tracking issue:** [#29775](https://github.com/microsoft/onnxruntime/issues/29775)
 - **Related roadmap:** [Future Directions: Constrained Environment Partitioning](future_directions_constrained_env.md)
 - **Current user documentation:** [Partitioning with Annotations and Memory Constraints](PartitioningWithAnnotationsAndMemoryConstraints.md)
 - **CUDA workspace inventory:** [CUDA Kernel Workspace Inventory](cuda_kernel_workspace_inventory.md)
+- **Level-2 verification branch:** [`chilo/level2-workspace-verification`](https://github.com/microsoft/onnxruntime/tree/chilo/level2-workspace-verification)
+- **Static preallocation branch:** [`chilo/static-workspace-preallocation`](https://github.com/microsoft/onnxruntime/tree/chilo/static-workspace-preallocation)
 
 This document records the proposed policy for combining profile-guided workspace
 measurements, pre-partition workspace estimation, and post-assignment workspace
-declarations. It is a design proposal, not documentation of fully implemented behavior.
+declarations. The branches above implement narrow pilots described in the implementation
+status sections below. The remaining sections describe the broader target design and must
+not be read as fully implemented behavior.
 
 ## Motivation
 
@@ -182,6 +186,10 @@ one of these policies:
 
 Silently using a preallocation plan for inputs larger than its planning shapes is unsafe.
 
+The current static-preallocation pilot implements policy 2: if the runtime
+`MatMulNBits` request exceeds its declared slot, the kernel uses its existing dynamic
+`GetScratchBuffer()` path.
+
 ## Level-2 Verification and Preallocation
 
 After kernel creation, each instrumented kernel declares one or more workspace slots. A
@@ -217,8 +225,29 @@ Level-2 requirement exceeds the partitioning reservation, ORT must not silently 
 if the original budget decision were still valid.
 
 Potential responses include failing initialization, repartitioning, or using a documented
-runtime fallback. The initial implementation should prefer an explicit error over hidden
-budget violations.
+runtime fallback.
+
+### Implemented Level-2 verification pilot
+
+The `chilo/level2-workspace-verification` branch adds post-assignment verification:
+
+- accepted workspace selections are retained per graph identity and node index after
+  partitioning;
+- the reservation is the exact workspace value selected for budgeting: Level 1, profile,
+  `max(profile, Level 1)`, or fallback;
+- `SessionState` sums each kernel's declared slots with checked arithmetic after kernel
+  creation and prepacking;
+- Level 2 is compared with the selected partitioning reservation;
+- the session log reports larger/equal/smaller counts, missing declarations or
+  reservations, and aggregate discrepancy bytes;
+- exceeding the reservation logs a warning by default; setting
+  `session.strict_workspace_verification=1` fails session initialization;
+- strict mode also fails when a Level-2 declaration has no matching partitioning
+  reservation.
+
+The pilot does not repartition the graph and does not treat current profiling statistics as
+a Level-2 allocation contract. Runtime allocation behavior remains unchanged on this
+branch.
 
 ## Workspace Memory Planning
 
@@ -242,6 +271,41 @@ dependencies, stream assignment, and synchronization.
 Workspace may be placed in the same reserved device buffer as activation memory if the
 planner can represent both lifetimes and alignment requirements correctly. Otherwise, a
 separate preallocated workspace buffer per device is an acceptable first implementation.
+
+### Implemented static-preallocation pilot
+
+The stacked `chilo/static-workspace-preallocation` branch adds an opt-in implementation:
+
+```text
+session.enable_static_workspace_preallocation=1
+```
+
+During session finalization, ORT:
+
+1. collects Level-2 declarations from constructed kernels;
+2. considers only kernels that explicitly support framework-owned workspace;
+3. groups supported single-slot requirements by device;
+4. allocates one persistent buffer per device and per `SessionState` graph, sized to the
+   largest requirement plus alignment padding; and
+5. binds each participating kernel's slot to an aligned pointer in that reusable buffer.
+
+The first participating kernel is in-tree CUDA `MatMulNBits`, using slot 0. At runtime it
+uses the bound buffer when the actual request fits and otherwise falls back to
+`GetScratchBuffer()`. Kernels without declarations, unresolved shapes, unsupported
+multi-slot declarations, and kernels without explicit binding support retain dynamic
+allocation.
+
+The pilot has the following safety constraints:
+
+- only sequential execution mode is accepted;
+- concurrent `Run()` calls are serialized, including CUDA graph replay;
+- a run that disables execution-provider synchronization is rejected;
+- framework ownership keeps the buffer alive longer than kernels holding non-owning
+  pointers to it.
+
+This is not yet integration with ORT's activation allocation planner. It does not pack
+workspace with activations, model parallel or multi-stream lifetimes, provide Plugin CUDA
+support, or share one allocation across parent and subgraph `SessionState` instances.
 
 ## Profiling Improvements Needed for Preallocation
 
@@ -308,6 +372,9 @@ ORT should optionally compare actual workspace allocations with the selected pla
 Validation should identify the node, kernel, EP, device, planning shape, selected workspace
 source, and all candidate values.
 
+The current `MatMulNBits` pilot implements the permissive runtime fallback but does not yet
+emit the full source/shape diagnostic described above.
+
 ## Reporting
 
 User-visible resource reporting should separate:
@@ -341,11 +408,18 @@ individual execution provider's `GetCapability` implementation.
 - Replace the 1.5x fallback per node when a better source is available.
 - Report source coverage and discrepancies.
 
+Pilot status: implemented on draft PR
+[#31962](https://github.com/microsoft/onnxruntime/pull/31962).
+
 ### Phase 2: Level-2 declarations
 
 - Add workspace slot declarations after kernel creation.
 - Verify Level 2 against Level 1 and profiling.
 - Retain current runtime allocation behavior.
+
+Pilot status: implemented on `chilo/level2-workspace-verification`. Verification compares
+Level 2 with the resolved reservation used for partitioning; separate profile compatibility
+validation remains future work.
 
 ### Phase 3: Static preallocation
 
@@ -353,6 +427,10 @@ individual execution provider's `GetCapability` implementation.
 - Route declared workspace requests to planned buffers.
 - Keep arena fallback for unresolved or dynamic requirements.
 - Add strict validation for constrained deployments.
+
+Pilot status: partially implemented on `chilo/static-workspace-preallocation` using a
+separate per-device buffer for sequential, single-slot kernels. General execution-plan
+lifetime integration remains future work.
 
 ### Phase 4: Broader coverage
 
@@ -364,10 +442,9 @@ individual execution provider's `GetCapability` implementation.
 
 1. What safety margin should apply to profile-only workspace?
 2. Can a profile be marked authoritative, and under what deployment contract?
-3. Should exceeding a maximum-shape override fail or fall back?
-4. What happens when Level 2 exceeds Level 1 after partitioning?
-5. Should the first preallocation implementation share the activation buffer or use a
-   separate per-device workspace buffer?
+3. Should exceeding a maximum-shape override fail or fall back after the permissive pilot?
+4. Should a Level-2 excess trigger repartitioning instead of warning or strict failure?
+5. When should the separate per-device pilot buffer be integrated with activation memory?
 6. How should parallel execution and multiple streams express workspace overlap?
 7. What profile compatibility fields are mandatory for each EP?
 8. How should fused-node workspace be derived from constituent nodes?
@@ -381,3 +458,7 @@ individual execution provider's `GetCapability` implementation.
 | TBD | Apply the 1.5x fallback only to nodes without a better workspace source | Proposed |
 | TBD | Use Level-2 declarations for allocation and post-assignment verification | Proposed |
 | TBD | Plan workspace according to execution overlap rather than summing all nodes | Proposed |
+| 2026-08-12 | Retain accepted per-node reservations and compare Level 2 during session finalization | Pilot implemented |
+| 2026-08-12 | Warn on Level-2 excess by default and provide opt-in strict initialization failure | Pilot implemented |
+| 2026-08-12 | Start preallocation with a separate reusable per-device buffer under sequential execution | Pilot implemented |
+| 2026-08-12 | Fall back dynamically when the runtime request exceeds the declared static slot | Pilot implemented |
