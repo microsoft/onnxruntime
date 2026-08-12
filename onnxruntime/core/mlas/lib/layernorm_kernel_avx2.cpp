@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements LayerNorm/RMSNorm kernels using x86-64 AVX2+FMA3
+    This module implements LayerNorm/RMSNorm kernels using x86 AVX2+FMA3
     intrinsics. Processes one normalization row at a time, matching the
     MLAS_LAYERNORM_F32_KERNEL signature dispatched from platform.cpp.
 

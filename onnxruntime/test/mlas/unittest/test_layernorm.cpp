@@ -46,7 +46,7 @@ Abstract:
 // ---------------------------------------------------------------------------
 
 // Returns true when the platform has a SIMD LayerNorm kernel registered
-// (AVX2 on x86-64, RVV on RISC-V, etc.).  Tests that exercise the SIMD
+// (AVX2 on x86, RVV on RISC-V, etc.).  Tests that exercise the SIMD
 // path must GTEST_SKIP() when this returns false so they don't break CI
 // on ARM, older x86, or any future platform that hasn't wired up a kernel.
 static bool HasLayerNormKernel() {
@@ -155,7 +155,7 @@ class MlasLayerNormTest : public MlasTestBase {
   // in layernorm.cpp so the test encodes the real contract rather than
   // accepting both outcomes.
   //
-  // x86-64 / x86:  The AVX2 kernel declines NormSize < 8 because the
+  // x86 (32-bit and 64-bit):  The AVX2 kernel declines NormSize < 8 because the
   //   256-bit loop body performs zero iterations below that width and
   //   falls entirely into the scalar tail with vector setup overhead.
   //
@@ -421,7 +421,7 @@ class MlasLayerNormTest : public MlasTestBase {
   // -----------------------------------------------------------------------
   // True scalar fp32 baseline — reproduces the fallback path from
   // onnxruntime/core/providers/cpu/nn/layer_norm_impl.cc (ComputeJob)
-  // that runs when MlasLayerNormF32() returns false on x86-64 prior to
+  // that runs when MlasLayerNormF32() returns false on x86 prior to
   // this PR. This is the code the AVX2 kernel actually replaces.
   //
   // IMPORTANT: This is fp32 throughout (no fp64 accumulation), matching
@@ -793,7 +793,7 @@ static double RunPrecisionScenario(
 // where two-pass is known to degrade.
 TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
   if (!HasCenteredTwoPassKernel()) {
-    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86 only)";
   }
   printf("\n");
   printf("======================================================================\n");
@@ -969,7 +969,7 @@ TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
 // Passing test: realistic LLM activation distributions stay within tolerance.
 TEST_F(MlasLayerNormPrecisionTest, RealisticLLMPrecision) {
   if (!HasCenteredTwoPassKernel()) {
-    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86 only)";
   }
   const float eps = 1e-5f;
   double worst = 0.0;
@@ -992,7 +992,7 @@ TEST_F(MlasLayerNormPrecisionTest, RealisticLLMPrecision) {
 // Passing test: large N with benign data stays within tolerance.
 TEST_F(MlasLayerNormPrecisionTest, LargeNBenignPrecision) {
   if (!HasCenteredTwoPassKernel()) {
-    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86 only)";
   }
   const float eps = 1e-5f;
   double worst = 0.0;
@@ -1012,7 +1012,7 @@ TEST_F(MlasLayerNormPrecisionTest, LargeNBenignPrecision) {
 // Passing test: high dynamic range stays within tolerance.
 TEST_F(MlasLayerNormPrecisionTest, HighDynamicRangePrecision) {
   if (!HasCenteredTwoPassKernel()) {
-    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86 only)";
   }
   const float eps = 1e-5f;
   double worst = 0.0;
@@ -1040,7 +1040,7 @@ TEST_F(MlasLayerNormPrecisionTest, HighDynamicRangePrecision) {
 //      because fp32 second-pass subtraction inherently loses precision
 TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
   if (!HasCenteredTwoPassKernel()) {
-    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86 only)";
   }
   const float eps = 1e-5f;
 
@@ -1131,7 +1131,7 @@ TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
 
 TEST_F(MlasLayerNormPrecisionTest, Fp64ParitySweep) {
   if (!HasCenteredTwoPassKernel()) {
-    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86 only)";
   }
 
   // Grid from the reviewer's specification
