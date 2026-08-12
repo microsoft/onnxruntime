@@ -10,6 +10,7 @@
 #include "core/common/string_utils.h"
 
 #include "core/framework/config_options.h"
+#include "core/framework/max_shape_override.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
@@ -285,6 +286,18 @@ Status CreateAccountants(
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid format for: ",
                              kOrtSessionOptionsResourceCudaPartitioningSettings,
                              " : expecting comma separated fields");
+    }
+  }
+
+  // Parse max shape overrides and attach to all accountants
+  const std::string max_shape_config = config_options.GetConfigOrDefault(
+      kOrtSessionOptionsMaxShapeOverride, "");
+  if (!max_shape_config.empty() && result.has_value()) {
+    MaxShapeOverrideMap shape_overrides;
+    ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, shape_overrides));
+    for (auto& [ep_type, accountant] : *result) {
+      ORT_UNUSED_PARAMETER(ep_type);
+      accountant->SetMaxShapeOverrides(shape_overrides);
     }
   }
 
