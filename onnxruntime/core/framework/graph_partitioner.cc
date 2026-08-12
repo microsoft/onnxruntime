@@ -18,6 +18,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/layering_annotations.h"
+#include "core/framework/max_shape_inference.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
@@ -195,6 +196,23 @@ auto get_capabilities = [](const IExecutionProvider& ep,
 
   return capabilities;
 };
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status RefreshMaxShapeInference(Graph& graph, IResourceAccountant& resource_accountant) {
+  // Overrides are scoped to top-level inputs. Starting from the root also refreshes
+  // recursively inferred shapes when a layout transformation modifies a subgraph.
+  Graph* top_level_graph = &graph;
+  while (Graph* parent_graph = top_level_graph->MutableParentGraph()) {
+    top_level_graph = parent_graph;
+  }
+
+  MaxShapeInferenceResult result;
+  ORT_RETURN_IF_ERROR(
+      InferMaxShapes(*top_level_graph, resource_accountant.GetMaxShapeOverrides(), result));
+  resource_accountant.SetMaxShapeInferenceResult(std::move(result));
+  return Status::OK();
+}
+#endif
 }  // namespace
 
 static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const logging::Logger& logger) {
@@ -397,6 +415,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     if (params.resource_accountant) {
+      // The existing result is still valid when the layout transformer made no graph changes.
+      if (modified) {
+        ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
+      }
       params.resource_accountant->ResetForNewPass();
     }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
@@ -1202,6 +1224,13 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
         if (hit != acc_map->end()) {
           resource_accountant = hit->second.get();
         }
+      }
+      if (resource_accountant != nullptr) {
+        // A preceding EP or function-inlining iteration may have changed the graph.
+        // Results cannot be shared across those mutations because fused/generated NodeArgs
+        // and subgraph identities may differ. The second GetCapability pass reuses this
+        // result unless its layout transformation reports a modification.
+        ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *resource_accountant));
       }
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,

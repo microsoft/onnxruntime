@@ -63,7 +63,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                bool kv_bsnh = true,
                int local_window_size = -1,
                void* cache_batch_idx = nullptr,
-               void* leftpad_k = nullptr);
+               void* leftpad_k = nullptr,
+               void* head_sink = nullptr);  // num_heads
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       cudaStream_t stream,

@@ -829,4 +829,8 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
 // Experimental API
 ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 
+// Weightless source model APIs
+ORT_API_STATUS_IMPL(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
+                    _In_ const void* source_model_data, _In_ size_t source_model_data_length);
+
 }  // namespace OrtApis
