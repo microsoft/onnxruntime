@@ -280,7 +280,9 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   const T* rois_data = rois_ptr->Data<T>();
   const int64_t rois_size = rois_ptr->Shape().Size();
   for (int64_t i = 0; i < rois_size; ++i) {
-    ORT_RETURN_IF_NOT(std::isfinite(rois_data[i]), "All 'rois' values must be finite.");
+    if (!std::isfinite(rois_data[i])) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "All 'rois' values must be finite.");
+    }
   }
 
   auto& Y = *context->Output(0, {num_rois, num_channels, this->output_height_, this->output_width_});
