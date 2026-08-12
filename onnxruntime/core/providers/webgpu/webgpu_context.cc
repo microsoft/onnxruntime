@@ -747,11 +747,7 @@ std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
       "lazy_clear_resource_on_first_use",
       "timestamp_quantization",
   };
-  auto disabled_toggles = std::vector<const char*>(std::begin(toggles), std::end(toggles));
-  if (enable_robustness_) {
-    disabled_toggles.push_back("disable_robustness");
-  }
-  return disabled_toggles;
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
 
 std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const {
