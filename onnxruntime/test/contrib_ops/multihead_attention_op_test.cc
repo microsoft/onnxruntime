@@ -850,8 +850,33 @@ TEST(MultiHeadAttentionTest, SelfAttention_PastPresentBufferShare_UsingDMMHAInsi
 
 TEST(MultiHeadAttentionTest, SelfAttention_PastPresentBufferShare_ConcatKVInPlace) {
   AttentionTestData data;
-  GetSelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA(data);
-  data.cache_indir_data.clear();
+  data.hidden_size = 4;
+  data.v_hidden_size = 4;
+  data.num_heads = 1;
+  data.batch_size = 1;
+  data.sequence_length = 1;
+  data.kv_sequence_length = 1;
+  data.mask_type = AttentionMaskType::MASK_NONE;
+  data.query_data = {1.0f, 0.0f, 0.0f, 0.0f};
+  data.key_data = {0.0f, 1.0f, 0.0f, 0.0f};
+  data.value_data = {5.0f, 6.0f, 7.0f, 8.0f};
+  data.past_key_data = {1.0f, 0.0f, 0.0f, 0.0f,
+                        0.0f, 0.0f, 0.0f, 0.0f,
+                        0.0f, 0.0f, 0.0f, 0.0f};
+  data.past_value_data = {1.0f, 2.0f, 3.0f, 4.0f,
+                          0.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 0.0f, 0.0f, 0.0f};
+  data.past_seq_len_data = {1};
+  data.max_sequence_length = 3;
+  data.present_key_data = {1.0f, 0.0f, 0.0f, 0.0f,
+                           0.0f, 1.0f, 0.0f, 0.0f,
+                           0.0f, 0.0f, 0.0f, 0.0f};
+  data.present_value_data = {1.0f, 2.0f, 3.0f, 4.0f,
+                             5.0f, 6.0f, 7.0f, 8.0f,
+                             0.0f, 0.0f, 0.0f, 0.0f};
+  data.fp32_output_data = {2.5101626f, 3.5101626f, 4.5101624f, 5.5101624f};
+  data.is_static_kv = false;
+  data.buffer_share = true;
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU | DISABLE_DML);
 }
 
