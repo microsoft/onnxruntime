@@ -27,6 +27,8 @@ class OrtValuePatternPlanner {
 #endif
   common::Status TraceAllocation(int ort_value_idx, size_t size);
   common::Status TraceFree(int ort_value_index);
+  common::Status TraceAllocation(int pattern_id, const OrtDevice& location, size_t size);
+  common::Status TraceFree(int pattern_id, const OrtDevice& location);
   common::Status GeneratePatterns(MemoryPatternGroup& out);
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValuePatternPlanner);
 
