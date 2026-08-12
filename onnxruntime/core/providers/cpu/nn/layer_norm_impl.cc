@@ -674,7 +674,7 @@ Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
                               bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
 
-  is_packed = true;
+  is_packed = false;
   if (input_idx == 1) {  // scale
     prepacked_scale_fp32_shape_ = tensor.Shape();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed);
