@@ -53,6 +53,22 @@ static bool HasLayerNormKernel() {
   return GetMlasPlatform().LayerNormF32Kernel != nullptr;
 }
 
+// Returns true when the platform uses the **centered two-pass** kernel
+// (mean = sum/n with double-precision first-pass sum, then sum((x-mean)^2)).
+// The precision suites assert properties specific to that algorithm —
+// tolerances, B1 regression bounds, condition-number gates — that do not
+// hold for other kernels (e.g. RISC-V RVV uncentered single-pass).
+//
+// Keep in sync: core/mlas/lib/layernorm.cpp (production #if gate),
+//               kKernelDispatchThreshold (same #if).
+static bool HasCenteredTwoPassKernel() {
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+  return HasLayerNormKernel();
+#else
+  return false;
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // fp64-accumulated scalar reference (not dependent on MLAS)
 // ---------------------------------------------------------------------------
@@ -776,8 +792,8 @@ static double RunPrecisionScenario(
 // Prints a full comparison table including catastrophic-cancellation scenarios
 // where two-pass is known to degrade.
 TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
-  if (!HasLayerNormKernel()) {
-    GTEST_SKIP() << "No SIMD LayerNorm kernel on this platform";
+  if (!HasCenteredTwoPassKernel()) {
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
   }
   printf("\n");
   printf("======================================================================\n");
@@ -952,8 +968,8 @@ TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
 
 // Passing test: realistic LLM activation distributions stay within tolerance.
 TEST_F(MlasLayerNormPrecisionTest, RealisticLLMPrecision) {
-  if (!HasLayerNormKernel()) {
-    GTEST_SKIP() << "No SIMD LayerNorm kernel on this platform";
+  if (!HasCenteredTwoPassKernel()) {
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
   }
   const float eps = 1e-5f;
   double worst = 0.0;
@@ -975,8 +991,8 @@ TEST_F(MlasLayerNormPrecisionTest, RealisticLLMPrecision) {
 
 // Passing test: large N with benign data stays within tolerance.
 TEST_F(MlasLayerNormPrecisionTest, LargeNBenignPrecision) {
-  if (!HasLayerNormKernel()) {
-    GTEST_SKIP() << "No SIMD LayerNorm kernel on this platform";
+  if (!HasCenteredTwoPassKernel()) {
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
   }
   const float eps = 1e-5f;
   double worst = 0.0;
@@ -995,8 +1011,8 @@ TEST_F(MlasLayerNormPrecisionTest, LargeNBenignPrecision) {
 
 // Passing test: high dynamic range stays within tolerance.
 TEST_F(MlasLayerNormPrecisionTest, HighDynamicRangePrecision) {
-  if (!HasLayerNormKernel()) {
-    GTEST_SKIP() << "No SIMD LayerNorm kernel on this platform";
+  if (!HasCenteredTwoPassKernel()) {
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
   }
   const float eps = 1e-5f;
   double worst = 0.0;
@@ -1023,8 +1039,8 @@ TEST_F(MlasLayerNormPrecisionTest, HighDynamicRangePrecision) {
 //   3. For extreme condition numbers (≥ 1e7), only finiteness is asserted
 //      because fp32 second-pass subtraction inherently loses precision
 TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
-  if (!HasLayerNormKernel()) {
-    GTEST_SKIP() << "No SIMD LayerNorm kernel on this platform";
+  if (!HasCenteredTwoPassKernel()) {
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
   }
   const float eps = 1e-5f;
 
@@ -1114,8 +1130,8 @@ TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
 // ---------------------------------------------------------------------------
 
 TEST_F(MlasLayerNormPrecisionTest, Fp64ParitySweep) {
-  if (!HasLayerNormKernel()) {
-    GTEST_SKIP() << "No SIMD LayerNorm kernel on this platform";
+  if (!HasCenteredTwoPassKernel()) {
+    GTEST_SKIP() << "No centered two-pass kernel on this platform (x86-64 only)";
   }
 
   // Grid from the reviewer's specification
