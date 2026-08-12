@@ -126,6 +126,18 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Returns true when the kernel can consume a framework-owned workspace slot supplied during
+  // session finalization. The buffer remains owned by SessionState and valid for the kernel's lifetime.
+  virtual bool SupportsPreallocatedWorkspace() const noexcept { return false; }
+
+  // Binds a declared workspace slot to framework-owned memory. SessionState calls this only when
+  // SupportsPreallocatedWorkspace() returns true.
+  virtual Status SetPreallocatedWorkspace(
+      int /*slot_id*/, void* /*data*/, size_t /*size_bytes*/) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Kernel does not support preallocated workspace.");
+  }
+
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
   //                                 gsl::span<const size_t> prepacked_buffer_sizes,

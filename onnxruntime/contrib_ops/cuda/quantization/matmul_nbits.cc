@@ -706,6 +706,17 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
   return Status::OK();
 }
+
+template <typename T>
+Status MatMulNBits<T>::SetPreallocatedWorkspace(
+    int slot_id, void* data, size_t size_bytes) {
+  ORT_RETURN_IF(slot_id != 0, "MatMulNBits received unknown workspace slot ", slot_id);
+  ORT_RETURN_IF(data == nullptr && size_bytes != 0,
+                "MatMulNBits received a null preallocated workspace buffer.");
+  preallocated_workspace_ = data;
+  preallocated_workspace_bytes_ = size_bytes;
+  return Status::OK();
+}
 #endif
 
 template <typename T>
@@ -870,11 +881,26 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
-        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
         // TEST verification hook only. Relaxed ordering is sufficient: the pilot's single-threaded
         // tests only read this after the compute call has returned, so no cross-thread happens-before
         // relationship needs to be established here.
         last_compute_workspace_bytes_.store(workspace_size, std::memory_order_relaxed);
+        IAllocatorUniquePtr<void> workspace_buffer;
+        void* workspace = nullptr;
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+        const bool use_preallocated_workspace =
+            preallocated_workspace_ != nullptr && workspace_size <= preallocated_workspace_bytes_;
+        last_compute_used_preallocated_workspace_.store(
+            use_preallocated_workspace, std::memory_order_relaxed);
+        if (use_preallocated_workspace) {
+          workspace = preallocated_workspace_;
+        } else
+#endif
+        {
+          workspace_buffer = this->template GetScratchBuffer<void>(
+              workspace_size, this->GetComputeStream(ctx));
+          workspace = workspace_buffer.get();
+        }
 
         weightOnlyGemmRunner_->gemm(
             a_data,
@@ -887,7 +913,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             m, n, k,
             static_cast<int>(block_size_),
             *bestTactic,
-            reinterpret_cast<char*>(workspace_buffer.get()),
+            reinterpret_cast<char*>(workspace),
             workspace_size,
             stream);
       }

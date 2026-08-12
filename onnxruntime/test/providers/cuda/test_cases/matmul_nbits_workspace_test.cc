@@ -302,6 +302,11 @@ size_t GetMatMulNBitsLastComputeWorkspaceBytes(const OpKernel* kernel) {
   return mm_kernel->LastComputeWorkspaceBytes();
 }
 
+bool GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(const OpKernel* kernel) {
+  const auto* mm_kernel = static_cast<const MatMulNBits<MLFloat16>*>(kernel);
+  return mm_kernel->LastComputeUsedPreallocatedWorkspace();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

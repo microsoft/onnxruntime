@@ -305,6 +305,9 @@ class MatMulNBits final : public CudaKernel {
   Status DeclareWorkspaceRequirements(
       gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+
+  bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
+  Status SetPreallocatedWorkspace(int slot_id, void* data, size_t size_bytes) override;
 #endif
 
   // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
@@ -316,6 +319,9 @@ class MatMulNBits final : public CudaKernel {
   // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch replaces it with
   // the requested byte count; all early-return and no-workspace paths therefore remain zero.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
+  bool LastComputeUsedPreallocatedWorkspace() const {
+    return last_compute_used_preallocated_workspace_.load(std::memory_order_relaxed);
+  }
 #endif
 
  private:
@@ -365,8 +371,14 @@ class MatMulNBits final : public CudaKernel {
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+  void* preallocated_workspace_ = nullptr;
+  size_t preallocated_workspace_bytes_ = 0;
+#endif
+
   // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
   mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
+  mutable std::atomic<bool> last_compute_used_preallocated_workspace_{false};
 #endif
 };
 

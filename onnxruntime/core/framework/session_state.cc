@@ -1846,6 +1846,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // This collects workspace slot requirements for future offset planning.
   // Requirements are reported per graph but are not yet persisted in a workspace plan.
   {
+    struct StaticWorkspaceBinding {
+      OpKernel* kernel;
+      WorkspaceRequirement requirement;
+      OrtDevice device;
+      std::string node_name;
+    };
+
     SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
     size_t nodes_with_workspace = 0;
     size_t compared_nodes = 0;
@@ -1860,6 +1867,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     const bool strict_workspace_verification =
         session_options.config_options.GetConfigOrDefault(
             kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1";
+    const bool enable_static_workspace_preallocation =
+        session_options.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
+    ORT_RETURN_IF(enable_static_workspace_preallocation &&
+                      session_options.execution_mode != ExecutionMode::ORT_SEQUENTIAL,
+                  "Static workspace preallocation requires sequential execution mode.");
+    InlinedVector<StaticWorkspaceBinding> static_workspace_bindings;
+    InlinedHashMap<OrtDevice, size_t> planned_workspace_bytes_by_device;
 
     const SessionState* reservation_owner = this;
     while (reservation_owner->parent_ != nullptr) {
@@ -1916,6 +1931,28 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                           << "' (" << node.OpType() << "): " << requirements.size()
                           << " slot(s), " << declared_bytes << " bytes total";
 
+      if (enable_static_workspace_preallocation && kernel->SupportsPreallocatedWorkspace()) {
+        if (requirements.size() != 1) {
+          LOGS(logger_, WARNING) << "Static workspace preallocation skipped for node '"
+                                 << node.Name() << "' (" << node.OpType()
+                                 << "): the initial pilot supports exactly one slot per kernel";
+        } else {
+          const auto& requirement = requirements.front();
+          const OrtDevice device = kernel->GetDevice(OrtMemTypeDefault);
+          const size_t alignment_padding =
+              requirement.alignment_bytes > 1 ? requirement.alignment_bytes - 1 : 0;
+          const size_t allocation_bytes = static_cast<size_t>(
+              SafeInt<size_t>(requirement.size_bytes) + alignment_padding);
+          auto [planned_it, inserted] =
+              planned_workspace_bytes_by_device.emplace(device, allocation_bytes);
+          if (!inserted) {
+            planned_it->second = std::max(planned_it->second, allocation_bytes);
+          }
+          static_workspace_bindings.push_back(
+              StaticWorkspaceBinding{kernel, requirement, device, node.Name()});
+        }
+      }
+
       if (reservation == nullptr) {
         ++missing_reservation;
         strict_verification_failed = strict_verification_failed || strict_workspace_verification;
@@ -1938,6 +1975,45 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         ++equal;
       }
     }
+
+    if (!static_workspace_bindings.empty()) {
+      static_workspace_buffers_.clear();
+      for (const auto& [device, allocation_bytes] : planned_workspace_bytes_by_device) {
+        auto allocator = GetAllocator(device);
+        ORT_RETURN_IF_NOT(allocator != nullptr,
+                          "Static workspace preallocation could not find an allocator for device ",
+                          device.ToString());
+        static_workspace_buffers_.insert_or_assign(
+            device, IAllocator::MakeUniquePtr<void>(std::move(allocator), allocation_bytes));
+        LOGS(logger_, INFO) << "Static workspace preallocation: allocated "
+                            << allocation_bytes << " bytes for device " << device.ToString();
+      }
+
+      for (const auto& binding : static_workspace_bindings) {
+        const auto buffer_it = static_workspace_buffers_.find(binding.device);
+        ORT_ENFORCE(buffer_it != static_workspace_buffers_.end());
+        void* const base = buffer_it->second.get();
+        uintptr_t aligned_address = reinterpret_cast<uintptr_t>(base);
+        if (binding.requirement.alignment_bytes > 1) {
+          const size_t remainder =
+              aligned_address % binding.requirement.alignment_bytes;
+          if (remainder != 0) {
+            aligned_address = static_cast<uintptr_t>(
+                SafeInt<uintptr_t>(aligned_address) +
+                (binding.requirement.alignment_bytes - remainder));
+          }
+        }
+        ORT_RETURN_IF_ERROR(binding.kernel->SetPreallocatedWorkspace(
+            binding.requirement.slot_id,
+            reinterpret_cast<void*>(aligned_address),
+            binding.requirement.size_bytes));
+        LOGS(logger_, INFO) << "Static workspace preallocation: bound "
+                            << binding.requirement.size_bytes << " bytes to node '"
+                            << binding.node_name << "' slot_id="
+                            << binding.requirement.slot_id;
+      }
+    }
+
     if (nodes_with_workspace > 0 || missing_declaration > 0) {
       LOGS(logger_, INFO) << "Level-2 workspace declaration summary for graph '"
                           << graph_viewer_->Name() << "': "

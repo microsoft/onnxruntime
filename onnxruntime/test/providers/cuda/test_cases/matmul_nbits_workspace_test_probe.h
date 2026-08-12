@@ -27,6 +27,7 @@ namespace test {
 // implementation performs a fixed-offset static_cast (MatMulNBits is single, non-virtual inheritance
 // from OpKernel). See the definition in matmul_nbits_workspace_test.cc.
 size_t GetMatMulNBitsLastComputeWorkspaceBytes(const OpKernel* kernel);
+bool GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(const OpKernel* kernel);
 
 }  // namespace test
 }  // namespace onnxruntime

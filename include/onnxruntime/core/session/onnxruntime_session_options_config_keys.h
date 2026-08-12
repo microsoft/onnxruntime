@@ -485,6 +485,13 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 
+/// Enables the initial static-workspace preallocation pilot. The default value is "0".
+/// When set to "1", ORT requires sequential execution, serializes concurrent Run() calls,
+/// and allocates one reusable workspace buffer per device for kernels that explicitly support it.
+/// Runtime requests larger than the declared workspace retain the existing dynamic-allocation fallback.
+static const char* const kOrtSessionOptionsEnableStaticWorkspacePreallocation =
+    "session.enable_static_workspace_preallocation";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
