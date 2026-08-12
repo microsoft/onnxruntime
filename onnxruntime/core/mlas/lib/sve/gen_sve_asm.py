@@ -201,8 +201,8 @@ def main():
     ap.add_argument(
         "--no-default-cflags",
         action="store_true",
-        help="drop DEFAULT_CFLAGS (%s). For testing the reserved-register check only -- "
-        "a real regeneration without them will abort." % " ".join(DEFAULT_CFLAGS),
+        help=f"drop DEFAULT_CFLAGS ({' '.join(DEFAULT_CFLAGS)}). For testing the "
+        "reserved-register check only -- a real regeneration without them will abort.",
     )
     args = ap.parse_args()
 
