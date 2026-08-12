@@ -1240,6 +1240,15 @@ namespace Microsoft.ML.OnnxRuntime
                                       IReadOnlyCollection<OrtValue> outputValues,
                                       UserCallbackDelegate callback)
         {
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+            if (outputNames.Count != outputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
+            }
+
             CallbackHost host = new CallbackHost(this, options, inputNames, inputValues, outputNames, outputValues, callback);
             GCHandle host_hdl = default;
 
