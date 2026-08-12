@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 29
+#define ORT_API_VERSION 30
 
 #ifdef __cplusplus
 extern "C" {
@@ -7557,7 +7557,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.29.
+   * \since Version 1.30.
    */
   ORT_API2_STATUS(SetSeed, _In_ int64_t seed);
 };

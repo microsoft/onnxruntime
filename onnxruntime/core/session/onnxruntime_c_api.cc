@@ -4421,7 +4421,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_29 = {
+static constexpr OrtApi ort_api_1_to_30 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4940,6 +4940,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::SessionOptionsSetWeightlessSourceModelBuffer,
+    // End of Version 29 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::SetSeed,
 };
 
@@ -4981,9 +4983,10 @@ static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*)
 // no additions in version 26
 static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 421, "Size of version 27 API cannot change");
 static_assert(offsetof(OrtApi, KernelContext_GetSyncStream) / sizeof(void*) == 423, "Size of version 28 API cannot change");
+static_assert(offsetof(OrtApi, SessionOptionsSetWeightlessSourceModelBuffer) / sizeof(void*) == 424, "Size of version 29 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.29.0",
+static_assert(std::string_view(ORT_VERSION) == "1.30.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
@@ -4999,7 +5002,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.29.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_29;
+    return &ort_api_1_to_30;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
