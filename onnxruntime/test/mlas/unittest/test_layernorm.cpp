@@ -478,7 +478,15 @@ class MlasLayerNormTest : public MlasTestBase {
     if (inv_std_out != nullptr) *inv_std_out = inv_denom;
   }
 
-  // Benchmark: SIMD kernel vs true scalar fp32 baseline
+  // Benchmark: SIMD kernel vs true scalar fp32 baseline.
+  //
+  // Scalar baseline note: Welford's online mean update performs one fp32
+  // division per element (delta / (h+1)) in the reduction loop, whereas
+  // the AVX2 kernel accumulates a double-precision sum and divides once.
+  // This per-element division inflates the scalar timing; the reported
+  // speedup therefore includes both the SIMD benefit and this algorithmic
+  // difference.  The normalization pass (output = (x-mean)*inv_std*scale)
+  // uses multiply-by-reciprocal in both paths.
   void Benchmark(size_t norm_size, size_t warmup, size_t iters, bool simplified) {
     std::vector<float> input(norm_size);
     std::vector<float> scale(norm_size);
@@ -490,17 +498,26 @@ class MlasLayerNormTest : public MlasTestBase {
       scale[i] = 1.0f + (static_cast<float>(i % 31) - 15.0f) * 0.001f;
     }
 
+    // Production passes nullptr for MeanOut in simplified (RMSNorm) mode.
+    // Benchmark must match production to exercise the real fast path.
+    float* mean_ptr = simplified ? nullptr : &mean_out;
+
     // Warmup + measure: AVX2 kernel
     for (size_t i = 0; i < warmup; i++) {
-      MlasLayerNormF32(input.data(), scale.data(), nullptr,
-                       output.data(), &mean_out, &inv_std_out,
-                       norm_size, 1e-5f, simplified);
+      bool used = MlasLayerNormF32(input.data(), scale.data(), nullptr,
+                                   output.data(), mean_ptr, &inv_std_out,
+                                   norm_size, 1e-5f, simplified);
+      if (i == 0) {
+        ASSERT_TRUE(used)
+            << "Benchmark requires SIMD kernel dispatch for norm_size="
+            << norm_size << "; got scalar fallback.";
+      }
     }
     std::vector<double> kernel_us(iters);
     for (size_t i = 0; i < iters; i++) {
       auto t0 = std::chrono::high_resolution_clock::now();
       MlasLayerNormF32(input.data(), scale.data(), nullptr,
-                       output.data(), &mean_out, &inv_std_out,
+                       output.data(), mean_ptr, &inv_std_out,
                        norm_size, 1e-5f, simplified);
       auto t1 = std::chrono::high_resolution_clock::now();
       kernel_us[i] = std::chrono::duration<double, std::micro>(t1 - t0).count();
@@ -509,14 +526,14 @@ class MlasLayerNormTest : public MlasTestBase {
     // Warmup + measure: scalar fp32 baseline (the actual code being replaced)
     for (size_t i = 0; i < warmup; i++) {
       ScalarFp32Baseline(input.data(), scale.data(), nullptr,
-                         output.data(), &mean_out, &inv_std_out,
+                         output.data(), mean_ptr, &inv_std_out,
                          norm_size, 1e-5f, simplified);
     }
     std::vector<double> scalar_us(iters);
     for (size_t i = 0; i < iters; i++) {
       auto t0 = std::chrono::high_resolution_clock::now();
       ScalarFp32Baseline(input.data(), scale.data(), nullptr,
-                         output.data(), &mean_out, &inv_std_out,
+                         output.data(), mean_ptr, &inv_std_out,
                          norm_size, 1e-5f, simplified);
       auto t1 = std::chrono::high_resolution_clock::now();
       scalar_us[i] = std::chrono::duration<double, std::micro>(t1 - t0).count();
@@ -525,14 +542,14 @@ class MlasLayerNormTest : public MlasTestBase {
     // Also measure the fp64 reference for context (the independent oracle baseline)
     for (size_t i = 0; i < warmup; i++) {
       ReferenceLayerNorm(input.data(), scale.data(), nullptr,
-                         output.data(), &mean_out, &inv_std_out,
+                         output.data(), mean_ptr, &inv_std_out,
                          norm_size, 1e-5f, simplified);
     }
     std::vector<double> fp64_us(iters);
     for (size_t i = 0; i < iters; i++) {
       auto t0 = std::chrono::high_resolution_clock::now();
       ReferenceLayerNorm(input.data(), scale.data(), nullptr,
-                         output.data(), &mean_out, &inv_std_out,
+                         output.data(), mean_ptr, &inv_std_out,
                          norm_size, 1e-5f, simplified);
       auto t1 = std::chrono::high_resolution_clock::now();
       fp64_us[i] = std::chrono::duration<double, std::micro>(t1 - t0).count();
@@ -751,7 +768,7 @@ static double RunPrecisionScenario(
                                         &mean_welford, &inv_std_welford,
                                         norm_size, epsilon, simplified);
 
-  // 3. Welford SIMD AVX2 kernel
+  // 3. Centered two-pass AVX2 kernel
   std::vector<float> out_avx2(norm_size);
   float mean_avx2, inv_std_avx2;
   bool used = MlasLayerNormF32(input, scale, bias, out_avx2.data(),
@@ -778,7 +795,7 @@ static double RunPrecisionScenario(
 
   printf(
       "  %-40s N=%-6zu  welford_fp32: out=%.2e mean=%.2e inv=%.2e  |  "
-      "avx2_welford: out=%.2e mean=%.2e inv=%.2e  |  ratio=%.1fx\n",
+      "avx2_centered: out=%.2e mean=%.2e inv=%.2e  |  ratio=%.1fx\n",
       name, norm_size,
       err_welford, mean_err_w, inv_err_w,
       err_avx2, mean_err_a, inv_err_a,
@@ -838,19 +855,23 @@ TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
 
   // -------------------------------------------------------------------
   // SCENARIO 3: CATASTROPHIC CANCELLATION — large mean, tiny variance
-  // This is THE critical case. Two-pass computes var = E[x²] - mean²;
-  // when mean ≈ 1e6 and perturbations ≈ 1e-3, E[x²] ≈ 1e12 and
-  // mean² ≈ 1e12, so the subtraction loses ~12 decimal digits of the
-  // ~7 available in fp32. Welford avoids this.
+  // This is THE critical case for testing the kernel's numerical
+  // stability. The fp32 second-pass subtraction (x - mean) in the
+  // centered two-pass loses precision when mean is huge and
+  // perturbations are tiny (condition number ≫ 1e7). The kernel's
+  // double-precision first-pass sum gives an accurate mean, keeping
+  // the second-pass subtraction viable up to much higher condition
+  // numbers than a scalar fp32 Welford.
   // -------------------------------------------------------------------
   printf("\n--- Scenario 3: CATASTROPHIC CANCELLATION (large mean, tiny var) ---\n");
   for (size_t N : {256, 1024, 4096}) {
     std::vector<float> input(N), scale(N, 1.0f);
     float base = 1e6f;
     for (size_t i = 0; i < N; i++) {
-      // Values near 1e6 with spread ~1e-3 → var ≈ 1e-7
-      // In fp32 two-pass: sum_sq/N ≈ 1e12, mean² ≈ 1e12,
-      // difference has ~0 significant bits.
+      // Values near 1e6 with spread ~1e-3 → condition number ~1e9.
+      // At this condition number, fp32 (x - mean) subtraction loses
+      // all significant bits of the perturbation. The double-precision
+      // mean helps but cannot save the fp32 second pass entirely.
       input[i] = base + (static_cast<float>(i % 100) - 50.0f) * 1e-3f;
     }
     double e = RunPrecisionScenario("catastrophic_cancel_1e6", input.data(),
@@ -962,7 +983,7 @@ TEST_F(MlasLayerNormPrecisionTest, DISABLED_AdversarialPrecisionReport) {
   // inherent fp32 limits.
   EXPECT_LT(worst_catastrophic, 0.1)
       << "Catastrophic-cancellation scenarios exceed 10% rel error vs fp64. "
-         "Old scalar Welford was ~84%; current = "
+         "Scalar Welford is ~95%; current = "
       << worst_catastrophic << ".";
 }
 
@@ -1117,16 +1138,18 @@ TEST_F(MlasLayerNormPrecisionTest, CatastrophicCancellationPasses) {
 // ---------------------------------------------------------------------------
 // N5/N6: fp64 parity sweep — reviewer-mandated grid
 //
-// This test measures MlasLayerNormF32 output against a fp64-accumulated
-// reference for every combination in the specified grid.  It is
-// implementation-agnostic: any correct reduction (Welford, centered
-// two-pass, etc.) must pass; any regression of the magnitude seen in B1
-// (scalar 2.54e-04 vs kernel 2.49e-01) must fail.
+// Measures MlasLayerNormF32 output against a fp64-accumulated reference
+// for every combination in the specified grid.  Implementation-agnostic:
+// any correct reduction must pass; any regression of the magnitude seen
+// in B1 (scalar Welford 0.94 vs kernel centered two-pass 0.033) must fail.
 //
-// The tolerance is set at 1e-3 (0.1%) max relative error vs fp64.
-// This is tight enough to catch a 1000× regression (B1) while loose
-// enough to accommodate legitimate fp32 rounding in any correct
-// formulation.
+// Effective range after the condition-number gate (base/spread < 1e6):
+//   Of 16 (base, spread) pairs, 6 pass the gate:
+//     {1e3}/{1.0, 0.1, 0.01}, {1e4}/{1.0, 0.1}, {1e5}/{1.0}
+//   The remaining 10 pairs (cond ≥ 1e6) are skipped because fp32
+//   second-pass subtraction loses all perturbation precision there,
+//   making accuracy a test of float limits, not kernel correctness.
+//   Total: 6 pairs × 3 epsilons × 10 NormSizes = 180 cases.
 // ---------------------------------------------------------------------------
 
 TEST_F(MlasLayerNormPrecisionTest, Fp64ParitySweep) {
@@ -1221,6 +1244,12 @@ TEST_F(MlasLayerNormPrecisionTest, Fp64ParitySweep) {
   printf("\n  Fp64ParitySweep: %zu cases, %zu failures, worst=%.4e\n",
          total_cases, failures, overall_worst);
 
+  // Guard against a vacuous sweep: if the condition-number gate or a
+  // grid change silently drops every case, this test proves nothing.
+  ASSERT_GT(total_cases, static_cast<size_t>(0))
+      << "Fp64 parity sweep generated zero cases — the grid or condition-"
+         "number gate is misconfigured.";
+
   EXPECT_LT(overall_worst, kMaxRelError)
       << "Fp64 parity sweep: " << failures << "/" << total_cases
       << " cases exceed " << kMaxRelError << " normalised max error. "
@@ -1230,12 +1259,16 @@ TEST_F(MlasLayerNormPrecisionTest, Fp64ParitySweep) {
   // Explicit B1 regression check (base=1e5, spread=1e-2, N=1024,
   // eps=1e-6).  This case has condition number 1e7, outside the
   // sweep's cond < 1e6 gate, but it is the scenario that exposed the
-  // original lane-parallel Welford regression (err ≈ 2.49e-01).
-  // The centered two-pass kernel with double-precision mean
-  // measures ≈ 3.3e-02 here — still above 5e-3 because fp32
-  // subtraction at base=1e5 loses precision, but ~7.5× better than
-  // the rejected kernel.  We assert < 5e-2 to catch any regression
-  // back toward 0.25 while accepting the inherent fp32 limit.
+  // original accuracy concern.
+  //
+  // Independently measured on this host (AMD EPYC 9V74, same binary):
+  //   scalar Welford fp32:       0.9357  (vector-normalised max error)
+  //   AVX2 centered two-pass:    0.03298
+  // The kernel is ~28× more accurate than the scalar baseline here.
+  //
+  // We assert < 5e-2 to catch any regression back toward the scalar
+  // Welford's ~0.94 while accepting the inherent fp32 limit at this
+  // condition number.
   // ------------------------------------------------------------------
   {
     constexpr size_t B1_N = 1024;
@@ -1250,18 +1283,28 @@ TEST_F(MlasLayerNormPrecisionTest, Fp64ParitySweep) {
     WelfordFp64Reference(b1_in.data(), b1_scale.data(), nullptr,
                          b1_ref.data(), &b1_mean64, &b1_inv64,
                          B1_N, static_cast<double>(B1_eps), false);
+    // Scalar Welford fp32 baseline (for comparison)
+    std::vector<float> b1_scalar(B1_N);
+    float b1_smean, b1_sinv;
+    MlasLayerNormTest::ScalarFp32Baseline(
+        b1_in.data(), b1_scale.data(), nullptr, b1_scalar.data(),
+        &b1_smean, &b1_sinv, B1_N, B1_eps, false);
+    double b1_scalar_err = MaxRelError(b1_scalar.data(), b1_ref.data(), B1_N);
+    // AVX2 centered two-pass kernel
     std::vector<float> b1_out(B1_N);
     float b1_mean, b1_inv;
     MlasLayerNormF32(b1_in.data(), b1_scale.data(), nullptr,
                      b1_out.data(), &b1_mean, &b1_inv,
                      B1_N, B1_eps, false);
     double b1_err = MaxRelError(b1_out.data(), b1_ref.data(), B1_N);
-    printf("  B1 regression check (cond=1e7): err=%.4e %s\n",
-           b1_err, b1_err > 5e-2 ? "REGRESSION" : "OK");
+    printf("  B1 regression check (base=1e5, spread=1e-2, N=1024, eps=1e-6):\n");
+    printf("    scalar Welford fp32:    %.4e\n", b1_scalar_err);
+    printf("    AVX2 centered two-pass: %.4e  (%.1fx better)\n",
+           b1_err, b1_scalar_err / b1_err);
     EXPECT_LT(b1_err, 5e-2)
         << "B1 regression: kernel error at base=1e5, spread=1e-2, "
-        << "N=1024 exceeds 5%. Old Welford was 2.49e-01; "
-        << "current = " << b1_err << ".";
+        << "N=1024 exceeds 5%. Scalar Welford was " << b1_scalar_err
+        << "; current = " << b1_err << ".";
   }
 }
 
