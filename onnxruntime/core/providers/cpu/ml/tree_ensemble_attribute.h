@@ -306,6 +306,7 @@ struct TreeEnsembleAttributesV5 {
 
     std::stack<StackFrame> stack;
     std::unordered_map<int64_t, int64_t> false_nodeid_update_pos;
+    std::vector<bool> visited_nodes(nodes_modes.size(), false);
     int64_t last_curr_nodeid = root_nodeid;
 
     stack.push({root_id, root_nodeid, root_is_leaf, -1});
@@ -319,6 +320,35 @@ struct TreeEnsembleAttributesV5 {
       const int64_t placeholder_to_update = frame.placeholder_to_update;
 
       stack.pop();
+
+      if (is_leaf) {
+        ORT_ENFORCE(curr_id < leaf_targetids.size() && curr_id < leaf_weights.size(),
+                    "TreeEnsemble references out-of-range leaf index ", curr_id, ".");
+      } else {
+        ORT_ENFORCE(curr_id < nodes_modes.size() &&
+                        curr_id < nodes_featureids.size() &&
+                        curr_id < nodes_falsenodeids.size() &&
+                        curr_id < nodes_falseleafs.size() &&
+                        curr_id < nodes_truenodeids.size() &&
+                        curr_id < nodes_trueleafs.size() &&
+                        curr_id < membership_values_by_id.size(),
+                    "TreeEnsemble references out-of-range node index ", curr_id, ".");
+        ORT_ENFORCE(!visited_nodes[curr_id],
+                    "TreeEnsemble contains a cycle or shared internal node at index ", curr_id, ".");
+        visited_nodes[curr_id] = true;
+
+        const auto mode = nodes_modes[curr_id];
+        ORT_ENFORCE(mode == NODE_MODE_ONNX::BRANCH_MEMBER ||
+                        mode == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET ||
+                        curr_id < nodes_splits.size(),
+                    "TreeEnsemble nodes_splits is missing node index ", curr_id, ".");
+        ORT_ENFORCE(nodes_hitrates.empty() || curr_id < nodes_hitrates.size(),
+                    "TreeEnsemble nodes_hitrates is missing node index ", curr_id, ".");
+        ORT_ENFORCE(nodes_missing_value_tracks_true.empty() ||
+                        curr_id < nodes_missing_value_tracks_true.size(),
+                    "TreeEnsemble nodes_missing_value_tracks_true is missing node index ", curr_id, ".");
+      }
+
       if (curr_nodeid == -1) {
         curr_nodeid = last_curr_nodeid + 1;
       }
@@ -441,7 +471,13 @@ struct TreeEnsembleAttributesV5 {
                               std::vector<std::vector<ThresholdType>>& membership_values_by_id) const {
     int64_t curr_treeid = 0;
     for (const int64_t& tree_root : tree_roots) {
-      size_t tree_root_size_t = onnxruntime::narrow<size_t>(tree_root);
+      ORT_ENFORCE(tree_root >= 0 &&
+                      static_cast<uint64_t>(tree_root) < nodes_falsenodeids.size() &&
+                      static_cast<uint64_t>(tree_root) < nodes_falseleafs.size() &&
+                      static_cast<uint64_t>(tree_root) < nodes_truenodeids.size() &&
+                      static_cast<uint64_t>(tree_root) < nodes_trueleafs.size(),
+                  "TreeEnsemble tree_roots contains out-of-range node index ", tree_root, ".");
+      const size_t tree_root_size_t = static_cast<size_t>(tree_root);
       bool is_leaf = (nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t] &&
                       nodes_falseleafs[tree_root_size_t] && nodes_trueleafs[tree_root_size_t]);
       transformInputOneTree(tree_root_size_t, curr_treeid, 0,

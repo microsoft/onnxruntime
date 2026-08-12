@@ -136,6 +136,35 @@ static void RunInvalidLeafTargetIdsTest(int64_t aggregate_function,
   test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
 }
 
+static void RunInvalidTreeStructureTest(int64_t tree_root,
+                                        int64_t true_node_id,
+                                        int64_t true_leaf,
+                                        const std::string& expected_error) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+
+  auto nodes_modes = make_tensor(std::vector<uint8_t>{0}, "nodes_modes");
+  auto nodes_splits = make_tensor(std::vector<float>{0.0f}, "nodes_splits");
+  auto leaf_weights = make_tensor(std::vector<float>{1.0f}, "leaf_weights");
+
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+  test.AddAttribute("aggregate_function", static_cast<int64_t>(1));
+  test.AddAttribute("post_transform", static_cast<int64_t>(0));
+  test.AddAttribute("tree_roots", std::vector<int64_t>{tree_root});
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("nodes_featureids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_splits", nodes_splits);
+  test.AddAttribute("nodes_truenodeids", std::vector<int64_t>{true_node_id});
+  test.AddAttribute("nodes_trueleafs", std::vector<int64_t>{true_leaf});
+  test.AddAttribute("nodes_falsenodeids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_falseleafs", std::vector<int64_t>{1});
+  test.AddAttribute("leaf_targetids", std::vector<int64_t>{0});
+  test.AddAttribute("leaf_weights", leaf_weights);
+
+  test.AddInput<float>("X", {1, 1}, {0.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
+}
+
 template <typename T>
 void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const int64_t& aggregate_function, int n_trees = 1) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
@@ -355,6 +384,18 @@ TEST(MLOpTest, TreeEnsembleNegativeLeafTargetIds) {
       2,
       {-1},
       "target/class ids cannot have negative values (-1)");
+}
+
+TEST(MLOpTest, TreeEnsembleRejectsOutOfRangeRoot) {
+  RunInvalidTreeStructureTest(1, 0, 1, "tree_roots contains out-of-range node index 1");
+}
+
+TEST(MLOpTest, TreeEnsembleRejectsOutOfRangeChild) {
+  RunInvalidTreeStructureTest(0, 1, 0, "references out-of-range node index 1");
+}
+
+TEST(MLOpTest, TreeEnsembleRejectsCycle) {
+  RunInvalidTreeStructureTest(0, 0, 0, "contains a cycle or shared internal node at index 0");
 }
 
 TEST(MLOpTest, TreeEnsembleZeroTargets) {
