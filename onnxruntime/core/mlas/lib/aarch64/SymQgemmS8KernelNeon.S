@@ -144,10 +144,14 @@ M4_ComputeBlockLoop:
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
         smull   v15.8h,v0.8b,v7.8b
-        smlal   v12.8h,v2.8b,v8.8b
-        smlal   v13.8h,v2.8b,v9.8b
-        smlal   v14.8h,v2.8b,v10.8b
-        smlal   v15.8h,v2.8b,v11.8b
+        sadalp  v16.4s,v12.8h
+        sadalp  v17.4s,v13.8h
+        sadalp  v18.4s,v14.8h
+        sadalp  v19.4s,v15.8h
+        smull   v12.8h,v2.8b,v8.8b
+        smull   v13.8h,v2.8b,v9.8b
+        smull   v14.8h,v2.8b,v10.8b
+        smull   v15.8h,v2.8b,v11.8b
         ldp     d0,d2,[x10],#16             // Load A2
         sadalp  v16.4s,v12.8h
         sadalp  v17.4s,v13.8h
@@ -158,10 +162,14 @@ M4_ComputeBlockLoop:
         smull   v13.8h,v1.8b,v5.8b
         smull   v14.8h,v1.8b,v6.8b
         smull   v15.8h,v1.8b,v7.8b
-        smlal   v12.8h,v3.8b,v8.8b
-        smlal   v13.8h,v3.8b,v9.8b
-        smlal   v14.8h,v3.8b,v10.8b
-        smlal   v15.8h,v3.8b,v11.8b
+        sadalp  v20.4s,v12.8h
+        sadalp  v21.4s,v13.8h
+        sadalp  v22.4s,v14.8h
+        sadalp  v23.4s,v15.8h
+        smull   v12.8h,v3.8b,v8.8b
+        smull   v13.8h,v3.8b,v9.8b
+        smull   v14.8h,v3.8b,v10.8b
+        smull   v15.8h,v3.8b,v11.8b
         ldp     d1,d3,[x11],#16             // Load A3
         sadalp  v20.4s,v12.8h
         sadalp  v21.4s,v13.8h
@@ -172,10 +180,14 @@ M4_ComputeBlockLoop:
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
         smull   v15.8h,v0.8b,v7.8b
-        smlal   v12.8h,v2.8b,v8.8b
-        smlal   v13.8h,v2.8b,v9.8b
-        smlal   v14.8h,v2.8b,v10.8b
-        smlal   v15.8h,v2.8b,v11.8b
+        sadalp  v24.4s,v12.8h
+        sadalp  v25.4s,v13.8h
+        sadalp  v26.4s,v14.8h
+        sadalp  v27.4s,v15.8h
+        smull   v12.8h,v2.8b,v8.8b
+        smull   v13.8h,v2.8b,v9.8b
+        smull   v14.8h,v2.8b,v10.8b
+        smull   v15.8h,v2.8b,v11.8b
         ldp     d0,d2,[x0],#16              // Load A0 next iter
         sadalp  v24.4s,v12.8h
         sadalp  v25.4s,v13.8h
@@ -185,13 +197,17 @@ M4_ComputeBlockLoop:
         smull   v13.8h,v1.8b,v5.8b
         smull   v14.8h,v1.8b,v6.8b
         smull   v15.8h,v1.8b,v7.8b
-        smlal   v12.8h,v3.8b,v8.8b
+        sadalp  v28.4s,v12.8h
+        sadalp  v29.4s,v13.8h
+        sadalp  v30.4s,v14.8h
+        sadalp  v31.4s,v15.8h
+        smull   v12.8h,v3.8b,v8.8b
         ldp     d4,d8,[x1],#64              // B
-        smlal   v13.8h,v3.8b,v9.8b
+        smull   v13.8h,v3.8b,v9.8b
         ldp     d5,d9,[x1,#-48]
-        smlal   v14.8h,v3.8b,v10.8b
+        smull   v14.8h,v3.8b,v10.8b
         ldp     d6,d10,[x1,#-32]
-        smlal   v15.8h,v3.8b,v11.8b
+        smull   v15.8h,v3.8b,v11.8b
         ldp     d7,d11,[x1,#-16]
         sadalp  v28.4s,v12.8h
         ldp     d1,d3,[x9],#16              // Load A1 next iter
@@ -205,10 +221,14 @@ M4_ComputeBlockLoopFinish:
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
         smull   v15.8h,v0.8b,v7.8b
-        smlal   v12.8h,v2.8b,v8.8b
-        smlal   v13.8h,v2.8b,v9.8b
-        smlal   v14.8h,v2.8b,v10.8b
-        smlal   v15.8h,v2.8b,v11.8b
+        sadalp  v24.4s,v12.8h
+        sadalp  v25.4s,v13.8h
+        sadalp  v26.4s,v14.8h
+        sadalp  v27.4s,v15.8h
+        smull   v12.8h,v2.8b,v8.8b
+        smull   v13.8h,v2.8b,v9.8b
+        smull   v14.8h,v2.8b,v10.8b
+        smull   v15.8h,v2.8b,v11.8b
         ld1     {v2.4s},[x13],#16           // load ColumnSumBuffer[0]
         sadalp  v24.4s,v12.8h
         sadalp  v25.4s,v13.8h
@@ -218,10 +238,14 @@ M4_ComputeBlockLoopFinish:
         smull   v13.8h,v1.8b,v5.8b
         smull   v14.8h,v1.8b,v6.8b
         smull   v15.8h,v1.8b,v7.8b
-        smlal   v12.8h,v3.8b,v8.8b
-        smlal   v13.8h,v3.8b,v9.8b
-        smlal   v14.8h,v3.8b,v10.8b
-        smlal   v15.8h,v3.8b,v11.8b
+        sadalp  v28.4s,v12.8h
+        sadalp  v29.4s,v13.8h
+        sadalp  v30.4s,v14.8h
+        sadalp  v31.4s,v15.8h
+        smull   v12.8h,v3.8b,v8.8b
+        smull   v13.8h,v3.8b,v9.8b
+        smull   v14.8h,v3.8b,v10.8b
+        smull   v15.8h,v3.8b,v11.8b
         sadalp  v28.4s,v12.8h
         sadalp  v29.4s,v13.8h
         sadalp  v30.4s,v14.8h
@@ -337,10 +361,14 @@ M2_ComputeBlockLoop:
         smull   v30.8h,v0.8b,v6.8b
         smull   v31.8h,v0.8b,v7.8b
         cbz     x3,M2_ComputeBlockLoopFinish
-        smlal   v28.8h,v2.8b,v24.8b
-        smlal   v29.8h,v2.8b,v25.8b
-        smlal   v30.8h,v2.8b,v26.8b
-        smlal   v31.8h,v2.8b,v27.8b
+        sadalp  v16.4s,v28.8h
+        sadalp  v17.4s,v29.8h
+        sadalp  v18.4s,v30.8h
+        sadalp  v19.4s,v31.8h
+        smull   v28.8h,v2.8b,v24.8b
+        smull   v29.8h,v2.8b,v25.8b
+        smull   v30.8h,v2.8b,v26.8b
+        smull   v31.8h,v2.8b,v27.8b
         ldp     d0,d2,[x0],#16              // Load A0
         sadalp  v16.4s,v28.8h
         sadalp  v17.4s,v29.8h
@@ -350,13 +378,17 @@ M2_ComputeBlockLoop:
         smull   v29.8h,v1.8b,v5.8b
         smull   v30.8h,v1.8b,v6.8b
         smull   v31.8h,v1.8b,v7.8b
-        smlal   v28.8h,v3.8b,v24.8b
+        sadalp  v20.4s,v28.8h
+        sadalp  v21.4s,v29.8h
+        sadalp  v22.4s,v30.8h
+        sadalp  v23.4s,v31.8h
+        smull   v28.8h,v3.8b,v24.8b
         ldp     d4,d24,[x1],#16             // B
-        smlal   v29.8h,v3.8b,v25.8b
+        smull   v29.8h,v3.8b,v25.8b
         ldp     d5,d25,[x1],#16
-        smlal   v30.8h,v3.8b,v26.8b
+        smull   v30.8h,v3.8b,v26.8b
         ldp     d6,d26,[x1],#16
-        smlal   v31.8h,v3.8b,v27.8b
+        smull   v31.8h,v3.8b,v27.8b
         ldp     d7,d27,[x1],#16
         sadalp  v20.4s,v28.8h
         ldp     d1,d3,[x9],#16              // Load A1
@@ -367,10 +399,14 @@ M2_ComputeBlockLoop:
 
 M2_ComputeBlockLoopFinish:
         ld1     {v0.4s},[x13],#16           // load ColumnSumBuffer[0]
-        smlal   v28.8h,v2.8b,v24.8b
-        smlal   v29.8h,v2.8b,v25.8b
-        smlal   v30.8h,v2.8b,v26.8b
-        smlal   v31.8h,v2.8b,v27.8b
+        sadalp  v16.4s,v28.8h
+        sadalp  v17.4s,v29.8h
+        sadalp  v18.4s,v30.8h
+        sadalp  v19.4s,v31.8h
+        smull   v28.8h,v2.8b,v24.8b
+        smull   v29.8h,v2.8b,v25.8b
+        smull   v30.8h,v2.8b,v26.8b
+        smull   v31.8h,v2.8b,v27.8b
         sadalp  v16.4s,v28.8h
         sadalp  v17.4s,v29.8h
         sadalp  v18.4s,v30.8h
@@ -379,10 +415,14 @@ M2_ComputeBlockLoopFinish:
         smull   v29.8h,v1.8b,v5.8b
         smull   v30.8h,v1.8b,v6.8b
         smull   v31.8h,v1.8b,v7.8b
-        smlal   v28.8h,v3.8b,v24.8b
-        smlal   v29.8h,v3.8b,v25.8b
-        smlal   v30.8h,v3.8b,v26.8b
-        smlal   v31.8h,v3.8b,v27.8b
+        sadalp  v20.4s,v28.8h
+        sadalp  v21.4s,v29.8h
+        sadalp  v22.4s,v30.8h
+        sadalp  v23.4s,v31.8h
+        smull   v28.8h,v3.8b,v24.8b
+        smull   v29.8h,v3.8b,v25.8b
+        smull   v30.8h,v3.8b,v26.8b
+        smull   v31.8h,v3.8b,v27.8b
         sadalp  v20.4s,v28.8h
         sadalp  v21.4s,v29.8h
         sadalp  v22.4s,v30.8h
@@ -473,13 +513,17 @@ M1_ComputeBlockLoop:
         cbz    x3,M1_ComputeBlockLoopFinish
         smull   v22.8h,v0.8b,v6.8b
         smull   v23.8h,v0.8b,v7.8b
-        smlal   v20.8h,v2.8b,v24.8b
+        sadalp  v16.4s,v20.8h
+        sadalp  v17.4s,v21.8h
+        sadalp  v18.4s,v22.8h
+        sadalp  v19.4s,v23.8h
+        smull   v20.8h,v2.8b,v24.8b
         ldp     d4,d24,[x1],#16             // B
-        smlal   v21.8h,v2.8b,v25.8b
+        smull   v21.8h,v2.8b,v25.8b
         ldp     d5,d25,[x1],#16
-        smlal   v22.8h,v2.8b,v26.8b
+        smull   v22.8h,v2.8b,v26.8b
         ldp     d6,d26,[x1],#16
-        smlal   v23.8h,v2.8b,v27.8b
+        smull   v23.8h,v2.8b,v27.8b
         ldp     d0,d2,[x0],#16              // A0
         sadalp  v16.4s,v20.8h
         sadalp  v17.4s,v21.8h
@@ -492,10 +536,14 @@ M1_ComputeBlockLoopFinish:
         ld1     {v4.4s},[x13],#16           // load ColumnSumBuffer[0]
         smull   v22.8h,v0.8b,v6.8b
         smull   v23.8h,v0.8b,v7.8b
-        smlal   v20.8h,v2.8b,v24.8b
-        smlal   v21.8h,v2.8b,v25.8b
-        smlal   v22.8h,v2.8b,v26.8b
-        smlal   v23.8h,v2.8b,v27.8b
+        sadalp  v16.4s,v20.8h
+        sadalp  v17.4s,v21.8h
+        sadalp  v18.4s,v22.8h
+        sadalp  v19.4s,v23.8h
+        smull   v20.8h,v2.8b,v24.8b
+        smull   v21.8h,v2.8b,v25.8b
+        smull   v22.8h,v2.8b,v26.8b
+        smull   v23.8h,v2.8b,v27.8b
         sadalp  v16.4s,v20.8h
         sadalp  v17.4s,v21.8h
         sadalp  v18.4s,v22.8h
