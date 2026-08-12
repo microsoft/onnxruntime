@@ -17,8 +17,7 @@ namespace webgpu {
 // so enabling int64 is safe. int64 (stored as vec2<u32>) is copied losslessly via the raw
 // storage-word path in AppendAssignOutputDataFunction, preserving the full 64-bit value instead of
 // the truncating i32 value type used by arithmetic kernels.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateConcatVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateConcatVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -30,15 +29,14 @@ KernelCreateInfo CreateConcatVersionedKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Concat")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(StartVersion, EndVersion)
+          .SinceVersion(start_version, end_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", std::move(type_constraints))
           .Build(),
       kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateConcatKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateConcatKernelInfo(int since_version, bool enable_int64) {
   std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -50,18 +48,12 @@ KernelCreateInfo CreateConcatKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Concat")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(SinceVersion)
+          .SinceVersion(since_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", std::move(type_constraints))
           .Build(),
       kernel_create_fn};
 }
-
-// Explicit template instantiations
-template KernelCreateInfo CreateConcatVersionedKernelInfo<1, 3>(bool);
-template KernelCreateInfo CreateConcatVersionedKernelInfo<4, 10>(bool);
-template KernelCreateInfo CreateConcatVersionedKernelInfo<11, 12>(bool);
-template KernelCreateInfo CreateConcatKernelInfo<13>(bool);
 
 void AppendCalculateInputIndexFunction(OStringStream& os, size_t input_count) {
   os << "fn calculate_input_index(global_idx: u32) -> u32 {\n"

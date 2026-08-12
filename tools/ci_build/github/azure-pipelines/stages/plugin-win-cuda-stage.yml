@@ -381,6 +381,11 @@ stages:
           targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
       - powershell: |
+          if ('${{ parameters.arch }}' -eq 'arm64') {
+            $env:_PYTHON_HOST_PLATFORM = 'win-arm64'
+          } else {
+            $env:_PYTHON_HOST_PLATFORM = 'win-amd64'
+          }
           python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
           python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
             --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
