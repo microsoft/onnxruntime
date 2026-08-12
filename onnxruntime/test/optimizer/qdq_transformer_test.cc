@@ -3538,6 +3538,89 @@ TEST(QDQTransformerTests, WhereDummyDqTest) {
   TestWhereWithDqInput<float, uint8_t, uint16_t>(false, true, 1, 1, 1, false);
 }
 
+// DequantizeLinear's zero-point input is optional per the ONNX spec, so a DQ node with only 2 inputs
+// (x, x_scale) is valid. The optimizer must recognize this and skip inserting a dummy DQ rather than
+// indexing an absent zero-point input.
+TEST(QDQTransformerTests, WhereDummyDqTest_DqWithoutZeroPoint) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqNoZpTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // DQ branch with only 2 inputs: no zero-point.
+  auto* dq_input = builder.MakeInput<uint8_t>({4, 3, 32}, 0, 1);
+  auto* dq_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* where_in1 = builder.MakeIntermediate();
+  builder.AddNode("DequantizeLinear", {dq_input, dq_scale}, {where_in1});
+
+  // Other branch is a scalar initializer, matching WhereDummyDq's target pattern.
+  auto* where_in2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+  auto* where_out = builder.MakeIntermediate();
+  builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+
+  auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<uint8_t>({}, 0.0, 1.0);
+  auto* q_out = builder.MakeOutput();
+  builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], 1);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], 1);  // no dummy DQ inserted
+  ASSERT_EQ(op_to_count["QuantizeLinear"], 1);
+  ASSERT_FALSE(modified);
+}
+
+// Same as WhereDummyDqTest_DqWithoutZeroPoint, but the zero-point input is present as an explicit
+// empty/missing NodeArg placeholder (as ONNX allows for trailing optional inputs) rather than being
+// omitted from the input list entirely. The optimizer must recognize this form too.
+TEST(QDQTransformerTests, WhereDummyDqTest_DqWithMissingZeroPointPlaceholder) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqMissingZpPlaceholderTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // DQ branch with 3 inputs, but the 3rd (zero-point) is an empty placeholder, not a real NodeArg.
+  auto* dq_input = builder.MakeInput<uint8_t>({4, 3, 32}, 0, 1);
+  auto* dq_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* dq_zp_placeholder = builder.MakeEmptyInput();
+  auto* where_in1 = builder.MakeIntermediate();
+  builder.AddNode("DequantizeLinear", {dq_input, dq_scale, dq_zp_placeholder}, {where_in1});
+
+  // Other branch is a scalar initializer, matching WhereDummyDq's target pattern.
+  auto* where_in2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+  auto* where_out = builder.MakeIntermediate();
+  builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+
+  auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<uint8_t>({}, 0.0, 1.0);
+  auto* q_out = builder.MakeOutput();
+  builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], 1);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], 1);  // no dummy DQ inserted
+  ASSERT_EQ(op_to_count["QuantizeLinear"], 1);
+  ASSERT_FALSE(modified);
+}
+
 // Tests WhereDummyDq with non-QuantizeLinear consumers.
 // The optimizer should NOT add dummy DQ nodes when the Where output is not consumed by a QuantizeLinear.
 template <typename ScaleType, typename ZpTypeDq>

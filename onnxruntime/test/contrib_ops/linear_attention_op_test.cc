@@ -1680,8 +1680,8 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_DecodeWarpKernel) 
                                     /*dk=*/256, /*dv=*/64, /*W=*/3);
 }
 
-// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel,
-// whose final state write is a vectorized epilogue into slot W-1.
+// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel
+// when the device has enough shared memory, or the column kernel fallback otherwise.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_FixedShapeKernel) {
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {

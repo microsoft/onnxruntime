@@ -37,6 +37,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
+  * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
@@ -2051,6 +2052,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GatedAdd"></a><a name="com.microsoft.gatedadd">**com.microsoft.GatedAdd**</a>
+
+  Adds one tensor to another tensor scaled by a per-row gate:
+  
+    output = X + round_to_T(Y * gate)
+  
+  X and Y have shape (..., C), and gate has shape (..., 1). The gate is broadcast
+  over C. For reduced-precision types, the product is rounded to T before the add,
+  matching separate ONNX Mul and Add operators.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Unscaled input with shape (..., C).</dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>Input scaled by gate, with the same shape as X.</dd>
+<dt><tt>gate</tt> : T</dt>
+<dd>Per-row gate with shape (..., 1).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Gated sum with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.GatedRMSNorm"></a><a name="com.microsoft.gatedrmsnorm">**com.microsoft.GatedRMSNorm**</a>
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
@@ -3038,7 +3079,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
   so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
-  (or omitting it) reduces this op to standard RoPE.
+  reduces this op to standard RoPE.
   
   `mrope_layout` selects how the three sections are combined:
     - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
