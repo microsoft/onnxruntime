@@ -9631,6 +9631,47 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
   EXPECT_EQ(op_to_count["Add"], 1);
 }
 
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusionRejectsOverlappingPatterns) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* lhs_1 = builder.MakeInput<uint8_t>({{2, 2}});
+    auto* rhs_1 = builder.MakeInput<uint8_t>({{2, 2}});
+    auto* lhs_2 = builder.MakeInput<uint8_t>({{2, 2}});
+    auto* rhs_2 = builder.MakeInput<uint8_t>({{2, 2}});
+    auto* scale_1 = builder.MakeInput<float>({{1}});
+    auto* scale_2 = builder.MakeInput<float>({{1}});
+    auto* matmul_1_out = builder.MakeIntermediate();
+    auto* cast_1_out = builder.MakeIntermediate();
+    auto* scale_product_out = builder.MakeIntermediate();
+    auto* shared_mul_out = builder.MakeIntermediate();
+    auto* matmul_2_out = builder.MakeIntermediate();
+    auto* cast_2_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("MatMulInteger", {lhs_1, rhs_1}, {matmul_1_out});
+    builder.AddNode("Cast", {matmul_1_out}, {cast_1_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Mul", {scale_1, scale_2}, {scale_product_out});
+    builder.AddNode("Mul", {cast_1_out, scale_product_out}, {shared_mul_out});
+    builder.AddNode("MatMulInteger", {lhs_2, rhs_2}, {matmul_2_out});
+    builder.AddNode("Cast", {matmul_2_out}, {cast_2_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Mul", {cast_2_out, shared_mul_out}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("com.microsoft.MatMulIntegerToFloat") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMulInteger") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("Cast") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("Mul") == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
   constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_initializer_index1.onnx");
   std::shared_ptr<Model> p_model;
