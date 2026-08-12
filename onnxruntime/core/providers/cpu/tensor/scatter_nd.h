@@ -31,6 +31,11 @@ inline Status ValidateShapes(const TensorShape& input_shape,
   }
 
   auto last_indice_dimension = indice_shape[indice_rank - 1];
+  if (last_indice_dimension < 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "last dimension of indices must be at least 1, got ",
+                           last_indice_dimension);
+  }
   if (last_indice_dimension > static_cast<int64_t>(input_rank)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");

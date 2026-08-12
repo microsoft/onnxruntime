@@ -246,5 +246,14 @@ TEST(ScatterNDOpTest, ScatterND_empty_indices) {
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
+TEST(ScatterNDOpTest, ScatterND_rejects_zero_index_depth) {
+  OpTester test("ScatterND", 18);
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6));
+  test.AddInput<int64_t>("indices", {1, 0}, {});
+  test.AddInput<float>("updates", {1, 2, 3}, std::vector<float>(6));
+  test.AddOutput<float>("output", {2, 3}, std::vector<float>(6));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last dimension of indices must be at least 1");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
