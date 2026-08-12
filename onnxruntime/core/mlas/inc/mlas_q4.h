@@ -437,6 +437,7 @@ MlasQDQBlockwiseShapeIsValid(
     int64_t columns,
     int64_t quant_block_size,
     int64_t qbits,
+    bool columnwise,
     bool transpose
     )
 {
@@ -450,7 +451,12 @@ MlasQDQBlockwiseShapeIsValid(
 
     const int64_t pack_size = 8 / qbits;
     const int64_t max_column_addend = transpose ? pack_size - 1 : kThreadBlockSize - 1;
-    if (rows > kMaxIndex - (quant_block_size - 1) ||
+    const bool uses_unaligned_quantize = !transpose && columnwise && (columns & 1) != 0;
+    if (uses_unaligned_quantize && quant_block_size > kMaxIndex / 2) {
+        return false;
+    }
+    const int64_t row_block_size = uses_unaligned_quantize ? quant_block_size * 2 : quant_block_size;
+    if (rows > kMaxIndex - (row_block_size - 1) ||
         columns > kMaxIndex - max_column_addend ||
         quant_block_size > (kMaxIndex - 7) / qbits ||
         rows > kMaxIndex / columns) {
