@@ -604,9 +604,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   const UINT64 tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
   UINT64 bufferSize = tensorElementSize;
   for (UINT index = 1; index < kImageTensorDimensionCountMax; ++index) {
-    WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG, tensorDesc.sizes[index] > 0, "Image tensor dimensions must be positive."
-    );
+    WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[index] > 0, "Image tensor dimensions must be positive.");
     WINML_THROW_IF_FAILED(ULongLongMult(bufferSize, static_cast<UINT64>(tensorDesc.sizes[index]), &bufferSize));
   }
 

@@ -277,10 +277,7 @@ static void CheckLearningModelPixelRange() {
 static void RejectOversizedImageDimensions() {
   WINML_EXPECT_THROW_SPECIFIC(
     ProtobufHelpers::CreateModel(
-      TensorKind::Float,
-      {1, 3, static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1, 1},
-      1,
-      true
+      TensorKind::Float, {1, 3, static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1, 1}, 1, true
     ),
     winrt::hresult_error,
     [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }

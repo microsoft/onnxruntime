@@ -451,8 +451,7 @@ static winml::ILearningModelFeatureDescriptor CreateImageFeatureDescriptor(
   WINML_THROW_HR_IF_FALSE_MSG(
     E_INVALIDARG,
     shape.size() > static_cast<size_t>(c_width_dimension) && shape[c_height_dimension] > 0 &&
-      shape[c_width_dimension] > 0 &&
-      shape[c_height_dimension] <= std::numeric_limits<int32_t>::max() &&
+      shape[c_width_dimension] > 0 && shape[c_height_dimension] <= std::numeric_limits<int32_t>::max() &&
       shape[c_width_dimension] <= std::numeric_limits<int32_t>::max(),
     "Image tensor height and width must be positive and no greater than INT32_MAX."
   );
