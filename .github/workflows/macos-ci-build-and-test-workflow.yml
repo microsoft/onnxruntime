@@ -154,6 +154,11 @@ jobs:
         # those tests would never execute in CI at all. Guarded to native
         # arm64 (skip when cross-compiling, matching the step above) and
         # use_apple_accelerate, so this only runs on this job.
+        # Runs on every native-arm64 entry in this matrix regardless of
+        # build_config: Debug (assertion-rich, catches contract violations
+        # that Release may optimize past) and Release (the same binary the
+        # benchmark steps below build) are both intentional here -- unlike
+        # the benchmark steps, correctness coverage is not config-gated.
         if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
         shell: bash
         # build.py's --build_dir ./build + --config ${{ matrix.build_config }}
@@ -162,6 +167,7 @@ jobs:
         working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
         run: |
           set -e -x
+          echo "Build config: ${{ matrix.build_config }}"
           ls -l ./onnxruntime_mlas_test
 
           # A gtest binary invoked with --gtest_filter that matches zero
@@ -190,22 +196,40 @@ jobs:
         # onnxruntime_BUILD_BENCHMARKS CMake option (see
         # cmake/onnxruntime_unittests.cmake), which also guards the general,
         # unrelated onnxruntime_benchmark target (modeltest/pooling/resize/
-        # batchnorm/etc.) -- so this uses the existing --target flag to
-        # build only onnxruntime_mlas_benchmark and its dependencies,
-        # avoiding that unrelated target entirely. Reuses the same
-        # env.build_flags already configured for this job (--config,
-        # --osx_arch, --use_apple_accelerate, etc.) so the benchmark binary
-        # is built against the identical Apple Accelerate configuration
-        # already validated by the steps above; --update re-runs cmake
-        # configure to pick up the newly-added flag in the existing build
-        # tree (no directory removal, unlike the initial Configure step --
-        # this is an incremental addition, not a clean rebuild).
-        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
+        # batchnorm/etc.).
+        #
+        # Gated to build_config == 'Release': a Debug/-O0 binary is not
+        # meaningful performance evidence, so the benchmark is only ever
+        # built/run on the Release entry of this matrix.
+        #
+        # This step intentionally does NOT call
+        # "build.py --update --build ${{ env.build_flags }}" as one command.
+        # env.build_flags includes --build_wheel (needed by the earlier
+        # Configure/Build/Install steps for this job's normal build_flags
+        # matrix), and build.py's main() unconditionally repackages the
+        # Python wheel via build_python_wheel() whenever `args.build` is
+        # set and `args.build_wheel` is set -- regardless of what
+        # --target was passed to the underlying cmake --build invocation.
+        # A prior revision of this step ran build.py --build with
+        # --build_micro_benchmarks and --target onnxruntime_mlas_benchmark
+        # together, which rebuilt and repackaged the *entire* wheel on
+        # every CI run of this job just to add one benchmark binary.
+        #
+        # Instead: reconfigure only (--update, no --build) to add
+        # --build_micro_benchmarks into the existing CMakeCache in-place
+        # (this preserves the cache/build tree from the earlier Configure
+        # step -- no directory removal, unlike that step's initial `rm -rf`),
+        # then invoke cmake directly with --target to build only
+        # onnxruntime_mlas_benchmark and its dependencies. This never touches
+        # the wheel-packaging code path at all.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate && matrix.build_config == 'Release' }}
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
           set -e -x
-          python ./tools/ci_build/build.py --update --build --build_micro_benchmarks --target onnxruntime_mlas_benchmark ${{ env.build_flags }}
+          echo "Build config: ${{ matrix.build_config }}"
+          python ./tools/ci_build/build.py --update --build_micro_benchmarks ${{ env.build_flags }}
+          cmake --build "./build/${{ matrix.build_config }}" --config "${{ matrix.build_config }}" --target onnxruntime_mlas_benchmark --parallel
 
       - name: Running MLAS Tanh benchmark A/B (onnxruntime_mlas_benchmark)
         # No performance claim is made by this step or anywhere else in this
@@ -220,7 +244,11 @@ jobs:
         # baseline, labeled "portable_polynomial" regardless of platform --
         # so the two labels in the printed output are what prove this ran
         # the intended A/B and not two copies of the same kernel.
-        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
+        #
+        # Gated to build_config == 'Release', matching the build step above
+        # -- a Debug/-O0 run here would be reported as if it were
+        # performance evidence, which it is not.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate && matrix.build_config == 'Release' }}
         shell: bash
         # Same layout as onnxruntime_mlas_test above: build.py's
         # --build_dir ./build + --config ${{ matrix.build_config }} places
@@ -228,5 +256,43 @@ jobs:
         working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
         run: |
           set -e -x
+          echo "Build config: ${{ matrix.build_config }}"
           ls -l ./onnxruntime_mlas_benchmark
-          ./onnxruntime_mlas_benchmark --benchmark_filter="BM_Tanh(Dispatch|PortableKernel)"
+
+          # A benchmark binary invoked with --benchmark_filter that matches
+          # zero benchmarks still exits 0 and prints an empty table -- it
+          # would silently "run" nothing and this step would appear to pass
+          # while producing zero real A/B evidence (e.g. if the filter
+          # regex and the actual registered benchmark names ever drifted
+          # apart). Enumerate the filtered set first via
+          # --benchmark_list_tests=true and fail loudly if either expected
+          # benchmark name is missing, instead of trusting the runner's own
+          # exit code.
+          listed_benchmarks="$(./onnxruntime_mlas_benchmark --benchmark_filter="BM_Tanh(Dispatch|PortableKernel)" --benchmark_list_tests=true)"
+          echo "${listed_benchmarks}"
+          if ! grep -q "^BM_TanhDispatch" <<< "${listed_benchmarks}"; then
+            echo "::error::onnxruntime_mlas_benchmark --benchmark_filter='BM_Tanh(Dispatch|PortableKernel)' --benchmark_list_tests=true did not list BM_TanhDispatch (see listing above). This means the A/B benchmark did not register at all on this job -- failing loudly instead of silently producing zero evidence." >&2
+            exit 1
+          fi
+          if ! grep -q "^BM_TanhPortableKernel" <<< "${listed_benchmarks}"; then
+            echo "::error::onnxruntime_mlas_benchmark --benchmark_filter='BM_Tanh(Dispatch|PortableKernel)' --benchmark_list_tests=true did not list BM_TanhPortableKernel (see listing above). This means the A/B benchmark did not register at all on this job -- failing loudly instead of silently producing zero evidence." >&2
+            exit 1
+          fi
+
+          benchmark_output="$(./onnxruntime_mlas_benchmark --benchmark_filter="BM_Tanh(Dispatch|PortableKernel)")"
+          echo "${benchmark_output}"
+
+          # BM_TanhDispatch must actually resolve to the vForce kernel
+          # (labeled "apple_accelerate_vforce" by GetTanhDispatchPathInfo in
+          # bench_transcendental.cpp) on this job. Without this check, a
+          # misconfigured build where BM_TanhDispatch silently fell back to
+          # the portable kernel (e.g. MLAS_USE_APPLE_ACCELERATE not actually
+          # reaching this translation unit) would still print two sets of
+          # numbers that look like an A/B comparison, but both would
+          # secretly be the same portable_polynomial kernel -- two portable
+          # paths masquerading as an A/B. Requiring the label in the output
+          # closes that gap.
+          if ! grep -q "apple_accelerate_vforce" <<< "${benchmark_output}"; then
+            echo "::error::onnxruntime_mlas_benchmark output did not contain the 'apple_accelerate_vforce' label (see output above). BM_TanhDispatch did not resolve to the Apple Accelerate vForce kernel on this job -- this run would otherwise report two copies of the portable kernel as if they were an A/B comparison. Check that MLAS_USE_APPLE_ACCELERATE, __APPLE__, and MLAS_TARGET_ARM64 all evaluate true for this build." >&2
+            exit 1
+          fi
