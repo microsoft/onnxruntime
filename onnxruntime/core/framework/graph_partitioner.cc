@@ -1544,6 +1544,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
         const size_t total_estimate = std::get<size_t>(consumed);
         const size_t workspace_estimate = accountant->GetCommittedWorkspaceEstimate();
         const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
+        const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
         const size_t non_workspace_estimate =
             total_estimate >= workspace_estimate ? total_estimate - workspace_estimate : 0;
         LOGS(logger, INFO) << "Resource estimation for EP '" << ep_type << "': "
@@ -1554,6 +1555,16 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                            << ", profile=" << source_counts.profile
                            << ", estimator=" << source_counts.estimator
                            << ", profile+estimator=" << source_counts.profile_and_estimator;
+        if (comparison.node_count > 0) {
+          LOGS(logger, INFO) << "Workspace profile-estimator comparison for EP '" << ep_type << "': "
+                             << comparison.node_count << " accepted node(s), "
+                             << "profile larger=" << comparison.profile_larger
+                             << ", estimator larger=" << comparison.estimator_larger
+                             << ", equal=" << comparison.equal
+                             << ", profiled workspace=" << comparison.profiled_bytes << " bytes"
+                             << ", Level-1 estimated workspace="
+                             << comparison.level1_estimated_bytes << " bytes";
+        }
       }
     }
 

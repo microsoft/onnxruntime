@@ -81,7 +81,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             WorkspaceEstimateSelection{
                 selected_workspace,
                 has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
-                              : WorkspaceEstimateSource::kProfile});
+                              : WorkspaceEstimateSource::kProfile,
+                stats.total_temp_allocations,
+                level1_workspace_estimate.value_or(0)});
         const SafeInt<size_t> resource_count =
             SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
             stats.total_dynamic_sizes + selected_workspace;
@@ -210,6 +212,10 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     return workspace_source_counts_;
   }
 
+  WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const override {
+    return workspace_estimate_comparison_;
+  }
+
   size_t GetCommittedWorkspaceEstimate() const override {
     return committed_workspace_estimate_;
   }
@@ -230,6 +236,20 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         break;
       case WorkspaceEstimateSource::kProfileAndEstimator:
         ++workspace_source_counts_.profile_and_estimator;
+        ++workspace_estimate_comparison_.node_count;
+        workspace_estimate_comparison_.profiled_bytes =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate_comparison_.profiled_bytes) +
+                                selection.profiled_bytes);
+        workspace_estimate_comparison_.level1_estimated_bytes =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate_comparison_.level1_estimated_bytes) +
+                                selection.level1_estimated_bytes);
+        if (selection.profiled_bytes > selection.level1_estimated_bytes) {
+          ++workspace_estimate_comparison_.profile_larger;
+        } else if (selection.profiled_bytes < selection.level1_estimated_bytes) {
+          ++workspace_estimate_comparison_.estimator_larger;
+        } else {
+          ++workspace_estimate_comparison_.equal;
+        }
         break;
       case WorkspaceEstimateSource::kNone:
         break;
@@ -257,6 +277,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // Workspace total and source counts for nodes ultimately accepted by the EP.
   size_t committed_workspace_estimate_ = 0;
   WorkspaceEstimateSourceCounts workspace_source_counts_;
+  WorkspaceEstimateComparisonSummary workspace_estimate_comparison_;
 };
 
 struct NodeStatsRecorder::Impl {

@@ -38,6 +38,8 @@ enum class WorkspaceEstimateSource {
 struct WorkspaceEstimateSelection {
   size_t bytes = 0;
   WorkspaceEstimateSource source = WorkspaceEstimateSource::kNone;
+  size_t profiled_bytes = 0;
+  size_t level1_estimated_bytes = 0;
 };
 
 struct WorkspaceEstimateSourceCounts {
@@ -45,6 +47,15 @@ struct WorkspaceEstimateSourceCounts {
   size_t profile = 0;
   size_t estimator = 0;
   size_t profile_and_estimator = 0;
+};
+
+struct WorkspaceEstimateComparisonSummary {
+  size_t node_count = 0;
+  size_t profile_larger = 0;
+  size_t estimator_larger = 0;
+  size_t equal = 0;
+  size_t profiled_bytes = 0;
+  size_t level1_estimated_bytes = 0;
 };
 
 // Type-erased arithmetic for ResourceCount values.
@@ -148,6 +159,9 @@ class IResourceAccountant {
 
   /// Returns accepted-node counts grouped by the workspace source used for budgeting.
   virtual WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const { return {}; }
+
+  /// Compares profile and estimator workspace values for accepted nodes where both were available.
+  virtual WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const { return {}; }
 
  protected:
   // Override to discard per-pass state for capabilities that were only probed.

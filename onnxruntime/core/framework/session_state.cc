@@ -1845,7 +1845,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
   {
-    SafeInt<size_t> total_level2_workspace = 0;
+    SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
     size_t nodes_with_workspace = 0;
     for (const auto& node : graph_viewer_->Nodes()) {
       auto* kernel = GetMutableKernel(node.Index());
@@ -1866,18 +1866,18 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                  << " size=" << req.size_bytes << " bytes"
                                  << " alignment=" << req.alignment_bytes << " bytes";
         }
-        total_level2_workspace += node_workspace;
+        aggregate_declared_workspace_bytes += node_workspace;
         ++nodes_with_workspace;
         LOGS(logger_, INFO) << "Level-2 workspace: node '" << node.Name()
                             << "' (" << node.OpType() << "): " << requirements.size()
                             << " slot(s), " << static_cast<size_t>(node_workspace) << " bytes total";
       }
     }
-    if (total_level2_workspace > 0) {
-      LOGS(logger_, INFO) << "Level-2 workspace estimation summary: "
+    if (aggregate_declared_workspace_bytes > 0) {
+      LOGS(logger_, INFO) << "Level-2 workspace declaration summary: "
                           << nodes_with_workspace << " kernel(s) declared workspace, "
-                          << "total estimated workspace: "
-                          << static_cast<size_t>(total_level2_workspace) << " bytes";
+                          << "aggregate declared workspace bytes: "
+                          << static_cast<size_t>(aggregate_declared_workspace_bytes);
     }
   }
 
