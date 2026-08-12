@@ -134,7 +134,7 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
     uint8_t* cache_base = dst_bytes + cache_offset;
 
     if (!circular_) {
-      ORT_ENFORCE(wi + sequence_length <= max_sequence_length,
+      ORT_ENFORCE(wi <= max_sequence_length - sequence_length,
                   "TensorScatter linear mode: write_indices[", batch_idx, "] + sequence_length (",
                   wi, " + ", sequence_length, ") exceeds max_sequence_length (", max_sequence_length, ")");
       // Single contiguous memcpy for the whole slice.
@@ -143,8 +143,10 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
       memcpy(cache_base + wi_offset, update_base, copy_len);
     } else {
       // Circular: each sequence position wraps independently.
+      const int64_t wi_mod = wi % max_sequence_length;
+      const int64_t distance_to_end = max_sequence_length - wi_mod;
       for (int64_t s = 0; s < sequence_length; ++s) {
-        int64_t cache_pos = (wi + s) % max_sequence_length;
+        const int64_t cache_pos = s >= distance_to_end ? s - distance_to_end : wi_mod + s;
         ptrdiff_t dst_off = static_cast<ptrdiff_t>(SafeInt<size_t>(cache_pos) * suffix_bytes);
         ptrdiff_t src_off = static_cast<ptrdiff_t>(SafeInt<size_t>(s) * suffix_bytes);
         memcpy(cache_base + dst_off, update_base + src_off, suffix_bytes);

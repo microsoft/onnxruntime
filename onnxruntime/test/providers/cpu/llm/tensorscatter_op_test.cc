@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -335,6 +337,21 @@ TEST(TensorScatterTest, Linear_OutOfBoundsWriteIndex) {
            {}, nullptr, &execution_providers);
 }
 
+TEST(TensorScatterTest, Linear_WriteIndexAdditionOverflow) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 2, 1}, {1, 2});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds max_sequence_length",
+           {}, nullptr, &execution_providers);
+}
+
 // Circular mode: negative write_indices should still fail.
 // Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
 TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
@@ -352,6 +369,20 @@ TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
            {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Circular_LargeWriteIndexWrapsWithoutOverflow) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 2, 1}, {1, 2});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {2, 0, 0, 1});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // The CPU kernel only supports fixed-size element types (matching the CUDA
