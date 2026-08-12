@@ -57,32 +57,33 @@ static bool HasLayerNormKernel() {
 // fp64-accumulated scalar reference (not dependent on MLAS)
 // ---------------------------------------------------------------------------
 //
-// Variance formula: Var = E[x²] - mean²  (two-pass equivalent, single loop).
+// Variance formula: Var = E[x²] - mean²  (uncentered, single loop in fp64).
 //
-// This reference deliberately uses the two-pass/naive formula rather than
-// Welford's online algorithm.  The choice is intentional and safe for two
-// independent reasons:
+// This reference deliberately uses a *different* algorithm from the kernel.
+// The kernel uses a centered two-pass approach: mean = sum/n (first-pass sum
+// accumulated in double), then sum((x - mean)²).  This reference instead
+// computes Var = E[x²] - mean² in a single pass.  The choice is intentional
+// and safe for two independent reasons:
 //
-//   1. fp64 precision.  The catastrophic cancellation that makes
-//      "E[x²] - mean²" dangerous in fp32 (it produced NaN and 100% relative
-//      error in the fp32 kernel, and is exactly what drove the Welford
-//      redesign) does not bite here.  At float32 magnitudes the subtracted
-//      terms differ by at most ~2^53 ULPs in fp64, well inside its dynamic
-//      range.  The result is accurate to single-precision even for the
-//      adversarial near-max scenarios exercised below.
+//   1. fp64 precision.  The uncentered formula "E[x²] - mean²" is dangerous
+//      in fp32 — catastrophic cancellation produces NaN and 100% relative
+//      error for large-base/small-spread inputs (e.g. base 1e5, spread 1e-2).
+//      At fp64 precision the subtracted terms differ by at most ~2^53 ULPs,
+//      well inside the dynamic range.  The result is accurate to single-
+//      precision even for the adversarial near-max scenarios exercised below.
 //
-//   2. Independent oracle.  A reference that uses a *different* algorithm
-//      from the kernel cross-checks the kernel's result rather than merely
-//      repeating its logic.  If the reference mirrored Welford's update
-//      equations, a shared conceptual mistake (e.g. off-by-one in the
-//      running count, wrong initialisation) could cause both to produce the
-//      same wrong answer and the test would not catch it.  The two-pass
-//      formula and Welford's algorithm are algebraically equivalent but
-//      computationally independent; agreement between them is a meaningful
-//      check.
+//   2. Independent oracle.  A reference that uses a different algorithm from
+//      the kernel cross-checks the kernel's result rather than merely
+//      repeating its logic.  If the reference mirrored the kernel's centered
+//      two-pass equations, a shared conceptual mistake (e.g. wrong
+//      accumulator width, off-by-one in the count) could cause both to
+//      produce the same wrong answer and the test would not catch it.
+//      The uncentered fp64 formula and the kernel's centered two-pass are
+//      algebraically equivalent but computationally independent; agreement
+//      between them is a meaningful check.
 //
-// Do NOT "fix" this to Welford: the apparent inconsistency with the kernel
-// is intentional.
+// Do NOT make this reference mirror the kernel's algorithm: the apparent
+// inconsistency is intentional and is what gives the test its value.
 
 static void ReferenceLayerNorm(
     const float* input,
@@ -433,7 +434,8 @@ class MlasLayerNormTest : public MlasTestBase {
       }
       std_dev = sqrtf(sum_sq / static_cast<float>(norm_size) + epsilon);
     } else {
-      // Welford's online algorithm — matches layer_norm_impl.cc exactly
+      // Welford's online algorithm in fp32 (historical baseline; the kernel
+      // now uses centered two-pass, but this is kept for accuracy comparison)
       float M2 = 0.0f;
       for (size_t h = 0; h < norm_size; h++) {
         output[h] = input[h];
