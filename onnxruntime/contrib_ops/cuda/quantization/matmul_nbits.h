@@ -307,7 +307,6 @@ class MatMulNBits final : public CudaKernel {
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
 
   bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
-  Status SetPreallocatedWorkspace(int slot_id, void* data, size_t size_bytes) override;
 #endif
 
   // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
@@ -370,11 +369,6 @@ class MatMulNBits final : public CudaKernel {
   IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
-
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
-  void* preallocated_workspace_ = nullptr;
-  size_t preallocated_workspace_bytes_ = 0;
-#endif
 
   // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
   mutable std::atomic<size_t> last_compute_workspace_bytes_{0};

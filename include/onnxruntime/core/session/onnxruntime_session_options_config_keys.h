@@ -485,10 +485,10 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 
-/// Enables the initial static-workspace preallocation pilot. The default value is "0".
-/// When set to "1", ORT requires sequential execution, serializes concurrent Run() calls,
-/// and allocates one reusable workspace buffer per device for kernels that explicitly support it.
-/// Runtime requests larger than the declared workspace retain the existing dynamic-allocation fallback.
+/// Enables workspace integration with ORT's run-scoped activation memory pattern. The default value is "0".
+/// When set to "1", ORT requires sequential execution and includes opted-in kernel workspace lifetimes
+/// in memory-pattern planning when memory-pattern optimization is active. Runtime requests larger than
+/// the declaration retain dynamic allocation.
 static const char* const kOrtSessionOptionsEnableStaticWorkspacePreallocation =
     "session.enable_static_workspace_preallocation";
 

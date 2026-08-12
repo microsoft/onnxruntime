@@ -961,6 +961,50 @@ void ExecutionFrame::TraceFree(int ort_value_idx) {
   }
 }
 
+Status ExecutionFrame::GetPlannedWorkspace(int pattern_id, const OrtDevice& location,
+                                           size_t allocation_bytes, size_t alignment_bytes,
+                                           void** workspace) {
+  *workspace = nullptr;
+
+  if (planner_.has_value()) {
+    ORT_RETURN_IF_ERROR(planner_->TraceAllocation(pattern_id, location, allocation_bytes));
+    return Status::OK();
+  }
+
+  if (mem_patterns_ == nullptr) {
+    return Status::OK();
+  }
+
+  const auto* pattern = mem_patterns_->GetPatterns(location);
+  const auto* block = pattern == nullptr ? nullptr : pattern->GetBlock(pattern_id);
+  auto buffer_it = buffers_.find(location);
+  if (block == nullptr || block->size_ != allocation_bytes || buffer_it == buffers_.end()) {
+    return Status::OK();
+  }
+
+  uintptr_t address = reinterpret_cast<uintptr_t>(buffer_it->second.get()) + block->offset_;
+  if (alignment_bytes > 1) {
+    const size_t remainder = address % alignment_bytes;
+    if (remainder != 0) {
+      address = static_cast<uintptr_t>(SafeInt<uintptr_t>(address) + alignment_bytes - remainder);
+    }
+  }
+
+  *workspace = reinterpret_cast<void*>(address);
+  return Status::OK();
+}
+
+void ExecutionFrame::ReleasePlannedWorkspace(int pattern_id, const OrtDevice& location) {
+  if (planner_.has_value()) {
+    const auto status = planner_->TraceFree(pattern_id, location);
+    if (!status.IsOK()) {
+      LOGS(session_state_.Logger(), WARNING)
+          << "TraceFree for workspace pattern_id=" << pattern_id
+          << " failed: " << status.ErrorMessage();
+    }
+  }
+}
+
 // generate memory pattern based on the tracing of memory allocation/free in current execution
 // return error if the planner is not setup.
 Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup& out) {

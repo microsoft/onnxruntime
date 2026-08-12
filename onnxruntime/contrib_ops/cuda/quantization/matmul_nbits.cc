@@ -707,16 +707,6 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   return Status::OK();
 }
 
-template <typename T>
-Status MatMulNBits<T>::SetPreallocatedWorkspace(
-    int slot_id, void* data, size_t size_bytes) {
-  ORT_RETURN_IF(slot_id != 0, "MatMulNBits received unknown workspace slot ", slot_id);
-  ORT_RETURN_IF(data == nullptr && size_bytes != 0,
-                "MatMulNBits received a null preallocated workspace buffer.");
-  preallocated_workspace_ = data;
-  preallocated_workspace_bytes_ = size_bytes;
-  return Status::OK();
-}
 #endif
 
 template <typename T>
@@ -888,13 +878,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         IAllocatorUniquePtr<void> workspace_buffer;
         void* workspace = nullptr;
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
-        const bool use_preallocated_workspace =
-            preallocated_workspace_ != nullptr && workspace_size <= preallocated_workspace_bytes_;
+        ORT_RETURN_IF_ERROR(ctx->GetPreallocatedWorkspace(
+            /*slot_id=*/0, workspace_size, &workspace));
+        const bool use_preallocated_workspace = workspace != nullptr;
         last_compute_used_preallocated_workspace_.store(
             use_preallocated_workspace, std::memory_order_relaxed);
-        if (use_preallocated_workspace) {
-          workspace = preallocated_workspace_;
-        } else
+        if (!use_preallocated_workspace)
 #endif
         {
           workspace_buffer = this->template GetScratchBuffer<void>(

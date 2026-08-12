@@ -87,6 +87,19 @@ using NotificationIndex = size_t;
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
 struct SequentialExecutionPlan : public ExecutionPlanBase {
+  struct WorkspaceAllocationPlan {
+    int pattern_id;
+    int slot_id;
+    size_t size_bytes;
+    size_t allocation_bytes;
+    size_t alignment_bytes;
+    OrtDevice location;
+  };
+
+  // Synthetic allocations traced around kernel execution. Negative pattern IDs keep these entries
+  // disjoint from OrtValue indices in MemoryPattern.
+  InlinedHashMap<NodeIndex, InlinedVector<WorkspaceAllocationPlan>> workspace_allocation_plan;
+
   // Allocation plan:
   // ExecutionFrame::GetOrCreateTensor() should use the following information
   // to decide whether to allocate a new buffer or reuse an existing buffer

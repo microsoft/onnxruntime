@@ -95,6 +95,15 @@ class IExecutionFrame {
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
 
+  virtual Status GetPlannedWorkspace(int /*pattern_id*/, const OrtDevice& /*location*/,
+                                     size_t /*allocation_bytes*/, size_t /*alignment_bytes*/,
+                                     void** workspace) {
+    *workspace = nullptr;
+    return Status::OK();
+  }
+
+  virtual void ReleasePlannedWorkspace(int /*pattern_id*/, const OrtDevice& /*location*/) {}
+
  protected:
   OrtValue& GetMutableMLValue(int ort_value_index) { return const_cast<OrtValue&>(GetMLValue(ort_value_index)); }
 
@@ -167,6 +176,11 @@ class ExecutionFrame final : public IExecutionFrame {
   bool HasMemoryPatternPlanner() const {
     return planner_.has_value();
   }
+
+  Status GetPlannedWorkspace(int pattern_id, const OrtDevice& location,
+                             size_t allocation_bytes, size_t alignment_bytes,
+                             void** workspace) override;
+  void ReleasePlannedWorkspace(int pattern_id, const OrtDevice& location) override;
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::optional<size_t> GetOrtValueDynamicAllocation(int ort_value_index) const {

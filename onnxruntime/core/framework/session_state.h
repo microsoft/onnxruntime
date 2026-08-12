@@ -467,9 +467,6 @@ class SessionState {
   // fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
   FuncManager fused_funcs_mgr_;
 
-  // Framework-owned static workspace must outlive kernels that retain non-owning pointers into it.
-  InlinedHashMap<OrtDevice, IAllocatorUniquePtr<void>> static_workspace_buffers_;
-
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
   WorkspaceReservationMap workspace_reservations_;
