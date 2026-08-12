@@ -96,6 +96,11 @@ std::vector<float> _TypedCvt(const std::vector<float>& tensor) {
 }
 
 template <>
+std::vector<MLFloat16> _TypedCvt(const std::vector<float>& tensor) {
+  return _Cvt(tensor);
+}
+
+template <>
 std::vector<Float8E4M3FN> _TypedCvt(const std::vector<float>& tensor) {
   std::vector<Float8E4M3FN> out(tensor.size());
   for (size_t i = 0; i < tensor.size(); ++i) {
@@ -105,11 +110,11 @@ std::vector<Float8E4M3FN> _TypedCvt(const std::vector<float>& tensor) {
 }
 
 template <typename ab_type, typename c_type, typename out_type>
-void TestGemmFloat8WithFloat8(int64_t dtype, bool has_scales = false) {
-  int min_cuda_architecture = 11080;
+void TestGemmFloat8WithFloat8(int64_t dtype, bool has_scales = false,
+                             bool expect_failure = false) {
+  constexpr int min_cuda_architecture = 890;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware does NOT support Matrix Multiplication for FLOAT8";
-    return;
+    GTEST_SKIP() << "Hardware does NOT support Matrix Multiplication for FLOAT8";
   }
   OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
   test.AddAttribute("transA", (int64_t)0);
@@ -129,7 +134,10 @@ void TestGemmFloat8WithFloat8(int64_t dtype, bool has_scales = false) {
   test.AddOutput<out_type>("Y", {2, 3}, _TypedCvt<out_type>(std::vector<float>({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f})));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run(expect_failure ? OpTester::ExpectResult::kExpectFailure
+                          : OpTester::ExpectResult::kExpectSuccess,
+           expect_failure ? "FP8 output requires input C to be FLOAT16 or BFLOAT16." : "",
+           {}, nullptr, &execution_providers);
 }
 
 TEST(GemmFloat8OpTest, Float8E4M3FNToFloat) {
@@ -138,19 +146,23 @@ TEST(GemmFloat8OpTest, Float8E4M3FNToFloat) {
 }
 
 TEST(GemmFloat8OpTest, Float8E4M3FNToFloat8E4M3FN) {
-  TestGemmFloat8WithFloat8<Float8E4M3FN, float, Float8E4M3FN>(
+  TestGemmFloat8WithFloat8<Float8E4M3FN, MLFloat16, Float8E4M3FN>(
       static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN));
 }
 
-TEST(GemmFloat8OpTest, ScaledFloat8E4M3FNWithFloatCToFloat8E4M3FN) {
-  TestGemmFloat8WithFloat8<Float8E4M3FN, float, Float8E4M3FN>(
+TEST(GemmFloat8OpTest, ScaledFloat8E4M3FNWithFloat16CToFloat8E4M3FN) {
+  TestGemmFloat8WithFloat8<Float8E4M3FN, MLFloat16, Float8E4M3FN>(
       static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN), true);
 }
 
+TEST(GemmFloat8OpTest, Float8E4M3FNWithFloatCToFloat8E4M3FNFails) {
+  TestGemmFloat8WithFloat8<Float8E4M3FN, float, Float8E4M3FN>(
+      static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN), false, true);
+}
+
 TEST(GemmFloat8OpTest, ScaledFloat8E4M3FNToFloat8E4M3FNWithoutC) {
-  if (!HasCudaEnvironment(11080)) {
-    LOGS_DEFAULT(WARNING) << "Hardware does NOT support Matrix Multiplication for FLOAT8";
-    return;
+  if (!HasCudaEnvironment(890)) {
+    GTEST_SKIP() << "Hardware does NOT support Matrix Multiplication for FLOAT8";
   }
 
   OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);

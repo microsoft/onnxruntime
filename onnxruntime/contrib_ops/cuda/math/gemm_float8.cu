@@ -199,8 +199,24 @@ Status GemmFloat8::ComputeGemm(
   cudaDataType_t d_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_Y);
   cudaDataType_t scale_cuda_type =
       onnxruntime::cuda::ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-  cudaDataType_t c_cuda_type =
-      has_bias ? onnxruntime::cuda::ToCudaDataType(dtype_C) : d_cuda_type;
+  cudaDataType_t c_cuda_type = has_bias
+                                   ? onnxruntime::cuda::ToCudaDataType(dtype_C)
+                                   : d_cuda_type;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  const bool is_fp8_output =
+      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
+      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+  if (is_fp8_output) {
+    ORT_RETURN_IF(has_bias &&
+                      c_cuda_type != CUDA_R_16F &&
+                      c_cuda_type != CUDA_R_16BF,
+                  "FP8 output requires input C to be FLOAT16 or BFLOAT16.");
+    if (!has_bias) {
+      c_cuda_type = CUDA_R_16F;
+    }
+  }
+#endif
 
   cublasComputeType_t compute_type;
   switch (d_cuda_type) {
@@ -292,10 +308,7 @@ Status GemmFloat8::ComputeGemm(
       cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, M, N, ldd));
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-  if (has_bias &&
-      (dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
-       dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2)) {
-    // For FP8 output, cuBLAS requires C_type to be same as bias_type.
+  if (has_bias && is_fp8_output) {
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type,
         sizeof(c_cuda_type)));
