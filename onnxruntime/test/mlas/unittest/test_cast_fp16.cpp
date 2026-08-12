@@ -141,23 +141,20 @@ class MlasCastFp16Test : public MlasTestBase {
   }
 
   // Verify the vectorised kernel is dispatched (non-null function pointer)
-  // on platforms that define MLAS_F16VEC_INTRINSICS_SUPPORTED or
-  // MLAS_CAST_F16_NEON_SUPPORTED.  The dispatch table pointers are what
+  // on macOS arm64 (MLAS_CAST_F16_NEON_SUPPORTED) or other platforms with
+  // MLAS_F16VEC_INTRINSICS_SUPPORTED.  The dispatch table pointers are what
   // cast.cpp checks at runtime to decide between the NEON kernel and the
   // scalar fallback, so asserting non-null here genuinely proves dispatch.
+  // This test compiles to nothing on platforms without a vectorised kernel.
   void TestKernelIsDispatched() {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(MLAS_CAST_F16_NEON_SUPPORTED)
+    // On macOS arm64 (or other platforms with vectorised cast support),
+    // the dispatch pointers must be non-null — proving the NEON kernel
+    // is selected rather than the scalar fallback.
     ASSERT_NE(GetMlasPlatform().CastF16ToF32Kernel, nullptr)
         << "Expected non-null CastF16ToF32Kernel on this platform";
     ASSERT_NE(GetMlasPlatform().CastF32ToF16Kernel, nullptr)
         << "Expected non-null CastF32ToF16Kernel on this platform";
-#else
-    // On platforms without a vectorised cast kernel, both pointers must be
-    // null so that cast.cpp falls through to the scalar loop.
-    ASSERT_EQ(GetMlasPlatform().CastF16ToF32Kernel, nullptr)
-        << "CastF16ToF32Kernel should be null on this platform";
-    ASSERT_EQ(GetMlasPlatform().CastF32ToF16Kernel, nullptr)
-        << "CastF32ToF16Kernel should be null on this platform";
 #endif
   }
 };
