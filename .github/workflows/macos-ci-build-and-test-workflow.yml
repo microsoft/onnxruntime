@@ -143,3 +143,24 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
+
+      - name: Running MLAS Apple Accelerate targeted tests (onnxruntime_mlas_test)
+        # onnxruntime_mlas_test is a standalone gtest binary that is never
+        # registered with add_test()/ctest (see cmake/onnxruntime_unittests.cmake),
+        # so the ctest-driven "build.py --test" step above never runs it on
+        # any macOS CI lane, including this one -- the only lane that builds
+        # the Apple Accelerate Tanh kernel and its gated
+        # test_tanh_apple_accelerate.cpp. Without this explicit invocation
+        # those tests would never execute in CI at all. Guarded to native
+        # arm64 (skip when cross-compiling, matching the step above) and
+        # use_apple_accelerate, so this only runs on this job.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
+        shell: bash
+        # build.py's --build_dir ./build + --config ${{ matrix.build_config }}
+        # places test executables directly at build/<config>/, the same
+        # layout the "Install" step above already relies on.
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          set -e -x
+          ls -l ./onnxruntime_mlas_test
+          ./onnxruntime_mlas_test --gtest_filter="TanhAppleAccelerate.*"
