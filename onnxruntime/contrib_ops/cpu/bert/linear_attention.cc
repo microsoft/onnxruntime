@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/bert/linear_attention.h"
+#include "contrib_ops/cpu/bert/linear_attention_helper.h"
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/common/safeint.h"
@@ -60,6 +61,10 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : OpKernel(info) {
   int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
   // chunk_size_ reserved for future chunk-parallel prefill algorithm; not yet used.
   chunk_size_ = static_cast<int>(chunk_size);
+
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
+              "CPU LinearAttention does not support state_window > 0 (CUDA EP only)");
+  state_window_ = 0;
 }
 
 namespace {
@@ -417,21 +422,17 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   // ==== Initialize state: write directly into output present_state ====
-  // present_state: (B, H_kv, d_k, d_v)
-  TensorShape state_shape({batch_size, static_cast<int64_t>(kv_num_heads_), d_k, d_v});
+  // state_window_ is always 0 on CPU, so this is the legacy (B, H_kv, d_k, d_v) shape.
+  TensorShape state_shape;
+  ORT_RETURN_IF_ERROR(linear_attention_helper::CheckInputs(
+      state_window_, static_cast<int>(batch_size), kv_num_heads_,
+      static_cast<int>(d_k), static_cast<int>(d_v), past_state_tensor, state_shape));
   Tensor* present_state_tensor = context->Output(1, state_shape);
   float* state_data = present_state_tensor->MutableData<float>();
   int64_t state_per_head = d_k * d_v;
   int64_t total_state = batch_size * kv_num_heads_ * state_per_head;
 
   if (past_state_tensor != nullptr) {
-    const auto& ps_shape = past_state_tensor->Shape();
-    ORT_RETURN_IF_NOT(ps_shape.NumDimensions() == 4 &&
-                          ps_shape[0] == batch_size &&
-                          ps_shape[1] == kv_num_heads_ &&
-                          ps_shape[2] == d_k &&
-                          ps_shape[3] == d_v,
-                      "past_state must be (B, H_kv, d_k, d_v)");
     const float* ps_data = past_state_tensor->Data<float>();
     std::memcpy(state_data, ps_data, static_cast<size_t>(total_state) * sizeof(float));
   } else {

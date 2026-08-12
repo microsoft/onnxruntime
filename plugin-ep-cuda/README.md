@@ -15,7 +15,8 @@ For more information about plugin EPs, see the documentation
 - [`paths.txt`](paths.txt) - Specifies directories and paths related to the CUDA EP. These paths are used to filter the
   commits considered when identifying changes between releases, e.g., for generating release notes.
 - [`python/`](python/) - Sources and build script for the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheels.
-- [`csharp/`](csharp/) - Sources and packaging script for the `Microsoft.ML.OnnxRuntime.EP.Cuda` NuGet package.
+- [`csharp/`](csharp/) - Sources and packaging script for the per-RID
+  `Microsoft.ML.OnnxRuntime.EP.Cuda{12,13}.<rid>` NuGet packages.
 
 ## Usage
 
