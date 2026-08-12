@@ -119,7 +119,8 @@ TEST(ImageScalerContribOpTest, ImageScalerEmptyBias) {
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, std::vector<float>(N * C * H * W, 0.0f));
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Bias size (0) does not match the number of channels (2)");
+           "Bias size (0) does not match the number of channels (2)",
+           {kTensorrtExecutionProvider});
 }
 
 void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
