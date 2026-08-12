@@ -1965,7 +1965,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     try
                     {
-                        var task = session.RunAsync(null, inputNames, inputValues, outputNames, outputValues);
+                        RunOptions runOptions = new RunOptions();
+                        var task = session.RunAsync(runOptions, inputNames, inputValues, outputNames, outputValues);
+                        runOptions = null;
+                        // Exercise the managed argument and RunOptions lifetimes while native work is outstanding.
+                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
+                        GC.WaitForPendingFinalizers();
                         var outputs = await task;
                         var valueOut = outputs.ElementAt<OrtValue>(0);
                         var float16s = valueOut.GetTensorDataAsSpan<Float16>().ToArray();
