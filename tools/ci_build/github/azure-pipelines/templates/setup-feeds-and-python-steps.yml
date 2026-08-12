@@ -47,7 +47,7 @@ steps:
       Set-Content -Force -Path $npmrcPath -Value @"
       registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/npm/registry/
       always-auth=true
-      replace-registry-host=always
+      replace-registry-host=npmjs
       "@
 
       Write-Host "Generated npmrc contents:"
