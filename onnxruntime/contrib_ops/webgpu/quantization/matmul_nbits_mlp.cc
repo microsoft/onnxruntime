@@ -72,7 +72,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
         single_scale_weights_(single_scale_weights),
         tile_size_k_vec_(tile_size_k_vec),
         k_unroll_tiles_(k_unroll_tiles),
-        activation_kind_(activation_kind) {}
+        activation_kind_(activation_kind),
+        acc_f32_(acc_f32) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);

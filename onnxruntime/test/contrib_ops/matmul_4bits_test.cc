@@ -948,6 +948,69 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   test.ConfigEps(std::move(execution_providers));
   test.RunWithConfig();
 }
+
+// Float16_LargeK_AccumulatorOverflow above is the numerical case, and it only covers the generic
+// MatMulNBits kernel with the option on. This one is the opposite: ordinary Gaussian inputs, but every
+// dispatch that reads the option, in both of its states. It is there so that a shader variant that
+// fails to compile, an uninitialised accumulator flag or a cache hint that cannot tell the two variants
+// apart shows up as a test failure rather than as garbage on someone's GPU.
+//
+// The shapes below pick the dispatch:
+//   M = 1                  -> matmul_nbits.wgsl.template
+//   M = 8,  block_size 32  -> matmul_nbits_wide_tile.wgsl.template
+//   accuracy_level 4       -> dp4a_matmul*.wgsl.template (where the adapter supports it)
+// With the option set to "f32" on an adapter with subgroup matrices, the subgroup-matrix path declines
+// itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch
+// falls through to one of the kernels above; that fallback is exercised here too.
+//
+// The fused MLP and QKV decode kernels also read the option, but they are reached through graph fusion
+// rather than through a MatMulNBits node, so they are not covered here.
+TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
+  constexpr float abs_error = 0.055f;
+
+  struct Case {
+    int64_t M;
+    int64_t N;
+    int64_t K;
+    int64_t block_size;
+    int64_t accuracy_level;
+    bool has_bias;
+  };
+  constexpr Case cases[] = {
+      {1, 128, 1024, 32, 0, false},   // generic, decode shape
+      {1, 128, 1024, 32, 0, true},    // generic, with bias
+      {8, 128, 1024, 32, 0, false},   // wide tile, prefill shape
+      {8, 128, 1024, 32, 0, true},    // wide tile, with bias
+      {8, 128, 4096, 32, 4, false},   // dp4a where available, otherwise wide tile
+      {2, 128, 4096, 32, 4, false},   // dp4a small-M where available
+  };
+
+  for (const auto& c : cases) {
+    for (const char* precision : {webgpu::options::kPreferredMatmulAccumulatorPrecision_F16,
+                                  webgpu::options::kPreferredMatmulAccumulatorPrecision_F32}) {
+      SCOPED_TRACE(std::string{"preferredMatmulAccumulatorPrecision:"} + precision);
+
+      TestOptions opts{};
+      opts.M = c.M;
+      opts.N = c.N;
+      opts.K = c.K;
+      opts.block_size = c.block_size;
+      opts.accuracy_level = c.accuracy_level;
+      opts.has_zero_point = false;
+      opts.has_bias = c.has_bias;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.02f;
+
+      ConfigOptions config_options{};
+      ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredMatmulAccumulatorPrecision, precision)
+                      .IsOK());
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+      RunTest<MLFloat16>(opts, std::move(execution_providers));
+    }
+  }
+}
 #endif
 
 #ifdef USE_CUDA

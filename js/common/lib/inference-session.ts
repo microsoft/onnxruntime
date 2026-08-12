@@ -314,6 +314,19 @@ export declare namespace InferenceSession {
     defaultBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
 
     /**
+     * Specify the precision of the accumulators that the MatMulNBits kernels carry along the K
+     * dimension. Weights and activations are unaffected, so global memory traffic is identical
+     * either way.
+     * - 'f16': the accumulator follows the output element type. This is the default.
+     * - 'f32': accumulate in f32 regardless of the output type. Partial sums along K can exceed
+     * the f16 maximum (65504) on backends that round strictly at every step, which saturates the
+     * accumulator to Inf; this avoids that at the cost of registers and workgroup memory.
+     *
+     * @default 'f16'
+     */
+    preferredMatmulAccumulatorPrecision?: 'f16' | 'f32';
+
+    /**
      * Specify an optional WebGPU device to be used by the WebGPU execution provider.
      */
     device?: TryGetGlobalType<'GPUDevice'>;

@@ -51,6 +51,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   ORT_ENFORCE(nbits_ == 4 || nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits.");
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
@@ -267,7 +268,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     const uint32_t num_N_tile = CeilDiv(N, tile_n);
     const uint32_t num_M_tile = CeilDiv(dispatch_M, tile_m);
 
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits)};
+    const bool wide_tile_acc_f32 = context.MatmulAccumulatorPrecisionF32();
+    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), wide_tile_acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -308,7 +310,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                  {num_N_tile},
                                  {num_M_tile},
                                  {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect);
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, wide_tile_acc_f32);
 
     return context.RunProgram(program);
   }

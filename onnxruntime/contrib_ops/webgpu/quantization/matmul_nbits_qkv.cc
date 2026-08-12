@@ -41,7 +41,8 @@ class MatMulNBitsQkvDecodeProgram final
         k_unroll_tiles_(k_unroll_tiles),
         has_norm_(has_norm),
         has_skip_input_(has_skip_input),
-        has_skip_output_(has_skip_output) {
+        has_skip_output_(has_skip_output),
+        acc_f32_(acc_f32) {
     // The no-norm variant runs against an already-normalized input tensor and therefore
     // never owns the residual skip path nor the residual passthrough output.
     ORT_ENFORCE(has_norm_ || (!has_skip_input_ && !has_skip_output_),

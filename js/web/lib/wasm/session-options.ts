@@ -139,6 +139,15 @@ const setExecutionProviders = async (
               appendEpOption(epOptions, 'validationMode', webgpuOptions.validationMode, allocs);
             }
 
+            // set MatMulNBits accumulator precision
+            if (webgpuOptions.preferredMatmulAccumulatorPrecision) {
+              const precision = webgpuOptions.preferredMatmulAccumulatorPrecision;
+              if (precision !== 'f16' && precision !== 'f32') {
+                throw new Error(`preferredMatmulAccumulatorPrecision must be either 'f16' or 'f32': ${precision}`);
+              }
+              appendEpOption(epOptions, 'preferredMatmulAccumulatorPrecision', precision, allocs);
+            }
+
             // set buffer cache modes
             for (const key of [
               'storageBufferCacheMode',
