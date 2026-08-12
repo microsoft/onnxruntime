@@ -130,17 +130,23 @@ struct Func_Add<bool> {
   }
 };
 
+// MLFloat16 and BFloat16 expose conversions and comparisons but no arithmetic operators,
+// so 'add' and 'mul' are evaluated in float and rounded back to half on every update. That
+// matches the CUDA and WebGPU kernels, which likewise reduce one update at a time in half
+// precision rather than carrying a float accumulator across updates.
+// 'min' and 'max' need no specialization: both types have the comparison operators the
+// generic functors use.
 template <>
 struct Func_Add<MLFloat16> {
-  void operator()(MLFloat16*, const MLFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
+  void operator()(MLFloat16* a, const MLFloat16* b) const {
+    *a = MLFloat16(a->ToFloat() + b->ToFloat());
   }
 };
 
 template <>
 struct Func_Add<BFloat16> {
-  void operator()(BFloat16*, const BFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
+  void operator()(BFloat16* a, const BFloat16* b) const {
+    *a = BFloat16(a->ToFloat() + b->ToFloat());
   }
 };
 
@@ -167,15 +173,15 @@ struct Func_Mul<std::string> {
 
 template <>
 struct Func_Mul<MLFloat16> {
-  void operator()(MLFloat16*, const MLFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
+  void operator()(MLFloat16* a, const MLFloat16* b) const {
+    *a = MLFloat16(a->ToFloat() * b->ToFloat());
   }
 };
 
 template <>
 struct Func_Mul<BFloat16> {
-  void operator()(BFloat16*, const BFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
+  void operator()(BFloat16* a, const BFloat16* b) const {
+    *a = BFloat16(a->ToFloat() * b->ToFloat());
   }
 };
 
@@ -200,13 +206,6 @@ struct Func_Min<std::string> {
   }
 };
 
-template <>
-struct Func_Min<BFloat16> {
-  void operator()(BFloat16*, const BFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
-  }
-};
-
 template <class T>
 struct Func_Max {
   void operator()(T* a, const T* b) const {
@@ -225,13 +224,6 @@ template <>
 struct Func_Max<std::string> {
   void operator()(std::string*, const std::string*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
-  }
-};
-
-template <>
-struct Func_Max<BFloat16> {
-  void operator()(BFloat16*, const BFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
   }
 };
 

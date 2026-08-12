@@ -316,8 +316,6 @@ TEST(ScatterElements, AddReduction) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-#if defined(CUDA_VERSION)
-// Operation on float16 (MLFloat16) is not implemented on CPU.
 TEST(ScatterElements, AddReduction_MLFloat16) {
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 0);
@@ -328,10 +326,95 @@ TEST(ScatterElements, AddReduction_MLFloat16) {
   test.AddInput<MLFloat16>("updates", {4, 3}, ToFloat16(std::vector<float>({1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f, 4.f, 4.f, 4.f})));
   test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16(std::vector<float>({-9.f, -4.f, -1.f, -7.f + (1.f + 2.f + 3.f + 4.f), -3.f + (1.f + 2.f + 3.f + 4.f), -6.f + (1.f + 2.f + 3.f + 4.f)})));
 
-  // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
-#endif
+
+// Pins down the accumulation precision. The reduction is carried out in half and rounded
+// after every update, matching the CUDA and WebGPU kernels. One ULP at 1024 is 1.0 in
+// binary16, so each 0.25 update rounds away and the total stays 1024; an implementation
+// that accumulated in float and rounded once at the end would produce 1026 instead.
+TEST(ScatterElements, AddReduction_MLFloat16_RoundsAfterEachUpdate) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<MLFloat16>("data", {2, 1}, ToFloat16(std::vector<float>({0.f, 1024.f})));
+  test.AddInput<int64_t>("indices", {8, 1}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {8, 1}, ToFloat16(std::vector<float>(8, 0.25f)));
+  test.AddOutput<MLFloat16>("y", {2, 1}, ToFloat16(std::vector<float>({0.f, 1024.f})));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, AddReduction_BFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<BFloat16>("data", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f}));
+  test.AddInput<int64_t>("indices", {4, 3}, {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<BFloat16>("updates", {4, 3}, ToBFloat16({1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f, 4.f, 4.f, 4.f}));
+  test.AddOutput<BFloat16>("y", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, 3.f, 7.f, 4.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MulReduction_BFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "mul");
+
+  // bfloat16 keeps only 8 bits of significand, so the products are chosen to stay exactly
+  // representable (-343, as used by the float test, would round to -344).
+  test.AddInput<BFloat16>("data", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<BFloat16>("updates", {2, 3}, ToBFloat16({2.f, 3.f, 2.f, 2.f, 1.f, 2.f}));
+  test.AddOutput<BFloat16>("y", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, -28.f, -9.f, -24.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// min/max for BFloat16 previously threw even though the generic comparison-based functors
+// work for it, exactly as they already did for MLFloat16.
+TEST(ScatterElements, MinReduction_BFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<BFloat16>("data", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, 8.f, -3.f, 5.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<BFloat16>("updates", {2, 3}, ToBFloat16({1.f, 5.f, 3.f, 7.f, 3.f, 6.f}));
+  test.AddOutput<BFloat16>("y", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, 1.f, -3.f, 3.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_BFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<BFloat16>("data", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<BFloat16>("updates", {2, 3}, ToBFloat16({1.f, 5.f, 3.f, 7.f, 3.f, 6.f}));
+  test.AddOutput<BFloat16>("y", {2, 3}, ToBFloat16({-9.f, -4.f, -1.f, 7.f, 5.f, 6.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, AddReductionAxis1_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16(std::vector<float>({9.f, 4.f, 1.f, 7.f, 3.f, 6.f})));
+  test.AddInput<int64_t>("indices", {2, 4}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {2, 4}, ToFloat16(std::vector<float>({2.f, 5.f, 3.f, 6.f, 7.f, 9.f, 8.f, 10.f})));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16(std::vector<float>({9.f, 4.f + (2.f + 5.f + 3.f + 6.f), 1.f, 7.f, 3.f + (7.f + 9.f + 8.f + 10.f), 6.f})));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+}
 
 TEST(ScatterElements, AddReductionAxis1) {
   OpTester test("ScatterElements", 18);
@@ -356,6 +439,19 @@ TEST(ScatterElements, MulReduction) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
   test.AddInput<float>("updates", {2, 3}, {7.f, 3.f, 6.f, 7.f, 3.f, 6.f});
   test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, -7.f * 7.f * 7.f, -3.f * 3.f * 3.f, -6.f * 6.f * 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MulReduction_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "mul");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16(std::vector<float>({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f})));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {2, 3}, ToFloat16(std::vector<float>({7.f, 3.f, 6.f, 7.f, 3.f, 6.f})));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16(std::vector<float>({-9.f, -4.f, -1.f, -7.f * 7.f * 7.f, -3.f * 3.f * 3.f, -6.f * 6.f * 6.f})));
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
