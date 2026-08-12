@@ -343,7 +343,7 @@ struct ScatterNDDispatchTarget {
         } break;
       }
     };
-    if constexpr (std::is_same_v<TData, std::string>) {
+    if (context->Input<Tensor>(0)->IsDataTypeString()) {
       tp = nullptr;
     }
     concurrency::ThreadPool::TryParallelFor(
