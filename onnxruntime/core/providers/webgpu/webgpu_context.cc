@@ -60,7 +60,7 @@ uint32_t GetDawnWorkerThreadCount() {
 class DawnPlatform final : public dawn::platform::Platform {
  public:
   std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
-    return CreateDefaultWorkerTaskPool(GetDawnWorkerThreadCount());
+    return dawn::platform::WorkerTaskPool::CreateDawnDefault(GetDawnWorkerThreadCount());
   }
 };
 
