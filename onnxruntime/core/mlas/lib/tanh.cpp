@@ -27,20 +27,28 @@ Abstract:
 #if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
 //
 // This kernel only needs vForce's vvtanhf() and does not use any BLAS/LAPACK
-// functionality from the Accelerate umbrella header. On recent macOS SDKs
-// (observed on the Xcode 26.3 / MacOSX26.2 SDK), Accelerate's new LAPACK-ABI
-// cblas.h forward-declares enums such as CBLAS_TRANSPOSE without an inline
-// definition, which is valid C but is rejected by ISO C++ ("ISO C++ forbids
-// forward references to 'enum' types"), breaking the build for any C++
-// translation unit that includes <Accelerate/Accelerate.h> as-is. Forcing the
-// legacy (non-ILP64) CBLAS/LAPACK headers via these macros avoids the
-// offending forward declarations; it has no effect on vForce, which is what
-// this file actually uses. See: https://forums.swift.org/t/71695 and
-// Apple's "Updating Code That Uses the New LAPACK and BLAS APIs" guidance.
+// functionality from the Accelerate umbrella header. Pulling in the full
+// <Accelerate/Accelerate.h> umbrella header is not viable here: on the
+// Xcode 26.3 / MacOSX26.2 SDK, *both* of vecLib's BLAS headers (the legacy
+// cblas.h and the new-LAPACK-ABI cblas_new.h -- selectable via the
+// ACCELERATE_NEW_LAPACK macro) forward-declare enums such as CBLAS_TRANSPOSE
+// without an inline definition. That's valid C but is rejected by ISO C++
+// ("ISO C++ forbids forward references to 'enum' types"), so any C++
+// translation unit that includes the umbrella header fails to build on this
+// SDK regardless of which BLAS header variant is selected. This is an Apple
+// SDK header bug unrelated to the Tanh/vForce kernel itself (see
+// https://forums.swift.org/t/71695 for the same class of issue on earlier
+// SDKs).
 //
-#define ACCELERATE_NEW_LAPACK 0
-#define ACCELERATE_LAPACK_ILP64 0
-#include <Accelerate/Accelerate.h>
+// vvtanhf() is a long-stable, documented public vForce API (macOS 10.9+ /
+// iOS 7.0+) with signature `void vvtanhf(float *y, const float *x, const
+// int *n)`. Forward-declaring it directly avoids including the umbrella
+// header (and therefore the broken BLAS headers) entirely; this is safe
+// because the symbol is defined by libSystem/Accelerate at link time
+// regardless of which (if any) Accelerate header is included, and the
+// signature is part of Apple's stable public ABI.
+//
+extern "C" void vvtanhf(float* y, const float* x, const int* n);
 #endif
 
 //
