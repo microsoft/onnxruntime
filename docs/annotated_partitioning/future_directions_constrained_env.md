@@ -239,7 +239,7 @@ Nearly all transformer models are *exported* with dynamic batch + sequence_lengt
 
 **Implication for pre-allocation:** The target audience of `pre_allocate_execution_buffers` — embedded, edge, single-model-per-device — typically *can* use static shapes. Models are re-exported with fixed dimensions as part of the deployment pipeline. The dynamic-shape case (LLM serving with variable seq_len) lives in a different deployment tier where VRAM budget is less critical than throughput and the arena allocator handles repeated allocations efficiently.
 
-**Implication for workspace estimation:** Even with dynamic shapes, `EstimateWorkspace` (Level 1) and `DeclareWorkspaceRequirements` (Level 2) remain valuable for *budget decisions* — they can use worst-case shapes (max batch, max seq_len from model config) to determine how many nodes fit on the device. The estimate doesn't need to match runtime exactly; it needs to be conservative enough to avoid OOM.
+**Implication for workspace estimation:** Even with dynamic shapes, `EstimateWorkspace` (Level 1) and `DeclareWorkspaceRequirements` (Level 2) remain valuable for *budget decisions* — they can use configured input-shape limits (max batch, max seq_len from model config) to estimate how many nodes fit on the device. However, ordinary shape inference does not prove that every operator's output shape is monotonic with respect to its input dimensions. For example, a `Slice` with negative indices can produce a smaller output when its input dimension increases. A shape inferred from maximum inputs is therefore an estimation hint, not a guaranteed upper bound. Pre-allocation must retain runtime bounds checks and an allocation fallback rather than relying on the hint alone to prevent OOM.
 
 ### Reference: What llama.cpp Does
 
@@ -717,11 +717,11 @@ For most LLM models (which are repetitive transformer blocks with minimal fusion
 
 **When static shapes are unavailable:**
 
-If the model has dynamic shapes, the estimation function cannot compute workspace (shapes are unknown at `GetCapability()` time). In this case:
+If the model has dynamic shapes and no usable shape hint, the estimation function cannot compute workspace. In this case:
 - The estimation function returns a failure status or a sentinel value indicating "unknown."
 - `ComputeNodeCostForBudget()` falls back to the 1.5x heuristic multiplier on base cost.
 - The user may need to **tune the memory budget by trial and error** — setting a conservative budget and adjusting based on observed OOM or under-utilization. This is analogous to llama.cpp's `-ngl` flag: the user picks a layer count and adjusts based on whether it fits.
-- A future extension could accept user-provided "typical shape hints" (e.g., `max_batch=4, max_seq=2048`) to enable estimation even for dynamic-shape models, but this is out of scope for the initial design.
+- `session.max_shape_override` can provide input-shape hints (for example, maximum batch and sequence length). ORT propagates them through a disposable shadow graph for Level 1 and Level 2 estimation without changing runtime input constraints. As noted above, propagated shapes are estimates rather than proven upper bounds.
 
 **Plugin C ABI for Level 1:**
 
@@ -1014,19 +1014,20 @@ outer buffer is already ≥256-byte aligned). A plain `size_t` with a `0` sentin
 eventually, and `std::optional`'s layout is not guaranteed stable across compilers/STL versions the way
 a scalar with a sentinel value is.
 
-**Shape source is not yet wired:** as implemented today, neither
-`EstimateWorkspace` (Level 1) nor `DeclareWorkspaceRequirements` (Level 2) automatically receives "real"
-runtime tensor shapes. Both simply operate on whatever `TensorShape`/shape info a caller passes in. As of
-PR #29811, the *only* caller is that PR's own test harness, which hand-constructs shapes (including a
-symbolic/-1-dim case to exercise the fallback). No `onnxruntime/core/` framework code calls either API
-yet — `GetCapability()`'s cost-for-budget loop and `FinalizeSessionState()`'s eventual call sites
-described in this doc are still to be written. Whoever writes that framework caller will need to decide
-*where the shapes come from*: graph-declared shapes from ONNX shape inference (which may still be
-symbolic for dynamic models), or worst-case/user-declared shapes for constrained/static-shape deployments
-(the target scenario this document already describes above under "Implication for workspace
-estimation"). The two-level split (Level 1 vs. Level 2) does not by itself resolve this — it only changes
-*when* the estimate can be computed relative to kernel construction, not *what* shape information is
-available.
+**Shape source wiring:** framework callers now resolve shapes from two sources:
+
+- Fully concrete shapes already present on the executable graph are used directly.
+- For dynamic models, `session.max_shape_override` is applied to a disposable shadow graph. Normal ORT
+  shape inference propagates those input hints to intermediate values without changing executable-graph
+  metadata or runtime input validation.
+
+Level 1 consumes the current shadow result during `GetCapability()`. It reuses that result for the second
+capability pass when layout transformation reports no modification and rebuilds it after known graph
+mutations. Level 2 creates a final result after partitioning because EP fusion and transformation can
+change NodeArgs, generated schemas, and subgraph identities. Reusing a pre-mutation result across those
+stages would be incorrect; deeper caching requires a reliable graph-mutation generation rather than
+assuming equal topology. Nodes whose inputs remain unresolved use the existing estimation/allocation
+fallback.
 
 A kernel can declare multiple workspace slots (e.g., attention needs separate Q transpose buffer, output buffer, seqlens buffer). The `slot_id` is defined by the kernel author and is stable across calls — it identifies *which* buffer within that kernel's logic.
 

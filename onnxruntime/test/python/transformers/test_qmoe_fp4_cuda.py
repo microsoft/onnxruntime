@@ -355,6 +355,7 @@ class TestQMoEFP4(unittest.TestCase):
         use_swiglu=False,
         block_size=32,
         gemv_mode=None,
+        router_logits_override=None,
     ):
         self._skip_if_no_fp4()
 
@@ -440,7 +441,11 @@ class TestQMoEFP4(unittest.TestCase):
 
         # ── run inference ──────────────────────────────────────────
         input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype)
-        router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
+        if router_logits_override is None:
+            router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
+        else:
+            router_logits = torch.tensor(router_logits_override, device=device, dtype=torch_dtype)
+            self.assertEqual(tuple(router_logits.shape), (num_tokens, num_experts))
         output_tensor = torch.zeros(num_tokens, hidden_size, device=device, dtype=torch_dtype)
 
         iobinding = session.io_binding()
@@ -496,6 +501,8 @@ class TestQMoEFP4(unittest.TestCase):
             atol,
             f"FP4 MoE parity check failed: max_diff={max_diff:.6f} > atol={atol}",
         )
+
+        return ort_output
 
     # ----------------------------------------------------------------
     # Reference implementation
@@ -735,6 +742,41 @@ class TestQMoEFP4(unittest.TestCase):
             onnx_dtype=onnx_dtype,
             use_swiglu=True,
             gemv_mode="0",
+        )
+
+    def test_fp4_fp16_gemv_skip_expand_parity(self):
+        router_logits = [
+            [0.1, 3.0, -2.0, 1.0, -3.0, 2.0, -4.0, 4.0],
+            [3.0, -4.0, 4.0, -3.0, -2.0, -1.0, 1.0, 2.0],
+            [-4.0, 1.0, 3.0, -3.0, 2.0, 4.0, -2.0, -1.0],
+        ]
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=4,
+            num_tokens=3,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            router_logits_override=router_logits,
+        )
+        env_name = "ORT_DISABLE_FP4_GEMV_SKIP_EXPAND"
+        previous_value = os.environ.get(env_name)
+        try:
+            os.environ[env_name] = "1"
+            expanded_output = self._run_fp4_moe_test(**shape)
+            os.environ[env_name] = "0"
+            skip_expand_output = self._run_fp4_moe_test(**shape)
+        finally:
+            if previous_value is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = previous_value
+
+        self.assertTrue(
+            torch.equal(expanded_output, skip_expand_output),
+            "FP4 GEMV skip-expand output differs from the expanded-activation path",
         )
 
     def test_fp4_native_cutlass_row_varying_scales(self):

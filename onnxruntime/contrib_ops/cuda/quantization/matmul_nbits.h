@@ -109,6 +109,9 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
 // before any kernel instance exists. Returns nullopt when the node is not fpA_intB-eligible, when
 // the leading (M) dimension of input A is not statically known, or when the size formula overflows.
 std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
+// Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 #endif
 
 template <typename T>

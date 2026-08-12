@@ -121,8 +121,14 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention);
 #endif
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_BFloat16, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_int8_t, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_int8_t, PagedAttention);
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, PagedAttention);
+#endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice);
@@ -146,9 +152,21 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ParametricSoftplus);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedAdd);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConvWithState);
 #if !defined(DISABLE_GENERATION_OPS)
@@ -386,8 +404,14 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention)>,
 #endif
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_BFloat16, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_int8_t, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_int8_t, PagedAttention)>,
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, PagedAttention)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice)>,
@@ -411,9 +435,21 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedAdd)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConvWithState)>,
 #if !defined(DISABLE_GENERATION_OPS)

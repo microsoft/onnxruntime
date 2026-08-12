@@ -199,6 +199,13 @@ FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(int num_heads,
 
 bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_length,
                                        bool enable_flash_attention) {
+#if !USE_TRT_FUSED_ATTENTION
+  ORT_UNUSED_PARAMETER(sm);
+  ORT_UNUSED_PARAMETER(head_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  ORT_UNUSED_PARAMETER(enable_flash_attention);
+  return false;
+#else
   bool use_flash = enable_flash_attention && sequence_length >= kMinSequenceLengthFlashAttention;
   if (use_flash && has_flash_attention_kernel(sm, head_size)) {
     return true;
@@ -219,6 +226,7 @@ bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_lengt
   // Normal (not flash) fused kernel supports sequence length up to 384.
   constexpr int max_sequence_length = 384;
   return sequence_length <= max_sequence_length;
+#endif
 }
 
 void FusedMHARunnerFP16v2::Run(int batch_size,

@@ -42,18 +42,39 @@ var<workgroup> scale_reduction_buffer : array<f32, 64>;
 var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
 
 $MAIN {
-  // Compute total_seq_length.
+  // Map flat workgroup index to logical component (Q, K, or V).
+  let num_kv_slices = uniforms.num_kv_slices;
+  let is_q = workgroup_idx >= 2u * num_kv_slices;
+  let is_value = !is_q && workgroup_idx >= num_kv_slices;
+
+  // Compute batch based on workgroup type.
+  var batch: u32;
+  if (is_q) {
+    let q_slice = workgroup_idx - 2u * num_kv_slices;
+    if (q_slice >= uniforms.num_q_slices) { return; }
+    batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
+  } else {
+    let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
+    if (kv_slice >= num_kv_slices) { return; }
+    batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  }
+
+  // Compute the logical total sequence length for this batch.
 #if use_seqlen_k
-  let total_seq_length = u32(seqlen_k[0u]) + 1u;
+  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
 #else
-  let total_seq_length = uniforms.total_sequence_length;
+  let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
-  let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
+  let past_seq_length = per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.kv_sequence_length);
 
   // Base position offset for rotary embedding cos/sin cache lookup.
-  let position_id = past_seq_length;
+#if prepare_indirect_dispatch
+  let global_total_seq_length = u32(total_sequence_length_input[0]);
+#else
+  let global_total_seq_length = uniforms.total_sequence_length;
+#endif
 #if use_multi_rotary_cache_concat
-  let base_position = select(0u, multi_rotary_cache_concat_offset, total_seq_length > multi_rotary_cache_concat_offset);
+  let base_position = select(0u, multi_rotary_cache_concat_offset, global_total_seq_length > multi_rotary_cache_concat_offset);
 #else
   let base_position = 0u;
 #endif
@@ -61,15 +82,11 @@ $MAIN {
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
-    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    let num_total_seq_length_tile =
+        (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
     populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
-
-  // Map flat workgroup index to logical component (Q, K, or V).
-  let num_kv_slices = uniforms.num_kv_slices;
-  let is_q = workgroup_idx >= 2u * num_kv_slices;
-  let is_value = !is_q && workgroup_idx >= num_kv_slices;
 
   // ============ Q WORKGROUP PATH (early return, no shared memory/barriers) ============
   if (is_q) {
@@ -77,7 +94,6 @@ $MAIN {
     if (q_slice >= uniforms.num_q_slices) { return; }
 
     // Unflatten q_slice into (batch, seq, head).
-    let batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
     let head = (q_slice / uniforms.kv_sequence_length) % uniforms.num_heads;
     let seq = q_slice % uniforms.kv_sequence_length;
 
@@ -120,10 +136,14 @@ $MAIN {
   let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
   if (kv_slice >= num_kv_slices) { return; }
 
-  // Unflatten kv_slice into (batch, head, seq).
-  let batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  // Unflatten kv_slice into (head, seq) — batch already computed above.
   let head = (kv_slice / uniforms.kv_sequence_length) % uniforms.kv_num_heads;
   let seq = kv_slice % uniforms.kv_sequence_length;
+
+  // Skip K/V slices beyond this batch's logical total sequence length.
+  if (seq >= per_batch_total_seq_length) {
+    return;
+  }
 
   // Compute destination offset in present_key/present_value (u32 packed, BNSH layout).
 #if past_present_share_buffer
