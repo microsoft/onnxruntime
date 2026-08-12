@@ -55,5 +55,61 @@ class TelemetryBuildArgsTest(unittest.TestCase):
         self.assertTrue(args.use_telemetry)
 
 
+class AppleAccelerateBuildArgsTest(unittest.TestCase):
+    def _parse(self, *arguments: str, platform_name: str, machine: str = "x86_64"):
+        argv = ["build.py", "--build_dir", "build/test", *arguments]
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(build_args, "is_linux", return_value=platform_name == "linux"),
+            mock.patch.object(build_args, "is_windows", return_value=platform_name == "windows"),
+            mock.patch.object(build_args, "is_macOS", return_value=platform_name == "macos"),
+            mock.patch.object(build_args.platform, "machine", return_value=machine),
+        ):
+            return build_args.parse_arguments()
+
+    def test_accelerate_accepted_arm64(self):
+        args = self._parse("--use_apple_accelerate", platform_name="macos", machine="arm64")
+        self.assertTrue(args.use_apple_accelerate)
+
+    def test_accelerate_accepted_arm64e(self):
+        args = self._parse("--use_apple_accelerate", "--osx_arch", "arm64e", platform_name="macos", machine="arm64")
+        self.assertTrue(args.use_apple_accelerate)
+
+    def test_accelerate_rejected_on_linux(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_apple_accelerate", platform_name="linux")
+
+    def test_accelerate_rejected_on_windows(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_apple_accelerate", platform_name="windows")
+
+    def test_accelerate_rejected_x86_64(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_apple_accelerate", "--osx_arch", "x86_64", platform_name="macos", machine="x86_64")
+
+    def test_accelerate_rejected_ios(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_apple_accelerate", "--ios", platform_name="macos", machine="arm64")
+
+    def test_accelerate_rejected_tvos(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_apple_accelerate", "--tvos", platform_name="macos", machine="arm64")
+
+    def test_accelerate_rejected_visionos(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_apple_accelerate", "--visionos", platform_name="macos", machine="arm64")
+
+    def test_accelerate_rejected_catalyst(self):
+        with self.assertRaises(SystemExit):
+            self._parse(
+                "--use_apple_accelerate",
+                "--macos",
+                "Catalyst",
+                "--build_apple_framework",
+                platform_name="macos",
+                machine="arm64",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1098,4 +1098,21 @@ def parse_arguments() -> argparse.Namespace:
 
         if getattr(args, "macos", None) and not getattr(args, "build_apple_framework", False):
             parser.error("--macos target requires --build_apple_framework.")
+
+    # Apple Accelerate is scoped to macOS arm64 only.
+    if args.use_apple_accelerate:
+        if not is_macOS():
+            parser.error("--use_apple_accelerate is only supported on macOS arm64 (Apple Silicon).")
+        if getattr(args, "ios", False):
+            parser.error("--use_apple_accelerate is not supported for iOS builds.")
+        if getattr(args, "tvos", False):
+            parser.error("--use_apple_accelerate is not supported for tvOS builds.")
+        if getattr(args, "visionos", False):
+            parser.error("--use_apple_accelerate is not supported for visionOS builds.")
+        if getattr(args, "macos", None) == "Catalyst":
+            parser.error("--use_apple_accelerate is not supported for Mac Catalyst builds.")
+        osx_arch = getattr(args, "osx_arch", None)
+        if osx_arch not in ("arm64", "arm64e"):
+            parser.error(f"--use_apple_accelerate requires an arm64 target (got --osx_arch={osx_arch!r}).")
+
     return args
