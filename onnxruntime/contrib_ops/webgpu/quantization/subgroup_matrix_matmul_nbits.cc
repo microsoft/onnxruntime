@@ -5,97 +5,18 @@
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/vendor/intel/intel_device_info.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-constexpr std::string_view ComponentTypeName[] = {"unknown", "f32", "f16", "u32", "i32"};
-template <std::size_t N>
-constexpr bool ValidateComponentTypeName(const std::array<wgpu::SubgroupMatrixComponentType, N>& component_type) {
-  bool matched = true;
-  for (auto type : component_type) {
-    switch (type) {
-      case wgpu::SubgroupMatrixComponentType::F32:
-        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::F32)] == "f32";
-        break;
-      case wgpu::SubgroupMatrixComponentType::F16:
-        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::F16)] == "f16";
-        break;
-      case wgpu::SubgroupMatrixComponentType::U32:
-        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::U32)] == "u32";
-        break;
-      case wgpu::SubgroupMatrixComponentType::I32:
-        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::I32)] == "i32";
-        break;
-      default:
-        return false;
-    }
-
-    if (!matched) {
-      return matched;
-    }
-  }
-
-  return matched;
-}
-static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F32,
-                                            wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::U32,
-                                            wgpu::SubgroupMatrixComponentType::I32}),
-              "The elements' sequence of ComponentTypeName array do not match wgpu::SubgroupMatrixComponentType");
-
-// Vendor-agnostic subgroup matrix config: {componentType, resultComponentType, M, N, K, subgroupMinSize, subgroupMaxSize, needsPrepack}
-// Any GPU reporting a matching config from wgpu::AdapterPropertiesSubgroupMatrixConfigs is supported.
-struct SupportedSubgroupMatrixConfig {
-  wgpu::SubgroupMatrixComponentType componentType;
-  wgpu::SubgroupMatrixComponentType resultComponentType;
-  uint32_t M;
-  uint32_t N;
-  uint32_t K;
-  uint32_t subgroupMinSize;
-  uint32_t subgroupMaxSize;
-  bool needsPrepack;  // Whether input A needs layout optimization for subgroupMatrixLoad
-};
-
-static const SupportedSubgroupMatrixConfig supported_subgroup_matrix_configs[] = {
-    // 16x16x16 config with 128x128 tiles (NVIDIA Blackwell, subgroup size 32)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, 32, true},
-    // 8x16x16 config (Intel Xe2/Xe3, subgroup size 16-32)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32, true},
-    // 8x8x8 config (Apple M-series, etc.)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8, 32, 32, false},
-    {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, 32, false},
-};
-
-bool IsSubgroupMatrixConfigSupported(onnxruntime::webgpu::ComputeContext& context, bool is_fp16, int32_t& config_index) {
-  const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
-  const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
-  int32_t index = 0;
-  for (const auto& supported_config : supported_subgroup_matrix_configs) {
-    // F16 configs require FP16 output; skip them when output is F32.
-    // F32 configs require FP32 output; skip them when output is FP16.
-    if ((supported_config.componentType == wgpu::SubgroupMatrixComponentType::F16 && !is_fp16) ||
-        (supported_config.componentType == wgpu::SubgroupMatrixComponentType::F32 && is_fp16)) {
-      index++;
-      continue;
-    }
-    for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
-      const auto& device_config = subgroup_matrix_configs.configs[i];
-      if (device_config.componentType == supported_config.componentType &&
-          device_config.resultComponentType == supported_config.resultComponentType &&
-          device_config.M == supported_config.M &&
-          device_config.N == supported_config.N &&
-          device_config.K == supported_config.K &&
-          adapter_info.subgroupMinSize == supported_config.subgroupMinSize &&
-          adapter_info.subgroupMaxSize == supported_config.subgroupMaxSize) {
-        config_index = index;
-        return true;
-      }
-    }
-    index++;
-  }
-  return false;
-}
+// The subgroup matrix config table, support check, and component-type validation live in the
+// shared core header (core/providers/webgpu/math/subgroup_matrix_config.h) so both this contrib
+// kernel and the core subgroup-matrix MatMul share them.
+using onnxruntime::webgpu::IsSubgroupMatrixConfigSupported;
+using onnxruntime::webgpu::supported_subgroup_matrix_configs;
 
 // This program optimizes the layout of input matrix A(MxK) for SubgroupMatrixLoad, so that all elements of each
 // subgroup matrix(mxk) are arranged continuously in memory.
@@ -216,11 +137,11 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   const auto& config = supported_subgroup_matrix_configs[config_index_];
-  if (config.M == 8 && config.N == 8 && config.K == 8) {
+  if (config.Is(8, 8, 8)) {
     return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
-  } else if (config.M == 8 && config.N == 16 && config.K == 16) {
+  } else if (config.Is(8, 16, 16)) {
     return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
-  } else if (config.M == 16 && config.N == 16 && config.K == 16) {
+  } else if (config.Is(16, 16, 16)) {
     return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
@@ -245,11 +166,11 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   uint32_t tile_size_a = 32;
   uint32_t tile_size_b = 64;
   uint32_t work_group_size = 128;
-  if (config.M == 8 && config.N == 16 && config.K == 16) {
+  if (config.Is(8, 16, 16)) {
     // 8x16x16 config: 8 subgroups, 256 threads, 64x64 tiles
     tile_size_a = 64;
     work_group_size = 256;
-  } else if (config.M == 16 && config.N == 16 && config.K == 16) {
+  } else if (config.Is(16, 16, 16)) {
     // 16x16x16 config: 4 subgroups, 128 threads, 128x128 tiles
     tile_size_a = 128;
     tile_size_b = 128;
@@ -299,13 +220,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   // For large M on Intel Xe, cap dispatch_y so each workgroup processes multiple
   // M-tiles sequentially, reducing scheduling overhead.
   if (M > 2048 && context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    // Each XeCore has 4 XVE x 8 SIMD-32 hardware threads = 32 subgroups.
-    uint32_t hw_subgroups = 0;
-    if (context.AdapterInfo().architecture == std::string_view{"xe-3lpg"}) {
-      hw_subgroups = 384;  // 12 XeCore x 32
-    } else if (context.AdapterInfo().architecture == std::string_view{"xe-2lpg"}) {
-      hw_subgroups = 256;  // 8 XeCore x 32
-    }
+    const uint32_t hw_subgroups =
+        ::onnxruntime::webgpu::intel::HwSubgroups(std::string_view{context.AdapterInfo().architecture});
     if (hw_subgroups > 0) {
       constexpr uint32_t kOccupancyFactor = 16;  // empirically tuned on Xe2/Xe3 devices
       uint32_t target_wgs = hw_subgroups * kOccupancyFactor / (work_group_size / 32);

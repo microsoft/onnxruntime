@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/bert/causal_conv_with_state.h"
 #include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
+#include "contrib_ops/cpu/bert/causal_conv_with_state_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
@@ -35,6 +36,10 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKern
   activation_ = info.GetAttrOrDefault<std::string>("activation", "none");
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
+
+  // See LinearAttention: only the trailing per-position states are ever consumed, so a window
+  // caps the allocation and the write traffic for long prompts. 0 keeps the plain single state.
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseStateWindow(info, state_window_));
 }
 
 template <typename T>
@@ -62,6 +67,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int K = static_cast<int>(weight_shape[2]);
   const int pad = K - 1;
 
+  ORT_RETURN_IF_NOT(L > 0, "input length must be positive, got ", L);
+
   // Validate weight shape compatibility
   ORT_RETURN_IF_NOT(weight_shape[0] == channels,
                     "weight[0] (", weight_shape[0], ") must match input channels (", channels, ")");
@@ -75,25 +82,31 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
                       "bias must have shape (", channels, "), got ", bias_shape.ToString());
   }
 
-  // Validate optional past_state shape
-  if (past_state_tensor != nullptr) {
-    const auto& past_shape = past_state_tensor->Shape();
-    ORT_RETURN_IF_NOT(past_shape.NumDimensions() == 3,
-                      "past_state must be rank 3 (batch, channels, kernel_size-1), got rank ", past_shape.NumDimensions());
-    ORT_RETURN_IF_NOT(past_shape[0] == batch_size && past_shape[1] == channels && past_shape[2] == pad,
-                      "past_state shape mismatch: expected (", batch_size, ", ", channels, ", ", pad,
-                      "), got (", past_shape[0], ", ", past_shape[1], ", ", past_shape[2], ")");
-  }
+  // past_state / present_state are [B, C, K-1], or [W, B, C, K-1] when state_window_ = W > 0.
+  // Right-aligned: token t lands in slot t + W - L, so slot W-1 always holds the state after the
+  // last token (and is the slot past_state is read from).
+  const int state_slots = state_window_ > 0 ? state_window_ : 1;
+  TensorShape state_shape;
+  ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
+      state_window_, batch_size, channels, pad, past_state_tensor, state_shape));
 
   // Allocate outputs
   Tensor* output_tensor = context->Output(0, input_shape);
-  TensorShape state_shape({batch_size, channels, pad});
   Tensor* present_state_tensor = context->Output(1, state_shape);
 
-  // Note: no need to zero-initialize present_state — the kernel writes all
-  // positions unconditionally.  When past_state is null, the kernel uses
-  // zeros for the padding region internally.
-  // Note: past_state pointer is passed to kernel; kernel reads it directly
+  // The kernel writes slot t + W - L for every position t, i.e. slots max(0, W - L) .. W-1. When
+  // the window is wider than the sequence, the leading W - L slots belong to positions before this
+  // call and are deliberately left alone (that is what bounds the per-step work). present_state is
+  // a freshly allocated output that never aliases past_state, so zero those slots to keep the
+  // output fully defined instead of exposing uninitialized device memory.
+  if (state_window_ > 0 && state_slots > L) {
+    const size_t leading_bytes = static_cast<size_t>(state_slots - L) *
+                                 (present_state_tensor->SizeInBytes() / static_cast<size_t>(state_slots));
+    if (leading_bytes > 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+          present_state_tensor->MutableDataRaw(), 0, leading_bytes, Stream(context)));
+    }
+  }
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");
 
@@ -112,7 +125,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
       L,
       K,
       apply_silu,
-      GetDeviceProp().maxThreadsPerBlock);
+      GetDeviceProp().maxThreadsPerBlock,
+      state_slots);
 }
 
 }  // namespace cuda

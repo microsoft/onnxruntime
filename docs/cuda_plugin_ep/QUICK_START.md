@@ -27,7 +27,7 @@ For local Linux CUDA 13 validation, use the no-cuDNN helper script. It keeps `CU
 bash .env/cuda_130_plugin_no_cudnn.sh --build --test_plugin
 ```
 
-The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, ArgMax, reductions, Einsum, and cuDNN-backed pooling paths.
+The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, Einsum, and cuDNN-backed pooling paths.
 
 ## Minimum ONNX Runtime Version
 
@@ -146,7 +146,7 @@ sess = ort.InferenceSession(
 
 **Python `OrtValue` host/device copies:**
 
-`OrtValue.update_inplace()` and `OrtValue.numpy()` work with CUDA plugin tensors after the plugin has been registered. On Linux, the ONNX Runtime Python binding links the CUDA runtime and can fall back to direct `cudaMemcpy` if the legacy CUDA provider bridge is unavailable. On Windows, the Python binding is built with `ORT_NO_CUDA_IN_PYBIND`, so it cannot call CUDA runtime APIs directly; host/device copies must use the data-transfer implementation registered by the CUDA plugin library. If `OrtValue.update_inplace()` fails with a message about the CUDA provider interface or an unsupported GPU device, verify that the plugin library is registered before creating or updating CUDA `OrtValue` objects.
+`OrtValue.update_inplace()` and `OrtValue.numpy()` work with CUDA plugin tensors after the plugin has been registered. The Python binding cannot call CUDA runtime APIs directly; host/device copies must use the data-transfer implementation registered by the CUDA plugin library. If `OrtValue.update_inplace()` fails with a message about the CUDA provider interface or an unsupported GPU device, verify that the plugin library is registered before creating or updating CUDA `OrtValue` objects.
 
 ### External GPU Allocator Options
 

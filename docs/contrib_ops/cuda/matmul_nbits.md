@@ -44,7 +44,7 @@ Source files:
 | `bits` | Quantization bit width: `4` or `8`. |
 | `block_size` | Quantization group size along `K` (16 / 32 / 64 / 128). One scale (and optional zero point) per group. |
 | `accuracy_level` | Minimum accuracy level for internal handling of `A`; default `0` means unset. |
-| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). |
+| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). The native SM90 kernel is not compiled on Windows/MSVC builds (CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters — see [moe_qmoe.md §14.1](./moe_qmoe.md)); on those builds the default `0`/`1` layouts run the SM80 compatibility kernel on Hopper instead. |
 
 | Input | Index | Notes |
 |-------|-------|-------|
@@ -87,9 +87,9 @@ step is **not** performed.
 The offline CUDA packer exposed through Python produces this layout:
 
 ```python
-from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
 
-prepacked_flat = _pybind.pack_weights_for_cuda_mixed_gemm(
+prepacked_flat = _cuda_quant.pack_weights_for_cuda_mixed_gemm(
   q_weight.reshape(N, -1), N, K, bits, 80
 )
 prepacked_b = np.asarray(prepacked_flat, dtype=np.int8).view(np.uint8).reshape(q_weight.shape)
@@ -147,31 +147,37 @@ dispatches by bit width:
 first applies a guard common to all fused kernels:
 
 ```
-n % kColsPerThreadBlock (8) == 0   and   k % 8 == 0   and   m <= 1
+n % kColsPerThreadBlock (8) == 0   and   k % 8 == 0   and   m <= 16
 ```
 
-i.e. the fast path is a **GEMV** (single token). If the guard passes it then
-chooses between the router specialization (§4.2) and the generic kernel (§4.1).
+i.e. the fused path handles a single token or a small batch. If the guard passes,
+it chooses between the M=1 kernel (§4.1), the small-M batched kernels (§4.2),
+and the router specialization (§4.3).
 
-### 4.1 Generic 4-bit GEMV kernel
+### 4.1 Generic 4-bit M=1 GEMV kernel
 
-`MatMulFloatInt4Kernel<T, block_size, has_zero_point>`:
+`MatMulFloat4BitsKernelM1<T, block_size, has_zero_point>` is implemented in
+`matmul_4bits_m1_impl.cuh` and instantiated by the dtype-specific translation
+units:
 
-- **Launch:** grid `(ceil(N / 8), M)`, block `(warpSize, 8)` — one **warp per
+- **Launch:** grid `(ceil(N / 8), 1)`, block `(warpSize, 8)` — one **warp per
   output column** (`kColsPerThreadBlock = 8` warps per block).
 - **Scales / zero points** are staged into shared memory once per thread block
-  (hence the `shared_mem_size > sharedMemPerBlock` bail-out in
-  `TryMatMul4Bits`).
-- **Inner loop:** each lane consumes `kElementsPerThreadPerIteration = 8`
-  weights per step; a warp covers `warpSize × 8 = 256` `K` elements per
-  iteration via `AccumulateEightElements4b` (a `prmt` + `lop3`-based int4→half2
-  conversion). A 3-tier macro unroll (`×16`, `×4`, `×1`) plus a scalar remainder
-  step walks all of `K`, followed by a warp-shuffle reduction.
-- **Supported `block_size`:** 16 / 32 / 64 / 128 (others throw).
+  and the launcher returns `false` if the total requirement exceeds the per-block limit.
+- **Inner loop:** each lane consumes eight packed int4 weights per iteration,
+  followed by a warp reduction.
+- **Supported `block_size`:** 16 / 32 / 64 / 128.
 - **Bias:** not supported — the kernel returns `false` to `TryMatMul4Bits` when
   `bias != nullptr` (see §7 for how bias is then handled).
 
-### 4.2 Router GEMV specialization
+### 4.2 Small-M batched GEMV
+
+For `2 <= M <= 16`, `TryMatMul4Bits` first attempts the register-tiled
+half/BF16 batched kernel and then the shared-memory `MatMulFloatInt4KernelSmallM`
+path. These paths dequantize each packed weight word once and reuse it across
+multiple activation rows.
+
+### 4.3 Router GEMV specialization
 
 `MatMulFloatInt4RouterKernel<T, BlockSize>` is a specialization for MoE-router
 GEMVs (`output(1, N) = A(1, K) · dequant(B(N, K)) + bias(N)`). It is selected by
@@ -263,8 +269,10 @@ Prepacked weights are intentionally strict:
 
 - If ORT was built without `onnxruntime_USE_FPA_INTB_GEMM=ON`, any nonzero
   `weight_prepacked` value throws during kernel construction.
-- If `ORT_FPA_INTB_GEMM` is unset or `0`, any nonzero `weight_prepacked` value
-  throws instead of silently falling back to a raw-layout path.
+- Any nonzero `weight_prepacked` value forces the fpA_intB path on, so the enable
+  flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
+  var) is ignored for prepacked weights — the layout choice was fixed at export
+  time and cannot be turned off at run time.
 - Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
   CUDA fpA_intB path consumes this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
@@ -276,7 +284,7 @@ Prepacked weights are intentionally strict:
 
 ## 7. Bias Handling
 
-Only the router specialization (§4.2) fuses bias inside the GEMV. For every other
+Only the router specialization (§4.3) fuses bias inside the GEMV. For every other
 fast-path shape, `TryMatMul4Bits` / `TryMatMul8Bits` return `false` when bias is
 present. `ComputeInternal` then:
 
@@ -292,8 +300,8 @@ present. `ComputeInternal` then:
 
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
-| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.2); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
-| `ORT_FPA_INTB_GEMM` | int bitmask, `0` | Enable the CUTLASS weight-only path (§6). `0x01` = all, `0x02` = CUDA GEMV, `0x04` = int4, `0x08` = int8. `0` disables it. |
+| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 
@@ -305,11 +313,24 @@ present. `ComputeInternal` then:
 
 ## 9. Testing
 
+- CUDA EP internal tests run through `CUDA_EP_Unittest` in
+  [onnxruntime/test/providers/cuda/cuda_provider_test.cc](../../../onnxruntime/test/providers/cuda/cuda_provider_test.cc).
+  Run them from `onnxruntime_provider_test` with:
+
+  ```bash
+  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.*
+  ```
+
+  This wrapper executes the internal CUDA-UT shared library and covers the
+  fpA_intB / MatMulNBits groupwise GEMM tests under
+  [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc)
+  as well as the SM90 validation tests in
+  [onnxruntime/test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc).
 - Python operator tests: `onnxruntime/test/python/transformers` (see the QMoE /
   GEMV profiling helpers, e.g. `profile_qmoe_gemv.sh`).
 - CUDA prepacked-weight parity tests:
   [onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py](../../../onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py).
-  These use `_pybind_state.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
+  These use `onnxruntime_cuda_quant_preprocess.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
   `weight_prepacked=1` initializers and compare their outputs against runtime
   fpA_intB prepacking for int4/int8 and GEMV/GEMM-shaped `M` values.
 - Constructor failure tests for unsupported prepacked configurations live in

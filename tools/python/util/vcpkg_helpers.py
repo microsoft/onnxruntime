@@ -1,6 +1,23 @@
 import os
 from pathlib import Path
 
+# Compile-time options that shrink the sqlite3 build used by 1DS as its offline-event store.
+# The SDK uses a single event table with parameter-bound INSERT/SELECT/DELETE, a small set of
+# PRAGMAs, and VACUUM. It does not use the omitted APIs or features.
+_SQLITE_TELEMETRY_MINIMAL_DEFINES = [
+    "-DSQLITE_OMIT_LOAD_EXTENSION",
+    "-DSQLITE_OMIT_DEPRECATED",
+    "-DSQLITE_OMIT_UTF16",
+    "-DSQLITE_OMIT_PROGRESS_CALLBACK",
+    "-DSQLITE_OMIT_SHARED_CACHE",
+    "-DSQLITE_OMIT_GET_TABLE",
+    "-DSQLITE_OMIT_COMPLETE",
+    "-DSQLITE_OMIT_TCL_VARIABLE",
+    "-DSQLITE_DQS=0",
+    "-DSQLITE_DEFAULT_MEMSTATUS=0",
+    "-DSQLITE_DEFAULT_FOREIGN_KEYS=0",
+]
+
 # The official vcpkg repository has about 80 different triplets. But ONNX Runtime has many more build variants. For example, in general, for each platform, we need to support builds with C++ exceptions, builds without C++ exceptions, builds with C++ RTTI, builds without C++ RTTI, linking to static C++ runtime, linking to dynamic (shared) C++ runtime, builds with address sanitizer, builds without address sanitizer, etc. Therefore, this script file was created to dynamically generate the triplet files on-the-fly.
 
 # Originally, we tried to check in all the generated files into our repository so that people could build onnxruntime without using build.py or any other Python scripts in the "/tools" directory. However, we encountered an issue when adding support for WASM builds. VCPKG has a limitation that when doing cross-compiling, the triplet file must specify the full path of the chain-loaded toolchain file. The file needs to be located either via environment variables (like ANDROID_NDK_HOME) or via an absolute path. Since environment variables are hard to track, we chose the latter approach. So the generated triplet files may contain absolute file paths that are only valid on the current build machine.
@@ -305,7 +322,11 @@ def generate_triplet_for_android(
 
 
 def generate_android_triplets(
-    build_dir: str, configs: set[str], use_cpp_shared: bool, android_api_level: int, use_full_protobuf: bool
+    build_dir: str,
+    configs: set[str],
+    use_cpp_shared: bool,
+    android_api_level: int,
+    use_full_protobuf: bool,
 ) -> None:
     """
     Generate triplet files for POSIX platforms (Linux, macOS, Android).
@@ -349,6 +370,7 @@ def generate_triplet_for_posix_platform(
     target_abi: str,
     osx_deployment_target: str,
     use_full_protobuf: bool,
+    use_telemetry: bool = False,
 ) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
@@ -365,6 +387,7 @@ def generate_triplet_for_posix_platform(
         target_abi (str): The target ABI, which maps to the VCPKG_TARGET_ARCHITECTURE variable. Valid options include x86, x64, arm, arm64, arm64ec, s390x, ppc64le, riscv32, riscv64, loongarch32, loongarch64, mips64.
         osx_deployment_target (str, optional): The macOS deployment target version. The parameter sets the minimum macOS version for compiled binaries. It also changes what versions of the macOS platform SDK CMake will search for. See the CMake documentation for CMAKE_OSX_DEPLOYMENT_TARGET for more information.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
+        use_telemetry (bool): Whether to minimize the vcpkg sqlite3 port used by 1DS.
     """
     folder_name_parts = []
     if enable_asan:
@@ -464,6 +487,12 @@ def generate_triplet_for_posix_platform(
                 f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
                 f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                 f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
+
+            if use_telemetry:
+                sqlite_min_defines = " ".join(_SQLITE_TELEMETRY_MINIMAL_DEFINES)
+                f.write('if(PORT STREQUAL "sqlite3")\n')
+                f.write(f'    string(APPEND VCPKG_C_FLAGS " {sqlite_min_defines}")\n')
+                f.write("endif()\n")
 
             # Set target platform
             # VCPKG_CMAKE_SYSTEM_NAME specifies the target platform.
@@ -764,7 +793,12 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
                                         )  # Pass enable_minimal_build
 
 
-def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf: bool) -> None:
+def generate_linux_triplets(
+    build_dir: str,
+    configs: set[str],
+    use_full_protobuf: bool,
+    use_telemetry: bool = False,
+) -> None:
     """
     Generate triplet files for Linux platforms.
 
@@ -772,6 +806,7 @@ def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf
         build_dir (str): The directory to save the generated triplet files.
         configs (set[str]): The set of build configurations.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
+        use_telemetry (bool): Whether to minimize the vcpkg sqlite3 port used by 1DS.
     """
     target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
     for enable_rtti in [True, False]:
@@ -797,11 +832,16 @@ def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf
                                 target_abi,
                                 None,
                                 use_full_protobuf=use_full_protobuf,
+                                use_telemetry=use_telemetry,
                             )
 
 
 def generate_macos_triplets(
-    build_dir: str, configs: set[str], osx_deployment_target: str, use_full_protobuf: bool
+    build_dir: str,
+    configs: set[str],
+    osx_deployment_target: str,
+    use_full_protobuf: bool,
+    use_telemetry: bool = False,
 ) -> None:
     """
     Generate triplet files for macOS platforms.
@@ -810,6 +850,7 @@ def generate_macos_triplets(
         build_dir (str): The directory to save the generated triplet files.
         osx_deployment_target (str, optional): The macOS deployment target version.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
+        use_telemetry (bool): Whether to minimize the vcpkg sqlite3 port used by 1DS.
     """
     target_abis = ["x64", "arm64", "universal2"]
     for enable_rtti in [True, False]:
@@ -836,4 +877,5 @@ def generate_macos_triplets(
                                 target_abi,
                                 osx_deployment_target,
                                 use_full_protobuf=use_full_protobuf,
+                                use_telemetry=use_telemetry,
                             )

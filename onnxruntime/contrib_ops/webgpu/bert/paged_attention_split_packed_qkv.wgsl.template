@@ -1,0 +1,35 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// PagedAttention — split a packed-QKV token tensor into three separate
+// Q, K, V tensors so the rest of the WebGPU PagedAttention pipeline can
+// consume them the same way it consumes the non-packed layout.
+// Phase 1b.2b.
+//
+// Row layout (per token) of the packed input:
+//   cols [0, q_hidden_size)                            → Q
+//   cols [q_hidden_size, q_hidden_size + kv_hidden)    → K
+//   cols [q_hidden_size + kv_hidden, packed_hidden)    → V
+//
+// Dispatch model: one invocation per input element (token_count *
+// packed_hidden_size), linearized row-major. Each invocation writes exactly
+// one element into whichever of Q / K / V the column belongs to.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByIndices .setByIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let t = global_idx / uniforms.packed_hidden_size;
+  let c = global_idx % uniforms.packed_hidden_size;
+  let x = input.getByIndices(vec2<u32>(t, c));
+
+  if (c < uniforms.q_hidden_size) {
+    q_out.setByIndices(vec2<u32>(t, c), x);
+  } else if (c < uniforms.q_hidden_size + uniforms.kv_hidden_size) {
+    k_out.setByIndices(vec2<u32>(t, c - uniforms.q_hidden_size), x);
+  } else {
+    v_out.setByIndices(vec2<u32>(t, c - uniforms.q_hidden_size - uniforms.kv_hidden_size), x);
+  }
+}
