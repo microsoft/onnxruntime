@@ -396,7 +396,7 @@ pub enum TensorElementDataType {
 impl std::convert::TryFrom<sys::ONNXTensorElementDataType> for TensorElementDataType {
     type Error = error::OrtError;
 
-    fn try_from(value: sys::ONNXTensorElementDataType) -> Result<Self, Self::Error> {
+    fn try_from(value: sys::ONNXTensorElementDataType) -> std::result::Result<Self, Self::Error> {
         use sys::ONNXTensorElementDataType as SysType;
 
         match value {
