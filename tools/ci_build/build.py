@@ -879,21 +879,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.use_apple_accelerate:
-        if not is_macOS():
-            raise BuildError("--use_apple_accelerate is only supported on macOS arm64 (Apple Silicon).")
-        # Reject non-macOS Apple targets: iOS, tvOS, visionOS, Mac Catalyst
-        if getattr(args, "ios", False):
-            raise BuildError("--use_apple_accelerate is not supported for iOS builds.")
-        if getattr(args, "tvos", False):
-            raise BuildError("--use_apple_accelerate is not supported for tvOS builds.")
-        if getattr(args, "visionos", False):
-            raise BuildError("--use_apple_accelerate is not supported for visionOS builds.")
-        if getattr(args, "macos", None) == "Catalyst":
-            raise BuildError("--use_apple_accelerate is not supported for Mac Catalyst builds.")
-        # Require arm64 target architecture
-        osx_arch = getattr(args, "osx_arch", None)
-        if osx_arch not in ("arm64", "arm64e"):
-            raise BuildError(f"--use_apple_accelerate requires an arm64 target (got --osx_arch={osx_arch!r}).")
+        # Validation already performed in build_args.parse_arguments().
         cmake_args += ["-Donnxruntime_USE_APPLE_ACCELERATE=ON"]
 
     if args.use_webnn:
