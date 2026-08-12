@@ -54,6 +54,32 @@ DispatchedUnaryPathInfo GetGeluErfDispatchPathInfo() {
   return {kGeluUnfusedBytesPerElement, "generic_fallback"};
 }
 
+// Tanh has no fused/unfused byte-traffic distinction like SiLU or GELU (it is
+// always a single elementwise read-compute-write pass), so every path below
+// reports the same bytes-per-element; the label is what distinguishes which
+// kernel is under test.
+constexpr int64_t kTanhBytesPerElement = 2;
+
+DispatchedUnaryPathInfo GetTanhDispatchPathInfo() {
+#if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+  // Compile-time only: MlasComputeTanh<float> always resolves to the vForce
+  // kernel on this configuration, see the #if chain in tanh.cpp.
+  return {kTanhBytesPerElement, "apple_accelerate_vforce"};
+#elif defined(MLAS_TARGET_AMD64)
+  if (GetMlasPlatform().TanhKernelRoutine == MlasComputeTanhF32KernelFma3) {
+    return {kTanhBytesPerElement, "amd64_fma3"};
+  }
+  return {kTanhBytesPerElement, "generic_fallback"};
+#else
+  // RISCV64/SVE resolve their own specialized TanhKernelRoutine (see
+  // platform.cpp), but the specific kernel symbols live in headers not
+  // included by this benchmark translation unit, so this label only
+  // distinguishes "Apple/AMD64 special-cased" from "everything else" rather
+  // than naming the exact routine on those targets.
+  return {kTanhBytesPerElement, "generic_fallback"};
+#endif
+}
+
 std::vector<float> MakeInput(size_t n, float min_value, float max_value) {
   auto data = RandomVectorUniform<float>(n, min_value, max_value);
 
@@ -183,9 +209,44 @@ void BM_GeluErfUnfusedExact(benchmark::State& state) {
       kGeluUnfusedBytesPerElement);
 }
 
+void BM_TanhDispatch(benchmark::State& state) {
+  // Public MlasComputeTanh<float> entry point. On macOS arm64 with
+  // onnxruntime_USE_APPLE_ACCELERATE enabled this resolves to the vForce
+  // vvtanhf kernel; otherwise it is unchanged from upstream (platform
+  // dispatch table on AMD64/RISCV64/SVE, generic polynomial kernel
+  // elsewhere). No Apple Silicon hardware was available to collect numbers
+  // for the apple_accelerate_vforce path; see the PR description.
+  RunDispatchedUnaryBenchmark(
+      state,
+      [](const float* input, float* output, size_t n) {
+        MlasComputeTanh<float>(input, output, n);
+      },
+      -12.0f,
+      12.0f,
+      GetTanhDispatchPathInfo());
+}
+
+void BM_TanhPortableKernel(benchmark::State& state) {
+  // Baseline: the portable polynomial kernel (MlasTanhKernel) called
+  // directly, bypassing any platform/Apple dispatch. This is the fallback
+  // MlasComputeTanh<float> uses whenever onnxruntime_USE_APPLE_ACCELERATE is
+  // not enabled, and is the parity baseline used by
+  // test_tanh_apple_accelerate.cpp.
+  RunDispatchedUnaryBenchmark(
+      state,
+      [](const float* input, float* output, size_t n) {
+        MlasTanhKernel(input, output, n);
+      },
+      -12.0f,
+      12.0f,
+      {kTanhBytesPerElement, "portable_polynomial"});
+}
+
 }  // namespace
 
 BENCHMARK(BM_SiluDispatch)->Apply(UnaryKernelArgs)->UseRealTime();
 BENCHMARK(BM_SiluUnfusedDispatch)->Apply(UnaryKernelArgs)->UseRealTime();
 BENCHMARK(BM_GeluErfDispatchExact)->Apply(UnaryKernelArgs)->UseRealTime();
 BENCHMARK(BM_GeluErfUnfusedExact)->Apply(UnaryKernelArgs)->UseRealTime();
+BENCHMARK(BM_TanhDispatch)->Apply(UnaryKernelArgs)->UseRealTime();
+BENCHMARK(BM_TanhPortableKernel)->Apply(UnaryKernelArgs)->UseRealTime();
