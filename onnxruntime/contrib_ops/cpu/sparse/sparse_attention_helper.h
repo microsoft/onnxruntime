@@ -4,9 +4,9 @@
 #pragma once
 
 #include <initializer_list>
-#include <limits>
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
@@ -16,13 +16,11 @@ namespace contrib {
 namespace sparse_attention_helper {
 
 inline bool ProductExceedsInt32Max(std::initializer_list<int64_t> factors) {
-  constexpr int64_t max_int32 = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-  int64_t product = 1;
+  int32_t product = 1;
   for (int64_t factor : factors) {
-    if (factor < 0) return true;
-    if (factor == 0) return false;
-    if (product > max_int32 / factor) return true;
-    product *= factor;
+    int32_t next_product;
+    if (factor < 0 || !SafeMultiply(product, factor, next_product)) return true;
+    product = next_product;
   }
   return false;
 }
