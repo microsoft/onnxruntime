@@ -11,7 +11,9 @@ Module Name:
 Abstract:
 
     Tests for MLAS FP16<->FP32 cast kernels.
-    Verifies bit-exactness against MLAS_Half2Float / MLAS_Float2Half.
+    Verifies bit-exactness against MLAS_Half2Float / MLAS_Float2Half for all
+    non-NaN values.  For NaN values only NaN-ness and sign are asserted,
+    because the scalar reference canonicalizes payload while hardware preserves it.
 
 --*/
 
@@ -69,6 +71,15 @@ class MlasCastFp16Test : public MlasTestBase {
 
   // Test special IEEE 754 values: ±0, ±Inf, NaN, denormals, and a value
   // requiring round-to-nearest-even in the f32→f16 direction.
+  //
+  // NaN handling: The MLAS scalar reference (MLAS_Float2Half) canonicalizes
+  // every NaN to 0x7E00 (f16 canonical qNaN), discarding the payload.
+  // Hardware FCVTN/FCVTL preserves (truncates) the payload.  Because payload
+  // semantics differ, for NaN results we assert only:
+  //   1. Both results are NaN (exponent all-ones, mantissa non-zero).
+  //   2. Sign bits match.
+  // Payload bits are deliberately unasserted — they are implementation-
+  // defined and not portable across scalar vs. NEON paths.
   void TestSpecialValues() {
     // Raw fp16 bit patterns
     const uint16_t kPosZero = 0x0000;
@@ -104,20 +115,35 @@ class MlasCastFp16Test : public MlasTestBase {
       uint32_t ref_bits, disp_bits;
       std::memcpy(&ref_bits, &out_ref[i], sizeof(float));
       std::memcpy(&disp_bits, &out_dispatch[i], sizeof(float));
-      ASSERT_EQ(disp_bits, ref_bits)
-          << "F16->F32 special mismatch at [" << i
-          << "], h=0x" << std::hex << special_bits[i];
+
+      if (std::isnan(out_ref[i])) {
+        // NaN: assert both NaN and same sign.  Payload is not asserted
+        // because hardware preserves it while the scalar reference may not.
+        ASSERT_TRUE(std::isnan(out_dispatch[i]))
+            << "F16->F32 expected NaN at [" << i
+            << "], h=0x" << std::hex << special_bits[i];
+        constexpr uint32_t kF32SignBit = 0x80000000u;
+        ASSERT_EQ(disp_bits & kF32SignBit, ref_bits & kF32SignBit)
+            << "F16->F32 NaN sign mismatch at [" << i
+            << "], h=0x" << std::hex << special_bits[i];
+      } else {
+        ASSERT_EQ(disp_bits, ref_bits)
+            << "F16->F32 special mismatch at [" << i
+            << "], h=0x" << std::hex << special_bits[i];
+      }
     }
 
     // F32 -> F16: test with the f32 equivalents plus a round-to-even case.
-    // 1.0009765625f (0x3F802000) rounds to fp16 1.0 (0x3C00) under RTE.
+    // 1.00048828125f = 1.0 + 2^-11 (0x3F801000) is exactly halfway between
+    // fp16 1.0 (0x3C00) and 1.0+ULP (0x3C01).  RNE must pick the even
+    // significand, i.e. 0x3C00.
     std::vector<float> f32_input = {
         0.0f, -0.0f,
         std::numeric_limits<float>::infinity(),
         -std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::quiet_NaN(),
         std::numeric_limits<float>::signaling_NaN(),
-        1.0009765625f};
+        1.00048828125f};
     const size_t m = f32_input.size();
 
     std::vector<_mlas_fp16_> f16_out_dispatch(m);
@@ -134,9 +160,28 @@ class MlasCastFp16Test : public MlasTestBase {
       uint16_t ref_bits, disp_bits;
       std::memcpy(&ref_bits, &f16_out_ref[i], sizeof(uint16_t));
       std::memcpy(&disp_bits, &f16_out_dispatch[i], sizeof(uint16_t));
-      ASSERT_EQ(disp_bits, ref_bits)
-          << "F32->F16 special mismatch at [" << i
-          << "], f32=" << f32_input[i];
+
+      if (std::isnan(f32_input[i])) {
+        // NaN: assert result is NaN and sign matches.  Payload is not
+        // asserted because MLAS_Float2Half canonicalizes to 0x7E00 while
+        // hardware FCVTN preserves/truncates the source payload.
+        constexpr uint16_t kF16ExpMask = 0x7C00u;
+        constexpr uint16_t kF16MantMask = 0x03FFu;
+        ASSERT_EQ(disp_bits & kF16ExpMask, kF16ExpMask)
+            << "F32->F16 expected NaN exponent at [" << i
+            << "], f32=" << f32_input[i];
+        ASSERT_NE(disp_bits & kF16MantMask, 0u)
+            << "F32->F16 expected NaN mantissa non-zero at [" << i
+            << "], f32=" << f32_input[i];
+        constexpr uint16_t kF16SignBit = 0x8000u;
+        ASSERT_EQ(disp_bits & kF16SignBit, ref_bits & kF16SignBit)
+            << "F32->F16 NaN sign mismatch at [" << i
+            << "], f32=" << f32_input[i];
+      } else {
+        ASSERT_EQ(disp_bits, ref_bits)
+            << "F32->F16 special mismatch at [" << i
+            << "], f32=" << f32_input[i];
+      }
     }
   }
 

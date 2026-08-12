@@ -103,12 +103,16 @@ Abstract:
 #endif //
 
 //
-// Apple ARM64 supports the f16<->f32 cast kernel (FEAT_FP16 is present on all
+// macOS ARM64 supports the f16<->f32 cast kernel (FEAT_FP16 is present on all
 // Apple Silicon). The full fp16 arithmetic family (MLAS_F16VEC_INTRINSICS_SUPPORTED)
 // stays disabled on Apple; only the cast path is enabled here.
+// Guard on TARGET_OS_OSX so iOS/tvOS/visionOS are excluded.
 //
 #if defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
 #define MLAS_CAST_F16_NEON_SUPPORTED
+#endif
 #endif
 
 #endif // ARM64
