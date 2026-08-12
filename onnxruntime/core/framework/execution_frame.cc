@@ -180,11 +180,10 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
         ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for tensor output that is already allocated");
         const Tensor& tensor = p_ort_value->Get<Tensor>();
         const TensorShape& existing_shape = tensor.Shape();
-        LOGS_DEFAULT(INFO) << "existing_shape: " << existing_shape.ToString() << ", computed_shape: " << (shape ? shape->ToString() : "<null>");
-        ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for tensor output that is already allocated");
-        LOGS_DEFAULT(INFO) << "existing_shape size: " << existing_shape.Size() << ", computed_shape size: " << shape->Size() << std::endl;
         // Compare number of elements
-        if (existing_shape.Size() == shape->Size()) {
+        if (existing_shape == *shape) {
+          shape_matched = true;
+        } else if (existing_shape.Size() == shape->Size()) {
           // Reuse buffer, update shape in-place
           const_cast<Tensor&>(tensor).Reshape(*shape);
           shape_matched = true;

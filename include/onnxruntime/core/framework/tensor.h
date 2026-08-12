@@ -269,18 +269,18 @@ class Tensor final {
    * @warning this function is NOT thread-safe.
    */
   inline void Reshape(const TensorShape& new_shape) {
-      ORT_ENFORCE(shape_.Size() == new_shape.Size(),
-          "Tensor size (" + std::to_string(shape_.Size()) +
-          ") != new size (" + std::to_string(new_shape.Size()) + ")");
+    ORT_ENFORCE(shape_.Size() == new_shape.Size(),
+                "Tensor size (" + std::to_string(shape_.Size()) +
+                    ") != new size (" + std::to_string(new_shape.Size()) + ")");
 
 #ifdef ENABLE_STRIDED_TENSORS
-      ORT_ENFORCE(is_contiguous_,
-          "Reshape is only supported for contiguous tensors.");
-      shape_ = new_shape;
-      strides_.clear();  // lazily recomputed by Strides() for the new shape
-      is_contiguous_ = true;
+    ORT_ENFORCE(is_contiguous_,
+                "Reshape is only supported for contiguous tensors.");
+    shape_ = new_shape;
+    strides_.clear();  // lazily recomputed by Strides() for the new shape
+    is_contiguous_ = true;
 #else
-      shape_ = new_shape;
+    shape_ = new_shape;
 #endif
   }
 
