@@ -7905,6 +7905,41 @@ TEST_F(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedScaleMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* scale_mul = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() != "Mul" || node.InputDefs().size() != 2) {
+      continue;
+    }
+
+    for (const NodeArg* input : node.InputDefs()) {
+      if (optimizer_utils::IsInitializerWithExpectedValue(graph, *input, 0.7978845834732056f, true)) {
+        scale_mul = &node;
+        break;
+      }
+    }
+
+    if (scale_mul != nullptr) {
+      break;
+    }
+  }
+
+  ASSERT_NE(scale_mul, nullptr);
+  scale_mul->MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.FastGelu"], 0);
+}
+
 TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu_use_graph_input.onnx";
   std::shared_ptr<Model> p_model;

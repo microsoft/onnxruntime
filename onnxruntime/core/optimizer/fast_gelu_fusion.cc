@@ -36,6 +36,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
                                               InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) ||
+      mul1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
       mul1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(mul1_node)) {
@@ -86,7 +87,8 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   const Node* p_mul3_input_node = graph_utils::GetInputNode(mul3_node, (input_index + 1) % 2);
   if (p_mul3_input_node == nullptr) return matchResult;
   Node& mul4_node = const_cast<Node&>(*p_mul3_input_node);
-  if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul3_node, "Mul", {7, 13, 14}) &&
+  if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul4_node, "Mul", {7, 13, 14}) &&
+        mul4_node.InputDefs().size() == 2 &&
         CheckNode(graph, mul4_node, mul1_node.GetExecutionProviderType(), true))) {
     return matchResult;
   }
@@ -114,6 +116,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
                                                InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13, 15}) ||
+      pow1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
       pow1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(pow1_node)) {
