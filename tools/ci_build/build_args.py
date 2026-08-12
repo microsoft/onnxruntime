@@ -758,7 +758,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- Apple Accelerate ---
     parser.add_argument(
-        "--use_apple_accelerate", action="store_true", help="Enable Apple Accelerate framework in MLAS (Apple platforms)."
+        "--use_apple_accelerate", action="store_true", help="Enable Apple Accelerate framework in MLAS (macOS arm64 only)."
     )
 
     # --- QNN ---

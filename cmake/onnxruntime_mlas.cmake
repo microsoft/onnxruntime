@@ -1165,16 +1165,17 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 # Apple Accelerate framework linkage (Accelerate includes vecLib/BLAS, BNNS, and vDSP).
-# Actual kernel sources are added in follow-up PRs; this only links the system framework.
+# Scoped to macOS arm64 (Apple Silicon) only. Actual kernel sources are added in follow-up PRs;
+# this only links the system framework.
 # NOTE for follow-up PRs: Apple frameworks (Accelerate, BNNS) may internally use GCD for
 # parallelism. ORT already manages its own threadpool, so future kernel implementations must
 # use single-threaded dispatch or explicitly size requests to avoid oversubscription.
 if(onnxruntime_USE_APPLE_ACCELERATE)
-  # Accelerate is a system umbrella framework available on macOS 10.3+, iOS 4.0+.
+  # Accelerate is a system umbrella framework available on macOS arm64 (Apple Silicon).
   # It provides vecLib (cblas SGEMM), BNNS, and vDSP — all targets of follow-up PRs.
   find_library(APPLE_ACCELERATE_LIB Accelerate)
   if(NOT APPLE_ACCELERATE_LIB)
-    message(FATAL_ERROR "Apple Accelerate framework not found. Ensure you are building with an Apple SDK.")
+    message(FATAL_ERROR "Apple Accelerate framework not found. Ensure you are building on macOS arm64 with an Apple SDK.")
   endif()
   target_link_libraries(onnxruntime_mlas PRIVATE ${APPLE_ACCELERATE_LIB})
 endif()

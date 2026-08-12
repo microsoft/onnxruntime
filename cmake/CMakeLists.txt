@@ -96,7 +96,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
-option(onnxruntime_USE_APPLE_ACCELERATE "Build with Apple Accelerate/BNNS/vDSP support in MLAS" OFF)
+option(onnxruntime_USE_APPLE_ACCELERATE "Build with Apple Accelerate/BNNS/vDSP support in MLAS (macOS arm64 only)" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
@@ -615,7 +615,10 @@ endif()
 
 if(onnxruntime_USE_APPLE_ACCELERATE)
   if(NOT APPLE)
-    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE was set but it is not supported on this platform. It will be disabled.")
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE was set but it is not supported on this platform (requires macOS arm64). It will be disabled.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  elseif(NOT onnxruntime_target_platform STREQUAL "arm64")
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires arm64 (Apple Silicon). It will be disabled on this architecture.")
     set(onnxruntime_USE_APPLE_ACCELERATE OFF)
   endif()
 endif()
