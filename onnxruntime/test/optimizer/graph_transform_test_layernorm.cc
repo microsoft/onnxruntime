@@ -1196,9 +1196,9 @@ TEST_F(GraphTransformationTests, LayerNormFusionCurrentOpsetTest) {
 TEST_F(GraphTransformationTests, LayerNormFusionDoesNotUseIntermediateAsScale) {
   int current_opset = GetCurrentOnnxOpset();
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({2});
-    auto* scale = builder.MakeInput<float>({2, 1});
-    auto* bias = builder.MakeInput<float>({2});
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInput<float>({{2, 1}});
+    auto* bias = builder.MakeInput<float>({{2}});
     auto* exponent = builder.MakeInitializer<float>({}, {2.0f});
     auto* epsilon = builder.MakeInitializer<float>({}, {1.0e-5f});
     auto* axes = builder.MakeInitializer<int64_t>({1}, {-1});
@@ -1241,9 +1241,9 @@ TEST_F(GraphTransformationTests, LayerNormFusionDoesNotUseIntermediateAsScale) {
 TEST_F(GraphTransformationTests, LayerNormFusionDoesNotUseIntermediateAsBias) {
   int current_opset = GetCurrentOnnxOpset();
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({2});
-    auto* scale = builder.MakeInput<float>({2});
-    auto* bias = builder.MakeInput<float>({2, 1});
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInput<float>({{2}});
+    auto* bias = builder.MakeInput<float>({{2, 1}});
     auto* exponent = builder.MakeInitializer<float>({}, {2.0f});
     auto* epsilon = builder.MakeInitializer<float>({}, {1.0e-5f});
     auto* axes = builder.MakeInitializer<int64_t>({1}, {-1});
@@ -1287,8 +1287,8 @@ TEST_F(GraphTransformationTests, LayerNormFusionDoesNotUseIntermediateAsBias) {
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionDoesNotUseIntermediateAsScale) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({2});
-    auto* scale = builder.MakeInput<float>({2, 1});
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInput<float>({{2, 1}});
     auto* exponent = builder.MakeInitializer<float>({}, {2.0f});
     auto* epsilon = builder.MakeInitializer<float>({}, {1.0e-5f});
     auto* squared = builder.MakeIntermediate();
