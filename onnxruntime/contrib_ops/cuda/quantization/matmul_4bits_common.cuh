@@ -113,11 +113,17 @@ __device__ __forceinline__ void AccumulateEightElements4b(
   half2 v2 = element45 * scale_half2 + zp_adjust2;
   half2 v3 = element67 * scale_half2 + zp_adjust2;
 
+  half2 a_half2_0, a_half2_1, a_half2_2, a_half2_3;
+  memcpy(&a_half2_0, &vec_a.x, sizeof(half2));
+  memcpy(&a_half2_1, &vec_a.y, sizeof(half2));
+  memcpy(&a_half2_2, &vec_a.z, sizeof(half2));
+  memcpy(&a_half2_3, &vec_a.w, sizeof(half2));
+
   half2* sums_half2 = reinterpret_cast<half2*>(sums);
-  sums_half2[0] = sums_half2[0] + v0 * (*(reinterpret_cast<half2*>(&(vec_a.x))));
-  sums_half2[1] = sums_half2[1] + v1 * (*(reinterpret_cast<half2*>(&(vec_a.y))));
-  sums_half2[2] = sums_half2[2] + v2 * (*(reinterpret_cast<half2*>(&(vec_a.z))));
-  sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_a.w))));
+  sums_half2[0] = sums_half2[0] + v0 * a_half2_0;
+  sums_half2[1] = sums_half2[1] + v1 * a_half2_1;
+  sums_half2[2] = sums_half2[2] + v2 * a_half2_2;
+  sums_half2[3] = sums_half2[3] + v3 * a_half2_3;
 }
 #endif
 
