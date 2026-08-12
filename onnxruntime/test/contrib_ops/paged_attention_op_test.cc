@@ -8,14 +8,24 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numeric>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "gtest/gtest.h"
 
+#include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/session/IOBinding.h"
+#include "core/session/inference_session.h"
 #include "default_providers.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -232,6 +242,221 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
   test.ConfigEp(std::move(execution_provider)).RunWithConfig();
 }
 
+void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
+                      const char* provider_type,
+                      bool alias_cache_outputs,
+                      bool omit_cache_outputs = false) {
+  constexpr int batch_size = 1;
+  constexpr int token_count = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int block_size = 256;
+  constexpr int num_blocks = 2;
+  constexpr int past_seqlen = 4;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int cache_elems = num_blocks * block_size * kv_num_heads * head_size;
+
+  std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  auto model = std::make_unique<Model>("paged_attention_cuda_alias_test", true, ModelMetaData(), PathString(),
+                                       IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                       model_specific_functions, DefaultLoggingManager().DefaultLogger(),
+                                       ModelOptions(true, true));
+  auto& graph = model->MainGraph();
+
+  std::vector<ONNX_NAMESPACE::TypeProto> tensor_types;
+  tensor_types.reserve(13);
+  auto add_tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) -> ONNX_NAMESPACE::TypeProto* {
+    tensor_types.emplace_back();
+    auto* type = &tensor_types.back();
+    type->mutable_tensor_type()->set_elem_type(elem_type);
+    auto* shape = type->mutable_tensor_type()->mutable_shape();
+    for (const int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+    return type;
+  };
+
+  auto& query_arg = graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      {token_count, hidden_size}));
+  auto& key_arg = graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                  {token_count, hidden_size}));
+  auto& value_arg = graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      {token_count, hidden_size}));
+  auto& key_cache_arg = graph.GetOrCreateNodeArg(
+      "key_cache", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                   {num_blocks, block_size, kv_num_heads, head_size}));
+  auto& value_cache_arg = graph.GetOrCreateNodeArg(
+      "value_cache", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                     {num_blocks, block_size, kv_num_heads, head_size}));
+  auto& cumulative_sequence_length_arg = graph.GetOrCreateNodeArg(
+      "cumulative_sequence_length", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size + 1}));
+  auto& past_seqlens_arg = graph.GetOrCreateNodeArg(
+      "past_seqlens", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size}));
+  auto& block_table_arg = graph.GetOrCreateNodeArg(
+      "block_table", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size, 1}));
+  auto& empty_optional_arg = graph.GetOrCreateNodeArg("", nullptr);
+  std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
+                                      &cumulative_sequence_length_arg, &past_seqlens_arg, &block_table_arg,
+                                      &empty_optional_arg, &empty_optional_arg};
+
+  auto& output_arg = graph.GetOrCreateNodeArg(
+      "output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {token_count, hidden_size}));
+  auto& key_cache_out_arg = graph.GetOrCreateNodeArg(
+      "key_cache_out", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                       {num_blocks, block_size, kv_num_heads, head_size}));
+  auto& value_cache_out_arg = graph.GetOrCreateNodeArg(
+      "value_cache_out", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                         {num_blocks, block_size, kv_num_heads, head_size}));
+  std::vector<NodeArg*> output_defs = {&output_arg};
+  if (!omit_cache_outputs) {
+    output_defs.push_back(&key_cache_out_arg);
+    output_defs.push_back(&value_cache_out_arg);
+  }
+
+  NodeAttributes attrs = {
+      {"num_heads", utils::MakeAttribute("num_heads", int64_t{num_heads})},
+      {"kv_num_heads", utils::MakeAttribute("kv_num_heads", int64_t{kv_num_heads})},
+      {"scale", utils::MakeAttribute("scale", 0.0f)},
+      {"do_rotary", utils::MakeAttribute("do_rotary", int64_t{0})},
+  };
+  auto& node = graph.AddNode("paged_attention", "PagedAttention", "IOBinding cache test",
+                             input_defs, output_defs, &attrs, onnxruntime::kMSDomain);
+  node.SetExecutionProviderType(provider_type);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_string;
+  ASSERT_TRUE(model->ToProto().SerializeToString(&model_string));
+  std::stringstream model_stream(model_string);
+
+  SessionOptions session_options;
+  session_options.session_logid = "PagedAttentionIoBindingTest";
+  InferenceSession session(session_options, GetEnvironment());
+  ASSERT_NE(execution_provider, nullptr);
+  IExecutionProvider* execution_provider_ptr = execution_provider.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(execution_provider)));
+  auto device_allocators = execution_provider_ptr->CreatePreferredAllocators();
+  ASSERT_FALSE(device_allocators.empty());
+  const OrtMemoryInfo* selected_device_memory_info = nullptr;
+  for (const auto& allocator : device_allocators) {
+    const auto& mem_info = allocator->Info();
+    if (mem_info.device.Type() == OrtDevice::GPU && mem_info.mem_type == OrtMemTypeDefault) {
+      selected_device_memory_info = &mem_info;
+    }
+  }
+  ASSERT_NE(selected_device_memory_info, nullptr);
+  const OrtMemoryInfo device_memory_info = *selected_device_memory_info;
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto device_alloc = session.GetAllocator(device_memory_info);
+  ASSERT_NE(device_alloc, nullptr);
+
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  auto make_gpu_fp16 = [&](const std::vector<MLFloat16>& data, const TensorShape& shape) {
+    Tensor cpu_tensor(DataTypeImpl::GetType<MLFloat16>(), shape, const_cast<MLFloat16*>(data.data()), cpu_alloc->Info());
+    Tensor gpu_tensor(DataTypeImpl::GetType<MLFloat16>(), shape, device_alloc);
+    ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    OrtValue value;
+    Tensor::InitOrtValue(std::move(gpu_tensor), value);
+    return value;
+  };
+  auto make_gpu_int32 = [&](const std::vector<int32_t>& data, const TensorShape& shape) {
+    Tensor cpu_tensor(DataTypeImpl::GetType<int32_t>(), shape, const_cast<int32_t*>(data.data()), cpu_alloc->Info());
+    Tensor gpu_tensor(DataTypeImpl::GetType<int32_t>(), shape, device_alloc);
+    ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    OrtValue value;
+    Tensor::InitOrtValue(std::move(gpu_tensor), value);
+    return value;
+  };
+
+  std::vector<MLFloat16> query_data(token_count * hidden_size, MLFloat16(0.02f));
+  std::vector<MLFloat16> key_data(token_count * hidden_size, MLFloat16(0.03f));
+  std::vector<MLFloat16> value_data(token_count * hidden_size, MLFloat16(0.04f));
+  std::vector<MLFloat16> key_cache_data(cache_elems, MLFloat16(0.01f));
+  std::vector<MLFloat16> value_cache_data(cache_elems, MLFloat16(0.02f));
+  auto query_value = make_gpu_fp16(query_data, TensorShape({token_count, hidden_size}));
+  auto key_value = make_gpu_fp16(key_data, TensorShape({token_count, hidden_size}));
+  auto value_value = make_gpu_fp16(value_data, TensorShape({token_count, hidden_size}));
+  auto key_cache_value = make_gpu_fp16(key_cache_data, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
+  auto value_cache_value = make_gpu_fp16(value_cache_data, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
+  auto cumulative_sequence_length_value = make_gpu_int32({0, token_count}, TensorShape({batch_size + 1}));
+  auto past_seqlens_value = make_gpu_int32({past_seqlen}, TensorShape({batch_size}));
+  auto block_table_value = make_gpu_int32({0}, TensorShape({batch_size, 1}));
+  auto output_value = make_gpu_fp16(std::vector<MLFloat16>(token_count * hidden_size),
+                                    TensorShape({token_count, hidden_size}));
+  auto key_cache_out_value = make_gpu_fp16(key_cache_data,
+                                           TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
+  auto value_cache_out_value = make_gpu_fp16(value_cache_data,
+                                             TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
+
+  std::unique_ptr<IOBinding> io_binding;
+  ASSERT_STATUS_OK(session.NewIOBinding(&io_binding));
+  ASSERT_STATUS_OK(io_binding->BindInput("query", query_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("key", key_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("value", value_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("key_cache", key_cache_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("value_cache", value_cache_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("cumulative_sequence_length", cumulative_sequence_length_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("past_seqlens", past_seqlens_value));
+  ASSERT_STATUS_OK(io_binding->BindInput("block_table", block_table_value));
+  ASSERT_STATUS_OK(io_binding->BindOutput("output", output_value));
+  if (!omit_cache_outputs) {
+    ASSERT_STATUS_OK(io_binding->BindOutput("key_cache_out", alias_cache_outputs ? key_cache_value : key_cache_out_value));
+    ASSERT_STATUS_OK(io_binding->BindOutput("value_cache_out", alias_cache_outputs ? value_cache_value : value_cache_out_value));
+  }
+
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+
+  Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(), TensorShape({token_count, hidden_size}), cpu_alloc);
+  ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+  EXPECT_NE(cpu_output.Data<MLFloat16>()[0].ToFloat(), 0.0f);
+
+  const auto& outputs = io_binding->GetOutputs();
+  if (omit_cache_outputs) {
+    Tensor cpu_key_cache(DataTypeImpl::GetType<MLFloat16>(),
+                         TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+    Tensor cpu_value_cache(DataTypeImpl::GetType<MLFloat16>(),
+                           TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+    ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(key_cache_value.Get<Tensor>(), cpu_key_cache));
+    ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(value_cache_value.Get<Tensor>(), cpu_value_cache));
+    const size_t cache_update_offset = static_cast<size_t>(past_seqlen * head_size);
+    EXPECT_NEAR(cpu_key_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
+    EXPECT_NEAR(cpu_value_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.04f, 1e-3f);
+    ASSERT_EQ(outputs.size(), 1u);
+    return;
+  }
+
+  ASSERT_EQ(outputs.size(), 3u);
+  if (alias_cache_outputs) {
+    EXPECT_EQ(outputs[1].Get<Tensor>().Data<MLFloat16>(), key_cache_value.Get<Tensor>().Data<MLFloat16>());
+    EXPECT_EQ(outputs[2].Get<Tensor>().Data<MLFloat16>(), value_cache_value.Get<Tensor>().Data<MLFloat16>());
+  } else {
+    EXPECT_NE(outputs[1].Get<Tensor>().Data<MLFloat16>(), key_cache_value.Get<Tensor>().Data<MLFloat16>());
+    EXPECT_NE(outputs[2].Get<Tensor>().Data<MLFloat16>(), value_cache_value.Get<Tensor>().Data<MLFloat16>());
+  }
+
+  // Verify K/V scatter actually landed at slot `past_seqlen` in both caches.
+  // The input caches are initialized to 0.01 / 0.02; the new K/V are 0.03 / 0.04.
+  // Without this, a scatter regression on either path (alias or non-alias)
+  // would still leave `output[0]` non-zero and pointer identity intact, so
+  // the smoke-only version of this test could not distinguish "scatter ran"
+  // from "scatter silently didn't run". Downloading from the bound output
+  // tensors covers both the aliased path (output backed by the input cache
+  // buffer) and the non-aliased path (output backed by a separate buffer).
+  Tensor cpu_key_cache_out(DataTypeImpl::GetType<MLFloat16>(),
+                           TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+  Tensor cpu_value_cache_out(DataTypeImpl::GetType<MLFloat16>(),
+                             TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+  ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[1].Get<Tensor>(), cpu_key_cache_out));
+  ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[2].Get<Tensor>(), cpu_value_cache_out));
+  const size_t cache_update_offset = static_cast<size_t>(past_seqlen * head_size);
+  EXPECT_NEAR(cpu_key_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
+  EXPECT_NEAR(cpu_value_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.04f, 1e-3f);
+}
+
 void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
   bool ran = false;
 
@@ -252,6 +477,79 @@ void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
 }
 
 }  // namespace
+
+TEST(PagedAttention, Cuda_AliasedCache_IOBinding) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true);
+}
+
+TEST(PagedAttention, WebGpu_AliasedCache_IOBinding) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+  RunIoBindingCase(DefaultWebGpuExecutionProvider(), kWebGpuExecutionProvider, true);
+}
+
+TEST(PagedAttention, WebGpu_NonAliasedCache_IOBinding) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+  RunIoBindingCase(DefaultWebGpuExecutionProvider(), kWebGpuExecutionProvider, false);
+}
+
+TEST(PagedAttention, WebGpu_OmittedCacheOutputs_IOBinding) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+  RunIoBindingCase(DefaultWebGpuExecutionProvider(), kWebGpuExecutionProvider, false, true);
+}
+
+TEST(PagedAttention, WebGpu_RejectsShortRotaryCache) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  constexpr int token_count = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int block_size = 256;
+  constexpr int past_seqlen = 4;
+  constexpr int rotary_cache_length = 4;
+  constexpr int cache_elems = block_size * kv_num_heads * head_size;
+
+  OpTester test("PagedAttention", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", num_heads);
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("do_rotary", 1);
+  test.AddInput<MLFloat16>("query", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size, MLFloat16(0.02f)));
+  test.AddInput<MLFloat16>("key", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size, MLFloat16(0.03f)));
+  test.AddInput<MLFloat16>("value", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size, MLFloat16(0.04f)));
+  test.AddInput<MLFloat16>("key_cache", {1, block_size, kv_num_heads, head_size},
+                           std::vector<MLFloat16>(cache_elems, MLFloat16(0.01f)));
+  test.AddInput<MLFloat16>("value_cache", {1, block_size, kv_num_heads, head_size},
+                           std::vector<MLFloat16>(cache_elems, MLFloat16(0.02f)));
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, token_count});
+  test.AddInput<int32_t>("past_seqlens", {1}, {past_seqlen});
+  test.AddInput<int32_t>("block_table", {1, 1}, {0});
+  test.AddInput<MLFloat16>("cos_cache", {rotary_cache_length, head_size / 2},
+                           std::vector<MLFloat16>(rotary_cache_length * head_size / 2, MLFloat16(1.0f)));
+  test.AddInput<MLFloat16>("sin_cache", {rotary_cache_length, head_size / 2},
+                           std::vector<MLFloat16>(rotary_cache_length * head_size / 2, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("output", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size));
+  test.AddOutput<MLFloat16>("key_cache_out", {1, block_size, kv_num_heads, head_size},
+                            std::vector<MLFloat16>(cache_elems));
+  test.AddOutput<MLFloat16>("value_cache_out", {1, block_size, kv_num_heads, head_size},
+                            std::vector<MLFloat16>(cache_elems));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "cos_cache dimension 0", {}, nullptr, &execution_providers);
+}
 
 // Decode tier: single batch, single new Q token, non-zero past. The FA
 // tier selector uses `sequence_length_ < 32` → split-reduce path.
