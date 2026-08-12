@@ -74,7 +74,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
     int64_t axes_left_stride = 1;
     int64_t axes_right_stride = 1;
     for (int64_t i = 0; i < axis; ++i) {
-      axes_left_stride *= input_dimensions[i];
+      axes_left_stride *= input_dimensions[onnxruntime::narrow<size_t>(i)];
     }
 
     for (auto i = static_cast<size_t>(axis + 1); i < rank; ++i) {
