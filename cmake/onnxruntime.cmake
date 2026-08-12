@@ -121,6 +121,18 @@ if(onnxruntime_BUILD_SHARED_LIB)
       string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
     endif()
 
+    if(onnxruntime_USE_TELEMETRY)
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      else()
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      endif()
+    endif()
+
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
     configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
     configure_file(

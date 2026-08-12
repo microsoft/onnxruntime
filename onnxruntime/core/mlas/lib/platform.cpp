@@ -744,7 +744,10 @@ Return Value:
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         this->ErfKernelRoutine = MlasSveErfKernel;
         this->LogisticKernelRoutine = MlasSveLogisticKernel;
+        this->ComputeExpF32Kernel = MlasSveComputeExpF32Kernel;
+        this->TanhKernelRoutine = MlasSveTanhKernel;
         this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
+        this->ReduceMinimumMaximumF32Kernel = MlasSveReduceMinimumMaximumF32Kernel;
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
@@ -752,14 +755,23 @@ Return Value:
     else{
         this->ErfKernelRoutine = MlasErfKernel;
         this->LogisticKernelRoutine = MlasLogisticKernel;
+        this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+        this->TanhKernelRoutine = MlasTanhKernel;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
 #endif
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(_WIN32)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    //
+    // The SVE fp16 kernels are portable machine code and available on every
+    // platform; the NEON fp16 fallbacks are only built on non-Windows
+    // targets. On Windows without SVE hardware the routines stay null and
+    // the callers use their scalar fallbacks.
+    //
     #if defined(MLAS_USE_SVE)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
             this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
@@ -767,10 +779,12 @@ Return Value:
             this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
         }
         else{
+        #if !defined(_WIN32)
             this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
             this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+        #endif
         }
-    #else
+    #elif !defined(_WIN32)
         this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
         this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
     #endif

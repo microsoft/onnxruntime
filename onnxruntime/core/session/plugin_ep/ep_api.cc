@@ -25,6 +25,7 @@
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_opschema.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
@@ -1198,6 +1199,16 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_result_maybenull_ const void** source_model_data,
+                    _Out_ size_t* source_model_data_length) {
+  API_IMPL_BEGIN
+  *source_model_data = session_options->weightless_source_model_data;
+  *source_model_data_length = session_options->weightless_source_model_data_size;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1227,7 +1238,6 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::CreateHardwareDevice,
     &OrtExecutionProviderApi::ReleaseHardwareDevice,
-
     &OrtExecutionProviderApi::CreateKernelRegistry,
     &OrtExecutionProviderApi::ReleaseKernelRegistry,
     &OrtExecutionProviderApi::KernelRegistry_AddKernel,
@@ -1277,7 +1287,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetAllowedTypes,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetOutputIndices,
-
     &OrtExecutionProviderApi::CreateProfilingEvent,
     &OrtExecutionProviderApi::ReleaseProfilingEvent,
     &OrtExecutionProviderApi::ProfilingEvent_GetCategory,
@@ -1287,6 +1296,9 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
+    // End of Version 29 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1298,6 +1310,12 @@ static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
 static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
+static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) / sizeof(void*) == 73,
+              "Size of version 29 API cannot change");
+
+// So that nobody forgets to finish an API version, this check will serve as a reminder:
+static_assert(std::string_view(ORT_VERSION) == "1.30.0",
+              "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi
 

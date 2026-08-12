@@ -163,7 +163,6 @@ extends:
           --enable_wcos
           --skip_submodule_sync
           --use_dml
-          --use_telemetry
           --use_webgpu
         BuildArch: 'x64'
         sln_platform: 'x64'
@@ -185,7 +184,6 @@ extends:
           --enable_wcos
           --skip_submodule_sync
           --use_dml
-          --use_telemetry
           --use_webgpu
         BuildArch: 'x64'
         sln_platform: 'arm64'

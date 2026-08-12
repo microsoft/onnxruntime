@@ -885,6 +885,72 @@ TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
            {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
+namespace {
+void RunRnnActivationParametersTest(const std::vector<std::string>& activations,
+                                    bool add_activation_alpha,
+                                    const std::vector<float>& activation_alpha,
+                                    bool add_activation_beta,
+                                    const std::vector<float>& activation_beta,
+                                    const std::vector<float>& expected_output) {
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) {
+    GTEST_SKIP() << "CPU EP not available in this build.";
+  }
+
+  OpTester test("RNN");
+  const int64_t num_directions = static_cast<int64_t>(activations.size());
+  int64_t input_size = 1, hidden_size = 1, seq_length = 1, batch_size = 1;
+
+  test.AddAttribute("activations", activations);
+  test.AddAttribute("direction", num_directions == 2 ? "bidirectional" : "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+  if (add_activation_alpha) {
+    test.AddAttribute<std::vector<float>>("activation_alpha", activation_alpha);
+  }
+  if (add_activation_beta) {
+    test.AddAttribute<std::vector<float>>("activation_beta", activation_beta);
+  }
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data{1.F};
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data(static_cast<size_t>(num_directions), -1.F);
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data(static_cast<size_t>(num_directions), 0.F);
+  test.AddInput<float>("R", R_dims, R_data);
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, expected_output);
+
+  std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_h", Y_h_dims, expected_output);
+
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+}  // namespace
+
+TEST(RNNTest, RNN_mixed_activations_consume_only_required_alpha_beta) {
+  RunRnnActivationParametersTest({"HardSigmoid", "Tanh"}, true, {0.2F}, true, {0.5F},
+                                 {0.3F, -0.7615942F});
+}
+
+TEST(RNNTest, RNN_empty_activation_parameters_use_activation_defaults) {
+  RunRnnActivationParametersTest({"HardSigmoid"}, true, {}, true, {}, {0.3F});
+}
+
+TEST(RNNTest, RNN_missing_activation_alpha_uses_activation_default) {
+  RunRnnActivationParametersTest({"LeakyRelu"}, false, {}, false, {}, {-0.01F});
+}
+
+TEST(RNNTest, RNN_extra_activation_parameter_entries_are_ignored) {
+  RunRnnActivationParametersTest({"HardSigmoid", "HardSigmoid"}, true, {0.1F, 0.2F, 0.3F},
+                                 true, {0.5F, 0.6F, 0.7F}, {0.4F, 0.4F});
+}
+
 // Test that seq_length == 0 produces zero-filled Y and Y_h without crashing.
 TEST(RNNTest, RNN_seq_length_zero) {
   auto cpu = DefaultCpuExecutionProvider();

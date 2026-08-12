@@ -309,6 +309,9 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
       (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW, CtaK / Details::kElemsPerByteW,
       interleaved_k / Details::kElemsPerByteW);
 
+  // Kept as CtaN scalar loads rather than the vectorized ScalesAccess/load_scales form used by
+  // the FP4 MoE GEMV: that form needs kInterleave == 1 to make the CtaN scales contiguous, and
+  // every layout reaching this dense kernel is ColumnMajorInterleaved (kInterleave 2 or 4).
   GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
       scales,
       (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
