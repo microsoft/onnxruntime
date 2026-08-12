@@ -14,17 +14,20 @@
 //   the test cannot pass via a silent Cast-to-float fallback.
 //
 // TOLERANCE POLICY:
-//   BFloat16 (7-bit stored mantissa): 1 bf16 ULP at unit scale ≈ 2^-7 ≈ 0.0078.
-//   For bf16-typed outputs (Y), we use a relative tolerance of 2 ULP in bf16
-//   (≈ 0.016 at unit scale).  This is applied as an absolute tolerance because
-//   the OpTester framework requires absolute tolerance, and the reference values
-//   are computed from bf16-round-tripped inputs at unit scale.
+//   The OpTester checker uses numpy.isclose semantics:
+//     |actual - expected| <= absolute + relative * |expected|
+//   When we call SetOutputAbsErr, the absolute component is overridden but the
+//   relative component stays at the framework default (BFloat16: 0.01, float: 1e-4).
 //
-//   For float-typed stat outputs (Mean, InvStdDev), these MUST hold to f32
-//   precision since U=float in the kernel registration.  We use 1e-5 absolute
-//   tolerance — tight enough that a kernel that round-trips stats through bf16
-//   (losing ~0.4% at unit scale) will fail, but loose enough to accommodate
-//   f32 accumulation error.  This is the B5 regression test.
+//   BFloat16-typed outputs (Y): absolute = 0.016 (≈ 2 bf16 ULP at unit scale).
+//     Effective threshold: 0.016 + 0.01 * |expected|.
+//
+//   Float-typed stat outputs (Mean, InvStdDev): absolute = 1e-5.
+//     These MUST hold to f32 precision since U=float in the kernel registration.
+//     Effective threshold: 1e-5 + 1e-4 * |expected| — tight enough that a kernel
+//     that round-trips stats through bf16 (~0.4% error at unit scale) will fail,
+//     but loose enough to accommodate f32 accumulation noise.
+//     This is the regression test for the stat-narrowing precision fix.
 
 #include <cmath>
 #include <vector>
@@ -45,12 +48,15 @@ namespace {
 // BFloat16 has a 7-bit stored mantissa; 1 ULP at unit scale ≈ 2^-7 ≈ 0.0078.
 // The widen→f32-accumulate→narrow kernel adds ≤1 ULP above the representation
 // floor of 0.5 ULP, so 2 ULP total (≈ 0.016) covers both representation and
-// accumulation error.
+// accumulation error.  The checker also adds the framework-default relative
+// tolerance of 0.01 * |expected|, which is small at unit scale.
 constexpr float kBF16AbsTolerance = 0.016f;
 
 // f32 stat output tolerance.  Mean and InvStdDev are typed as float (U=float)
 // and must hold to f32 precision.  1e-5 catches a bf16 round-trip bug (~0.4%
 // error at unit scale) while accommodating normal f32 accumulation noise.
+// The checker also adds the framework-default relative tolerance of
+// 1e-4 * |expected|.
 constexpr float kF32StatTolerance = 1e-5f;
 
 // Compute LayerNorm reference in f32.
@@ -267,7 +273,7 @@ TEST(LayerNormBFloat16CpuTest, LayerNorm17_LargerNormSize) {
 // LayerNormalization (core ONNX opset 17) — Mean + InvStdDev float outputs
 // These stats are typed U=float.  The tolerance here is f32-grade (1e-5) so
 // a kernel that round-trips stats through bf16 (~0.4% error) WILL FAIL.
-// This is the regression test for the B5 stat-narrowing bug.
+// This is the regression test for the stat-narrowing precision fix.
 // =============================================================================
 
 TEST(LayerNormBFloat16CpuTest, LayerNorm17_MeanInvStdDev_FloatPrecision) {
@@ -680,6 +686,144 @@ TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_LargerHiddenSize) {
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
 
   RunBF16CpuOnly(test, kBF16AbsTolerance);
+}
+
+// =============================================================================
+// PrePack path: scale/bias as constant initializers (converted at session init)
+// In real models, scale and bias are always initializers, so PrePack converts
+// them to f32 once.  These tests verify the prepacked result matches the
+// non-prepacked (graph-input) result.
+// =============================================================================
+
+TEST(LayerNormBFloat16CpuTest, LayerNorm17_PrePack_ScaleBiasInitializers) {
+  constexpr float epsilon = 1e-05f;
+  constexpr int64_t norm_size = 4;
+  std::vector<int64_t> x_dims{3, norm_size};
+  std::vector<float> x_f32 = {1.0f, -2.0f, 3.0f, -4.0f,
+                              5.0f, 6.0f, -7.0f, 8.0f,
+                              -1.5f, 2.5f, -3.5f, 4.5f};
+  std::vector<float> gamma_f32 = {1.0f, 0.5f, -1.0f, 2.0f};
+  std::vector<float> bias_f32 = {0.1f, -0.2f, 0.3f, -0.1f};
+
+  auto x_rt = RoundTripBF16(x_f32);
+  auto gamma_rt = RoundTripBF16(gamma_f32);
+  auto bias_rt = RoundTripBF16(bias_f32);
+  auto ref = LayerNormRef(x_rt, gamma_rt, bias_rt, norm_size, epsilon);
+
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<BFloat16>("X", x_dims, ToBFloat16(x_f32));
+  // Mark scale and bias as initializers to trigger PrePack
+  test.AddInput<BFloat16>("Scale", {norm_size}, ToBFloat16(gamma_f32), /*is_initializer=*/true);
+  test.AddInput<BFloat16>("B", {norm_size}, ToBFloat16(bias_f32), /*is_initializer=*/true);
+  test.AddOutput<BFloat16>("Y", x_dims, ToBFloat16(ref.output));
+
+  RunBF16CpuOnly(test, kBF16AbsTolerance, "Y");
+}
+
+TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_PrePack_GammaBetaInitializers) {
+  constexpr float epsilon = 1e-12f;
+  constexpr int64_t hidden_size = 4;
+  std::vector<int64_t> input_dims{2, hidden_size};
+  std::vector<int64_t> gamma_dims{hidden_size};
+
+  std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
+                                  5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<float> skip_f32 = {0.5f, -0.5f, 0.5f, -0.5f,
+                                 -1.0f, 1.0f, -1.0f, 1.0f};
+  std::vector<float> gamma_f32 = {1.0f, 0.5f, -1.0f, 2.0f};
+  std::vector<float> beta_f32 = {0.1f, -0.2f, 0.3f, -0.1f};
+
+  auto input_rt = RoundTripBF16(input_f32);
+  auto skip_rt = RoundTripBF16(skip_f32);
+  auto gamma_rt = RoundTripBF16(gamma_f32);
+  auto beta_rt = RoundTripBF16(beta_f32);
+  std::vector<float> added(input_rt.size());
+  for (size_t i = 0; i < added.size(); ++i) {
+    added[i] = input_rt[i] + skip_rt[i];
+  }
+  auto ref = LayerNormRef(added, gamma_rt, beta_rt, hidden_size, epsilon);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("epsilon", epsilon);
+  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
+  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
+  // Mark gamma and beta as initializers to trigger PrePack
+  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32), /*is_initializer=*/true);
+  test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32), /*is_initializer=*/true);
+  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
+
+  RunBF16CpuOnly(test, kBF16AbsTolerance);
+}
+
+// =============================================================================
+// Generic NumPy-broadcast path (ComputeJobGeneric / BFloat16Math)
+// X shape {2,2,2} with axis=-1 (norm_size=2), scale shape {2,2}.
+// Scale's leading dim maps to X's outer dimension, creating outer dependency
+// that forces use_generic_broadcast=true.
+// =============================================================================
+
+TEST(LayerNormBFloat16CpuTest, LayerNorm17_GenericBroadcast) {
+  constexpr float epsilon = 1e-05f;
+  constexpr int64_t norm_size = 2;
+  std::vector<int64_t> x_dims{2, 2, norm_size};
+  // 8 elements total: 2 rows-of-2, each row has norm_size=2
+  std::vector<float> x_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
+                              5.0f, 6.0f, 7.0f, 8.0f};
+
+  // scale shape {2,2}: outer dim varies per row-group, triggering generic path
+  std::vector<int64_t> scale_dims{2, norm_size};
+  std::vector<float> gamma_f32 = {1.0f, 0.5f,
+                                  -1.0f, 2.0f};
+
+  // bias shape {2,2}: same broadcast structure
+  std::vector<int64_t> bias_dims{2, norm_size};
+  std::vector<float> bias_f32 = {0.1f, -0.1f,
+                                 0.2f, -0.2f};
+
+  auto x_rt = RoundTripBF16(x_f32);
+  auto gamma_rt = RoundTripBF16(gamma_f32);
+  auto bias_rt = RoundTripBF16(bias_f32);
+
+  // Compute reference manually: 4 rows of norm_size=2, with per-row scale/bias
+  // Row 0 (outer=0, mid=0): scale={1.0, 0.5}, bias={0.1, -0.1}
+  // Row 1 (outer=0, mid=1): scale={-1.0, 2.0}, bias={0.2, -0.2}
+  // Row 2 (outer=1, mid=0): scale={1.0, 0.5}, bias={0.1, -0.1}
+  // Row 3 (outer=1, mid=1): scale={-1.0, 2.0}, bias={0.2, -0.2}
+  std::vector<float> ref_output(x_rt.size());
+  for (int outer = 0; outer < 2; ++outer) {
+    for (int mid = 0; mid < 2; ++mid) {
+      int row = outer * 2 + mid;
+      float row_mean = 0.0f;
+      for (int c = 0; c < norm_size; ++c) {
+        row_mean += x_rt[static_cast<size_t>(row * norm_size + c)];
+      }
+      row_mean /= static_cast<float>(norm_size);
+      float var = 0.0f;
+      for (int c = 0; c < norm_size; ++c) {
+        float d = x_rt[static_cast<size_t>(row * norm_size + c)] - row_mean;
+        var += d * d;
+      }
+      var /= static_cast<float>(norm_size);
+      float inv_std = 1.0f / std::sqrt(var + epsilon);
+      for (int c = 0; c < norm_size; ++c) {
+        auto idx = static_cast<size_t>(row * norm_size + c);
+        // scale/bias index: mid * norm_size + c (outer dim is broadcast)
+        auto sc_idx = static_cast<size_t>(mid * norm_size + c);
+        float normed = (x_rt[idx] - row_mean) * inv_std;
+        ref_output[idx] = normed * gamma_rt[sc_idx] + bias_rt[sc_idx];
+      }
+    }
+  }
+
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<BFloat16>("X", x_dims, ToBFloat16(x_f32));
+  test.AddInput<BFloat16>("Scale", scale_dims, ToBFloat16(gamma_f32));
+  test.AddInput<BFloat16>("B", bias_dims, ToBFloat16(bias_f32));
+  test.AddOutput<BFloat16>("Y", x_dims, ToBFloat16(ref_output));
+
+  RunBF16CpuOnly(test, kBF16AbsTolerance, "Y");
 }
 
 }  // namespace test

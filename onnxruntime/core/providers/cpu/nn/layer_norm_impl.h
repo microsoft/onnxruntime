@@ -49,7 +49,8 @@ class LayerNormImpl : public OpKernel {
                       float epsilon, bool simplified, bool contrib_op) const {
       // The contrib op historically registered all type constraints identically (U=T).
       // Narrow-float contrib registrations now declare U=float (matching the schema),
-      // so only float/double still need the U=T path.
+      // so the `if constexpr` below ensures ComputeImpl<NarrowType, NarrowType> is never
+      // instantiated — those types always take the U=float path at the bottom.
 #if !defined(DISABLE_CONTRIB_OPS)
       if constexpr (!std::is_same_v<T, MLFloat16> && !std::is_same_v<T, BFloat16>) {
         if (contrib_op) {
