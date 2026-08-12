@@ -19,6 +19,7 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
 namespace test {
@@ -39,6 +40,63 @@ void RunInvalidShapeInferenceTest(const std::vector<int64_t>& b_dims,
   test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
 }
 
+#ifndef ORT_NO_EXCEPTIONS
+void RunMalformedBShapeInitializerTest(const std::string& expected_error) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  auto* default_opset = model.add_opset_import();
+  default_opset->set_domain(kOnnxDomain);
+  default_opset->set_version(21);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("malformed_b_shape_initializer");
+
+  auto add_input = [graph](const char* name, int32_t elem_type, const std::vector<int64_t>& dims) {
+    auto* input = graph->add_input();
+    input->set_name(name);
+    auto* tensor_type = input->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(elem_type);
+    for (const int64_t dim : dims) {
+      tensor_type->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+  };
+
+  add_input("A", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 4});
+  add_input("B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {1});
+  add_input("B_shape", ONNX_NAMESPACE::TensorProto_DataType_INT64, {2});
+
+  auto* b_shape = graph->add_initializer();
+  b_shape->set_name("B_shape");
+  b_shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  b_shape->add_dims(2);
+  b_shape->add_int64_data(4);
+
+  auto* node = graph->add_node();
+  node->set_op_type("MatMulFpQ4");
+  node->set_domain(kMSDomain);
+  node->add_input("A");
+  node->add_input("B");
+  node->add_input("B_shape");
+  node->add_output("Y");
+  auto* attribute = node->add_attribute();
+  attribute->set_name("blk_quant_type");
+  attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attribute->set_i(BlkQ4Zp8);
+
+  try {
+    ONNX_NAMESPACE::shape_inference::InferShapes(
+        model, ONNX_NAMESPACE::OpSchemaRegistry::Instance());
+    FAIL() << "Expected shape inference to reject malformed B_shape initializer data.";
+  } catch (const ONNX_NAMESPACE::shape_inference::InferenceError& ex) {
+    EXPECT_THAT(ex.what(), testing::HasSubstr(expected_error));
+  }
+}
+#endif  // !ORT_NO_EXCEPTIONS
+
 }  // namespace
 
 TEST(MatMulFpQ4, RejectsScalarBShape) {
@@ -46,9 +104,16 @@ TEST(MatMulFpQ4, RejectsScalarBShape) {
                                "B_shape input for MatMulFpQ4 must be a 1-D int64 tensor");
 }
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(MatMulFpQ4, RejectsShortBShapeInitializer) {
-  RunInvalidShapeInferenceTest({1}, {0}, {1}, {4},
-                               "B_shape input for MatMulFpQ4 must be a 1-D int64 tensor of length 2");
+  RunMalformedBShapeInitializerTest(
+      "B_shape initializer for MatMulFpQ4 must contain exactly 2 int64 values");
+}
+#endif  // !ORT_NO_EXCEPTIONS
+
+TEST(MatMulFpQ4, RejectsNegativeBShapeDimension) {
+  RunInvalidShapeInferenceTest({1}, {0}, {2}, {-1, 1},
+                               "B_shape initializer for MatMulFpQ4 must contain non-negative dimensions");
 }
 
 TEST(MatMulFpQ4, RejectsScalarPackedB) {

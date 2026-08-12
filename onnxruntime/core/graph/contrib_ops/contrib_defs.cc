@@ -2228,6 +2228,9 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   if (shape_r_data.size() != 2) {
     fail_shape_inference("B_shape initializer for MatMulFpQ4 must contain exactly 2 int64 values.");
   }
+  if (shape_r_data[0] < 0 || shape_r_data[1] < 0) {
+    fail_shape_inference("B_shape initializer for MatMulFpQ4 must contain non-negative dimensions.");
+  }
   for (int d = 0; d < 2; d++) {
     shapeR.add_dim()->set_dim_value(shape_r_data[d]);
   }
