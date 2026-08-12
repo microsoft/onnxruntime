@@ -18,6 +18,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
+import onnxruntime.capi.onnxruntime_pybind11_state as ort_state
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
@@ -112,6 +113,13 @@ class TestInferenceSession(unittest.TestCase):
     def test_get_build_info(self):
         self.assertIsNot(onnxrt.get_build_info(), None)
         self.assertIn("Build Info", onnxrt.get_build_info())
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows DLL export test")
+    def test_get_api_base_export(self):
+        module = ctypes.WinDLL(ort_state.__file__)
+        get_api_base = module.OrtGetApiBase
+        get_api_base.restype = ctypes.c_void_p
+        self.assertTrue(get_api_base())
 
     def test_model_serialization(self):
         try:
