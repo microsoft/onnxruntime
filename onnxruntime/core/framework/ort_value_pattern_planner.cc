@@ -52,6 +52,26 @@ common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
   return common::Status::OK();
 }
 
+common::Status OrtValuePatternPlanner::TraceAllocation(int pattern_id, const OrtDevice& location, size_t size) {
+  auto it = planner_map_.find(location);
+  if (it == planner_map_.end()) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  it->second.TraceAllocation(pattern_id, size);
+  return common::Status::OK();
+}
+
+common::Status OrtValuePatternPlanner::TraceFree(int pattern_id, const OrtDevice& location) {
+  auto it = planner_map_.find(location);
+  if (it == planner_map_.end()) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  it->second.TraceFree(pattern_id);
+  return common::Status::OK();
+}
+
 common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup& out) {
   out.locations.reserve(planner_map_.size());
   out.patterns.reserve(planner_map_.size());
