@@ -25,6 +25,21 @@ Abstract:
 #include "softmax.h"
 
 #if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+//
+// This kernel only needs vForce's vvtanhf() and does not use any BLAS/LAPACK
+// functionality from the Accelerate umbrella header. On recent macOS SDKs
+// (observed on the Xcode 26.3 / MacOSX26.2 SDK), Accelerate's new LAPACK-ABI
+// cblas.h forward-declares enums such as CBLAS_TRANSPOSE without an inline
+// definition, which is valid C but is rejected by ISO C++ ("ISO C++ forbids
+// forward references to 'enum' types"), breaking the build for any C++
+// translation unit that includes <Accelerate/Accelerate.h> as-is. Forcing the
+// legacy (non-ILP64) CBLAS/LAPACK headers via these macros avoids the
+// offending forward declarations; it has no effect on vForce, which is what
+// this file actually uses. See: https://forums.swift.org/t/71695 and
+// Apple's "Updating Code That Uses the New LAPACK and BLAS APIs" guidance.
+//
+#define ACCELERATE_NEW_LAPACK 0
+#define ACCELERATE_LAPACK_ILP64 0
 #include <Accelerate/Accelerate.h>
 #endif
 
