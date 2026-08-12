@@ -2,8 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import contextlib
+import io
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -83,15 +86,9 @@ class AppleAccelerateBuildArgsTest(unittest.TestCase):
         # parser.error prints to stderr; verify message via mock
         # We rely on argparse exit code 2 + the fragment appearing in the error path.
         # For a stronger check, capture stderr:
-        import io
-        from contextlib import redirect_stderr
-
         f = io.StringIO()
-        with redirect_stderr(f):
-            try:
-                self._parse(*args, **kwargs)
-            except SystemExit:
-                pass
+        with redirect_stderr(f), contextlib.suppress(SystemExit):
+            self._parse(*args, **kwargs)
         self.assertIn(expected_msg_fragment, f.getvalue())
 
     def test_accelerate_rejected_on_linux(self):
