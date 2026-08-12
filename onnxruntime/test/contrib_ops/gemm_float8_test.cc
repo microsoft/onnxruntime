@@ -111,7 +111,7 @@ std::vector<Float8E4M3FN> _TypedCvt(const std::vector<float>& tensor) {
 
 template <typename ab_type, typename c_type, typename out_type>
 void TestGemmFloat8WithFloat8(int64_t dtype, bool has_scales = false,
-                             bool expect_failure = false) {
+                              bool expect_failure = false) {
   constexpr int min_cuda_architecture = 890;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     GTEST_SKIP() << "Hardware does NOT support Matrix Multiplication for FLOAT8";
