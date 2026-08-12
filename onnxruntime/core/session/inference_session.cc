@@ -934,12 +934,15 @@ InferenceSession::~InferenceSession() {
 
   // Unregister the session and ETW callbacks
   //
-  // The ETW callbacks must be unregistered without holding active_sessions_mutex_. The telemetry
-  // callback registry has its own lock, and an ETW capture-state notification arriving on an
-  // OS-owned thread dispatches callback_ML_ORT_provider_ (which takes active_sessions_mutex_ via
-  // LogAllSessions) while holding that registry lock. Acquiring the two in the opposite order here
-  // would form a lock cycle and deadlock the process.
 #ifdef _WIN32
+  // Remove the session first so that callbacks cannot observe it during teardown. Release
+  // active_sessions_mutex_ before unregistering because the callback registries have their own
+  // locks, and ETW dispatch takes those locks before LogAllSessions takes active_sessions_mutex_.
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_.erase(session_id_);
+  }
+
   if (callback_ML_ORT_provider_ != nullptr) {
     WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
   }
@@ -947,10 +950,6 @@ InferenceSession::~InferenceSession() {
     logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
   }
 #endif
-  {
-    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-    active_sessions_.erase(session_id_);
-  }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
