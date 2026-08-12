@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
+#include <algorithm>
 #include <atomic>
 #include <type_traits>
 #include <core/common/safeint.h>
@@ -279,6 +280,36 @@ Status GetIndices(
   return Status::OK();
 }
 
+// True when, inside every slice of `inner_size` consecutive indices, all of them are equal.
+// That is the layout an Expand of an [N, 1] index tensor to [N, C] produces, and it means the
+// scatter can move whole contiguous runs instead of individual strided elements.
+// Bails out on the first mismatch, so the ordinary case costs one slice's worth of reads.
+inline bool IndicesAreConstantAlongInner(const std::vector<int64_t>& indices_data, int64_t inner_size,
+                                         concurrency::ThreadPool* tp) {
+  const int64_t num_slices = narrow<int64_t>(indices_data.size()) / inner_size;
+
+  std::atomic<bool> constant{true};
+  concurrency::ThreadPool::TryParallelFor(
+      tp, narrow<std::ptrdiff_t>(num_slices), static_cast<double>(inner_size),
+      [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        for (std::ptrdiff_t slice = first; slice < last; ++slice) {
+          if (!constant.load(std::memory_order_relaxed)) {
+            return;
+          }
+          const int64_t* row = indices_data.data() + static_cast<int64_t>(slice) * inner_size;
+          const int64_t first_index = row[0];
+          for (int64_t i = 1; i < inner_size; ++i) {
+            if (row[i] != first_index) {
+              constant.store(false, std::memory_order_relaxed);
+              return;
+            }
+          }
+        }
+      });
+
+  return constant.load(std::memory_order_relaxed);
+}
+
 template <class Tdata, typename FuncT>
 Status ScatterData(
     const FuncT& func,
@@ -358,6 +389,81 @@ Status ScatterData(
   const int64_t input_axis_stride = input_strides[narrow<size_t>(axis)];
   const int64_t upd_axis_stride = upd_strides[narrow<size_t>(axis)];
 
+  // Fast path for indices that are constant across the dimensions after the axis.
+  //
+  // The generic loop below gives each work unit a single inner index, so it walks one column of
+  // the updates with a stride of inner_size. When the indices within a slice are all equal, the
+  // whole slice lands on one contiguous run of the output instead, which turns that strided walk
+  // into a sequential one the compiler can vectorize.
+  //
+  // The run is only contiguous if the updates and the data agree on every dimension after the
+  // axis; ScatterElements permits the updates to be smaller there, in which case an inner
+  // coordinate does not map to the same offset in both tensors and this path does not apply.
+  bool inner_dims_match = true;
+  for (size_t d = narrow<size_t>(axis) + 1; d < num_dims; ++d) {
+    if (upd_shape[d] != input_data_shape[d]) {
+      inner_dims_match = false;
+      break;
+    }
+  }
+
+  // Below roughly a cache line the strided access the generic loop performs is already local,
+  // so restricting the fast path keeps it from trading away parallelism for nothing.
+  constexpr int64_t kMinContiguousRun = 8;
+
+  if (inner_dims_match && inner_size >= kMinContiguousRun &&
+      IndicesAreConstantAlongInner(indices_data, inner_size, tp)) {
+    // Split the contiguous run into blocks so the work still spreads across threads. Blocks are
+    // kept reasonably wide so each one is worth vectorizing.
+    constexpr int64_t kMinBlockElements = 16;
+    const int64_t max_blocks = std::max<int64_t>(1, inner_size / kMinBlockElements);
+    const int64_t degree = std::max<int64_t>(1, concurrency::ThreadPool::DegreeOfParallelism(tp));
+    const int64_t num_blocks = std::min(degree, max_blocks);
+    const int64_t blocked_work_units = outer_size * num_blocks;
+
+    // Every work unit owns a distinct (outer, inner-range) region of the output, so no two of
+    // them touch the same element. Within a unit the axis is walked in ascending order, which is
+    // the order the generic loop applies updates in, so a destination that receives several
+    // updates still accumulates them in the same sequence.
+    concurrency::ThreadPool::TryParallelFor(
+        tp, narrow<std::ptrdiff_t>(blocked_work_units), static_cast<double>(axis_size * inner_size / num_blocks),
+        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+          for (std::ptrdiff_t work_idx = first; work_idx < last; ++work_idx) {
+            const int64_t outer_idx = static_cast<int64_t>(work_idx) / num_blocks;
+            const int64_t block_idx = static_cast<int64_t>(work_idx) % num_blocks;
+            const auto block =
+                concurrency::ThreadPool::PartitionWork(narrow<std::ptrdiff_t>(block_idx),
+                                                       narrow<std::ptrdiff_t>(num_blocks),
+                                                       narrow<std::ptrdiff_t>(inner_size));
+
+            // Offsets contributed by the dimensions before the axis. The dimensions after it
+            // contribute the position within the run, which is identical in both tensors because
+            // inner_dims_match was checked above.
+            int64_t dst_base_offset = 0;
+            int64_t upd_base_offset = 0;
+            int64_t outer_remain = outer_idx;
+            for (int64_t d = axis - 1; d >= 0; --d) {
+              const auto dim_size = upd_shape[narrow<size_t>(d)];
+              const auto coord = outer_remain % dim_size;
+              outer_remain /= dim_size;
+              dst_base_offset += coord * input_strides[narrow<size_t>(d)];
+              upd_base_offset += coord * upd_strides[narrow<size_t>(d)];
+            }
+
+            for (int64_t a = 0; a < axis_size; ++a) {
+              const int64_t upd_row = upd_base_offset + a * upd_axis_stride;
+              // Constant across the run, so the first element speaks for all of them.
+              const int64_t axis_idx = indices_data[narrow<size_t>(upd_row + block.start)];
+              const int64_t dst_row = dst_base_offset + axis_idx * input_axis_stride;
+              for (std::ptrdiff_t k = block.start; k < block.end; ++k) {
+                func(dst_base + dst_row + k, update_data + upd_row + k);
+              }
+            }
+          }
+        });
+
+    return Status::OK();
+  }
   // Parallelize over independent work units.
   // Each work unit processes axis_size elements along the scatter axis.
   // Cost per unit is proportional to axis_size (number of scatter ops per work unit).
