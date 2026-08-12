@@ -28,6 +28,19 @@ namespace {
 constexpr float kAbsoluteTolerance = 1e-6f;
 constexpr float kRelativeTolerance = 1e-6f;
 
+// Poison value used to pre-fill output buffers before calling a kernel
+// under test, instead of the natural-looking 0.0f. A kernel that silently
+// fails to write an element (e.g. an off-by-one in the scalar-tail path)
+// would otherwise leave a 0.0f-initialized buffer holding a value that,
+// for several of these special/denormal/near-zero test inputs, is
+// indistinguishable from a genuinely correct answer (tanh(+/-0) == +/-0,
+// and an FTZ-flushed near-zero result may also be exactly 0.0f) -- so a
+// no-write bug could pass silently. NaN is never a valid non-NaN-input
+// output (ExpectIeeeTanhSemantics/ExpectDenormalCompatibleSemantics both
+// call std::isnan on the result first), so any element a kernel fails to
+// overwrite is guaranteed to fail loudly instead.
+constexpr float kPoisonNaN = std::numeric_limits<float>::quiet_NaN();
+
 // MlasTanhKernel (the portable polynomial reference) is the parity baseline
 // for ORDINARY FINITE inputs: it is the exact implementation this Apple path
 // replaces in MlasComputeTanh<float> when the option is enabled, so any
@@ -145,27 +158,38 @@ std::vector<float> MakeDenormalInputs() {
 //     small, so output == input (magnitude unchanged, sign preserved) is a
 //     valid outcome.
 //   * Flush-to-zero (FTZ): a fast-math/vector-unit implementation may treat
-//     a subnormal input (or a subnormal result) as zero, so output == 0
-//     with the sign of the input is also a valid outcome.
+//     a subnormal input (or a subnormal result) as zero. Some FTZ
+//     implementations preserve the sign of the flushed-to-zero result and
+//     some do not (unlike the exact +/-0.0 special-value contract asserted
+//     by ExpectIeeeTanhSemantics, this is underflow/rounding behavior, not
+//     part of the operator's own IEEE contract), so output == 0.0f of
+//     EITHER sign is a valid outcome here.
 // We deliberately do NOT assert which of these vForce actually does on
 // real Apple Silicon -- that would be inventing unverified hardware
 // behavior, which no Apple hardware is available in this environment to
 // confirm. Instead this asserts only what both behaviors share: never NaN,
-// sign preserved (tanh is odd; FTZ-to-zero still carries the input's
-// sign), and magnitude never amplified beyond the input's. The actual
-// value is printed (not merely asserted past) so a run on real hardware
-// makes which behavior applies observable.
+// sign preserved for a genuinely nonzero result, and magnitude never
+// amplified beyond the input's. The actual value is printed (not merely
+// asserted past) so a run on real hardware makes which behavior applies
+// observable.
 void ExpectDenormalCompatibleSemantics(float value, float input) {
   EXPECT_FALSE(std::isnan(value)) << "input=" << input << " (denormal/near-zero), got NaN output";
-  EXPECT_EQ(std::signbit(value), std::signbit(input))
-      << "input=" << input << ", expected sign preserved (IEEE-exact tanh(x)~=x is odd, and "
-      << "flush-to-zero still carries the input's sign), got signbit=" << std::signbit(value);
+  if (value != 0.0f) {
+    // Sign is only required to match when the result is nonzero. A
+    // flush-to-zero-to-0.0f result is permitted to carry either sign (see
+    // comment above), so a zero result is deliberately excluded from this
+    // check rather than requiring it to match the input's sign.
+    EXPECT_EQ(std::signbit(value), std::signbit(input))
+        << "input=" << input << ", expected sign preserved for a nonzero result (IEEE-exact "
+        << "tanh(x)~=x is odd), got signbit=" << std::signbit(value);
+  }
   EXPECT_LE(std::fabs(value), std::fabs(input))
       << "input=" << input << ", expected |output| <= |input| (both IEEE-exact tanh(x)~=x and "
       << "flush-to-zero satisfy this), got |output|=" << std::fabs(value);
   // Not an assertion -- recorded so a human running this on real hardware
   // can see which of the two behaviors (IEEE-exact passthrough vs.
-  // flush-to-zero) this build/hardware actually exhibits.
+  // flush-to-zero, and which sign convention if flushed to zero) this
+  // build/hardware actually exhibits.
   std::cerr << "[ TanhAppleAccelerate denormal observation ] input=" << input << " output=" << value << "\n";
 }
 
@@ -286,7 +310,10 @@ TEST(TanhAppleAccelerate, LargeBufferManyVectorIterations) {
 // ExpectIeeeTanhSemantics, independent of the portable kernel.
 TEST(TanhAppleAccelerate, SpecialValuesSemanticsSingleElement) {
   for (float value : MakeSpecialValueInputs()) {
-    float output = 0.0f;
+    // Poison-initialized (not 0.0f): tanh(+/-0) == +/-0, so a 0.0f-init
+    // buffer could not distinguish "kernel wrote the correct answer" from
+    // "kernel never wrote anything". See kPoisonNaN's comment.
+    float output = kPoisonNaN;
     MlasTanhKernelAppleAccelerate(&value, &output, 1);
     ExpectIeeeTanhSemantics(output, value);
   }
@@ -307,14 +334,17 @@ TEST(TanhAppleAccelerate, SpecialValuesSemanticsScalarTailBuffer) {
 
   for (float special_value : MakeSpecialValueInputs()) {
     std::array<float, 3> input = {kLeftNeighbor, special_value, kRightNeighbor};
-    std::array<float, 3> apple_output = {0.0f, 0.0f, 0.0f};
+    // Poison-initialized (not 0.0f) for the same reason as the
+    // single-element test above: tanh(+/-0) == +/-0, so a 0.0f-init
+    // buffer could mask a kernel that never wrote the middle element.
+    std::array<float, 3> apple_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
     MlasTanhKernelAppleAccelerate(input.data(), apple_output.data(), input.size());
 
     ExpectIeeeTanhSemantics(apple_output[1], input[1]);
 
     // The ordinary finite neighbors must still match the portable baseline,
     // confirming the special value did not corrupt adjacent lanes.
-    std::array<float, 3> portable_output = {0.0f, 0.0f, 0.0f};
+    std::array<float, 3> portable_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
     MlasTanhKernel(input.data(), portable_output.data(), input.size());
     ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
     ExpectMatchesPortableKernel(apple_output[2], portable_output[2], input[2]);
@@ -331,7 +361,11 @@ TEST(TanhAppleAccelerate, SpecialValuesSemanticsScalarTailBuffer) {
 // real Apple Silicon.
 TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsSingleElement) {
   for (float value : MakeDenormalInputs()) {
-    float output = 0.0f;
+    // Poison-initialized (not 0.0f): a flush-to-zero result is a valid
+    // outcome here (see ExpectDenormalCompatibleSemantics), so a 0.0f-init
+    // buffer could not distinguish a real FTZ-to-zero result from the
+    // kernel never having written anything.
+    float output = kPoisonNaN;
     MlasTanhKernelAppleAccelerate(&value, &output, 1);
     ExpectDenormalCompatibleSemantics(output, value);
   }
@@ -349,7 +383,11 @@ TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsScalarTailBuffer) {
 
   for (float denormal_value : MakeDenormalInputs()) {
     std::array<float, 3> input = {kLeftNeighbor, denormal_value, kRightNeighbor};
-    std::array<float, 3> apple_output = {0.0f, 0.0f, 0.0f};
+    // Poison-initialized (not 0.0f) for the same reason as the
+    // single-element test above: a flush-to-zero result is a valid
+    // outcome, so a 0.0f-init buffer could mask a kernel that never wrote
+    // the middle element.
+    std::array<float, 3> apple_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
     MlasTanhKernelAppleAccelerate(input.data(), apple_output.data(), input.size());
 
     ExpectDenormalCompatibleSemantics(apple_output[1], input[1]);
@@ -357,7 +395,7 @@ TEST(TanhAppleAccelerate, DenormalAndNearZeroSemanticsScalarTailBuffer) {
     // The ordinary finite neighbors must still match the portable
     // baseline, confirming the denormal/near-zero value did not corrupt
     // adjacent lanes.
-    std::array<float, 3> portable_output = {0.0f, 0.0f, 0.0f};
+    std::array<float, 3> portable_output = {kPoisonNaN, kPoisonNaN, kPoisonNaN};
     MlasTanhKernel(input.data(), portable_output.data(), input.size());
     ExpectMatchesPortableKernel(apple_output[0], portable_output[0], input[0]);
     ExpectMatchesPortableKernel(apple_output[2], portable_output[2], input[2]);

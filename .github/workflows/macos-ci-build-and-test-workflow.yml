@@ -182,3 +182,51 @@ jobs:
           fi
 
           ./onnxruntime_mlas_test --gtest_filter="TanhAppleAccelerate.*"
+
+      - name: Build MLAS benchmark target (onnxruntime_mlas_benchmark)
+        # Real performance evidence is a Ready blocker for this optimization
+        # PR -- no numbers for the apple_accelerate_vforce Tanh path have
+        # ever been produced. --build_micro_benchmarks turns on the existing
+        # onnxruntime_BUILD_BENCHMARKS CMake option (see
+        # cmake/onnxruntime_unittests.cmake), which also guards the general,
+        # unrelated onnxruntime_benchmark target (modeltest/pooling/resize/
+        # batchnorm/etc.) -- so this uses the existing --target flag to
+        # build only onnxruntime_mlas_benchmark and its dependencies,
+        # avoiding that unrelated target entirely. Reuses the same
+        # env.build_flags already configured for this job (--config,
+        # --osx_arch, --use_apple_accelerate, etc.) so the benchmark binary
+        # is built against the identical Apple Accelerate configuration
+        # already validated by the steps above; --update re-runs cmake
+        # configure to pick up the newly-added flag in the existing build
+        # tree (no directory removal, unlike the initial Configure step --
+        # this is an incremental addition, not a clean rebuild).
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e -x
+          python ./tools/ci_build/build.py --update --build --build_micro_benchmarks --target onnxruntime_mlas_benchmark ${{ env.build_flags }}
+
+      - name: Running MLAS Tanh benchmark A/B (onnxruntime_mlas_benchmark)
+        # No performance claim is made by this step or anywhere else in this
+        # PR -- this only ensures the Tanh dispatch-vs-portable-kernel A/B
+        # numbers are actually produced and printed to CI logs on real
+        # Apple Silicon, so a human reviewer has real evidence to read
+        # instead of none. BM_TanhDispatch calls the public
+        # MlasComputeTanh<float> entry point, which resolves to the vForce
+        # kernel on this job and is labeled "apple_accelerate_vforce" (see
+        # GetTanhDispatchPathInfo in bench_transcendental.cpp);
+        # BM_TanhPortableKernel calls MlasTanhKernel directly as a fixed
+        # baseline, labeled "portable_polynomial" regardless of platform --
+        # so the two labels in the printed output are what prove this ran
+        # the intended A/B and not two copies of the same kernel.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
+        shell: bash
+        # Same layout as onnxruntime_mlas_test above: build.py's
+        # --build_dir ./build + --config ${{ matrix.build_config }} places
+        # executables directly at build/<config>/.
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          set -e -x
+          ls -l ./onnxruntime_mlas_benchmark
+          ./onnxruntime_mlas_benchmark --benchmark_filter="BM_Tanh(Dispatch|PortableKernel)"
