@@ -351,6 +351,8 @@ stages:
     - checkout: self
       submodules: true
 
+    - template: setup-feeds-and-python-steps.yml
+
     - script: |
         dir
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
@@ -405,8 +407,6 @@ stages:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: true
-
-    - template: setup-feeds-and-python-steps.yml
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
