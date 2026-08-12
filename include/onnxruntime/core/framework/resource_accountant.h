@@ -62,6 +62,9 @@ struct WorkspaceEstimateComparisonSummary {
   size_t level1_estimated_bytes = 0;
 };
 
+using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;
+using WorkspaceReservationMap = InlinedHashMap<const void*, NodeWorkspaceReservationMap>;
+
 // Type-erased arithmetic for ResourceCount values.
 // Implementations use std::visit so the compiler enforces exhaustive handling
 // of all variant members — adding a new type to ResourceCount will produce
@@ -136,7 +139,9 @@ class IResourceAccountant {
 
   // Commits a workspace estimate whose original pending state is no longer available.
   // Used for nodes that survive a layout-transformation second pass.
-  virtual void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection /*selection*/) {}
+  virtual void AddCommittedWorkspaceEstimate(
+      const void* /*graph_identity*/, size_t /*node_index*/,
+      WorkspaceEstimateSelection /*selection*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 
@@ -186,6 +191,9 @@ class IResourceAccountant {
 
   /// Compares profile and estimator workspace values for accepted nodes where both were available.
   virtual WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const { return {}; }
+
+  /// Returns selected workspace reservations for accepted nodes, keyed by graph identity and node index.
+  virtual WorkspaceReservationMap GetCommittedWorkspaceReservations() const { return {}; }
 
  protected:
   // Override to discard per-pass state for capabilities that were only probed.
