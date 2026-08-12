@@ -490,7 +490,7 @@ struct TreeEnsembleAttributesV5 {
                       nodes_falseleafs[tree_root_size_t] && nodes_trueleafs[tree_root_size_t]);
       const int64_t root_reference = is_leaf ? nodes_falsenodeids[tree_root_size_t] : tree_root;
       ORT_ENFORCE(root_reference >= 0,
-          "TreeEnsemble tree root ", tree_root, " references negative leaf index ", root_reference, ".");
+                  "TreeEnsemble tree root ", tree_root, " references negative leaf index ", root_reference, ".");
       transformInputOneTree(onnxruntime::narrow<size_t>(root_reference), curr_treeid, 0,
                             is_leaf,
                             membership_values_by_id, output);
