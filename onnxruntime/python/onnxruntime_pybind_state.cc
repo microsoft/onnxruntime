@@ -140,6 +140,10 @@ AdaptedProviderOptions AdaptProviderOptionsForRegisteredPluginEp(const std::stri
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
 struct AsyncResource {
+  std::vector<py::object> feed_objects;
+  py::object session;
+  py::object run_options;
+
   std::vector<OrtValue> feeds;
   std::vector<const OrtValue*> feeds_raw;
 
@@ -156,6 +160,7 @@ struct AsyncResource {
   py::object user_data;
 
   void ReserveFeeds(size_t sz) {
+    feed_objects.reserve(sz);
     feeds.reserve(sz);
     feeds_raw.reserve(sz);
     feed_names.reserve(sz);
@@ -2884,30 +2889,38 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              return result;
            })
       .def("run_async",
-           [](PyInferenceSession* sess,
+           [](py::object session,
               const std::vector<std::string>& output_names,
               const std::map<std::string, py::object>& pyfeeds,
               PyCallback callback, py::object user_data = {},
-              RunOptions* run_options = nullptr)
+              py::object run_options = py::none())
                -> void {
-             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+             auto* sess = session.cast<PyInferenceSession*>();
+             auto* run_options_ptr = run_options.is_none()
+                                         ? nullptr
+                                         : run_options.cast<RunOptions*>();
+             if (run_options_ptr != nullptr && !run_options_ptr->active_adapters.empty()) {
                LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
                    << "run_async has active adapters specified, but won't have an effect";
              }
 
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->session = std::move(session);
+             async_resource->run_options = std::move(run_options);
              async_resource->callback = callback;
              async_resource->user_data = user_data;
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
              for (const auto& feed : pyfeeds) {
                if (!feed.second.is(py::none())) {
+                 async_resource->feed_objects.push_back(feed.second);
                  OrtValue ml_value;
                  auto px = sess->GetSessionHandle()->GetModelInputs();
                  if (!px.first.IsOK() || !px.second) {
                    throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
                  }
-                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first,
+                                      async_resource->feed_objects.back(), &ml_value);
                  ThrowIfPyErrOccured();
                  async_resource->feeds.push_back(ml_value);
                  async_resource->feeds_raw.push_back(&async_resource->feeds.back());
@@ -2922,7 +2935,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
                async_resource->fetches_raw.push_back({});
              }
-             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             const RunOptions* run_async_option = run_options_ptr ? run_options_ptr : &async_resource->default_run_option;
              common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
                                                                         gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
                                                                         gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
