@@ -54,28 +54,42 @@ constexpr int kNumColsPerBlockCandidates = 3;
 // what cudaOccupancyMaxActiveBlocksPerMultiprocessor reported for kColsPerBlockCandidates[i]
 // (<= 0 means the query failed for that candidate).
 //
-// The objective is lexicographic:
+// Wide n short-circuits: if the default cols=8 grid already puts a CTA on every SM, this
+// returns 8 unconditionally, so the hot decode shapes keep exactly the upstream launch
+// configuration. That guarantee is structural, not an emergent property of the objective
+// below -- see the note on criterion 2.
+//
+// Otherwise the objective is lexicographic:
 //   1. Maximise the number of SMs that receive at least one CTA, min(grid, sm_count).
 //   2. Maximise resident warps, min(grid, max_blocks_per_sm * sm_count) * cols_per_block.
 //   3. On a tie, keep the largest candidate, i.e. the upstream geometry.
 //
-// Criterion 1 exists because criterion 2 alone cannot ever prefer a smaller cols_per_block:
-// resident warps per SM is essentially invariant in cols_per_block (halving the columns per
-// CTA halves the warps per CTA and roughly doubles the CTAs that fit, and register, shared
-// memory and warp-slot limits all scale the same way), so criterion 2 ties everywhere except
-// where the hardware CTAs-per-SM cap bites, which penalises the smaller candidate. Criterion 1
-// is the effect this selection exists for: with n = 256 on a 72-SM device, cols=8 launches 32
-// CTAs and leaves 40 SMs idle, while cols=2 launches 128 and busies all of them. Total warps
-// are n either way; spreading them over more SMs is what shortens a latency-bound GEMV.
-//
-// When the grid already covers every SM (criterion 1 tied) this returns 8, so wide-n shapes
-// keep exactly the upstream launch configuration.
+// Criterion 1 is the effect this selection exists for, and criterion 2 cannot supply it:
+// resident warps per SM is nearly invariant in cols_per_block, because halving the columns
+// per CTA halves the warps per CTA while roughly doubling the CTAs that fit, and register,
+// shared-memory and warp-slot limits all scale together. "Nearly", not "exactly": with
+// max_blocks_per_sm = floor(budget / cost_per_column / cols), the floor's remainder can make
+// a smaller candidate pack strictly more warps -- {6, 12, 25} CTAs/SM for cols 8/4/2 gives
+// 48, 48 and 50 warps -- which is precisely why wide n is short-circuited above instead of
+// being left to criterion 2. Criterion 2 survives as a tie-break among narrow shapes that
+// already cover the device equally. Criterion 1's own effect: with n = 256 on a 72-SM device,
+// cols=8 launches 32 CTAs and leaves 40 SMs idle, while cols=2 launches 128 and busies all of
+// them. Total warps are n either way; spreading them over more SMs is what shortens a
+// latency-bound GEMV.
 //
 // Falls back to SelectColsPerBlock(n, sm_count) when every candidate is unusable.
 // Deterministic for (n, sm_count, max_blocks_per_sm).
 inline int ChooseColsPerBlockFromOccupancy(int n, int sm_count, const int* max_blocks_per_sm) {
   if (sm_count <= 0 || max_blocks_per_sm == nullptr) {
     return SelectColsPerBlock(n, sm_count);
+  }
+
+  // Wide n: the default grid already covers every SM, so there is nothing to gain and the
+  // upstream geometry is kept verbatim. Deliberately independent of the occupancy numbers --
+  // a cols=8 launch is always valid here (admission already validated its shared memory), so
+  // a failed query must not push these shapes onto a different geometry.
+  if (n % kColsPerThreadBlock == 0 && n / kColsPerThreadBlock >= sm_count) {
+    return kColsPerThreadBlock;
   }
 
   int best_cols = 0;

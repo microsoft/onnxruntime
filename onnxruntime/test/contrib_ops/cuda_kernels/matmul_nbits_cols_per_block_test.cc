@@ -210,6 +210,10 @@ TEST(CUDA_EP_Unittest, SelectColsPerBlock_WideN_Cols8Coverage) {
 // 16-CTA-per-SM cap yields 6 CTAs at cols=8, 12 at cols=4, and 16 (capped, not 24) at cols=2.
 namespace {
 constexpr int kWarpLimitedA10[] = {6, 12, 16};
+// A profile where the floor remainder makes a smaller candidate pack strictly more resident
+// warps (48, 48, 50 for cols 8/4/2) and no CTAs-per-SM cap clips it -- i.e. the case where
+// criterion 2 on its own would move wide-n shapes off the upstream geometry.
+constexpr int kRegisterLimitedNoCap[] = {6, 12, 25};
 }  // namespace
 
 // Regression: the previous objective maximised resident warps alone. Resident warps are
@@ -232,6 +236,32 @@ TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_WideN_Returns8) {
   EXPECT_EQ(ChooseColsPerBlockFromOccupancy(576, 72, kWarpLimitedA10), 8);
   // One column short of that boundary drops to the next candidate.
   EXPECT_EQ(ChooseColsPerBlockFromOccupancy(568, 72, kWarpLimitedA10), 4);
+}
+
+// The wide-n guarantee must not depend on the occupancy numbers. Under kRegisterLimitedNoCap
+// the resident-warp criterion alone prefers cols = 2 (50 warps/SM vs 48), which would move
+// every wide-n decode shape off the upstream geometry; the short-circuit must win instead.
+// This is the profile that makes the test above non-tautological.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_WideN_IgnoresOccupancyPreference) {
+  for (int sm_count : {40, 72, 108, 132}) {
+    for (int n : {4096, 8192, 11008, 14336, 32768}) {
+      if (n / 8 < sm_count) {
+        continue;  // not a wide-n case on this device
+      }
+      EXPECT_EQ(ChooseColsPerBlockFromOccupancy(n, sm_count, kRegisterLimitedNoCap), 8)
+          << "n=" << n << " sm=" << sm_count;
+    }
+  }
+  // ...including when the cols=8 occupancy query itself failed: a cols=8 launch is still
+  // valid (admission validated its shared memory), so a failed query must not relocate it.
+  constexpr int eight_query_failed[] = {0, 12, 25};
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(32768, 72, eight_query_failed), 8);
+}
+
+// Narrow n is still governed by SM coverage under the register-limited profile.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_NarrowN_ProfileIndependent) {
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, kRegisterLimitedNoCap), 2);
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(384, 72, kRegisterLimitedNoCap), 4);
 }
 
 // A candidate whose occupancy query failed (reported <= 0) must never be selected.
@@ -257,9 +287,11 @@ TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_FailSafe) {
 TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_ResultDividesN) {
   for (int sm_count : {1, 16, 40, 72, 108, 132, 1024}) {
     for (int n = 8; n <= 40960; n += 8) {
-      const int cols = ChooseColsPerBlockFromOccupancy(n, sm_count, kWarpLimitedA10);
-      ASSERT_TRUE(cols == 8 || cols == 4 || cols == 2) << "n=" << n << " sm=" << sm_count;
-      ASSERT_EQ(n % cols, 0) << "n=" << n << " sm=" << sm_count << " cols=" << cols;
+      for (const int* profile : {kWarpLimitedA10, kRegisterLimitedNoCap}) {
+        const int cols = ChooseColsPerBlockFromOccupancy(n, sm_count, profile);
+        ASSERT_TRUE(cols == 8 || cols == 4 || cols == 2) << "n=" << n << " sm=" << sm_count;
+        ASSERT_EQ(n % cols, 0) << "n=" << n << " sm=" << sm_count << " cols=" << cols;
+      }
     }
   }
 }
