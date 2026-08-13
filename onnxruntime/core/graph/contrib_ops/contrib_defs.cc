@@ -2204,15 +2204,13 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
 
   const auto& blob_shape = ctx.getInputType(input_b_idx)->tensor_type().shape();
   if (blob_shape.dim_size() != 1 ||
-      !blob_shape.dim(0).has_dim_value() ||
-      blob_shape.dim(0).dim_value() < 0) {
-    fail_shape_inference("B input for MatMulFpQ4 must be a 1-D tensor with a known size.");
+      (blob_shape.dim(0).has_dim_value() && blob_shape.dim(0).dim_value() < 0)) {
+    fail_shape_inference("B input for MatMulFpQ4 must be a 1-D tensor.");
   }
 
   const auto& shape_shape = ctx.getInputType(input_bshape_idx)->tensor_type().shape();
   if (shape_shape.dim_size() != 1 ||
-      !shape_shape.dim(0).has_dim_value() ||
-      shape_shape.dim(0).dim_value() != 2) {
+      (shape_shape.dim(0).has_dim_value() && shape_shape.dim(0).dim_value() != 2)) {
     fail_shape_inference("B_shape input for MatMulFpQ4 must be a 1-D int64 tensor of length 2.");
   }
 
@@ -2253,7 +2251,8 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   if (expectedPackSize == 0) {
     fail_shape_inference("4b quantization not yet supported on this hardware platform!");
   }
-  if (static_cast<size_t>(blob_shape.dim(0).dim_value()) != expectedPackSize) {
+  if (blob_shape.dim(0).has_dim_value() &&
+      static_cast<size_t>(blob_shape.dim(0).dim_value()) != expectedPackSize) {
     fail_shape_inference("Input q4 tensors of wrong size!");
   }
 

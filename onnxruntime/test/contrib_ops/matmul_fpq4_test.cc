@@ -40,8 +40,54 @@ void RunInvalidShapeInferenceTest(const std::vector<int64_t>& b_dims,
   test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
 }
 
+void RunSymbolicInputLengthsShapeInferenceTest() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  auto* default_opset = model.add_opset_import();
+  default_opset->set_domain(kOnnxDomain);
+  default_opset->set_version(21);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("symbolic_input_lengths");
+
+  auto add_input = [graph](const char* name, int32_t elem_type) {
+    auto* input = graph->add_input();
+    input->set_name(name);
+    auto* tensor_type = input->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(elem_type);
+    return tensor_type->mutable_shape();
+  };
+
+  auto* a_shape = add_input("A", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  a_shape->add_dim()->set_dim_value(1);
+  a_shape->add_dim()->set_dim_value(4);
+  add_input("B", ONNX_NAMESPACE::TensorProto_DataType_UINT8)->add_dim()->set_dim_param("packed_size");
+  add_input("B_shape", ONNX_NAMESPACE::TensorProto_DataType_INT64)->add_dim()->set_dim_param("shape_length");
+
+  auto* node = graph->add_node();
+  node->set_op_type("MatMulFpQ4");
+  node->set_domain(kMSDomain);
+  node->add_input("A");
+  node->add_input("B");
+  node->add_input("B_shape");
+  node->add_output("Y");
+  auto* attribute = node->add_attribute();
+  attribute->set_name("blk_quant_type");
+  attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attribute->set_i(BlkQ4Zp8);
+
+  ONNX_NAMESPACE::shape_inference::InferShapes(
+      model, ONNX_NAMESPACE::OpSchemaRegistry::Instance());
+}
+
 #ifndef ORT_NO_EXCEPTIONS
-void RunMalformedBShapeInitializerTest(const std::string& expected_error) {
+void RunMalformedBShapeInitializerTest(const std::vector<int64_t>& b_shape_data,
+                                       const std::string& expected_error,
+                                       int64_t b_length = 1) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
@@ -66,14 +112,16 @@ void RunMalformedBShapeInitializerTest(const std::string& expected_error) {
   };
 
   add_input("A", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 4});
-  add_input("B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {1});
+  add_input("B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {b_length});
   add_input("B_shape", ONNX_NAMESPACE::TensorProto_DataType_INT64, {2});
 
   auto* b_shape = graph->add_initializer();
   b_shape->set_name("B_shape");
   b_shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   b_shape->add_dims(2);
-  b_shape->add_int64_data(4);
+  for (const int64_t value : b_shape_data) {
+    b_shape->add_int64_data(value);
+  }
 
   auto* node = graph->add_node();
   node->set_op_type("MatMulFpQ4");
@@ -104,12 +152,35 @@ TEST(MatMulFpQ4, RejectsScalarBShape) {
                                "B_shape input for MatMulFpQ4 must be a 1-D int64 tensor");
 }
 
+TEST(MatMulFpQ4, AllowsSymbolicInputLengths) {
+  RunSymbolicInputLengthsShapeInferenceTest();
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(MatMulFpQ4, RejectsShortBShapeInitializer) {
   RunMalformedBShapeInitializerTest(
-      "B_shape initializer for MatMulFpQ4 must contain exactly 2 int64 values");
+      {4},
+  "Data size mismatch");
+}
+
+TEST(MatMulFpQ4, RejectsOversizedBShapeInitializer) {
+  RunMalformedBShapeInitializerTest(
+      {4, 1, 0},
+  "Data size mismatch");
+}
+
+TEST(MatMulFpQ4, RejectsNegativePackedBLength) {
+  RunMalformedBShapeInitializerTest(
+      {4, 1},
+      "B input for MatMulFpQ4 must be a 1-D tensor",
+      -1);
 }
 #endif  // !ORT_NO_EXCEPTIONS
+
+TEST(MatMulFpQ4, RejectsKnownWrongBShapeLength) {
+  RunInvalidShapeInferenceTest({1}, {0}, {3}, {4, 1, 0},
+                               "B_shape input for MatMulFpQ4 must be a 1-D int64 tensor of length 2");
+}
 
 TEST(MatMulFpQ4, RejectsNegativeBShapeDimension) {
   RunInvalidShapeInferenceTest({1}, {0}, {2}, {-1, 1},
@@ -118,6 +189,18 @@ TEST(MatMulFpQ4, RejectsNegativeBShapeDimension) {
 
 TEST(MatMulFpQ4, RejectsScalarPackedB) {
   RunInvalidShapeInferenceTest({}, {0}, {2}, {4, 1}, "B input for MatMulFpQ4 must be a 1-D tensor");
+}
+
+TEST(MatMulFpQ4, RejectsWrongPackedBSize) {
+  const size_t expected_pack_size = MlasQ4GemmPackBSize(BlkQ4Zp8, 1, 4);
+  if (expected_pack_size == 0) {
+    GTEST_SKIP();
+  }
+
+  const size_t wrong_pack_size = expected_pack_size + 1;
+  RunInvalidShapeInferenceTest({static_cast<int64_t>(wrong_pack_size)},
+                               std::vector<uint8_t>(wrong_pack_size),
+                               {2}, {4, 1}, "Input q4 tensors of wrong size");
 }
 
 TEST(MatMulFpQ4, MatMul2DSym) {
