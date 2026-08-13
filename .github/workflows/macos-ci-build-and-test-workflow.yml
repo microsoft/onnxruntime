@@ -172,22 +172,29 @@ jobs:
           # path (`run_onnxruntime_tests` in tools/ci_build/build.py) already runs on platforms
           # without a resolved ctest binary.
           #
-          # One narrow exclusion: HalfGemmPackB.PackBExitsEarlyForInvalidArguments deliberately
-          # calls MlasHalfGemmPackB() with invalid arguments (null buffers / ldb < N) to verify
-          # it exits early without touching PackedB. In a Debug build this hits an `assert()` in
-          # onnxruntime/core/mlas/lib/halfgemm.cpp (MlasHalfGemmPackB) that contradicts the very
-          # early-return null/ldb check on the next line and the test's own intent, aborting the
-          # whole process (SIGABRT) before any later test suites can run. This is a pre-existing
-          # product bug (both the assert and the test were added together in the same commit,
-          # fef99e8d04), unrelated to this workflow change, and only surfaced now because
-          # onnxruntime_mlas_test has never actually executed in CI -- exactly the gap this PR
-          # fixes. Fixing the assert itself is out of scope for a CI-only change and belongs in
-          # a separate MLAS PR, so exclude only this one test by exact name (not a suite-wide or
-          # wildcard exclusion) to keep the rest of the suite's coverage intact.
-          gtest_filter="-HalfGemmPackB.PackBExitsEarlyForInvalidArguments"
+          # One narrow exclusion, Debug-only: HalfGemmPackB.PackBExitsEarlyForInvalidArguments
+          # deliberately calls MlasHalfGemmPackB() with invalid arguments (null buffers / ldb < N)
+          # to verify it exits early without touching PackedB. In a Debug build this hits an
+          # `assert()` in onnxruntime/core/mlas/lib/halfgemm.cpp (MlasHalfGemmPackB) that
+          # contradicts the very early-return null/ldb check on the next line and the test's own
+          # intent, aborting the whole process (SIGABRT) before any later test suites can run.
+          # Release builds compile asserts out (default -DNDEBUG), so the test passes cleanly
+          # there and is only excluded in Debug to preserve that coverage. This is a pre-existing
+          # product bug -- both the assert and the test were added together in the same upstream
+          # commit, 01f0dba66cc5da8ad20ee81b1795b3b110ad913a ("[MLAS][KleidiAI] Add MLAS Arm64
+          # half GEMM and convolution support", #28786) -- unrelated to this workflow change, and
+          # only surfaced now because onnxruntime_mlas_test has never actually executed in CI --
+          # exactly the gap this PR fixes. Fixing the assert itself is out of scope for a CI-only
+          # change and belongs in a separate MLAS PR, so exclude only this one test by exact name
+          # (not a suite-wide or wildcard exclusion), and only for the build config that actually
+          # crashes, to keep the rest of the suite's coverage intact.
+          test_args=()
+          if [ "${{ matrix.build_config }}" = "Debug" ]; then
+            test_args+=("--gtest_filter=-HalfGemmPackB.PackBExitsEarlyForInvalidArguments")
+          fi
           output_xml="onnxruntime_mlas_test.${{ matrix.build_config }}.results.xml"
           rm -f "${output_xml}"
-          "${test_bin}" "--gtest_filter=${gtest_filter}" --gtest_output="xml:${output_xml}"
+          "${test_bin}" "${test_args[@]}" --gtest_output="xml:${output_xml}"
 
           # Belt-and-suspenders: gtest's own RUN_ALL_TESTS() returns 0 even when zero tests ran
           # (e.g. every LongShortExecuteManager registrar in test_main.cpp declines because a
