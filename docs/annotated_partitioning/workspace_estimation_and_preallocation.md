@@ -9,6 +9,7 @@
 - **CUDA workspace inventory:** [CUDA Kernel Workspace Inventory](cuda_kernel_workspace_inventory.md)
 - **Level-2 verification branch:** [`chilo/level2-workspace-verification`](https://github.com/microsoft/onnxruntime/tree/chilo/level2-workspace-verification)
 - **Static preallocation branch:** [`chilo/static-workspace-preallocation`](https://github.com/microsoft/onnxruntime/tree/chilo/static-workspace-preallocation)
+- **Static preallocation draft PR:** [#32071](https://github.com/microsoft/onnxruntime/pull/32071)
 
 This document records the proposed policy for combining profile-guided workspace
 measurements, pre-partition workspace estimation, and post-assignment workspace
@@ -277,6 +278,9 @@ separate preallocated workspace buffer per device is an acceptable first impleme
 The stacked `chilo/static-workspace-preallocation` branch implements activation/workspace
 memory-pattern integration in commit
 [`725f01f695`](https://github.com/microsoft/onnxruntime/commit/725f01f695232a41017433f6dc6c09e4747c4ea3).
+The reviewable stacked change is draft PR
+[#32071](https://github.com/microsoft/onnxruntime/pull/32071), based on
+`chilo/level2-workspace-verification`.
 The existing opt-in key is retained:
 
 ```text
@@ -509,6 +513,62 @@ The kernel retains `GetScratchBuffer()` when:
 This keeps the feature permissive and preserves existing execution behavior when planning
 cannot be applied.
 
+#### 7. CUDA provider-wrapper bridge
+
+The in-tree CUDA provider sources compile against the provider-wrapped
+`OpKernelContext` in `provider_wrappedtypes.h`, not directly against the in-tree class in
+`op_kernel_context.h`. Adding only the in-tree virtual API therefore does not make
+`GetPreallocatedWorkspace()` callable from `matmul_nbits.cc`.
+
+Commit
+[`6bce3856fa`](https://github.com/microsoft/onnxruntime/commit/6bce3856fa)
+adds the required host bridge:
+
+```text
+provider-wrapped OpKernelContext::GetPreallocatedWorkspace()
+  -> ProviderHost::OpKernelContext__GetPreallocatedWorkspace()
+  -> in-tree OpKernelContext::GetPreallocatedWorkspace()
+  -> OpKernelContextInternal override
+  -> ExecutionFrame::GetPlannedWorkspace()
+```
+
+This bridge is needed by the bundled CUDA build because it uses the provider-wrapper
+boundary internally. It does not by itself add workspace declaration or planning support
+to the separately deployed Plugin CUDA EP; plugin estimator/declaration parity remains
+future work.
+
+#### 8. Test coverage and build validation
+
+The pilot includes two levels of coverage:
+
+1. `MemPatternPlannerTest.WorkspaceSharesNonOverlappingActivationBlock` traces an
+   activation followed by a synthetic workspace and verifies that both receive offset 0
+   while the peak remains the larger activation size.
+2. `MatMulNBitsWorkspace.SequentialChainUsesSharedPlannedWorkspace` builds a graph with
+   three sequential CUDA `MatMulNBits` nodes and verifies:
+   - each node receives a distinct negative synthetic pattern ID;
+   - the first run uses dynamic workspace while tracing all three lifetimes;
+   - the cached pattern assigns all three non-overlapping workspace entries the same
+     offset;
+   - the second run supplies planned workspace to every kernel; and
+   - the planned-workspace output exactly matches a nonzero first-run dynamic reference.
+
+The multi-node coverage was added in commit
+[`00808c314d`](https://github.com/microsoft/onnxruntime/commit/00808c314d).
+
+Local validation completed on Windows:
+
+```text
+CPU Debug onnxruntime_test_all build: passed
+MemPatternPlannerTest.*: 2 tests passed
+CUDA Debug onnxruntime_provider_test build: passed
+```
+
+The CUDA Debug build used CUDA 12.8, cuDNN 9.0, `CMAKE_CUDA_ARCHITECTURES=75`,
+and disabled CUDA NHWC ops. Test execution is intentionally left as a manual/CI step.
+The Debug configuration also required local-only `/bigobj` and `/wd4702` CMake flags;
+these flags are build-environment workarounds and are not part of draft PR #32071.
+
 ## Profiling Improvements Needed for Preallocation
 
 The current `total_temp_allocations` field is neither a complete CUDA workspace measurement
@@ -630,9 +690,10 @@ validation remains future work.
 - Keep arena fallback for unresolved or dynamic requirements.
 - Add strict validation for constrained deployments.
 
-Pilot status: implemented on `chilo/static-workspace-preallocation` for sequential,
-single-slot in-tree CUDA `MatMulNBits`. Workspace is traced as a synthetic allocation and
-packed into the run-scoped activation memory-pattern buffer. General multi-slot,
+Pilot status: implemented in draft PR
+[#32071](https://github.com/microsoft/onnxruntime/pull/32071) for sequential, single-slot
+in-tree CUDA `MatMulNBits`. Workspace is traced as a synthetic allocation and packed into
+the run-scoped activation memory-pattern buffer. General multi-slot,
 parallel/multi-stream, and Plugin EP support remain future work.
 
 ### Phase 4: Broader coverage
@@ -667,3 +728,5 @@ parallel/multi-stream, and Plugin EP support remain future work.
 | 2026-08-12 | Fall back dynamically when the runtime request exceeds the declared static slot | Pilot implemented |
 | 2026-08-12 | Trace workspace as a synthetic node-lifetime allocation and pack it with non-overlapping activations | Pilot implemented |
 | 2026-08-12 | Own planned workspace in each execution frame, removing workspace-specific concurrent-run serialization | Pilot implemented |
+| 2026-08-13 | Validate shared offsets and output correctness with three sequential `MatMulNBits` nodes | Pilot implemented |
+| 2026-08-13 | Expose planned workspace access through the bundled CUDA provider-wrapper bridge | Pilot implemented |
