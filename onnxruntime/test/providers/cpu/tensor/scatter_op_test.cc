@@ -393,6 +393,42 @@ TEST(ScatterElements, RowBroadcastIndicesNoneKeepsLastUpdate) {
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
+// Negative indices are normalized where they are read rather than up front, so exercise them
+// on the contiguous path too. A row of all -3 addresses the same place as a row of all 1.
+TEST(ScatterElements, RowBroadcastIndicesNegative) {
+  constexpr int64_t kWidth = 16;
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<float>("data", {4, kWidth}, std::vector<float>(4 * kWidth, 0.f));
+  test.AddInput<int64_t>("indices", {3, kWidth}, RowBroadcastIndices({-3, 2, 1}, kWidth));
+  test.AddInput<float>("updates", {3, kWidth}, RepeatRows({1.f, 2.f, 3.f}, kWidth));
+  test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 4.f, 2.f, 0.f}, kWidth));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// A slice mixing the two spellings of one row is not constant by raw value, so it must fall back
+// to the generic path and still land in the right place.
+TEST(ScatterElements, RowBroadcastIndicesMixedSignFallsBack) {
+  constexpr int64_t kWidth = 16;
+  std::vector<int64_t> indices(static_cast<size_t>(2 * kWidth), 1);
+  for (int64_t j = 0; j < kWidth; j += 2) {
+    indices[static_cast<size_t>(j)] = -3;  // same row as 1, written the other way
+  }
+
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+  test.AddInput<float>("data", {4, kWidth}, std::vector<float>(4 * kWidth, 0.f));
+  test.AddInput<int64_t>("indices", {2, kWidth}, indices);
+  test.AddInput<float>("updates", {2, kWidth}, RepeatRows({1.f, 2.f}, kWidth));
+  test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 3.f, 0.f, 0.f}, kWidth));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(ScatterElements, RowBroadcastIndicesRank3) {
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 0);
