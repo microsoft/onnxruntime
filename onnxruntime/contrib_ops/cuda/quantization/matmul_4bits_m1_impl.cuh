@@ -14,6 +14,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// VALIDATION-ONLY (never merged into #31988 or main): lets a throwaway A/B benchmark force
+// the pre-PR baseline launch geometry (cols_per_block == kColsPerThreadBlock unconditionally)
+// in the same process/binary as the new occupancy-driven selection below, so head-vs-base
+// timing can be compared without a second build or a second CI run -- eliminating
+// build-to-build and machine-state (thermal, clock, driver cache) confounds from the
+// comparison. 0 (the default) means "no override": behavior is byte-for-byte identical to
+// #31988's head. Declared `inline` so the single definition is shared across the three
+// explicit-instantiation translation units (float/half/bfloat16) that include this header.
+inline int g_matmulnbits_m1_perf_validation_force_cols_per_block = 0;
+
 template <class T, int block_size, bool has_zero_point, int cols_per_block = kColsPerThreadBlock>
 __global__ void __launch_bounds__(kWarpSize* cols_per_block) MatMulFloat4BitsKernelM1(
     T* output,
@@ -196,7 +206,12 @@ bool TryMatMul4BitsM1(
 
   // ChooseColsPerBlockFromOccupancy itself falls back to SelectColsPerBlock(n, sm_count) when
   // every query failed or sm_count is unavailable, and only ever returns a divisor of n.
-  const int cols_per_block = ChooseColsPerBlockFromOccupancy(n, sm_count, max_blocks_per_sm);
+  int cols_per_block = ChooseColsPerBlockFromOccupancy(n, sm_count, max_blocks_per_sm);
+  // VALIDATION-ONLY: see g_matmulnbits_m1_perf_validation_force_cols_per_block above. No-op
+  // (0) outside the throwaway perf-validation benchmark.
+  if (g_matmulnbits_m1_perf_validation_force_cols_per_block != 0) {
+    cols_per_block = g_matmulnbits_m1_perf_validation_force_cols_per_block;
+  }
 
   const size_t launch_shared_mem =
       sizeof(T) * blocks_per_K * cols_per_block +
