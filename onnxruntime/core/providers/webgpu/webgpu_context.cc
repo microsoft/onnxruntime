@@ -1058,6 +1058,7 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
 }
 
 void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command) {
+  ORT_ENFORCE(command.type == webgpu::CapturedCommandType::Dispatch);
   ORT_ENFORCE(command.compute_pipeline.has_value());
   ORT_ENFORCE(command.bind_group != nullptr);
   const auto& compute_pass_encoder = GetComputePassEncoder();
@@ -1078,6 +1079,24 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command) 
       (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
     EndComputePass();
   }
+}
+
+Status WebGpuContext::ClearBuffer(WGPUBuffer buffer, uint64_t offset, uint64_t size) {
+  ORT_RETURN_IF_ERROR(EncodeDeferredDispatches());
+  EndComputePass();
+  GetCommandEncoder().ClearBuffer(buffer, offset, size);
+
+  if (graph_capture_state_ == GraphCaptureState::Capturing) {
+    ORT_ENFORCE(external_captured_commands_ != nullptr);
+    webgpu::CapturedCommandInfo command;
+    command.type = webgpu::CapturedCommandType::ClearBuffer;
+    command.clear_buffer = buffer;
+    command.clear_offset = offset;
+    command.clear_size = size;
+    external_captured_commands_->push_back(std::move(command));
+  }
+
+  return Status::OK();
 }
 
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
@@ -1103,18 +1122,23 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = captured_commands[i];
 
-    // Restore profiling info when profiling is enabled. All commands are expected
-    // to have profiling data in this mode to keep pending_kernels_ consistent
-    // with num_pending_dispatches_.
-    if (is_profiling_) {
-      ORT_ENFORCE(command.pending_kernel_info.has_value(),
-                  "WebGpuContext::Replay: profiling is enabled but captured command at index ",
-                  i,
-                  " is missing pending_kernel_info.");
-      pending_kernels_.emplace_back(*command.pending_kernel_info);
+    if (command.type == webgpu::CapturedCommandType::Dispatch) {
+      // Restore profiling info for compute dispatches when profiling is enabled. Buffer clears are
+      // ordered graph commands, but they are not profiled kernels and do not affect dispatch counts.
+      if (is_profiling_) {
+        ORT_ENFORCE(command.pending_kernel_info.has_value(),
+                    "WebGpuContext::Replay: profiling is enabled but captured command at index ",
+                    i,
+                    " is missing pending_kernel_info.");
+        pending_kernels_.emplace_back(*command.pending_kernel_info);
+      }
+
+      DispatchCommand(command);
+    } else {
+      ORT_ENFORCE(command.type == webgpu::CapturedCommandType::ClearBuffer);
+      ORT_THROW_IF_ERROR(ClearBuffer(command.clear_buffer, command.clear_offset, command.clear_size));
     }
 
-    DispatchCommand(command);
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
       ORT_THROW_IF_ERROR(Flush(buffer_manager));
     }
@@ -1138,6 +1162,7 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
 
   for (auto& command : captured_commands) {
     command.bind_group = nullptr;
+    command.clear_buffer = nullptr;
   }
 }
 

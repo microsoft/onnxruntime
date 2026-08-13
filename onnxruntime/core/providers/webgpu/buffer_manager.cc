@@ -559,9 +559,9 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool init
   auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
   if (buffer) {
     if (initialize_to_zero) {
-      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-      context_.EndComputePass();
-      context_.GetCommandEncoder().ClearBuffer(buffer, 0, buffer_size);
+      auto buffer_guard = wgpu::Buffer::Acquire(buffer);
+      ORT_THROW_IF_ERROR(context_.ClearBuffer(buffer, 0, buffer_size));
+      return buffer_guard.MoveToCHandle();
     }
     return buffer;
   }

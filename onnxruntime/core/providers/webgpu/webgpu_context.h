@@ -73,7 +73,13 @@ struct PendingPipelineBuild {
   wgpu::Future future;
 };
 
-// Resources for one recorded dispatch. The pipeline fields represent these lifecycle states:
+enum class CapturedCommandType {
+  Dispatch,
+  ClearBuffer,
+};
+
+// Resources for one recorded command. Dispatch commands use the pipeline fields, which represent
+// these lifecycle states:
 //
 //                                 pending_build    compute_pipeline
 // 1. Program cache hit                 empty              set
@@ -94,9 +100,12 @@ struct PendingPipelineBuild {
 //    The command was moved into captured graph storage after encoding and retains the ready
 //    pipeline and bind group for later replays. Replay never depends on pending_build.
 //
-// A command with both fields empty is therefore valid only in state 3 before deferred pipeline
-// resolution. DispatchCommand() requires compute_pipeline to be set.
+// A dispatch command with both fields empty is therefore valid only in state 3 before deferred
+// pipeline resolution. DispatchCommand() requires compute_pipeline to be set. Buffer-clear commands
+// use only clear_buffer, clear_offset, and clear_size; the buffer handle is non-owning and remains
+// valid for the captured graph lifetime through its per-graph BufferManager.
 struct CapturedCommandInfo {
+  CapturedCommandType type{CapturedCommandType::Dispatch};
   std::string program_key;
   std::optional<PendingPipelineBuild> pending_build;
   std::optional<wgpu::ComputePipeline> compute_pipeline;
@@ -106,6 +115,9 @@ struct CapturedCommandInfo {
   WGPUBuffer indirect_buffer = nullptr;
   // Optional profiling data
   std::optional<PendingKernelInfo> pending_kernel_info;
+  WGPUBuffer clear_buffer = nullptr;
+  uint64_t clear_offset = 0;
+  uint64_t clear_size = 0;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -362,6 +374,7 @@ class WebGpuContext final {
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
   void DispatchCommand(const webgpu::CapturedCommandInfo& command);
+  Status ClearBuffer(WGPUBuffer buffer, uint64_t offset, uint64_t size);
   Status EncodeDeferredDispatches();
 
   std::vector<const char*> GetEnabledAdapterToggles() const;

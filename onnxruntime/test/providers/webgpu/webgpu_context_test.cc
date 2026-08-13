@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "gtest/gtest.h"
 
@@ -78,6 +79,56 @@ TEST(WebGpuContextTest, ReusedDeviceAllocatorBufferIsZeroInitialized) {
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
+
+  std::array<uint32_t, 16> downloaded_data;
+  buffer_manager.Download(reused_buffer, downloaded_data.data(), sizeof(downloaded_data));
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(downloaded_data, expected_data);
+
+  allocator.Free(allocation);
+}
+
+TEST(WebGpuContextTest, ReplaysDeviceAllocatorBufferClear) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Graph,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      false);
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  allocator.Free(allocation);
+
+  context.CaptureBegin(&captured_commands, buffer_manager);
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  if (allocation == nullptr) {
+    context.CaptureEnd();
+    FAIL() << "Failed to reacquire a device allocation during graph capture.";
+  }
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
+  const Status flush_status = context.Flush(buffer_manager);
+  context.CaptureEnd();
+  if (!flush_status.IsOK()) {
+    allocator.Free(allocation);
+    FAIL() << flush_status.ErrorMessage();
+  }
+
+  buffer_manager.Upload(nonzero_data.data(), reused_buffer, sizeof(nonzero_data));
+  context.Replay(captured_commands, buffer_manager);
 
   std::array<uint32_t, 16> downloaded_data;
   buffer_manager.Download(reused_buffer, downloaded_data.data(), sizeof(downloaded_data));
