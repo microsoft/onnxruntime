@@ -31,18 +31,27 @@ See [Build instructions](../build/eps.html#cuda).
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that
 ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Optimize Training tab on [onnxruntime.ai](https://onnxruntime.ai/getting-started) for supported versions.
 
-Because of [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility), ONNX Runtime built with CUDA 11.8 are compatible with any CUDA 11.x version; ONNX Runtime built with CUDA 12.x are compatible with any CUDA 12.x version.
+Because of [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility), ONNX Runtime built with CUDA 11.8 are compatible with any CUDA 11.x version; ONNX Runtime built with CUDA 12.8 are compatible with any CUDA 12.x version; ONNX Runtime built with CUDA 13.0 are compatible with any CUDA 13.x version.
 
 ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice versa. You can choose the package based on CUDA and cuDNN major versions that match your runtime environment (e.g., PyTorch 2.3 uses cuDNN 8.x, while PyTorch 2.4 or later uses cuDNN 9.x).
 
-Note: Starting with version 1.19, **CUDA 12.x** becomes the default version when distributing [ONNX Runtime GPU packages](https://pypi.org/project/onnxruntime-gpu/) in PyPI.
+Note: Starting with version 1.27, GPU packages published to [PyPI (`onnxruntime-gpu`)](https://pypi.org/project/onnxruntime-gpu/) and [NuGet (`Microsoft.ML.OnnxRuntime.Gpu`)](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/) are built with **CUDA 13.0** by default. Older GPU package versions are built with **CUDA 12.8** by default.
 
 To reduce the need for manual installations of CUDA and cuDNN, and ensure seamless integration between ONNX Runtime and PyTorch, the `onnxruntime-gpu` Python package offers API to load CUDA and cuDNN dynamic link libraries (DLLs) appropriately. For more details, refer to the [Compatibility with PyTorch](#compatibility-with-pytorch) and [Preload DLLs](#preload-dlls) sections.
+
+### CUDA 13.x
+
+| ONNX Runtime  | CUDA  | cuDNN | Notes                                                                |
+|---------------|-------|-------|----------------------------------------------------------------------|
+| 1.29.x        | 13.0  | 9.x   | Available in PyPI and NuGet. Compatible with PyTorch for CUDA 13.x. |
+| 1.28.x        | 13.0  | 9.x   | Available in PyPI and NuGet. Compatible with PyTorch for CUDA 13.x. |
+| 1.27.x        | 13.0  | 9.x   | Available in PyPI and NuGet. Compatible with PyTorch for CUDA 13.x. |
 
 ### CUDA 12.x
 
 | ONNX Runtime  | CUDA   | cuDNN | Notes                                                                |
 |---------------|--------|-------|----------------------------------------------------------------------|
+| 1.26.x-1.21.x | 12.8   | 9.x   | Available in PyPI and NuGet. Default GPU package build before 1.27. |
 | 1.20.x        | 12.x   | 9.x   | Avaiable in PyPI. Compatible with PyTorch >= 2.4.0 for CUDA 12.x.    | 
 | 1.19.x        | 12.x   | 9.x   | Avaiable in PyPI. Compatible with PyTorch >= 2.4.0 for CUDA 12.x.    | 
 | 1.18.1        | 12.x   | 9.x   | cuDNN 9 is required. No Java package.                                | 

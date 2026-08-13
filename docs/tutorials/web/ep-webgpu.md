@@ -11,7 +11,10 @@ nav_order: 3
 # Using the WebGPU Execution Provider
 {: .no_toc }
 
-This document explains how to use the WebGPU execution provider in ONNX Runtime.
+This document explains how to use the WebGPU execution provider in ONNX Runtime Web (JavaScript / TypeScript in the browser).
+
+{: .note }
+> If you are using the WebGPU EP from a native build of ONNX Runtime (C/C++/Python/C#), see the [WebGPU Execution Provider](../../execution-providers/WebGPU-ExecutionProvider.md) page instead.
 
 ## Contents
 {: .no_toc}
