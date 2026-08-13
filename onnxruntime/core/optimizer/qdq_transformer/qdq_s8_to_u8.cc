@@ -80,8 +80,9 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
   auto q_output_node_arg_name = graph.GenerateNodeArgName("qdq_s8_to_u8_quant");
   NodeArg* q_output_arg = &graph.GetOrCreateNodeArg(q_output_node_arg_name, nullptr);
 
-  q_node.MutableDefinitions().output_defs[0] = q_output_arg;
-  dq_node.MutableDefinitions().input_defs[0] = q_output_arg;
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  q_node.MutableOutputDefs()[0] = q_output_arg;
+  dq_node.MutableInputDefs()[0] = q_output_arg;
   graph_utils::SetOptionalNodeInput(graph, q_node, zp_idx, *zp_u8_arg);
   graph_utils::SetOptionalNodeInput(graph, dq_node, zp_idx, *zp_u8_arg);
   return true;

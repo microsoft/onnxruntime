@@ -93,7 +93,7 @@ static void RunMatMulIntegerOmittedZeroPointsTest(bool use_explicit_empty_inputs
 
     Node& mutable_matmul = *graph.GetNode(matmul->Index());
     NodeArg* generated_weight_zp = mutable_matmul.MutableInputDefs()[3];
-    mutable_matmul.MutableDefinitions().input_defs[3] = nullptr;
+    mutable_matmul.MutableInputDefs()[3] = nullptr;
     graph.GraphResolveNeeded(false);
     graph.GraphProtoSyncNeeded(false);
     graph_utils::SetOptionalNodeInput(graph, mutable_matmul, 3, *generated_weight_zp);
@@ -780,7 +780,7 @@ static void RunDynamicQuantizeLSTMMissingRequiredZeroPointTest(size_t missing_in
   auto pre_graph_checker = [missing_input_idx](Graph& graph) {
     for (auto& node : graph.Nodes()) {
       if (node.OpType() == "DynamicQuantizeLSTM") {
-        node.MutableDefinitions().input_defs[missing_input_idx] = &graph.GetOrCreateNodeArg("", nullptr);
+        node.MutableInputDefs()[missing_input_idx] = &graph.GetOrCreateNodeArg("", nullptr);
         return Status::OK();
       }
     }

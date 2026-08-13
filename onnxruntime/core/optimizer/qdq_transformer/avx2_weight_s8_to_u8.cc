@@ -134,7 +134,8 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
   weights_proto_u8.set_name(weight_tensor_proto->name() + "_s8_2_u8");
   weights_proto_u8.mutable_dims()->CopyFrom(weight_tensor_proto->dims());
   utils::SetRawDataInTensorProto(weights_proto_u8, w_temp.data<int8_t>(), static_cast<size_t>(w_temp.size()));
-  auto& mutable_input_defs = op_node.MutableDefinitions().input_defs;
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  auto& mutable_input_defs = op_node.MutableInputDefs();
   mutable_input_defs[w_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
 
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;

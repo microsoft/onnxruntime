@@ -43,8 +43,8 @@ bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
     // The weights fits into S7, overflow is not a problem, no need to convert to U8
     return false;
   }
-  op_node.MutableDefinitions().input_defs[weights_idx] =
-      &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  op_node.MutableInputDefs()[weights_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
 
   // Convert weight zero point to uint8
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
