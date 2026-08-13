@@ -275,7 +275,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     other_input_index = OtherInputIndex(mul5_node, *add2_node.MutableOutputDefs()[0]);
     if (!other_input_index) continue;
     const Node* p_mul5_input_node =
-      graph_utils::GetInputNode(mul5_node, onnxruntime::narrow<int>(*other_input_index));
+        graph_utils::GetInputNode(mul5_node, onnxruntime::narrow<int>(*other_input_index));
     if (p_mul5_input_node == nullptr) continue;
 
     // if this is second formula and if pow node has Cast parent, expect mul5_node has Cast parent as well
