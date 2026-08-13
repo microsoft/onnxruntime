@@ -60,6 +60,8 @@ def get_vendor_id_for_device_type(device_type: str) -> OrtDeviceVendorId | None:
         return OrtDeviceVendorId.MICROSOFT
     elif device_type == "cann":
         return OrtDeviceVendorId.HUAWEI
+    elif device_type == "webgpu":
+        return OrtDeviceVendorId.NONE
     else:
         return None
 
@@ -305,9 +307,28 @@ class Session:
                 f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names})."
             )
 
+    def _validate_ortvalue_ownership(self, values, allow_webgpu=False):
+        for value in values:
+            if not isinstance(value, OrtValue):
+                continue
+            if value._is_webgpu_buffer:
+                if value._session is not self._sess:
+                    raise ValueError("WebGPU OrtValue must be used with the session that created it.")
+                if not allow_webgpu:
+                    raise ValueError("Session-scoped WebGPU OrtValues must be used with IOBinding.")
+            elif value._session is not None and value._session is not self._sess:
+                raise ValueError("Session-scoped OrtValue must be used with the session that created it.")
+
+    def _validate_graph_capture_run_api(self):
+        if self._sess.is_webgpu_graph_capture_enabled():
+            raise ValueError("WebGPU graph capture requires fixed device OrtValues and run_with_iobinding.")
+
     def run(self, output_names, input_feed, run_options=None) -> Sequence[np.ndarray | SparseTensor | list | dict]:
         """
         Compute the predictions.
+
+        WebGPU graph capture requires fixed device OrtValues bound with
+        :meth:`run_with_iobinding`; do not use this convenience API for captured replay.
 
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
@@ -319,7 +340,9 @@ class Session:
 
             sess.run([output_name], {input_name: x})
         """
+        self._validate_graph_capture_run_api()
         self._validate_input(list(input_feed.keys()))
+        self._validate_ortvalue_ownership(input_feed.values())
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -331,6 +354,7 @@ class Session:
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
+                self._validate_ortvalue_ownership(input_feed.values())
                 return self._sess.run(output_names, input_feed, run_options)
             raise
 
@@ -359,7 +383,9 @@ class Session:
 
             sess.run_async([output_name], {input_name: x}, callback)
         """
+        self._validate_graph_capture_run_api()
         self._validate_input(list(input_feed.keys()))
+        self._validate_ortvalue_ownership(input_feed.values())
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         return self._sess.run_async(output_names, input_feed, callback, user_data, run_options)
@@ -390,7 +416,9 @@ class Session:
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
+        self._validate_graph_capture_run_api()
         self._validate_input(list(input_dict_ort_values.keys()))
+        self._validate_ortvalue_ownership(input_dict_ort_values.values())
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -402,6 +430,7 @@ class Session:
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
+                self._validate_ortvalue_ownership(input_dict_ort_values.values())
                 return invoke(self._sess, output_names, input_dict_ort_values, run_options)
             raise
 
@@ -427,13 +456,81 @@ class Session:
         "Return an onnxruntime.IOBinding object`."
         return IOBinding(self)
 
+    def create_ortvalue_from_shape_and_type(
+        self,
+        shape: Sequence[int],
+        element_type,
+        device_type: str,
+        device_id: int = 0,
+        vendor_id: int | OrtDeviceVendorId = -1,
+    ) -> OrtValue:
+        """
+        Create an OrtValue using an allocator owned by this session.
+
+        This is required for execution providers whose device allocator is session-scoped,
+        such as WebGPU. The returned OrtValue retains this session so its allocator remains valid.
+        It must only be updated or bound through the session that created it. Creation fails
+        for non-numeric types or when this session has no allocator for the requested device.
+        """
+        device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
+        if isinstance(element_type, int):
+            ortvalue = self._sess.create_ortvalue_from_shape_and_onnx_type(shape, element_type, device)
+        else:
+            ortvalue = self._sess.create_ortvalue_from_shape_and_type(shape, element_type, device)
+        return OrtValue(ortvalue, session=self._sess)
+
+    def create_ortvalue_from_numpy(
+        self,
+        numpy_obj: np.ndarray,
+        device_type: str,
+        device_id: int = 0,
+        vendor_id: int | OrtDeviceVendorId = -1,
+    ) -> OrtValue:
+        """
+        Create a session-scoped device OrtValue and copy a NumPy tensor into it.
+
+        The OrtValue must only be updated or bound through the session that created it.
+        Non-contiguous NumPy inputs are copied into contiguous host memory before upload.
+        """
+        if not isinstance(numpy_obj, np.ndarray):
+            raise TypeError("numpy_obj must be a numpy.ndarray.")
+        if not numpy_obj.flags.c_contiguous:
+            numpy_obj = np.ascontiguousarray(numpy_obj)
+        ortvalue = self.create_ortvalue_from_shape_and_type(
+            numpy_obj.shape, numpy_obj.dtype, device_type, device_id, vendor_id
+        )
+        ortvalue.update_inplace(numpy_obj)
+        return ortvalue
+
+    def release_captured_graph(self, graph_annotation_id: int = 0) -> None:
+        """
+        Release a graph captured by an execution provider.
+
+        This is honored only by execution providers that implement captured-graph release
+        (currently WebGPU); it is a no-op for other providers. The ID must match the
+        ``gpu_graph_id`` run-option entry used during capture and defaults to zero.
+        Release captured graphs before clearing or rebinding I/O, resetting the session's
+        providers, or destroying bound device OrtValues.
+        """
+        self._sess.release_captured_graph(graph_annotation_id)
+
     def run_with_iobinding(self, iobinding, run_options=None):
         """
         Compute the predictions.
 
         :param iobinding: the iobinding object that has graph inputs/outputs bind.
         :param run_options: See :class:`onnxruntime.RunOptions`.
+
+        WebGPU graph capture requires static shapes, disabled memory patterns, and a
+        capture-compatible partition (all compute nodes on WebGPU; CPU shape-only nodes are
+        allowed). Bind fixed device OrtValues created by this session before the first run.
+        Subsequent runs replay the captured commands at those original buffer addresses:
+        rebinding does not redirect replay. Update inputs in place, use
+        :meth:`IOBinding.copy_outputs_to_cpu` for explicit readback, and call
+        :meth:`release_captured_graph` before clearing or changing the bindings.
         """
+        if iobinding._session is not self._sess:
+            raise ValueError("IOBinding must be used with the session that created it.")
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
     def set_ep_dynamic_options(self, options: dict[str, str]):
@@ -463,6 +560,11 @@ class Session:
         :param fetches: list of output OrtValue.
         :param fetch_devices: list of output devices.
         """
+        if "WebGpuExecutionProvider" in self._providers:
+            raise RuntimeError(
+                "run_with_ortvaluevector is unavailable for WebGPU sessions because raw OrtValue vectors "
+                "cannot retain session ownership; use IOBinding."
+            )
         self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
 
@@ -891,6 +993,9 @@ class IOBinding:
     """
 
     def __init__(self, session: Session):
+        self._session = session._sess
+        self._is_webgpu_session = "WebGpuExecutionProvider" in session.get_providers()
+        self._is_webgpu_graph_capture_enabled = self._session.is_webgpu_graph_capture_enabled()
         self._iobinding = C.SessionIOBinding(session._sess)
         self._numpy_obj_references = {}
 
@@ -900,6 +1005,9 @@ class IOBinding:
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
         """
+        if self._is_webgpu_graph_capture_enabled:
+            raise ValueError("WebGPU graph capture requires session-scoped WebGPU input OrtValues.")
+
         # Hold a reference to the numpy object as the bound OrtValue is backed
         # directly by the data buffer of the numpy object and so the numpy object
         # must be around until this IOBinding instance is around
@@ -915,13 +1023,11 @@ class IOBinding:
         :param shape: input shape
         :param buffer_ptr: memory pointer to input data
         """
+        if self._is_webgpu_graph_capture_enabled:
+            raise ValueError("WebGPU graph capture requires session-scoped WebGPU input OrtValues.")
         self._iobinding.bind_input(
             name,
-            C.OrtDevice(
-                get_ort_device_type(device_type),
-                C.OrtDevice.default_memory(),
-                device_id,
-            ),
+            OrtDevice.make(device_type, device_id)._get_c_device(),
             element_type,
             shape,
             buffer_ptr,
@@ -932,6 +1038,14 @@ class IOBinding:
         :param name: input name
         :param ortvalue: OrtValue instance to bind
         """
+        if ortvalue._is_webgpu_buffer and ortvalue._session is not self._session:
+            raise ValueError("WebGPU OrtValue must be bound to the session that created it.")
+        if ortvalue._session is not None and ortvalue._session is not self._session:
+            raise ValueError("Session-scoped OrtValue must be bound to the session that created it.")
+        if self._is_webgpu_graph_capture_enabled and (
+            ortvalue._session is not self._session or not ortvalue._is_webgpu_buffer
+        ):
+            raise ValueError("WebGPU graph capture requires session-scoped WebGPU input OrtValues.")
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
 
     def synchronize_inputs(self):
@@ -955,6 +1069,9 @@ class IOBinding:
         :param buffer_ptr: memory pointer to output data
         """
 
+        if self._is_webgpu_graph_capture_enabled:
+            raise ValueError("WebGPU graph capture requires session-scoped WebGPU output OrtValues.")
+
         # Follow the `if` path when the user has not provided any pre-allocated buffer but still
         # would like to bind an output to a specific device (e.g. cuda).
         # Pre-allocating an output buffer may not be an option for the user as :
@@ -964,22 +1081,14 @@ class IOBinding:
         if buffer_ptr is None:
             self._iobinding.bind_output(
                 name,
-                C.OrtDevice(
-                    get_ort_device_type(device_type),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                OrtDevice.make(device_type, device_id)._get_c_device(),
             )
         else:
             if element_type is None or shape is None:
                 raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(
                 name,
-                C.OrtDevice(
-                    get_ort_device_type(device_type),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                OrtDevice.make(device_type, device_id)._get_c_device(),
                 element_type,
                 shape,
                 buffer_ptr,
@@ -990,6 +1099,14 @@ class IOBinding:
         :param name: output name
         :param ortvalue: OrtValue instance to bind
         """
+        if ortvalue._is_webgpu_buffer and ortvalue._session is not self._session:
+            raise ValueError("WebGPU OrtValue must be bound to the session that created it.")
+        if ortvalue._session is not None and ortvalue._session is not self._session:
+            raise ValueError("Session-scoped OrtValue must be bound to the session that created it.")
+        if self._is_webgpu_graph_capture_enabled and (
+            ortvalue._session is not self._session or not ortvalue._is_webgpu_buffer
+        ):
+            raise ValueError("WebGPU graph capture requires session-scoped WebGPU output OrtValues.")
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
 
     def synchronize_outputs(self):
@@ -1003,10 +1120,24 @@ class IOBinding:
         outputs = self._iobinding.get_outputs()
         if not isinstance(outputs, C.OrtValueVector):
             raise TypeError("get_outputs() must return an instance of type 'OrtValueVector'.")
-        return [OrtValue(ortvalue) for ortvalue in outputs]
+        result = []
+        for index in range(len(outputs)):
+            ortvalue = outputs[index]
+            result.append(
+                OrtValue(
+                    ortvalue,
+                    session=self._session if ortvalue._is_webgpu_buffer() else None,
+                )
+            )
+        return result
 
     def get_outputs_as_ortvaluevector(self):
-        return self._iobinding.get_outputs()
+        outputs = self._iobinding.get_outputs()
+        if any(ortvalue._is_webgpu_buffer() for ortvalue in outputs):
+            raise RuntimeError(
+                "Raw OrtValueVector output is unavailable for WebGPU sessions because it cannot retain session provenance."
+            )
+        return outputs
 
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU."""
@@ -1026,12 +1157,20 @@ class OrtValue:
     This class provides APIs to construct and deal with OrtValues.
     """
 
-    def __init__(self, ortvalue: C.OrtValue, numpy_obj: np.ndarray | None = None):
+    def __init__(
+        self,
+        ortvalue: C.OrtValue,
+        numpy_obj: np.ndarray | None = None,
+        session: C.InferenceSession | None = None,
+    ):
         if isinstance(ortvalue, C.OrtValue):
             self._ortvalue = ortvalue
             # Hold a ref count to the numpy object if the OrtValue is backed directly
             # by its data buffer so that it isn't destroyed when the OrtValue is in use
             self._numpy_obj = numpy_obj
+            # Session-scoped device allocators can be invalidated when their session is destroyed.
+            self._session = session
+            self._is_webgpu_buffer = ortvalue._is_webgpu_buffer()
         else:
             # An end user won't hit this error
             raise ValueError(
@@ -1160,12 +1299,14 @@ class OrtValue:
     def data_ptr(self) -> int:
         """
         Returns the address of the first element in the OrtValue's data buffer
+
+        WebGPU buffers are opaque handles and do not expose a data pointer.
         """
         return self._ortvalue.data_ptr()
 
     def device_name(self) -> str:
         """
-        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda, cann
+        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda, cann, webgpu
         """
         return self._ortvalue.device_name().lower()
 
@@ -1225,6 +1366,8 @@ class OrtValue:
         Returns a Numpy object from the OrtValue.
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         Use accessors to gain a reference to non-Tensor objects such as SparseTensor
+        WebGPU device values require explicit readback with
+        :meth:`IOBinding.copy_outputs_to_cpu`.
         """
         return self._ortvalue.numpy()
 
@@ -1266,6 +1409,8 @@ class OrtValue:
         The OrtValue must hold a contiguous tensor. No data is copied;
         the consumer shares memory with this OrtValue, which must remain
         alive while the capsule is in use.
+        WebGPU OrtValues cannot be exported through DLPack because their data
+        is stored in opaque WebGPU buffers rather than CUDA-addressable memory.
 
         :param stream: Optional stream on which the tensor data is accessible.
             Currently unused; included for protocol compliance.
@@ -1278,6 +1423,8 @@ class OrtValue:
         Returns ``(device_type, device_id)`` indicating where the tensor data
         resides (part of the `DLPack protocol
         <https://dmlc.github.io/dlpack/latest/>`_).
+
+        WebGPU OrtValues do not expose a DLPack device.
 
         :return: Tuple of ``(device_type, device_id)`` as ints following DLPack
             ``DLDeviceType`` enum values.
@@ -1340,20 +1487,48 @@ class OrtValue:
             When an OrtValue is provided, data can be copied between devices (e.g.,
             GPU to GPU) without going through the CPU.
         """
+        if self._is_webgpu_buffer and self._session is None:
+            raise ValueError("WebGPU OrtValue must retain the session that owns its buffer.")
+
         if isinstance(data, OrtValue):
-            self._ortvalue.update_inplace(data._ortvalue)
+            if self._is_webgpu_buffer or data._is_webgpu_buffer:
+                if not self._is_webgpu_buffer or not data._is_webgpu_buffer:
+                    raise ValueError(
+                        "WebGPU OrtValue copies require WebGPU source and destination values; "
+                        "use IOBinding.copy_outputs_to_cpu for readback."
+                    )
+                if self._session is None or data._session is None or data._session is not self._session:
+                    raise ValueError("WebGPU OrtValues must originate from the same session.")
+                self._session.update_ortvalue_inplace(self._ortvalue, data._ortvalue)
+                return
+
+            if self._session is not None:
+                if data._session is not None and data._session is not self._session:
+                    raise ValueError("Session-scoped OrtValues must originate from the same session.")
+                self._session.update_ortvalue_inplace(self._ortvalue, data._ortvalue)
+            else:
+                self._ortvalue.update_inplace(data._ortvalue)
             return
 
         if not isinstance(data, np.ndarray):
             raise TypeError("data must be a numpy.ndarray or an OrtValue.")
 
-        self._ortvalue.update_inplace(data)
+        if self._session is not None:
+            if not data.flags.c_contiguous:
+                data = np.ascontiguousarray(data)
+            self._session.update_ortvalue_inplace(self._ortvalue, data)
+        else:
+            self._ortvalue.update_inplace(data)
 
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
     """
     Copy tensor data from source OrtValue sequence to destination OrtValue sequence.
     """
+    if any(value._session is not None or value._is_webgpu_buffer for value in [*src, *dst]):
+        raise ValueError(
+            "copy_tensors does not support session-owned or WebGPU OrtValues; use update_inplace or IOBinding readback."
+        )
     c_sources = [s._get_c_value() for s in src]
     c_dsts = [d._get_c_value() for d in dst]
     C.copy_tensors(c_sources, c_dsts, stream)
