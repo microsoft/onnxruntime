@@ -343,6 +343,38 @@ inline bool IndicesAreConstantAlongInner(const ScatterIndices& indices, int64_t 
   return constant.load(std::memory_order_relaxed);
 }
 
+// Copies the data input over to the output before the updates are applied. This runs before any
+// scatter work and covers the whole tensor, so on a large tensor a single-threaded memcpy leaves
+// the operator thread pool idle through what is often the most expensive part of the node.
+// Small tensors stay on a plain memcpy, where splitting the work would cost more than it saves.
+inline void CopyDataToOutput(void* dst, const void* src, size_t bytes, concurrency::ThreadPool* tp) {
+  constexpr size_t kMinBytesToParallelize = 1 << 20;
+  constexpr size_t kMinBytesPerShard = 256 * 1024;
+
+  const int degree = concurrency::ThreadPool::DegreeOfParallelism(tp);
+  if (tp == nullptr || degree <= 1 || bytes < kMinBytesToParallelize) {
+    memcpy(dst, src, bytes);
+    return;
+  }
+
+  const std::ptrdiff_t num_shards =
+      std::min<std::ptrdiff_t>(degree, narrow<std::ptrdiff_t>(bytes / kMinBytesPerShard));
+  if (num_shards <= 1) {
+    memcpy(dst, src, bytes);
+    return;
+  }
+
+  auto* dst_bytes = static_cast<char*>(dst);
+  const auto* src_bytes = static_cast<const char*>(src);
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      tp, num_shards, [&](std::ptrdiff_t shard) {
+        const auto work =
+            concurrency::ThreadPool::PartitionWork(shard, num_shards, narrow<std::ptrdiff_t>(bytes));
+        memcpy(dst_bytes + work.start, src_bytes + work.start,
+               static_cast<size_t>(work.end - work.start));
+      });
+}
+
 template <class Tdata, typename FuncT>
 Status ScatterData(
     const FuncT& func,
@@ -368,7 +400,8 @@ Status ScatterData(
       auto* dst = data_output->MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);
+      CopyDataToOutput(static_cast<void*>(dst_base), static_cast<const void*>(src_base),
+                       total_input_bytes, tp);
     }
   }
 
