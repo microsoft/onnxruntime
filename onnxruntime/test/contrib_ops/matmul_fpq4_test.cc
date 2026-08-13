@@ -160,13 +160,13 @@ TEST(MatMulFpQ4, AllowsSymbolicInputLengths) {
 TEST(MatMulFpQ4, RejectsShortBShapeInitializer) {
   RunMalformedBShapeInitializerTest(
       {4},
-  "Data size mismatch");
+      "Data size mismatch");
 }
 
 TEST(MatMulFpQ4, RejectsOversizedBShapeInitializer) {
   RunMalformedBShapeInitializerTest(
       {4, 1, 0},
-  "Data size mismatch");
+      "Data size mismatch");
 }
 
 TEST(MatMulFpQ4, RejectsNegativePackedBLength) {
