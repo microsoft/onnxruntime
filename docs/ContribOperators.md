@@ -37,6 +37,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
+  * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
@@ -54,6 +55,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -939,7 +941,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>ndim</tt> : int</dt>
 <dd>Spatial dimensionality: 1, 2, or 3. Default is 1.</dd>
 <dt><tt>state_window</tt> : int</dt>
-<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) are not written. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward.</dd>
+<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) hold no position from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
 </dl>
 
 #### Inputs (2 - 4)
@@ -2050,6 +2052,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GatedAdd"></a><a name="com.microsoft.gatedadd">**com.microsoft.GatedAdd**</a>
+
+  Adds one tensor to another tensor scaled by a per-row gate:
+  
+    output = X + round_to_T(Y * gate)
+  
+  X and Y have shape (..., C), and gate has shape (..., 1). The gate is broadcast
+  over C. For reduced-precision types, the product is rounded to T before the add,
+  matching separate ONNX Mul and Add operators.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Unscaled input with shape (..., C).</dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>Input scaled by gate, with the same shape as X.</dd>
+<dt><tt>gate</tt> : T</dt>
+<dd>Per-row gate with shape (..., 1).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Gated sum with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.GatedRMSNorm"></a><a name="com.microsoft.gatedrmsnorm">**com.microsoft.GatedRMSNorm**</a>
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
@@ -2892,7 +2934,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>scale</tt> : float</dt>
 <dd>Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads and uses 1/sqrt(d_k). Set explicitly to override.</dd>
 <dt><tt>state_window</tt> : int</dt>
-<dd>Number of trailing per-token recurrent states held by past_state and present_state. When 0 (default) the state tensors are 4D and hold only the state after the last token, i.e. the backward-compatible (B, H_kv, d_k, d_v). When W > 0 both are 5D with a LEADING axis of extent W, right-aligned: slot j is the state after token (T - W + j), so slot W-1 is always the state after the last token (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (B, H_kv, d_k, d_v) block. Slots below max(0, W - T) are not written. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward.</dd>
+<dd>Number of trailing per-token recurrent states held by past_state and present_state. When 0 (default) the state tensors are 4D and hold only the state after the last token, i.e. the backward-compatible (B, H_kv, d_k, d_v). When W > 0 both are 5D with a LEADING axis of extent W, right-aligned: slot j is the state after token (T - W + j), so slot W-1 is always the state after the last token (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (B, H_kv, d_k, d_v) block. Slots below max(0, W - T) hold no token from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
 <dt><tt>update_rule</tt> : string</dt>
 <dd>The update rule for the linear attention recurrence. One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
@@ -2918,7 +2960,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Attention output with 3D packed shape (B, T, H_q * d_v).</dd>
+<dd>Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). Standard GQA emits one output per query head; inverse GQA, where H_kv exceeds H_q, emits one per KV head.</dd>
 <dt><tt>present_state</tt> : S</dt>
 <dd>Updated recurrent state with shape (B, H_kv, d_k, d_v), or (W, B, H_kv, d_k, d_v) when state_window = W > 0. Slot W-1 is the state after the last token; slot j is the state after token (T - W + j).</dd>
 </dl>
@@ -3042,6 +3084,85 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MRotaryEmbedding"></a><a name="com.microsoft.mrotaryembedding">**com.microsoft.MRotaryEmbedding**</a>
+
+  MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
+  Qwen family of vision-language models (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).
+  
+  Unlike standard RoPE which uses a single 1D position per token, M-RoPE derives three positions per token
+  (temporal T, height H, width W), each of which indexes into the same cos/sin cache. The half_rotary_embedding_dim
+  axis of the cache is partitioned into 3 contiguous or interleaved sections (specified by `mrope_section`); each
+  section is populated using the cos/sin values gathered with the corresponding T/H/W position, and the sections
+  are then concatenated (or interleaved) to produce a single per-token cos/sin vector of length
+  half_rotary_embedding_dim. The standard RoPE rotation (as in RotaryEmbedding) is then applied using this
+  combined vector.
+  
+  For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
+  so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
+  reduces this op to standard RoPE.
+  
+  `mrope_layout` selects how the three sections are combined:
+    - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
+      `mrope_section` (i.e. [T]*section[0] + [H]*section[1] + [W]*section[2]). This is used by Qwen2-VL and
+      Qwen2.5-VL.
+    - 1 (Interleaved): the half_rotary_embedding_dim axis is filled starting from T at every position, then H
+      overwrites every 3rd position starting at offset 1 for the first `section[1]*3` positions, and W overwrites
+      every 3rd position starting at offset 2 for the first `section[2]*3` positions. This is used by Qwen3-VL,
+      Qwen3-VL-MoE, Qwen3.5, and Qwen3.5-MoE.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>interleaved</tt> : int</dt>
+<dd>Indicates whether the input has real and imaginary parts interleaved along the last (head_size) axis. Default value is 0 (False), meaning the first half of the rotary portion consists of real values and the second half consists of imaginary values.</dd>
+<dt><tt>is_packed_batching</tt> : int</dt>
+<dd>ragged batch inputs or not. Default value is 0</dd>
+<dt><tt>mrope_layout</tt> : int</dt>
+<dd>How the 3 sections are combined to form the per-token cos/sin vector: 0 (default) for Sectioned/Chunked layout (Qwen2-VL, Qwen2.5-VL) or 1 for Interleaved layout (Qwen3-VL, Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).</dd>
+<dt><tt>mrope_section</tt> : list of ints (required)</dt>
+<dd>3 non-negative integers [section_t, section_h, section_w] describing how the half_rotary_embedding_dim axis of the cos/sin cache is divided among the temporal, height, and width position streams. section_t + section_h + section_w must equal rotary_embedding_dim / 2 (or head_size / 2 when rotary_embedding_dim is 0). Required.</dd>
+<dt><tt>num_heads</tt> : int</dt>
+<dd>Number of attention heads. Default value is 0. Must use with rotary_embedding_dim</dd>
+<dt><tt>rotary_embedding_dim</tt> : int</dt>
+<dd>Rotary embedding dimension. Default value is 0, meaning the whole head_size is rotated.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1.0</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)</dd>
+<dt><tt>position_ids</tt> : M</dt>
+<dd>3D tensor with shape (3, batch_size, sequence_length) containing the temporal, height, and width position id streams (in that order along dim 0).</dd>
+<dt><tt>cos_cache</tt> : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)</dd>
+<dt><tt>sin_cache</tt> : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>tensor with same shape as input.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int64)</dt>
+<dd>Constrain position_ids to integer tensors</dd>
 </dl>
 
 

@@ -49,6 +49,46 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttribut
   EXPECT_EQ(parameters.num_heads, 2);
 }
 
+TEST(BeamSearchParametersTest, RejectsNegativeWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = -1;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, RejectsZeroWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 0;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, RejectsWhisperBeginningTimestampTokenIdEqualToVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 128;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 1;
+
+  EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
+}
+
 void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
@@ -228,6 +268,102 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
     const auto* result_vals = sequences.GetTensorData<int32_t>();
     auto result_span = gsl::make_span(result_vals, expected_output.size());
     ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
+  }
+}
+
+TEST(BeamSearchTest, GptBeamSearchFp16_ScoresOutputTypeAndShape) {
+  std::vector<int64_t> input_ids_shape{3, 12};
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int64_t> parameter_shape{1};
+  std::vector<int32_t> max_length{20};
+  std::vector<int32_t> min_length{1};
+  std::vector<int32_t> num_beams{4};
+  std::vector<int32_t> num_return_sequences{1};
+  std::vector<float> length_penalty{1.0f};
+  std::vector<float> repetition_penalty{1.0f};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_beams_tensor = Ort::Value::CreateTensor(
+      info, num_beams.data(), num_beams.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_return_sequences_tensor = Ort::Value::CreateTensor(
+      info, num_return_sequences.data(), num_return_sequences.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto length_penalty_tensor = Ort::Value::CreateTensor(
+      info, length_penalty.data(), length_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(num_beams_tensor));
+  ort_inputs.push_back(std::move(num_return_sequences_tensor));
+  ort_inputs.push_back(std::move(length_penalty_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
+                               "length_penalty", "repetition_penalty"};
+
+  constexpr int min_cuda_architecture = 530;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  if (enable_cuda) {
+    Ort::SessionOptions session_options;
+#ifdef USE_CUDA
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.use_tf32 = false;
+    session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+#endif
+
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx"), session_options);
+
+    Ort::AllocatorWithDefaultOptions allocator;
+    const size_t output_count = session.GetOutputCount();
+    std::string scores_output_name;
+    for (size_t i = 0; i < output_count; ++i) {
+      auto output_name_alloc = session.GetOutputNameAllocated(i, allocator);
+      if (output_name_alloc.get() != nullptr && std::string(output_name_alloc.get()) == "scores") {
+        scores_output_name = output_name_alloc.get();
+        break;
+      }
+    }
+
+    if (scores_output_name.empty()) {
+      GTEST_SKIP() << "Skipping because tiny_gpt2_beamsearch_fp16.onnx does not expose optional 'scores' output in this test environment.";
+    }
+
+    const char* output_names[] = {scores_output_name.c_str()};
+
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                   output_names, 1);
+
+    ASSERT_EQ(ort_outputs.size(), 1U);
+    const auto& scores = ort_outputs[0];
+    ASSERT_TRUE(scores.IsTensor());
+
+    auto scores_ts = scores.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, scores_ts.GetElementType());
+
+    const auto scores_shape = scores_ts.GetShape();
+    ASSERT_EQ(scores_shape.size(), static_cast<size_t>(4));
+    ASSERT_EQ(scores_shape[0], static_cast<int64_t>(max_length[0]) - input_ids_shape[1]);
+    ASSERT_EQ(scores_shape[1], input_ids_shape[0]);
+    ASSERT_EQ(scores_shape[2], num_beams[0]);
+    ASSERT_GT(scores_shape[3], 0);
   }
 }
 

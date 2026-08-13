@@ -522,10 +522,11 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
-  context_.Flush(*this);
+  ORT_THROW_IF_ERROR(context_.Flush(*this));
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
@@ -540,6 +541,7 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
@@ -584,6 +586,10 @@ void BufferManager::Release(WGPUBuffer buffer) const {
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
+  // Encode pending deferred dispatches before recording the readback; the flush below submits both
+  // in order.
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
+
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
@@ -595,7 +601,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  context_.Flush(*this);
+  ORT_THROW_IF_ERROR(context_.Flush(*this));
 
   // TODO: revise wait in whole project
 

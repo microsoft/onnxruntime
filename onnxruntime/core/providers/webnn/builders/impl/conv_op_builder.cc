@@ -333,9 +333,10 @@ bool ConvOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::
     // The last decomposed op of ConvInteger is Cast, and so
     // we only need to ensure it supports the output_type.
     return IsDataTypeSupportedByOp("Cast", output_type, wnn_limits, "output", "Output", logger);
-  } else {
-    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
   }
+
+  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger) &&
+         IsOutputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

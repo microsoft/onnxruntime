@@ -438,6 +438,24 @@ static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.la
 /// </summary>
 static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.name_based_layer_assignment";
 
+/// <summary>
+/// Provides input shape overrides for workspace estimation in dynamic-shape models.
+/// When set, the framework propagates these shapes for workspace pre-computation
+/// (Level-1 budget estimation and Level-2 DeclareWorkspaceRequirements).
+///
+/// Format: "input_name:[d0,d1,...];input_name2:[d0,d1,...]"
+/// Example: "input_ids:[8,4096];attention_mask:[8,4096]"
+///
+/// Each input_name must match a model graph input. Dimensions must be positive integers.
+/// Unknown/symbolic dimensions in the model will be replaced by the corresponding override
+/// value and propagated through a separate shape-inference graph for estimation purposes only.
+/// Although an override may describe a maximum input shape, downstream inferred shapes are
+/// estimation hints, not guaranteed upper bounds: operator shape transformations are not
+/// necessarily monotonic. Runtime shapes are not constrained by this setting, and consumers
+/// must retain runtime bounds checks and allocation fallbacks.
+/// </summary>
+static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
@@ -583,7 +601,52 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // Option values:
 // - "0": disable. (default)
 // - "1": enable.
+//
+// \deprecated Since version 1.29. Use "ep.enable_weightless" instead, which covers all initializers
+// (internal and external) and works in both JIT and AOT flows.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Enable weightless mode for all initializers (internal and external).
+//
+// When enabled, ONNX Runtime requests that the execution provider operate without embedding or copying
+// constant initializers.
+//
+// This option works in both JIT (non-cached) and AOT (EPContext model) flows:
+// - JIT: The EP should set drop_constant_initializers to false in OrtNodeFusionOptions so that ORT
+//   provides the initializer data as inputs to the compiled/fused node. The EP can then access these
+//   initializers at Compute() time via KernelContext_GetInput().
+//   NOTE: Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
+//   Compile() so that the EP can cache and reuse data pointers directly is planned but not yet implemented.
+// - AOT: ORT generates EPContext models with weightless EPContext nodes. The EP should use the
+//   "onnx_model_filename" EPContext node attribute or the "ep.context_source_model_path" session option
+//   to locate the source model's initializer data when creating a session from the compiled model.
+//
+// ORT checks that the EP supports weightless mode by calling OrtEpApi::GetWeightlessSupport().
+// If the EP does not support it, ORT returns an error.
+//
+// Option values:
+// - "0": disable. (default)
+// - "1": enable.
+//
+// \since Version 1.29.
+static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weightless";
+
+// Specifies the file path to the original (source) ONNX model when creating a session with a weightless
+// EPContext model.
+//
+// When an EPContext model is generated with weightless mode ("ep.enable_weightless" = "1"), the compiled
+// model may not contain the original initializer data. When creating a session from the compiled model,
+// the EP needs to load the initializer data from the source model. This session option provides the
+// runtime location of the source model, which may differ from the path used at compile time (stored in
+// the EPContext node's "onnx_model_filename" attribute).
+//
+// If not set, the EP falls back to the "onnx_model_filename" attribute in the EPContext node.
+//
+// If the source model is available as a byte buffer rather than a file path, use
+// OrtApi::SessionOptionsSetWeightlessSourceModelBuffer() instead.
+//
+// \since Version 1.29.
+static const char* const kOrtSessionOptionEpContextSourceModelPath = "ep.context_source_model_path";
 
 // Controls the intra-op thread pool size for a session.
 // Value should be a base-10 int32 string.

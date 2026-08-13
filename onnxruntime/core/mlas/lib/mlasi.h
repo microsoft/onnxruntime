@@ -1598,6 +1598,13 @@ extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 
 //
+// Linear (recurrent) attention dispatch structure.
+//
+struct MLAS_LINEAR_ATTENTION_DISPATCH;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -1767,6 +1774,9 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     // Hoisted under combined guard so future "shared between AMD64 and RISCV64"
@@ -1774,8 +1784,6 @@ struct MLAS_PLATFORM {
     // assigns these fields independently in platform.cpp.
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
 #endif
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
@@ -1810,7 +1818,6 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
@@ -1845,6 +1852,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
+    const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};
 };
 
 inline
