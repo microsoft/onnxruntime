@@ -560,7 +560,7 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool init
   if (buffer) {
     if (initialize_to_zero) {
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
-      ORT_THROW_IF_ERROR(context_.ClearBuffer(buffer, 0, buffer_size));
+      ORT_THROW_IF_ERROR(context_.ClearBuffer(buffer, 0, buffer_size, *this));
       return buffer_guard.MoveToCHandle();
     }
     return buffer;

@@ -332,6 +332,12 @@ Status WebGpuContext::EncodeDeferredDispatches() {
     return Status::OK();
   }
 
+  ORT_ENFORCE(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
+                  max_num_pending_dispatches_,
+              "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
+              num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
+              ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
+
   auto reset_deferred_state = [this]() {
     deferred_dispatches_.clear();
   };
@@ -685,7 +691,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Drain and submit a full window to bound both recorded and encoded dispatch state. Partial
   // windows are encoded and submitted by the caller at its execution boundary.
-  if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
+  if (static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() >=
+      max_num_pending_dispatches_) {
     ORT_RETURN_IF_ERROR(Flush(buffer_mgr));
   }
   return Status::OK();
@@ -1081,8 +1088,12 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command) 
   }
 }
 
-Status WebGpuContext::ClearBuffer(WGPUBuffer buffer, uint64_t offset, uint64_t size) {
+Status WebGpuContext::ClearBuffer(WGPUBuffer buffer, uint64_t offset, uint64_t size,
+                                  const webgpu::BufferManager& buffer_manager) {
   ORT_RETURN_IF_ERROR(EncodeDeferredDispatches());
+  if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+    ORT_RETURN_IF_ERROR(Flush(buffer_manager));
+  }
   EndComputePass();
   GetCommandEncoder().ClearBuffer(buffer, offset, size);
 
@@ -1136,7 +1147,8 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
       DispatchCommand(command);
     } else {
       ORT_ENFORCE(command.type == webgpu::CapturedCommandType::ClearBuffer);
-      ORT_THROW_IF_ERROR(ClearBuffer(command.clear_buffer, command.clear_offset, command.clear_size));
+      ORT_THROW_IF_ERROR(ClearBuffer(command.clear_buffer, command.clear_offset, command.clear_size,
+                                    buffer_manager));
     }
 
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {

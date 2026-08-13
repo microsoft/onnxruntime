@@ -3,7 +3,10 @@
 
 #ifdef USE_WEBGPU
 
+#include <filesystem>
 #include <numeric>
+
+#include <gsl/gsl>
 
 #include "gtest/gtest.h"
 
@@ -86,6 +89,78 @@ static Model CreateMatMulReluMatMulModel() {
   Model model(opsets);
   model.AddGraph(graph);
   return model;
+}
+
+TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAllocatorClears) {
+  Env& env = *ort_env;
+
+  SessionOptions session_options;
+  session_options.DisableMemPattern();
+  session_options.EnableProfiling(ORT_TSTR("webgpu_dispatch_batching_profiling_test"));
+
+  std::unordered_map<std::string, std::string> provider_options;
+  provider_options["maxNumPendingDispatches"] = "2";
+  provider_options["validationMode"] = "full";
+  AppendWebGpuEp(env, session_options, provider_options);
+
+  auto model = CreateMatMulReluMatMulModel();
+  Session session(env, model, session_options);
+
+  MemoryInfo gpu_mem_info("WebGPU_Buffer", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Allocator gpu_allocator(session, gpu_mem_info);
+  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  std::vector<int64_t> dims_a = {3, 4};
+  std::vector<int64_t> dims_b = {4, 3};
+  std::vector<int64_t> dims_c = {3, 2};
+  std::vector<int64_t> dims_y = {3, 2};
+  std::vector<float> values_a(12, 1.0f);
+  std::vector<float> values_b(12, 1.0f);
+  std::vector<float> values_c(6, 1.0f);
+
+  Value gpu_a = Value::CreateTensor<float>(gpu_allocator, dims_a.data(), dims_a.size());
+  Value gpu_b = Value::CreateTensor<float>(gpu_allocator, dims_b.data(), dims_b.size());
+  Value gpu_c = Value::CreateTensor<float>(gpu_allocator, dims_c.data(), dims_c.size());
+  Value gpu_y = Value::CreateTensor<float>(gpu_allocator, dims_y.data(), dims_y.size());
+
+  auto copy_to_gpu = [&](std::vector<float>& values, const std::vector<int64_t>& dims, Value& gpu_tensor) {
+    Value cpu_tensor = Value::CreateTensor<float>(cpu_mem_info, values.data(), values.size(),
+                                                  dims.data(), dims.size());
+    auto status = env.CopyTensor(cpu_tensor, gpu_tensor, nullptr);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  };
+
+  copy_to_gpu(values_a, dims_a, gpu_a);
+  copy_to_gpu(values_b, dims_b, gpu_b);
+  copy_to_gpu(values_c, dims_c, gpu_c);
+
+  IoBinding io_binding(session);
+  io_binding.BindInput("A", gpu_a);
+  io_binding.BindInput("B", gpu_b);
+  io_binding.BindInput("C", gpu_c);
+  io_binding.BindOutput("Y", gpu_y);
+  io_binding.SynchronizeInputs();
+
+  std::string run_error;
+  try {
+    session.Run(RunOptions{nullptr}, io_binding);
+    io_binding.SynchronizeOutputs();
+
+    session.Run(RunOptions{nullptr}, io_binding);
+    io_binding.SynchronizeOutputs();
+  } catch (const std::exception& ex) {
+    run_error = ex.what();
+  }
+
+  AllocatorWithDefaultOptions allocator;
+  auto profile_file = session.EndProfilingAllocated(allocator);
+  std::filesystem::path profile_file_path = profile_file.get();
+  auto cleanup_profile = gsl::finally([&profile_file_path] {
+    std::error_code ec;
+    std::filesystem::remove(profile_file_path, ec);
+  });
+
+  ASSERT_TRUE(run_error.empty()) << run_error;
 }
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {

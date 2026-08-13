@@ -374,7 +374,8 @@ class WebGpuContext final {
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
   void DispatchCommand(const webgpu::CapturedCommandInfo& command);
-  Status ClearBuffer(WGPUBuffer buffer, uint64_t offset, uint64_t size);
+  Status ClearBuffer(WGPUBuffer buffer, uint64_t offset, uint64_t size,
+                     const webgpu::BufferManager& buffer_manager);
   Status EncodeDeferredDispatches();
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
