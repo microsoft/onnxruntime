@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/session/onnxruntime_cxx_api.h"
@@ -13,6 +14,7 @@
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -22,6 +24,16 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(WhisperEncoderSubgraphTest, ReportsInvalidSecondInputName) {
+  NodeArg encoder_input("encoder_input_ids", nullptr);
+  NodeArg invalid_decoder_input("wrong_name", nullptr);
+
+  const auto status = contrib::transformers::ValidateWhisperEncoderInputNames(encoder_input, invalid_decoder_input);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("got: wrong_name"));
+}
 
 TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsOversizedVocabSize) {
   contrib::transformers::BeamSearchParameters parameters;
