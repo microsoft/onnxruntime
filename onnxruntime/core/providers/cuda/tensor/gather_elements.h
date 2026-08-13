@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <limits>
-
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/shared_library/provider_api.h"
 
@@ -11,14 +9,6 @@ namespace onnxruntime {
 namespace cuda {
 
 struct GatherScatterElementsArgs;
-
-inline Status ValidateGatherElementsElementCount(int64_t element_count) {
-  constexpr int64_t max_element_count = std::numeric_limits<int32_t>::max();
-  ORT_RETURN_IF(element_count < 0 || element_count > max_element_count,
-                "CUDA GatherElements output element count ", element_count,
-                " is outside the supported range [0, ", max_element_count, "].");
-  return Status::OK();
-}
 
 // Coalesce those contiguous axes that have same dim values for both input and indices (exclude the gather/scatter axis)
 // so that we will have less divmod to compute during the kernels.
