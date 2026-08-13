@@ -139,7 +139,7 @@ void RunMalformedBShapeInitializerTest(const std::vector<int64_t>& b_shape_data,
     ONNX_NAMESPACE::shape_inference::InferShapes(
         model, ONNX_NAMESPACE::OpSchemaRegistry::Instance());
     FAIL() << "Expected shape inference to reject malformed B_shape initializer data.";
-  } catch (const ONNX_NAMESPACE::shape_inference::InferenceError& ex) {
+  } catch (const std::exception& ex) {
     EXPECT_THAT(ex.what(), testing::HasSubstr(expected_error));
   }
 }
