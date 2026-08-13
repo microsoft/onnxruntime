@@ -227,9 +227,12 @@ bool TryMatMul4BitsM1(
   // Compile-time impact is similarly bounded: this kernel is a leaf template in three separate
   // .cu files (float, half, bf16) that already compile independently.
   //
-  // All three cols_per_block values are reachable in production:
-  //   - 8: any device where n/8 >= sm_count * 12 (common for n >= ~10k on H100).
-  //   - 4: n/8 < target but n/4 >= target (e.g. n=8192 on H100-132SM).
+  // All three cols_per_block values are reachable in production. The occupancy path can
+  // select any of them depending on the per-CC register/shared-memory limits; the examples
+  // below use the host-only fallback (SelectColsPerBlock, target = sm_count * 8) because it
+  // is the one that can be enumerated without a device:
+  //   - 8: n/8 >= target (n >= 8448 on a 132-SM H100).
+  //   - 4: n/8 < target but n%4 == 0 and n/4 >= target (e.g. n=8192 on H100-132SM).
   //   - 2: n/4 < target and n is even (e.g. n=4096 on H100-132SM).
   // No instantiation is dead code.
 
