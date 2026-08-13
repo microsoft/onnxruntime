@@ -213,6 +213,55 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_EQ(final_offset, external_offset);
 }
 
+TEST(PrepackedWeightsForGraphTest, DiscardReferencesProvidedWeightWhenSaving) {
+  constexpr const char* weight_name = "weight";
+  constexpr const char* key = "key";
+  std::array<uint8_t, 1> discarded_data{1};
+  std::array<uint8_t, 1> shared_data{2};
+
+  PrePackedWeights discarded_weights;
+  discarded_weights.buffers_.emplace_back(discarded_data.data(), BufferDeleter(nullptr));
+  discarded_weights.buffer_sizes_.push_back(discarded_data.size());
+
+  PrePackedWeights shared_weights;
+  shared_weights.buffers_.emplace_back(shared_data.data(), BufferDeleter(nullptr));
+  shared_weights.buffer_sizes_.push_back(shared_data.size());
+
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, true);
+  prepacked_for_graph.InsertPrepackedWeights(key, std::move(discarded_weights));
+
+  prepacked_for_graph.DiscardAndReplaceWithReferenceIfSaving(weight_name, key, shared_weights);
+
+  const auto* retained_weights = prepacked_for_graph.GetPrepackedWeights(key);
+  ASSERT_NE(retained_weights, nullptr);
+  ASSERT_EQ(retained_weights->buffers_.size(), 1U);
+  EXPECT_EQ(retained_weights->buffers_[0].get(), shared_data.data());
+  const auto* keys_for_weight = prepacked_for_graph.GetKeysForWeightForSaving(weight_name);
+  ASSERT_NE(keys_for_weight, nullptr);
+  EXPECT_EQ(keys_for_weight->count(key), 1U);
+}
+
+TEST(PrepackedWeightsForGraphTest, DiscardRemovesWeightWhenNotSaving) {
+  constexpr const char* key = "key";
+  std::array<uint8_t, 1> discarded_data{1};
+  std::array<uint8_t, 1> shared_data{2};
+
+  PrePackedWeights discarded_weights;
+  discarded_weights.buffers_.emplace_back(discarded_data.data(), BufferDeleter(nullptr));
+
+  PrePackedWeights shared_weights;
+  shared_weights.buffers_.emplace_back(shared_data.data(), BufferDeleter(nullptr));
+
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, false);
+  prepacked_for_graph.InsertPrepackedWeights(key, std::move(discarded_weights));
+
+  prepacked_for_graph.DiscardAndReplaceWithReferenceIfSaving("weight", key, shared_weights);
+
+  EXPECT_EQ(prepacked_for_graph.GetPrepackedWeights(key), nullptr);
+}
+
 // T must be float for double, and it must match with the 'type' argument
 template <typename T>
 void TestUnpackFloatTensor(TensorProto_DataType type, const std::filesystem::path& model_path) {
