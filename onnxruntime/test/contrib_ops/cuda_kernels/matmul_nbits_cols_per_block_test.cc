@@ -17,6 +17,9 @@
 //  6. Old-acceptance-set regression (B1): admission uses cols=8 shared-memory
 //     footprint, so the accepted-shape set is identical to upstream.
 //  7. Wide-N cols=8 coverage: ensures cols=8 is still the dominant path.
+//  8. ChooseColsPerBlockFromOccupancy: the production decision function, given the
+//     occupancy numbers the CUDA API would have returned. This is a pure function
+//     precisely so the launch decision is testable on a GPU-free host.
 //
 // GPU parity test (B3): verifying bit-identical output between cols_per_block=8/4/2
 // requires a CUDA device. It is structured below but GTEST_SKIP'd without a GPU.
@@ -32,6 +35,7 @@
 namespace onnxruntime {
 namespace test {
 
+using onnxruntime::contrib::cuda::ChooseColsPerBlockFromOccupancy;
 using onnxruntime::contrib::cuda::kColsPerThreadBlock;
 using onnxruntime::contrib::cuda::SelectColsPerBlock;
 
@@ -196,6 +200,77 @@ TEST(CUDA_EP_Unittest, SelectColsPerBlock_WideN_Cols8Coverage) {
   EXPECT_EQ(SelectColsPerBlock(14336, 108), 8);
   EXPECT_EQ(SelectColsPerBlock(28672, 108), 8);
   EXPECT_EQ(SelectColsPerBlock(32768, 108), 8);
+}
+
+// ----- ChooseColsPerBlockFromOccupancy: the production decision function -----
+//
+// max_blocks_per_sm[] is indexed by kColsPerBlockCandidates = {8, 4, 2}. The values used
+// below are the ones the occupancy API reports for a warp-slot-limited kernel: this GEMV
+// uses 32*cols threads and little shared memory, so a device with 48 warp slots and a
+// 16-CTA-per-SM cap yields 6 CTAs at cols=8, 12 at cols=4, and 16 (capped, not 24) at cols=2.
+namespace {
+constexpr int kWarpLimitedA10[] = {6, 12, 16};
+}  // namespace
+
+// Regression: the previous objective maximised resident warps alone. Resident warps are
+// invariant in cols_per_block for a warp-limited kernel, so every candidate tied and the
+// tie-break kept cols = 8 — leaving most of the device idle for exactly the narrow-n shapes
+// this selection exists for. n = 256 on a 72-SM A10 is that case: cols = 8 covers 32 SMs.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_NarrowN_FillsDevice) {
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, kWarpLimitedA10), 2);
+  // 384/8 = 48 < 72 SMs, but 384/4 = 96 >= 72, so 4 already covers the device and wins the
+  // tie-break against 2 by being the larger candidate.
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(384, 72, kWarpLimitedA10), 4);
+}
+
+// Wide n: the default grid already covers every SM, so the upstream geometry is preserved.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_WideN_Returns8) {
+  for (int n : {4096, 8192, 11008, 14336, 32768}) {
+    EXPECT_EQ(ChooseColsPerBlockFromOccupancy(n, 72, kWarpLimitedA10), 8) << "n=" << n;
+  }
+  // Boundary: n/8 == sm_count exactly is already full coverage.
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(576, 72, kWarpLimitedA10), 8);
+  // One column short of that boundary drops to the next candidate.
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(568, 72, kWarpLimitedA10), 4);
+}
+
+// A candidate whose occupancy query failed (reported <= 0) must never be selected.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_SkipsFailedQueries) {
+  constexpr int only_eight[] = {6, 0, 0};
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, only_eight), 8);
+  constexpr int no_two[] = {6, 12, 0};
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, no_two), 4);
+}
+
+// All queries failed, sm_count unavailable, or a null array: fall back to the host heuristic,
+// which itself never returns anything but 8, 4 or 2.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_FailSafe) {
+  constexpr int all_failed[] = {0, 0, 0};
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, all_failed), SelectColsPerBlock(256, 72));
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 0, kWarpLimitedA10), kColsPerThreadBlock);
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, -1, kWarpLimitedA10), kColsPerThreadBlock);
+  EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, nullptr), SelectColsPerBlock(256, 72));
+}
+
+// The launch geometry must tile n exactly: the kernel has no n_id < n guard, so a
+// cols_per_block that does not divide n would write out of bounds.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_ResultDividesN) {
+  for (int sm_count : {1, 16, 40, 72, 108, 132, 1024}) {
+    for (int n = 8; n <= 40960; n += 8) {
+      const int cols = ChooseColsPerBlockFromOccupancy(n, sm_count, kWarpLimitedA10);
+      ASSERT_TRUE(cols == 8 || cols == 4 || cols == 2) << "n=" << n << " sm=" << sm_count;
+      ASSERT_EQ(n % cols, 0) << "n=" << n << " sm=" << sm_count << " cols=" << cols;
+    }
+  }
+}
+
+// Determinism: the same inputs must always produce the same launch geometry, otherwise a
+// CUDA graph captured on one call would be replayed with a different grid.
+TEST(CUDA_EP_Unittest, ChooseColsPerBlockFromOccupancy_Deterministic) {
+  for (int i = 0; i < 100; ++i) {
+    EXPECT_EQ(ChooseColsPerBlockFromOccupancy(256, 72, kWarpLimitedA10), 2);
+    EXPECT_EQ(ChooseColsPerBlockFromOccupancy(14336, 132, kWarpLimitedA10), 8);
+  }
 }
 
 // ----- B3: GPU parity test (requires GPU) -----

@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <algorithm>
-
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
@@ -141,11 +139,12 @@ bool TryMatMul4BitsM1(
   }
 
   // Launch: select cols_per_block using the CUDA occupancy API rather than a magic constant.
-  // For each candidate (8, 4, 2), we query cudaOccupancyMaxActiveBlocksPerMultiprocessor
-  // for the *actual* kernel instantiation (which has different register and shared-memory
-  // footprints per cols_per_block). We pick the candidate that maximises the number of
-  // active warps across the device, subject to the constraint that the grid must actually
-  // fill the device (no point having high per-SM occupancy if the grid is tiny).
+  // For each candidate (8, 4, 2) we query cudaOccupancyMaxActiveBlocksPerMultiprocessor for
+  // the actual kernel instantiation (register and shared-memory footprints differ per
+  // cols_per_block) and hand the results to ChooseColsPerBlockFromOccupancy, which applies
+  // the lexicographic objective (SMs busy, then resident warps, then keep the largest
+  // candidate). The decision function is deliberately a pure host function in
+  // matmul_4bits_cols_per_block.h so it can be unit-tested without a GPU.
   //
   // This replaces the old kTargetCtasPerSm = 12 magic number, which was tuned for
   // datacenter parts (A100/H100) and regressed CC 8.6/8.9 consumer GPUs where per-SM
@@ -184,37 +183,20 @@ bool TryMatMul4BitsM1(
     return (err == cudaSuccess) ? max_blocks : 0;
   };
 
-  int cols_per_block = kColsPerThreadBlock;  // default 8
-  {
-    int best_active_warps = 0;
-    constexpr int candidates[] = {8, 4, 2};
-    for (int cpb : candidates) {
-      if (n % cpb != 0) continue;
-      const size_t smem = sizeof(T) * blocks_per_K * cpb +
-                          static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cpb * 2 : 0);
-      const int grid_size = n / cpb;
-      const int max_blocks_per_sm = query_max_active_blocks(cpb, smem);
-      if (max_blocks_per_sm <= 0) continue;
-      // Total active blocks across the device, capped by the grid size
-      const int active_blocks = std::min(max_blocks_per_sm * sm_count, grid_size);
-      // Warps per block = cpb (one warp per column)
-      const int active_warps = active_blocks * cpb;
-      // Note: when the grid fits entirely in the device's resident-block capacity this
-      // evaluates to n for every candidate, so all three tie and the strict > below keeps
-      // cpb = 8, i.e. exactly the upstream launch geometry. Reducing cpb can only win in
-      // the capacity-limited regime, where the smaller variant's higher max_blocks_per_sm
-      // buys more resident warps. Both outcomes are safe; which one dominates on CC 8.6/8.9
-      // is the measurement this PR is still waiting on.
-      if (active_warps > best_active_warps) {
-        best_active_warps = active_warps;
-        cols_per_block = cpb;
-      }
+  int max_blocks_per_sm[kNumColsPerBlockCandidates] = {0, 0, 0};
+  for (int i = 0; i < kNumColsPerBlockCandidates; ++i) {
+    const int cpb = kColsPerBlockCandidates[i];
+    if (n % cpb != 0) {
+      continue;
     }
-    // If all occupancy queries failed (e.g. driver issue), fall back to host heuristic
-    if (best_active_warps == 0) {
-      cols_per_block = SelectColsPerBlock(n, sm_count);
-    }
+    const size_t smem = sizeof(T) * blocks_per_K * cpb +
+                        static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cpb * 2 : 0);
+    max_blocks_per_sm[i] = query_max_active_blocks(cpb, smem);
   }
+
+  // ChooseColsPerBlockFromOccupancy itself falls back to SelectColsPerBlock(n, sm_count) when
+  // every query failed or sm_count is unavailable, and only ever returns a divisor of n.
+  const int cols_per_block = ChooseColsPerBlockFromOccupancy(n, sm_count, max_blocks_per_sm);
 
   const size_t launch_shared_mem =
       sizeof(T) * blocks_per_K * cols_per_block +
@@ -233,13 +215,15 @@ bool TryMatMul4BitsM1(
   // Compile-time impact is similarly bounded: this kernel is a leaf template in three separate
   // .cu files (float, half, bf16) that already compile independently.
   //
-  // All three cols_per_block values are reachable in production. The occupancy path can
-  // select any of them depending on the per-CC register/shared-memory limits; the examples
-  // below use the host-only fallback (SelectColsPerBlock, target = sm_count * 8) because it
-  // is the one that can be enumerated without a device:
-  //   - 8: n/8 >= target (n >= 8448 on a 132-SM H100).
-  //   - 4: n/8 < target but n%4 == 0 and n/4 >= target (e.g. n=8192 on H100-132SM).
-  //   - 2: n/4 < target and n is even (e.g. n=4096 on H100-132SM).
+  // All three cols_per_block values are reachable in production. Under
+  // ChooseColsPerBlockFromOccupancy the selector is driven by how many SMs the grid covers:
+  //   - 8: n/8 >= sm_count, i.e. the default grid already busies every SM (n >= 576 on a
+  //        72-SM A10, n >= 1056 on a 132-SM H100) — the common decode case for wide n.
+  //   - 4: n/8 < sm_count <= n/4 and n % 4 == 0 (e.g. n = 384 on a 72-SM A10).
+  //   - 2: n/4 < sm_count and n is even (e.g. n = 256 on a 72-SM A10: 32 CTAs at cols=8
+  //        would leave 40 SMs idle, 128 CTAs at cols=2 busy all 72).
+  // The host-only fallback SelectColsPerBlock, used only when every occupancy query fails,
+  // reaches the same three values through its own 8-waves-per-SM target.
   // No instantiation is dead code.
 
 #define MATMUL_FLOAT4B_M1_DISPATCH_COLS(bs, cpb)                                                 \
