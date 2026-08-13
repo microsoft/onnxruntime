@@ -119,13 +119,13 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
 
   std::vector<Value> inputs;
   inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_a.data(), values_a.size(),
-                                                  dims_a.data(), dims_a.size()));
+                                                 dims_a.data(), dims_a.size()));
   inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_b.data(), values_b.size(),
-                                                  dims_b.data(), dims_b.size()));
+                                                 dims_b.data(), dims_b.size()));
   inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_c.data(), values_c.size(),
-                                                  dims_c.data(), dims_c.size()));
+                                                 dims_c.data(), dims_c.size()));
   Value output = Value::CreateTensor<float>(cpu_mem_info, values_y.data(), values_y.size(),
-                                             dims_y.data(), dims_y.size());
+                                            dims_y.data(), dims_y.size());
   std::vector<const char*> input_names = {"A", "B", "C"};
   std::vector<const char*> output_names = {"Y"};
 
