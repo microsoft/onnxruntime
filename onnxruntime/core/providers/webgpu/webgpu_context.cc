@@ -741,6 +741,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupSizeControl,
 #if !defined(__wasm__)
       wgpu::FeatureName::BufferMapExtendedUsages,
 #endif
