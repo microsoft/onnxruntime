@@ -2921,9 +2921,8 @@ bool HandleReshape(HandlerArgs& args) {
     return true;
   }
 
-  // Fall back to the flatten / run-merge rewrite for the common
-  // Transpose -> Reshape(flatten) pattern that appears around channels-first /
-  // channels-last conversions (e.g. NHWC -> NCHW followed by a spatial flatten).
+  // Fall back to the run-merge rewrite: Transpose -> Reshape where the Reshape
+  // collapses contiguous, ascending pre-transpose axes into fewer output dims.
   return HandleReshapeFlatten(args);
 }
 
