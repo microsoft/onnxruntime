@@ -4,11 +4,10 @@
 // Tests for the Apple Accelerate (vDSP) LayerNorm/RMSNorm kernel added
 // behind the onnxruntime_USE_APPLE_ACCELERATE CMake option. This file
 // compiles to nothing unless the build is targeting macOS arm64 with that
-// option enabled -- matching the pattern already used for the sibling Apple
-// Accelerate Tanh kernel tests (test_tanh_apple_accelerate.cpp) and other
-// Apple/ARM64-only MLAS unit tests. On every other configuration (including
-// the default build, where the option is OFF) this translation unit is an
-// empty no-op.
+// option enabled -- matching the #if-gating pattern already used elsewhere
+// for Apple/ARM64-only MLAS unit tests. On every other configuration
+// (including the default build, where the option is OFF) this translation
+// unit is an empty no-op.
 //
 // Unlike Tanh (an elementwise function where every output element depends
 // only on the corresponding input element), LayerNorm/RMSNorm is a whole-row
@@ -51,9 +50,8 @@
 namespace {
 
 // Poison value used to pre-fill output buffers before calling a kernel
-// under test, instead of the natural-looking 0.0f. See the analogous
-// kPoisonValue rationale in test_tanh_apple_accelerate.cpp: a kernel that
-// silently fails to write an element must fail loudly rather than pass by
+// under test, instead of the natural-looking 0.0f: a kernel that silently
+// fails to write an element must fail loudly rather than pass by
 // coincidence.
 //
 // LayerNorm/RMSNorm's real output range is not bounded to [-1, 1] the way
@@ -120,14 +118,20 @@ void ReferenceLayerNorm(
 }
 
 // Relative tolerance matching upstream's CloseEnough (rel_tol=0.005), with a
-// 1e-4 absolute floor -- same convention used by the sibling AVX2 LayerNorm
-// kernel's test suite, adopted here for consistency across MLAS LayerNorm
-// kernel tests. 1/sqrt(var+eps) amplifies small variance differences
+// 1e-4 absolute floor. 1/sqrt(var+eps) amplifies small variance differences
 // between fp32 vDSP accumulation and the fp64 reference, particularly for
 // small NormSize where variance is near zero.
 bool NearEnough(float got, float ref) {
   if (std::isnan(got) || std::isnan(ref)) {
     return std::isnan(got) && std::isnan(ref);
+  }
+  if (std::isinf(got) || std::isinf(ref)) {
+    // fabs(inf - inf) is NaN, which would otherwise make this function
+    // incorrectly reject two equal infinities of the same sign (not
+    // currently reachable by any caller in this file, since Inf-producing
+    // cases are asserted directly rather than through this helper, but
+    // guarded here defensively).
+    return got == ref;
   }
   float diff = std::fabs(got - ref);
   if (diff <= 1e-4f) {
@@ -189,11 +193,15 @@ void RunDirectKernelParityCase(size_t norm_size, bool simplified, bool with_bias
 // bias, across a range of NormSize including 1 (degenerate row), values
 // that are and are not multiples of 4 (vDSP is not a fixed-width-vector
 // API, but this matches the sizes exercised by the pre-existing generic
-// LayerNorm test suite), and a representative sample of real transformer
-// hidden dims (768 BERT/GPT-2, 3072 Phi-3/Gemma, 4096 Llama).
+// LayerNorm test suite), a representative sample of real transformer
+// hidden dims (768 BERT/GPT-2, 3072 Phi-3/Gemma, 4096 Llama), and the exact
+// kApplePerRowStackScratch boundary (8192, see layernorm.cpp): NormSize ==
+// 8192 takes the on-stack scratch path (the condition is strictly
+// greater-than), so it belongs here rather than in
+// LargeNormSizeHeapFallback below, which covers NormSize > 8192.
 TEST(LayerNormAppleAccelerate, ForcedReachability) {
   for (size_t norm_size : {size_t{1}, size_t{7}, size_t{8}, size_t{63}, size_t{64}, size_t{127}, size_t{128},
-                           size_t{768}, size_t{1024}, size_t{3072}, size_t{4096}}) {
+                           size_t{768}, size_t{1024}, size_t{3072}, size_t{4096}, size_t{8192}}) {
     for (bool simplified : {true, false}) {
       for (bool with_bias : {true, false}) {
         RunDirectKernelParityCase(norm_size, simplified, with_bias, 1e-5f);
