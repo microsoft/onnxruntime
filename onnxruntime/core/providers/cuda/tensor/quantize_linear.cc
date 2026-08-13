@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "quantize_linear.h"
+#include "quantize_linear_common.h"
 #include "quantize_linear.cuh"
 
 namespace onnxruntime {
@@ -192,7 +193,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x.Shape();
   const auto num_of_elements = x_shape.Size();
-  ORT_RETURN_IF_ERROR(ValidateQDQElementCount(num_of_elements));
+  ORT_RETURN_IF_NOT(IsQDQElementCountSupported(num_of_elements), QDQElementCountErrorMessage());
 
   auto& y = *ctx->Output(0, x_shape);
 
@@ -408,7 +409,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x.Shape();
   const auto num_of_elements = x_shape.Size();
-  ORT_RETURN_IF_ERROR(ValidateQDQElementCount(num_of_elements));
+  ORT_RETURN_IF_NOT(IsQDQElementCountSupported(num_of_elements), QDQElementCountErrorMessage());
 
   auto& y = *ctx->Output(0, x_shape);
 
