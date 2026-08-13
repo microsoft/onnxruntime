@@ -144,7 +144,7 @@ jobs:
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
 
-      - name: Running MLAS Apple Accelerate targeted tests (onnxruntime_mlas_test)
+      - name: Running MLAS LayerNorm/RMSNorm tests (onnxruntime_mlas_test)
         # onnxruntime_mlas_test is a standalone gtest binary that is never
         # registered with add_test()/ctest (see cmake/onnxruntime_unittests.cmake),
         # so the ctest-driven "build.py --test" step above never runs it on
@@ -159,6 +159,19 @@ jobs:
         # that Release may optimize past) and Release (the same binary the
         # benchmark steps below build) are both intentional here -- unlike
         # the benchmark steps, correctness coverage is not config-gated.
+        #
+        # The filter is "*LayerNorm*", not just "LayerNormAppleAccelerate.*":
+        # registering GetMlasPlatform().LayerNormF32Kernel on this job also
+        # makes the pre-existing, platform-agnostic LayerNorm.* suite in
+        # test_layernorm.cpp *actually execute* for the first time on ARM64
+        # (it was previously a guaranteed no-op everywhere on this
+        # architecture, since MlasLayerNormF32 returned false and every case
+        # hit its own early `if (!used) return;`). That suite is a real,
+        # independent correctness check of this kernel using a differently-
+        # ordered reference formula, and must run here for the same "no
+        # explicit ctest registration" reason as above -- a filter scoped to
+        # only this PR's own new tests would let a regression in the shared
+        # suite go completely uncaught by any CI lane.
         if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
         shell: bash
         # build.py's --build_dir ./build + --config ${{ matrix.build_config }}
@@ -172,22 +185,28 @@ jobs:
 
           # A gtest binary invoked with --gtest_filter that matches zero
           # tests still exits 0 -- it "ran" a suite of nothing and reports
-          # success. That would make this whole step a silent no-op if the
-          # LayerNormAppleAccelerate.* suite were ever absent from this
-          # binary (e.g. test_layernorm_apple_accelerate.cpp not compiled in
-          # because MLAS_USE_APPLE_ACCELERATE/__APPLE__/MLAS_TARGET_ARM64
-          # didn't all evaluate true), and this CI lane would appear green
-          # while providing zero real coverage. Enumerate the filtered
-          # suite first and fail loudly if it is empty, instead of trusting
-          # the runner's own exit code.
-          listed_tests="$(./onnxruntime_mlas_test --gtest_filter="LayerNormAppleAccelerate.*" --gtest_list_tests)"
+          # success. That would make this whole step a silent no-op if either
+          # suite were ever absent from this binary (e.g.
+          # test_layernorm_apple_accelerate.cpp not compiled in because
+          # MLAS_USE_APPLE_ACCELERATE/__APPLE__/MLAS_TARGET_ARM64 didn't all
+          # evaluate true, or test_layernorm.cpp removed/renamed upstream),
+          # and this CI lane would appear green while providing zero real
+          # coverage. Enumerate the filtered suites first and fail loudly if
+          # either is missing, instead of trusting the runner's own exit
+          # code or a single substring match that could be satisfied by only
+          # one of the two suites.
+          listed_tests="$(./onnxruntime_mlas_test --gtest_filter="*LayerNorm*" --gtest_list_tests)"
           echo "${listed_tests}"
           if ! grep -q "LayerNormAppleAccelerate" <<< "${listed_tests}"; then
-            echo "::error::onnxruntime_mlas_test --gtest_filter='LayerNormAppleAccelerate.*' matched zero tests (see --gtest_list_tests output above). This means test_layernorm_apple_accelerate.cpp was not compiled into onnxruntime_mlas_test on this job -- check that MLAS_USE_APPLE_ACCELERATE, __APPLE__, and MLAS_TARGET_ARM64 all evaluate true for this build -- so the Apple Accelerate LayerNorm/RMSNorm kernel has zero test coverage despite this step appearing to pass. Failing loudly instead of silently succeeding with 0 tests run." >&2
+            echo "::error::onnxruntime_mlas_test --gtest_filter='*LayerNorm*' did not list the LayerNormAppleAccelerate suite (see --gtest_list_tests output above). This means test_layernorm_apple_accelerate.cpp was not compiled into onnxruntime_mlas_test on this job -- check that MLAS_USE_APPLE_ACCELERATE, __APPLE__, and MLAS_TARGET_ARM64 all evaluate true for this build -- so the Apple Accelerate LayerNorm/RMSNorm kernel has zero test coverage despite this step appearing to pass. Failing loudly instead of silently succeeding with 0 tests run." >&2
+            exit 1
+          fi
+          if ! grep -q "^LayerNorm\.$" <<< "${listed_tests}"; then
+            echo "::error::onnxruntime_mlas_test --gtest_filter='*LayerNorm*' did not list the pre-existing, platform-agnostic LayerNorm suite (see --gtest_list_tests output above). This suite (test_layernorm.cpp) is the primary cross-platform correctness check for the kernel this PR registers on ARM64 -- if it disappeared from the binary, this step would silently stop covering it. Failing loudly instead of silently succeeding with reduced coverage." >&2
             exit 1
           fi
 
-          ./onnxruntime_mlas_test --gtest_filter="LayerNormAppleAccelerate.*"
+          ./onnxruntime_mlas_test --gtest_filter="*LayerNorm*"
 
       - name: Build MLAS benchmark target (onnxruntime_mlas_benchmark)
         # Real performance evidence is a Ready blocker for this optimization
