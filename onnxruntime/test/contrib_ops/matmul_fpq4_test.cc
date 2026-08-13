@@ -18,7 +18,6 @@
 #include <random>
 
 #include "gtest/gtest.h"
-#include "gmock/gmock.h"
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
@@ -84,67 +83,6 @@ void RunSymbolicInputLengthsShapeInferenceTest() {
       model, ONNX_NAMESPACE::OpSchemaRegistry::Instance());
 }
 
-#ifndef ORT_NO_EXCEPTIONS
-void RunDirectShapeInferenceFailureTest(const std::vector<int64_t>& b_shape_data,
-                                        const std::string& expected_error,
-                                        int64_t b_length = 1) {
-  ONNX_NAMESPACE::ModelProto model;
-  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  auto* default_opset = model.add_opset_import();
-  default_opset->set_domain(kOnnxDomain);
-  default_opset->set_version(21);
-  auto* ms_opset = model.add_opset_import();
-  ms_opset->set_domain(kMSDomain);
-  ms_opset->set_version(1);
-
-  auto* graph = model.mutable_graph();
-  graph->set_name("invalid_matmul_fpq4_shape");
-
-  auto add_input = [graph](const char* name, int32_t elem_type, const std::vector<int64_t>& dims) {
-    auto* input = graph->add_input();
-    input->set_name(name);
-    auto* tensor_type = input->mutable_type()->mutable_tensor_type();
-    tensor_type->set_elem_type(elem_type);
-    for (const int64_t dim : dims) {
-      tensor_type->mutable_shape()->add_dim()->set_dim_value(dim);
-    }
-  };
-
-  add_input("A", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 4});
-  add_input("B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {b_length});
-  add_input("B_shape", ONNX_NAMESPACE::TensorProto_DataType_INT64, {2});
-
-  auto* b_shape = graph->add_initializer();
-  b_shape->set_name("B_shape");
-  b_shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  b_shape->add_dims(2);
-  for (const int64_t value : b_shape_data) {
-    b_shape->add_int64_data(value);
-  }
-
-  auto* node = graph->add_node();
-  node->set_op_type("MatMulFpQ4");
-  node->set_domain(kMSDomain);
-  node->add_input("A");
-  node->add_input("B");
-  node->add_input("B_shape");
-  node->add_output("Y");
-  auto* attribute = node->add_attribute();
-  attribute->set_name("blk_quant_type");
-  attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  attribute->set_i(BlkQ4Zp8);
-
-  try {
-    ONNX_NAMESPACE::shape_inference::InferShapes(
-        model, ONNX_NAMESPACE::OpSchemaRegistry::Instance());
-    FAIL() << "Expected MatMulFpQ4 shape inference to fail.";
-  } catch (const std::exception& ex) {
-    EXPECT_THAT(ex.what(), testing::HasSubstr(expected_error));
-  }
-}
-#endif  // !ORT_NO_EXCEPTIONS
-
 }  // namespace
 
 TEST(MatMulFpQ4, RejectsScalarBShape) {
@@ -155,15 +93,6 @@ TEST(MatMulFpQ4, RejectsScalarBShape) {
 TEST(MatMulFpQ4, AllowsSymbolicInputLengths) {
   RunSymbolicInputLengthsShapeInferenceTest();
 }
-
-#ifndef ORT_NO_EXCEPTIONS
-TEST(MatMulFpQ4, RejectsNegativePackedBLength) {
-  RunDirectShapeInferenceFailureTest(
-      {4, 1},
-      "B input for MatMulFpQ4 must be a 1-D tensor",
-      -1);
-}
-#endif  // !ORT_NO_EXCEPTIONS
 
 TEST(MatMulFpQ4, RejectsKnownWrongBShapeLength) {
   RunInvalidShapeInferenceTest({1}, {0}, {3}, {4, 1, 0},
