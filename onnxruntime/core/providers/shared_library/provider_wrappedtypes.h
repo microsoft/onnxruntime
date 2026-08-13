@@ -1326,6 +1326,9 @@ struct OpKernelContext final {
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
+  Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) {
+    return g_host->OpKernelContext__GetPreallocatedWorkspace(this, slot_id, requested_bytes, workspace);
+  }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
