@@ -33,6 +33,7 @@ class GpuBufferAllocator : public IAllocator {
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
   bool mapped_at_creation_;
+  bool initialize_to_zero_;
 };
 
 // No-op allocator used for the WebGPU device when the context has no Dawn device (a device-free /
