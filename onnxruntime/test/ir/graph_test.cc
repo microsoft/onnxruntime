@@ -2912,7 +2912,7 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalData) {
   ASSERT_EQ(split_node_ptr->OutputDefs().size(), 16u);
 }
 
-TEST_F(GraphTest, RejectsUnregisteredInMemoryInitializerCopy) {
+TEST_F(GraphTest, RejectsUnregisteredInMemoryInitializer) {
   ONNX_NAMESPACE::ModelProto model_proto;
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model_proto.add_opset_import();
@@ -2939,15 +2939,18 @@ TEST_F(GraphTest, RejectsUnregisteredInMemoryInitializerCopy) {
   output_type->mutable_shape()->add_dim()->set_dim_value(1);
 
   std::shared_ptr<Model> source_model;
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), source_model, nullptr, *logger_));
-  Model destination_model("destination", false, DefaultLoggingManager().DefaultLogger());
-
-  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(source_model->MainGraph().ValidateInMemoryInitializers(),
-                                      "arbitrary in-memory references");
-
-  EXPECT_THROW(graph_utils::MakeInitializerCopyIfNotExist(
-                   source_model->MainGraph(), destination_model.MainGraph(), "malformed_initializer", true),
-               OnnxRuntimeException);
+  ORT_TRY {
+    const auto status = Model::Load(std::move(model_proto), source_model, nullptr, *logger_);
+    EXPECT_FALSE(status.IsOK());
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()), ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
 }
 
 // Test for shape inference with in-memory external data using InferenceSession
