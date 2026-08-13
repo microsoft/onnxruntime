@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "../ep_context_data_utils.h"
 #include "ep_factory.h"
 #include "ep_stream_support.h"
+#include "ep_test_hooks.h"
 
 extern std::atomic<uint64_t> g_sync_count;
 
@@ -95,8 +97,40 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
       throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
     }
 
-    auto output = kernel_context.GetOutput(0, shape0);
-    float* output_data = output.GetTensorMutableData<float>();
+    // Prefer writing straight into the caller's buffer when Run/IoBinding supplied one, avoiding an
+    // allocation. ORT does not check the buffer against this run's computed shape on this path, so
+    // validate element type and count before touching it and fall back to GetOutput() on a mismatch.
+    OrtValue* user_provided_output = nullptr;
+    RETURN_IF_ERROR(ort_api.KernelContext_GetUserProvidedOutput(kernel_ctx, 0, &user_provided_output));
+    RecordUserProvidedOutputQueryResult(user_provided_output != nullptr ? 1 : 0);
+
+    // An out-of-range index must fail without touching the out parameter. Recorded rather than
+    // enforced here so the assertion lives with the tests.
+    {
+      OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
+      OrtValue* sentinel = sentinel_value;
+      OrtStatus* status = ort_api.KernelContext_GetUserProvidedOutput(kernel_ctx, num_outputs, &sentinel);
+      RecordUserProvidedOutputBadIndexRejected(status != nullptr && sentinel == sentinel_value ? 1 : 0);
+      ort_api.ReleaseStatus(status);
+    }
+
+    if (user_provided_output != nullptr) {
+      Ort::ConstValue output_value{user_provided_output};
+      auto type_and_shape = output_value.GetTensorTypeAndShapeInfo();
+      if (type_and_shape.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+          type_and_shape.GetShape() != shape0) {
+        user_provided_output = nullptr;
+      }
+    }
+
+    float* output_data = nullptr;
+    if (user_provided_output != nullptr) {
+      void* raw_output_data = nullptr;
+      RETURN_IF_ERROR(ort_api.GetTensorMutableData(user_provided_output, &raw_output_data));
+      output_data = static_cast<float*>(raw_output_data);
+    } else {
+      output_data = kernel_context.GetOutput(0, shape0).GetTensorMutableData<float>();
+    }
 
     for (size_t i = 0; i < input0.size(); ++i) {
       output_data[i] = input0[i] * input1[i];

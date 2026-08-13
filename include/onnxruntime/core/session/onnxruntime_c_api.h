@@ -7547,6 +7547,33 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                   _In_ const void* source_model_data, _In_ size_t source_model_data_length);
+
+  /** \brief Get a user-provided output tensor without allocating an output.
+   *
+   * Returns a borrowed, writable OrtValue supplied for this output by the
+   * caller of Run or IoBinding. The returned value is valid only while the
+   * current kernel Compute call is executing and must not be released. If the
+   * output was not supplied by the caller, including an unallocated IoBinding
+   * placeholder or an output allocated by ORT, `*output` is set to nullptr.
+   * This function never allocates, resizes, or replaces an output value.
+   *
+   * The caller must validate the returned tensor's shape and element type before
+   * writing to it. ORT validates element type, rank, and static dimensions before
+   * the run, but the dynamic-dimension check that KernelContext_GetOutput performs
+   * is skipped on this path, so a model with dynamic output shapes can yield a
+   * buffer smaller than the computed output.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[in] output_index Output index in the current kernel.
+   * \param[out] output Borrowed user-provided output, or nullptr when no
+   *              concrete user buffer was supplied.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(KernelContext_GetUserProvidedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
+                  _Outptr_result_maybenull_ OrtValue** output);
 };
 
 /*

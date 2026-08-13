@@ -37,9 +37,15 @@ struct Utils {
   struct ExampleEpHooks {
     using ResetSyncCountFn = void (*)();
     using GetSyncCountFn = uint64_t (*)();
+    using ResetUserProvidedOutputQueryFn = void (*)();
+    using GetUserProvidedOutputQueryResultFn = int (*)();
+    using GetUserProvidedOutputBadIndexRejectedFn = int (*)();
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
+    ResetUserProvidedOutputQueryFn reset_user_provided_output_query{};
+    GetUserProvidedOutputQueryResultFn get_user_provided_output_query_result{};
+    GetUserProvidedOutputBadIndexRejectedFn get_user_provided_output_bad_index_rejected{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

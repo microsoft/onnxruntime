@@ -2876,6 +2876,12 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int
   return UnownedValue(out);
 }
 
+inline UnownedValue KernelContext::GetUserProvidedOutput(size_t index) const {
+  OrtValue* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetUserProvidedOutput(ctx_, index, &out));
+  return UnownedValue(out);
+}
+
 inline void* KernelContext::GetGPUComputeStream() const {
   void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));

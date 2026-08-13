@@ -54,6 +54,9 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
+  // Whether this index was supplied as an already-allocated output by the caller of Run/IoBinding.
+  bool IsUserProvidedOutput(int ort_value_idx) const;
+
 #ifdef ENABLE_ATEN
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
@@ -130,6 +133,9 @@ class IExecutionFrame {
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
   InlinedVector<OrtValue> all_values_;
+
+  // Subset of fetch_mlvalue_idxs_ that arrived already allocated, i.e. the buffer is the caller's.
+  InlinedVector<int> user_provided_output_idxs_;
 
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
