@@ -148,6 +148,8 @@ Status TransposeDQWeightsForMatMulNBits(
   auto block_size = effective_block_size;
   int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
   auto bits = DQWeightBits(dt_weight);
+  ORT_RETURN_IF_NOT(MlasQDQBlockwiseShapeIsValid(K, N, block_size, bits, true, true),
+                    "QDQ blockwise quantization shape exceeds the MLAS int32 index range.");
   auto quant_num = (K + block_size - 1) / block_size;
   auto blob_bytes = (block_size * bits + 7) / 8;
 
