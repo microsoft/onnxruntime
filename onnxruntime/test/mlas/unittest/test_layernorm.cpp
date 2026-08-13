@@ -42,8 +42,8 @@ constexpr float kRelTolerance = 1e-3f;
 constexpr float kAbsToleranceFloor = 1e-4f;
 
 ::testing::AssertionResult NearRelative(const char* actual_expr, const char* expected_expr,
-                                         const char* /*rel_expr*/, const char* /*floor_expr*/,
-                                         float actual, float expected, float rel_tol, float abs_floor) {
+                                        const char* /*rel_expr*/, const char* /*floor_expr*/,
+                                        float actual, float expected, float rel_tol, float abs_floor) {
   const float tol = std::max(abs_floor, rel_tol * std::abs(expected));
   const float diff = std::abs(actual - expected);
   if (diff <= tol) {

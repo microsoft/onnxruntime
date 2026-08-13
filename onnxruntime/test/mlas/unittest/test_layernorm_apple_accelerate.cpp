@@ -213,8 +213,8 @@ TEST(LayerNormAppleAccelerate, ForcedReachability) {
 // Exercises the heap-allocated scratch buffer fallback path: NormSize
 // exceeding kApplePerRowStackScratch (8192) in layernorm.cpp. Every case
 // above this test stays within the on-stack scratch buffer; this is the
-// only test that forces the std::vector<float> heap path, so it is the
-// sole regression coverage for that branch.
+// only test that forces the std::unique_ptr<float[]> heap path, so it is
+// the sole regression coverage for that branch.
 TEST(LayerNormAppleAccelerate, LargeNormSizeHeapFallback) {
   for (size_t norm_size : {size_t{8193}, size_t{16384}}) {
     for (bool simplified : {true, false}) {
