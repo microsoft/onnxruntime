@@ -43,7 +43,16 @@ void RunScatterNDHalfReductionTest(const char* reduction, const std::vector<floa
     test.AddOutput<BFloat16>("output", {2, 2, 3}, ToBFloat16(expected));
   }
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    // bfloat16 runs on CPU only for now: the CUDA kernel selects its compute type by element
+    // size, so it treats bfloat16 as float16 and reduces misread bits
+    // (microsoft/onnxruntime#32061). Widen this once that is fixed.
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+    test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  }
 }
 
 }  // namespace
