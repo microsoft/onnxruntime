@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/s8_to_u8.h"
 
 #include <functional>
 #include <string>
@@ -84,6 +85,15 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerOmittedZeroPoints) {
                           graph.GetInitializedTensor(input_defs[3]->Name(), weight_zp) &&
                           weight_zp->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
                       "Expected generated uint8 B zero point input");
+
+    Node& mutable_matmul = *graph.GetNode(matmul->Index());
+    NodeArg* generated_weight_zp = mutable_matmul.MutableInputDefs()[3];
+    mutable_matmul.MutableInputDefs()[3] = nullptr;
+    mutable_matmul.MutableInputArgsCount()[3] = 0;
+    QDQ::SetOptionalInput(graph, mutable_matmul, 3, *generated_weight_zp);
+    ORT_RETURN_IF_NOT(mutable_matmul.InputDefs()[3] == generated_weight_zp &&
+                          mutable_matmul.InputArgCount()[3] == 1,
+                      "Expected null optional slot to be restored");
     return Status::OK();
   };
 

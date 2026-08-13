@@ -21,7 +21,7 @@ void SetOptionalInput(Graph& graph, Node& node, size_t input_idx, NodeArg& input
                   "Expected omitted optional input ", index, " of node ", node.Name(), ".");
       input_arg_counts[index] = 1;
     }
-  } else if (!input_defs[input_idx]->Exists()) {
+  } else if (input_defs[input_idx] == nullptr || !input_defs[input_idx]->Exists()) {
     ORT_ENFORCE(input_arg_counts[input_idx] == 0,
                 "Expected omitted optional input ", input_idx, " of node ", node.Name(), ".");
     input_arg_counts[input_idx] = 1;
