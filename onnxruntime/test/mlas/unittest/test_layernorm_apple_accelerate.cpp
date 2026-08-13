@@ -413,7 +413,7 @@ TEST(LayerNormAppleAccelerate, InfPropagation) {
               << ", got " << output[i];
         } else {
           EXPECT_EQ(output[i], 0.0f) << "expected exact 0.0 (finite * 1/sqrt(Inf) == finite * 0.0) at i=" << i
-                                      << ", norm_size=" << norm_size << ", got " << output[i];
+                                     << ", norm_size=" << norm_size << ", got " << output[i];
         }
       }
     }
