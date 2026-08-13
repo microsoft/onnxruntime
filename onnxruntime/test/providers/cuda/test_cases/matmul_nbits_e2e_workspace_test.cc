@@ -19,6 +19,9 @@
 // The agreement tests exercise the estimator directly. GetCapabilityBudgetUsesLevel1Estimate separately
 // drives the full estimator -> CUDA GetCapability -> resource-accountant budget path and verifies
 // acceptance/rejection around the structured estimate.
+// It also covers run-scoped memory-pattern integration with a sequential chain of MatMulNBits nodes:
+// the first run traces each synthetic workspace lifetime, and the second run resolves all workspaces
+// from one shared non-overlapping region in the cached activation pattern.
 //
 // This translation unit runs a real InferenceSession, so it includes the core framework headers.
 // Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
@@ -30,6 +33,7 @@
 
 #if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -78,7 +82,75 @@ constexpr int64_t kE2eM = 256;
 constexpr int64_t kE2eBlockSize = 32;
 constexpr int64_t kE2eBits = 4;
 constexpr int64_t kWeightPrepackedSm80 = 1;
-constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
+
+void SetFp16MatrixShape(ONNX_NAMESPACE::ValueInfoProto* value_info, const char* d0_param,
+                        int64_t d0, int64_t d1) {
+  auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto* shape = tensor_type->mutable_shape();
+  auto* dim0 = shape->add_dim();
+  if (d0_param != nullptr) {
+    dim0->set_dim_param(d0_param);
+  } else {
+    dim0->set_dim_value(d0);
+  }
+  shape->add_dim()->set_dim_value(d1);
+}
+
+void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& node_name,
+                        const std::string& input_name, const std::string& output_name,
+                        int64_t k, int64_t n, uint8_t packed_weight = 0,
+                        float scale_value = 1.0f, int64_t weight_prepacked = 0) {
+  const int64_t k_blocks = (k + kE2eBlockSize - 1) / kE2eBlockSize;
+  const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;
+  const std::string weight_name = node_name + "_B";
+  const std::string scales_name = node_name + "_scales";
+
+  auto* weight = graph->add_initializer();
+  weight->set_name(weight_name);
+  weight->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  weight->add_dims(n);
+  weight->add_dims(k_blocks);
+  weight->add_dims(blob_size);
+  weight->mutable_raw_data()->assign(
+      static_cast<size_t>(n * k_blocks * blob_size), static_cast<char>(packed_weight));
+
+  auto* scales = graph->add_initializer();
+  scales->set_name(scales_name);
+  scales->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  scales->add_dims(n);
+  scales->add_dims(k_blocks);
+  const size_t n_scales = static_cast<size_t>(n * k_blocks);
+  std::string scale_raw(n_scales * sizeof(uint16_t), '\0');
+  const uint16_t scale_bits = MLFloat16(scale_value).val;
+  for (size_t i = 0; i < n_scales; ++i) {
+    std::memcpy(&scale_raw[i * sizeof(uint16_t)], &scale_bits, sizeof(uint16_t));
+  }
+  *scales->mutable_raw_data() = std::move(scale_raw);
+
+  auto* node = graph->add_node();
+  node->set_op_type("MatMulNBits");
+  node->set_domain("com.microsoft");
+  node->set_name(node_name);
+  node->add_input(input_name);
+  node->add_input(weight_name);
+  node->add_input(scales_name);
+  node->add_output(output_name);
+  auto add_int_attr = [node](const char* name, int64_t value) {
+    auto* attr = node->add_attribute();
+    attr->set_name(name);
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attr->set_i(value);
+  };
+  add_int_attr("K", k);
+  add_int_attr("N", n);
+  add_int_attr("block_size", kE2eBlockSize);
+  add_int_attr("bits", kE2eBits);
+  add_int_attr("accuracy_level", 0);
+  if (weight_prepacked != 0) {
+    add_int_attr("weight_prepacked", weight_prepacked);
+  }
+}
 
 // Builds a minimal single-node MatMulNBits model and returns its serialized ModelProto bytes.
 // The compact fpA_intB path does not support bias. Other builds use the valid optional-input
@@ -91,9 +163,6 @@ constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
 // FreeDimensionOverrideByName later rewrites the symbolic dim into a concrete value at session init.
 std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
                                        int64_t weight_prepacked = 0) {
-  const int64_t k_blocks = (kE2eK + kE2eBlockSize - 1) / kE2eBlockSize;  // 32
-  const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;          // 16
-
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   {
@@ -108,93 +177,67 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
   auto* graph = model.mutable_graph();
   graph->set_name("matmul_nbits_workspace_e2e");
 
-  // Sets a rank-2 fp16 shape. The leading dim is symbolic (dim_param) when `d0_param` is non-null,
-  // otherwise it is the concrete value `d0`. The trailing dim is always the concrete value `d1`.
-  auto set_fp16_shape = [](ONNX_NAMESPACE::ValueInfoProto* vi, const char* d0_param, int64_t d0,
-                           int64_t d1) {
-    auto* tt = vi->mutable_type()->mutable_tensor_type();
-    tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-    auto* shape = tt->mutable_shape();
-    auto* dim0 = shape->add_dim();
-    if (d0_param != nullptr) {
-      dim0->set_dim_param(d0_param);
-    } else {
-      dim0->set_dim_value(d0);
-    }
-    shape->add_dim()->set_dim_value(d1);
-  };
-
   // Graph input A and output Y (both fp16). A's leading dim mirrors `m_dim_param`; Y's leading dim
   // mirrors it too so the declared output shape stays consistent with shape inference.
   auto* a = graph->add_input();
   a->set_name("A");
-  set_fp16_shape(a, m_dim_param, kE2eM, kE2eK);
+  SetFp16MatrixShape(a, m_dim_param, kE2eM, kE2eK);
   auto* y = graph->add_output();
   y->set_name("Y");
-  set_fp16_shape(y, m_dim_param, kE2eM, kE2eN);
+  SetFp16MatrixShape(y, m_dim_param, kE2eM, kE2eN);
 
-  // B initializer: uint8 {N, k_blocks, blob_size}, zero-filled.
-  auto* b = graph->add_initializer();
-  b->set_name("B");
-  b->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-  b->add_dims(kE2eN);
-  b->add_dims(k_blocks);
-  b->add_dims(blob_size);
-  b->mutable_raw_data()->assign(static_cast<size_t>(kE2eN * k_blocks * blob_size), '\0');
+  AddMatMulNBitsNode(
+      graph, "matmul_nbits", "A", "Y", kE2eK, kE2eN,
+      /*packed_weight=*/0, /*scale_value=*/1.0f, weight_prepacked);
 
-  // scales initializer: fp16 {N, k_blocks}, all 1.0.
-  auto* scales = graph->add_initializer();
-  scales->set_name("scales");
-  scales->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  scales->add_dims(kE2eN);
-  scales->add_dims(k_blocks);
-  const size_t n_scales = static_cast<size_t>(kE2eN * k_blocks);
-  std::string scale_raw(n_scales * sizeof(uint16_t), '\0');
-  for (size_t i = 0; i < n_scales; ++i) {
-    std::memcpy(&scale_raw[i * sizeof(uint16_t)], &kHalfOne, sizeof(uint16_t));
+  std::string bytes;
+  model.SerializeToString(&bytes);
+  return bytes;
+}
+
+std::string BuildMatMulNBitsChainModelBytes(size_t node_count) {
+  ORT_ENFORCE(node_count > 1);
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  {
+    auto* onnx_opset = model.add_opset_import();
+    onnx_opset->set_domain("");
+    onnx_opset->set_version(17);
+    auto* ms_opset = model.add_opset_import();
+    ms_opset->set_domain("com.microsoft");
+    ms_opset->set_version(1);
   }
-  *scales->mutable_raw_data() = std::move(scale_raw);
 
-#if !USE_COMPACT_FPA_INTB_GEMM
-  // Bias initializer: fp16 {N}, zero-filled. Supplying it after two omitted optional inputs is the
-  // regression layout for positional Level-2 input-shape resolution.
-  auto* bias = graph->add_initializer();
-  bias->set_name("bias");
-  bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  bias->add_dims(kE2eN);
-  bias->mutable_raw_data()->assign(static_cast<size_t>(kE2eN * sizeof(uint16_t)), '\0');
-#endif
+  auto* graph = model.mutable_graph();
+  graph->set_name("matmul_nbits_workspace_chain");
 
-  // MatMulNBits node.
-  auto* node = graph->add_node();
-  node->set_op_type("MatMulNBits");
-  node->set_domain("com.microsoft");
-  node->set_name("matmul_nbits");
-  node->add_input("A");
-  node->add_input("B");
-  node->add_input("scales");
-  node->add_input("");
-  node->add_input("");
-#if USE_COMPACT_FPA_INTB_GEMM
-  node->add_input("");
-#else
-  node->add_input("bias");
-#endif
-  node->add_output("Y");
-  auto add_int_attr = [node](const char* name, int64_t v) {
-    auto* attr = node->add_attribute();
-    attr->set_name(name);
-    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-    attr->set_i(v);
-  };
-  add_int_attr("K", kE2eK);
-  add_int_attr("N", kE2eN);
-  add_int_attr("block_size", kE2eBlockSize);
-  add_int_attr("bits", kE2eBits);
-  add_int_attr("accuracy_level", 0);
-  if (weight_prepacked != 0) {
-    add_int_attr("weight_prepacked", weight_prepacked);
+  auto* input = graph->add_input();
+  input->set_name("A");
+  SetFp16MatrixShape(input, nullptr, kE2eM, kE2eK);
+
+  std::string input_name = "A";
+  int64_t input_width = kE2eK;
+  for (size_t i = 0; i < node_count; ++i) {
+    const std::string node_name = "matmul_nbits_" + std::to_string(i);
+    const std::string output_name = "Y" + std::to_string(i);
+    AddMatMulNBitsNode(
+        graph, node_name, input_name, output_name, input_width, kE2eN,
+        /*packed_weight=*/0x11, /*scale_value=*/1.0f / 256.0f);
+
+    if (i + 1 < node_count) {
+      auto* value_info = graph->add_value_info();
+      value_info->set_name(output_name);
+      SetFp16MatrixShape(value_info, nullptr, kE2eM, kE2eN);
+    }
+    input_name = output_name;
+    input_width = kE2eN;
+    input_width = kE2eN;
   }
+
+  auto* output = graph->add_output();
+  output->set_name(input_name);
+  SetFp16MatrixShape(output, nullptr, kE2eM, kE2eN);
 
   std::string bytes;
   model.SerializeToString(&bytes);
@@ -311,6 +354,16 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
   device_prop.multiProcessorCount = 100;
   const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(node, device_prop);
   return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
+}
+
+std::vector<const Node*> FindNodesByOpType(const Graph& graph, const std::string& op_type) {
+  std::vector<const Node*> nodes;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == op_type) {
+      nodes.push_back(&node);
+    }
+  }
+  return nodes;
 }
 
 }  // namespace
@@ -593,7 +646,7 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   EXPECT_TRUE(missing_a_requirements.empty());
 
   // ---- Runtime: run once and read the workspace size the CUTLASS runner actually requested. ----
-  std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.25f));
   OrtValue a_value;
   CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
 
@@ -676,6 +729,113 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
             << " bytes, Level2=empty, runtime(request)=" << zero_m_runtime << " bytes" << std::endl;
   EXPECT_EQ(zero_m_runtime, 0u)
       << "The same kernel must replace its prior positive capture with zero for an m == 0 run.";
+}
+
+TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping multi-node workspace test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  constexpr size_t kNodeCount = 3;
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
+  const std::string model_bytes = BuildMatMulNBitsChainModelBytes(kNodeCount);
+
+  SessionOptions so;
+  so.session_logid = "MatMulNBitsWorkspaceChain";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  InferenceSessionWrapper session(so, GetEnvironment());
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const SessionState& session_state = session.GetSessionState();
+  const auto matmul_nodes = FindNodesByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_EQ(matmul_nodes.size(), kNodeCount);
+
+  const SequentialExecutionPlan* execution_plan = session_state.GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr);
+  InlinedHashSet<int> workspace_pattern_ids;
+  std::vector<const OpKernel*> kernels;
+  kernels.reserve(kNodeCount);
+  for (const Node* node : matmul_nodes) {
+    ASSERT_EQ(node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider);
+    const OpKernel* kernel = session_state.GetKernel(node->Index());
+    ASSERT_NE(kernel, nullptr);
+    kernels.push_back(kernel);
+
+    const auto workspace_plan_it = execution_plan->workspace_allocation_plan.find(node->Index());
+    ASSERT_NE(workspace_plan_it, execution_plan->workspace_allocation_plan.end());
+    ASSERT_EQ(workspace_plan_it->second.size(), static_cast<size_t>(1));
+    EXPECT_TRUE(workspace_pattern_ids.insert(workspace_plan_it->second.front().pattern_id).second)
+        << "Each MatMulNBits node must have a distinct synthetic pattern ID.";
+  }
+
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
+  OrtValue a_value;
+  CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", a_value);
+  const std::vector<std::string> output_names{"Y" + std::to_string(kNodeCount - 1)};
+  std::vector<OrtValue> fetches;
+
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  for (const OpKernel* kernel : kernels) {
+    EXPECT_GT(GetMatMulNBitsLastComputeWorkspaceBytes(kernel), static_cast<size_t>(0));
+    EXPECT_FALSE(GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(kernel))
+        << "Every node should use the dynamic fallback while the first run traces lifetimes.";
+  }
+  ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
+  const Tensor& dynamic_output = fetches.front().Get<Tensor>();
+  ASSERT_EQ(dynamic_output.Shape(), TensorShape({kE2eM, kE2eN}));
+  const auto dynamic_output_data = dynamic_output.DataAsSpan<MLFloat16>();
+  ASSERT_TRUE(std::any_of(dynamic_output_data.begin(), dynamic_output_data.end(),
+                          [](MLFloat16 value) { return value.val != 0; }))
+      << "The reference output must be nonzero so data corruption cannot be masked.";
+  std::vector<MLFloat16> expected_output(dynamic_output_data.begin(), dynamic_output_data.end());
+
+  int input_index = -1;
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx("A", input_index));
+  const InlinedHashMap<int, TensorShape>* inferred_shapes = nullptr;
+  const MemoryPatternGroup* pattern_group = session_state.GetMemoryPatternGroup(
+      gsl::make_span(&a_value, 1), gsl::make_span(&input_index, 1), inferred_shapes);
+  ASSERT_NE(pattern_group, nullptr) << "The first run did not cache a memory pattern.";
+
+  std::optional<size_t> shared_workspace_offset;
+  for (const Node* node : matmul_nodes) {
+    const auto& workspace_plan = execution_plan->workspace_allocation_plan.at(node->Index()).front();
+    const MemoryPattern* pattern = pattern_group->GetPatterns(workspace_plan.location);
+    ASSERT_NE(pattern, nullptr);
+    const MemoryBlock* block = pattern->GetBlock(workspace_plan.pattern_id);
+    ASSERT_NE(block, nullptr) << "Synthetic workspace was not recorded in the cached pattern.";
+    EXPECT_EQ(block->size_, workspace_plan.allocation_bytes);
+    if (shared_workspace_offset.has_value()) {
+      EXPECT_EQ(block->offset_, *shared_workspace_offset)
+          << "Sequential MatMulNBits workspaces should reuse one non-overlapping region.";
+    } else {
+      shared_workspace_offset = block->offset_;
+    }
+  }
+
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  for (const OpKernel* kernel : kernels) {
+    EXPECT_TRUE(GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(kernel))
+        << "Every node should resolve its workspace from the cached memory pattern.";
+  }
+  ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
+  const auto planned_output_data = fetches.front().Get<Tensor>().DataAsSpan<MLFloat16>();
+  ASSERT_EQ(planned_output_data.size(), expected_output.size());
+  for (size_t i = 0; i < expected_output.size(); ++i) {
+    EXPECT_EQ(planned_output_data[i].val, expected_output[i].val)
+        << "Planned workspace changed output element " << i << ".";
+  }
 }
 
 // ---------------------------------------------------------------------------
