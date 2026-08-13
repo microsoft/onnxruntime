@@ -371,17 +371,35 @@ TEST(LayerNormAppleAccelerate, NanPropagation) {
   }
 }
 
-// A single +Inf anywhere in the row must also contaminate the entire output
-// row (mean becomes Inf; centering the Inf element itself yields Inf-Inf =
-// NaN, which then poisons the sum-of-squares reduction for every other
-// element too). Verified the same way as NanPropagation: this degenerate
-// outcome is inherent to the formula, not specific to this kernel.
+// A single +Inf anywhere in the row propagates differently depending on
+// whether the mean is subtracted:
+//
+// - Full LayerNorm (simplified=false): mean becomes Inf (a finite sum plus
+//   Inf is still Inf), so *every* element's centering computes
+//   (finite - Inf) = -Inf for the non-Inf elements and (Inf - Inf) = NaN for
+//   the Inf element itself. The sum-of-centered-squares reduction therefore
+//   includes a NaN term, which poisons the shared variance/inv-std for the
+//   entire row: every output element becomes NaN.
+// - RMSNorm (simplified=true): there is no mean subtraction, so
+//   mean-of-squares is simply Inf (again, finite-sum-plus-Inf is Inf), and
+//   1/sqrt(Inf + eps) is exactly 0.0. Each *non*-Inf element then computes
+//   finite * 0.0 = 0.0 (not NaN -- there is no Inf-Inf cancellation on that
+//   path), while the Inf element itself computes Inf * 0.0 = NaN. So only
+//   the single position that was set to +Inf becomes NaN; every other
+//   position is exactly 0.0.
+//
+// This was caught by real Apple Silicon CI (this test originally asserted
+// whole-row NaN contamination unconditionally, which is only correct for
+// the non-simplified path) -- see PR discussion for the CI run this was
+// caught in. Verified independently in Python/IEEE-754 semantics before
+// fixing: 1.0/sqrt(inf) == 0.0, finite*0.0 == 0.0, inf*0.0 == nan.
 TEST(LayerNormAppleAccelerate, InfPropagation) {
   for (size_t norm_size : {size_t{2}, size_t{127}, size_t{768}}) {
     for (bool simplified : {true, false}) {
+      const size_t inf_index = norm_size / 2;
       std::vector<float> input(norm_size), scale, bias;
       FillDeterministic(input, scale, bias);
-      input[norm_size / 2] = std::numeric_limits<float>::infinity();
+      input[inf_index] = std::numeric_limits<float>::infinity();
       const float* bias_ptr = simplified ? nullptr : bias.data();
 
       std::vector<float> output(norm_size, kPoisonValue);
@@ -389,9 +407,14 @@ TEST(LayerNormAppleAccelerate, InfPropagation) {
                                          norm_size, 1e-5f, simplified);
 
       for (size_t i = 0; i < norm_size; i++) {
-        EXPECT_TRUE(std::isnan(output[i]))
-            << "expected NaN contamination of the entire row at i=" << i << ", norm_size=" << norm_size
-            << " simplified=" << simplified << ", got " << output[i];
+        if (!simplified || i == inf_index) {
+          EXPECT_TRUE(std::isnan(output[i]))
+              << "expected NaN at i=" << i << ", norm_size=" << norm_size << " simplified=" << simplified
+              << ", got " << output[i];
+        } else {
+          EXPECT_EQ(output[i], 0.0f) << "expected exact 0.0 (finite * 1/sqrt(Inf) == finite * 0.0) at i=" << i
+                                      << ", norm_size=" << norm_size << ", got " << output[i];
+        }
       }
     }
   }
