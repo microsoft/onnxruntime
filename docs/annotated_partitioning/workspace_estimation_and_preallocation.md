@@ -272,40 +272,242 @@ Workspace may be placed in the same reserved device buffer as activation memory 
 planner can represent both lifetimes and alignment requirements correctly. Otherwise, a
 separate preallocated workspace buffer per device is an acceptable first implementation.
 
-### Implemented static-preallocation pilot
+### Implemented run-scoped memory-pattern pilot
 
-The stacked `chilo/static-workspace-preallocation` branch adds an opt-in implementation:
+The stacked `chilo/static-workspace-preallocation` branch implements activation/workspace
+memory-pattern integration in commit
+[`725f01f695`](https://github.com/microsoft/onnxruntime/commit/725f01f695232a41017433f6dc6c09e4747c4ea3).
+The existing opt-in key is retained:
 
 ```text
 session.enable_static_workspace_preallocation=1
 ```
 
-During session finalization, ORT:
+Despite the historical key name, the current implementation does not allocate a
+session-persistent workspace buffer. It represents workspace as a synthetic, run-scoped
+allocation in the same per-device memory-pattern buffer used by activations.
 
-1. collects Level-2 declarations from constructed kernels;
-2. considers only kernels that explicitly support framework-owned workspace;
-3. groups supported single-slot requirements by device;
-4. allocates one persistent buffer per device and per `SessionState` graph, sized to the
-   largest requirement plus alignment padding; and
-5. binds each participating kernel's slot to an aligned pointer in that reusable buffer.
+The first participating kernel is in-tree CUDA `MatMulNBits`, using slot 0. The pilot
+requires sequential execution and supports one slot per kernel. Plugin CUDA, general
+multi-slot planning, and parallel or multi-stream lifetime modeling remain future work.
 
-The first participating kernel is in-tree CUDA `MatMulNBits`, using slot 0. At runtime it
-uses the bound buffer when the actual request fits and otherwise falls back to
-`GetScratchBuffer()`. Kernels without declarations, unresolved shapes, unsupported
-multi-slot declarations, and kernels without explicit binding support retain dynamic
-allocation.
+#### 1. Register the Level-2 contract during session finalization
 
-The pilot has the following safety constraints:
+`SessionState::FinalizeSessionStateImpl()` collects Level-2 declarations after kernels are
+created and prepacked. For an opted-in single-slot kernel, it adds a
+`WorkspaceAllocationPlan` to `SequentialExecutionPlan`, keyed by node index:
 
-- only sequential execution mode is accepted;
-- concurrent `Run()` calls are serialized, including CUDA graph replay;
-- a run that disables execution-provider synchronization is rejected;
-- framework ownership keeps the buffer alive longer than kernels holding non-owning
-  pointers to it.
+```cpp
+struct WorkspaceAllocationPlan {
+  int pattern_id;
+  int slot_id;
+  size_t size_bytes;
+  size_t allocation_bytes;
+  size_t alignment_bytes;
+  OrtDevice location;
+};
 
-This is not yet integration with ORT's activation allocation planner. It does not pack
-workspace with activations, model parallel or multi-stream lifetimes, provide Plugin CUDA
-support, or share one allocation across parent and subgraph `SessionState` instances.
+InlinedHashMap<NodeIndex, InlinedVector<WorkspaceAllocationPlan>>
+    workspace_allocation_plan;
+```
+
+`size_bytes` is the usable Level-2 maximum. `allocation_bytes` includes alignment padding
+and is rounded to the device/ORT memory-pattern block alignment. Negative `pattern_id`
+values keep synthetic workspace entries disjoint from the non-negative `OrtValue` indices
+already used as activation pattern IDs.
+
+Registration records a contract; it does not allocate memory:
+
+```cpp
+p_seq_exec_plan_->workspace_allocation_plan[node.Index()].push_back(
+    SequentialExecutionPlan::WorkspaceAllocationPlan{
+        next_workspace_pattern_id,
+        requirement.slot_id,
+        requirement.size_bytes,
+        allocation_bytes,
+        requirement.alignment_bytes,
+        device});
+```
+
+#### 2. Why Level 2 still needs runtime tracing
+
+Level 2 supplies workspace capacity, slot, alignment, and an inferred device location. It
+does not say when the workspace is live, which activations overlap it, or whether the
+runtime implementation path actually requests it.
+
+For example, the same 8 MB declaration permits different layouts:
+
+```text
+non-overlap: activation A [---------]
+                                  workspace [----]  -> may share A's offset
+
+overlap:     activation A [-------------------]
+                         workspace [----]          -> must use another offset
+```
+
+The inference memory-pattern planner already traces actual activation allocation and free
+events because concrete activation sizes and allocation order can depend on runtime input
+shapes and kernel behavior. The workspace path reuses that mechanism. Level 2 answers
+"how much"; tracing answers "when."
+
+Tracing also avoids reserving a declared slot when the runtime selects a path that does not
+request workspace. For example, a `MatMulNBits` GEMV path may not call the planned
+workspace API even though another implementation path has a Level-2 declaration.
+
+#### 3. First run: trace the synthetic lifetime and use dynamic workspace
+
+When no compatible cached memory pattern exists, `ExecutionFrame` owns an
+`OrtValuePatternPlanner`. `MatMulNBits` calculates its actual request and calls:
+
+```cpp
+ctx->GetPreallocatedWorkspace(/*slot_id=*/0, workspace_size, &workspace);
+```
+
+`OpKernelContextInternal` finds the current node and slot in
+`workspace_allocation_plan`. If `requested_bytes` is within the Level-2 maximum, it asks
+the execution frame for the synthetic allocation:
+
+```cpp
+execution_frame_.GetPlannedWorkspace(
+    workspace_plan.pattern_id,
+    workspace_plan.location,
+    workspace_plan.allocation_bytes,
+    workspace_plan.alignment_bytes,
+    workspace);
+```
+
+On the tracing run, `ExecutionFrame::GetPlannedWorkspace()` records the declared,
+aligned capacity but intentionally leaves `workspace` null:
+
+```cpp
+if (planner_.has_value()) {
+  ORT_RETURN_IF_ERROR(
+      planner_->TraceAllocation(pattern_id, location, allocation_bytes));
+  return Status::OK();
+}
+```
+
+The kernel therefore executes correctly through its existing dynamic path:
+
+```cpp
+if (workspace == nullptr) {
+  workspace_buffer =
+      GetScratchBuffer<void>(workspace_size, GetComputeStream(ctx));
+  workspace = workspace_buffer.get();
+}
+```
+
+The synthetic trace is planning metadata, not a second physical workspace allocation. The
+dynamic `GetScratchBuffer()` allocation is real first-run memory and is not inserted into
+the activation memory-pattern trace.
+
+`OpKernelContextInternal` lives for one node execution. Its destructor closes every
+workspace lifetime opened by that node:
+
+```cpp
+~OpKernelContextInternal() override {
+  for (const auto* workspace_plan : active_workspace_plans_) {
+    execution_frame_.ReleasePlannedWorkspace(
+        workspace_plan->pattern_id, workspace_plan->location);
+  }
+}
+```
+
+For the planner, the relevant sequence is therefore:
+
+```text
+TraceAllocation(workspace)
+enqueue/execute MatMulNBits
+TraceFree(workspace)
+```
+
+For the initial CUDA pilot, later reuse relies on sequential execution and normal same-stream
+ordering. Cross-stream overlap constraints are not yet represented.
+
+#### 4. End of first run: generate and cache offsets
+
+At the end of a successful tracing run, ORT converts all activation and synthetic workspace
+events into a `MemoryPatternGroup` and caches it by the existing input-shape key. A pattern
+may assign the same offset to non-overlapping entries:
+
+```text
+ID             offset    size
+activation 12       0    1 MB
+workspace -1        0    512 KB
+activation 18       0    768 KB
+```
+
+In this example the required backing-buffer peak is 1 MB rather than the sum of all three
+sizes.
+
+Different input dimensions normally use a different cache key and learn another pattern.
+For a value-dependent activation size under the same input-shape key, the existing
+activation path compares the cached block size with the actual size and falls back to a
+dynamic allocation when they differ.
+
+#### 5. Cached run: resolve workspace from the activation backing buffer
+
+On a later run with a compatible cached pattern, `ExecutionFrame` allocates one backing
+buffer per planned device using the pattern's peak size. `buffers_` owns those allocations
+for that execution frame, so concurrent runs do not share workspace pointers.
+
+`GetPlannedWorkspace()` locates the cached synthetic block and the run's device buffer:
+
+```cpp
+const auto* pattern = mem_patterns_->GetPatterns(location);
+const auto* block =
+    pattern == nullptr ? nullptr : pattern->GetBlock(pattern_id);
+auto buffer_it = buffers_.find(location);
+```
+
+When both exist and the cached block has the declared aligned capacity, the returned
+workspace is:
+
+```cpp
+void* buffer = buffer_it->second.get();
+workspace =
+    static_cast<void*>(static_cast<char*>(buffer) + block->offset_);
+```
+
+The implementation applies the kernel's requested alignment before returning the pointer.
+Because the buffer is owned by the current `ExecutionFrame`, the old session-wide
+workspace ownership, concurrent-`Run()` serialization, and workspace-specific execution
+provider synchronization restriction are no longer needed.
+
+#### 6. Kernel use and safe fallback
+
+`MatMulNBits` passes the CUTLASS runtime request to the context:
+
+```cpp
+const size_t workspace_size =
+    weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
+ORT_RETURN_IF_ERROR(ctx->GetPreallocatedWorkspace(
+    /*slot_id=*/0, workspace_size, &workspace));
+```
+
+The request may vary between runs and still use the same block as long as it fits:
+
+```text
+requested_bytes <= workspace_plan.size_bytes  -> use declared-capacity block
+requested_bytes >  workspace_plan.size_bytes  -> dynamic fallback
+```
+
+Unlike activation lookup, workspace lookup does not require the runtime request to equal
+the cached block size. The cached block represents the full Level-2 maximum, so any smaller
+request is safe. The execution frame verifies the cached block against
+`allocation_bytes`, while `OpKernelContextInternal` verifies the runtime request against
+`size_bytes`.
+
+The kernel retains `GetScratchBuffer()` when:
+
+- the request exceeds the Level-2 declaration;
+- memory-pattern optimization is inactive;
+- no compatible pattern or synthetic block exists;
+- the large backing-buffer allocation was unavailable; or
+- the kernel/path did not receive a planned pointer.
+
+This keeps the feature permissive and preserves existing execution behavior when planning
+cannot be applied.
 
 ## Profiling Improvements Needed for Preallocation
 
@@ -428,9 +630,10 @@ validation remains future work.
 - Keep arena fallback for unresolved or dynamic requirements.
 - Add strict validation for constrained deployments.
 
-Pilot status: partially implemented on `chilo/static-workspace-preallocation` using a
-separate per-device buffer for sequential, single-slot kernels. General execution-plan
-lifetime integration remains future work.
+Pilot status: implemented on `chilo/static-workspace-preallocation` for sequential,
+single-slot in-tree CUDA `MatMulNBits`. Workspace is traced as a synthetic allocation and
+packed into the run-scoped activation memory-pattern buffer. General multi-slot,
+parallel/multi-stream, and Plugin EP support remain future work.
 
 ### Phase 4: Broader coverage
 
@@ -444,7 +647,7 @@ lifetime integration remains future work.
 2. Can a profile be marked authoritative, and under what deployment contract?
 3. Should exceeding a maximum-shape override fail or fall back after the permissive pilot?
 4. Should a Level-2 excess trigger repartitioning instead of warning or strict failure?
-5. When should the separate per-device pilot buffer be integrated with activation memory?
+5. How should planned workspace report realized offset sharing and peak-memory reduction?
 6. How should parallel execution and multiple streams express workspace overlap?
 7. What profile compatibility fields are mandatory for each EP?
 8. How should fused-node workspace be derived from constituent nodes?
@@ -460,5 +663,7 @@ lifetime integration remains future work.
 | TBD | Plan workspace according to execution overlap rather than summing all nodes | Proposed |
 | 2026-08-12 | Retain accepted per-node reservations and compare Level 2 during session finalization | Pilot implemented |
 | 2026-08-12 | Warn on Level-2 excess by default and provide opt-in strict initialization failure | Pilot implemented |
-| 2026-08-12 | Start preallocation with a separate reusable per-device buffer under sequential execution | Pilot implemented |
+| 2026-08-12 | Start preallocation with a separate reusable per-device buffer under sequential execution | Superseded by run-scoped memory-pattern integration |
 | 2026-08-12 | Fall back dynamically when the runtime request exceeds the declared static slot | Pilot implemented |
+| 2026-08-12 | Trace workspace as a synthetic node-lifetime allocation and pack it with non-overlapping activations | Pilot implemented |
+| 2026-08-12 | Own planned workspace in each execution frame, removing workspace-specific concurrent-run serialization | Pilot implemented |
