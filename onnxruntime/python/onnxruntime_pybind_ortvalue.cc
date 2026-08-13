@@ -19,6 +19,11 @@ namespace python {
 namespace py = pybind11;
 
 namespace {
+bool IsWebGpuBuffer(const OrtValue& ort_value) {
+  return ort_value.IsTensor() &&
+         ort_value.Get<Tensor>().Location().name == WEBGPU_BUFFER;
+}
+
 std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& shape,
                                                    MLDataType element_type,
                                                    const OrtDevice& device) {
@@ -364,6 +369,8 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("data_ptr", [](OrtValue* ml_value) -> uintptr_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+        ORT_ENFORCE(!IsWebGpuBuffer(*ml_value),
+                    "WebGPU OrtValues contain opaque buffer handles and do not expose a data pointer.");
 
         auto* tensor = ml_value->GetMutable<Tensor>();
 
@@ -376,6 +383,9 @@ void addOrtValueMethods(pybind11::module& m) {
       })
       .def("device_name", [](const OrtValue* ort_value) -> std::string {
         if (ort_value->IsTensor()) {
+          if (IsWebGpuBuffer(*ort_value)) {
+            return "webgpu";
+          }
           return std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
         }
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -446,9 +456,12 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("is_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensor(); })
       .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsSparseTensor(); })
       .def("is_tensor_sequence", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensorSequence(); })
+      .def("_is_webgpu_buffer", [](const OrtValue* ort_value) -> bool { return IsWebGpuBuffer(*ort_value); })
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
+        ORT_ENFORCE(!IsWebGpuBuffer(*ml_value),
+                    "WebGPU OrtValues require explicit readback with IOBinding.copy_outputs_to_cpu().");
         [[maybe_unused]] const auto& device = ml_value->Get<Tensor>().Location().device;
 #ifdef _MSC_VER
 // The switch statement may only contain the 'default' label. In such a case, the MSVC compiler
@@ -496,17 +509,22 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
       })
 #if defined(ENABLE_DLPACK)
-      .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
+      .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
+        ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
+        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
            "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
            "is consumed.")
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) { return FromDlpack(data.ptr(), is_bool_tensor); }, py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
-      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
+      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
+        ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
+        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
            "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
            "This method does not copy the pointer shape, instead, it copies the pointer value. "
            "The OrtValue must persist until the dlpack structure is consumed.")
       .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
+            ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
             const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
             DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
             return py::make_tuple(static_cast<int>(device.device_type), device.device_id); }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
@@ -516,6 +534,8 @@ void addOrtValueMethods(pybind11::module& m) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
       .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
+        ORT_ENFORCE(!IsWebGpuBuffer(ortvalue),
+                    "OrtValueVector cannot retain the session ownership required by WebGPU OrtValues.");
         v->push_back(ortvalue);
       })
 #if defined(ENABLE_DLPACK)
@@ -537,6 +557,9 @@ void addOrtValueMethods(pybind11::module& m) {
 
               auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
               auto device = devices.at(i);
+              ORT_ENFORCE(!(device.Type() == OrtDevice::GPU &&
+                            device.Vendor() == OrtDevice::VendorIds::NONE),
+                          "OrtValueVector.push_back_batch does not support WebGPU buffers.");
               OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
               OrtValue ml_value;
               Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
@@ -547,7 +570,7 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
       .def("__iter__", [](const std::vector<OrtValue>& v) { return py::make_iterator(v.cbegin(), v.cend()); }, py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); })
+      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); }, py::keep_alive<0, 1>())
       .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
             std::vector<int64_t> indices;
             for (size_t i = 0; i < v->size(); ++i) {
@@ -561,7 +584,9 @@ void addOrtValueMethods(pybind11::module& m) {
            "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
            "to get a boolean tensor.")
 #if defined(ENABLE_DLPACK)
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) { return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
+      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
+        ORT_ENFORCE(!IsWebGpuBuffer(v->at(idx)), "DLPack export is not supported for WebGPU OrtValues.");
+        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
 #endif
       .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t { return GetTensorProtoType(v->at(idx)); },
            "Returns an integer equal to the ONNX proto type of the tensor at position i. "
@@ -583,6 +608,7 @@ void addOrtValueMethods(pybind11::module& m) {
               DLManagedTensor* dlmanaged_tensor;
 
               for (auto it : v) {
+                ORT_ENFORCE(!IsWebGpuBuffer(it), "DLPack export is not supported for WebGPU OrtValues.");
                 dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
                 py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
                 list_dlpacks.append(capsule);
@@ -595,6 +621,7 @@ void addOrtValueMethods(pybind11::module& m) {
               for (auto it : v) {
                 // A new instance of dlpack needs to be created. The object which consumes it
                 // is responsible for its deletion.
+                ORT_ENFORCE(!IsWebGpuBuffer(it), "DLPack export is not supported for WebGPU OrtValues.");
                 dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
                 if (capsule == NULL) {
                   capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);

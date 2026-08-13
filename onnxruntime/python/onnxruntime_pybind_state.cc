@@ -26,6 +26,7 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
@@ -90,6 +91,65 @@ using namespace onnxruntime::logging;
 namespace {
 
 constexpr std::string_view kEpCudaProviderOptionPrefix{"ep.cuda."};
+
+std::unique_ptr<OrtValue> CreateSessionOrtValue(PyInferenceSession* session,
+                                                const std::vector<int64_t>& shape,
+                                                MLDataType element_type,
+                                                const OrtDevice& device) {
+  // Accessing session state enforces that initialization has completed.
+  (void)session->GetSessionHandle()->GetSessionState();
+
+  const char* allocator_name = device.Type() == OrtDevice::GPU &&
+                                       device.Vendor() == OrtDevice::VendorIds::NONE
+                                   ? WEBGPU_BUFFER
+                                   : GetDeviceName(device);
+  OrtMemoryInfo memory_info{allocator_name, OrtDeviceAllocator, device};
+  auto allocator = session->GetSessionHandle()->GetAllocator(memory_info);
+  if (!allocator) {
+    throw std::runtime_error("No session allocator found for " + device.ToString());
+  }
+
+  auto ort_value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ort_value);
+  return ort_value;
+}
+
+void CopySessionOrtValue(PyInferenceSession* session, OrtValue& destination, const OrtValue& source) {
+  if (!destination.IsTensor() || !source.IsTensor()) {
+    throw std::runtime_error("Inplace update of OrtValues is only supported for Tensors");
+  }
+
+  const auto& source_tensor = source.Get<Tensor>();
+  auto* destination_tensor = destination.GetMutable<Tensor>();
+  const auto& source_location = source_tensor.Location();
+  const auto& destination_location = destination_tensor->Location();
+  const bool source_is_webgpu = source_location.name == WEBGPU_BUFFER;
+  const bool destination_is_webgpu = destination_location.name == WEBGPU_BUFFER;
+
+  if (source_location.device.Type() == OrtDevice::GPU &&
+      destination_location.device.Type() == OrtDevice::GPU &&
+      source_is_webgpu != destination_is_webgpu) {
+    throw std::runtime_error("WebGPU OrtValues cannot be copied to or from another GPU provider");
+  }
+
+  if (destination_tensor->DataType() != source_tensor.DataType()) {
+    throw std::runtime_error("The source and destination OrtValues must have the same data type");
+  }
+
+  if (destination_tensor->Shape().Size() != source_tensor.Shape().Size()) {
+    throw std::runtime_error("The source and destination OrtValues must have the same size");
+  }
+
+  py::gil_scoped_release release;
+  ORT_THROW_IF_ERROR(session->GetSessionHandle()->GetDataTransferManager().CopyTensor(
+      source_tensor, *destination_tensor));
+}
+
+void UpdateSessionOrtValue(PyInferenceSession* session, OrtValue& destination, const py::array& source) {
+  OrtValue source_value;
+  CreateGenericMLValue(nullptr, GetAllocator(), "", source, &source_value, true);
+  CopySessionOrtValue(session, destination, source_value);
+}
 
 struct AdaptedProviderOptions {
   std::vector<std::string> keys;
@@ -2985,6 +3045,36 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("is_webgpu_graph_capture_enabled", [](const PyInferenceSession* sess) {
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr && webgpu_ep->IsGraphCaptureEnabled(); })
+      .def("create_ortvalue_from_shape_and_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, NumpyTypeToOnnxRuntimeTensorType(type_num), device); }, py::keep_alive<0, 1>())
+      .def("create_ortvalue_from_shape_and_onnx_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtDevice& device) {
+        if (onnx_element_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, OnnxTypeToOnnxRuntimeTensorType(onnx_element_type), device); }, py::keep_alive<0, 1>())
+      .def("update_ortvalue_inplace", [](PyInferenceSession* sess, OrtValue& destination, const py::array& source) { UpdateSessionOrtValue(sess, destination, source); })
+      .def("update_ortvalue_inplace", [](PyInferenceSession* sess, OrtValue& destination, const OrtValue& source) { CopySessionOrtValue(sess, destination, source); })
+      .def("release_captured_graph", [](PyInferenceSession* sess, int graph_annotation_id) {
+        py::gil_scoped_release release;
+        OrtPybindThrowIfError(sess->GetSessionHandle()->ReleaseCapturedGraph(graph_annotation_id)); })
       .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
 #if !defined(ORT_MINIMAL_BUILD)
         const auto* inference_session = sess->GetSessionHandle();
