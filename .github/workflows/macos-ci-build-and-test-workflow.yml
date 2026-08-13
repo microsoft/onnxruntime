@@ -16,6 +16,17 @@ on:
         required: false
         type: boolean
         default: false
+      run_mlas_tests:
+        required: false
+        type: boolean
+        default: false
+        description: >-
+          Explicitly execute onnxruntime_mlas_test on native (non-cross-compiled) arm64 runs.
+          onnxruntime_mlas_test is a standalone gtest binary that is never registered with
+          CTest's add_test(), so `build.py --test` (which drives ctest on this workflow) never
+          runs it; see the "Run onnxruntime_mlas_test directly" step below. Opt-in per caller
+          job to avoid running the same MLAS coverage redundantly across every macOS workflow
+          (coreml/xnnpack/webgpu) that reuses this file.
       python_version:
         required: false
         type: string
@@ -138,3 +149,29 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
+
+      - name: Run onnxruntime_mlas_test directly
+        # `build.py --test` above drives ctest, but onnxruntime_mlas_test is a standalone gtest
+        # binary that is never wired up with CTest's add_test() (in
+        # cmake/onnxruntime_unittests.cmake), so ctest silently runs zero MLAS tests on every
+        # platform, including this one. Invoke the binary directly so this native arm64 lane
+        # gets real MLAS coverage. Native-only (skipped when cross-compiling, same as the ctest
+        # step above) and opt-in per caller job (see `run_mlas_tests` input) to avoid running
+        # the same MLAS suite redundantly across every macOS workflow that reuses this file.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.run_mlas_tests }}
+        shell: bash
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          set -e -x
+          test_bin="./onnxruntime_mlas_test"
+          if [ ! -x "${test_bin}" ]; then
+            echo "::error::${test_bin} was not found or is not executable. Expected it to be built by build.py --build alongside the other unit tests (onnxruntime_BUILD_UNIT_TESTS defaults ON)." >&2
+            exit 1
+          fi
+          # Run the full default (short) suite, matching what build.py's own non-ctest fallback
+          # path (`run_onnxruntime_tests` in tools/ci_build/build.py) already runs on platforms
+          # without a resolved ctest binary. No --gtest_filter is used here, so there is no risk
+          # of a filter silently matching zero tests; a missing/broken binary fails loudly above,
+          # and any assertion failure inside the suite fails this step via the binary's own exit
+          # code.
+          "${test_bin}" --gtest_output="xml:onnxruntime_mlas_test.${{ matrix.build_config }}.results.xml"
