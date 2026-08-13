@@ -1098,6 +1098,26 @@ static Status CheckOnnxRotaryEmbeddingGQANotFused(Graph& graph) {
   return Status::OK();
 }
 
+static Status CheckMsRotaryEmbeddingGQANotFused(Graph& graph) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.RotaryEmbedding") == 2);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 3);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention") {
+      continue;
+    }
+
+    TEST_RETURN_IF_NOT(node.InputDefs().size() == 7);
+    const auto& attrs = node.GetAttributes();
+    const auto do_rotary_attr = attrs.find("do_rotary");
+    TEST_RETURN_IF_NOT(do_rotary_attr == attrs.end() || do_rotary_attr->second.i() == 0);
+  }
+
+  return Status::OK();
+}
+
 static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_interleaved) {
   const auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.RotaryEmbedding") == 0);
@@ -1390,7 +1410,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedProject
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
-                                        CheckOnnxRotaryEmbeddingGQANotFused));
+                                        CheckMsRotaryEmbeddingGQANotFused));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedScaleShape) {
