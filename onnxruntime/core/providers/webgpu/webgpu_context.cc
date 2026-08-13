@@ -1148,7 +1148,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     } else {
       ORT_ENFORCE(command.type == webgpu::CapturedCommandType::ClearBuffer);
       ORT_THROW_IF_ERROR(ClearBuffer(command.clear_buffer, command.clear_offset, command.clear_size,
-                                    buffer_manager));
+                                     buffer_manager));
     }
 
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
