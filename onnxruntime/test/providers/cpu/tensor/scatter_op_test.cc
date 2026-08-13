@@ -373,6 +373,10 @@ TEST(ScatterElements, RowBroadcastIndicesAdd) {
 // Two updates land on the same row, so this pins the order they are applied in: with
 // reduction='none' the later update along the axis has to win. It fails if the contiguous
 // path were to visit the axis in any other order.
+//
+// ONNX leaves the result unspecified when several updates target one element, so this is a
+// property of the CPU kernel rather than of the operator. Providers that apply the updates
+// concurrently pick an arbitrary winner, so the check runs on CPU only.
 TEST(ScatterElements, RowBroadcastIndicesNoneKeepsLastUpdate) {
   constexpr int64_t kWidth = 16;
   OpTester test("ScatterElements", 18);
@@ -384,7 +388,9 @@ TEST(ScatterElements, RowBroadcastIndicesNoneKeepsLastUpdate) {
   test.AddInput<float>("updates", {3, kWidth}, RepeatRows({1.f, 2.f, 3.f}, kWidth));
   test.AddOutput<float>("y", {4, kWidth}, RepeatRows({0.f, 3.f, 2.f, 0.f}, kWidth));
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
 TEST(ScatterElements, RowBroadcastIndicesRank3) {
@@ -405,6 +411,9 @@ TEST(ScatterElements, RowBroadcastIndicesRank3) {
 // The updates are narrower than the data in the last dimension, so an update slice is NOT a
 // contiguous run of the output even though the indices repeat. Getting this wrong would write
 // the second half of each slice at the wrong offset.
+//
+// This is about which path the CPU kernel takes, so it runs on CPU only rather than asserting
+// anything about how other providers handle the shape.
 TEST(ScatterElements, RowBroadcastIndicesNarrowerTrailingDim) {
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 0);
@@ -424,7 +433,9 @@ TEST(ScatterElements, RowBroadcastIndicesNarrowerTrailingDim) {
   }
   test.AddOutput<float>("y", {4, 2, 8}, expected);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
 TEST(ScatterElements, AddReductionAxis1) {

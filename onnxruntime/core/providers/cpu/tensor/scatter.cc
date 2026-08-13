@@ -283,7 +283,9 @@ Status GetIndices(
 // True when, inside every slice of `inner_size` consecutive indices, all of them are equal.
 // That is the layout an Expand of an [N, 1] index tensor to [N, C] produces, and it means the
 // scatter can move whole contiguous runs instead of individual strided elements.
-// Bails out on the first mismatch, so the ordinary case costs one slice's worth of reads.
+// Each worker stops as soon as it sees a mismatch, and other workers stop at their next slice
+// boundary, so indices that are not row-broadcast are rejected after a small amount of work
+// rather than after a full pass.
 inline bool IndicesAreConstantAlongInner(const std::vector<int64_t>& indices_data, int64_t inner_size,
                                          concurrency::ThreadPool* tp) {
   const int64_t num_slices = narrow<int64_t>(indices_data.size()) / inner_size;
