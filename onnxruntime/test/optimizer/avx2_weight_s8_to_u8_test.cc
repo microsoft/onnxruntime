@@ -91,11 +91,13 @@ static void RunMatMulIntegerOmittedZeroPointsTest(bool use_explicit_empty_inputs
                           weight_zp->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
                       "Expected generated uint8 B zero point input");
 
-    Node& mutable_matmul = *graph.GetNode(matmul->Index());
+    const NodeIndex matmul_index = matmul->Index();
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF(graph.GraphResolveNeeded() || graph.GraphProtoSyncNeeded(),
+                  "Expected resolved graph synchronization flags to be clear");
+    Node& mutable_matmul = *graph.GetNode(matmul_index);
     NodeArg* generated_weight_zp = mutable_matmul.MutableInputDefs()[3];
     mutable_matmul.MutableInputDefs()[3] = nullptr;
-    graph.GraphResolveNeeded(false);
-    graph.GraphProtoSyncNeeded(false);
     graph_utils::SetOptionalNodeInput(graph, mutable_matmul, 3, *generated_weight_zp);
     ORT_RETURN_IF_NOT(mutable_matmul.InputDefs()[3] == generated_weight_zp &&
                           mutable_matmul.InputArgCount()[3] == 1,
