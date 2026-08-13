@@ -199,6 +199,12 @@ bool TryMatMul4BitsM1(
       const int active_blocks = std::min(max_blocks_per_sm * sm_count, grid_size);
       // Warps per block = cpb (one warp per column)
       const int active_warps = active_blocks * cpb;
+      // Note: when the grid fits entirely in the device's resident-block capacity this
+      // evaluates to n for every candidate, so all three tie and the strict > below keeps
+      // cpb = 8, i.e. exactly the upstream launch geometry. Reducing cpb can only win in
+      // the capacity-limited regime, where the smaller variant's higher max_blocks_per_sm
+      // buys more resident warps. Both outcomes are safe; which one dominates on CC 8.6/8.9
+      // is the measurement this PR is still waiting on.
       if (active_warps > best_active_warps) {
         best_active_warps = active_warps;
         cols_per_block = cpb;
