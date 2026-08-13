@@ -739,12 +739,12 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   if (!enable_robustness_) {
     enabled_toggles.push_back("disable_robustness");
   }
+  enabled_toggles.push_back("lazy_clear_resource_on_first_use");
   return enabled_toggles;
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
-      "lazy_clear_resource_on_first_use",
       "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));

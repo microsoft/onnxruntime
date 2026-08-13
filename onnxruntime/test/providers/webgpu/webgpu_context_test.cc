@@ -138,6 +138,19 @@ TEST(WebGpuContextTest, ReplaysDeviceAllocatorBufferClear) {
   allocator.Free(allocation);
 }
 
+TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
+#else
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  EXPECT_TRUE(DeviceToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0),
+                                    "lazy_clear_resource_on_first_use"));
+#endif
+}
+
 TEST(WebGpuContextTest, EnableRobustnessControlsDawnToggle) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
