@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 
 #include <string>
 
@@ -21,6 +22,7 @@ class LinearAttention final : public OpKernel {
   int q_num_heads_;
   int kv_num_heads_;
   std::string update_rule_;
+  MLAS_LINEAR_ATTENTION_RULE rule_;  // update_rule_, resolved once in the constructor
   float scale_;
   int chunk_size_;
   // Always 0 on CPU (a state window is CUDA-only), but kept so the shared shape helper in

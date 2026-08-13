@@ -149,7 +149,7 @@ void LinearAttentionGQAReference(
     const std::vector<float>* initial_state,  // (B, kv_num_heads, dk, dv)
     const std::vector<float>* decay,          // (B, kv_num_heads, T[, dk])
     const std::vector<float>* beta,           // (B, kv_num_heads, T)
-    std::vector<float>& output,               // (B, kv_num_heads, T, dv)
+    std::vector<float>& output,               // (B, max(q_num_heads, kv_num_heads), T, dv)
     std::vector<float>& final_state) {        // (B, kv_num_heads, dk, dv)
   int bht_kv = batch_size * kv_num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
@@ -1433,8 +1433,19 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N16) {
   RunStandardGQA("gated_delta", 16, 1, 32, 64);
 }
 
+// All four update rules at a fixed n_out=4 ratio: "linear"/"gated" take the no-retrieval
+// (no-beta) branch, "delta"/"gated_delta" the retrieval branch, and "gated"/"gated_delta"
+// additionally apply the decay gate.
 TEST(ContribOpLinearAttentionTest, LinearRule_StandardGQA_N4) {
   RunStandardGQA("linear", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedRule_StandardGQA_N4) {
+  RunStandardGQA("gated", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, DeltaRule_StandardGQA_N4) {
+  RunStandardGQA("delta", 8, 2, 32, 64);
 }
 
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) {
