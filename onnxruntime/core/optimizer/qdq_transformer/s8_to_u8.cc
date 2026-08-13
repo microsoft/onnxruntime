@@ -5,31 +5,6 @@
 
 namespace onnxruntime::QDQ {
 
-void SetOptionalInput(Graph& graph, Node& node, size_t input_idx, NodeArg& input) {
-  auto& input_defs = node.MutableInputDefs();
-  auto& input_arg_counts = node.MutableInputArgsCount();
-  ORT_ENFORCE(input_arg_counts.size() > input_idx,
-              "Missing input metadata for optional input ", input_idx, " of node ", node.Name(), ".");
-
-  const size_t original_size = input_defs.size();
-  if (original_size <= input_idx) {
-    NodeArg& empty_input = graph.GetOrCreateNodeArg("", nullptr);
-    input_defs.resize(input_idx + 1, &empty_input);
-
-    for (size_t index = original_size; index <= input_idx; ++index) {
-      ORT_ENFORCE(input_arg_counts[index] == 0,
-                  "Expected omitted optional input ", index, " of node ", node.Name(), ".");
-      input_arg_counts[index] = 1;
-    }
-  } else if (input_defs[input_idx] == nullptr || !input_defs[input_idx]->Exists()) {
-    ORT_ENFORCE(input_arg_counts[input_idx] == 0,
-                "Expected omitted optional input ", input_idx, " of node ", node.Name(), ".");
-    input_arg_counts[input_idx] = 1;
-  }
-
-  input_defs[input_idx] = &input;
-}
-
 bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
                          size_t weights_idx, size_t weight_zp_idx) {
   auto& input_defs = op_node.MutableInputDefs();
@@ -68,13 +43,14 @@ bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
     // The weights fits into S7, overflow is not a problem, no need to convert to U8
     return false;
   }
-  input_defs[weights_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
+  op_node.MutableDefinitions().input_defs[weights_idx] =
+      &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
 
   // Convert weight zero point to uint8
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
   Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
-  SetOptionalInput(graph, op_node, weight_zp_idx,
-                   graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8));
+  graph_utils::SetOptionalNodeInput(graph, op_node, weight_zp_idx,
+                                    graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8));
 
   return true;
 }

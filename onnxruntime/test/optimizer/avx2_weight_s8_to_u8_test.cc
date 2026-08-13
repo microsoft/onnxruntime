@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
-#include "core/optimizer/qdq_transformer/s8_to_u8.h"
 
 #include <functional>
 #include <string>
 #include <vector>
 
 #include "core/common/span_utils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "core/util/math_cpuonly.h"
@@ -55,12 +55,17 @@ static Status RunModel(ModelTestBuilder& helper, const std::string& model_data,
   return Status::OK();
 }
 
-TEST(CPU_U8S8_Precision_Tests, MatMulIntegerOmittedZeroPoints) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
+static void RunMatMulIntegerOmittedZeroPointsTest(bool use_explicit_empty_inputs) {
+  auto build_test_case = [use_explicit_empty_inputs](ModelTestBuilder& builder) {
     auto* input_a = builder.MakeInput<uint8_t>({1, 2}, {1, 2});
     auto* input_b = builder.MakeInitializer<int8_t>({2, 1}, {-128, 127});
     auto* output = builder.MakeOutput();
-    builder.AddNode("MatMulInteger", {input_a, input_b}, {output});
+    std::vector<NodeArg*> inputs{input_a, input_b};
+    if (use_explicit_empty_inputs) {
+      inputs.push_back(builder.MakeEmptyInput());
+      inputs.push_back(builder.MakeEmptyInput());
+    }
+    builder.AddNode("MatMulInteger", inputs, {output});
   };
 
   auto pre_graph_checker = [](Graph&) { return Status::OK(); };
@@ -88,12 +93,15 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerOmittedZeroPoints) {
 
     Node& mutable_matmul = *graph.GetNode(matmul->Index());
     NodeArg* generated_weight_zp = mutable_matmul.MutableInputDefs()[3];
-    mutable_matmul.MutableInputDefs()[3] = nullptr;
-    mutable_matmul.MutableInputArgsCount()[3] = 0;
-    QDQ::SetOptionalInput(graph, mutable_matmul, 3, *generated_weight_zp);
+    mutable_matmul.MutableDefinitions().input_defs[3] = nullptr;
+    graph.GraphResolveNeeded(false);
+    graph.GraphProtoSyncNeeded(false);
+    graph_utils::SetOptionalNodeInput(graph, mutable_matmul, 3, *generated_weight_zp);
     ORT_RETURN_IF_NOT(mutable_matmul.InputDefs()[3] == generated_weight_zp &&
                           mutable_matmul.InputArgCount()[3] == 1,
                       "Expected null optional slot to be restored");
+    ORT_RETURN_IF_NOT(graph.GraphResolveNeeded() && graph.GraphProtoSyncNeeded(),
+              "Expected optional input update to mark graph synchronization needed");
     return Status::OK();
   };
 
@@ -101,6 +109,14 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerOmittedZeroPoints) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 10, DefaultLoggingManager().DefaultLogger(),
                                         std::move(transformer), TransformerLevel::Level1, 1,
                                         pre_graph_checker, post_graph_checker));
+}
+
+TEST(CPU_U8S8_Precision_Tests, MatMulIntegerTruncatedOptionalZeroPoints) {
+  RunMatMulIntegerOmittedZeroPointsTest(false);
+}
+
+TEST(CPU_U8S8_Precision_Tests, MatMulIntegerExplicitEmptyZeroPoints) {
+  RunMatMulIntegerOmittedZeroPointsTest(true);
 }
 
 template <typename WeightType>
@@ -733,6 +749,75 @@ void BuildDynamicQuantizeLSTMGraph(
   node.AddAttribute("input_forget", int64_t(0));
 
   helper.SetGraphOutputs();
+}
+
+static void RunDynamicQuantizeLSTMMissingRequiredZeroPointTest(size_t missing_input_idx) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildDynamicQuantizeLSTMGraph<int8_t>(
+        builder,
+        1,
+        1,
+        {1, 1, 1},
+        {0.0f},
+        {1, 1, 4},
+        {-128, 0, 0, 0},
+        0.5f,
+        0,
+        {1, 1, 4},
+        {-128, 0, 0, 0},
+        0.5f,
+        0,
+        {1, 8},
+        std::vector<float>(8),
+        {1, 1, 1},
+        {0.0f},
+        {1, 1, 1},
+        {0.0f},
+        {1, 3},
+        std::vector<float>(3));
+  };
+
+  auto pre_graph_checker = [missing_input_idx](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "DynamicQuantizeLSTM") {
+        node.MutableDefinitions().input_defs[missing_input_idx] = &graph.GetOrCreateNodeArg("", nullptr);
+        return Status::OK();
+      }
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DynamicQuantizeLSTM node was not found");
+  };
+
+  auto post_graph_checker = [missing_input_idx](Graph& graph) {
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "DynamicQuantizeLSTM") {
+        continue;
+      }
+
+      ORT_RETURN_IF_NOT(!node.InputDefs()[missing_input_idx]->Exists(),
+                        "Expected required zero point to remain omitted");
+      for (const size_t weight_idx : {size_t{1}, size_t{2}}) {
+        const ONNX_NAMESPACE::TensorProto* weight = nullptr;
+        ORT_RETURN_IF_NOT(graph.GetInitializedTensor(node.InputDefs()[weight_idx]->Name(), weight) &&
+                              weight->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8,
+                          "Expected int8 weights to remain unconverted");
+      }
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DynamicQuantizeLSTM node was not found");
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<Avx2WeightS8ToU8Transformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTMMissingWeightZeroPointNoConversion) {
+  RunDynamicQuantizeLSTMMissingRequiredZeroPointTest(9);
+}
+
+TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTMMissingRecurrenceZeroPointNoConversion) {
+  RunDynamicQuantizeLSTMMissingRequiredZeroPointTest(11);
 }
 
 TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
