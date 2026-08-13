@@ -13,5 +13,10 @@ float ApplyActivation(float x, ActivationType activation_type);
 void ApplySwiGLUActivation(const float* input_data, float* output_data, int64_t inter_size, bool is_interleaved_format,
                            float activation_alpha, float activation_beta, float clamp_limit);
 
+// GeGLU: gelu-gated linear unit. Same interleaved layout as SwiGLU, but the gate uses the
+// gelu (tanh approximation) nonlinearity instead of swish. Matches HF gelu_pytorch_tanh.
+void ApplyGeGLUActivation(const float* input_data, float* output_data, int64_t inter_size, bool is_interleaved_format,
+                          float activation_alpha, float activation_beta, float clamp_limit);
+
 }  // namespace contrib
 }  // namespace onnxruntime

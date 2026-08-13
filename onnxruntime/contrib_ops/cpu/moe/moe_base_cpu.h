@@ -19,6 +19,7 @@ enum class ActivationType {
   Silu = 2,
   Identity = 3,
   SwiGLU = 4,
+  GeGLU = 5,
 };
 
 class MoEBaseCPU {
@@ -42,6 +43,8 @@ class MoEBaseCPU {
       activation_type_ = ActivationType::Identity;
     } else if (activation_type_str == "swiglu") {
       activation_type_ = ActivationType::SwiGLU;
+    } else if (activation_type_str == "geglu") {
+      activation_type_ = ActivationType::GeGLU;
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type_str);
     }
