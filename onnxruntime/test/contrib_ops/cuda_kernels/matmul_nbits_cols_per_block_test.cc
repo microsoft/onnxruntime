@@ -110,7 +110,7 @@ TEST(CUDA_EP_Unittest, SelectColsPerBlock_ForcingHook_AllValues) {
 
 // Simulate the upstream admission logic (cols=8 only).
 static bool UpstreamAdmitsM1(int n, int k, int block_size, size_t shared_mem_per_block,
-                              bool has_zero_points, size_t sizeof_T) {
+                             bool has_zero_points, size_t sizeof_T) {
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0) return false;
   const int blocks_per_K = (k + block_size - 1) / block_size;
   const size_t shared_mem = sizeof_T * blocks_per_K * kColsPerThreadBlock +
@@ -120,7 +120,7 @@ static bool UpstreamAdmitsM1(int n, int k, int block_size, size_t shared_mem_per
 
 // Simulate the NEW admission logic (must match upstream exactly).
 static bool NewAdmitsM1(int n, int k, int block_size, size_t shared_mem_per_block,
-                         bool has_zero_points, size_t sizeof_T) {
+                        bool has_zero_points, size_t sizeof_T) {
   // The new code gates admission on cols=8 footprint, not on the selected cols_per_block.
   // This must produce the same result as upstream.
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0) return false;
