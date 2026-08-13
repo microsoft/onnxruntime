@@ -19,18 +19,19 @@ Abstract:
 
 #if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
 
-#include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <vector>
+#include <memory>
 
 //
 // This kernel only needs a handful of vDSP vector/reduction routines and
 // never touches BLAS/LAPACK. Do not include <Accelerate/Accelerate.h>: on
-// recent macOS SDKs (observed on Xcode 26.3 / MacOSX26.2, see the fix history
-// for the sibling Apple Accelerate Tanh kernel in this same file family)
-// vecLib's cblas.h/cblas_new.h forward-declare BLAS enums without an inline
-// definition, which is valid C but rejected by ISO C++ ("ISO C++ forbids
+// recent macOS SDKs (observed on Xcode 26.3 / MacOSX26.2, see PR #32036's
+// discovery for an earlier, unrelated Apple Accelerate kernel -- that PR was
+// closed without merging, but the SDK incompatibility it found still
+// applies here) vecLib's cblas.h/cblas_new.h forward-declare BLAS enums
+// without an inline definition, which is valid C but rejected by ISO C++
+// ("ISO C++ forbids
 // forward references to 'enum' types"), breaking the build for any C++
 // translation unit that includes the umbrella header on that SDK. Forward-
 // declaring exactly the vDSP entry points used here avoids the umbrella
@@ -85,24 +86,27 @@ Routine Description:
     Apple's Accelerate vDSP library, available on macOS arm64 when
     onnxruntime_USE_APPLE_ACCELERATE is enabled.
 
-    ARM64 has no SIMD-vectorized MlasLayerNormF32 kernel today (only AVX2/x86
-    and RVV/RISC-V register one; see GetMlasPlatform().LayerNormF32Kernel in
+    ARM64 has no SIMD-vectorized MlasLayerNormF32 kernel today (only
+    RVV/RISC-V registers one; see GetMlasPlatform().LayerNormF32Kernel in
     mlasi.h) -- the fallback used everywhere else on ARM64 is a scalar,
     single-element-at-a-time Welford or sum-of-squares C++ loop in
-    onnxruntime/core/providers/cpu/nn/layer_norm_impl.cc. Unlike the sibling
-    Apple Accelerate Tanh kernel (which substitutes vForce's vvtanhf for an
-    *already NEON-vectorized* 4-wide polynomial and measured consistently
-    slower on real hardware, see PR #32036), this kernel's baseline on ARM64
-    has no existing vector competitor, so the comparison here is
-    vDSP-tuned-reduction-and-elementwise-ops versus a plain scalar loop, not
-    vDSP-versus-an-equivalent-NEON-polynomial.
+    onnxruntime/core/providers/cpu/nn/layer_norm_impl.cc. Unlike an earlier,
+    unrelated Apple Accelerate kernel (which substituted vForce's vvtanhf
+    for an *already NEON-vectorized* 4-wide polynomial and measured
+    consistently slower on real hardware -- see the closed, unmerged PR
+    #32036), this kernel's baseline on ARM64 has no existing vector
+    competitor, so the comparison here is vDSP-tuned-reduction-and-
+    elementwise-ops versus a plain scalar loop, not vDSP-versus-an-
+    equivalent-NEON-polynomial.
 
-    Algorithm: centered two-pass, matching the AVX2 kernel's (corrected)
-    approach rather than a single-pass "E[x^2] - mean^2" formula. The
-    uncentered formula suffers catastrophic cancellation in fp32 for
-    large-base/small-spread inputs (see test/mlas/unittest/test_layernorm.cpp
-    and the AVX2 kernel's own history, where this was found and fixed). This
-    kernel deliberately avoids repeating that mistake:
+    Algorithm: centered two-pass, rather than a single-pass "E[x^2] -
+    mean^2" formula. The uncentered formula suffers catastrophic
+    cancellation in fp32 for large-base/small-spread inputs; this kernel
+    deliberately avoids that failure mode, at the cost of a second pass over
+    each row (see test/mlas/unittest/test_layernorm.cpp's ScalarLayerNorm,
+    which uses the uncentered formula as its oracle -- its ASSERT_NEAR
+    tolerance was widened in this same PR to a relative comparison so it
+    still accepts either mathematically-valid evaluation order):
 
       RMSNorm (Simplified):   meanSq = vDSP_measqv(x)              -- E[x^2]
                               denom  = sqrt(meanSq + eps)
@@ -179,11 +183,16 @@ Return Value:
     }
 
     float stack_scratch[kApplePerRowStackScratch];
-    std::vector<float> heap_scratch;
+    // Every element of `scratch` (stack or heap) is fully overwritten by the
+    // vDSP reduction/elementwise calls below before it is ever read, so an
+    // uninitialized heap allocation is safe and avoids the zero-fill cost a
+    // std::vector<float>::resize() would otherwise pay on every large-row
+    // call (NormSize > kApplePerRowStackScratch).
+    std::unique_ptr<float[]> heap_scratch;
     float* scratch = stack_scratch;
     if (NormSize > kApplePerRowStackScratch) {
-        heap_scratch.resize(NormSize);
-        scratch = heap_scratch.data();
+        heap_scratch.reset(new float[NormSize]);
+        scratch = heap_scratch.get();
     }
 
     const auto n = static_cast<unsigned long>(NormSize);
