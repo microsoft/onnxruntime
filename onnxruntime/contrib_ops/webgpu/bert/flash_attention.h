@@ -37,7 +37,8 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32},
       {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
+      {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
+      {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
@@ -100,7 +101,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool use_seqlen_k = false,
                         bool has_head_sink = false,
                         bool turbo_quant = false,
-                        int compressed_head_size_u32 = 0)
+                        int compressed_head_size_u32 = 0,
+                        bool use_seqlens_q = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -114,7 +116,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         use_seqlen_k_(use_seqlen_k),
         has_head_sink_(has_head_sink),
         turbo_quant_(turbo_quant),
-        compressed_head_size_u32_(compressed_head_size_u32) {
+        compressed_head_size_u32_(compressed_head_size_u32),
+        use_seqlens_q_(use_seqlens_q) {
     if (use_shm_path_) {
       // Use shared-memory loop-based path with dynamic max_k_step.
       // Compute max_k_step from workgroup shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
@@ -161,6 +164,10 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int max_k_step_;
   bool turbo_quant_;
   int compressed_head_size_u32_;
+  // Per-batch new-Q-length path (LEFT-aligned Q). When set, the shader reads
+  // seqlens_q[b] and computes past_sequence_length_b = total_kv_b - q_len_b.
+  // When unset (default), callers keep the uniform-q_len clamp path unchanged.
+  bool use_seqlens_q_;
 };
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
@@ -171,8 +178,9 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  bool is_unidirectional = false,
                                  uint32_t m_tile = 1,
                                  bool use_seqlen_k = false,
-                                 bool turbo_quant = false, int compressed_head_size_u32 = 0)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32) {
+                                 bool turbo_quant = false, int compressed_head_size_u32 = 0,
+                                 bool use_seqlens_q = false)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -201,6 +209,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
   bool use_seqlen_k_;
   bool turbo_quant_;
   int compressed_head_size_u32_;
+  // See FlashAttentionProgram::use_seqlens_q_ for semantics.
+  bool use_seqlens_q_;
 };
 
 class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
@@ -227,11 +237,14 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   bool use_seqlen_k_;
 };
 
+// seqlens_q (optional): int32[batch_size] of per-batch new-Q lengths. Enables
+// LEFT-aligned variable-q_len callers (e.g. PagedAttention). Uniform-q_len
+// callers pass nullptr and keep the pre-existing clamped path.
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr,
-                           const Tensor* total_seqlen = nullptr);
+                           const Tensor* total_seqlen = nullptr, const Tensor* seqlens_q = nullptr);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 

@@ -19,17 +19,20 @@ struct OperatorWeightInfo {
   const size_t weight_zp_idx;
 };
 
-static const std::unordered_map<std::string, struct OperatorWeightInfo> s8_overflow_ops = {
-    {"QAttention", {{1}, kMSDomain, 1, 7}},
-    {"MatMulIntegerToFloat", {{1}, kMSDomain, 1, 5}},
-    {"DynamicQuantizeMatMul", {{1}, kMSDomain, 1, 3}},
-    {"QGemm", {{1}, kMSDomain, 3, 5}},
-    {"MatMulInteger", {{10}, kOnnxDomain, 1, 3}},
-    {"QLinearMatMul", {{10}, kOnnxDomain, 3, 5}},
-    {"QLinearConv", {{10}, kOnnxDomain, 3, 5}},
-    {"DequantizeLinear", {{10, 13}, kMSDomain, 0, 2}},  // already covered in QDQS8ToU8Transformer but does not hurt
-                                                        /* {"ConvInteger", {10}, kOnnxDomain, 1, 3},  // ConvInteger does not support int8_t weight at all */
-};
+static const std::unordered_map<std::string, OperatorWeightInfo>& GetS8OverflowOps() {
+  static const std::unordered_map<std::string, OperatorWeightInfo> s8_overflow_ops = {
+      {"QAttention", {{1}, kMSDomain, 1, 7}},
+      {"MatMulIntegerToFloat", {{1}, kMSDomain, 1, 5}},
+      {"DynamicQuantizeMatMul", {{1}, kMSDomain, 1, 3}},
+      {"QGemm", {{1}, kMSDomain, 3, 5}},
+      {"MatMulInteger", {{10}, kOnnxDomain, 1, 3}},
+      {"QLinearMatMul", {{10}, kOnnxDomain, 3, 5}},
+      {"QLinearConv", {{10}, kOnnxDomain, 3, 5}},
+      {"DequantizeLinear", {{10, 13}, kMSDomain, 0, 2}},  // already covered in QDQS8ToU8Transformer but does not hurt
+                                                          /* {"ConvInteger", {10}, kOnnxDomain, 1, 3},  // ConvInteger does not support int8_t weight at all */
+  };
+  return s8_overflow_ops;
+}
 
 static inline bool MatchesOpSinceVersion(
     const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
@@ -153,6 +156,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 // For QAttention operator, if the weight is const int8, convert it to const uint8
 Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                               const logging::Logger& logger) const {
+  const auto& s8_overflow_ops = GetS8OverflowOps();
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

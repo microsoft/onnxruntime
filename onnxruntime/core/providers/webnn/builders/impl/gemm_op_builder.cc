@@ -302,9 +302,9 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
       }
 
       // For DequantizeLinear, input indices: 0 (x), 1 (scale), 2 (zero_point)
-      if (!IsInputRankSupported(wnn_limits, "dequantizeLinear",
-                                (i < 2) ? "input" : "zeroPoint",
-                                shape.size(), node.Name(), logger)) {
+      if (!IsRankSupportedByWebNNOp(wnn_limits, "dequantizeLinear",
+                                    (i < 2) ? "input" : "zeroPoint",
+                                    shape.size(), node.Name(), logger)) {
         return false;
       }
     }
@@ -320,7 +320,7 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
         continue;
       }
 
-      if (!IsInputRankSupported(wnn_limits, "matmul", (i == 0) ? "a" : "b", shape.size(), node.Name(), logger)) {
+      if (!IsRankSupportedByWebNNOp(wnn_limits, "matmul", (i == 0) ? "a" : "b", shape.size(), node.Name(), logger)) {
         return false;
       }
     }
@@ -341,9 +341,10 @@ bool GemmOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::
     // The last decomposed op of MatMulInteger is Cast, and so
     // we only need to ensure it supports the output_type.
     return IsDataTypeSupportedByOp("Cast", output_type, wnn_limits, "output", "Output", logger);
-  } else {
-    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
   }
+
+  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger) &&
+         IsOutputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -293,8 +293,8 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
     }
     // It's complicated to check all the decomposed ops' input rank support.
     // Ensure at least the first input rank is supported by the decomposed ops (pow and div accept the first input).
-    return IsInputRankSupported(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
-           IsInputRankSupported(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
+    return IsRankSupportedByWebNNOp(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
   } else {
     bool is_data_type_supported = IsDataTypeSupportedByOp(op_type, input_types[0], wnn_limits, "input", "X", logger);
     if (op_type == "InstanceNormalization") {
@@ -328,7 +328,8 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
     }
     return true;
   } else {
-    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
+    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger) &&
+           IsOutputRankSupportedByOp(node, wnn_limits, logger);
   }
 }
 

@@ -312,6 +312,7 @@ class TestQMoENVFP4(unittest.TestCase):
         gemv_mode=None,
         input_scale=1.0,
         atol_override=None,
+        router_logits_override=None,
     ):
         self._skip_if_no_fp4()
 
@@ -394,7 +395,11 @@ class TestQMoENVFP4(unittest.TestCase):
                     os.environ["ORT_ENABLE_FP4_GEMV"] = prev_gemv_env
 
         input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype) * input_scale
-        router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
+        if router_logits_override is None:
+            router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
+        else:
+            router_logits = torch.tensor(router_logits_override, device=device, dtype=torch_dtype)
+            self.assertEqual(tuple(router_logits.shape), (num_tokens, num_experts))
         output_tensor = torch.zeros(num_tokens, hidden_size, device=device, dtype=torch_dtype)
 
         iobinding = session.io_binding()
@@ -817,6 +822,49 @@ class TestQMoENVFP4(unittest.TestCase):
             proc.returncode,
             0,
             f"ORT_FP4_GEMV_DEFAULT_TILING=0 run failed:\n{proc.stdout}\n{proc.stderr}",
+        )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16,),
+            (TensorProto.BFLOAT16,),
+        ]
+    )
+    def test_nvfp4_gemv_skip_expand_parity(self, onnx_dtype):
+        router_logits = [
+            [0.1, 3.0, -2.0, 1.0, -3.0, 2.0, -4.0, 4.0],
+            [3.0, -4.0, 4.0, -3.0, -2.0, -1.0, 1.0, 2.0],
+            [-4.0, 1.0, 3.0, -3.0, 2.0, 4.0, -2.0, -1.0],
+        ]
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=4,
+            num_tokens=3,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            router_logits_override=router_logits,
+        )
+        env_name = "ORT_DISABLE_FP4_GEMV_SKIP_EXPAND"
+        previous_value = os.environ.get(env_name)
+        try:
+            os.environ[env_name] = "1"
+            expanded_output = self._run_nvfp4_moe_test(**shape)
+            os.environ[env_name] = "0"
+            skip_expand_output = self._run_nvfp4_moe_test(**shape)
+        finally:
+            if previous_value is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = previous_value
+
+        # Each helper call has already checked its output against the dequantized PyTorch
+        # reference. Exact equality here isolates the activation-row addressing difference.
+        self.assertTrue(
+            torch.equal(expanded_output, skip_expand_output),
+            "FP4 GEMV skip-expand output differs from the expanded-activation path",
         )
 
     def test_nvfp4_fp16_gemv_vs_fallback_parity(self):

@@ -111,6 +111,9 @@ class OpKernel {
   // real tensors). Default: declare nothing -> callers MUST fall back to today's dynamic
   // GetScratchBuffer path. Adding this MUST NOT change behavior for any kernel that does not
   // override it.
+  //
+  // Called during FinalizeSessionState() after kernel instances are created, when input shapes
+  // are known (static models) or max shape hints are provided via session.max_shape_override.
   [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
       gsl::span<const TensorShape> /*input_shapes*/,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
