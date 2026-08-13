@@ -83,10 +83,23 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
   const size_t total_bytes = SafeInt<size_t>(cache_shape.Size()) * element_size;
   const auto* src_raw = past_cache->DataRaw();
   auto* dst_raw = present_cache->MutableDataRaw();
-  if (dst_raw != src_raw) {
+  if (dst_raw != src_raw && total_bytes > 0) {
     LOGS(context->Logger(), WARNING) << "TensorScatter: in-place optimization not activated, copying past_cache to present_cache ("
                                      << total_bytes << " bytes)";
     memcpy(dst_raw, src_raw, total_bytes);
+  }
+
+  if (sequence_length == 0) {
+    for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+      const int64_t wi = write_indices != nullptr ? write_indices[batch_idx] : 0;
+      ORT_ENFORCE(wi >= 0, "TensorScatter: write_indices[", batch_idx, "] = ", wi, " is negative");
+      if (!circular_) {
+        ORT_ENFORCE(wi <= max_sequence_length,
+                    "TensorScatter linear mode: write_indices[", batch_idx, "] + sequence_length (",
+                    wi, " + 0) exceeds max_sequence_length (", max_sequence_length, ")");
+      }
+    }
+    return Status::OK();
   }
 
   // Step 2: Scatter the update into present_cache.
