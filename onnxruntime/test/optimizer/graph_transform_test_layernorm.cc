@@ -639,7 +639,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAddEpsilonInput0) {
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsIncompatibleScaleShape) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({1, 1}, {1.0f});
+    auto* input = builder.MakeInput<float>({1}, {1.0f});
     auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
     auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
     auto* scale = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
@@ -2472,15 +2472,12 @@ TEST_F(GraphTransformationTests, LayerNormFusion_ZeroElementEpsilon) {
   auto* graph_proto = model_proto.mutable_graph();
   graph_proto->set_name("LayerNormFusion_ZeroElem");
 
-  // Input with a scale-compatible shape
+  // Input with dynamic shape
   {
     auto* input = graph_proto->add_input();
     input->set_name("X");
     auto* type = input->mutable_type()->mutable_tensor_type();
     type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    auto* shape = type->mutable_shape();
-    shape->add_dim()->set_dim_value(1);
-    shape->add_dim()->set_dim_value(0);
     // No shape = dynamic
   }
 
@@ -2602,12 +2599,15 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
   auto* graph_proto = model_proto.mutable_graph();
   graph_proto->set_name("SimplifiedLayerNormFusion_ZeroElem");
 
-  // Input with dynamic shape
+  // Input with a scale-compatible shape
   {
     auto* input = graph_proto->add_input();
     input->set_name("X");
     auto* type = input->mutable_type()->mutable_tensor_type();
     type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* shape = type->mutable_shape();
+    shape->add_dim()->set_dim_value(1);
+    shape->add_dim()->set_dim_value(0);
   }
 
   // Zero-element epsilon

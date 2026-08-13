@@ -781,11 +781,13 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     }
 
     // div --> mul or div --> cast --> mul
+    NodeArg* normalized_output = div_node.MutableOutputDefs()[0];
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       if (!is_gpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
+      normalized_output = next_node->MutableOutputDefs()[0];
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
 
@@ -821,26 +823,27 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
-    for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
-        continue;
+    for (NodeArg* input : mul_node.MutableInputDefs()) {
+      if (input->Name() != normalized_output->Name()) {
+        scale = input;
+        break;
       }
-#ifdef ENABLE_TRAINING_CORE
-      if (axes_values.empty() ||
-          mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
-      }
-#else
-      // Scale must be 1d.
-      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-        scale = mul_node.MutableInputDefs()[i];
-      }
-#endif
     }
 
-    if (scale == nullptr) {
+    if (scale == nullptr || scale->Shape() == nullptr) {
       continue;
     }
+
+#ifdef ENABLE_TRAINING_CORE
+    if (scale->Shape()->dim_size() != static_cast<int>(axes_values.size())) {
+      continue;
+    }
+#else
+    // Scale must be 1d.
+    if (scale->Shape()->dim_size() != 1) {
+      continue;
+    }
+#endif
 
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
