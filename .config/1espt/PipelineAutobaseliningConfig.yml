@@ -28,20 +28,20 @@ pipelines:
         credscan:
           lastModifiedDate: 2024-10-25
         eslint:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2024-10-25
         psscriptanalyzer:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2024-10-25
         armory:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2024-10-25
         policheck:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2024-10-29
       binary:
         credscan:
           lastModifiedDate: 2024-10-25
         binskim:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2025-04-25
         spotbugs:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2024-10-25
   1625:
     retail:
       source:
@@ -88,11 +88,11 @@ pipelines:
         credscan:
           lastModifiedDate: 2025-02-12
         eslint:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2025-02-12
         psscriptanalyzer:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2025-02-12
         armory:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2025-02-12
   1313:
     retail:
       source:
@@ -218,18 +218,18 @@ pipelines:
     retail:
       source:
         policheck:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2026-07-29
         eslint:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2026-07-29
         psscriptanalyzer:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2026-07-29
         armory:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2026-07-29
       binary:
         binskim:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2026-07-29
         spotbugs:
-          lastModifiedDate: 2026-08-13
+          lastModifiedDate: 2026-07-29
   2214:
     retail:
       source:
@@ -246,7 +246,7 @@ pipelines:
           lastModifiedDate: 2026-08-05
         spotbugs:
           lastModifiedDate: 2026-08-05
-  2212:
+  2104:
     retail:
       source:
         policheck:
@@ -256,4 +256,9 @@ pipelines:
         psscriptanalyzer:
           lastModifiedDate: 2026-08-13
         armory:
+          lastModifiedDate: 2026-08-13
+      binary:
+        binskim:
+          lastModifiedDate: 2026-08-13
+        spotbugs:
           lastModifiedDate: 2026-08-13
