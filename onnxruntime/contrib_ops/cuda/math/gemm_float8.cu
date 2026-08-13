@@ -220,6 +220,12 @@ Status GemmFloat8::ComputeGemm(
 
   cublasComputeType_t compute_type;
   switch (d_cuda_type) {
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case CUDA_R_8F_E4M3:
+    case CUDA_R_8F_E5M2:
+      compute_type = CUBLAS_COMPUTE_32F;
+      break;
+#endif
     case CUDA_R_16F:
       switch (a_cuda_type) {
 #if !defined(DISABLE_FLOAT8_TYPES)
