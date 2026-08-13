@@ -77,7 +77,7 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerOmittedZeroPoints) {
     ORT_RETURN_IF_NOT(input_defs.size() == 4, "Expected all MatMulInteger optional input slots");
     ORT_RETURN_IF_NOT(!input_defs[2]->Exists(), "Expected omitted A zero point input");
     ORT_RETURN_IF_NOT(matmul->InputArgCount() == std::vector<int>({1, 1, 1, 1}),
-              "Expected synchronized MatMulInteger input counts");
+                      "Expected synchronized MatMulInteger input counts");
 
     const ONNX_NAMESPACE::TensorProto* weight_zp = nullptr;
     ORT_RETURN_IF_NOT(input_defs[3]->Exists() &&

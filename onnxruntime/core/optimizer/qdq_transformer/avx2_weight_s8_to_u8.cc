@@ -87,7 +87,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
   const auto* rzp_def = input_defs.size() <= r_zp_idx ? nullptr : input_defs[r_zp_idx];
   if (nullptr != rzp_def && rzp_def->Exists()) {
     if (!graph_utils::NodeArgIsConstant(graph, *rzp_def) ||
-      !graph.GetInitializedTensor(rzp_def->Name(), r_zp_tensor_proto) ||
+        !graph.GetInitializedTensor(rzp_def->Name(), r_zp_tensor_proto) ||
         r_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
       LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
                             << " unable to locate recurrence tensor or its zero point value,"
