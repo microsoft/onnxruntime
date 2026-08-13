@@ -29,6 +29,24 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
 
 template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
+#if !defined(__wasm__)
+  // Subgroup-matrix 1x1 Conv has top priority: create the impl once (device query),
+  // then let it decide inside Compute whether the kernel/attrs qualify. It declines
+  // (handled=false, allocating nothing) otherwise and we fall through to the normal
+  // path order below.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixConv1x1Impl(context);
+  });
+  if (impl_ != nullptr) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, conv_attrs_, activation_, is_channels_last,
+                                       transposed_kernel_.get(), w_is_constant_, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+#endif
+
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const Tensor* kernel = nullptr;
@@ -271,26 +289,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-#if !defined(__wasm__)
-      // Lazily create the subgroup-matrix 1x1-Conv impl once so the device
-      // capability query is not repeated on every inference step. It computes a
-      // plain (non-activation-fused) matmul, so only attempt it when no activation
-      // is fused; on the channels-last path B is the (possibly constant) weight, so
-      // an odd-N weight can be padded/cached, whereas channels-first B is the
-      // activation input and is never constant.
-      std::call_once(impl_init_flag_, [&]() {
-        impl_ = CreateSubgroupMatrixConv1x1Impl(context);
-      });
-      if (impl_ != nullptr && activation_.activation_kind_ == ActivationKind::None) {
-        bool handled = false;
-        ORT_RETURN_IF_ERROR(impl_->Compute(context, matmul_inputs, output,
-                                           matmul_input_reshapes[0], matmul_input_reshapes[1],
-                                           is_channels_last && w_is_constant_, handled));
-        if (handled) {
-          return Status::OK();
-        }
-      }
-#endif
       return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
     }
   }

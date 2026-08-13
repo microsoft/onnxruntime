@@ -173,15 +173,6 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelpe
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
-// Default tiling used on any vendor without a specialized policy: a fixed 32x32
-// output tile with no split-K.
-SubgroupMatrixTilingSelector MakeDefaultTilingSelector() {
-  return [](const ComputeContext&, uint32_t /*M*/, uint32_t /*N*/,
-            uint32_t /*K*/, uint32_t /*batch*/) -> std::optional<SubgroupMatrixTiling> {
-    return SubgroupMatrixTiling{32, 32, 1};
-  };
-}
-
 }  // namespace
 
 Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -214,7 +205,7 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
   // to a fixed default tiling.
   const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
   SubgroupMatrixTilingSelector tiling_selector =
-      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultTilingSelector();
+      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultSubgroupMatrixTilingSelector();
   if (!tiling_selector) {
     return nullptr;
   }

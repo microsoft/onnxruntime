@@ -35,6 +35,11 @@ using SubgroupMatrixTilingSelector =
     std::function<std::optional<SubgroupMatrixTiling>(const ComputeContext& context,
                                                       uint32_t M, uint32_t N, uint32_t K, uint32_t batch)>;
 
+// Default tiling used on any vendor without a specialized policy: a fixed 32x32
+// output tile with no split-K. Shared by the subgroup-matrix MatMul, Gemm and
+// Conv 1x1 factories as the fallback selector when no vendor policy applies.
+SubgroupMatrixTilingSelector MakeDefaultSubgroupMatrixTilingSelector();
+
 // Creates a MatMulOptImpl that runs the subgroup-matrix kernel on devices whose
 // vendor policy supports it. The per-problem output tiling comes from a
 // vendor-specific selector chosen internally from the device context. Returns
@@ -105,6 +110,27 @@ class SubgroupMatrixPadBCache {
   mutable std::unique_ptr<Tensor> padded_b_;
   mutable uint32_t padded_b_stride_ = 0;
 };
+
+// Runs the subgroup-matrix kernel for Y = A @ B (+ optional bias) given resolved
+// operands and their logical shapes. a_shape/b_shape may differ from the tensors'
+// own shapes when the caller reshaped them (e.g. a 1x1 Conv folding N,H,W into M).
+// Handles the shared 2D-weight and batched-B cases, odd-N even-stride padding (via
+// pad_cache when b_is_constant), vendor tiling and dispatch. When `output` is
+// non-null the caller's pre-allocated tensor is used as a flat buffer (its element
+// count must equal batch*M*N); when null the result is allocated via
+// context.Output(0, ...) shaped like a_shape with its trailing dim set to N. Sets
+// handled=true on success; leaves handled=false (touching nothing) on an
+// unsupported device/problem so the caller can fall back. Shared by the MatMul
+// operator and the Conv 1x1 path.
+Status DispatchSubgroupMatrixMatMul(ComputeContext& context,
+                                    int32_t config_index,
+                                    const SubgroupMatrixTilingSelector& tiling_selector,
+                                    const SubgroupMatrixPadBCache& pad_cache,
+                                    const Tensor* a, const Tensor* b, const Tensor* bias,
+                                    Tensor* output,
+                                    const TensorShape& a_shape, const TensorShape& b_shape,
+                                    bool b_is_constant,
+                                    /*out*/ bool& handled);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

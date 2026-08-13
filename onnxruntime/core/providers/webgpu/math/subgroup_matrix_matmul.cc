@@ -43,130 +43,12 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
         tiling_selector_(std::move(tiling_selector)) {}
 
   Status Compute(ComputeContext& context, /*out*/ bool& handled) override {
-    handled = false;
-
     const auto* a = context.Input(0);
     const auto* b = context.Input(1);
-    const auto& a_shape = a->Shape();
-    const auto& b_shape = b->Shape();
-    if (a_shape.NumDimensions() < 2 || !a->IsDataType<MLFloat16>() || !b->IsDataType<MLFloat16>()) {
-      return Status::OK();
-    }
-
-    const uint32_t K = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
-    // The tiling selector is responsible for any subgroup-matrix alignment
-    // requirements (e.g. K % sg_mat_k == 0) and declines otherwise.
-    if (K == 0) {
-      return Status::OK();
-    }
-
-    // Two shapes are handled:
-    //  * Shared 2D weight B [K, N]: all leading A dims fold into M and the whole
-    //    problem runs as one z-slice (batch == 1). Optimal for weight matmuls -
-    //    B is read once and M-parallelism is maximal.
-    //  * Batched B [..., K, N] (true bmm): A is [..., M, K] with batch dims
-    //    identical to B (no broadcasting). Each (A, B) pair is one z-dispatched
-    //    slice; the kernel derives the per-slice A/B/output strides from M, N, K.
-    // Anything else (e.g. broadcasting A across B's batch) falls back.
-    uint32_t M = 0;
-    uint32_t N = 0;
-    uint32_t batch = 1;
-    if (b_shape.NumDimensions() == 2) {
-      ORT_ENFORCE(narrow<uint32_t>(b_shape[0]) == K,
-                  "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[0]);
-      N = narrow<uint32_t>(b_shape[1]);
-      M = narrow<uint32_t>(a_shape.Size() / static_cast<int64_t>(K));
-    } else {
-      // Batched B (true bmm): A is [..., M, K], B is [..., K, N]. The kernel pairs
-      // slice i of A with slice i of B and copies A's shape to the output, so it
-      // can only be correct when A and B have identical batch dims - it does not
-      // implement numpy broadcasting. Require equal rank and equal leading dims;
-      // anything broadcastable-but-not-identical (e.g. A=[2,1,M,K], B=[1,2,K,N])
-      // falls back to the generic MatMul path.
-      const size_t rank = a_shape.NumDimensions();
-      if (b_shape.NumDimensions() != rank) {
-        return Status::OK();
-      }
-      ORT_ENFORCE(narrow<uint32_t>(b_shape[rank - 2]) == K,
-                  "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[rank - 2]);
-      M = narrow<uint32_t>(a_shape[rank - 2]);
-      N = narrow<uint32_t>(b_shape[rank - 1]);
-      for (size_t i = 0; i + 2 < rank; ++i) {
-        if (a_shape[i] != b_shape[i]) {
-          return Status::OK();
-        }
-      }
-      batch = narrow<uint32_t>(a_shape.SizeToDimension(rank - 2));
-    }
-
-    // An empty M or N yields an empty output (ONNX permits zero-length dims). Let
-    // the generic MatMul path allocate the empty result rather than dispatch a
-    // degenerate (zero-workgroup) kernel.
-    if (M == 0 || N == 0) {
-      return Status::OK();
-    }
-
-    // The B right-operand is loaded with subgroupMatrixLoad using a row stride of
-    // N_b. Intel's f16 subgroup-matrix load reads columns in 32-bit (2xf16) pairs
-    // and requires each K-row to start 4-byte aligned, i.e. an even element stride.
-    // An odd N would offset every other K-row by 2 bytes and corrupt the odd output
-    // columns. For a constant weight (2D or batched) we can pad B to an even stride
-    // (N_b = N + 1); a non-constant odd-N B falls back here. This is only the cheap
-    // eligibility check - the actual padding is deferred until after tiling selection
-    // so we never allocate/dispatch a padded copy for a problem that will fall back
-    // anyway (e.g. K % 16 != 0, which the tiling selector declines). B has already
-    // been validated as 2D or a well-formed batched shape above.
-    if (N % 2 != 0 && !parent_.IsBConstant()) {
-      return Status::OK();
-    }
-
-    const std::optional<SubgroupMatrixTiling> tiling = tiling_selector_(context, M, N, K, batch);
-    if (!tiling) {
-      return Status::OK();
-    }
-
-    // The optimized path will run: now materialize the even-strided B for odd N.
-    const Tensor* b_used = b;
-    uint32_t N_b = N;
-    if (N % 2 != 0) {
-      ORT_RETURN_IF_ERROR(pad_cache_.EnsurePaddedB(context, *b, N, b_used, N_b));
-    }
-
-    TensorShapeVector output_dims{a_shape.GetDims().begin(), a_shape.GetDims().end()};
-    output_dims.back() = static_cast<int64_t>(N);
-    TensorShape output_shape{output_dims};
-    auto* output = context.Output(0, output_shape);
-
-    const bool has_bias = context.InputCount() > 2;
-    const Tensor* bias = has_bias ? context.Input(2) : nullptr;
-
-    const auto& config = supported_subgroup_matrix_configs[config_index_];
-    const uint32_t tile_m = tiling->tile_m;
-    const uint32_t tile_n = tiling->tile_n;
-    const uint32_t split_k = tiling->split_k;
-    const uint32_t sg_mat_count_m = tile_m / config.M;
-    const uint32_t sg_mat_count_n = tile_n / config.N;
-    ORT_ENFORCE(tile_m % config.M == 0 && tile_n % config.N == 0,
-                "Tiling must be a multiple of the subgroup-matrix shape: ",
-                tile_m, "x", tile_n, " vs ", config.M, "x", config.N);
-    const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
-    const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
-
-    SubgroupMatrixMatMulProgram program{has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
-    program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
-    program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
-    program.CacheHint(has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                    {b_used, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutput({output, ProgramTensorMetadataDependency::Rank, output->Shape(), 1})
-        .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}, {N_b}});
-    if (has_bias) {
-      program.AddInput({bias, ProgramTensorMetadataDependency::None});
-    }
-    ORT_RETURN_IF_ERROR(context.RunProgram(program));
-
-    handled = true;
-    return Status::OK();
+    const Tensor* bias = context.InputCount() > 2 ? context.Input(2) : nullptr;
+    return DispatchSubgroupMatrixMatMul(context, config_index_, tiling_selector_, pad_cache_,
+                                        a, b, bias, /*output=*/nullptr,
+                                        a->Shape(), b->Shape(), parent_.IsBConstant(), handled);
   }
 
  private:
@@ -191,16 +73,145 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelpe
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
-// Default tiling used on any vendor without a specialized policy: a fixed 32x32
-// output tile with no split-K.
-SubgroupMatrixTilingSelector MakeDefaultTilingSelector() {
+}  // namespace
+
+SubgroupMatrixTilingSelector MakeDefaultSubgroupMatrixTilingSelector() {
   return [](const ComputeContext&, uint32_t /*M*/, uint32_t /*N*/,
             uint32_t /*K*/, uint32_t /*batch*/) -> std::optional<SubgroupMatrixTiling> {
     return SubgroupMatrixTiling{32, 32, 1};
   };
 }
 
-}  // namespace
+Status DispatchSubgroupMatrixMatMul(ComputeContext& context,
+                                    int32_t config_index,
+                                    const SubgroupMatrixTilingSelector& tiling_selector,
+                                    const SubgroupMatrixPadBCache& pad_cache,
+                                    const Tensor* a, const Tensor* b, const Tensor* bias,
+                                    Tensor* output,
+                                    const TensorShape& a_shape, const TensorShape& b_shape,
+                                    bool b_is_constant,
+                                    /*out*/ bool& handled) {
+  handled = false;
+
+  if (a_shape.NumDimensions() < 2 || !a->IsDataType<MLFloat16>() || !b->IsDataType<MLFloat16>()) {
+    return Status::OK();
+  }
+
+  const uint32_t K = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
+  // The tiling selector is responsible for any subgroup-matrix alignment
+  // requirements (e.g. K % sg_mat_k == 0) and declines otherwise.
+  if (K == 0) {
+    return Status::OK();
+  }
+
+  // Two shapes are handled:
+  //  * Shared 2D weight B [K, N]: all leading A dims fold into M and the whole
+  //    problem runs as one z-slice (batch == 1). Optimal for weight matmuls -
+  //    B is read once and M-parallelism is maximal.
+  //  * Batched B [..., K, N] (true bmm): A is [..., M, K] with batch dims
+  //    identical to B (no broadcasting). Each (A, B) pair is one z-dispatched
+  //    slice; the kernel derives the per-slice A/B/output strides from M, N, K.
+  // Anything else (e.g. broadcasting A across B's batch) falls back.
+  uint32_t M = 0;
+  uint32_t N = 0;
+  uint32_t batch = 1;
+  if (b_shape.NumDimensions() == 2) {
+    ORT_ENFORCE(narrow<uint32_t>(b_shape[0]) == K,
+                "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[0]);
+    N = narrow<uint32_t>(b_shape[1]);
+    M = narrow<uint32_t>(a_shape.Size() / static_cast<int64_t>(K));
+  } else {
+    // Batched B (true bmm): A is [..., M, K], B is [..., K, N]. The kernel pairs
+    // slice i of A with slice i of B and copies A's shape to the output, so it
+    // can only be correct when A and B have identical batch dims - it does not
+    // implement numpy broadcasting. Require equal rank and equal leading dims;
+    // anything broadcastable-but-not-identical (e.g. A=[2,1,M,K], B=[1,2,K,N])
+    // falls back to the generic MatMul path.
+    const size_t rank = a_shape.NumDimensions();
+    if (b_shape.NumDimensions() != rank) {
+      return Status::OK();
+    }
+    ORT_ENFORCE(narrow<uint32_t>(b_shape[rank - 2]) == K,
+                "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[rank - 2]);
+    M = narrow<uint32_t>(a_shape[rank - 2]);
+    N = narrow<uint32_t>(b_shape[rank - 1]);
+    for (size_t i = 0; i + 2 < rank; ++i) {
+      if (a_shape[i] != b_shape[i]) {
+        return Status::OK();
+      }
+    }
+    batch = narrow<uint32_t>(a_shape.SizeToDimension(rank - 2));
+  }
+
+  // An empty M or N yields an empty output (ONNX permits zero-length dims). Let the
+  // caller allocate the empty result rather than dispatch a degenerate
+  // (zero-workgroup) kernel.
+  if (M == 0 || N == 0) {
+    return Status::OK();
+  }
+
+  // The B right-operand is loaded with subgroupMatrixLoad using a row stride of
+  // N_b. Intel's f16 subgroup-matrix load reads columns in 32-bit (2xf16) pairs
+  // and requires each K-row to start 4-byte aligned, i.e. an even element stride.
+  // An odd N would offset every other K-row by 2 bytes and corrupt the odd output
+  // columns. For a constant weight we can pad B to an even stride (N_b = N + 1); a
+  // non-constant odd-N B falls back here. The actual padding is deferred until after
+  // tiling selection so we never allocate a padded copy for a problem that will fall
+  // back anyway (e.g. K % 16 != 0, which the tiling selector declines).
+  if (N % 2 != 0 && !b_is_constant) {
+    return Status::OK();
+  }
+
+  const std::optional<SubgroupMatrixTiling> tiling = tiling_selector(context, M, N, K, batch);
+  if (!tiling) {
+    return Status::OK();
+  }
+
+  // The optimized path will run: now materialize the even-strided B for odd N.
+  const Tensor* b_used = b;
+  uint32_t N_b = N;
+  if (N % 2 != 0) {
+    ORT_RETURN_IF_ERROR(pad_cache.EnsurePaddedB(context, *b, N, b_used, N_b));
+  }
+
+  // Use the caller's pre-allocated output when provided (a reshaped flat buffer);
+  // otherwise allocate one shaped like A with its trailing dim replaced by N.
+  Tensor* out = output;
+  if (out == nullptr) {
+    TensorShapeVector output_dims{a_shape.GetDims().begin(), a_shape.GetDims().end()};
+    output_dims.back() = static_cast<int64_t>(N);
+    out = context.Output(0, TensorShape{output_dims});
+  }
+
+  const bool has_bias = bias != nullptr;
+  const auto& config = supported_subgroup_matrix_configs[config_index];
+  const uint32_t tile_m = tiling->tile_m;
+  const uint32_t tile_n = tiling->tile_n;
+  const uint32_t split_k = tiling->split_k;
+  const uint32_t sg_mat_count_m = tile_m / config.M;
+  const uint32_t sg_mat_count_n = tile_n / config.N;
+  ORT_ENFORCE(tile_m % config.M == 0 && tile_n % config.N == 0,
+              "Tiling must be a multiple of the subgroup-matrix shape: ",
+              tile_m, "x", tile_n, " vs ", config.M, "x", config.N);
+  const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
+  const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
+
+  SubgroupMatrixMatMulProgram program{has_bias, config_index, sg_mat_count_m, sg_mat_count_n, split_k};
+  program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
+  program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
+  program.CacheHint(has_bias, config_index, sg_mat_count_m, sg_mat_count_n, split_k)
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                  {b_used, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+      .AddOutput({out, ProgramTensorMetadataDependency::Rank, out->Shape(), 1})
+      .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}, {N_b}});
+  if (has_bias) {
+    program.AddInput({bias, ProgramTensorMetadataDependency::None});
+  }
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+  handled = true;
+  return Status::OK();
+}
 
 Status SubgroupMatrixMatMulPadBProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input_b = shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias);
@@ -287,7 +298,7 @@ std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(
   // to a fixed default tiling.
   const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
   SubgroupMatrixTilingSelector tiling_selector =
-      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultTilingSelector();
+      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultSubgroupMatrixTilingSelector();
   if (!tiling_selector) {
     return nullptr;
   }
