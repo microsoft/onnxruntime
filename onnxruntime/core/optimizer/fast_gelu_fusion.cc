@@ -309,16 +309,16 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    input_index = -1;
-    for (auto i = 0; i < 2; i++) {
+    std::optional<size_t> scale_input_index;
+    for (size_t i = 0; i < 2; ++i) {
       if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul6_node.InputDefs()[i]), 0.5f, true)) {
-        input_index = i;
+        scale_input_index = i;
         break;
       }
     }
 
-    if (input_index == -1) continue;
-    const size_t mul6_other_input_index = 1u - onnxruntime::narrow<size_t>(input_index);
+    if (!scale_input_index) continue;
+    const size_t mul6_other_input_index = 1u - *scale_input_index;
     // check same parent for both mul6 and pow, with or without cast
     if (cast_input_arg != nullptr) {
       if (mul6_node.InputDefs()[mul6_other_input_index]->Name() != cast_input_arg->Name())
