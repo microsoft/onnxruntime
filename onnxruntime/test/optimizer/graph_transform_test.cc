@@ -11025,6 +11025,50 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
   }
 }
 
+// The fusion reads the 'axis' attribute/input straight from the model, and needs to reject a value
+// that falls outside [0, rank) for the shared input's known rank rather than indexing its shape with it.
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_OutOfRangeAxis) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    return Status::OK();
+  };
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
+    return Status::OK();
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>({{54}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
+    auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
+    // gather_index_1 is a graph input with no static shape, so ONNX's own Gather shape inference
+    // (which requires both the data AND indices shapes to be known before range-checking 'axis')
+    // cannot validate 'axis' here and silently skips that check, matching how this can be reached
+    // in a real model without ONNX itself already rejecting it at load.
+    auto* gather_index_1 = builder.MakeInput<int64_t>(std::nullopt);
+    auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* transpose_out_1 = builder.MakeOutput();
+    auto* transpose_out_2 = builder.MakeOutput();
+
+    builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+    // 'axis' is well outside the reshape output's rank of 4; the fusion must reject this before
+    // indexing the shape with it, rather than crashing.
+    builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+        .AddAttribute("axis", static_cast<int64_t>(100));
+    builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, GatherToSliceFusion) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_map = CountOpsInGraph(graph);

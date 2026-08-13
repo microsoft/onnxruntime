@@ -11,6 +11,10 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#endif
+
 using namespace onnxruntime::test;
 
 namespace onnxruntime {
@@ -145,7 +149,7 @@ void LinearAttentionGQAReference(
     const std::vector<float>* initial_state,  // (B, kv_num_heads, dk, dv)
     const std::vector<float>* decay,          // (B, kv_num_heads, T[, dk])
     const std::vector<float>* beta,           // (B, kv_num_heads, T)
-    std::vector<float>& output,               // (B, kv_num_heads, T, dv)
+    std::vector<float>& output,               // (B, max(q_num_heads, kv_num_heads), T, dv)
     std::vector<float>& final_state) {        // (B, kv_num_heads, dk, dv)
   int bht_kv = batch_size * kv_num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
@@ -1429,24 +1433,72 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N16) {
   RunStandardGQA("gated_delta", 16, 1, 32, 64);
 }
 
+// All four update rules at a fixed n_out=4 ratio: "linear"/"gated" take the no-retrieval
+// (no-beta) branch, "delta"/"gated_delta" the retrieval branch, and "gated"/"gated_delta"
+// additionally apply the decay gate.
 TEST(ContribOpLinearAttentionTest, LinearRule_StandardGQA_N4) {
   RunStandardGQA("linear", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedRule_StandardGQA_N4) {
+  RunStandardGQA("gated", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, DeltaRule_StandardGQA_N4) {
+  RunStandardGQA("delta", 8, 2, 32, 64);
 }
 
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) {
   RunStandardGQA("gated_delta", 8, 2, 128, 128);
 }
 
+// The state tensors grow linearly with state_window, so the schema caps it at 8.
+TEST(ContribOpLinearAttentionTest, StateWindowAboveMaxIsRejected) {
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("state_window", 9);
+  tester.AddInput<float>("query", {1, 1, 1}, {1.0f});
+  tester.AddInput<float>("key", {1, 1, 1}, {1.0f});
+  tester.AddInput<float>("value", {1, 1, 1}, {1.0f});
+  tester.AddOutput<float>("output", {1, 1, 1}, {1.0f});
+  tester.AddOutput<float>("present_state", {9, 1, 1, 1, 1}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "state_window must be in [0, 8]");
+}
+
 // state_window: past_state / present_state hold the last W per-token states, right-aligned, so
 // slot j is the state after token (T - W + j) and slot W-1 is the state after the last token (the
-// tensor the unwindowed op produces). past_state is read from slot W-1. Earlier positions are
-// never written -- that is the point of the window (it bounds the arena for long prompts).
+// tensor the unwindowed op produces). past_state is read from slot W-1. Slots below max(0, W - T)
+// hold no token from this call and come back zeroed.
 #ifdef USE_CUDA
+TEST(ContribOpLinearAttentionTest, StateWindowRejectsEmptySequence) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("state_window", 1);
+  tester.AddInput<float>("query", {1, 0, 1}, {});
+  tester.AddInput<float>("key", {1, 0, 1}, {});
+  tester.AddInput<float>("value", {1, 0, 1}, {});
+  tester.AddOutput<float>("output", {1, 0, 1}, {});
+  tester.AddOutput<float>("present_state", {1, 1, 1, 1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "sequence length must be positive", {}, nullptr,
+             &execution_providers);
+}
+
 // The state_window attribute is only implemented by the CUDA kernel. The four CUDA kernel families
 // (generic recurrent, fixed-shape recurrent, warp-per-column decode, column-per-thread decode) each
-// compute the window slot offsets themselves, so every family gets its own shape below. W > T is
-// only exercised without a past_state, because that is the only case in which the slots below
-// W - T are defined (zeroed rather than left alone).
+// compute the window slot offsets themselves, so every family gets its own shape below.
 static void RunLinearAttentionStateWindowTest(int B, int q_H, int kv_H, int n_k, int T, int dk, int dv, int W,
                                               bool with_past_state = true) {
   auto ep = DefaultCudaExecutionProvider();
@@ -1580,18 +1632,39 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_DecodeWarpKernel) 
                                     /*dk=*/256, /*dv=*/64, /*W=*/3);
 }
 
-// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel,
-// whose final state write is a vectorized epilogue into slot W-1.
+// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel
+// when the device has enough shared memory, or the column kernel fallback otherwise.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_FixedShapeKernel) {
-  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/24,
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  int device = 0;
+  int multiprocessor_count = 0;
+  ASSERT_EQ(cudaSuccess, cudaGetDevice(&device));
+  ASSERT_EQ(cudaSuccess,
+            cudaDeviceGetAttribute(&multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
+  constexpr int kv_num_heads = 2;
+  const int batch_size = (multiprocessor_count + kv_num_heads - 1) / kv_num_heads;
+
+  RunLinearAttentionStateWindowTest(/*B=*/batch_size, /*q_H=*/2, /*kv_H=*/kv_num_heads, /*n_k=*/1, /*T=*/17,
                                     /*dk=*/128, /*dv=*/128, /*W=*/4);
 }
 
 // W > T is the shape genai actually runs during MTP decode: the leading W - T slots belong to
-// positions before this call and are left alone (zeroed here because there is no past_state).
+// positions before this call, so the kernel skips them and they come back zeroed.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequence) {
   RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/2,
                                     /*dk=*/128, /*dv=*/128, /*W=*/5, /*with_past_state=*/false);
+}
+
+// Same shape with a past_state: present_state is a fresh allocation, so the skipped leading slots
+// must be zeroed rather than left as uninitialized device memory.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequenceWithPastState) {
+  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/2,
+                                    /*dk=*/128, /*dv=*/128, /*W=*/5, /*with_past_state=*/true);
 }
 #endif  // USE_CUDA
 }  // namespace test

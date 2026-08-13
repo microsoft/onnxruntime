@@ -59,6 +59,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/flashattn_qkv.cpp
   ${MLAS_SRC_DIR}/flashattn_gqa.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
+  ${MLAS_SRC_DIR}/linear_attention.h
+  ${MLAS_SRC_DIR}/linear_attention.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
@@ -171,6 +173,21 @@ function(setup_mlas_source_for_windows)
 	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
+
+      if (onnxruntime_USE_SVE)
+        # Portable machine-code SVE elementwise kernels: a plain C++ dispatch
+        # layer plus hex-encoded assembly. kai_asm_macros.h resolves to
+        # armasm64 directives (AREA/PROC/DCD) during the cl.exe preprocessing
+        # step applied to mlas_platform_preprocess_srcs below, so no SVE
+        # toolchain support is required.
+        target_sources(onnxruntime_mlas PRIVATE
+          ${MLAS_SRC_DIR}/sve/mlasi_sve.h
+          ${MLAS_SRC_DIR}/sve/elementwise_sve_dispatch.cpp
+        )
+        list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
+        list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
+        set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+      endif()
     else()
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
@@ -230,6 +247,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+      ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
     )
 
     set_source_files_properties(${mlas_platform_srcs_avx512} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
@@ -557,11 +575,22 @@ else()
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_dispatch.cpp)
+          # The portable machine-code variant is the production default;
+          # configure with -Donnxruntime_SVE_ELEMENTWISE_ASM=OFF to build the
+          # SVE intrinsics reference implementation instead (the regeneration
+          # source for elementwise_sve_asm.S).
+          option(onnxruntime_SVE_ELEMENTWISE_ASM
+                 "Build the portable machine-code SVE elementwise kernels instead of the intrinsics reference" ON)
+          if (onnxruntime_SVE_ELEMENTWISE_ASM)
+            # Portable machine-code variant (same symbols as the intrinsics TUs).
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 -DMLAS_SVE_SUMEXP_FEXPA=1 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          endif()
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
@@ -902,6 +931,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+          ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 

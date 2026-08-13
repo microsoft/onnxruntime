@@ -115,6 +115,9 @@ def main():
         run(build_apple_framework_args)
 
     if args.test:
+        # Keep build-argument policy coverage in the CI-discovered Apple packaging test path.
+        run([sys.executable, str(REPO_DIR / "tools" / "ci_build" / "test_build_args.py")])
+
         test_apple_packages_args = [
             sys.executable,
             str(SCRIPT_DIR / "test_apple_packages.py"),

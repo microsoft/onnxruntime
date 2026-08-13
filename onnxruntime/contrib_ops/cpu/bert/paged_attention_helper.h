@@ -193,7 +193,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   } else if (value_cache_dims[1] != block_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'value_cache' dimension 1 should be block_size, got ",
-                           value_cache_dims[0]);
+                           value_cache_dims[1]);
   }
 
   if (key_cache_dims[2] != value_cache_dims[2]) {
@@ -214,7 +214,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   }
   if (value_cache_dims[3] != head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'value_cache' dimension 3 should be same as head_size, got ",
                            value_cache_dims[3]);
   }
   return Status::OK();
@@ -230,7 +230,7 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
   batch_size = static_cast<int>(cumulative_seqlen_dim[0]) - 1;
 
   const auto& seqlens_dim = seqlens->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  if (seqlens_dim.size() != 1 || seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens must be shape (batch_size).");
   }

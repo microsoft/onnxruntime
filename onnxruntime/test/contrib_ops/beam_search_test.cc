@@ -10,6 +10,7 @@
 #include "test/util/include/current_test_name.h"
 #include "test/unittest_util/model_tester.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
@@ -47,6 +48,58 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttribut
 
   EXPECT_EQ(parameters.vocab_size, 128);
   EXPECT_EQ(parameters.num_heads, 2);
+}
+
+TEST(BeamSearchParametersTest, RejectsNegativeWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = -1;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, RejectsZeroWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 0;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, RejectsWhisperBeginningTimestampTokenIdEqualToVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 128;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 1;
+
+  EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
+}
+
+TEST(BeamSearchTest, ExpandBufferSupportsRankGreaterThanFour) {
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1, 2, 3, 4, 5}), allocator, input);
+
+  OrtValue expanded;
+  ASSERT_STATUS_OK(contrib::GenerationCpuDeviceHelper::ExpandBuffer<float>(
+      nullptr, input, 2, allocator, expanded, true, 0));
+
+  EXPECT_EQ(expanded.Get<Tensor>().Shape(), TensorShape({2, 2, 3, 4, 5}));
 }
 
 void RunGptBeamSearchFp32() {
