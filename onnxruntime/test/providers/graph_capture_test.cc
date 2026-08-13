@@ -106,9 +106,7 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
   auto model = CreateMatMulReluMatMulModel();
   Session session(env, model, session_options);
 
-  MemoryInfo gpu_mem_info("WebGPU_Buffer", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  Allocator gpu_allocator(session, gpu_mem_info);
-  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
   std::vector<int64_t> dims_a = {3, 4};
   std::vector<int64_t> dims_b = {4, 3};
@@ -117,37 +115,32 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
   std::vector<float> values_a(12, 1.0f);
   std::vector<float> values_b(12, 1.0f);
   std::vector<float> values_c(6, 1.0f);
+  std::vector<float> values_y(6, 0.0f);
 
-  Value gpu_a = Value::CreateTensor<float>(gpu_allocator, dims_a.data(), dims_a.size());
-  Value gpu_b = Value::CreateTensor<float>(gpu_allocator, dims_b.data(), dims_b.size());
-  Value gpu_c = Value::CreateTensor<float>(gpu_allocator, dims_c.data(), dims_c.size());
-  Value gpu_y = Value::CreateTensor<float>(gpu_allocator, dims_y.data(), dims_y.size());
-
-  auto copy_to_gpu = [&](std::vector<float>& values, const std::vector<int64_t>& dims, Value& gpu_tensor) {
-    Value cpu_tensor = Value::CreateTensor<float>(cpu_mem_info, values.data(), values.size(),
-                                                  dims.data(), dims.size());
-    auto status = env.CopyTensor(cpu_tensor, gpu_tensor, nullptr);
-    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
-  };
-
-  copy_to_gpu(values_a, dims_a, gpu_a);
-  copy_to_gpu(values_b, dims_b, gpu_b);
-  copy_to_gpu(values_c, dims_c, gpu_c);
-
-  IoBinding io_binding(session);
-  io_binding.BindInput("A", gpu_a);
-  io_binding.BindInput("B", gpu_b);
-  io_binding.BindInput("C", gpu_c);
-  io_binding.BindOutput("Y", gpu_y);
-  io_binding.SynchronizeInputs();
+  std::vector<Value> inputs;
+  inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_a.data(), values_a.size(),
+                                                  dims_a.data(), dims_a.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_b.data(), values_b.size(),
+                                                  dims_b.data(), dims_b.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_c.data(), values_c.size(),
+                                                  dims_c.data(), dims_c.size()));
+  Value output = Value::CreateTensor<float>(cpu_mem_info, values_y.data(), values_y.size(),
+                                             dims_y.data(), dims_y.size());
+  std::vector<const char*> input_names = {"A", "B", "C"};
+  std::vector<const char*> output_names = {"Y"};
 
   std::string run_error;
+  std::vector<float> warm_output;
+  std::vector<float> second_output;
   try {
-    session.Run(RunOptions{nullptr}, io_binding);
-    io_binding.SynchronizeOutputs();
+    session.Run(RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                output_names.data(), &output, 1);
+    warm_output = values_y;
 
-    session.Run(RunOptions{nullptr}, io_binding);
-    io_binding.SynchronizeOutputs();
+    std::fill(values_y.begin(), values_y.end(), 0.0f);
+    session.Run(RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                output_names.data(), &output, 1);
+    second_output = values_y;
   } catch (const std::exception& ex) {
     run_error = ex.what();
   }
@@ -161,6 +154,13 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
   });
 
   ASSERT_TRUE(run_error.empty()) << run_error;
+  const std::vector<float> expected_output(6, 12.0f);
+  ASSERT_EQ(warm_output.size(), expected_output.size());
+  ASSERT_EQ(second_output.size(), expected_output.size());
+  for (size_t i = 0; i < expected_output.size(); ++i) {
+    EXPECT_FLOAT_EQ(warm_output[i], expected_output[i]) << "Warm run output mismatch at index " << i;
+    EXPECT_FLOAT_EQ(second_output[i], expected_output[i]) << "Second run output mismatch at index " << i;
+  }
 }
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
