@@ -322,12 +322,12 @@ static void RunQDQOmittedDQZeroPointTest(bool use_explicit_empty_input) {
 
     const ONNX_NAMESPACE::TensorProto* zero_point = nullptr;
     ORT_RETURN_IF_NOT(graph.GetInitializedTensor(q_node->InputDefs()[2]->Name(), zero_point) &&
-                zero_point->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-              "Expected generated uint8 zero point");
+                          zero_point->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                      "Expected generated uint8 zero point");
     Initializer zero_point_initializer(graph, *zero_point, graph.ModelPath());
     ORT_RETURN_IF_NOT(zero_point_initializer.size() == 1 &&
-                *zero_point_initializer.data<uint8_t>() == 128,
-              "Expected generated uint8 zero point value 128");
+                          *zero_point_initializer.data<uint8_t>() == 128,
+                      "Expected generated uint8 zero point value 128");
     return Status::OK();
   };
 

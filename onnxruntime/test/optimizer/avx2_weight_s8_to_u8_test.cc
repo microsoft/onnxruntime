@@ -101,7 +101,7 @@ static void RunMatMulIntegerOmittedZeroPointsTest(bool use_explicit_empty_inputs
                           mutable_matmul.InputArgCount()[3] == 1,
                       "Expected null optional slot to be restored");
     ORT_RETURN_IF_NOT(graph.GraphResolveNeeded() && graph.GraphProtoSyncNeeded(),
-              "Expected optional input update to mark graph synchronization needed");
+                      "Expected optional input update to mark graph synchronization needed");
     return Status::OK();
   };
 
