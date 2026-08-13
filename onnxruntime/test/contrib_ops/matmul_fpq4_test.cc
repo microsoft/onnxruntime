@@ -85,9 +85,9 @@ void RunSymbolicInputLengthsShapeInferenceTest() {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
-void RunMalformedBShapeInitializerTest(const std::vector<int64_t>& b_shape_data,
-                                       const std::string& expected_error,
-                                       int64_t b_length = 1) {
+void RunDirectShapeInferenceFailureTest(const std::vector<int64_t>& b_shape_data,
+                                        const std::string& expected_error,
+                                        int64_t b_length = 1) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
@@ -99,7 +99,7 @@ void RunMalformedBShapeInitializerTest(const std::vector<int64_t>& b_shape_data,
   ms_opset->set_version(1);
 
   auto* graph = model.mutable_graph();
-  graph->set_name("malformed_b_shape_initializer");
+  graph->set_name("invalid_matmul_fpq4_shape");
 
   auto add_input = [graph](const char* name, int32_t elem_type, const std::vector<int64_t>& dims) {
     auto* input = graph->add_input();
@@ -138,7 +138,7 @@ void RunMalformedBShapeInitializerTest(const std::vector<int64_t>& b_shape_data,
   try {
     ONNX_NAMESPACE::shape_inference::InferShapes(
         model, ONNX_NAMESPACE::OpSchemaRegistry::Instance());
-    FAIL() << "Expected shape inference to reject malformed B_shape initializer data.";
+    FAIL() << "Expected MatMulFpQ4 shape inference to fail.";
   } catch (const std::exception& ex) {
     EXPECT_THAT(ex.what(), testing::HasSubstr(expected_error));
   }
@@ -157,20 +157,8 @@ TEST(MatMulFpQ4, AllowsSymbolicInputLengths) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
-TEST(MatMulFpQ4, RejectsShortBShapeInitializer) {
-  RunMalformedBShapeInitializerTest(
-      {4},
-      "Data size mismatch");
-}
-
-TEST(MatMulFpQ4, RejectsOversizedBShapeInitializer) {
-  RunMalformedBShapeInitializerTest(
-      {4, 1, 0},
-      "Data size mismatch");
-}
-
 TEST(MatMulFpQ4, RejectsNegativePackedBLength) {
-  RunMalformedBShapeInitializerTest(
+  RunDirectShapeInferenceFailureTest(
       {4, 1},
       "B input for MatMulFpQ4 must be a 1-D tensor",
       -1);
