@@ -662,6 +662,10 @@ Return Value:
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
     this->KVQuantGemmFp16Supported_ = true;
 
+#if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+    this->LayerNormF32Kernel = &MlasLayerNormKernelAppleAccelerate;
+#endif
+
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     // Use the AArch64 assembly implementation on non-Windows platforms.
 #if !defined(_WIN32)
