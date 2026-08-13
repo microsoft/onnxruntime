@@ -439,12 +439,14 @@ namespace OperatorHelper
 
         if (!kernelShape.empty())
         {
+            ML_CHECK_VALID_ARGUMENT(kernelShape.size() >= spatialDimensionCount);
             std::copy(kernelShape.end() - spatialDimensionCount, kernelShape.end(), args.windowSize);
         }
         else if (!filterTensorShape.empty())
         {
             // If the kernel shape attribute is undefined, use the W weight tensor's shape.
             // For Conv and ConvTranspose, the ONNX spec specifies that kernel_shape should be inferred.
+            ML_CHECK_VALID_ARGUMENT(filterTensorShape.size() >= spatialDimensionCount);
             std::copy(filterTensorShape.end() - spatialDimensionCount, filterTensorShape.end(), args.windowSize);
         }
         else
@@ -486,7 +488,7 @@ namespace OperatorHelper
         if (kernelInfo.HasAttribute(AttrName::OutputPadding, MLOperatorAttributeType::IntArray))
         {
             std::vector<int> outputPadding = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::OutputPadding);
-            ML_CHECK_VALID_ARGUMENT(outputPadding.size() >= 2);
+            ML_CHECK_VALID_ARGUMENT(outputPadding.size() >= spatialDimensionCount);
 
             std::copy(outputPadding.begin(), outputPadding.begin() + spatialDimensionCount, args.outputPadding);
         }
