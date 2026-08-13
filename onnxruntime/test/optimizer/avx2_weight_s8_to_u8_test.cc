@@ -93,6 +93,7 @@ static void RunMatMulIntegerOmittedZeroPointsTest(bool use_explicit_empty_inputs
 
     const NodeIndex matmul_index = matmul->Index();
     ORT_RETURN_IF_ERROR(graph.Resolve());
+    ORT_IGNORE_RETURN_VALUE(graph.ToGraphProto());
     ORT_RETURN_IF(graph.GraphResolveNeeded() || graph.GraphProtoSyncNeeded(),
                   "Expected resolved graph synchronization flags to be clear");
     Node& mutable_matmul = *graph.GetNode(matmul_index);
