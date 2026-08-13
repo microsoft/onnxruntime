@@ -77,12 +77,12 @@ TEST(WebGpuContextTest, ReusedDeviceAllocatorBufferIsZeroInitialized) {
   allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
-  ASSERT_EQ(reused_buffer, dirty_buffer);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
 
   std::array<uint32_t, 16> downloaded_data;
   buffer_manager.Download(reused_buffer, downloaded_data.data(), sizeof(downloaded_data));
-  EXPECT_TRUE(std::all_of(downloaded_data.begin(), downloaded_data.end(),
-                          [](uint32_t value) { return value == 0; }));
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(downloaded_data, expected_data);
 
   allocator.Free(allocation);
 }
