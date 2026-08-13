@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -10,6 +11,8 @@
 
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
+#include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -46,6 +49,42 @@ bool DeviceToggleIsEnabled(const webgpu::WebGpuContext& context, std::string_vie
 
 bool DisableRobustnessToggleIsEnabled(const webgpu::WebGpuContext& context) {
   return DeviceToggleIsEnabled(context, "disable_robustness");
+}
+
+TEST(WebGpuContextTest, ReusedDeviceAllocatorBufferIsZeroInitialized) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Bucket,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      false);
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  allocator.Free(allocation);
+
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  ASSERT_EQ(reused_buffer, dirty_buffer);
+
+  std::array<uint32_t, 16> downloaded_data;
+  buffer_manager.Download(reused_buffer, downloaded_data.data(), sizeof(downloaded_data));
+  EXPECT_TRUE(std::all_of(downloaded_data.begin(), downloaded_data.end(),
+                          [](uint32_t value) { return value == 0; }));
+
+  allocator.Free(allocation);
 }
 
 TEST(WebGpuContextTest, EnableRobustnessControlsDawnToggle) {
