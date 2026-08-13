@@ -171,7 +171,24 @@ jobs:
           # Run the full default (short) suite, matching what build.py's own non-ctest fallback
           # path (`run_onnxruntime_tests` in tools/ci_build/build.py) already runs on platforms
           # without a resolved ctest binary. No --gtest_filter is used here, so there is no risk
-          # of a filter silently matching zero tests; a missing/broken binary fails loudly above,
-          # and any assertion failure inside the suite fails this step via the binary's own exit
-          # code.
-          "${test_bin}" --gtest_output="xml:onnxruntime_mlas_test.${{ matrix.build_config }}.results.xml"
+          # of a filter silently matching zero tests; any assertion failure inside the suite
+          # fails this step via the binary's own exit code.
+          output_xml="onnxruntime_mlas_test.${{ matrix.build_config }}.results.xml"
+          rm -f "${output_xml}"
+          "${test_bin}" --gtest_output="xml:${output_xml}"
+
+          # Belt-and-suspenders: gtest's own RUN_ALL_TESTS() returns 0 even when zero tests ran
+          # (e.g. every LongShortExecuteManager registrar in test_main.cpp declines because a
+          # runtime CPU-feature check failed), so a passing exit code alone is not proof that any
+          # MLAS coverage actually executed. Read the count gtest itself reports in the XML root
+          # element (`<testsuites tests="N" ...>`) and fail loudly if it is missing or zero,
+          # instead of letting that look identical to a real, non-vacuous pass.
+          if [ ! -f "${output_xml}" ]; then
+            echo "::error::${test_bin} did not produce ${output_xml}; cannot verify any MLAS tests actually ran." >&2
+            exit 1
+          fi
+          if ! grep -Eq '<testsuites[^>]*[[:space:]]tests="[1-9][0-9]*"' "${output_xml}"; then
+            echo "::error::${output_xml} reports zero MLAS tests were executed. A gtest binary that registers/matches zero tests still exits 0, so this is treated as a hard failure instead of a silent pass." >&2
+            cat "${output_xml}" >&2
+            exit 1
+          fi
