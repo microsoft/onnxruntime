@@ -1798,6 +1798,9 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
         self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
 
+        webgpu_device = onnxrt.OrtDevice.make("webgpu", 0)
+        self.assertEqual(webgpu_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NONE)
+
     def test_ort_memory_info(self):
         cpu_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
@@ -1880,6 +1883,235 @@ class TestInferenceSession(unittest.TestCase):
                 sess_options=so3,
                 providers=onnxrt.get_available_providers(),
             )
+
+    def test_session_scoped_cpu_ortvalue(self):
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        noncontiguous_input = input_value[..., ::-1]
+        session_value = session.create_ortvalue_from_numpy(noncontiguous_input, "cpu")
+        self.assertFalse(session_value._is_webgpu_buffer)
+        np.testing.assert_array_equal(session_value.numpy(), noncontiguous_input)
+
+        updated_noncontiguous_input = (input_value + 10)[..., ::-1]
+        session_value.update_inplace(updated_noncontiguous_input)
+        np.testing.assert_array_equal(session_value.numpy(), updated_noncontiguous_input)
+
+        ortvalue_update_input = input_value + 20
+        session_value.update_inplace(session.create_ortvalue_from_numpy(ortvalue_update_input, "cpu"))
+        np.testing.assert_array_equal(session_value.numpy(), ortvalue_update_input)
+        ortvalue_update_expected = session.run(None, {input_metadata.name: ortvalue_update_input})[0]
+        np.testing.assert_array_equal(
+            session.run(None, {input_metadata.name: session_value})[0],
+            ortvalue_update_expected,
+        )
+        np.testing.assert_array_equal(
+            session.run_with_ort_values(None, {input_metadata.name: session_value})[0].numpy(),
+            ortvalue_update_expected,
+        )
+        with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
+            onnxrt.copy_tensors([session_value], [session_value])
+
+        other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        other_session_value = other_session.create_ortvalue_from_numpy(input_value, "cpu")
+        with self.assertRaisesRegex(ValueError, "same session"):
+            session_value.update_inplace(other_session_value)
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            other_session.run(None, {input_metadata.name: session_value})
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            other_session.run_with_ort_values(None, {input_metadata.name: session_value})
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            session.io_binding().bind_ortvalue_input(input_metadata.name, other_session_value)
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            other_session.run_with_iobinding(session.io_binding())
+
+        reset_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        stale_value = reset_session.create_ortvalue_from_numpy(input_value, "cpu")
+        stale_binding = reset_session.io_binding()
+        reset_session.set_providers(["CPUExecutionProvider"])
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            reset_session.run(None, {input_metadata.name: stale_value})
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            reset_session.run_with_iobinding(stale_binding)
+
+        scalar_value = session.create_ortvalue_from_numpy(np.array(1.0, dtype=np.float32), "cpu")
+        self.assertEqual(scalar_value.shape(), [])
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_graph_capture_session_ortvalues(self):
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        so.add_session_config_entry("ep.webgpuexecutionprovider.enableGraphCapture", "1")
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+
+        gpu_input = session.create_ortvalue_from_numpy(input_value, "webgpu")
+        gpu_output = session.create_ortvalue_from_shape_and_type(output_metadata.shape, np.float32, "webgpu")
+        self.assertTrue(gpu_input._is_webgpu_buffer)
+        self.assertEqual(gpu_input.device_name(), "webgpu")
+        gpu_alias_input = session.create_ortvalue_from_numpy(
+            input_value,
+            "gpu",
+            vendor_id=onnxrt.OrtDeviceVendorId.NONE,
+        )
+        self.assertTrue(gpu_alias_input._is_webgpu_buffer)
+        with self.assertRaisesRegex(RuntimeError, "opaque buffer handles"):
+            gpu_input.data_ptr()
+        with self.assertRaisesRegex(RuntimeError, "explicit readback"):
+            gpu_input.numpy()
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            gpu_input.__dlpack__()
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            gpu_input.__dlpack_device__()
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run(None, {input_metadata.name: gpu_input})
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run_with_ort_values(None, {input_metadata.name: gpu_input})
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run_async(
+                None,
+                {input_metadata.name: input_value},
+                lambda *_: None,
+                None,
+            )
+        with self.assertRaisesRegex(RuntimeError, "raw OrtValue vectors"):
+            session.run_with_ortvaluevector(None, [], None, [], None, None)
+        with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
+            onnxrt.copy_tensors([gpu_input], [gpu_output])
+
+        raw_vector = OrtValueVector()
+        with self.assertRaisesRegex(RuntimeError, "cannot retain the session ownership"):
+            raw_vector.push_back(gpu_input._get_c_value())
+
+        unsafe_io_binding = session.io_binding()
+        global_cpu_input = onnxrt.OrtValue.ortvalue_from_numpy(input_value)
+        global_cpu_output = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros(output_metadata.shape, dtype=np.float32))
+        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
+            gpu_input.update_inplace(global_cpu_input)
+        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
+            global_cpu_input.update_inplace(gpu_input)
+        unowned_webgpu_input = onnxrt.OrtValue(gpu_input._get_c_value())
+        with self.assertRaisesRegex(ValueError, "same session"):
+            gpu_input.update_inplace(unowned_webgpu_input)
+        with self.assertRaisesRegex(ValueError, "retain the session"):
+            unowned_webgpu_input.update_inplace(input_value)
+        with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
+            onnxrt.copy_tensors([unowned_webgpu_input], [global_cpu_input])
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            unsafe_io_binding.bind_ortvalue_input(input_metadata.name, unowned_webgpu_input)
+        del unowned_webgpu_input
+        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU input"):
+            unsafe_io_binding.bind_cpu_input(input_metadata.name, input_value)
+        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU input"):
+            unsafe_io_binding.bind_input(
+                input_metadata.name,
+                "cpu",
+                0,
+                np.float32,
+                input_metadata.shape,
+                input_value.ctypes.data,
+            )
+        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU input"):
+            unsafe_io_binding.bind_ortvalue_input(input_metadata.name, global_cpu_input)
+        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU output"):
+            unsafe_io_binding.bind_output(output_metadata.name)
+        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU output"):
+            unsafe_io_binding.bind_ortvalue_output(output_metadata.name, global_cpu_output)
+
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
+        io_binding.bind_ortvalue_output(output_metadata.name, gpu_output)
+
+        def run_and_copy_output(current_session, current_io_binding, run_options=None):
+            current_session.run_with_iobinding(current_io_binding, run_options)
+            return current_io_binding.copy_outputs_to_cpu()[0]
+
+        expected = reference_session.run(None, {input_metadata.name: input_value})[0]
+        np.testing.assert_allclose(run_and_copy_output(session, io_binding), expected)
+        raw_outputs = io_binding._iobinding.get_outputs()
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            raw_outputs.dlpack_at(0)
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            raw_outputs.to_dlpacks(None)
+        indexed_raw_output = raw_outputs[0]
+        del raw_outputs
+        bound_output = io_binding.get_outputs()[0]
+        self.assertIs(bound_output._session, session._sess)
+        with self.assertRaisesRegex(RuntimeError, "explicit readback"):
+            bound_output.numpy()
+        with self.assertRaisesRegex(RuntimeError, "session provenance"):
+            io_binding.get_outputs_as_ortvaluevector()
+
+        updated_input = input_value + 10.0
+        gpu_input.update_inplace(updated_input)
+        updated_expected = reference_session.run(None, {input_metadata.name: updated_input})[0]
+        alternate_gpu_output = session.create_ortvalue_from_numpy(
+            np.zeros(output_metadata.shape, dtype=np.float32), "webgpu"
+        )
+        alternate_io_binding = session.io_binding()
+        alternate_io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
+        alternate_io_binding.bind_ortvalue_output(output_metadata.name, alternate_gpu_output)
+        session.run_with_iobinding(alternate_io_binding)
+
+        # Captured replay keeps the original fixed output address even if a new output is bound.
+        np.testing.assert_allclose(io_binding.copy_outputs_to_cpu()[0], updated_expected)
+        np.testing.assert_array_equal(
+            alternate_io_binding.copy_outputs_to_cpu()[0],
+            np.zeros(output_metadata.shape, dtype=np.float32),
+        )
+
+        ortvalue_update_input = input_value + 20.0
+        gpu_input.update_inplace(session.create_ortvalue_from_numpy(ortvalue_update_input, "webgpu"))
+        ortvalue_update_expected = reference_session.run(None, {input_metadata.name: ortvalue_update_input})[0]
+        np.testing.assert_allclose(run_and_copy_output(session, io_binding), ortvalue_update_expected)
+
+        session.release_captured_graph()
+
+        graph_one_run_options = onnxrt.RunOptions()
+        graph_one_run_options.add_run_config_entry("gpu_graph_id", "1")
+        np.testing.assert_allclose(
+            run_and_copy_output(session, io_binding, graph_one_run_options),
+            ortvalue_update_expected,
+        )
+        repeated_capture_input = input_value + 30.0
+        gpu_input.update_inplace(repeated_capture_input)
+        repeated_capture_expected = reference_session.run(None, {input_metadata.name: repeated_capture_input})[0]
+        np.testing.assert_allclose(
+            run_and_copy_output(session, io_binding, graph_one_run_options),
+            repeated_capture_expected,
+        )
+        session.release_captured_graph(1)
+
+        io_binding.clear_binding_inputs()
+        io_binding.clear_binding_outputs()
+        alternate_io_binding.clear_binding_inputs()
+        alternate_io_binding.clear_binding_outputs()
+        self.assertEqual(bound_output.shape(), output_metadata.shape)
+        del io_binding
+        del alternate_io_binding
+        del session
+        gc.collect()
+        self.assertTrue(indexed_raw_output._is_webgpu_buffer())
+        del indexed_raw_output
+        gc.collect()
 
     def test_memory_arena_shrinkage(self):
         if (
