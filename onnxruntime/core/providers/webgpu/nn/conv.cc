@@ -113,8 +113,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                               {std::vector<uint32_t>{x_depth, x_height, x_width}},
                               {x_channels}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-    // Must stay last: uniform definitions pair with values by index, not by name. The conditional
-    // block below only adds an *input*, which is a separate list, so it is safe.
+    // Activation uniforms must remain last because definitions and values are matched by index.
     AppendActivationUniformsData(activation_, program);
     if (has_bias) {
       program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), 1});
@@ -201,8 +200,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-    // Must stay last: uniform definitions pair with values by index, not by name. The conditional
-    // block below only adds an *input*, which is a separate list, so it is safe.
+    // Activation uniforms must remain last because definitions and values are matched by index.
     AppendActivationUniformsData(activation_, program);
     if (has_bias) {
       auto reduced_bias_shape = ReduceShapeByComponents(modified_input_output_shapes[2], components);
@@ -276,7 +274,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
           .AddIndices(outer_dims)
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
-      // Must stay last: uniform definitions pair with values by index, not by name.
+      // Activation uniforms must remain last because definitions and values are matched by index.
       AppendActivationUniformsData(activation_, program);
       return context.RunProgram(program);
     } else {

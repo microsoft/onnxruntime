@@ -54,14 +54,7 @@ bool IsDeviceSupported(const ComputeContextBase& context) {
   return false;
 }
 
-// The im2col-matmul shader applies the activation inline in its epilogue. Parameterized kinds read
-// their alpha/beta/min/max from the activation_param_0/_1 uniforms, so they are supported here
-// too; only kinds whose expression the shader has no branch for are rejected.
-//
-// This list must stay in step with the `activation_kind` branches in im2col_matmul.wgsl.template.
-// Rejecting a kind is not free: the graph-level fusion still fires, so the conv silently loses
-// this fast path and falls back to the general one. A newly added ActivationKind therefore
-// defaults to false rather than to a silently missing activation.
+// Keep this list synchronized with the activation_kind branches in the WGSL template.
 bool IsActivationSupported(const Activation& activation) {
   switch (activation.activation_kind_) {
     case ActivationKind::None:
@@ -87,8 +80,7 @@ bool IsActivationSupported(const Activation& activation) {
 
 }  // namespace
 
-// im2col_matmul.wgsl.template selects the activation with integer literals because template
-// parameters are plain ints. Keep those literals and this enum in sync.
+// The template dispatches on the numeric enum values.
 static_assert(static_cast<int>(ActivationKind::None) == 0, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Relu) == 1, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Sigmoid) == 2, "im2col_matmul.wgsl.template mirrors ActivationKind");
@@ -215,10 +207,6 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {pads},
                                          {strides}});
   AppendActivationUniformsData(activation, im2col_mm_program);
-  // Activation.ToString() is the single source of truth for what the activation contributes to the
-  // pipeline cache key: the kind, plus the QuickGelu unit-alpha shader variant. Parameter *values*
-  // are deliberately absent, because they live in uniforms, so one compiled shader now serves every
-  // alpha/beta/min/max.
   im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup, activation.ToString());
 
   return context.RunProgram(im2col_mm_program);

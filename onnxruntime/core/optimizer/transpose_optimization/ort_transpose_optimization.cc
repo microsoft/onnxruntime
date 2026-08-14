@@ -211,9 +211,7 @@ constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 
 constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
 
-// FastGelu's optional second input is a bias added along the last axis. Permuting the layout
-// would leave the bias applied to a different axis than the model intends, so only the
-// single-input form is layout-insensitive.
+// FastGelu's optional bias input is layout-sensitive.
 static bool HandleFastGelu(HandlerArgs& args) {
   const auto inputs = args.node.Inputs();
   if (inputs.size() > 1 && !inputs[1].empty()) {

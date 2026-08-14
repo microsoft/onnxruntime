@@ -3174,14 +3174,6 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
   }
 }
 
-// Regression test for a pipeline-cache key collision on the small-matmul conv path. A 1x1 conv with
-// fewer than 8 channels per side lowers to MatMulNaiveProgram, which bakes the activation expression
-// into its WGSL; the cache hint omitted the activation, so two convs with identical shapes but
-// different activations shared one compiled pipeline and the second computed the wrong activation.
-//
-// Only the activation *kind* belongs in the key. Parameters travel as uniforms rather than shader
-// text, so activations differing only in a parameter are meant to share one pipeline -- see
-// WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache and ActivationCacheKeyTest.
 #if defined(USE_WEBGPU)
 namespace {
 void RunWebGpuSmallMatMulConvActivationPairTest(const std::string& activation_a,
@@ -3237,9 +3229,6 @@ void RunWebGpuSmallMatMulConvActivationPairTest(const std::string& activation_a,
                                  []() { return DefaultWebGpuExecutionProvider(); });
 }
 
-// 1000015 and 1000025 agree to 6 significant digits but differ by 160 float32 ULPs; HardSigmoid's
-// clamp turns that into a 0-vs-1 swing, so a pipeline that reused the first alpha would be caught.
-// Five output channels, not six: GetMaxComponents(5) == 1, so the bias indexing stays in bounds.
 void RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(float alpha_first, float alpha_second) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
@@ -3391,9 +3380,7 @@ TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationsIn
   RunWebGpuSmallMatMulConvActivationPairTest("Sigmoid", "Relu");
 }
 
-// 1000015 and 1000025 are 160 float32 ULPs apart, close enough that any key which formats them would
-// have merged them, so this is the hardest case for the shared pipeline to get right. Both orderings
-// run so a mix-up in either direction fails.
+// Use distinct alpha values that match at the stringstream default precision.
 TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache) {
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000015.0f, 1000025.0f);
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000025.0f, 1000015.0f);
@@ -3514,9 +3501,6 @@ TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
   check_ints_attr("kernel_shape", AsSpan<int64_t>({3, 3}));
 }
 
-// Builds `Conv -> QuickGelu`, the shape a YOLO-family SiLU takes once QuickGeluFusion has
-// collapsed `x * sigmoid(x)`. Only the WebGPU EP has a fused-Conv kernel that understands
-// QuickGelu, and only via the NHWC Conv.
 static void BuildConvQuickGeluGraph(ModelTestBuilder& builder, const std::string& conv_domain,
                                     const std::string& ep, float alpha) {
   auto* input = builder.MakeInput<float>({1, 5, 5, 2}, -1.0f, 1.0f);
@@ -3544,9 +3528,6 @@ static Status ExpectQuickGeluPresent(Graph& graph) {
   return Status::OK();
 }
 
-// Every case in this group is built as exactly `Conv -> <activation>`, so assert that shape up
-// front: a builder that silently produced something else would otherwise be indistinguishable
-// from a fusion that did not fire.
 static Status ExpectUnfusedConvActivationPair(Graph& graph) {
   ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2,
                     "expected a Conv + activation pair before fusion, got ", graph.NumberOfNodes(),
@@ -3554,11 +3535,7 @@ static Status ExpectUnfusedConvActivationPair(Graph& graph) {
   return Status::OK();
 }
 
-// TestGraphTransformer() builds its Model in memory with an explicit opset map. The internal
-// NHWC domain is auto-imported only when a model is loaded from a proto (see model.cc), so
-// build the model here to declare the domain the layout transformer would have introduced.
-// `opset_version` is a parameter because the activations differ in when they were introduced:
-// the ONNX-domain Gelu only exists at opset 20+, while HardSwish needs 14+.
+// In-memory test models must import the internal NHWC domain explicitly.
 static Status RunConvActivationFusion(const std::function<void(ModelTestBuilder&)>& build_test_case,
                                       const logging::Logger& logger,
                                       const std::function<Status(Graph&)>& post_graph_checker,
@@ -3608,7 +3585,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, post_graph_checker));
 }
 
-// The CPU EP's FusedConv cannot evaluate QuickGelu, so the pattern must be left alone there.
+// CPU FusedConv does not support QuickGelu.
 TEST_F(GraphTransformationTests, NoFuseNhwcConvQuickGeluForCpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvQuickGeluGraph(builder, kMSInternalNHWCDomain, kCpuExecutionProvider, 1.0f);
@@ -3617,8 +3594,7 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvQuickGeluForCpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectQuickGeluPresent));
 }
 
-// An ONNX-domain Conv would fuse into kMSDomain::FusedConv, which the WebGPU EP registers no
-// kernel for, so the NCHW path must not be fused either.
+// WebGPU supports this fusion only for internal NHWC Conv.
 TEST_F(GraphTransformationTests, NoFuseOnnxDomainConvQuickGeluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvQuickGeluGraph(builder, kOnnxDomain, kWebGpuExecutionProvider, 1.0f);
@@ -3627,13 +3603,7 @@ TEST_F(GraphTransformationTests, NoFuseOnnxDomainConvQuickGeluForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectQuickGeluPresent));
 }
 
-// ConvActivationFusion only ever sees a Conv/activation pair that layout propagation has already
-// made adjacent. Layout transformation leaves an NHWC Conv followed by an NHWC->NCHW Transpose, and
-// the transpose optimizer can only move that Transpose past an op it has a handler for, so a model
-// containing `Conv -> com.microsoft.*Gelu` stays wedged and never fuses. The tests above start from
-// an already-adjacent pair and so cannot see this.
-//
-// The cost function below pushes unconditionally, so only the handler map decides the outcome.
+// Push the output transpose through the activation before ConvActivationFusion runs.
 static Status RunLayoutPropagationThenConvActivationFusion(
     const std::string& act_op, const std::string& act_domain, const logging::Logger& logger,
     const std::function<void(Node&)>& decorate, const std::function<Status(Graph&)>& post_graph_checker) {
@@ -3645,7 +3615,6 @@ static Status RunLayoutPropagationThenConvActivationFusion(
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
 
-  // Distinct spatial extents, so a wrong permutation cannot coincidentally yield the right shape.
   auto* input = builder.MakeInput<float>({1, 5, 7, 2}, -1.0f, 1.0f);
   auto* weight = builder.MakeInitializer<float>({3, 2, 3, 3}, -1.0f, 1.0f);
   auto* conv_out = builder.MakeIntermediate();
@@ -3692,8 +3661,7 @@ static Status RunLayoutPropagationThenConvActivationFusion(
   return post_graph_checker(graph);
 }
 
-// The Transpose has to survive as the graph output, so the fused Conv is one of two remaining
-// nodes rather than the only one.
+// The output transpose remains after activation fusion.
 static Status ExpectActivationPropagatedAndFused(Graph& graph, const std::string& activation) {
   ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2,
                     "expected a fused NHWC Conv plus the pushed Transpose, got ", graph.NumberOfNodes(),
@@ -3738,10 +3706,6 @@ TEST_F(GraphTransformationTests, LayoutPropagationFusesContribFastGeluIntoNhwcCo
                                                                 post_graph_checker));
 }
 
-// A pre-opset-20 exporter emits GELU as a tanh decomposition, which only becomes
-// com.microsoft.FastGelu if FastGeluFusion accepts the EP the nodes are assigned to. The
-// transformer is taken from GenerateTransformers() rather than constructed here, so this fails if
-// the WebGPU EP is dropped from its registration in graph_transformer_utils.cc.
 static std::unique_ptr<GraphTransformer> TakeRegisteredLevel2Transformer(const std::string& name,
                                                                          const logging::Logger& logger) {
   SessionOptions session_options;
@@ -3798,7 +3762,7 @@ TEST_F(GraphTransformationTests, WebGpuTanhGeluAfterConvFusesToFastGelu) {
   builder.AddNode("Add", {tanh_out, one}, {add2_out});
   builder.AddNode("Mul", {conv_out, half}, {mul_half_out});
   builder.AddNode("Mul", {mul_half_out, add2_out}, {gelu_out});
-  // FastGeluFusion rejects any node that produces a graph output, so the pattern needs a consumer.
+  // FastGeluFusion requires a non-graph-output consumer.
   builder.AddNode("Identity", {gelu_out}, {output});
 
   builder.SetGraphOutputs();
@@ -3830,12 +3794,6 @@ TEST_F(GraphTransformationTests, WebGpuTanhGeluAfterConvFusesToFastGelu) {
   EXPECT_EQ(activation->s(), "FastGelu");
 }
 
-// Coverage for the remaining fusable activations: each must fuse behind an NHWC Conv on WebGPU,
-// carry its attributes through to activation_params, and stay unfused where no kernel can run it.
-// ---------------------------------------------------------------------------------------------
-
-// Generalises BuildConvQuickGeluGraph over the activation op, its domain and its attributes.
-// `extra_input` covers FastGelu's optional bias, which must block fusion.
 static void BuildConvActivationGraph(ModelTestBuilder& builder, const std::string& act_op,
                                      const std::string& act_domain, const std::string& ep,
                                      const std::function<void(Node&)>& decorate = nullptr,
@@ -3860,8 +3818,6 @@ static void BuildConvActivationGraph(ModelTestBuilder& builder, const std::strin
   activation.SetExecutionProviderType(ep);
 }
 
-// Asserts the pair collapsed to a single NHWC Conv carrying `activation` and exactly
-// `expected_params` as its activation_params.
 static Status ExpectFusedInto(Graph& graph, const std::string& activation,
                               const std::vector<float>& expected_params) {
   ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 1, "expected ", activation,
@@ -3894,7 +3850,6 @@ static Status ExpectFusedInto(Graph& graph, const std::string& activation,
   return Status::OK();
 }
 
-// Asserts the activation is still a standalone node, i.e. fusion correctly declined.
 static std::function<Status(Graph&)> ExpectNotFused(const std::string& act_op) {
   return [act_op](Graph& graph) -> Status {
     int count = 0;
@@ -3918,8 +3873,6 @@ TEST_F(GraphTransformationTests, FuseNhwcConvHardSwishForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// Elu is the first fused activation to carry an attribute, so a dropped alpha would silently
-// change the negative half of the curve.
 TEST_F(GraphTransformationTests, FuseNhwcConvEluPreservesAlphaForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Elu", kOnnxDomain, kWebGpuExecutionProvider,
@@ -3930,7 +3883,6 @@ TEST_F(GraphTransformationTests, FuseNhwcConvEluPreservesAlphaForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// An absent alpha must resolve to the ONNX default of 1.0, not to zero.
 TEST_F(GraphTransformationTests, FuseNhwcConvEluDefaultsAlphaForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Elu", kOnnxDomain, kWebGpuExecutionProvider);
@@ -3940,8 +3892,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvEluDefaultsAlphaForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// The ONNX-domain Gelu only exists at opset 20+. `approximate` is a string attribute but
-// activation_params is a float list, so the exact (erf) form must arrive as 0.0.
+// activation_params encodes Gelu approximation as 0 (erf) or 1 (tanh).
 TEST_F(GraphTransformationTests, FuseNhwcConvOnnxGeluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Gelu", kOnnxDomain, kWebGpuExecutionProvider);
@@ -3951,8 +3902,6 @@ TEST_F(GraphTransformationTests, FuseNhwcConvOnnxGeluForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 20));
 }
 
-// ...and the tanh approximation as 1.0. These select different shader formulas, so a flag lost
-// here produces a numerically close but wrong result that no shape or type check would catch.
 TEST_F(GraphTransformationTests, FuseNhwcConvOnnxGeluTanhForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Gelu", kOnnxDomain, kWebGpuExecutionProvider,
@@ -3963,8 +3912,6 @@ TEST_F(GraphTransformationTests, FuseNhwcConvOnnxGeluTanhForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 20));
 }
 
-// Models exported below opset 20 have no Gelu op at all; GeluFusion rewrites the erf
-// decomposition into this kMSDomain node, which is always the exact form.
 TEST_F(GraphTransformationTests, FuseNhwcConvContribGeluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Gelu", kMSDomain, kWebGpuExecutionProvider);
@@ -3983,8 +3930,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvFastGeluForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// FastGelu's optional second input is a bias, so the two-input form is not a pure elementwise
-// activation. Fusing it would drop the bias entirely.
+// FastGelu with a bias input is not elementwise.
 TEST_F(GraphTransformationTests, NoFuseNhwcConvFastGeluWithBiasForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "FastGelu", kMSDomain, kWebGpuExecutionProvider, nullptr,
@@ -4004,8 +3950,6 @@ TEST_F(GraphTransformationTests, FuseNhwcConvSoftplusForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// ThresholdedRelu's alpha defaults to 1.0 rather than 0, so a fusion that forgot to read the
-// attribute would still produce plausible-looking output for the default case only.
 TEST_F(GraphTransformationTests, FuseNhwcConvThresholdedReluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "ThresholdedRelu", kOnnxDomain, kWebGpuExecutionProvider,
@@ -4025,8 +3969,6 @@ TEST_F(GraphTransformationTests, FuseNhwcConvThresholdedReluDefaultAlphaForWebGp
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// Erf carries no parameters, but it shares its WGSL helper with the exact Gelu, so fusing it is
-// what proves that helper is emitted for more than one activation kind.
 TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Erf", kOnnxDomain, kWebGpuExecutionProvider);
@@ -4036,9 +3978,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// Selu is deliberately absent: the selector only runs once the activation is already assigned to
-// the same EP as the Conv, and the WebGPU EP registers no Selu kernel. Listing it would be dead
-// code today, so this pins the exclusion rather than leaving it to be re-added by guesswork.
+// WebGPU has no Selu kernel.
 TEST_F(GraphTransformationTests, NoFuseNhwcConvSeluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "Selu", kOnnxDomain, kWebGpuExecutionProvider);
@@ -4047,8 +3987,6 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvSeluForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Selu"), 17));
 }
 
-// The CPU and JS FusedConv kernels cannot evaluate any of the newly added activations, so the
-// shared selector must not have picked them up. HardSwish stands in for the group.
 TEST_F(GraphTransformationTests, NoFuseNhwcConvHardSwishForCpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "HardSwish", kOnnxDomain, kCpuExecutionProvider);
@@ -4069,15 +4007,9 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
 #if defined(USE_WEBGPU)
 namespace {
 
-// Adds the activation that consumes `conv_out` and produces `output`.
 using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, NodeArg*)>;
 
-// Runs one Conv+activation model twice on the WebGPU EP and requires the two results to agree:
-// once at Level1, where ConvActivationFusion does not run so the activation stays a separate node,
-// and once at Level2, where the pair collapses into a single Conv that evaluates the activation in
-// its own shader epilogue. The op-count tests above only inspect the graph; this is what actually
-// executes the fused kernel, so a wrong WGSL expression or a dropped activation parameter shows up
-// here as a numeric mismatch rather than passing silently.
+// Compare Level2 fused execution with the Level1 unfused baseline.
 void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
                                    const std::string& expected_activation,
                                    int opset_version,
@@ -4088,16 +4020,14 @@ void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
   }
 
   auto build_test_case = [&add_activation, &input_shape, &weight_shape](ModelTestBuilder& builder) {
-    // Inputs span both signs so the negative half of the asymmetric activations is covered, and
-    // the channel counts are large enough to stay representative of a real convolution.
+    // Include negative inputs for asymmetric activations.
     auto* input = builder.MakeInput<float>(input_shape, -3.0f, 3.0f);
     auto* weight = builder.MakeInitializer<float>(weight_shape, -0.5f, 0.5f);
     auto* bias = builder.MakeInitializer<float>({weight_shape[0]}, -0.5f, 0.5f);
     auto* conv_out = builder.MakeIntermediate();
     auto* output = builder.MakeOutput();
 
-    // Plain NCHW ONNX Conv: the session's layout transform rewrites it to NHWC after partitioning,
-    // which is the form ConvActivationFusion matches.
+    // Start from NCHW so layout transformation creates the NHWC fusion candidate.
     builder.AddNode("Conv", {input, weight, bias}, {conv_out});
     add_activation(builder, conv_out, output);
   };
@@ -4116,8 +4046,7 @@ void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
         fused = true;
       }
     }
-    // Without this the test would still pass when fusion silently stopped firing, because an
-    // unfused graph trivially matches the unfused baseline.
+    // Ensure the activation is fused; otherwise this test would not exercise the fused kernel.
     ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
                        << ", so the fused kernel was never executed. Graph was:"
                        << graph_description.str();
@@ -4145,10 +4074,7 @@ ConvActivationBuilder SimpleActivation(const std::string& op_type,
   };
 }
 
-// fp16 Conv+activation on the im2col path. CanApplyIm2ColMatMulProgram gates on fp16, group 1,
-// channels-last and a kernel with both spatial dims above 1, so the shapes here are not incidental.
-// im2col_matmul.wgsl.template carries its own copy of every activation expression, independent of
-// the C++ generator in fuse_utils.cc, and nothing else executes it.
+// Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
 void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
                                      const std::string& expected_activation,
                                      int opset_version) {
@@ -4168,8 +4094,7 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
     return converted;
   };
 
-  // Deterministic ramps rather than random data: fp16 has ~3 decimal digits, so a fixed pattern
-  // keeps the two runs bit-comparable and spans both signs for the asymmetric activations.
+  // Use deterministic signed inputs for stable fp16 comparisons.
   auto ramp = [](size_t count, float lo, float hi) {
     std::vector<float> values(count);
     for (size_t i = 0; i < count; ++i) {
@@ -4208,9 +4133,7 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
     ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
                        << ", so no fused kernel ran at all. Graph was:" << graph_description.str();
 
-    // Parity alone cannot tell the im2col program apart from the default conv path: both compute
-    // the same answer. Profile events are named "<node>&<op_type>&<program>", so the dispatched
-    // program name is what distinguishes real im2col coverage from a silent fall-through.
+    // Confirm profiling observed Im2ColMatMulProgram rather than the fallback Conv path.
     const std::string profile_path = session.EndProfiling();
     ASSERT_FALSE(profile_path.empty()) << "profiling produced no file, so program selection is unverifiable";
     std::ifstream profile_stream(profile_path);
@@ -4227,8 +4150,6 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
         observed_conv_programs += " " + profile_contents.substr(pos + 6, end - pos - 6);
       }
     }
-    // A detector that silently stopped seeing dispatches would otherwise be indistinguishable from
-    // an unsupported adapter, and every case below would skip forever.
     ASSERT_FALSE(observed_conv_programs.empty())
         << "no Conv dispatch appeared in the profile, so this test can no longer tell whether the "
            "im2col program was selected";
@@ -4241,10 +4162,7 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
                                    session_options.enable_profiling = true;
                                    session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
 
-  // IsDeviceSupported() in im2col_matmul.cc allowlists Intel Xe-2/Xe-3 only, so on every other
-  // adapter the dispatch above went down the default conv path and proved nothing about the
-  // template. Reporting that as a pass would be the exact silent fall-through this test exists to
-  // rule out.
+  // Im2ColMatMulProgram is restricted to Intel Xe-2/Xe-3.
   if (!im2col_selected) {
     GTEST_SKIP() << "Im2ColMatMul did not run on this adapter, so the im2col activation epilogue was "
                     "not exercised. Conv dispatched to:"
@@ -4255,14 +4173,10 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
 
 }  // namespace
 
-// Relu carries no parameters and predates this work, so it pins the harness itself: a failure here
-// means the parity setup is wrong rather than any particular activation.
 TEST_F(GraphTransformationTests, WebGpuConvReluFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(SimpleActivation("Relu"), "Relu", 17);
 }
 
-// The parameterized activations are the interesting ones: their alpha/beta/min/max reach the shader
-// through uniforms, so a mis-wired uniform slot changes the result instead of failing to compile.
 TEST_F(GraphTransformationTests, WebGpuConvLeakyReluFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(
       SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.15f); }),
@@ -4279,15 +4193,12 @@ TEST_F(GraphTransformationTests, WebGpuConvHardSigmoidFusionMatchesUnfusedResult
       "HardSigmoid", 17);
 }
 
-// Elu's alpha only affects x < 0, so a dropped parameter would leave half the tensor correct.
 TEST_F(GraphTransformationTests, WebGpuConvEluFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(
       SimpleActivation("Elu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.7f); }),
       "Elu", 17);
 }
 
-// Clip takes its bounds as inputs rather than attributes, and both bounds ride the same two uniform
-// slots as alpha/beta, so it is the one that catches a slot ordering mistake.
 TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
   auto add_clip = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
     auto* min_value = builder.MakeScalarInitializer<float>(-0.25f);
@@ -4305,8 +4216,6 @@ TEST_F(GraphTransformationTests, WebGpuConvSoftplusFusionMatchesUnfusedResults) 
   RunWebGpuConvActivationParity(SimpleActivation("Softplus"), "Softplus", 17);
 }
 
-// Gelu resolves to two distinct activation kinds; both are open-coded in the shader, so both need
-// to be checked against the reference implementation.
 TEST_F(GraphTransformationTests, WebGpuConvGeluFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(SimpleActivation("Gelu"), "Gelu", 20);
 }
@@ -4318,10 +4227,7 @@ TEST_F(GraphTransformationTests, WebGpuConvGeluTanhFusionMatchesUnfusedResults) 
       "Gelu", 20);
 }
 
-// QuickGelu is how SiLU/Swish reaches the conv: exporters emit `x * sigmoid(alpha * x)`, which
-// QuickGeluFusion collapses into a QuickGelu node that ConvActivationFusion then folds in. This
-// builds that exporter-shaped pattern rather than a hand-authored QuickGelu so the test covers the
-// path YOLO-family models actually take, with a non-default alpha to pin the uniform.
+// Build the exporter pattern consumed by QuickGeluFusion.
 TEST_F(GraphTransformationTests, WebGpuConvQuickGeluFusionMatchesUnfusedResults) {
   auto add_quick_gelu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
     auto* alpha = builder.MakeScalarInitializer<float>(1.4f);
@@ -4334,8 +4240,6 @@ TEST_F(GraphTransformationTests, WebGpuConvQuickGeluFusionMatchesUnfusedResults)
   RunWebGpuConvActivationParity(add_quick_gelu, "QuickGelu", 17);
 }
 
-// ThresholdedRelu's alpha is the threshold itself, so a slot that never reached the shader would
-// read as 0 and turn this into a plain Relu.
 TEST_F(GraphTransformationTests, WebGpuConvThresholdedReluFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(
       SimpleActivation("ThresholdedRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.8f); }),
@@ -4346,12 +4250,8 @@ TEST_F(GraphTransformationTests, WebGpuConvErfFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(SimpleActivation("Erf"), "Erf", 17);
 }
 
-// The small-matmul path again, but with two activations that differ only in a parameter value.
-// These must NOT be distinguished: they share one compiled pipeline and read the parameter from a
-// uniform. Paired with the snippet-level assertions in
-// test/providers/webgpu/activation_snippet_test.cc, which check that the parameter never reaches
-// the shader source in the first place.
 TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossParameterValues) {
+  // Keep N and K below 8 to select MatMulNaiveProgram.
   const std::vector<int64_t> input_shape{1, 4, 8, 8};
   const std::vector<int64_t> weight_shape{6, 4, 1, 1};
 
@@ -4363,8 +4263,6 @@ TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossParame
       "LeakyRelu", 17, input_shape, weight_shape);
 }
 
-// im2col template coverage. Parameterless, parameterized, and the QuickGelu alpha==1 variant, which
-// selects a separate branch in the template from the general alpha case.
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
   RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
 }

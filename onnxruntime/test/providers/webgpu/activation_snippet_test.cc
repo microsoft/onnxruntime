@@ -18,9 +18,7 @@ namespace test {
 
 namespace {
 
-// Pulls every numeric literal out of a generated WGSL fragment. The generator wraps each one in a
-// type cast, e.g. `f32(0.707106769)`, so it is enough to scan for runs of digits/sign/point/exponent
-// that are not part of an identifier.
+// Extract numeric literals that are not part of identifiers.
 std::vector<std::string> ExtractNumericLiterals(const std::string& wgsl) {
   std::vector<std::string> literals;
   for (size_t i = 0; i < wgsl.size();) {
@@ -46,8 +44,7 @@ std::vector<std::string> ExtractNumericLiterals(const std::string& wgsl) {
   return literals;
 }
 
-// Significant decimal digits in a literal's mantissa, ignoring sign, decimal point, any exponent,
-// and leading/trailing zeros. "0.5" -> 1, "0.166666999" -> 9, "100" -> 1, "0.0" -> 0.
+// Count mantissa digits, excluding sign, exponent, decimal point, and edge zeros.
 size_t CountSignificantDigits(const std::string& literal) {
   const std::string mantissa = literal.substr(0, literal.find_first_of("eE"));
   std::string digits;
@@ -63,7 +60,7 @@ size_t CountSignificantDigits(const std::string& literal) {
   return digits.find_last_not_of('0') - first + 1;
 }
 
-// Renders a float the way a correct formatter must: enough digits to round-trip exactly.
+// Render with round-trip precision.
 std::string RenderFullPrecision(float value) {
   std::ostringstream oss;
   oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
@@ -78,7 +75,6 @@ Activation MakeActivation(ActivationKind kind, float param_0 = 0.0f, float param
   return activation;
 }
 
-// Every activation kind, so a newly added one is covered without editing this list.
 const std::vector<ActivationKind>& AllActivationKinds() {
   static const std::vector<ActivationKind> kinds{
       ActivationKind::Relu, ActivationKind::Sigmoid, ActivationKind::Clip,
@@ -91,23 +87,14 @@ const std::vector<ActivationKind>& AllActivationKinds() {
 
 }  // namespace
 
-// Regression test for constants being truncated on their way into the shader. std::to_string() uses
-// "%f" and emits six digits after the decimal point, which rounded the Gelu-tanh cubic coefficient
-// 0.035677408 to 0.035677 (109 ULP) and 1/sqrt(2) to 0.707107 (4 ULP), so fused Gelu disagreed with
-// the standalone Gelu kernel it is documented to match.
-//
-// Asserted on the emitted text, not on inference output: in f16 these all round to the same half and
-// in f32 the output error is about one ULP, so no numeric comparison can detect it reliably.
+// Check emitted text because the truncation is below reliable inference tolerances.
 TEST(WebGpuActivationSnippetTest, ConstantsAreEmittedAtFullPrecision) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.125f, 0.375f);
     for (const std::string& wgsl : {GetActivationSnippet(activation, "vec4<f32>", "f32"),
                                     GetActivationDeclaration(activation, "vec4<f32>", "f32")}) {
       for (const std::string& literal : ExtractNumericLiterals(wgsl)) {
-        // A literal that parses to `f` must carry at least as many significant digits as the
-        // shortest guaranteed round-trip rendering of `f`. A truncating formatter produces a short
-        // literal that parses to some *other* float, whose full-precision rendering is then longer
-        // than the literal it came from -- which is exactly what "%f" did here.
+        // A round-trippable literal needs enough digits to represent its parsed f32.
         const float parsed = std::strtof(literal.c_str(), nullptr);
         const std::string full_precision = RenderFullPrecision(parsed);
         EXPECT_GE(CountSignificantDigits(literal), CountSignificantDigits(full_precision))
@@ -118,7 +105,6 @@ TEST(WebGpuActivationSnippetTest, ConstantsAreEmittedAtFullPrecision) {
   }
 }
 
-// The specific values that regressed, pinned individually so a failure names the culprit.
 TEST(WebGpuActivationSnippetTest, KnownConstantsAreNotTruncated) {
   struct Expectation {
     ActivationKind kind;
@@ -154,16 +140,12 @@ TEST(WebGpuActivationSnippetTest, KnownConstantsAreNotTruncated) {
   }
 }
 
-// Parameter values must not appear in the shader text at all: they travel as uniforms so that one
-// compiled pipeline serves every parameter value. If a parameter leaks back into the source, the
-// cache hint (which deliberately omits parameter values) would serve the wrong shader.
 TEST(WebGpuActivationSnippetTest, ParametersAreReadFromUniformsNotBaked) {
   const std::vector<ActivationKind> parameterized{
       ActivationKind::Clip, ActivationKind::HardSigmoid, ActivationKind::LeakyRelu,
       ActivationKind::Elu, ActivationKind::ThresholdedRelu};
 
   for (ActivationKind kind : parameterized) {
-    // Two distinct, unusual parameter values. Neither may show up in the emitted text.
     const Activation activation = MakeActivation(kind, 0.13579f, 0.24680f);
     const std::string wgsl = GetActivationSnippet(activation, "vec4<f32>", "f32");
 
@@ -174,11 +156,6 @@ TEST(WebGpuActivationSnippetTest, ParametersAreReadFromUniformsNotBaked) {
   }
 }
 
-// QuickGelu at alpha == 1 is SiLU/Swish, the shape that follows nearly every Conv in the YOLO
-// family. It gets a dedicated shader variant with the multiply removed entirely. Because that is a
-// *shader* difference driven by a parameter *value*, it must also be reflected in the cache hint,
-// otherwise the two variants collide in the pipeline cache and whichever compiled first is served
-// to both.
 TEST(WebGpuActivationSnippetTest, QuickGeluUnitAlphaIsASeparateShaderAndCacheKey) {
   const Activation silu = MakeActivation(ActivationKind::QuickGelu, 1.0f);
   const Activation general = MakeActivation(ActivationKind::QuickGelu, 1.702f);
@@ -195,12 +172,9 @@ TEST(WebGpuActivationSnippetTest, QuickGeluUnitAlphaIsASeparateShaderAndCacheKey
       << "non-unit alpha must read its alpha from a uniform: " << general_wgsl;
   EXPECT_NE(silu_wgsl, general_wgsl);
 
-  // The guard that keeps the two apart in the pipeline cache.
   EXPECT_NE(silu.ToString(), general.ToString());
 }
 
-// Two activations that differ only in a parameter value must share one compiled pipeline. This is
-// the whole point of moving parameters into uniforms.
 TEST(WebGpuActivationSnippetTest, ParameterValuesDoNotAffectTheCacheKey) {
   const Activation leaky_a = MakeActivation(ActivationKind::LeakyRelu, 0.01f);
   const Activation leaky_b = MakeActivation(ActivationKind::LeakyRelu, 0.25f);
@@ -214,13 +188,10 @@ TEST(WebGpuActivationSnippetTest, ParameterValuesDoNotAffectTheCacheKey) {
   EXPECT_EQ(GetActivationSnippet(clip_a, "vec4<f32>", "f32"),
             GetActivationSnippet(clip_b, "vec4<f32>", "f32"));
 
-  // Different kinds must still differ.
   EXPECT_NE(MakeActivation(ActivationKind::Relu).ToString(),
             MakeActivation(ActivationKind::Sigmoid).ToString());
 }
 
-// Parameterless activations must emit exactly what they emitted before activation parameters
-// existed, so this refactor provably changed nothing for them.
 TEST(WebGpuActivationSnippetTest, ParameterlessActivationsReadNoUniforms) {
   const std::vector<ActivationKind> parameterless{
       ActivationKind::None, ActivationKind::Relu, ActivationKind::Sigmoid, ActivationKind::Tanh,
@@ -238,8 +209,7 @@ TEST(WebGpuActivationSnippetTest, ParameterlessActivationsReadNoUniforms) {
   }
 }
 
-// WGSL has no forward declarations, so any activation whose snippet calls a helper must also emit
-// that helper. Catches an activation added to one function but not the other.
+// WGSL has no forward declarations; helper definitions must accompany their uses.
 TEST(WebGpuActivationSnippetTest, HelperIsEmittedWheneverItIsCalled) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.5f, 1.5f);
@@ -254,7 +224,6 @@ TEST(WebGpuActivationSnippetTest, HelperIsEmittedWheneverItIsCalled) {
       EXPECT_NE(declaration.find("fn fused_act_tanh"), std::string::npos)
           << "kind " << static_cast<int>(kind) << " calls fused_act_tanh but declares no helper";
     }
-    // And nothing unreferenced should be emitted.
     if (!declaration.empty()) {
       const bool referenced = snippet.find("fused_act_erf") != std::string::npos ||
                               snippet.find("fused_act_tanh") != std::string::npos;
@@ -263,8 +232,6 @@ TEST(WebGpuActivationSnippetTest, HelperIsEmittedWheneverItIsCalled) {
   }
 }
 
-// Every kind must produce a snippet. A kind added to the enum but not to GetActivationSnippet would
-// otherwise fall through to the empty default and silently drop the activation from the conv.
 TEST(WebGpuActivationSnippetTest, EveryKindProducesASnippet) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.5f, 1.5f);

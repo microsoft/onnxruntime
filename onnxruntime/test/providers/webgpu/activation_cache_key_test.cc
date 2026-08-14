@@ -21,28 +21,18 @@ webgpu::Activation MakeActivation(webgpu::ActivationKind kind, float value0, flo
 
 }  // namespace
 
-// Activation::ToString() is the cache hint used by every program that embeds a fused activation in
-// its WGSL, and must distinguish two activations if and only if they generate different shader text.
-// Parameters now travel as uniforms, so they must NOT appear in the key -- otherwise every distinct
-// alpha compiles its own identical pipeline. The one exception is QuickGelu at alpha == 1, where the
-// multiply folds away and the emitted code really does differ.
-//
-// These assertions are on the formatter alone, so they need no GPU and run on any CI agent.
-
 TEST(ActivationCacheKeyTest, ParametersDoNotAffectTheKey) {
   const auto leaky_a = MakeActivation(webgpu::ActivationKind::LeakyRelu, 0.01f);
   const auto leaky_b = MakeActivation(webgpu::ActivationKind::LeakyRelu, 0.2f);
   EXPECT_EQ(leaky_a.ToString(), leaky_b.ToString())
       << "LeakyRelu alpha is a uniform, so it must not fork the pipeline cache";
 
-  // Clip stores {minimum, maximum}, so this exercises the second parameter as well as the first.
   const auto clip_a = MakeActivation(webgpu::ActivationKind::Clip, 0.0f, 6.0f);
   const auto clip_b = MakeActivation(webgpu::ActivationKind::Clip, -1.0f, 1.0f);
   EXPECT_EQ(clip_a.ToString(), clip_b.ToString())
       << "Clip bounds are uniforms, so they must not fork the pipeline cache";
 }
 
-// The one parameter that still changes the generated code.
 TEST(ActivationCacheKeyTest, QuickGeluUnitAlphaIsKeyedSeparately) {
   const auto unit_alpha = MakeActivation(webgpu::ActivationKind::QuickGelu, 1.0f);
   const auto other_alpha = MakeActivation(webgpu::ActivationKind::QuickGelu, 1.702f);
@@ -50,13 +40,10 @@ TEST(ActivationCacheKeyTest, QuickGeluUnitAlphaIsKeyedSeparately) {
   EXPECT_NE(unit_alpha.ToString(), other_alpha.ToString())
       << "QuickGelu drops the multiply at alpha == 1, which is different shader text";
 
-  // All non-unit alphas emit the same code, so they must still share one entry.
   const auto another_alpha = MakeActivation(webgpu::ActivationKind::QuickGelu, 0.5f);
   EXPECT_EQ(other_alpha.ToString(), another_alpha.ToString());
 }
 
-// Positive control: guards against a ToString() that returns something unconditionally unique,
-// which would satisfy the assertions above while defeating the cache.
 TEST(ActivationCacheKeyTest, IdenticalActivationsProduceIdenticalKeys) {
   const auto activation_a = MakeActivation(webgpu::ActivationKind::LeakyRelu, 0.01f);
   const auto activation_b = MakeActivation(webgpu::ActivationKind::LeakyRelu, 0.01f);
@@ -65,7 +52,6 @@ TEST(ActivationCacheKeyTest, IdenticalActivationsProduceIdenticalKeys) {
       << "identical activations must share a cache entry";
 }
 
-// Relu and Sigmoid carry no parameters, so only the kind can separate them.
 TEST(ActivationCacheKeyTest, DistinctActivationKindsProduceDistinctKeys) {
   const auto relu = MakeActivation(webgpu::ActivationKind::Relu, 0.0f);
   const auto sigmoid = MakeActivation(webgpu::ActivationKind::Sigmoid, 0.0f);

@@ -98,21 +98,13 @@ class ConvActivationSelector : public NodeSelector {
       return false;
     };
 
-    // These are WebGPU-only and NHWC-only: the CPU and JS FusedConv kernels do not implement them,
-    // and a kOnnxDomain Conv would fuse into kMSDomain::FusedConv, for which WebGPU registers no
-    // kernel. QuickGelu at alpha == 1 is SiLU/Swish, which follows nearly every Conv in the YOLO
-    // family; HardSwish, Elu, Gelu and Softplus cover MobileNetV3/EfficientNet-lite and similar.
-    //
-    // Gelu arrives under three spellings, all seen in practice: the ONNX-domain op (opset 20+), the
-    // kMSDomain op GeluFusion produces from the erf pattern at lower opsets, and kMSDomain FastGelu
-    // for the tanh approximation.
+    // These activations are supported only for WebGPU internal NHWC Conv.
     auto is_supported_webgpu_ep_activation = [&node](const Node& activation_node) {
       if (node.Domain() != kMSInternalNHWCDomain) {
         return false;
       }
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "FastGelu", {1}, kMSDomain)) {
-        // FastGelu's optional second input is a bias added along the last axis. Only the
-        // single-input form is a pure elementwise activation that can move into the conv.
+        // The optional bias input makes FastGelu non-elementwise.
         return activation_node.InputDefs().size() == 1;
       }
       return graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain) ||
@@ -223,9 +215,7 @@ class FuseConvActivationAction : public ReplaceWithNew {
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
       activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
     } else if (activation_op_type == "Gelu") {
-      // ONNX Gelu selects its formula with a string attribute, but activation_params is a float
-      // list, so forward it as a 0/1 flag. The kMSDomain Gelu has no such attribute and is
-      // always the exact erf form, which the nullptr default already gives.
+      // Encode ONNX Gelu's approximation mode as 0 (erf) or 1 (tanh).
       const auto* approximate_attr = graph_utils::GetNodeAttribute(*activation, "approximate");
       const bool tanh_approximation = approximate_attr != nullptr && approximate_attr->s() == "tanh";
       activation_params.push_back(tanh_approximation ? 1.0f : 0.0f);

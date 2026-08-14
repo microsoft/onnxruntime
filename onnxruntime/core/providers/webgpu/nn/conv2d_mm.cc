@@ -113,8 +113,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
   const std::string b_type = is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
   const std::string apply_activation = GetActivationSnippet(activation, res_type, data_type);
   std::stringstream user_code;
-  // Module-scope helpers the activation may depend on. This block is emitted into
-  // AdditionalImplementation, so declaring them here keeps them ahead of mm_write's use.
+  // Emit activation helpers before mm_write uses them.
   user_code << GetActivationDeclaration(activation, res_type, data_type);
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
             << (is_channels_last_ ? sample_x.str() : sample_w.str())
@@ -235,7 +234,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
                             {dispatch[0]},
                             {dispatch[1]},
                             {dispatch[2]}});
-  // Must stay last: uniform definitions pair with values by index, not by name.
+  // Activation uniforms must remain last because definitions and values are matched by index.
   AppendActivationUniformsData(activation, program);
 
   return program;

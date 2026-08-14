@@ -6,18 +6,12 @@
 #param tile_n
 #param use_subgroup
 #param vec_size
-// Activation folded into the epilogue. Mirrors ActivationKind in nn/fuse_utils.h:
-//   0 = None, 1 = Relu, 2 = Sigmoid, 3 = Clip, 4 = HardSigmoid, 5 = LeakyRelu, 6 = Tanh,
-//   7 = QuickGelu, 8 = HardSwish, 9 = Elu, 10 = Gelu (erf), 11 = Gelu (tanh approximation),
-//   12 = Softplus, 13 = ThresholdedRelu, 14 = Erf.
-// Parameterized kinds read alpha/beta/min/max from uniforms.activation_param_0/_1 rather than
-// from baked-in literals, so one compiled shader covers every parameter value. Keep these
-// literals, IsActivationSupported and the static_asserts in im2col_matmul.cc in sync.
+// Mirrors ActivationKind; static_asserts in im2col_matmul.cc enforce these values.
+// 0=None, 1=Relu, 2=Sigmoid, 3=Clip, 4=HardSigmoid, 5=LeakyRelu, 6=Tanh,
+// 7=QuickGelu, 8=HardSwish, 9=Elu, 10=Gelu, 11=GeluTanh, 12=Softplus,
+// 13=ThresholdedRelu, 14=Erf. Keep branches synchronized with IsActivationSupported().
 #param activation_kind
-// QuickGelu(x, 1) is SiLU/Swish, where the alpha multiply folds away. That is the shape that
-// follows nearly every Conv in the YOLO family, so it gets its own shader variant: the multiply
-// and the uniform read both disappear from the emitted WGSL rather than becoming a runtime
-// multiply by 1.0. Keyed into the cache hint by Activation::ToString().
+// Alpha 1 omits the multiply and activation_param_0.
 #param quick_gelu_unit_alpha
 
 #use .getByOffset .setByOffset
@@ -168,11 +162,6 @@ $MAIN {
 #elif activation_kind == 6
     output_data = tanh(output_data);
 #elif activation_kind == 7
-    // QuickGelu(x, alpha) = x * sigmoid(alpha * x). alpha == 1 makes this SiLU/Swish.
-    // Nested deliberately rather than written as a sibling `#elif activation_kind == 7 &&
-    // quick_gelu_unit_alpha` branch: sibling branches are order-sensitive, and putting the general
-    // case first would silently swallow the unit-alpha case and drop the optimization with no
-    // error. Nesting makes the choice unordered and therefore un-breakable.
 #if quick_gelu_unit_alpha
     output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));
 #else
@@ -181,12 +170,10 @@ $MAIN {
 #elif activation_kind == 8
     output_data = output_data * clamp(output_data * output_element_t(0.16666667) + output_element_t(0.5), output_element_t(0), output_element_t(1));
 #elif activation_kind == 9
-    // Elu(x, alpha) = x for x >= 0, else alpha * (exp(x) - 1).
     output_data = select(output_element_t(uniforms.activation_param_0) * (exp(output_data) - output_element_t(1)), output_data, output_data >= output_element_t(0));
 #elif activation_kind == 10
     {
-      // Gelu(x) = 0.5x(1 + erf(x/sqrt(2))); erf via Abramowitz & Stegun 7.1.26, matching
-      // GetActivationDeclaration in nn/fuse_utils.cc so both conv paths agree numerically.
+    // Match GetActivationDeclaration's Abramowitz & Stegun approximation.
       let gelu_x = output_data * output_element_t(0.70710678118654752);
       let gelu_a = abs(gelu_x);
       let gelu_t = output_element_t(1) / (output_element_t(1) + output_element_t(0.3275911) * gelu_a);
@@ -195,23 +182,20 @@ $MAIN {
     }
 #elif activation_kind == 11
     {
-      // Gelu(approximate="tanh") / FastGelu. The built-in tanh() returns NaN past ~11.09 in f16
-      // and this argument is cubic, so tanh is open-coded in an overflow-free form.
+  // Avoid WGSL tanh overflow for the cubic argument.
       let gelu_arg = output_data * (output_element_t(0.035677408136300125) * output_data * output_data + output_element_t(0.79788456080286535));
       let gelu_e = exp(output_element_t(-2) * abs(gelu_arg));
       let gelu_tanh = sign(gelu_arg) * ((output_element_t(1) - gelu_e) / (output_element_t(1) + gelu_e));
       output_data = output_data * (output_element_t(0.5) + output_element_t(0.5) * gelu_tanh);
     }
 #elif activation_kind == 12
-    // softplus(x) = log(1 + exp(x)), arranged so the exp() cannot overflow.
+  // Use the overflow-safe softplus form.
     output_data = max(output_data, output_element_t(0)) + log(output_element_t(1) + exp(-abs(output_data)));
 #elif activation_kind == 13
-    // ThresholdedRelu(x, alpha) = x for x > alpha, else 0.
     output_data = select(output_element_t(0), output_data, output_data > output_element_t(uniforms.activation_param_0));
 #elif activation_kind == 14
     {
-      // erf via Abramowitz & Stegun 7.1.26, matching GetActivationDeclaration in nn/fuse_utils.cc
-      // and the standalone Erf kernel in math/unary_elementwise_ops.h so all three agree.
+    // Match the standalone Erf/Gelu approximation.
       let erf_a = abs(output_data);
       let erf_t = output_element_t(1) / (output_element_t(1) + output_element_t(0.3275911) * erf_a);
       output_data = sign(output_data) * (output_element_t(1) - ((((output_element_t(1.061405429) * erf_t + output_element_t(-1.453152027)) * erf_t + output_element_t(1.421413741)) * erf_t + output_element_t(-0.284496736)) * erf_t + output_element_t(0.254829592)) * erf_t * exp(-erf_a * erf_a));
