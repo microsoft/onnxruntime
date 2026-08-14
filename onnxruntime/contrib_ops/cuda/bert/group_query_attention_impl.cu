@@ -1503,7 +1503,7 @@ Status EfficientAttention(
   p.max_sequence_length = present_sequence_length;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
-  p.causal = true;
+  p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.seqlen_k_ptr = parameters.is_windowed_kv_cache
@@ -1717,7 +1717,7 @@ Status CudnnSdpaAttention(
         parameters.sequence_length,          // sequence_length_q
         parameters.seqlen_present_kv_cache,  // sequence_length_kv (capacity, matches buffer strides)
         scale,
-        /*is_causal=*/true,
+        parameters.is_unidirectional,
         is_bf16,
         /*broadcast_attn_bias_dim_0=*/false,
         /*broadcast_attn_bias_dim_1=*/false,
@@ -1794,6 +1794,12 @@ Status QkvToContext(
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Unfused GQA fallback does not support quantized KV cache.");
     }
+  }
+
+  if (parameters.k_quant_type != KVQuantizationType::NONE ||
+      parameters.v_quant_type != KVQuantizationType::NONE) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "No available GroupQueryAttention kernel supports the quantized KV cache.");
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");

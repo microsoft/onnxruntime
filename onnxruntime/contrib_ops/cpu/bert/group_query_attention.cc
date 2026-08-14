@@ -283,6 +283,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   parameters.k_quant_type = k_quant_type_;
   parameters.v_quant_type = v_quant_type_;
   parameters.kv_cache_bit_width = kv_cache_bit_width_;
+  parameters.is_unidirectional = is_unidirectional_;
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -612,6 +613,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       // 1. Total sequence length is long enough to benefit from tiling
       // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
       const bool use_flash = !disable_gqa_flash_ &&
+                             is_unidirectional_ &&
                              parameters.total_sequence_length > 1 &&
                              softcap_ == 0.0f &&
                              !use_smooth_softmax_ &&
@@ -650,6 +652,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // decode kernel. Both are reached when total_sequence_length > 1.
     if constexpr (std::is_same_v<T, float>) {
       const bool use_flash = !disable_gqa_flash_ &&
+                             is_unidirectional_ &&
                              parameters.total_sequence_length > 1 &&
                              softcap_ == 0.0f &&
                              !use_smooth_softmax_ &&
