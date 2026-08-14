@@ -1651,9 +1651,7 @@ Status FlashAttention(
   if constexpr (IsQuantizedCache<TCACHE>::value) {
     // FlashAttention cannot read a quantized page, so dequantize the live context into a dense
     // packed-varlen [total_kv_tokens, kv_num_heads, head_size] buffer (no GQA expansion — Flash
-    // does the grouping itself) and use the non-paged varlen entry point. That path leaves
-    // params.num_splits at 0 exactly like the paged one, so the fp32 [num_heads, token_count]
-    // softmax_lse layout the head-sink epilogue relies on is unchanged.
+    // does the grouping itself) and use the non-paged varlen entry point.
     ORT_RETURN_IF_ERROR((LaunchGatherAndExpandPagedKVCache<T, TCACHE>(
         data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
         data.k_scale, data.v_scale, k_per_channel, v_per_channel,
@@ -1665,23 +1663,22 @@ Status FlashAttention(
         reinterpret_cast<void*>(data.gathered_value), output, cumulative_seqlens_q, cumulative_seqlens_kv,
         /*seqused_k*/ nullptr, /*block_table*/ nullptr, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
         max_query_len, data.max_kv_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16,
-        local_window_size - 1));
+        local_window_size - 1, /*max_num_blocks_per_seq*/ 0, /*page_block_size*/ 1,
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   } else {
     void* key_cache = reinterpret_cast<void*>(data.key_cache);
     void* value_cache = reinterpret_cast<void*>(data.value_cache);
-    const int max_seq_len = max_num_blocks_per_seq * block_size;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
         device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
         /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
-        max_query_len, max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size - 1,
-        max_num_blocks_per_seq, block_size));
+        max_query_len, data.max_kv_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16,
+        local_window_size - 1,
+        max_num_blocks_per_seq, block_size,
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   }
 
   if (parameters.use_smooth_softmax) {
-    // Rescale by the softmax denominator that the sink logit adds. mha_varlen_fwd leaves
-    // params.num_splits at 0, so the split-combine kernel never runs and softmax_lse carries the
-    // unpadded [num_heads, token_count] fp32 layout this epilogue expects. If varlen ever enables
-    // num_splits > 1, both the layout and this epilogue must be revisited.
+    // Sink-bearing steps remain unsplit until the split-combine LSE layout is qualified.
     ORT_RETURN_IF_ERROR(LaunchApplyHeadSink<T>(data.output, data.softmax_lse, data.head_sink, token_count,
                                                num_heads, head_size, stream, max_threads_per_block));
   }

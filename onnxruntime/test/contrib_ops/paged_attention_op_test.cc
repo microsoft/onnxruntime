@@ -23,6 +23,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 #include "default_providers.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -57,6 +58,19 @@ struct EndToEndCase {
   std::vector<int32_t> cumulative_seqlens_q;
   std::vector<int32_t> past_seqlens;
   std::vector<int32_t> block_table;
+};
+
+struct IoBindingCase {
+  int batch_size = 1;
+  int num_heads = 1;
+  int kv_num_heads = 1;
+  int head_size = 8;
+  int block_size = 256;
+  int num_blocks = 2;
+  int max_num_blocks_per_seq = 1;
+  int past_seqlen = 4;
+  bool split_sensitive_values = false;
+  std::vector<int32_t> attention_metadata;
 };
 
 // Softmax with causal masking: masked positions get -inf → 0 after exp.
@@ -247,17 +261,25 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
 void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                       const char* provider_type,
                       bool alias_cache_outputs,
-                      bool omit_cache_outputs = false) {
-  constexpr int batch_size = 1;
-  constexpr int token_count = 1;
-  constexpr int num_heads = 1;
-  constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
-  constexpr int block_size = 256;
-  constexpr int num_blocks = 2;
-  constexpr int past_seqlen = 4;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int cache_elems = num_blocks * block_size * kv_num_heads * head_size;
+                      bool omit_cache_outputs = false,
+                      const IoBindingCase& c = IoBindingCase{}) {
+  const int batch_size = c.batch_size;
+  const int token_count = batch_size;
+  const int num_heads = c.num_heads;
+  const int kv_num_heads = c.kv_num_heads;
+  const int head_size = c.head_size;
+  const int block_size = c.block_size;
+  const int num_blocks = c.num_blocks;
+  const int max_num_blocks_per_seq = c.max_num_blocks_per_seq;
+  const int past_seqlen = c.past_seqlen;
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int cache_elems = num_blocks * block_size * kv_num_heads * head_size;
+
+  ASSERT_GT(max_num_blocks_per_seq, past_seqlen / block_size);
+  ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
+  ASSERT_EQ(num_heads % kv_num_heads, 0);
+  ASSERT_TRUE(c.attention_metadata.empty() || c.attention_metadata.size() == 2);
 
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
@@ -283,9 +305,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   auto& query_arg = graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
                                                                       {token_count, hidden_size}));
   auto& key_arg = graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                                  {token_count, hidden_size}));
+                                                                  {token_count, kv_hidden_size}));
   auto& value_arg = graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                                      {token_count, hidden_size}));
+                                                                      {token_count, kv_hidden_size}));
   auto& key_cache_arg = graph.GetOrCreateNodeArg(
       "key_cache", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
                                    {num_blocks, block_size, kv_num_heads, head_size}));
@@ -297,11 +319,25 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   auto& past_seqlens_arg = graph.GetOrCreateNodeArg(
       "past_seqlens", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size}));
   auto& block_table_arg = graph.GetOrCreateNodeArg(
-      "block_table", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size, 1}));
+      "block_table",
+      add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size, max_num_blocks_per_seq}));
   auto& empty_optional_arg = graph.GetOrCreateNodeArg("", nullptr);
+  NodeArg* attention_metadata_arg = &empty_optional_arg;
+  if (!c.attention_metadata.empty()) {
+    attention_metadata_arg = &graph.GetOrCreateNodeArg(
+        "attention_metadata", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
+  }
   std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
                                       &cumulative_sequence_length_arg, &past_seqlens_arg, &block_table_arg,
-                                      &empty_optional_arg, &empty_optional_arg};
+                                      /*cos_cache=*/&empty_optional_arg,
+                                      /*sin_cache=*/&empty_optional_arg,
+                                      /*slot_mapping=*/&empty_optional_arg,
+                                      /*head_sink=*/&empty_optional_arg,
+                                      /*q_norm_weight=*/&empty_optional_arg,
+                                      /*k_norm_weight=*/&empty_optional_arg,
+                                      /*k_scale=*/&empty_optional_arg,
+                                      /*v_scale=*/&empty_optional_arg,
+                                      attention_metadata_arg};
 
   auto& output_arg = graph.GetOrCreateNodeArg(
       "output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {token_count, hidden_size}));
@@ -355,6 +391,12 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_NE(device_alloc, nullptr);
 
   auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue attention_metadata_value;
+  if (!c.attention_metadata.empty()) {
+    Tensor cpu_tensor(DataTypeImpl::GetType<int32_t>(), TensorShape({2}),
+                      const_cast<int32_t*>(c.attention_metadata.data()), cpu_alloc->Info());
+    Tensor::InitOrtValue(std::move(cpu_tensor), attention_metadata_value);
+  }
 
   auto make_gpu_fp16 = [&](const std::vector<MLFloat16>& data, const TensorShape& shape) {
     Tensor cpu_tensor(DataTypeImpl::GetType<MLFloat16>(), shape, const_cast<MLFloat16*>(data.data()), cpu_alloc->Info());
@@ -374,18 +416,41 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   };
 
   std::vector<MLFloat16> query_data(token_count * hidden_size, MLFloat16(0.02f));
-  std::vector<MLFloat16> key_data(token_count * hidden_size, MLFloat16(0.03f));
-  std::vector<MLFloat16> value_data(token_count * hidden_size, MLFloat16(0.04f));
+  std::vector<MLFloat16> key_data(token_count * kv_hidden_size, MLFloat16(0.03f));
+  std::vector<MLFloat16> value_data(token_count * kv_hidden_size);
+  for (int b = 0; b < batch_size; ++b) {
+    const MLFloat16 value(0.04f + 0.02f * b);
+    std::fill_n(value_data.begin() + b * kv_hidden_size, kv_hidden_size, value);
+  }
   std::vector<MLFloat16> key_cache_data(cache_elems, MLFloat16(0.01f));
   std::vector<MLFloat16> value_cache_data(cache_elems, MLFloat16(0.02f));
+  if (c.split_sensitive_values) {
+    const int sequence_capacity = max_num_blocks_per_seq * block_size;
+    for (int b = 0; b < batch_size; ++b) {
+      const float low_value = -0.1f + 0.2f * b;
+      const float high_value = 0.1f + 0.2f * b;
+      for (int slot = 0; slot < sequence_capacity; ++slot) {
+        const MLFloat16 value(slot < past_seqlen / 2 ? low_value : high_value);
+        const int slot_offset = (b * sequence_capacity + slot) * kv_num_heads * head_size;
+        std::fill_n(value_cache_data.begin() + slot_offset, kv_num_heads * head_size, value);
+      }
+    }
+  }
   auto query_value = make_gpu_fp16(query_data, TensorShape({token_count, hidden_size}));
-  auto key_value = make_gpu_fp16(key_data, TensorShape({token_count, hidden_size}));
-  auto value_value = make_gpu_fp16(value_data, TensorShape({token_count, hidden_size}));
+  auto key_value = make_gpu_fp16(key_data, TensorShape({token_count, kv_hidden_size}));
+  auto value_value = make_gpu_fp16(value_data, TensorShape({token_count, kv_hidden_size}));
   auto key_cache_value = make_gpu_fp16(key_cache_data, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
   auto value_cache_value = make_gpu_fp16(value_cache_data, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
-  auto cumulative_sequence_length_value = make_gpu_int32({0, token_count}, TensorShape({batch_size + 1}));
-  auto past_seqlens_value = make_gpu_int32({past_seqlen}, TensorShape({batch_size}));
-  auto block_table_value = make_gpu_int32({0}, TensorShape({batch_size, 1}));
+  std::vector<int32_t> cumulative_sequence_length_data(batch_size + 1);
+  std::iota(cumulative_sequence_length_data.begin(), cumulative_sequence_length_data.end(), 0);
+  auto cumulative_sequence_length_value =
+      make_gpu_int32(cumulative_sequence_length_data, TensorShape({batch_size + 1}));
+  std::vector<int32_t> past_seqlens_data(batch_size, past_seqlen);
+  auto past_seqlens_value = make_gpu_int32(past_seqlens_data, TensorShape({batch_size}));
+  std::vector<int32_t> block_table_data(batch_size * max_num_blocks_per_seq);
+  std::iota(block_table_data.begin(), block_table_data.end(), 0);
+  auto block_table_value =
+      make_gpu_int32(block_table_data, TensorShape({batch_size, max_num_blocks_per_seq}));
   auto output_value = make_gpu_fp16(std::vector<MLFloat16>(token_count * hidden_size),
                                     TensorShape({token_count, hidden_size}));
   auto key_cache_out_value = make_gpu_fp16(key_cache_data,
@@ -403,6 +468,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_STATUS_OK(io_binding->BindInput("cumulative_sequence_length", cumulative_sequence_length_value));
   ASSERT_STATUS_OK(io_binding->BindInput("past_seqlens", past_seqlens_value));
   ASSERT_STATUS_OK(io_binding->BindInput("block_table", block_table_value));
+  if (!c.attention_metadata.empty()) {
+    ASSERT_STATUS_OK(io_binding->BindInput("attention_metadata", attention_metadata_value));
+  }
   ASSERT_STATUS_OK(io_binding->BindOutput("output", output_value));
   if (!omit_cache_outputs) {
     ASSERT_STATUS_OK(io_binding->BindOutput("key_cache_out", alias_cache_outputs ? key_cache_value : key_cache_out_value));
@@ -414,7 +482,27 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 
   Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(), TensorShape({token_count, hidden_size}), cpu_alloc);
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
-  EXPECT_NE(cpu_output.Data<MLFloat16>()[0].ToFloat(), 0.0f);
+  const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+  const float old_score = head_size * 0.02f * 0.01f * scale;
+  const float new_score = head_size * 0.02f * 0.03f * scale;
+  const float old_weight = std::exp(old_score);
+  const float new_weight = std::exp(new_score);
+  const float denominator = past_seqlen * old_weight + new_weight;
+  for (int b = 0; b < batch_size; ++b) {
+    float old_value_sum = past_seqlen * 0.02f;
+    if (c.split_sensitive_values) {
+      const int low_slots = past_seqlen / 2;
+      const int high_slots = past_seqlen - low_slots;
+      const float low_value = -0.1f + 0.2f * b;
+      const float high_value = 0.1f + 0.2f * b;
+      old_value_sum = low_slots * low_value + high_slots * high_value;
+    }
+    const float new_value = 0.04f + 0.02f * b;
+    const float expected_output = (old_weight * old_value_sum + new_weight * new_value) / denominator;
+    for (int i = 0; i < hidden_size; ++i) {
+      EXPECT_NEAR(cpu_output.Data<MLFloat16>()[b * hidden_size + i].ToFloat(), expected_output, 1e-3f);
+    }
+  }
 
   const auto& outputs = io_binding->GetOutputs();
   if (omit_cache_outputs) {
@@ -424,9 +512,14 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                            TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
     ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(key_cache_value.Get<Tensor>(), cpu_key_cache));
     ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(value_cache_value.Get<Tensor>(), cpu_value_cache));
-    const size_t cache_update_offset = static_cast<size_t>(past_seqlen * head_size);
-    EXPECT_NEAR(cpu_key_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
-    EXPECT_NEAR(cpu_value_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.04f, 1e-3f);
+    for (int b = 0; b < batch_size; ++b) {
+      const size_t cache_update_offset =
+          static_cast<size_t>((b * max_num_blocks_per_seq * block_size + past_seqlen) *
+                              kv_num_heads * head_size);
+      EXPECT_NEAR(cpu_key_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
+      EXPECT_NEAR(cpu_value_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(),
+                  0.04f + 0.02f * b, 1e-3f);
+    }
     ASSERT_EQ(outputs.size(), 1u);
     return;
   }
@@ -454,9 +547,14 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                              TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[1].Get<Tensor>(), cpu_key_cache_out));
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[2].Get<Tensor>(), cpu_value_cache_out));
-  const size_t cache_update_offset = static_cast<size_t>(past_seqlen * head_size);
-  EXPECT_NEAR(cpu_key_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
-  EXPECT_NEAR(cpu_value_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.04f, 1e-3f);
+  for (int b = 0; b < batch_size; ++b) {
+    const size_t cache_update_offset =
+        static_cast<size_t>((b * max_num_blocks_per_seq * block_size + past_seqlen) *
+                            kv_num_heads * head_size);
+    EXPECT_NEAR(cpu_key_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
+    EXPECT_NEAR(cpu_value_cache_out.Data<MLFloat16>()[cache_update_offset].ToFloat(),
+                0.04f + 0.02f * b, 1e-3f);
+  }
 }
 
 void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
@@ -508,6 +606,48 @@ TEST(PagedAttention, Cuda_DebugInfoIncludesDispatchBounds) {
   EXPECT_NE(debug_output.find("NumSplits=2"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=1"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("EffectiveKvLengthBound=256"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 2;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 32;
+  c.max_num_blocks_per_seq = 16;
+  c.past_seqlen = 2047;
+  c.split_sensitive_values = true;
+  c.attention_metadata = {1, 2048};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=2048"), std::string::npos) << debug_output;
+  const std::string split_prefix = "NumSplits=";
+  const size_t split_pos = debug_output.find(split_prefix);
+  ASSERT_NE(split_pos, std::string::npos) << debug_output;
+  EXPECT_GT(std::stoi(debug_output.substr(split_pos + split_prefix.size())), 1) << debug_output;
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
 }
 
 TEST(PagedAttention, WebGpu_AliasedCache_IOBinding) {

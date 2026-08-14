@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <tuple>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
@@ -24,6 +25,8 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+constexpr int kFlashSplitKvMinSequenceLength = 512;
 
 #define REGISTER_KERNEL_TYPED(T, TCACHE)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
@@ -581,6 +584,35 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 #endif
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
 
+  int flash_num_splits = 0;
+  IAllocatorUniquePtr<void> flash_softmax_lse_accum_buffer;
+  IAllocatorUniquePtr<void> flash_out_accum_buffer;
+#if USE_FLASH_ATTENTION
+  const bool use_flash_split_kv =
+      use_flash_attention &&
+      parameters.token_count == parameters.batch_size &&
+      max_query_len == 1 &&
+      !parameters.use_smooth_softmax &&
+      parameters.local_window_size <= 0;
+  if (use_flash_split_kv) {
+    // The combine kernel costs more than it saves for short decode contexts, even when a high
+    // query-head count makes the occupancy heuristic select two splits. max_kv_len is tight when
+    // metadata or readback supplies the live bound; otherwise it is the safe cache-capacity bound.
+    if (max_kv_len > kFlashSplitKvMinSequenceLength) {
+      size_t softmax_lse_accum_bytes = 0;
+      size_t out_accum_bytes = 0;
+      std::tie(flash_num_splits, softmax_lse_accum_bytes, out_accum_bytes) =
+          onnxruntime::flash::get_num_splits_and_buffer_sizes(
+              parameters.batch_size, 1, max_kv_len, parameters.num_heads,
+              parameters.head_size, device_prop.multiProcessorCount);
+      flash_softmax_lse_accum_buffer =
+          GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+      flash_out_accum_buffer =
+          GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
+    }
+  }
+#endif
+
   if (needs_dense_kv) {
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
                                 gathered_num_heads * parameters.head_size;
@@ -655,7 +687,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     debug_info.use_decoder_attention = use_paged_decode && !use_xqa_decode;
-    if (use_paged_decode && !use_xqa_decode) {
+    if (use_flash_attention) {
+      debug_info.num_splits = std::max(1, flash_num_splits);
+    } else if (use_paged_decode && !use_xqa_decode) {
       debug_info.num_splits = num_splits;
     }
     debug_info.gqa_group_size = parameters.num_heads / parameters.kv_num_heads;
@@ -696,6 +730,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     // FlashAttention always writes fp32 log-sum-exp, independent of T.
     data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
   }
+  data.flash_num_splits = flash_num_splits;
+  data.flash_softmax_lse_accum = reinterpret_cast<float*>(flash_softmax_lse_accum_buffer.get());
+  data.flash_out_accum = reinterpret_cast<float*>(flash_out_accum_buffer.get());
+  data.max_kv_len = max_kv_len;
   if (workspace_buffer != nullptr) {
     data.workspace_buffer = reinterpret_cast<CudaT*>(workspace_buffer.get());
   }
@@ -708,7 +746,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.gathered_key = reinterpret_cast<CudaT*>(gathered_key_buffer.get());
     data.gathered_value = reinterpret_cast<CudaT*>(gathered_value_buffer.get());
     data.total_kv_tokens = total_kv_tokens;
-    data.max_kv_len = max_kv_len;
   }
   if (use_paged_decode && !use_xqa_decode) {
     data.decode_partial_out = reinterpret_cast<float*>(decode_partial_out_buffer.get());
