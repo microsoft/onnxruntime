@@ -3,6 +3,7 @@
 #include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cudnn_loader.h"
 #include "core/common/spin_pause.h"
 
@@ -118,7 +119,9 @@ std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t
 void CudaStream::Flush() {
   // A temp fix: when use cuda graph, we can't flush it before cuda graph capture end
   // only flush when we own the stream (not external, not EP unified stream)
-  if (own_stream_)
+  // Also never synchronize while the caller is capturing a device graph on this stream:
+  // cudaStreamSynchronize is rejected on a capturing stream.
+  if (own_stream_ && !CUDAGraphManager::IsStreamCapturing(static_cast<cudaStream_t>(GetHandle())))
     CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(GetHandle())));
 }
 
@@ -163,6 +166,14 @@ static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
 Status CudaStream::CleanUpOnRunEnd() {
   if (deferred_cpu_buffers_.empty())
     return Status::OK();
+
+  // Inside a caller-initiated capture the stream cannot be synchronized, and the staging buffers
+  // may still be referenced by memcpy nodes that the caller's graph is recording. Keep them
+  // alive and reclaim them at the first run end that is not capturing.
+  if (CUDAGraphManager::IsStreamCapturing(static_cast<cudaStream_t>(GetHandle()))) {
+    return Status::OK();
+  }
+
   // Release the ownership of cpu_buffers_info so that the underlying
   // object will keep alive until the end of ReleaseCpuBufferCallback.
   if (release_cpu_buffer_on_cuda_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {

@@ -3321,6 +3321,45 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     }
   }
 
+  // When the caller has started a device graph capture on the EP's compute stream, this run is
+  // recorded into the caller's graph instead of being executed or replayed: no ORT-managed
+  // capture, no ORT-managed replay, and no host synchronization anywhere in the run. Several
+  // sessions sharing one caller-owned stream can therefore be recorded back to back into a
+  // single graph.
+  //
+  // Every provider is asked, not just the one cached for graph replay: that cache is only
+  // populated when the session enabled ORT-managed graph capture, while recording into a caller's
+  // graph only needs the provider to run on the caller's stream.
+  const IExecutionProvider* recording_provider = nullptr;
+  for (const auto& provider : execution_providers_) {
+    if (provider != nullptr && provider->IsExternalDeviceGraphCaptureActive()) {
+      recording_provider = provider.get();
+      break;
+    }
+  }
+  const bool recording_into_external_device_graph = recording_provider != nullptr;
+
+  const std::string& external_capture_str =
+      run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigExternalDeviceGraphCapture, "0");
+  if (external_capture_str == "1" && !recording_into_external_device_graph) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Run option '", kOrtRunOptionsConfigExternalDeviceGraphCapture,
+                           "' is set, but no caller-initiated device graph capture is active on the "
+                           "compute stream of this session's execution provider. Start the capture on "
+                           "the stream that was passed to the provider as its user compute stream "
+                           "before calling Run(), or clear the run option.");
+  } else if (external_capture_str != "0" && external_capture_str != "1") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid value for run option '", kOrtRunOptionsConfigExternalDeviceGraphCapture,
+                           "': expected \"0\" or \"1\" but got \"", external_capture_str, "\".");
+  }
+
+  if (recording_into_external_device_graph) {
+    LOGS(*session_logger_, INFO) << "Recording this run into a caller-initiated device graph capture "
+                                    "on the "
+                                 << recording_provider->Type() << " compute stream.";
+  }
+
   // Increment/decrement concurrent_num_runs_ and control
   // session threads spinning as configured. Do nothing for graph replay except the counter.
   const bool control_spinning = use_per_session_threads_ &&
@@ -3450,7 +3489,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
       // info all execution providers InferenceSession:Run ended
       for (auto* xp : exec_providers_to_stop) {
-        bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0" &&
+                                               !recording_into_external_device_graph;
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
@@ -3467,7 +3507,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
       if (device_stream_collection) {
-        bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0" &&
+                                       !recording_into_external_device_graph;
         ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
       }
 #endif
@@ -3571,7 +3612,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   // runs for allocations/setup followed by one run that captures the graph.
   // Retry within the same user-visible Session::Run() call until the EP reports
   // that capture has completed, subject to kMaxGraphCaptureRunAttempts.
-  if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
+  // Skipped while recording into a caller-initiated capture: the run is recorded exactly once
+  // into the caller's graph and no ORT-managed capture is pending, so retrying would duplicate
+  // the recorded work.
+  if (retval.IsOK() && !recording_into_external_device_graph &&
+      cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     if (graph_capture_depth + 1 >= kMaxGraphCaptureRunAttempts) {

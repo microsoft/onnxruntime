@@ -52,3 +52,26 @@ static const char* const kOrtRunOptionsConfigQnnLoraConfig = "qnn.lora_config";
 // If the value is set to -1, cuda graph capture/replay is disabled in that run.
 // User are not expected to set the value to 0 as it is reserved for internal use.
 static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "gpu_graph_id";
+
+// Declare that the caller has already started a device graph capture on the compute stream
+// that the session's execution provider runs on, and that this Run() must therefore execute
+// in record-only mode.
+//
+// In record-only mode ORT issues the run's work to the capturing stream so the caller's graph
+// records it, and ORT does not start a capture of its own, does not replay an ORT-managed
+// graph, and performs no host-side synchronization. This is what allows a caller to record
+// several sequential Run() calls - including calls on different sessions that share one
+// caller-owned stream - into a single device graph that later replays with one launch.
+//
+// Values:
+//   "0" (default) - ORT detects a caller-initiated capture on its own. When a capture is
+//                   active the run is recorded; otherwise behavior is unchanged.
+//   "1"           - require a caller-initiated capture. Run() fails with a diagnostic if the
+//                   provider's compute stream is not capturing, which catches the common
+//                   mistake of forgetting to bind the session to the capturing stream.
+//
+// Requirements when recording (CUDA EP): the session must be created with the capturing
+// stream as "user_compute_stream", every buffer bound for the run must stay at a stable
+// device address for the lifetime of the caller's graph, and the run must be warmed up
+// beforehand so no device allocation happens while the stream is capturing.
+static const char* const kOrtRunOptionsConfigExternalDeviceGraphCapture = "external_device_graph_capture";
