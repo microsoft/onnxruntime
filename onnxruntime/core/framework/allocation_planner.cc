@@ -552,6 +552,9 @@ class PlannerImpl {
     if ((nullptr != p_shape1) && (nullptr != p_shape2)) {
       return SameSize(*p_shape1, arg1, *p_shape2, arg2);
     }
+    if ((nullptr != p_shape1) || (nullptr != p_shape2)) {
+      return false;
+    }
 
     // Fall back to NodeArg type metadata when the planning context doesn't have shape entries.
     // This allows may-inplace reuse for symbolically-shaped tensors when both type-proto shapes match.
