@@ -23,7 +23,9 @@ class GpuBufferAllocator : public IAllocator {
   // Calls buffer_manager_getter on every Alloc/Free to obtain the current
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
-  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator);
+  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+                     bool is_read_only_allocator,
+                     std::function<bool()> should_submit_zero_initialize = {});
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -32,6 +34,7 @@ class GpuBufferAllocator : public IAllocator {
  private:
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
+  std::function<bool()> should_submit_zero_initialize_;
   bool mapped_at_creation_;
   bool initialize_to_zero_;
 };
@@ -54,7 +57,8 @@ class WebGpuNoOpAllocator : public IAllocator {
 // allocation ever happens.
 AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
-                                   bool is_read_only_allocator);
+                                   bool is_read_only_allocator,
+                                   std::function<bool()> should_submit_zero_initialize = {});
 
 }  // namespace webgpu
 }  // namespace onnxruntime

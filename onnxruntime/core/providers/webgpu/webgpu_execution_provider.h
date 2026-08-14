@@ -96,6 +96,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+  bool IsRunActive() const { return run_active_; }
 
   // WebGPU EP reuses the Device ID as the key to get the WebGpuContext instance.
   int GetDeviceId() const override { return context_id_; }
@@ -136,6 +137,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
+  bool run_active_ = false;
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
