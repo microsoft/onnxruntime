@@ -15,7 +15,7 @@ class GroupQueryAttention : public JsKernel, GQAAttentionBase {
  public:
   explicit GroupQueryAttention(const OpKernelInfo& info)
       : JsKernel(info), GQAAttentionBase(info, false) {
-    if (!causal_) {
+    if (!is_unidirectional_) {
       ORT_NOT_IMPLEMENTED("GroupQueryAttention (JS): causal=0 is not implemented.");
     }
 
