@@ -9,16 +9,22 @@ Before implementing or reviewing changes, inspect `.github/instructions/**/*.ins
 `applyTo` scope. Apply every instruction whose scope matches any target or changed path. Unless explicitly stated
 otherwise, matching instructions apply to both implementation and review.
 
-For code reviews, follow the [code-review skill](.agents/skills/code-review/SKILL.md) in addition to all matching
-path-scoped instructions and relevant domain skills.
+## Agent Skills
+
+Repository skills are available in [`.agents/skills/`](.agents/skills/). Load each skill whose description matches the
+requested task, subsystem, or behavior.
+
+For code reviews, follow the `/code-review` skill in addition to relevant domain skills and matching path-scoped
+instructions.
 
 ## Build, Test, and Lint
 
-See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
+See the `/ort-build`, `/ort-test`, and `/ort-lint` skills for detailed instructions.
 
 ## CI
 
-See the `/ort-ci` skill (in `.agents/skills/`) for triggering, re-running, and unblocking CI checks on a pull request (GitHub Actions, Azure Pipelines, `Python format`, and `license/cla`).
+See the `/ort-ci` skill for triggering, re-running, and unblocking CI checks on a pull request (GitHub Actions, Azure
+Pipelines, `Python format`, and `license/cla`).
 
 ## Architecture Overview
 
