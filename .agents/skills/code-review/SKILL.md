@@ -35,11 +35,11 @@ Do not report formatting issues already enforced by repository tooling.
 
 ## 3. Report findings
 
-Report findings first, ordered by severity. Each finding must include:
+Report each actionable finding separately, using an inline comment when supported. Each finding must include:
 
 - the file and line where the finding applies;
 - concrete evidence or a triggering scenario;
 - the resulting impact;
 - an actionable correction.
 
-If no actionable findings are found, say so explicitly. Keep summaries and testing notes after the findings.
+If no actionable findings are found, say so explicitly. Include an overall summary only when useful.
