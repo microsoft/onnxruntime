@@ -14,6 +14,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+Status ValidateWhisperEncoderInputNames(const NodeArg& encoder_input, const NodeArg& decoder_input) {
+  ORT_RETURN_IF(encoder_input.Name() != "encoder_input_ids",
+                "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", encoder_input.Name());
+  ORT_RETURN_IF(decoder_input.Name() != "decoder_input_ids",
+                "encoder subgraph input 1 shall be named as decoder_input_ids, got: ", decoder_input.Name());
+  return Status::OK();
+}
+
 /* Whisper Encoder Subgraph (It also contains decoder initialization for decoder_input_ids).
 
    Inputs:
@@ -50,6 +58,7 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
                 "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "decoder_input_ids",
                 "encoder subgraph input 1 shall be named as decoder_input_ids, got: ", subgraph_inputs[1]->Name());
+  ORT_RETURN_IF_ERROR(ValidateWhisperEncoderInputNames(*subgraph_inputs[0], *subgraph_inputs[1]));
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
                 "encoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());

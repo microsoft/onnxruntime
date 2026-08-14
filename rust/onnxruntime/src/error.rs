@@ -130,6 +130,9 @@ pub enum OrtError {
     /// The runtime type was undefined
     #[error("Undefined Tensor Element Type")]
     UndefinedTensorElementType,
+    /// The runtime tensor element type is not supported by this binding
+    #[error("Unsupported Tensor Element Type: {0}")]
+    UnsupportedTensorElementType(i64),
     /// Error occurred when checking if ONNXRuntime tensor was properly initialized
     #[error("Failed to check if tensor")]
     IsTensorCheck,
