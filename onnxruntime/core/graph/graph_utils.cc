@@ -433,6 +433,18 @@ static NodeArg& GetOrCreateNodeArg(Graph& graph, const ONNX_NAMESPACE::TensorPro
   return graph.GetOrCreateNodeArg(new_initializer.name(), &new_type);
 }
 
+static OrtValue GetValidatedInMemoryInitializer(const Graph& graph,
+                                                const ONNX_NAMESPACE::TensorProto& initializer) {
+  OrtValue ort_value;
+  ORT_ENFORCE(graph.GetOrtValueInitializer(initializer.name(), ort_value),
+              "Initializer '", initializer.name(),
+              "' has external data in memory but no cached OrtValue. This is an invalid state.");
+  ORT_ENFORCE(CheckInMemoryDataMatch(initializer, ort_value.Get<Tensor>()),
+              "In-memory data pointer mismatch for initializer: ", initializer.name(),
+              ". This is an invalid state.");
+  return ort_value;
+}
+
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
@@ -480,20 +492,15 @@ void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, con
     if (!dst_graph.GetInitializedTensor(name, existing)) {
       const bool data_in_memory = utils::HasExternalDataInMemory(*initializer);
       if (data_in_memory) {
+        OrtValue ort_value = GetValidatedInMemoryInitializer(src_graph, *initializer);
         if (copy_in_memory_data) {
           ONNX_NAMESPACE::TensorProto tensor_proto;
           ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
           dst_graph.AddInitializedTensor(tensor_proto);
           GetOrCreateNodeArg(dst_graph, tensor_proto);
         } else {
-          OrtValue ort_value;
-          if (src_graph.GetOrtValueInitializer(name, ort_value)) {
-            // add the initializer to the destination graph
-            ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
-          } else {
-            ORT_THROW("Initializer '", name, "' has external data in memory but no cached OrtValue. ",
-                      "This is an invalid state.");
-          }
+          // add the initializer to the destination graph
+          ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
           GetOrCreateNodeArg(dst_graph, *initializer);
         }
       } else {
@@ -520,6 +527,7 @@ void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_gr
 Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (graph.GetInitializedTensor(name, initializer) && utils::HasExternalDataInMemory(*initializer)) {
+    ORT_IGNORE_RETURN_VALUE(GetValidatedInMemoryInitializer(graph, *initializer));
     ONNX_NAMESPACE::TensorProto tensor_proto;
     ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
     graph.RemoveInitializedTensor(name);
