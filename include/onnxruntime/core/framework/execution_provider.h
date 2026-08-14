@@ -285,7 +285,6 @@ class IExecutionProvider {
    */
   virtual bool IsGraphCaptured(int /*graph_annotation_id*/) const { return false; }
 
-
   /**
      Run the instantiated graph.
      @param sync If true, synchronize the device/stream after replay to ensure completion before returning.

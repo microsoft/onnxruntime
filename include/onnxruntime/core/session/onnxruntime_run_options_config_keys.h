@@ -70,8 +70,24 @@ static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "gpu_graph_id
 //                   provider's compute stream is not capturing, which catches the common
 //                   mistake of forgetting to bind the session to the capturing stream.
 //
-// Requirements when recording (CUDA EP): the session must be created with the capturing
-// stream as "user_compute_stream", every buffer bound for the run must stay at a stable
-// device address for the lifetime of the caller's graph, and the run must be warmed up
-// beforehand so no device allocation happens while the stream is capturing.
+// Requirements when recording (CUDA EP):
+//   - the session must be created with the capturing stream as "user_compute_stream";
+//   - every buffer bound for the run must stay at a stable device address for the lifetime of
+//     the caller's graph, and the caller must destroy its captured graphs before the session;
+//   - the run must be warmed up beforehand so no device allocation happens while the stream is
+//     capturing, including at the largest batch size the pipeline will use: caches that live
+//     outside the arena only grow, and growing one mid-capture fails the capture;
+//   - this session's graph must satisfy the same capturability rules ORT-managed capture
+//     enforces (no control flow nodes, all compute nodes on the capturing provider). Run()
+//     rejects the capture otherwise instead of recording a graph that omits work.
+//
+// Capture mode: start the capture with cudaStreamCaptureModeThreadLocal, or
+// cudaStreamCaptureModeRelaxed if the capturing thread must also drive other streams. Do not
+// use cudaStreamCaptureModeGlobal unless the process is otherwise quiescent: in Global mode
+// CUDA forbids "potentially unsafe" API calls - allocation, stream and event synchronization,
+// and similar - on *every* thread for the whole capture window, so unrelated CUDA activity
+// elsewhere in the process will fail or invalidate the capture. ThreadLocal restricts that to
+// the capturing thread, which still forbids that thread from synchronizing any other stream;
+// Relaxed removes the restriction and is the right choice when the capturing thread also
+// services other work.
 static const char* const kOrtRunOptionsConfigExternalDeviceGraphCapture = "external_device_graph_capture";

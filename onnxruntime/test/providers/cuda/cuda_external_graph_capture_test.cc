@@ -19,14 +19,18 @@
 #ifdef USE_CUDA
 
 #include <array>
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "test/util/include/default_providers.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -177,6 +181,85 @@ std::vector<float> RunEagerChain(Ort::Session& a, Ort::IoBinding& binding_a, Ort
   b.Run(run_options, binding_b);
   EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
   return out.Read();
+}
+
+// --- models built on the fly for the review-driven cases -------------------------------------
+//
+// These need shapes and op choices the shared testdata models do not provide, so they are built
+// here and written next to the test binary.
+
+using onnxruntime::Model;
+
+// Saves `model` and returns the path it was written to.
+std::string SaveModel(Model& model, const std::string& name) {
+  const std::string path = name + ".onnx";
+  auto status = onnxruntime::Model::Save(model, path);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  return path;
+}
+
+onnxruntime::NodeArg& FloatArg(onnxruntime::Graph& graph, const std::string& name,
+                               const std::vector<int64_t>& dims) {
+  ONNX_NAMESPACE::TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t d : dims) {
+    type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+  }
+  return graph.GetOrCreateNodeArg(name, &type);
+}
+
+// Concat of two inputs with UNEQUAL extents along the concat axis. That is the branch of the CUDA
+// Concat kernel that stages pointer metadata through a pinned host buffer and hands it to
+// AddDeferredReleaseCPUPtr - the buffers whose ownership this test is about. Equal extents take a
+// fast path that stages nothing.
+std::string BuildUnequalConcatModel() {
+  Model model("unequal_concat", false, onnxruntime::logging::LoggingManager::DefaultLogger());
+  auto& graph = model.MainGraph();
+  auto& a = FloatArg(graph, "a", {4, 8});
+  auto& b = FloatArg(graph, "b", {4, 2});
+  auto& cat = FloatArg(graph, "cat", {4, 10});
+  auto& y = FloatArg(graph, "y", {4, 10});
+  auto& concat = graph.AddNode("concat", "Concat", "", {&a, &b}, {&cat});
+  concat.AddAttribute("axis", static_cast<int64_t>(1));
+  graph.AddNode("square", "Mul", "", {&cat, &cat}, {&y});
+  graph.SetInputs({&a, &b});
+  graph.SetOutputs({&y});
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  return SaveModel(model, "cuda_extcap_unequal_concat");
+}
+
+// Det has no CUDA kernel, so it lands on the CPU EP and ORT inserts Memcpy nodes around it. That
+// is exactly the "a compute node runs outside the capturing provider" case: it would execute once
+// while recording and then be missing from every replay.
+std::string BuildCpuFallbackModel() {
+  Model model("cpu_fallback", false, onnxruntime::logging::LoggingManager::DefaultLogger());
+  auto& graph = model.MainGraph();
+  auto& x = FloatArg(graph, "x", {4, 4});
+  auto& scaled = FloatArg(graph, "scaled", {4, 4});
+  auto& y = FloatArg(graph, "y", {});
+  graph.AddNode("square", "Mul", "", {&x, &x}, {&scaled});
+  graph.AddNode("det", "Det", "", {&scaled}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  return SaveModel(model, "cuda_extcap_cpu_fallback");
+}
+
+// Create a session on `stream` for an arbitrary model path.
+Ort::Session CreateSessionForModel(const std::string& model_path, cudaStream_t stream,
+                                   bool enable_ort_cuda_graph) {
+  Ort::SessionOptions session_options;
+  Ort::CUDAProviderOptions cuda_options;
+  std::unordered_map<std::string, std::string> options_map = {
+      {"enable_cuda_graph", enable_ort_cuda_graph ? "1" : "0"},
+      {"has_user_compute_stream", "1"},
+      {"user_compute_stream", std::to_string(reinterpret_cast<uintptr_t>(stream))},
+  };
+  cuda_options.Update(options_map);
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+  return Ort::Session(*ort_env, model_path.c_str(), session_options);
 }
 
 }  // namespace
@@ -500,6 +583,189 @@ TEST(CudaExternalGraphCaptureTest, RecordsWithoutOrtManagedCudaGraph) {
 
   ASSERT_EQ(cudaGraphExecDestroy(graph_exec), cudaSuccess);
   ASSERT_EQ(cudaGraphDestroy(graph), cudaSuccess);
+}
+
+// Thread 1 of the review: a captured cudaMemcpyAsync node keeps the *host* address of the pinned
+// staging buffer it was recorded with. Reclaiming that buffer at any later run end would leave a
+// still-live caller graph replaying out of freed or reused pinned memory. The buffers must stay
+// owned for the stream's lifetime.
+TEST(CudaExternalGraphCaptureTest, StagingBuffersOutliveOrdinaryRunsWhileCallerGraphIsLive) {
+  const std::string model_path = BuildUnequalConcatModel();
+  OwnedStream stream;
+
+  constexpr size_t kA = 4 * 8, kB = 4 * 2, kY = 4 * 10;
+  DeviceBuffer a(kA), b(kB), out(kY);
+  const std::vector<float> host_a(kA, 3.0f), host_b(kB, 5.0f);
+  const std::vector<float> host_a2(kA, 2.0f), host_b2(kB, 7.0f);
+
+  Ort::Session session = CreateSessionForModel(model_path, stream.get(), /*enable_ort_cuda_graph=*/true);
+  Ort::MemoryInfo mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  const std::array<int64_t, 2> a_shape = {4, 8}, b_shape = {4, 2}, y_shape = {4, 10};
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("a", Ort::Value::CreateTensor(mem, a.data(), kA, a_shape.data(), a_shape.size()));
+  binding.BindInput("b", Ort::Value::CreateTensor(mem, b.data(), kB, b_shape.data(), b_shape.size()));
+  binding.BindOutput("y", Ort::Value::CreateTensor(mem, out.data(), kY, y_shape.data(), y_shape.size()));
+
+  // Eager references for both input sets.
+  Ort::RunOptions plain;
+  a.Write(host_a2);
+  b.Write(host_b2);
+  ASSERT_NO_THROW(session.Run(plain, binding));
+  ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+  const std::vector<float> expected2 = out.Read();
+
+  a.Write(host_a);
+  b.Write(host_b);
+  for (int i = 0; i < 3; ++i) ASSERT_NO_THROW(session.Run(plain, binding));
+  ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+  const std::vector<float> expected1 = out.Read();
+  ASSERT_NE(expected1, expected2) << "input sets must produce distinguishable outputs";
+
+  // Record a caller-owned graph. The Concat stages pointer metadata through pinned host memory,
+  // so the graph now holds a memcpy node pointing at that host address.
+  ASSERT_EQ(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeThreadLocal), cudaSuccess);
+  Ort::RunOptions record;
+  record.AddConfigEntry(kOrtRunOptionsConfigExternalDeviceGraphCapture, "1");
+  ASSERT_NO_THROW(session.Run(record, binding));
+  cudaGraph_t graph = nullptr;
+  ASSERT_EQ(cudaStreamEndCapture(stream.get(), &graph), cudaSuccess);
+  ASSERT_NE(graph, nullptr);
+  cudaGraphExec_t graph_exec = nullptr;
+  ASSERT_EQ(cudaGraphInstantiateWithFlags(&graph_exec, graph, 0), cudaSuccess);
+
+  // Ordinary, non-capturing runs while the caller graph is still live. This is the step that used
+  // to reclaim the staging buffers out from under the graph.
+  for (int i = 0; i < 3; ++i) ASSERT_NO_THROW(session.Run(plain, binding));
+  ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+
+  // Replay repeatedly, alternating inputs so each replay must recompute from the staged metadata.
+  for (int round = 0; round < 5; ++round) {
+    a.Write(host_a2);
+    b.Write(host_b2);
+    ASSERT_EQ(cudaGraphLaunch(graph_exec, stream.get()), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+    EXPECT_EQ(out.Read(), expected2) << "replay " << round << " after ordinary runs";
+
+    a.Write(host_a);
+    b.Write(host_b);
+    ASSERT_EQ(cudaGraphLaunch(graph_exec, stream.get()), cudaSuccess);
+    ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+    EXPECT_EQ(out.Read(), expected1) << "replay " << round << " after ordinary runs";
+  }
+
+  // Teardown order: caller graph first, then the session that owns the staging buffers.
+  ASSERT_EQ(cudaGraphExecDestroy(graph_exec), cudaSuccess);
+  ASSERT_EQ(cudaGraphDestroy(graph), cudaSuccess);
+}
+
+// Thread 2 of the review: with enable_cuda_graph=0 the session-initialization capturability check
+// never ran, so record-only mode must not be entered for a graph that has compute outside the
+// capturing provider. Det has no CUDA kernel, so ORT places it on CPU and inserts Memcpy nodes;
+// recording such a graph would run Det once and omit it from every replay.
+TEST(CudaExternalGraphCaptureTest, ExternalCaptureRejectsGraphWithCpuFallbackCompute) {
+  const std::string model_path = BuildCpuFallbackModel();
+  OwnedStream stream;
+  DeviceBuffer x(16), y(1);
+  x.Write(std::vector<float>(16, 1.5f));
+
+  // enable_cuda_graph=0: ORT-managed capture is off, so nothing rejected this session at load.
+  Ort::Session session = CreateSessionForModel(model_path, stream.get(), /*enable_ort_cuda_graph=*/false);
+  Ort::MemoryInfo mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  const std::array<int64_t, 2> x_shape = {4, 4};
+  Ort::IoBinding binding(session);
+  binding.BindInput("x", Ort::Value::CreateTensor(mem, x.data(), 16, x_shape.data(), x_shape.size()));
+  binding.BindOutput("y", Ort::MemoryInfo("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault));
+
+  Ort::RunOptions plain;
+  ASSERT_NO_THROW(session.Run(plain, binding));
+  ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+
+  ASSERT_EQ(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeRelaxed), cudaSuccess);
+  Ort::RunOptions record;
+  ExpectThrowsContaining([&] { session.Run(record, binding); }, "cannot be captured");
+
+  cudaGraph_t graph = nullptr;
+  cudaStreamEndCapture(stream.get(), &graph);
+  if (graph != nullptr) cudaGraphDestroy(graph);
+  cudaGetLastError();
+}
+
+// Thread 3 of the review: an ORT-owned capture must never be observable as a caller-initiated one,
+// including in the windows around cudaStreamBeginCapture/cudaStreamEndCapture.
+//
+// The probe thread asks for record-only mode with external_device_graph_capture="1" while the
+// driver thread keeps a session capturing and replaying its own graph on the SAME stream. No
+// caller capture is ever started, so every probe Run must fail. If ORT's capture were classified
+// as external, the probe would instead succeed and silently record into a graph nobody owns.
+TEST(CudaExternalGraphCaptureTest, OrtOwnedCaptureIsNeverSeenAsExternal) {
+  OwnedStream stream;
+  DeviceBuffer driver_in(kNumElements), driver_out(kNumElements);
+  DeviceBuffer probe_in(kNumElements), probe_out(kNumElements);
+  driver_in.Write(std::vector<float>(kNumElements, 2.0f));
+  probe_in.Write(std::vector<float>(kNumElements, 3.0f));
+
+  Ort::Session driver = CreateSessionOnStream(stream.get());
+  Ort::Session probe = CreateSessionOnStream(stream.get());
+  Ort::IoBinding driver_binding = CreateBinding(driver, driver_in, driver_out);
+  Ort::IoBinding probe_binding = CreateBinding(probe, probe_in, probe_out);
+
+  std::atomic<bool> stop{false};
+  std::atomic<int> probe_attempts{0};
+  std::atomic<int> probe_succeeded{0};
+  std::atomic<int> probe_rejected{0};
+  std::atomic<int> probe_other_error{0};
+
+  std::thread prober([&] {
+    Ort::RunOptions require_external;
+    require_external.AddConfigEntry(kOrtRunOptionsConfigExternalDeviceGraphCapture, "1");
+    while (!stop.load(std::memory_order_relaxed)) {
+      probe_attempts.fetch_add(1, std::memory_order_relaxed);
+      try {
+        probe.Run(require_external, probe_binding);
+        probe_succeeded.fetch_add(1, std::memory_order_relaxed);
+      } catch (const Ort::Exception& ex) {
+        if (std::string(ex.what()).find("no caller-initiated device graph capture is active") !=
+            std::string::npos) {
+          probe_rejected.fetch_add(1, std::memory_order_relaxed);
+        } else {
+          // CUDA may reject the probe's own work because the driver thread is capturing this
+          // stream in Global mode. That is expected contention, not a misclassification.
+          probe_other_error.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+    }
+  });
+
+  // Drive until the prober has actually exercised the race a meaningful number of times. Stopping
+  // on a fixed driver iteration count instead would be timing dependent: once the sessions are warm
+  // the driver can finish before the prober thread is first scheduled.
+  constexpr int kMinProbeAttempts = 32;
+  constexpr int kMaxDriverRuns = 20000;
+  Ort::RunOptions plain;
+  int driver_runs = 0;
+  while (probe_attempts.load(std::memory_order_relaxed) < kMinProbeAttempts &&
+         driver_runs < kMaxDriverRuns) {
+    ++driver_runs;
+    try {
+      driver.Run(plain, driver_binding);
+    } catch (const Ort::Exception&) {
+      // Concurrent use of one stream is inherently contended; the invariant under test is only
+      // about how the probe classifies the capture.
+    }
+  }
+  stop.store(true, std::memory_order_relaxed);
+  prober.join();
+  cudaStreamSynchronize(stream.get());
+  cudaGetLastError();
+
+  EXPECT_EQ(probe_succeeded.load(), 0)
+      << "a Run requiring a caller-initiated capture succeeded while only ORT owned a capture on "
+         "this stream; ORT's own capture was classified as external";
+  EXPECT_GE(probe_attempts.load(), kMinProbeAttempts)
+      << "the prober did not get to exercise the race (driver ran " << driver_runs << " times)";
+  EXPECT_EQ(probe_attempts.load(), probe_rejected.load() + probe_other_error.load())
+      << "every probe attempt must have been rejected";
 }
 
 }  // namespace test

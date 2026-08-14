@@ -97,8 +97,26 @@ CudaStream::CudaStream(cudaStream_t stream,
 #endif
 }
 
+void CudaStream::ReleaseCaptureRetainedCpuBuffers() {
+  if (capture_retained_cpu_buffers_.empty()) {
+    return;
+  }
+
+  // Any captured graph that referenced these buffers is required to be destroyed before the
+  // session. Drain the stream first so nothing still in flight can read them.
+  auto* handle = static_cast<cudaStream_t>(GetHandle());
+  if (handle != nullptr && !CUDAGraphManager::IsStreamCapturing(handle)) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(handle)));
+  }
+  for (auto* buffer : capture_retained_cpu_buffers_) {
+    cpu_allocator_->Free(buffer);
+  }
+  capture_retained_cpu_buffers_.clear();
+}
+
 CudaStream::~CudaStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
+  ReleaseCaptureRetainedCpuBuffers();
 #ifndef USE_CUDA_MINIMAL
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
@@ -167,10 +185,27 @@ Status CudaStream::CleanUpOnRunEnd() {
   if (deferred_cpu_buffers_.empty())
     return Status::OK();
 
-  // Inside a caller-initiated capture the stream cannot be synchronized, and the staging buffers
-  // may still be referenced by memcpy nodes that the caller's graph is recording. Keep them
-  // alive and reclaim them at the first run end that is not capturing.
+  // Ownership contract for staging buffers recorded into a caller-initiated capture.
+  //
+  // A kernel that stages host data (CudaAsyncBuffer, and anything else using
+  // AddDeferredReleaseCPUPtr) issues cudaMemcpyAsync from a pinned host buffer. When the caller is
+  // capturing, that copy becomes a graph node that keeps the *host address* for the lifetime of the
+  // caller's executable graph: every replay reads it again. Reclaiming such a buffer at any later
+  // run end - even a non-capturing one - would leave the caller's graph reading freed or reused
+  // pinned memory on its next replay.
+  //
+  // These buffers are therefore transferred to capture_retained_cpu_buffers_ and owned until this
+  // stream (and so the session that owns it) is destroyed. The caller must destroy its captured
+  // graphs before the session, which it must do anyway because the graph also references the
+  // session's device allocations.
+  //
+  // The retained set is bounded by the number of capture passes, not by the number of runs:
+  // replays do not re-enter ORT, so a caller that captures a handful of graphs retains a handful of
+  // staging buffers.
   if (CUDAGraphManager::IsStreamCapturing(static_cast<cudaStream_t>(GetHandle()))) {
+    capture_retained_cpu_buffers_.insert(capture_retained_cpu_buffers_.end(),
+                                         deferred_cpu_buffers_.begin(), deferred_cpu_buffers_.end());
+    deferred_cpu_buffers_.clear();
     return Status::OK();
   }
 
