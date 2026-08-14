@@ -164,6 +164,7 @@ def emit(functions, symbols, module, src, out_path):
         lines.append(f"    KAI_ASM_GLOBAL({sym})")
         lines.append(f"    KAI_ASM_FUNCTION_TYPE({sym})")
         lines.append(f"KAI_ASM_FUNCTION_LABEL({sym})")
+        lines.append("    KAI_ASM_BTI_C")
         for word, disasm in functions[sym]:
             lines.append(f"    KAI_ASM_INST(0x{word})  // {disasm}")
         lines.append(f"    KAI_ASM_FUNCTION_END({sym})")

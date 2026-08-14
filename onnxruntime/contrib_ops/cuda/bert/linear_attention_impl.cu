@@ -1075,6 +1075,187 @@ __global__ void LinearAttentionDecodeColKernel(
   }
 }
 
+// =============================================================================
+// v3 = v2 with the DK axis additionally split across RS threads.
+//
+// v2 gives one thread a whole state column, so the launch is
+// batch * kv_num_heads * (d_v / kColsPerBlock) blocks of a *single* warp. On a
+// 132-SM H200 with 32 KV heads that is one warp per SM, which cannot keep
+// enough state loads/stores in flight to hide HBM latency. Splitting DK across
+// RS threads multiplies resident warps by RS and cuts the per-thread register
+// footprint by RS; the price is one block-wide reduction per token for each of
+// the two DK-length dot products (retrieval and readout).
+//
+// Grid:  (batch_size, kv_num_heads, d_v / kColsPerBlock)
+// Block: (kColsPerBlock, RS)
+// =============================================================================
+template <typename T, int DK, int RS>
+__global__ void LinearAttentionDecodeColSplitKernel(
+    const T* __restrict__ query,
+    const T* __restrict__ key,
+    const T* __restrict__ value,
+    const T* past_state,
+    T* present_state,
+    const T* __restrict__ decay,
+    const T* __restrict__ beta_in,
+    T* __restrict__ output,
+    int seq_len,
+    int q_num_heads,
+    int kv_num_heads,
+    int n_k_heads,
+    int d_v,
+    int output_hidden,
+    float scale,
+    bool needs_decay,
+    bool decay_per_key_dim,
+    bool needs_beta,
+    bool beta_per_head,
+    bool needs_retrieval,
+    bool force_sequential_state_roundtrip,
+    int batch_size,
+    int state_window) {
+  constexpr int DKP = DK / RS;
+  constexpr int kBlockThreads = kColsPerBlock * RS;
+
+  const int b = blockIdx.x;
+  const int h_kv = blockIdx.y;
+  const int tx = static_cast<int>(threadIdx.x);
+  const int part = static_cast<int>(threadIdx.y);
+  const int tid = part * kColsPerBlock + tx;
+  const int col = blockIdx.z * kColsPerBlock + tx;
+  const int i0 = part * DKP;
+
+  const int kv_per_k = kv_num_heads / n_k_heads;
+  const int h_k = h_kv / kv_per_k;
+
+  const int64_t slot_stride = (int64_t)kv_num_heads * DK * d_v;
+  const int64_t state_offset = ((int64_t)(state_window - 1) * batch_size + b) * slot_stride +
+                               (int64_t)h_kv * DK * d_v + col;
+  const T* S_past_head = past_state + state_offset;
+  T* S_present_head = present_state + state_offset;
+
+  float s_col[DKP];
+#pragma unroll
+  for (int r = 0; r < DKP; ++r) {
+    s_col[r] = to_float(S_past_head[(int64_t)(i0 + r) * d_v]);
+  }
+
+  __shared__ float k_sh[DK];
+  __shared__ float q_sh[DK];
+  __shared__ float g_sh[DK];
+  __shared__ float scalar_g;
+  __shared__ float red[RS][kColsPerBlock];
+
+  const int k_hidden = n_k_heads * DK;
+  const int q_hidden = q_num_heads * DK;
+  const int v_hidden = kv_num_heads * d_v;
+
+  for (int t = 0; t < seq_len; ++t) {
+    const int64_t bt = (int64_t)b * seq_len + t;
+
+    for (int i = tid; i < DK; i += kBlockThreads) {
+      k_sh[i] = to_float(key[bt * k_hidden + h_k * DK + i]);
+    }
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+        for (int i = tid; i < DK; i += kBlockThreads) {
+          g_sh[i] = expf(to_float(decay[bt * (kv_num_heads * DK) + h_kv * DK + i]));
+        }
+      } else if (tid == 0) {
+        scalar_g = expf(to_float(decay[bt * kv_num_heads + h_kv]));
+      }
+    }
+    __syncthreads();
+
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+#pragma unroll
+        for (int r = 0; r < DKP; ++r) {
+          s_col[r] *= g_sh[i0 + r];
+        }
+      } else {
+        const float g = scalar_g;
+#pragma unroll
+        for (int r = 0; r < DKP; ++r) {
+          s_col[r] *= g;
+        }
+      }
+    }
+
+    float r_col = 0.0f;
+    if (needs_retrieval) {
+      float partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < DKP; ++r) {
+        partial += s_col[r] * k_sh[i0 + r];
+      }
+      red[part][tx] = partial;
+      __syncthreads();
+#pragma unroll
+      for (int p = 0; p < RS; ++p) {
+        r_col += red[p][tx];
+      }
+    }
+
+    const float delta_col = ComputeLinearAttentionDeltaColumn(
+        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
+
+#pragma unroll
+    for (int r = 0; r < DKP; ++r) {
+      s_col[r] += k_sh[i0 + r] * delta_col;
+    }
+
+    const int state_slot = t + state_window - seq_len;
+    if (state_slot >= 0 && t + 1 < seq_len) {
+      const int64_t base_t = ((int64_t)state_slot * batch_size + b) * slot_stride +
+                             (int64_t)h_kv * DK * d_v;
+#pragma unroll
+      for (int r = 0; r < DKP; ++r) {
+        present_state[base_t + (int64_t)(i0 + r) * d_v + col] = from_float<T>(s_col[r]);
+      }
+    }
+
+    const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
+    for (int group_index = 0; group_index < head_count; ++group_index) {
+      const LinearAttentionReadoutHeads readout_heads =
+          GetLinearAttentionReadoutHeads(h_kv, q_num_heads, kv_num_heads, group_index);
+      __syncthreads();
+      for (int i = tid; i < DK; i += kBlockThreads) {
+        q_sh[i] = to_float(query[bt * q_hidden + readout_heads.query_head * DK + i]);
+      }
+      __syncthreads();
+      float partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < DKP; ++r) {
+        partial += s_col[r] * q_sh[i0 + r];
+      }
+      red[part][tx] = partial;
+      __syncthreads();
+      float acc = 0.0f;
+#pragma unroll
+      for (int p = 0; p < RS; ++p) {
+        acc += red[p][tx];
+      }
+      if (part == 0) {
+        output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
+      }
+    }
+
+    if (force_sequential_state_roundtrip && t + 1 < seq_len) {
+#pragma unroll
+      for (int r = 0; r < DKP; ++r) {
+        s_col[r] = to_float(from_float<T>(s_col[r]));
+      }
+    }
+    __syncthreads();  // before next token overwrites k_sh/g_sh
+  }
+
+#pragma unroll
+  for (int r = 0; r < DKP; ++r) {
+    S_present_head[(int64_t)(i0 + r) * d_v] = from_float<T>(s_col[r]);
+  }
+}
+
 }  // anonymous namespace
 
 template <typename T>
@@ -1101,7 +1282,11 @@ Status LaunchLinearAttentionKernel(
     bool needs_beta,
     bool beta_per_head,
     bool needs_retrieval,
+    int decode_seq_threshold,
+    int row_split,
+    int multiprocessor_count,
     int max_threads_per_block,
+    size_t max_shared_memory_per_block,
     int state_window) {
   // Grid: one block per (batch, kv_head)
   const dim3 grid(batch_size, kv_num_heads, 1);
@@ -1117,10 +1302,31 @@ Status LaunchLinearAttentionKernel(
   // (DK in {64,128,256});
   // everything else falls through to the recurrent kernels below.
   // ---------------------------------------------------------------------------
-  // This cutoff keeps short decode/continuation runs on the column-parallel kernels;
-  // longer prefill-like runs benefit from amortizing state in shared memory below.
-  constexpr int kDecodeSeqThreshold = 16;
-  if (seq_len <= kDecodeSeqThreshold && (d_k == 64 || d_k == 128 || d_k == 256)) {
+  // Prefill is *also* routed to the column-parallel kernels whenever the recurrent grid would
+  // leave the GPU idle. The recurrent kernels launch exactly batch_size * kv_num_heads blocks, so
+  // a single-sequence hybrid model with 32 KV heads occupies 32 of 132 SMs on H200 while walking
+  // the token loop with ~5 __syncthreads() apiece. Splitting d_v across kColsPerBlock-wide blocks
+  // multiplies the block count by d_v / kColsPerBlock at identical total thread count, and the
+  // column recurrence is mathematically independent per column so the result is unchanged up to
+  // reduction order. Measured on Qwen3.6-35B-A3B (batch 1, 32 KV heads, d_k = d_v = 128, 30
+  // linear-attention layers): 1024-token prefill 215 -> 97 us/token.
+  //
+  // Once batch_size * kv_num_heads already fills the machine the recurrent kernels keep their
+  // shared-memory state amortization, so the split is only applied below that point.
+  const bool recurrent_grid_underfills_gpu =
+      static_cast<int64_t>(batch_size) * kv_num_heads < multiprocessor_count;
+  const size_t recurrent_smem_size =
+      (static_cast<size_t>(d_k) * d_v + d_k + std::max(d_k, d_v)) * sizeof(float);
+  const bool recurrent_smem_exceeds_device = recurrent_smem_size > max_shared_memory_per_block;
+  // Only the v2 (column-per-thread) kernel below has been validated at prefill lengths, so the
+  // occupancy and shared-memory overrides are limited to the shapes it accepts; everything else
+  // keeps the original seq_len cutoff.
+  const bool prefill_column_split =
+      (recurrent_grid_underfills_gpu || recurrent_smem_exceeds_device) &&
+      d_k <= 128 && (d_v % kColsPerBlock) == 0;
+
+  if ((seq_len <= decode_seq_threshold || prefill_column_split) &&
+      (d_k == 64 || d_k == 128 || d_k == 256)) {
     // v2 (column-per-thread, coalesced row-major state) is the default for
     // DK <= 128. It requires d_v % kColsPerBlock == 0; otherwise fall back
     // to the v1 warp-per-column kernel (which handles any d_v). DK=256 also
@@ -1132,8 +1338,39 @@ Status LaunchLinearAttentionKernel(
                              (d_v + kColsPerBlock - 1) / kColsPerBlock);
       const dim3 decode_block(kColsPerBlock, 1, 1);
 
+      // v3 splits the DK axis across `row_split` threads so the launch has
+      // row_split warps per block instead of one; see the kernel comment.
+      auto launch_col_split = [&](auto dk_tag, auto rs_tag) -> Status {
+        constexpr int DK = decltype(dk_tag)::value;
+        constexpr int RS = decltype(rs_tag)::value;
+        const dim3 split_block(kColsPerBlock, RS, 1);
+        LinearAttentionDecodeColSplitKernel<T, DK, RS><<<decode_grid, split_block, 0, stream>>>(
+            query, key, value, past_state, present_state, decay, beta, output,
+            seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
+            needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval,
+            force_sequential_state_roundtrip, batch_size, state_window);
+        return CUDA_CALL(cudaGetLastError());
+      };
+
       auto launch_col = [&](auto dk_tag) -> Status {
         constexpr int DK = decltype(dk_tag)::value;
+        if (row_split > 1 && (DK % row_split) == 0 &&
+            kColsPerBlock * row_split <= max_threads_per_block) {
+          switch (row_split) {
+            case 2:
+              return launch_col_split(dk_tag, std::integral_constant<int, 2>{});
+            case 4:
+              return launch_col_split(dk_tag, std::integral_constant<int, 4>{});
+            case 8:
+              return launch_col_split(dk_tag, std::integral_constant<int, 8>{});
+            case 16:
+              return launch_col_split(dk_tag, std::integral_constant<int, 16>{});
+            case 32:
+              return launch_col_split(dk_tag, std::integral_constant<int, 32>{});
+            default:
+              break;
+          }
+        }
         LinearAttentionDecodeColKernel<T, DK><<<decode_grid, decode_block, 0, stream>>>(
             query, key, value, past_state, present_state, decay, beta, output,
             seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
@@ -1169,6 +1406,15 @@ Status LaunchLinearAttentionKernel(
     } else {  // d_k == 256
       return launch_decode(std::integral_constant<int, 256>{});
     }
+  }
+
+  if (recurrent_smem_exceeds_device) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearAttention: recurrent kernel requires ", recurrent_smem_size,
+                           " bytes of opt-in shared memory per block, but the device supports ",
+                           max_shared_memory_per_block,
+                           " bytes. No compatible fallback exists (column kernel requires d_k in {64,128} and d_v % ",
+                           kColsPerBlock, " == 0).");
   }
 
   auto launch_fixed = [&](auto dk_tag, auto dv_tag) -> Status {
@@ -1223,7 +1469,7 @@ Status LaunchLinearAttentionKernel(
   const dim3 block(threads, 1, 1);
 
   // Shared memory: state[d_k*d_v] + k_buf[d_k] + scratch[max(d_k,d_v)]
-  size_t smem_size = (static_cast<size_t>(d_k) * d_v + d_k + std::max(d_k, d_v)) * sizeof(float);
+  const size_t smem_size = recurrent_smem_size;
 
   // Request extended shared memory if needed (default limit is 48 KB)
   if (smem_size > 48 * 1024) {
@@ -1248,18 +1494,18 @@ Status LaunchLinearAttentionKernel(
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,
     const float*, const float*, float*, const float*, float*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, size_t, int);
 
 template Status LaunchLinearAttentionKernel<half>(
     cudaStream_t, const half*, const half*, const half*,
     const half*, const half*, half*, const half*, half*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, size_t, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchLinearAttentionKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, size_t, int);
 #endif
 
 }  // namespace cuda

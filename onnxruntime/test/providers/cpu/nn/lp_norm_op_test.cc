@@ -76,6 +76,27 @@ TEST(LpNormalizationTest, L2Normalization) {
 }
 
 template <typename T>
+void LpNormalizationZeroExtentAxis(int64_t p) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("p", p);
+  const vector<int64_t> dims = {2, 0, 3};
+  test.AddInput<T>("input", dims, {});
+  test.AddOutput<T>("Y", dims, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(LpNormalizationTest, ZeroExtentAxis) {
+  LpNormalizationZeroExtentAxis<float>(1);
+  LpNormalizationZeroExtentAxis<float>(2);
+  LpNormalizationZeroExtentAxis<double>(1);
+  LpNormalizationZeroExtentAxis<double>(2);
+}
+
+template <typename T>
 void LpNormalizationDefaultAxisAndP() {
   OpTester test("LpNormalization");
   vector<T> input = {

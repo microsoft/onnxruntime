@@ -59,6 +59,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/flashattn_qkv.cpp
   ${MLAS_SRC_DIR}/flashattn_gqa.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
+  ${MLAS_SRC_DIR}/linear_attention.h
+  ${MLAS_SRC_DIR}/linear_attention.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
@@ -251,6 +253,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+      ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
     )
 
     set_source_files_properties(${mlas_platform_srcs_avx512} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
@@ -952,6 +955,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+          ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 
