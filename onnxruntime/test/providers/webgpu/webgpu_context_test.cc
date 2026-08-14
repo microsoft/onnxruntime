@@ -88,7 +88,7 @@ TEST(WebGpuContextTest, ReusedDeviceAllocatorBufferIsZeroInitialized) {
   allocator.Free(allocation);
 }
 
-TEST(WebGpuContextTest, ReplaysDeviceAllocatorBufferClear) {
+TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -127,13 +127,7 @@ TEST(WebGpuContextTest, ReplaysDeviceAllocatorBufferClear) {
     FAIL() << flush_status.ErrorMessage();
   }
 
-  buffer_manager.Upload(nonzero_data.data(), reused_buffer, sizeof(nonzero_data));
-  context.Replay(captured_commands, buffer_manager);
-
-  std::array<uint32_t, 16> downloaded_data;
-  buffer_manager.Download(reused_buffer, downloaded_data.data(), sizeof(downloaded_data));
-  const std::array<uint32_t, 16> expected_data{};
-  EXPECT_EQ(downloaded_data, expected_data);
+  EXPECT_TRUE(captured_commands.empty());
 
   allocator.Free(allocation);
 }
