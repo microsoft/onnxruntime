@@ -535,8 +535,8 @@ void TestOrtModelUpdate(const PathString& onnx_file,
                         const PathString& ort_file_v4,
                         const PathString& generated_ort_file_v5,
                         const std::function<void(NameMLValMap& inputs, std::vector<std::string>& output_names)>&
-              set_up_test_inputs_and_outputs_fn,
-            bool enable_saved_runtime_optimizations = false) {
+                            set_up_test_inputs_and_outputs_fn,
+                        bool enable_saved_runtime_optimizations = false) {
   // ort_file_v4 is ORT format model using v4 where we used kernel hashes instead of constraints
 
   // update v4 model and save as v5. do not run optimizations in order to preserve the model as-is.
@@ -630,8 +630,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
 
   RandomValueGenerator random{};  // keep in scope so we get random seed trace message on failure
 
-  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5,
-                     [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
+  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5, [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
                        constexpr int n = 3;  // number of QDQ convs
                        for (size_t i = 0; i < n; ++i) {
                          std::vector<int64_t> input_dims{1, 1, 5, 5};
@@ -642,9 +641,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
 
                          inputs.emplace(MakeString("X_", i), std::move(ml_value));
                          output_names.push_back(MakeString("Y_", i));
-                       }
-                     },
-                     true);
+                       } }, true);
 }
 
 #if !defined(DISABLE_ML_OPS)
