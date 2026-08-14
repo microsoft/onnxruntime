@@ -19,6 +19,29 @@ Abstract:
 #include "qgemm.h"
 
 //
+// Build an int32x2_t from lanes 0 and 2 of a 128 bit vector.
+//
+// GCC and clang model the NEON vector types as native vector types, so they
+// accept a braced initializer list of scalars. MSVC models them as opaque
+// structures and rejects that form, so build the pair with lane intrinsics
+// there instead. Both spellings compile to the same instructions.
+//
+
+MLAS_FORCEINLINE
+int32x2_t
+MlasGemmS8S8PairFromLanes02Smmla(int32x4_t Vector)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    int32x2_t Pair = vdup_n_s32(0);
+    Pair = vset_lane_s32(vdups_laneq_s32(Vector, 0), Pair, 0);
+    Pair = vset_lane_s32(vdups_laneq_s32(Vector, 2), Pair, 1);
+    return Pair;
+#else
+    return int32x2_t{vdups_laneq_s32(Vector, 0), vdups_laneq_s32(Vector, 2)};
+#endif
+}
+
+//
 // Define the prototypes of the NEON SMMLA routines written in assembly.
 //
 
@@ -168,8 +191,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums0L_ext = vextq_s32(RowSums0L_pada, RowSums0L_pada, 1);
             int32x4_t RowSums0L_add = vaddq_s32(RowSums0L_pada, RowSums0L_ext);
-            int32x2_t RowSums0L = {vdups_laneq_s32(RowSums0L_add, 0),
-                                   vdups_laneq_s32(RowSums0L_add, 2)};
+            int32x2_t RowSums0L = MlasGemmS8S8PairFromLanes02Smmla(RowSums0L_add);
 
             int32x4_t RowSums0H_pada = vmovq_n_s32(0);
             RowSums0H_pada = vpadalq_s16(RowSums0H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z2)));
@@ -177,8 +199,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums0H_ext = vextq_s32(RowSums0H_pada, RowSums0H_pada, 1);
             int32x4_t RowSums0H_add = vaddq_s32(RowSums0H_pada, RowSums0H_ext);
-            int32x2_t RowSums0H = {vdups_laneq_s32(RowSums0H_add, 0),
-                                   vdups_laneq_s32(RowSums0H_add, 2)};
+            int32x2_t RowSums0H = MlasGemmS8S8PairFromLanes02Smmla(RowSums0H_add);
 
             RowSums0 = vaddq_s32(RowSums0, vcombine_s32(RowSums0L, RowSums0H));
 
@@ -188,8 +209,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums1L_ext = vextq_s32(RowSums1L_pada, RowSums1L_pada, 1);
             int32x4_t RowSums1L_add = vaddq_s32(RowSums1L_pada, RowSums1L_ext);
-            int32x2_t RowSums1L = {vdups_laneq_s32(RowSums1L_add, 0),
-                                   vdups_laneq_s32(RowSums1L_add, 2)};
+            int32x2_t RowSums1L = MlasGemmS8S8PairFromLanes02Smmla(RowSums1L_add);
 
             int32x4_t RowSums1H_pada = vmovq_n_s32(0);
             RowSums1H_pada = vpadalq_s16(RowSums1H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z6)));
@@ -197,8 +217,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums1H_ext = vextq_s32(RowSums1H_pada, RowSums1H_pada, 1);
             int32x4_t RowSums1H_add = vaddq_s32(RowSums1H_pada, RowSums1H_ext);
-            int32x2_t RowSums1H = {vdups_laneq_s32(RowSums1H_add, 0),
-                                   vdups_laneq_s32(RowSums1H_add, 2)};
+            int32x2_t RowSums1H = MlasGemmS8S8PairFromLanes02Smmla(RowSums1H_add);
 
             RowSums1 = vaddq_s32(RowSums1, vcombine_s32(RowSums1L, RowSums1H));
 
@@ -243,16 +262,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums0L_ext = vextq_s32(RowSums0L_pada, RowSums0L_pada, 1);
             int32x4_t RowSums0L_add = vaddq_s32(RowSums0L_pada, RowSums0L_ext);
-            int32x2_t RowSums0L = {vdups_laneq_s32(RowSums0L_add, 0),
-                                   vdups_laneq_s32(RowSums0L_add, 2)};
+            int32x2_t RowSums0L = MlasGemmS8S8PairFromLanes02Smmla(RowSums0L_add);
 
             int32x4_t RowSums0H_pada = vmovq_n_s32(0);
             RowSums0H_pada = vpadalq_s16(RowSums0H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z23)));
 
             int32x4_t RowSums0H_ext = vextq_s32(RowSums0H_pada, RowSums0H_pada, 1);
             int32x4_t RowSums0H_add = vaddq_s32(RowSums0H_pada, RowSums0H_ext);
-            int32x2_t RowSums0H = {vdups_laneq_s32(RowSums0H_add, 0),
-                                   vdups_laneq_s32(RowSums0H_add, 2)};
+            int32x2_t RowSums0H = MlasGemmS8S8PairFromLanes02Smmla(RowSums0H_add);
 
             RowSums0 = vaddq_s32(RowSums0, vcombine_s32(RowSums0L, RowSums0H));
 
@@ -261,16 +278,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums1L_ext = vextq_s32(RowSums1L_pada, RowSums1L_pada, 1);
             int32x4_t RowSums1L_add = vaddq_s32(RowSums1L_pada, RowSums1L_ext);
-            int32x2_t RowSums1L = {vdups_laneq_s32(RowSums1L_add, 0),
-                                   vdups_laneq_s32(RowSums1L_add, 2)};
+            int32x2_t RowSums1L = MlasGemmS8S8PairFromLanes02Smmla(RowSums1L_add);
 
             int32x4_t RowSums1H_pada = vmovq_n_s32(0);
             RowSums1H_pada = vpadalq_s16(RowSums1H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z67)));
 
             int32x4_t RowSums1H_ext = vextq_s32(RowSums1H_pada, RowSums1H_pada, 1);
             int32x4_t RowSums1H_add = vaddq_s32(RowSums1H_pada, RowSums1H_ext);
-            int32x2_t RowSums1H = {vdups_laneq_s32(RowSums1H_add, 0),
-                                   vdups_laneq_s32(RowSums1H_add, 2)};
+            int32x2_t RowSums1H = MlasGemmS8S8PairFromLanes02Smmla(RowSums1H_add);
 
             RowSums1 = vaddq_s32(RowSums1, vcombine_s32(RowSums1L, RowSums1H));
 
@@ -329,16 +344,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums0L_ext = vextq_s32(RowSums0L_pada, RowSums0L_pada, 1);
             int32x4_t RowSums0L_add = vaddq_s32(RowSums0L_pada, RowSums0L_ext);
-            int32x2_t RowSums0L = {vdups_laneq_s32(RowSums0L_add, 0),
-                                   vdups_laneq_s32(RowSums0L_add, 2)};
+            int32x2_t RowSums0L = MlasGemmS8S8PairFromLanes02Smmla(RowSums0L_add);
 
             int32x4_t RowSums0H_pada = vmovq_n_s32(0);
             RowSums0H_pada = vpadalq_s16(RowSums0H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z23)));
 
             int32x4_t RowSums0H_ext = vextq_s32(RowSums0H_pada, RowSums0H_pada, 1);
             int32x4_t RowSums0H_add = vaddq_s32(RowSums0H_pada, RowSums0H_ext);
-            int32x2_t RowSums0H = {vdups_laneq_s32(RowSums0H_add, 0),
-                                   vdups_laneq_s32(RowSums0H_add, 2)};
+            int32x2_t RowSums0H = MlasGemmS8S8PairFromLanes02Smmla(RowSums0H_add);
 
             RowSums0 = vaddq_s32(RowSums0, vcombine_s32(RowSums0L, RowSums0H));
 
@@ -347,16 +360,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums1L_ext = vextq_s32(RowSums1L_pada, RowSums1L_pada, 1);
             int32x4_t RowSums1L_add = vaddq_s32(RowSums1L_pada, RowSums1L_ext);
-            int32x2_t RowSums1L = {vdups_laneq_s32(RowSums1L_add, 0),
-                                   vdups_laneq_s32(RowSums1L_add, 2)};
+            int32x2_t RowSums1L = MlasGemmS8S8PairFromLanes02Smmla(RowSums1L_add);
 
             int32x4_t RowSums1H_pada = vmovq_n_s32(0);
             RowSums1H_pada = vpadalq_s16(RowSums1H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z67)));
 
             int32x4_t RowSums1H_ext = vextq_s32(RowSums1H_pada, RowSums1H_pada, 1);
             int32x4_t RowSums1H_add = vaddq_s32(RowSums1H_pada, RowSums1H_ext);
-            int32x2_t RowSums1H = {vdups_laneq_s32(RowSums1H_add, 0),
-                                   vdups_laneq_s32(RowSums1H_add, 2)};
+            int32x2_t RowSums1H = MlasGemmS8S8PairFromLanes02Smmla(RowSums1H_add);
 
             RowSums1 = vaddq_s32(RowSums1, vcombine_s32(RowSums1L, RowSums1H));
 
@@ -424,8 +435,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSumsL_ext = vextq_s32(RowSumsL_pada, RowSumsL_pada, 1);
             int32x4_t RowSumsL_add = vaddq_s32(RowSumsL_pada, RowSumsL_ext);
-            int32x2_t RowSumsL = {vdups_laneq_s32(RowSumsL_add, 0),
-                                  vdups_laneq_s32(RowSumsL_add, 2)};
+            int32x2_t RowSumsL = MlasGemmS8S8PairFromLanes02Smmla(RowSumsL_add);
 
             int32x4_t RowSumsH_pada = vmovq_n_s32(0);
             RowSumsH_pada = vpadalq_s16(RowSumsH_pada, vpaddlq_s8(vreinterpretq_s8_s64(z2)));
@@ -433,8 +443,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSumsH_ext = vextq_s32(RowSumsH_pada, RowSumsH_pada, 1);
             int32x4_t RowSumsH_add = vaddq_s32(RowSumsH_pada, RowSumsH_ext);
-            int32x2_t RowSumsH = {vdups_laneq_s32(RowSumsH_add, 0),
-                                  vdups_laneq_s32(RowSumsH_add, 2)};
+            int32x2_t RowSumsH = MlasGemmS8S8PairFromLanes02Smmla(RowSumsH_add);
 
             RowSums = vaddq_s32(RowSums, vcombine_s32(RowSumsL, RowSumsH));
 
@@ -465,16 +474,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSumsL_ext = vextq_s32(RowSumsL_pada, RowSumsL_pada, 1);
             int32x4_t RowSumsL_add = vaddq_s32(RowSumsL_pada, RowSumsL_ext);
-            int32x2_t RowSumsL = {vdups_laneq_s32(RowSumsL_add, 0),
-                                  vdups_laneq_s32(RowSumsL_add, 2)};
+            int32x2_t RowSumsL = MlasGemmS8S8PairFromLanes02Smmla(RowSumsL_add);
 
             int32x4_t RowSumsH_pada = vmovq_n_s32(0);
             RowSumsH_pada = vpadalq_s16(RowSumsH_pada, vpaddlq_s8(vreinterpretq_s8_s64(z23)));
 
             int32x4_t RowSumsH_ext = vextq_s32(RowSumsH_pada, RowSumsH_pada, 1);
             int32x4_t RowSumsH_add = vaddq_s32(RowSumsH_pada, RowSumsH_ext);
-            int32x2_t RowSumsH = {vdups_laneq_s32(RowSumsH_add, 0),
-                                  vdups_laneq_s32(RowSumsH_add, 2)};
+            int32x2_t RowSumsH = MlasGemmS8S8PairFromLanes02Smmla(RowSumsH_add);
 
             RowSums = vaddq_s32(RowSums, vcombine_s32(RowSumsL, RowSumsH));
 
@@ -518,16 +525,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSums0L_ext = vextq_s32(RowSums0L_pada, RowSums0L_pada, 1);
             int32x4_t RowSums0L_add = vaddq_s32(RowSums0L_pada, RowSums0L_ext);
-            int32x2_t RowSums0L = {vdups_laneq_s32(RowSums0L_add, 0),
-                                   vdups_laneq_s32(RowSums0L_add, 2)};
+            int32x2_t RowSums0L = MlasGemmS8S8PairFromLanes02Smmla(RowSums0L_add);
 
             int32x4_t RowSums0H_pada = vmovq_n_s32(0);
             RowSums0H_pada = vpadalq_s16(RowSums0H_pada, vpaddlq_s8(vreinterpretq_s8_s64(z23)));
 
             int32x4_t RowSums0H_ext = vextq_s32(RowSums0H_pada, RowSums0H_pada, 1);
             int32x4_t RowSums0H_add = vaddq_s32(RowSums0H_pada, RowSums0H_ext);
-            int32x2_t RowSums0H = {vdups_laneq_s32(RowSums0H_add, 0),
-                                   vdups_laneq_s32(RowSums0H_add, 2)};
+            int32x2_t RowSums0H = MlasGemmS8S8PairFromLanes02Smmla(RowSums0H_add);
 
             RowSums = vaddq_s32(RowSums, vcombine_s32(RowSums0L, RowSums0H));
 
@@ -581,8 +586,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSumsL_ext = vextq_s32(RowSumsL_pada, RowSumsL_pada, 1);
             int32x4_t RowSumsL_add = vaddq_s32(RowSumsL_pada, RowSumsL_ext);
-            int32x2_t RowSumsL = {vdups_laneq_s32(RowSumsL_add, 0),
-                                  vdups_laneq_s32(RowSumsL_add, 2)};
+            int32x2_t RowSumsL = MlasGemmS8S8PairFromLanes02Smmla(RowSumsL_add);
 
             RowSums = vadd_s32(RowSums, RowSumsL);
 
@@ -605,8 +609,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSumsL_ext = vextq_s32(RowSumsL_pada, RowSumsL_pada, 1);
             int32x4_t RowSumsL_add = vaddq_s32(RowSumsL_pada, RowSumsL_ext);
-            int32x2_t RowSumsL = {vdups_laneq_s32(RowSumsL_add, 0),
-                                  vdups_laneq_s32(RowSumsL_add, 2)};
+            int32x2_t RowSumsL = MlasGemmS8S8PairFromLanes02Smmla(RowSumsL_add);
 
             RowSums = vadd_s32(RowSums, RowSumsL);
 
@@ -642,8 +645,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             int32x4_t RowSumsL_ext = vextq_s32(RowSumsL_pada, RowSumsL_pada, 1);
             int32x4_t RowSumsL_add = vaddq_s32(RowSumsL_pada, RowSumsL_ext);
-            int32x2_t RowSumsL = {vdups_laneq_s32(RowSumsL_add, 0),
-                                  vdups_laneq_s32(RowSumsL_add, 2)};
+            int32x2_t RowSumsL = MlasGemmS8S8PairFromLanes02Smmla(RowSumsL_add);
 
             RowSums = vadd_s32(RowSums, RowSumsL);
 
@@ -742,13 +744,13 @@ MlasGemmS8S8CopyPackBProcessSmmla(int8_t* D, int8x8_t BytesRow[8], int32x4_t Col
     ColSums0L_pada = vpadalq_s16(ColSums0L_pada, vpaddlq_s8(vreinterpretq_s8_s32(zd3.val[0])));
     int32x4_t ColSums0L_ext = vextq_s32(ColSums0L_pada, ColSums0L_pada, 1);
     int32x4_t ColSums0L_add = vaddq_s32(ColSums0L_pada, ColSums0L_ext);
-    int32x2_t ColSums0L = {vdups_laneq_s32(ColSums0L_add, 0), vdups_laneq_s32(ColSums0L_add, 2)};
+    int32x2_t ColSums0L = MlasGemmS8S8PairFromLanes02Smmla(ColSums0L_add);
 
     int32x4_t ColSums0H_pada = vmovq_n_s32(0);
     ColSums0H_pada = vpadalq_s16(ColSums0H_pada, vpaddlq_s8(vreinterpretq_s8_s32(zd3.val[1])));
     int32x4_t ColSums0H_ext = vextq_s32(ColSums0H_pada, ColSums0H_pada, 1);
     int32x4_t ColSums0H_add = vaddq_s32(ColSums0H_pada, ColSums0H_ext);
-    int32x2_t ColSums0H = {vdups_laneq_s32(ColSums0H_add, 0), vdups_laneq_s32(ColSums0H_add, 2)};
+    int32x2_t ColSums0H = MlasGemmS8S8PairFromLanes02Smmla(ColSums0H_add);
 
     ColumnSums[0] = vaddq_s32(ColumnSums[0], vcombine_s32(ColSums0L, ColSums0H));
 
@@ -756,13 +758,13 @@ MlasGemmS8S8CopyPackBProcessSmmla(int8_t* D, int8x8_t BytesRow[8], int32x4_t Col
     ColSums1L_pada = vpadalq_s16(ColSums1L_pada, vpaddlq_s8(vreinterpretq_s8_s32(zd4.val[0])));
     int32x4_t ColSums1L_ext = vextq_s32(ColSums1L_pada, ColSums1L_pada, 1);
     int32x4_t ColSums1L_add = vaddq_s32(ColSums1L_pada, ColSums1L_ext);
-    int32x2_t ColSums1L = {vdups_laneq_s32(ColSums1L_add, 0), vdups_laneq_s32(ColSums1L_add, 2)};
+    int32x2_t ColSums1L = MlasGemmS8S8PairFromLanes02Smmla(ColSums1L_add);
 
     int32x4_t ColSums1H_pada = vmovq_n_s32(0);
     ColSums1H_pada = vpadalq_s16(ColSums1H_pada, vpaddlq_s8(vreinterpretq_s8_s32(zd4.val[1])));
     int32x4_t ColSums1H_ext = vextq_s32(ColSums1H_pada, ColSums1H_pada, 1);
     int32x4_t ColSums1H_add = vaddq_s32(ColSums1H_pada, ColSums1H_ext);
-    int32x2_t ColSums1H = {vdups_laneq_s32(ColSums1H_add, 0), vdups_laneq_s32(ColSums1H_add, 2)};
+    int32x2_t ColSums1H = MlasGemmS8S8PairFromLanes02Smmla(ColSums1H_add);
 
     ColumnSums[1] = vaddq_s32(ColumnSums[1], vcombine_s32(ColSums1L, ColSums1H));
 }

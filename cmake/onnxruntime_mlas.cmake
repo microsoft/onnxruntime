@@ -115,6 +115,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+        ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
+        ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
         # Portable W2 pack helpers + scalar reference kernel. Misleadingly
         # Avx512-named because the AVX-512 W2 path was the first consumer, but
         # the TU contains no x86 intrinsics (see sqnbitgemm_kernel_avx512_2bit.cpp).
@@ -164,6 +166,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDot.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
+        ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUmmla.asm
+        ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelSmmla.asm
       )
 
       if (onnxruntime_USE_ARM_NEON_NCHWC)
@@ -404,9 +408,17 @@ function (setup_arm_neon_nchwc)
      ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
      )
+  else()
+      target_sources(onnxruntime_mlas PRIVATE
+      # The armasm64 translations of the hand written micro-kernels above.
+      ${MLAS_SRC_DIR}/arm64/SconvPointwiseKernelNeon.asm
+      ${MLAS_SRC_DIR}/arm64/SconvNchwcKernelNeon.asm
+      ${MLAS_SRC_DIR}/arm64/SconvKernelNeon.asm
+      )
   endif()
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
   set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_ARM_NEON_NCHWC)
 endfunction ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

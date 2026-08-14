@@ -1224,15 +1224,15 @@ extern "C" {
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
     // Intrinsics kernel for direct NCHW convolution
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
-#if !defined(_WIN32)
-    // AArch64 assembly micro-kernel for direct NCHW convolution
+
+    // AArch64 and ARM64 assembly micro-kernel for direct NCHW convolution.
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeonAsm;
-#endif
+
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
-#if !defined(_WIN32)
-    // AArch64 assembly micro-kernel for direct NCHWc convolution
+
+    // AArch64 and ARM64 assembly micro-kernel for direct NCHWc convolution.
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeonAsm;
-#endif
+
     // Intrinsics kernel for depthwise NCHWc convolution
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
 #if !defined(_WIN32)
@@ -1241,10 +1241,10 @@ extern "C" {
 #endif
     // Intrinsics kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
-#if !defined(_WIN32)
-    // AArch64 assembly micro-kernel for pointwise NCHWc convolution
+
+    // AArch64 and ARM64 assembly micro-kernel for pointwise NCHWc convolution.
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
-#endif
+
 #if defined(__linux__)
     // AArch64 assembly fast-math micro-kernels
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
