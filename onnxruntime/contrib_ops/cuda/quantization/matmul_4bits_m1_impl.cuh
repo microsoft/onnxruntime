@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdlib>
+
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
@@ -16,13 +18,23 @@ namespace cuda {
 
 // VALIDATION-ONLY (never merged into #31988 or main): lets a throwaway A/B benchmark force
 // the pre-PR baseline launch geometry (cols_per_block == kColsPerThreadBlock unconditionally)
-// in the same process/binary as the new occupancy-driven selection below, so head-vs-base
-// timing can be compared without a second build or a second CI run -- eliminating
-// build-to-build and machine-state (thermal, clock, driver cache) confounds from the
-// comparison. 0 (the default) means "no override": behavior is byte-for-byte identical to
-// #31988's head. Declared `inline` so the single definition is shared across the three
-// explicit-instantiation translation units (float/half/bfloat16) that include this header.
-inline int g_matmulnbits_m1_perf_validation_force_cols_per_block = 0;
+// so head-vs-base timing can be compared on the same binary/process/GPU without a second
+// build or a second CI run -- eliminating build-to-build and machine-state (thermal, clock,
+// driver cache) confounds from the comparison. Gated behind an environment variable (read
+// once, lazily, and cached) rather than a settable global so it can be toggled from a
+// separate benchmark *process* (e.g. onnxruntime_perf_test.exe) without needing to link
+// against or mutate symbols inside this translation unit. Unset/0 (the default) means
+// "no override": behavior is byte-for-byte identical to #31988's head.
+inline int MatMulNBitsM1PerfValidationForceColsPerBlock() {
+  static const int forced = [] {
+    const char* env = std::getenv("ORT_MATMULNBITS_M1_PERF_VALIDATION_FORCE_COLS_PER_BLOCK");
+    if (env == nullptr || env[0] == '\0') {
+      return 0;
+    }
+    return std::atoi(env);
+  }();
+  return forced;
+}
 
 template <class T, int block_size, bool has_zero_point, int cols_per_block = kColsPerThreadBlock>
 __global__ void __launch_bounds__(kWarpSize* cols_per_block) MatMulFloat4BitsKernelM1(
@@ -207,10 +219,11 @@ bool TryMatMul4BitsM1(
   // ChooseColsPerBlockFromOccupancy itself falls back to SelectColsPerBlock(n, sm_count) when
   // every query failed or sm_count is unavailable, and only ever returns a divisor of n.
   int cols_per_block = ChooseColsPerBlockFromOccupancy(n, sm_count, max_blocks_per_sm);
-  // VALIDATION-ONLY: see g_matmulnbits_m1_perf_validation_force_cols_per_block above. No-op
-  // (0) outside the throwaway perf-validation benchmark.
-  if (g_matmulnbits_m1_perf_validation_force_cols_per_block != 0) {
-    cols_per_block = g_matmulnbits_m1_perf_validation_force_cols_per_block;
+  // VALIDATION-ONLY: see MatMulNBitsM1PerfValidationForceColsPerBlock() above. No-op (0)
+  // outside the throwaway perf-validation benchmark.
+  const int forced_cols_per_block = MatMulNBitsM1PerfValidationForceColsPerBlock();
+  if (forced_cols_per_block != 0) {
+    cols_per_block = forced_cols_per_block;
   }
 
   const size_t launch_shared_mem =

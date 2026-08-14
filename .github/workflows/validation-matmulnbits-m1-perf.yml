@@ -2,11 +2,18 @@ name: VALIDATION-ONLY MatMulNBits M1 A10 Perf (throwaway, for onnxruntime#31988)
 
 # VALIDATION-ONLY: this workflow exists solely to gather real A10-hardware head-vs-base
 # performance evidence for #31988 (nxrt/cuda-matmulnbits-sm-cols). It is a narrowly-scoped
-# copy of windows_cuda.yml -- same pools, same build config -- with one addition: the test
-# job sets ORT_RUN_MATMULNBITS_M1_PERF_VALIDATION=1 so that
-# onnxruntime/test/contrib_ops/cuda_kernels/matmul_nbits_m1_perf_validation_test.cc (which is
-# GTEST_SKIP'd by default in every other CI leg, including the unmodified windows_cuda.yml
-# run that also runs against this same branch) actually executes and prints timing evidence.
+# copy of windows_cuda.yml -- same pools, same build config -- with additional steps after
+# the normal ctest "Run Tests" step: they generate small single-node MatMulNBits (M=1)
+# ONNX models and drive them through the already-built onnxruntime_perf_test.exe tool,
+# toggling the validation-only ORT_MATMULNBITS_M1_PERF_VALIDATION_FORCE_COLS_PER_BLOCK env
+# var between unset ("head", the PR's occupancy-driven selection) and 8 ("base", the pre-PR
+# unconditional cols_per_block==8), to get a confound-free A/B on the same binary/GPU. See
+# tools/matmulnbits_m1_perf_validation/{gen_models,numerics_check,run_ab_sweep}.py. (An
+# earlier iteration of this branch tried to piggyback new gtest cases onto the
+# onnxruntime_providers_cuda_ut module used by #31988's own SelectColsPerBlock_*/
+# ChooseColsPerBlockFromOccupancy_* unit tests; CI logs showed that module is never
+# loaded/executed by ctest in this non-plugin pipeline, so that approach produced no data
+# and was replaced by this one.)
 # This file lives only on a throwaway validation branch/PR that will be closed, not merged,
 # once the evidence has been folded into #31988's PR body.
 
@@ -265,6 +272,37 @@ jobs:
           }
         shell: pwsh
 
+      # VALIDATION-ONLY: the head-vs-base A/B perf evidence for #31988. This does NOT rely
+      # on ctest or the onnxruntime_providers_cuda_ut gtest module (empirically confirmed,
+      # from an earlier iteration of this same throwaway workflow, to never be loaded/run by
+      # ctest in this non-plugin pipeline -- see PR #32073 discussion). Instead it drives the
+      # already-built, already-installed CUDA wheel directly through onnxruntime_perf_test.exe
+      # (a standard ORT tool, already part of this build) against freshly generated
+      # single-node MatMulNBits (M=1) models, toggling the validation-only
+      # ORT_MATMULNBITS_M1_PERF_VALIDATION_FORCE_COLS_PER_BLOCK env var per-process between
+      # "head" (unset -> PR's occupancy-driven selection) and "base" (8 -> pre-PR
+      # unconditional cols_per_block==8).
+      - name: Install perf-validation python deps
+        run: python.exe -m pip install --quiet onnx onnx_ir
+        shell: pwsh
+
+      - name: Generate MatMulNBits M1 perf-validation models
+        run: |
+          python.exe "${{ github.workspace }}\tools\matmulnbits_m1_perf_validation\gen_models.py" --out-dir "${{ runner.temp }}\matmulnbits_m1_perf_models"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
+      - name: Run MatMulNBits M1 A10 head-vs-base perf sweep
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        run: |
+          python.exe "${{ github.workspace }}\tools\matmulnbits_m1_perf_validation\run_ab_sweep.py" --models-dir "${{ runner.temp }}\matmulnbits_m1_perf_models" --build-dir "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo" --repeats 200 --out-csv "${{ runner.temp }}\matmulnbits_m1_perf_models\results.csv"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
         working-directory: ${{ github.workspace }}\csharp
@@ -278,9 +316,3 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
-      # VALIDATION-ONLY: makes matmul_nbits_m1_perf_validation_test.cc actually run (it
-      # GTEST_SKIPs by default everywhere else, including the unmodified windows_cuda.yml
-      # test job that also runs against this same branch). ctest runs with --verbose (see
-      # tools/ci_build/build.py run_onnxruntime_tests), so this test's printed CSV/summary
-      # lines land directly in this step's log.
-      ORT_RUN_MATMULNBITS_M1_PERF_VALIDATION: '1'
