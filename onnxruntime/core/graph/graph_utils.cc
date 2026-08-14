@@ -1000,6 +1000,40 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
   target.MutableInputArgsCount()[target_input_idx] = 1;
 }
 
+void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, NodeArg& new_input) {
+  auto& input_defs = target.MutableInputDefs();
+  auto& input_arg_counts = target.MutableInputArgsCount();
+  ORT_ENFORCE(input_arg_counts.size() > target_input_idx,
+              "Missing input metadata for optional input ", target_input_idx,
+              " of node ", target.Name(), " (", target.OpType(), ").");
+
+  const size_t original_size = input_defs.size();
+  if (original_size <= target_input_idx) {
+    for (size_t index = original_size; index <= target_input_idx; ++index) {
+      ORT_ENFORCE(input_arg_counts[index] == 0,
+                  "Expected omitted optional input ", index,
+                  " of node ", target.Name(), " (", target.OpType(), ").");
+    }
+  } else if (input_defs[target_input_idx] == nullptr || !input_defs[target_input_idx]->Exists()) {
+    ORT_ENFORCE(input_arg_counts[target_input_idx] == 0 || input_arg_counts[target_input_idx] == 1,
+                "Expected omitted optional input ", target_input_idx,
+                " of node ", target.Name(), " (", target.OpType(), ").");
+  }
+
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  if (original_size <= target_input_idx) {
+    NodeArg& empty_input = graph.GetOrCreateNodeArg("", nullptr);
+    input_defs.resize(target_input_idx + 1, &empty_input);
+    for (size_t index = original_size; index <= target_input_idx; ++index) {
+      input_arg_counts[index] = 1;
+    }
+  } else if (input_defs[target_input_idx] == nullptr || !input_defs[target_input_idx]->Exists()) {
+    input_arg_counts[target_input_idx] = 1;
+  }
+
+  input_defs[target_input_idx] = &new_input;
+}
+
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   // move the outputs from second_node to first_node
   RemoveNodeOutputEdges(graph, first_node);
