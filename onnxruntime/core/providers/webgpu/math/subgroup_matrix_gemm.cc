@@ -8,24 +8,18 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/subgroup_matrix_common.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-
-// Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
-// split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-// TODO: use subgroup-size-control to enforce the subgroup size is 32.
-constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
 // Subgroup-matrix Gemm implementation. Loads A and B directly from global memory
 // (transposed operands via column-major loads) and runs the cooperative
@@ -194,19 +188,9 @@ Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const
 
 std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
     const Gemm& parent, const ComputeContextBase& context) {
-  // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
   int32_t config_index = 0;
-  if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
-    return nullptr;
-  }
-  // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
-  // to a fixed default tiling.
-  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
-  SubgroupMatrixTilingSelector tiling_selector =
-      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultSubgroupMatrixTilingSelector();
-  if (!tiling_selector) {
+  SubgroupMatrixTilingSelector tiling_selector;
+  if (!TrySelectSubgroupMatrixConfig(context, config_index, tiling_selector)) {
     return nullptr;
   }
   return std::make_unique<SubgroupMatrixGemmImpl>(parent, config_index, std::move(tiling_selector));

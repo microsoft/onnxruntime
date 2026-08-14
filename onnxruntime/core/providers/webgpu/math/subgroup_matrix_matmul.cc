@@ -10,24 +10,17 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <string_view>
 #include <utility>
 
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-
-// Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
-// split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-// TODO: use subgroup-size-control to enforce the subgroup size is 32.
-constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
 // Subgroup-matrix MatMul implementation. Loads both A and B directly from global
 // memory and runs the subgroup-matrix kernel during Compute. The class is
@@ -74,13 +67,6 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelpe
 }
 
 }  // namespace
-
-SubgroupMatrixTilingSelector MakeDefaultSubgroupMatrixTilingSelector() {
-  return [](const ComputeContext&, uint32_t /*M*/, uint32_t /*N*/,
-            uint32_t /*K*/, uint32_t /*batch*/) -> std::optional<SubgroupMatrixTiling> {
-    return SubgroupMatrixTiling{32, 32, 1};
-  };
-}
 
 Status DispatchSubgroupMatrixMatMul(ComputeContext& context,
                                     int32_t config_index,
@@ -287,19 +273,9 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
 
 std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(
     const MatMul& parent, const ComputeContextBase& context) {
-  // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
   int32_t config_index = 0;
-  if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
-    return nullptr;
-  }
-  // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
-  // to a fixed default tiling.
-  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
-  SubgroupMatrixTilingSelector tiling_selector =
-      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultSubgroupMatrixTilingSelector();
-  if (!tiling_selector) {
+  SubgroupMatrixTilingSelector tiling_selector;
+  if (!TrySelectSubgroupMatrixConfig(context, config_index, tiling_selector)) {
     return nullptr;
   }
   return std::make_unique<SubgroupMatrixMatMulImpl>(parent, config_index, std::move(tiling_selector));

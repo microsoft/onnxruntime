@@ -9,16 +9,14 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
-#include <string_view>
+#include <mutex>
 #include <utility>
 #include <vector>
 
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/subgroup_matrix_common.h"
 #include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 #include "core/providers/webgpu/nn/conv.h"
-#include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -39,25 +37,26 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
                  /*out*/ bool& handled) override {
     handled = false;
 
-    // The subgroup-matrix kernel computes a plain, non-grouped matmul; decline
-    // anything it can't serve so the caller falls back to the normal Conv path.
-    if (activation.activation_kind_ != ActivationKind::None || conv_attrs.group != 1) {
+    // Only a constant, channels-last, non-prepacked weight is served here: constant so
+    // the runtime transpose can be cached once (below), channels-last / non-prepacked so
+    // the weight is read from input 1. It must also be a plain, non-grouped matmul with
+    // no fused activation; anything else falls back to the normal Conv path.
+    if (!is_channels_last || prepacked_kernel != nullptr || !w_is_constant ||
+        activation.activation_kind_ != ActivationKind::None || conv_attrs.group != 1) {
       return Status::OK();
     }
 
-    // Read the Conv operands from context. prepacked_kernel (when non-null) is the
-    // prepacked OHWI->HWIO weight; otherwise the original weight is input 1.
     const auto* input = context.Input<Tensor>(0);
-    const bool kernel_is_prepacked = prepacked_kernel != nullptr;
-    const Tensor* kernel = kernel_is_prepacked ? prepacked_kernel : context.Input<Tensor>(1);
+    const auto* kernel = context.Input<Tensor>(1);
     const Tensor* bias = context.InputCount() > 2 ? context.Input<Tensor>(2) : nullptr;
 
-    // Shape inference mirrors Conv::ComputeInternal so eligibility and the operand
-    // layout are computed identically.
+    // Shape inference mirrors Conv::ComputeInternal (channels-last). Only Conv2D (a
+    // rank-4 NHWC input) is supported.
     TensorShape input_shape = input->Shape();
-    TensorShape kernel_shape = kernel_is_prepacked
-                                   ? TensorShape(TensorShapeVector{kernel->Shape()[3], kernel->Shape()[2], kernel->Shape()[0], kernel->Shape()[1]})
-                                   : kernel->Shape();
+    if (input_shape.NumDimensions() != 4) {
+      return Status::OK();
+    }
+    TensorShape kernel_shape = kernel->Shape();
     ConvAttributes::ConvPadVector local_pads(conv_attrs.pads.begin(), conv_attrs.pads.end());
     TensorShapeVector local_dilations(conv_attrs.dilations.begin(), conv_attrs.dilations.end());
     TensorShapeVector local_strides(conv_attrs.strides.begin(), conv_attrs.strides.end());
@@ -75,14 +74,10 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
     const auto batch = input_shape[0];
     TensorShapeVector output_shape_vector = {batch};
-    TensorShape input_spacial_shape = is_channels_last ? TensorShape(TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end()))) : input_shape.Slice(2);
+    TensorShape input_spacial_shape = TensorShape(TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end())));
     ORT_RETURN_IF_ERROR(conv_attrs.InferPadsAndOutputShape(input_spacial_shape, kernel_spacial_shape_vector, local_strides, local_dilations, local_pads, output_shape_vector));
     const auto output_channels = kernel_shape[0];
-    if (is_channels_last) {
-      output_shape_vector.push_back(output_channels);
-    } else {
-      output_shape_vector.insert(output_shape_vector.begin() + 1, output_channels);
-    }
+    output_shape_vector.push_back(output_channels);
     const TensorShape output_shape = TensorShape(output_shape_vector);
 
     // Only pads/strides are needed to detect the 1x1 / same-size case.
@@ -91,30 +86,13 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
     std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
     std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
 
-    const auto rank = input_shape.NumDimensions();
-    if (rank == 3) {
-      // Conv1D: reshape to a height-1 Conv2D (mirrors Conv::ComputeInternal).
-      TensorShapeVector kernel_shape_vector = kernel_shape.AsShapeVector();
-      input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2), 1, 1);
-      output_shape_vector.insert(output_shape_vector.begin() + (is_channels_last ? 1 : 2), 1, 1);
-      kernel_shape_vector.insert(kernel_shape_vector.begin() + 2, 1);
-      input_shape = TensorShape(input_shape_vector);
-      kernel_shape = TensorShape(kernel_shape_vector);
-      pads.insert(pads.begin(), 0);
-      pads.insert(pads.begin() + 2, 0);
-      strides.insert(strides.begin(), 1);
-    } else if (rank != 4) {
-      // Conv3D / unsupported rank: not a 1x1 matmul candidate.
-      return Status::OK();
-    }
-
-    const auto input_height = input_shape[is_channels_last ? 1 : 2];
-    const auto input_width = input_shape[is_channels_last ? 2 : 3];
-    const auto input_channels = input_shape[is_channels_last ? 3 : 1];
+    const auto input_height = input_shape[1];
+    const auto input_width = input_shape[2];
+    const auto input_channels = input_shape[3];
     const auto kernel_height = kernel_shape[2];
     const auto kernel_width = kernel_shape[3];
 
-    const bool same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
+    const bool same_size = input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
     const bool is_conv1x1_matmul = same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1);
     if (!is_conv1x1_matmul) {
       return Status::OK();
@@ -122,59 +100,51 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
 
     auto* output = context.Output(0, output_shape);
 
-    // Build the matmul operands. Channels-last transposes the non-prepacked weight and
-    // uses the activation as A; channels-first uses the weight as A and activation as B.
-    const InlinedVector<size_t> perm = {2, 3, 1, 0};
-    Tensor transposed_kernel;
-    const Tensor* a = nullptr;
-    const Tensor* b = nullptr;
+    // The weight is constant, so transpose it (OIHW->HWIO) once and reuse the cached
+    // copy on later runs. The matmul runs A=activation, B=weight.
+    ORT_RETURN_IF_ERROR(EnsureTransposedKernel(context, kernel, kernel_shape));
+
+    // The operands are a plain 2D weight matmul (M x K) @ (K x N): a 1x1 conv makes each
+    // N,H,W position an independent row; same-size folds the whole window into one row
+    // per batch element.
     TensorShape a_shape;
     TensorShape b_shape;
-    if (is_channels_last) {
-      const Tensor* matmul_kernel = kernel;
-      if (!kernel_is_prepacked) {
-        ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
-        matmul_kernel = &transposed_kernel;
-      }
-      a = input;
-      b = matmul_kernel;
-      if (same_size) {
-        const auto shared_dim = input_height * input_width * input_channels;
-        a_shape = TensorShape({1, batch, shared_dim});
-        b_shape = TensorShape({1, shared_dim, output_channels});
-      } else {
-        a_shape = TensorShape({batch, input_height * input_width, input_channels});
-        b_shape = TensorShape({1, input_channels, output_channels});
-      }
+    if (same_size) {
+      const auto shared_dim = input_height * input_width * input_channels;
+      a_shape = TensorShape({batch, shared_dim});
+      b_shape = TensorShape({shared_dim, output_channels});
     } else {
-      a = kernel;
-      b = input;
-      a_shape = TensorShape({1, output_channels, input_channels});
-      b_shape = TensorShape({batch, input_channels, input_height * input_width});
-    }
-
-    // Fold A's leading dims into M when B is a shared 2D weight so the reshaped
-    // operands collapse into a single 2D-weight matmul the shared dispatch handles.
-    if (a_shape.NumDimensions() >= 2 && b_shape.NumDimensions() >= 2) {
-      const int64_t batch_a = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
-      const int64_t batch_b = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
-      if (batch_a != 1 && batch_b == 1) {
-        const int64_t k = a_shape[a_shape.NumDimensions() - 1];
-        const int64_t n = b_shape[b_shape.NumDimensions() - 1];
-        const int64_t batch_and_m = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-        a_shape = TensorShape({batch_and_m, k});
-        b_shape = TensorShape({k, n});
-      }
+      a_shape = TensorShape({batch * input_height * input_width, input_channels});
+      b_shape = TensorShape({input_channels, output_channels});
     }
 
     return DispatchSubgroupMatrixMatMul(context, config_index_, tiling_selector_, pad_cache_,
-                                        a, b, bias, output, a_shape, b_shape,
-                                        is_channels_last && w_is_constant, handled);
+                                        input, cached_transposed_kernel_.get(), bias, output, a_shape, b_shape,
+                                        /*b_is_constant=*/true, handled);
   }
 
  private:
+  // Builds the OIHW->HWIO transposed weight on first use and caches it; only valid
+  // because the weight is a constant initializer (checked by the caller).
+  Status EnsureTransposedKernel(ComputeContext& context, const Tensor* kernel,
+                                const TensorShape& kernel_shape) const {
+    std::call_once(transpose_once_, [&]() {
+      const InlinedVector<size_t> perm = {2, 3, 1, 0};
+      auto transposed = std::make_unique<Tensor>();
+      if (TransposeKernel(context, kernel, kernel_shape, transposed.get(), perm).IsOK()) {
+        cached_transposed_kernel_ = std::move(transposed);
+      }
+    });
+    return cached_transposed_kernel_ ? Status::OK()
+                                     : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to transpose Conv 1x1 weight.");
+  }
+
   const int32_t config_index_;
   const SubgroupMatrixTilingSelector tiling_selector_;
+
+  // OIHW->HWIO transposed constant weight, built once by EnsureTransposedKernel.
+  mutable std::once_flag transpose_once_;
+  mutable std::unique_ptr<Tensor> cached_transposed_kernel_;
 
   // Odd-N even-strided B cache, shared with the subgroup-matrix MatMul path.
   mutable SubgroupMatrixPadBCache pad_cache_;
@@ -183,19 +153,9 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
 }  // namespace
 
 std::unique_ptr<Conv1x1OptImpl> CreateSubgroupMatrixConv1x1Impl(const ComputeContextBase& context) {
-  // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
   int32_t config_index = 0;
-  if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
-    return nullptr;
-  }
-  // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
-  // to a fixed default tiling.
-  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
-  SubgroupMatrixTilingSelector tiling_selector =
-      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultSubgroupMatrixTilingSelector();
-  if (!tiling_selector) {
+  SubgroupMatrixTilingSelector tiling_selector;
+  if (!TrySelectSubgroupMatrixConfig(context, config_index, tiling_selector)) {
     return nullptr;
   }
   return std::make_unique<SubgroupMatrixConv1x1Impl>(config_index, std::move(tiling_selector));
