@@ -548,11 +548,6 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
 }
 
 WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero) const {
-  if (initialize_to_zero) {
-    ORT_ENFORCE(usage & wgpu::BufferUsage::CopyDst,
-                "Zero-initialized GPU buffers must have CopyDst usage.");
-  }
-
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
