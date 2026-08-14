@@ -91,18 +91,13 @@ const std::vector<ActivationKind>& AllActivationKinds() {
 
 }  // namespace
 
-// Regression test for constants being truncated on their way into the shader.
+// Regression test for constants being truncated on their way into the shader. std::to_string() uses
+// "%f" and emits six digits after the decimal point, which rounded the Gelu-tanh cubic coefficient
+// 0.035677408 to 0.035677 (109 ULP) and 1/sqrt(2) to 0.707107 (4 ULP), so fused Gelu disagreed with
+// the standalone Gelu kernel it is documented to match.
 //
-// These constants used to be formatted with std::to_string(), which uses "%f" and therefore emits
-// exactly six digits after the decimal point. That silently rounded every math constant in
-// fuse_utils.cc: the Gelu-tanh cubic coefficient 0.035677408 became 0.035677 (109 ULP off) and
-// 1/sqrt(2) became 0.707107 (4 ULP). Fused Gelu then disagreed with the standalone Gelu kernel it
-// is documented to match.
-//
-// This is asserted on the emitted text rather than on inference output on purpose. In f16 all of
-// these values round to the same half, and even in f32 the resulting output error is around one
-// ULP, so a numeric comparison cannot reliably detect the fault. The literal either round-trips or
-// it does not.
+// Asserted on the emitted text, not on inference output: in f16 these all round to the same half and
+// in f32 the output error is about one ULP, so no numeric comparison can detect it reliably.
 TEST(WebGpuActivationSnippetTest, ConstantsAreEmittedAtFullPrecision) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.125f, 0.375f);

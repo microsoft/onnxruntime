@@ -88,13 +88,11 @@ using Activation = struct Activation {
 
 // Number of uniform slots reserved for fused-activation parameters.
 //
-// The WebGPU EP matches uniform definitions to uniform values by index, and the definition list is
-// a compile-time constant per program class. So every program whose shader embeds an activation
-// declares a fixed number of activation slots and always supplies exactly that many values; slots
-// the activation does not use get a zero-length value, which the EP drops from both the uniform
-// struct and the uniform buffer (see shader_helper.cc, ShaderHelper::GetFinalSourceCode). That is
-// what keeps parameterless activations emitting byte-identical shaders to before this mechanism
-// existed.
+// The WebGPU EP matches uniform definitions to values by index, and the definition list is a
+// compile-time constant per program class, so every program embedding an activation declares a
+// fixed slot count and always supplies exactly that many values. Unused slots get a zero-length
+// value, which the EP drops from both the uniform struct and the buffer (see
+// ShaderHelper::GetFinalSourceCode), so parameterless activations still emit byte-identical shaders.
 constexpr size_t kActivationUniformVariableCount = 2;
 
 // Declares the activation parameter uniforms. Append this to a program's

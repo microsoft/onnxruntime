@@ -237,11 +237,14 @@ const HandlerMap& OrtExtendedHandlers() {
         {"Reshape", ep_aware_reshape_handler},
         {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
         {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
-        // Contrib spellings of Gelu, produced by GeluFusion/FastGeluFusion when a model is
-        // exported below opset 20. Without these the activation is stranded outside the NHWC
-        // region and can never fuse into an NHWC Conv.
+        // Keep contrib-domain GELU variants inside layout propagation. GeluFusion emits com.microsoft.Gelu
+        // for pre-opset-20 models, and FastGeluFusion emits com.microsoft.FastGelu for tanh-approximate
+        // GELU. QuickGeluFusion emits com.microsoft.QuickGelu, which is also how SiLU reaches the NHWC
+        // region. Without these handlers, layout propagation stops at the activation, preventing NHWC
+        // Conv+GELU fusion.
         {"com.microsoft.FastGelu", fast_gelu_handler},
         {"com.microsoft.Gelu", node_1_inp_handler},
+        {"com.microsoft.QuickGelu", node_1_inp_handler},
         {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
         {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
         {"com.microsoft.QLinearConcat", q_linear_concat_handler},

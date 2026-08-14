@@ -98,19 +98,14 @@ class ConvActivationSelector : public NodeSelector {
       return false;
     };
 
-    // QuickGeluFusion collapses `x * sigmoid(alpha * x)` into a kMSDomain QuickGelu node.
-    // With alpha == 1 that is SiLU/Swish, which follows nearly every Conv in the YOLO model
-    // family. HardSwish (MobileNetV3/EfficientNet-lite), Elu, Gelu and Softplus are plain
-    // ONNX-domain ops that the shared selector below deliberately omits, because the CPU and JS
-    // FusedConv kernels do not implement them. Only the WebGPU EP has a fused-Conv kernel that
-    // understands these, and only through the NHWC Conv: a kOnnxDomain Conv fuses into
-    // kMSDomain::FusedConv, for which WebGPU registers no kernel.
+    // These are WebGPU-only and NHWC-only: the CPU and JS FusedConv kernels do not implement them,
+    // and a kOnnxDomain Conv would fuse into kMSDomain::FusedConv, for which WebGPU registers no
+    // kernel. QuickGelu at alpha == 1 is SiLU/Swish, which follows nearly every Conv in the YOLO
+    // family; HardSwish, Elu, Gelu and Softplus cover MobileNetV3/EfficientNet-lite and similar.
     //
-    // Gelu reaches this point under three spellings, all of which occur in practice: the
-    // ONNX-domain op (opset 20+), the kMSDomain op that GeluFusion produces from the erf pattern
-    // when a model is exported at a lower opset, and kMSDomain FastGelu for the tanh
-    // approximation. Every op listed here must have a WebGPU kernel of its own, otherwise it is
-    // assigned to a different EP and the provider-match check above already rejected it.
+    // Gelu arrives under three spellings, all seen in practice: the ONNX-domain op (opset 20+), the
+    // kMSDomain op GeluFusion produces from the erf pattern at lower opsets, and kMSDomain FastGelu
+    // for the tanh approximation.
     auto is_supported_webgpu_ep_activation = [&node](const Node& activation_node) {
       if (node.Domain() != kMSInternalNHWCDomain) {
         return false;

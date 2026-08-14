@@ -349,6 +349,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                      onnxruntime::kAclExecutionProvider,
                                                                      onnxruntime::kCudaExecutionProvider,
                                                                      onnxruntime::kDmlExecutionProvider};
+      // WebGPU registers a com.microsoft.FastGelu kernel, so it can execute the fused node.
+      const InlinedHashSet<std::string_view> cpu_cuda_dml_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                        onnxruntime::kCudaExecutionProvider,
+                                                                        onnxruntime::kDmlExecutionProvider,
+                                                                        onnxruntime::kWebGpuExecutionProvider};
       // Same as above plus WebGPU. WebGPU registers a com.microsoft.Gelu kernel, so it can consume the fused
       // node; the JS EP does not, which is why cpu_acl_cuda_dml_js_webgpu_eps is not reused here.
       const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
@@ -426,7 +431,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
-      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_eps));
+      // WebGPU is included so the tanh-approximate GELU decomposition emitted by pre-opset-20 exporters
+      // collapses into com.microsoft.FastGelu, which ConvActivationFusion can then fold into an NHWC Conv.
+      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_webgpu_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
