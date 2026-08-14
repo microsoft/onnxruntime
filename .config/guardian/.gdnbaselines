@@ -121,6 +121,24 @@
       "createdDate": "2026-08-14 09:21:42Z",
       "expirationDate": "2027-01-31 10:01:32Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2026-08-14 10:01:32Z"
+    },
+    "a56e628ac02a0fcd5be64577a831b69fdc6fe40f52cbd0ad88977a5d1cca93fa": {
+      "signature": "a56e628ac02a0fcd5be64577a831b69fdc6fe40f52cbd0ad88977a5d1cca93fa",
+      "alternativeSignatures": [
+        "8901ff416eec36e34ecb56d9aea2e777d50e9bddc6a27d8df4eb13cd86c039a1",
+        "0dbe5e092a73fc82d49af689e6df50c6904f472512babeb0d3ecf6ca8e5128c9",
+        "1936115a62c6271897436628f244428048da02af5afd3cfd1f091791c9dac1d4"
+      ],
+      "target": "bin/onnxruntime_providers_webgpu.dll",
+      "uriBaseId": "file:///D:/a/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-08-14 10:05:26Z",
+      "expirationDate": "2027-01-31 10:58:43Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-14 10:58:43Z"
     }
   }
 }
