@@ -88,11 +88,11 @@ pipelines:
         credscan:
           lastModifiedDate: 2025-02-12
         eslint:
-          lastModifiedDate: 2025-02-12
+          lastModifiedDate: 2026-08-14
         psscriptanalyzer:
-          lastModifiedDate: 2025-02-12
+          lastModifiedDate: 2026-08-14
         armory:
-          lastModifiedDate: 2025-02-12
+          lastModifiedDate: 2026-08-14
   1313:
     retail:
       source:
