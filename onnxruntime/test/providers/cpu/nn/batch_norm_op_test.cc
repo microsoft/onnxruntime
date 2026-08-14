@@ -1002,14 +1002,18 @@ TEST(BatchNormTest, ForwardTrainingSharedInitializerDoesNotClobberScaleAndBias) 
   OrtValue input;
   CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                        std::vector<int64_t>{2, 1, 2}, std::vector<float>{-1.0f, 0.0f, 1.0f, 2.0f}, &input);
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"X", input}},
-                               std::vector<std::string>{"Y"}, &fetches));
 
   // scale is 1 and B is 0, so Y is just X normalized by the batch statistics
   const std::vector<float> expected{-1.341635f, -0.447212f, 0.447212f, 1.341635f};
-  EXPECT_THAT(fetches[0].Get<Tensor>().DataAsSpan<float>(),
-              ::testing::Pointwise(::testing::FloatNear(1e-4f), expected));
+  // run twice: the second run catches the running stats being written into scale/B
+  for (int run = 0; run < 2; ++run) {
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"X", input}},
+                                 std::vector<std::string>{"Y"}, &fetches));
+    EXPECT_THAT(fetches[0].Get<Tensor>().DataAsSpan<float>(),
+                ::testing::Pointwise(::testing::FloatNear(1e-4f), expected))
+        << "run " << run;
+  }
 }
 #endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 
