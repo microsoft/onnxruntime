@@ -80,8 +80,32 @@ TEST(WebGpuContextTest, ReusedDeviceAllocatorBufferIsZeroInitialized) {
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
 
+  wgpu::BufferDescriptor readback_desc{};
+  readback_desc.size = sizeof(nonzero_data);
+  readback_desc.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+  auto readback_buffer = context.Device().CreateBuffer(&readback_desc);
+
+  auto external_encoder = context.Device().CreateCommandEncoder();
+  external_encoder.CopyBufferToBuffer(reused_buffer, 0, readback_buffer, 0, sizeof(nonzero_data));
+  auto external_commands = external_encoder.Finish();
+  context.Device().GetQueue().Submit(1, &external_commands);
+
+  wgpu::MapAsyncStatus map_status{};
+  ASSERT_STATUS_OK(context.Wait(readback_buffer.MapAsync(
+      wgpu::MapMode::Read, 0, sizeof(nonzero_data), wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::MapAsyncStatus status, wgpu::StringView /*message*/, wgpu::MapAsyncStatus* result) noexcept {
+        *result = status;
+      },
+      &map_status)));
+  ASSERT_EQ(map_status, wgpu::MapAsyncStatus::Success);
+
   std::array<uint32_t, 16> downloaded_data;
-  buffer_manager.Download(reused_buffer, downloaded_data.data(), sizeof(downloaded_data));
+  const auto* mapped_data = static_cast<const uint32_t*>(readback_buffer.GetConstMappedRange());
+  ASSERT_NE(mapped_data, nullptr);
+  std::copy_n(mapped_data, downloaded_data.size(), downloaded_data.begin());
+  readback_buffer.Unmap();
+
+  ASSERT_STATUS_OK(context.Flush(buffer_manager));
   const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(downloaded_data, expected_data);
 

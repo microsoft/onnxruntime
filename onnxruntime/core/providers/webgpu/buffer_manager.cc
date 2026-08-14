@@ -556,11 +556,9 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool init
     if (initialize_to_zero) {
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-      if (context_.num_pending_dispatches_ >= context_.max_num_pending_dispatches_) {
-        ORT_THROW_IF_ERROR(context_.Flush(*this));
-      }
       context_.EndComputePass();
       context_.GetCommandEncoder().ClearBuffer(buffer, 0, buffer_size);
+      ORT_THROW_IF_ERROR(context_.Flush(*this));
       return buffer_guard.MoveToCHandle();
     }
     return buffer;
