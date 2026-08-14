@@ -175,6 +175,16 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
     sstream << "MATH";
   }
 
+  if (num_splits.has_value()) {
+    sstream << " NumSplits=" << num_splits.value();
+  }
+  if (gqa_group_size.has_value()) {
+    sstream << " GqaGroupSize=" << gqa_group_size.value();
+  }
+  if (effective_kv_length_bound.has_value()) {
+    sstream << " EffectiveKvLengthBound=" << effective_kv_length_bound.value();
+  }
+
   // Output text in Cyan color to make it easier to spot.
   std::cout << "\x1B[36m" << sstream.str() << "\x1B[0m" << std::endl;
 }
