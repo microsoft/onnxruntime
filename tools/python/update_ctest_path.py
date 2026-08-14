@@ -48,7 +48,7 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
             if old_src_dir and old_build_dir:
                 break
 
-    if not old_src_dir or not old_build_dir:
+    if not old_src_dir and not old_build_dir:
         print(f"Error: Could not find old source/build directory paths in {file_path}", file=sys.stderr)
         sys.exit(1)
 
@@ -76,11 +76,10 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     try:
         with file_path.open("r", encoding="utf-8") as infile, temp_file_path.open("w", encoding="utf-8") as outfile:
             for input_line in infile:
-                # It's safer to replace the longer, more specific build path first.
-                line = build_fwd_re.sub(new_build_posix, input_line)
-                line = build_bwd_re.sub(new_build_posix, line)
-                line = src_fwd_re.sub(new_src_posix, line)
+                line = src_fwd_re.sub(new_src_posix, input_line)
                 line = src_bwd_re.sub(new_src_posix, line)
+                line = build_fwd_re.sub(new_build_posix, line)
+                line = build_bwd_re.sub(new_build_posix, line)
                 outfile.write(line)
     except OSError as e:
         print(f"Error during file processing: {e}", file=sys.stderr)
