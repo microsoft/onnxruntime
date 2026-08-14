@@ -136,10 +136,23 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
     ORT_THROW("Unsupported reduction type for ScatterElements.");
   }
 
-  // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
-  int dtype = GetElementType(input_tensor->DataType()->Size());
-  if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-    ORT_THROW("Unsupported element size by the ScatterElements CUDA kernel");
+  int dtype = input_tensor->GetElementType();
+  if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
+    // Use element size for byte-wise assignment so we can specialize fewer template functions to reduce binary size.
+    dtype = GetElementType(input_tensor->DataType()->Size());
+    if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      ORT_THROW("Unsupported element size by the ScatterElements CUDA kernel");
+    }
+  } else {
+    const auto data_type = input_tensor->DataType();
+    if (data_type != DataTypeImpl::GetType<int8_t>() &&
+        data_type != DataTypeImpl::GetType<MLFloat16>() &&
+        data_type != DataTypeImpl::GetType<float>() &&
+        data_type != DataTypeImpl::GetType<double>()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ScatterElements CUDA reductions do not support data type ",
+                             DataTypeImpl::ToString(data_type));
+    }
   }
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);

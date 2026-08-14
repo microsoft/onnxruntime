@@ -333,6 +333,34 @@ TEST(ScatterElements, AddReduction_MLFloat16) {
 }
 #endif
 
+#if defined(USE_CUDA)
+template <typename T>
+void TestUnsupportedCudaReductionType() {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+  test.AddInput<T>("data", {2}, {static_cast<T>(1.0f), static_cast<T>(2.0f)});
+  test.AddInput<int64_t>("indices", {1}, {0});
+  test.AddInput<T>("updates", {1}, {static_cast<T>(3.0f)});
+  test.AddOutput<T>("y", {2}, {static_cast<T>(4.0f), static_cast<T>(2.0f)});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "ScatterElements CUDA reductions do not support data type")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(ScatterElements, UnsupportedCudaReductionTypes) {
+  TestUnsupportedCudaReductionType<BFloat16>();
+  TestUnsupportedCudaReductionType<int16_t>();
+  TestUnsupportedCudaReductionType<uint16_t>();
+  TestUnsupportedCudaReductionType<int32_t>();
+  TestUnsupportedCudaReductionType<uint32_t>();
+  TestUnsupportedCudaReductionType<int64_t>();
+  TestUnsupportedCudaReductionType<uint64_t>();
+  TestUnsupportedCudaReductionType<uint8_t>();
+}
+#endif
+
 TEST(ScatterElements, AddReductionAxis1) {
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 1);
