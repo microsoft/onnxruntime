@@ -49,7 +49,7 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids",
                 "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "decoder_input_ids",
-                "encoder subgraph input 2 shall be named as decoder_input_ids, got: ", subgraph_inputs[2]->Name());
+                "encoder subgraph input 1 shall be named as decoder_input_ids, got: ", subgraph_inputs[1]->Name());
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
                 "encoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
@@ -62,6 +62,7 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+  ORT_RETURN_IF(logits_shape == nullptr, "encoder subgraph logits output shape cannot be nullptr");
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
