@@ -36,6 +36,7 @@ Abstract:
     KAI_ASM_GLOBAL(MlasGemmS8S8KernelSmmlaSveImpl)
     KAI_ASM_FUNCTION_TYPE(MlasGemmS8S8KernelSmmlaSveImpl)
 KAI_ASM_FUNCTION_LABEL(MlasGemmS8S8KernelSmmlaSveImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x910003eb)  // mov	x11, sp
     KAI_ASM_INST(0x0423e3ec)  // cntb	x12, all, mul #4
     KAI_ASM_INST(0x9108418c)  // add	x12, x12, #0x210
@@ -2599,6 +2600,7 @@ KAI_ASM_FUNCTION_LABEL(MlasGemmS8S8KernelSmmlaSveImpl)
     KAI_ASM_GLOBAL(MlasGemmU8X8KernelUmmlaSveImpl)
     KAI_ASM_FUNCTION_TYPE(MlasGemmU8X8KernelUmmlaSveImpl)
 KAI_ASM_FUNCTION_LABEL(MlasGemmU8X8KernelUmmlaSveImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x910003eb)  // mov	x11, sp
     KAI_ASM_INST(0x0423e3ec)  // cntb	x12, all, mul #4
     KAI_ASM_INST(0x9108418c)  // add	x12, x12, #0x210
