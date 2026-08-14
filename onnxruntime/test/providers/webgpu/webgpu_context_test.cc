@@ -12,6 +12,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
+#include "core/framework/run_options.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -192,14 +193,15 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   ASSERT_STATUS_OK(context.Flush(buffer_manager));
   allocator.Free(allocation);
 
-  ASSERT_STATUS_OK(webgpu_ep->OnRunStart({}));
+  RunOptions run_options;
+  ASSERT_STATUS_OK(webgpu_ep->OnRunStart(run_options));
   allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
   EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), nonzero_data);
 
-  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, {}));
+  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
   const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), expected_data);
 
@@ -211,11 +213,12 @@ TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
   auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
+  RunOptions run_options;
 
   EXPECT_FALSE(webgpu_ep->IsRunActive());
-  ASSERT_STATUS_OK(webgpu_ep->OnRunStart({}));
+  ASSERT_STATUS_OK(webgpu_ep->OnRunStart(run_options));
   EXPECT_TRUE(webgpu_ep->IsRunActive());
-  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, {}));
+  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
   EXPECT_FALSE(webgpu_ep->IsRunActive());
 }
 
