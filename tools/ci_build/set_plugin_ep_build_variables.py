@@ -12,8 +12,14 @@ import subprocess
 import sys
 
 
+class AzurePipelinesArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        print(f"##vso[task.logissue type=error]{message}")
+        self.exit(2)
+
+
 def parse_arguments():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = AzurePipelinesArgumentParser(description=__doc__)
     parser.add_argument(
         "--package-version",
         choices=("release", "rc", "dev"),
@@ -31,7 +37,11 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
-    src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
+    src_root = os.environ.get("BUILD_SOURCESDIRECTORY")
+    if not src_root:
+        print("##vso[task.logissue type=error]BUILD_SOURCESDIRECTORY is not set.")
+        sys.exit(1)
+
     version_file = os.path.join(src_root, args.version_file)
     if not os.path.isfile(version_file):
         print(f"##vso[task.logissue type=error]Cannot find version number file at: {version_file}")
