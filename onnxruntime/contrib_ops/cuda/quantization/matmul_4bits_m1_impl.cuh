@@ -3,7 +3,13 @@
 
 #pragma once
 
+#include <cstdio>
 #include <cstdlib>
+
+#include <algorithm>
+#include <map>
+#include <random>
+#include <vector>
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
@@ -35,6 +41,170 @@ inline int MatMulNBitsM1PerfValidationForceColsPerBlock() {
   }();
   return forced;
 }
+
+// ---------------------------------------------------------------------------------------
+// VALIDATION-ONLY (never merged into #31988 or main): in-process, kernel-level A/B
+// benchmark instrumentation.
+//
+// The session-level benchmark (onnxruntime_perf_test.exe wall-clock latency, see PR #31988's
+// Performance section / validation PR #32073/#32073-successor) could not separate the M=1
+// kernel's own execution time from ORT Session/graph/IOBinding overhead, and the resulting
+// A/B signal was indistinguishable from A/A run-to-run noise (geomean 1.006 in both groups).
+//
+// This block goes one level deeper: it times *only* the kernel launch (cudaEvent_t pair
+// recorded immediately around the dispatch macro below, elapsed time read back with
+// cudaEventElapsedTime) and alternates which cols_per_block value is used on every call via a
+// fixed-seed PRNG, so a single onnxruntime_perf_test.exe process -- driven by repeated
+// Session::Run() calls against a fixed-shape MatMulNBits model -- interleaves the two arms
+// without a second process or a second build. Reporting happens by printing a summary line
+// directly to stderr from *inside* this same translation unit/module once enough samples are
+// collected; no cross-module (EXE-vs-provider-DLL) call is required in either direction,
+// which matters because onnxruntime_providers_cuda is loaded as a runtime plugin and is not a
+// build-time link dependency of any CI-executed test executable.
+//
+// Entirely gated behind ORT_MATMULNBITS_M1_KERNEL_AB_BENCH=1 (unset by default): with the
+// switch off, every function below is a cheap no-op/short-circuit and #31988's reviewed head
+// behavior (including performance) is unchanged.
+struct MatMulNBitsM1KernelAbBenchSample {
+  int cols_used;
+  float elapsed_ms;
+};
+
+inline int MatMulNBitsM1KernelAbBenchEnvInt(const char* name, int default_value) {
+  const char* env = std::getenv(name);
+  if (env == nullptr || env[0] == '\0') {
+    return default_value;
+  }
+  return std::atoi(env);
+}
+
+inline bool MatMulNBitsM1KernelAbBenchEnabled() {
+  const char* env = std::getenv("ORT_MATMULNBITS_M1_KERNEL_AB_BENCH");
+  return env != nullptr && env[0] == '1';
+}
+
+// Picks this call's cols_per_block (arm A or arm B, chosen by a fixed-seed coin flip so the
+// interleave order is reproducible across runs) and returns true (the call should be timed).
+// Kept simple/always-true rather than tracking a shared "done" flag with the per-dtype
+// MatMulNBitsM1KernelAbBenchRecordSample<T> below (which independently stops accumulating and
+// prints once, per dtype, after enough samples) -- calls after that point still get a valid
+// (if unused) arm assignment, so this never produces an invalid geometry.
+inline bool MatMulNBitsM1KernelAbBenchPrepareCall(int n, int natural_cols_per_block,
+                                                   int* cols_per_block_in_out) {
+  static bool header_printed = false;
+
+  const int arm_a_env = MatMulNBitsM1KernelAbBenchEnvInt("ORT_MATMULNBITS_M1_KERNEL_AB_ARM_A", 0);
+  const int arm_b_env = MatMulNBitsM1KernelAbBenchEnvInt("ORT_MATMULNBITS_M1_KERNEL_AB_ARM_B", 0);
+  const int arm_a = (arm_a_env != 0 && n % arm_a_env == 0) ? arm_a_env : natural_cols_per_block;
+  const int arm_b = (arm_b_env != 0 && n % arm_b_env == 0) ? arm_b_env : natural_cols_per_block;
+
+  if (!header_printed) {
+    header_printed = true;
+    fprintf(stderr,
+            "MATMULNBITS_M1_KERNEL_AB_HEADER n=%d arm_a_requested=%d arm_a_effective=%d "
+            "arm_b_requested=%d arm_b_effective=%d target_samples=%d\n",
+            n, arm_a_env, arm_a, arm_b_env, arm_b,
+            MatMulNBitsM1KernelAbBenchEnvInt("ORT_MATMULNBITS_M1_KERNEL_AB_TARGET_SAMPLES", 2000));
+  }
+
+  // Fixed seed: reproducible interleave order across repeated invocations/CI runs.
+  static std::mt19937 rng(0xC0FFEEu);
+  const bool pick_b = (rng() & 1u) != 0;
+  *cols_per_block_in_out = pick_b ? arm_b : arm_a;
+  return true;
+}
+
+// Non-template: same definition folded (COMDAT) across the float/half/bfloat16 translation
+// units, so the lazily-created events (and MatMulNBitsM1KernelAbBenchPrepareCall's RNG/done
+// state above) are genuinely shared process-wide rather than duplicated per dtype.
+inline void MatMulNBitsM1KernelAbBenchGetEvents(cudaEvent_t* start, cudaEvent_t* stop) {
+  static cudaEvent_t s_start = [] {
+    cudaEvent_t e{};
+    cudaEventCreate(&e);
+    return e;
+  }();
+  static cudaEvent_t s_stop = [] {
+    cudaEvent_t e{};
+    cudaEventCreate(&e);
+    return e;
+  }();
+  *start = s_start;
+  *stop = s_stop;
+}
+
+inline float MatMulNBitsM1KernelAbBenchPercentile(std::vector<float> v, double p) {
+  if (v.empty()) {
+    return 0.0f;
+  }
+  std::sort(v.begin(), v.end());
+  const size_t idx = static_cast<size_t>(p * static_cast<double>(v.size() - 1));
+  return v[idx];
+}
+
+// Per-dtype (T-templated, deliberately -- each dtype gets its own independent sample buffer)
+// accumulator/printer. Called once per timed kernel launch; synchronizes on `stop` (required
+// for cudaEventElapsedTime to be valid) and, once ORT_MATMULNBITS_M1_KERNEL_AB_TARGET_SAMPLES
+// timed calls have been collected for this dtype, prints one summary line per distinct
+// cols_per_block bucket observed (almost always exactly the two arms) to stderr and stops
+// collecting further samples.
+template <class T>
+inline void MatMulNBitsM1KernelAbBenchRecordSample(int n, int k, int block_size, int cols_used,
+                                                    cudaEvent_t start, cudaEvent_t stop, int sm_count) {
+  static std::vector<MatMulNBitsM1KernelAbBenchSample> samples;
+  static bool printed = false;
+  static int clock_khz_start = -1;
+  if (printed) {
+    return;
+  }
+
+  cudaEventSynchronize(stop);
+  float elapsed_ms = 0.0f;
+  cudaEventElapsedTime(&elapsed_ms, start, stop);
+
+  if (clock_khz_start < 0) {
+    cudaDeviceGetAttribute(&clock_khz_start, cudaDevAttrClockRate, 0);
+  }
+
+  samples.push_back({cols_used, elapsed_ms});
+
+  const int target = MatMulNBitsM1KernelAbBenchEnvInt("ORT_MATMULNBITS_M1_KERNEL_AB_TARGET_SAMPLES", 2000);
+  if (static_cast<int>(samples.size()) < target) {
+    return;
+  }
+  printed = true;
+
+  int clock_khz_end = -1;
+  cudaDeviceGetAttribute(&clock_khz_end, cudaDevAttrClockRate, 0);
+  cudaDeviceProp prop{};
+  cudaGetDeviceProperties(&prop, 0);
+
+  // Discard the first samples (regardless of arm) as warmup.
+  constexpr size_t kWarmup = 50;
+  std::map<int, std::vector<float>> buckets_us;
+  for (size_t i = kWarmup; i < samples.size(); ++i) {
+    buckets_us[samples[i].cols_used].push_back(samples[i].elapsed_ms * 1000.0f);
+  }
+
+  for (auto& kv : buckets_us) {
+    const int bucket_cols = kv.first;
+    std::vector<float>& us = kv.second;
+    float mean = 0.0f;
+    for (float v : us) mean += v;
+    mean /= static_cast<float>(us.size());
+    const float p50 = MatMulNBitsM1KernelAbBenchPercentile(us, 0.50);
+    const float p90 = MatMulNBitsM1KernelAbBenchPercentile(us, 0.90);
+    const float p95 = MatMulNBitsM1KernelAbBenchPercentile(us, 0.95);
+    const float vmin = *std::min_element(us.begin(), us.end());
+    const float vmax = *std::max_element(us.begin(), us.end());
+    fprintf(stderr,
+            "MATMULNBITS_M1_KERNEL_AB_RESULT n=%d k=%d block_size=%d sm_count=%d gpu=\"%s\" "
+            "cc=%d.%d clock_khz_start=%d clock_khz_end=%d bucket_cols=%d count=%zu "
+            "mean_us=%.3f p50_us=%.3f p90_us=%.3f p95_us=%.3f min_us=%.3f max_us=%.3f\n",
+            n, k, block_size, sm_count, prop.name, prop.major, prop.minor, clock_khz_start,
+            clock_khz_end, bucket_cols, us.size(), mean, p50, p90, p95, vmin, vmax);
+  }
+}
+// ---------------------------------------------------------------------------------------
 
 template <class T, int block_size, bool has_zero_point, int cols_per_block = kColsPerThreadBlock>
 __global__ void __launch_bounds__(kWarpSize* cols_per_block) MatMulFloat4BitsKernelM1(
@@ -226,6 +396,13 @@ bool TryMatMul4BitsM1(
     cols_per_block = forced_cols_per_block;
   }
 
+  // VALIDATION-ONLY: see MatMulNBitsM1KernelAbBenchPrepareCall() above. No-op outside the
+  // throwaway kernel-level A/B benchmark; overrides cols_per_block for *this call only* with
+  // a pseudo-randomly chosen arm so a single process can interleave A/B at the kernel level.
+  const bool mm_ab_bench_timed_this_call =
+      MatMulNBitsM1KernelAbBenchEnabled() &&
+      MatMulNBitsM1KernelAbBenchPrepareCall(n, cols_per_block, &cols_per_block);
+
   const size_t launch_shared_mem =
       sizeof(T) * blocks_per_K * cols_per_block +
       static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * cols_per_block * 2 : 0);
@@ -274,6 +451,12 @@ bool TryMatMul4BitsM1(
     ORT_THROW("cols_per_block ", cols_per_block, " is not supported (8/4/2)"); \
   }
 
+  cudaEvent_t mm_ab_bench_start = nullptr, mm_ab_bench_stop = nullptr;
+  if (mm_ab_bench_timed_this_call) {
+    MatMulNBitsM1KernelAbBenchGetEvents(&mm_ab_bench_start, &mm_ab_bench_stop);
+    cudaEventRecord(mm_ab_bench_start, stream);
+  }
+
   if (block_size == 16) {
     MATMUL_FLOAT4B_M1_DISPATCH(16)
   } else if (block_size == 32) {
@@ -287,6 +470,13 @@ bool TryMatMul4BitsM1(
   }
 #undef MATMUL_FLOAT4B_M1_DISPATCH
 #undef MATMUL_FLOAT4B_M1_DISPATCH_COLS
+
+  if (mm_ab_bench_timed_this_call) {
+    cudaEventRecord(mm_ab_bench_stop, stream);
+    MatMulNBitsM1KernelAbBenchRecordSample<T>(n, k, block_size, cols_per_block, mm_ab_bench_start,
+                                               mm_ab_bench_stop, sm_count);
+  }
+
   return true;
 }
 

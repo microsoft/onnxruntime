@@ -14,6 +14,17 @@ name: VALIDATION-ONLY MatMulNBits M1 A10 Perf (throwaway, for onnxruntime#31988)
 # ChooseColsPerBlockFromOccupancy_* unit tests; CI logs showed that module is never
 # loaded/executed by ctest in this non-plugin pipeline, so that approach produced no data
 # and was replaced by this one.)
+#
+# That session-level (onnxruntime_perf_test "Latency") signal turned out to be
+# noise-dominated: head vs base A/B geomean (1.006) was statistically indistinguishable from
+# the wide-n structural A/A controls' own run-to-run spread. A further step,
+# run_kernel_ab_bench.py, goes one level deeper: a new validation-only hook in
+# matmul_4bits_m1_impl.cuh (ORT_MATMULNBITS_M1_KERNEL_AB_BENCH=1) times *only* the kernel
+# launch with CUDA events and interleaves cols_per_block arms within a single process,
+# self-reporting per-shape/per-arm percentiles to stderr. See that script's module docstring
+# for full methodology (numerics sanity check, A/A + wide-n structural controls, clock-rate
+# drift snapshot).
+#
 # This file lives only on a throwaway validation branch/PR that will be closed, not merged,
 # once the evidence has been folded into #31988's PR body.
 
@@ -302,6 +313,32 @@ jobs:
             exit $lastExitCode
           }
         shell: pwsh
+
+      # VALIDATION-ONLY: one level deeper than the sweep above. The session-level
+      # ("Latency") signal above was noise-dominated (A/A ~= A/B). This step times *only*
+      # the kernel launch with CUDA events (new validation-only hook in
+      # matmul_4bits_m1_impl.cuh, ORT_MATMULNBITS_M1_KERNEL_AB_BENCH=1), interleaving arms
+      # within a single onnxruntime_perf_test.exe process, and self-reports to stderr. See
+      # tools/matmulnbits_m1_perf_validation/run_kernel_ab_bench.py for full methodology
+      # (numerics sanity check, A/A + wide-n structural controls, per-bucket percentiles,
+      # clock-rate drift snapshot).
+      - name: Run MatMulNBits M1 A10 kernel-level (CUDA event) A/B benchmark
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        run: |
+          python.exe "${{ github.workspace }}\tools\matmulnbits_m1_perf_validation\run_kernel_ab_bench.py" --models-dir "${{ runner.temp }}\matmulnbits_m1_perf_models" --build-dir "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo" --target-samples 4000 --repeats 4200 --out-csv "${{ runner.temp }}\matmulnbits_m1_perf_models\kernel_ab_results.csv"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
+      - name: Upload MatMulNBits M1 perf-validation results
+        uses: actions/upload-artifact@v6
+        with:
+          name: matmulnbits-m1-perf-results
+          path: |
+            ${{ runner.temp }}\matmulnbits_m1_perf_models\results.csv
+            ${{ runner.temp }}\matmulnbits_m1_perf_models\kernel_ab_results.csv
+            ${{ runner.temp }}\matmulnbits_m1_perf_models\_kernelbench_*\*.log
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
