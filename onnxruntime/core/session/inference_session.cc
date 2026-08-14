@@ -1986,6 +1986,11 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const bool is_supported = IsOrtModelVersionSupported(model_version);
 
   OrtFormatLoadOptions load_options{};
+  const auto& config_options = session_options_.config_options;
+  if (is_supported &&
+      config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "0") == "1") {
+    load_options.ignore_saved_runtime_optimizations = false;
+  }
 
 #if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
@@ -2034,7 +2039,6 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // provided an existing buffer of bytes when creating the InferenceSession, or because we memory-mapped the file,
   // ort_format_model_bytes_data_holder_ will be empty.
   // if that is the case we also allow creating initializers that directly use those bytes.
-  const auto& config_options = session_options_.config_options;
   using_ort_model_bytes_for_initializers_ =
       load_options.can_use_flatbuffer_for_initializers =
           ort_format_model_bytes_data_holder_.empty() &&

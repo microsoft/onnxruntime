@@ -535,7 +535,8 @@ void TestOrtModelUpdate(const PathString& onnx_file,
                         const PathString& ort_file_v4,
                         const PathString& generated_ort_file_v5,
                         const std::function<void(NameMLValMap& inputs, std::vector<std::string>& output_names)>&
-                            set_up_test_inputs_and_outputs_fn) {
+              set_up_test_inputs_and_outputs_fn,
+            bool enable_saved_runtime_optimizations = false) {
   // ort_file_v4 is ORT format model using v4 where we used kernel hashes instead of constraints
 
   // update v4 model and save as v5. do not run optimizations in order to preserve the model as-is.
@@ -559,6 +560,9 @@ void TestOrtModelUpdate(const PathString& onnx_file,
   RunOrtModel(test_info);
 
   // run with v4 as input. this should also update to v5 prior to execution.
+  if (enable_saved_runtime_optimizations) {
+    test_info.configs.emplace_back(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1");
+  }
   test_info.model_filename = ort_file_v4;
   test_info.output_verifier = [&v4_out](const std::vector<OrtValue>& fetches) {
     v4_out = fetches;
@@ -611,6 +615,19 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
   const auto ort_file_v5 =
       ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.v5.test_output.ort");
 
+  {
+    SessionOptions so{};
+    ASSERT_STATUS_OK(
+        so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1"));
+    so.graph_optimization_level = TransformerLevel::Level2;
+
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ort_file_v4));
+    const auto loaded_ops = CountOpsInGraph(session.GetGraph());
+    ASSERT_STATUS_OK(session.Initialize());
+    EXPECT_EQ(CountOpsInGraph(session.GetGraph()), loaded_ops);
+  }
+
   RandomValueGenerator random{};  // keep in scope so we get random seed trace message on failure
 
   TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5,
@@ -626,7 +643,8 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
                          inputs.emplace(MakeString("X_", i), std::move(ml_value));
                          output_names.push_back(MakeString("Y_", i));
                        }
-                     });
+                     },
+                     true);
 }
 
 #if !defined(DISABLE_ML_OPS)
