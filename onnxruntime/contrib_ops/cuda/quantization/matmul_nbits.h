@@ -14,6 +14,7 @@
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
+#include "core/framework/level1_memory_estimate.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -50,6 +51,39 @@ constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
 
+// Computes the prepack portion of the Level-1 estimate from model metadata only.
+// Persistent bytes describe the packed weight/scale/zero-point destinations.
+// Temporary bytes describe the runtime weight-layout conversion scratch.
+inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
+    int64_t n, int64_t k, int64_t nbits, int64_t block_size,
+    int64_t weight_prepacked, bool has_zero_points) {
+  if (n <= 0 || k <= 0 || (nbits != 4 && nbits != 8) || block_size <= 0) {
+    return std::nullopt;
+  }
+
+  try {
+    const SafeInt<size_t> safe_n = n;
+    const SafeInt<size_t> safe_k = k;
+    const SafeInt<size_t> packed_weight_bytes = safe_n * safe_k / (8 / nbits);
+    const SafeInt<size_t> k_blocks = (safe_k + (block_size - 1)) / block_size;
+    const SafeInt<size_t> scale_bytes = safe_n * k_blocks * sizeof(uint16_t);
+
+    Level1MemoryEstimate estimate;
+    estimate.persistent_prepack_bytes =
+        static_cast<size_t>(packed_weight_bytes + scale_bytes +
+                            (has_zero_points ? scale_bytes : SafeInt<size_t>(0)));
+    if (weight_prepacked == kMatMulNBitsWeightNotPrepacked) {
+      constexpr size_t kPermutationMapBytes = 32 * sizeof(int32_t);
+      estimate.temporary_prepack_bytes =
+          static_cast<size_t>(packed_weight_bytes + kPermutationMapBytes);
+    }
+
+    return estimate;
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
+
 // Session-option config keys. These are readable by BOTH the built-in CUDA EP and the CUDA plugin
 // EP: every kernel is created via KernelRegistryManager::CreateKernel, which injects the
 // session-level ConfigOptions, and the plugin CUDA EP wraps a CUDAExecutionProvider that reuses this
@@ -82,16 +116,20 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
   return true;
 }
 
-// Architecture selector for fpA_intB packing and workspace sizing. Native SM90 weights need the
-// Hopper layout and workspace formula; all non-Hopper kernels share the SM80 layout and workspace
-// formula, including compact runners targeting SM75 or SM89.
+// Effective SM architecture that the fpA_intB CUTLASS runner uses for workspace sizing AFTER
+// InitGemmProfiler's setArch() call (matmul_nbits.cc). This is the SINGLE source of the effective-arch
+// rule: MatMulNBits::FpAIntBPackingSmForKernel() delegates to this function, so Level 1 (the
+// EstimateMatMulNBitsMemory estimate) and Level 2 / the runtime are compiler-guaranteed to agree.
+// The runner targets native SM90 only when the device is SM90 AND the weights were prepacked for the
+// Hopper layout (weight_prepacked == 2); every other case runs the SM80-compat kernel, whose
+// workspace formula ignores sm.
 inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) {
   return (device_sm == 90 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) ? 90 : 80;
 }
 
 // Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. Reads
 // only node attributes + input-0 dtype + device SM (no kernel instance required). Called from BOTH
-// the MatMulNBits constructor (to compute has_fpA_intB_gemm_) and EstimateMatMulNBitsWorkspace
+// the MatMulNBits constructor (to compute has_fpA_intB_gemm_) and EstimateMatMulNBitsMemory
 // (Level 1), so the two can never disagree about whether a node takes the fpA_intB path. Returns
 // true iff the node is eligible for the fpA_intB path.
 //
@@ -103,12 +141,14 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option);
 
-// Level 1 partition-time workspace estimate for a MatMulNBits node, callable during GetCapability()
-// before any kernel instance exists. Returns nullopt when the node is not fpA_intB-eligible, when
-// the leading (M) dimension of input A is not statically known, or when the size formula overflows.
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
+// Level 1 partition-time memory estimate for a MatMulNBits node, callable during GetCapability()
+// before any kernel instance exists. Runtime workspace is nullopt when the leading (M) dimension
+// is not statically known. The complete estimate is nullopt when the node is not fpA_intB-eligible
+// or prepack memory arithmetic overflows.
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, const cudaDeviceProp& device_prop);
 // Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
-std::optional<size_t> EstimateMatMulNBitsWorkspace(
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 #endif
 
@@ -181,7 +221,7 @@ class MatMulNBits final : public CudaKernel {
       const int fpa_intb_option =
           ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption)) ? 1 : 0;
       // Route the fpA_intB path decision through the single shared eligibility function so the
-      // constructor and the Level-1 EstimateMatMulNBitsWorkspace estimate can never disagree.
+      // constructor and the Level-1 EstimateMatMulNBitsMemory estimate can never disagree.
       const bool fpa_intb_eligible = CheckFpAIntBEligibility(
           onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
           weight_prepacked_, has_zero_points_, has_g_idx_, has_bias_, sm_, fpa_intb_option);

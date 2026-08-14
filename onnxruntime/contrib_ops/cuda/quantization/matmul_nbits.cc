@@ -233,7 +233,7 @@ static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
   return ComputeMatMulNBitsLeadingDimProduct(dimensions);
 }
 
-static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
+static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m) {
   auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
     // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
@@ -291,10 +291,8 @@ static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
   // GetCapability() would be a cross-cutting change to the EP interface and is deferred.
   //
   // Consequence: a node enabled solely via ep.cuda.fpa_intb_gemm (env var unset) is judged eligible
-  // by the real kernel but NOT here, so Level 1 conservatively returns nullopt (no workspace
-  // pre-reservation) rather than over-estimating. Because Level 1 is currently log-only and does not
-  // change the partition budget, this divergence is safe. Prepacked weights are eligible regardless
-  // of the option, so they are unaffected.
+  // by the real kernel but NOT here, so Level 1 conservatively returns nullopt and the accountant
+  // uses its fallback. Prepacked weights are eligible regardless of the option, so they are unaffected.
   const int fpa_intb_option =
       ParseFpAIntBEnabled(ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "")) ? 1 : 0;
 
@@ -305,29 +303,38 @@ static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
     return std::nullopt;
   }
 
-  if (!m.has_value()) {
+  auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
+      N, K, nbits, block_size, weight_prepacked, has_zero_points);
+  if (!estimate.has_value()) {
     return std::nullopt;
   }
 
-  const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
   try {
-    return onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(*m), SafeInt<int>(N), SafeInt<int>(K), sm, device_prop.multiProcessorCount);
+    if (m.has_value()) {
+      const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
+      estimate->runtime_workspace_bytes =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              SafeInt<int>(*m), SafeInt<int>(N), SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+    }
+
+    return estimate;
   } catch (const OnnxRuntimeException&) {
-    // SafeInt<int> narrowing of m/N/K overflowed int range: treat as not estimable.
+    // Treat invalid or overflowing model-derived sizes as not estimable.
     return std::nullopt;
   }
 }
 
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop) {
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, const cudaDeviceProp& device_prop) {
   const auto& input_defs = node.InputDefs();
   const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
-  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, StaticLeadingDimProduct(input_a));
+  return EstimateMatMulNBitsMemoryImpl(node, device_prop, StaticLeadingDimProduct(input_a));
 }
 
-std::optional<size_t> EstimateMatMulNBitsWorkspace(
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
-  return EstimateMatMulNBitsWorkspaceImpl(
+  return EstimateMatMulNBitsMemoryImpl(
       node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape));
 }
 

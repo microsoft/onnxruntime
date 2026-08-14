@@ -200,20 +200,25 @@ TEST(ResourceAccountantTest, WorkspaceEstimateCommittedOnlyForAcceptedNodes) {
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000});
 }
 
-TEST(ResourceAccountantTest, Level1WorkspaceEstimateReplacesFallbackEstimate) {
+TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndAddsPrepackMemory) {
   SharedWeightGraph h;
   ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
   std::optional<ResourceAccountantMap> acc_map;
   IResourceAccountant* accountant = nullptr;
   ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
-  auto resource_count = accountant->ComputeResourceCount(
-      *h.node_a, /*workspace_estimate=*/250);
-  EXPECT_EQ(GetSizeT(resource_count), size_t{2250});
+  const Level1MemoryEstimate level1_estimate{
+      /*runtime_workspace_bytes=*/250,
+      /*persistent_prepack_bytes=*/300,
+      /*temporary_prepack_bytes=*/400};
+  auto resource_count = accountant->ComputeResourceCount(*h.node_a, level1_estimate);
+  EXPECT_EQ(GetSizeT(resource_count), size_t{2950});
   const auto pending_workspace =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index());
   EXPECT_EQ(pending_workspace.bytes, size_t{250});
   EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kEstimator);
+  EXPECT_EQ(pending_workspace.persistent_prepack_bytes, size_t{300});
+  EXPECT_EQ(pending_workspace.temporary_prepack_bytes, size_t{400});
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
@@ -222,8 +227,32 @@ TEST(ResourceAccountantTest, Level1WorkspaceEstimateReplacesFallbackEstimate) {
   sub_graph.AccountForNode(0);
 
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{250});
+  EXPECT_EQ(accountant->GetCommittedPersistentPrepackEstimate(), size_t{300});
+  EXPECT_EQ(accountant->GetCommittedTemporaryPrepackEstimate(), size_t{400});
   EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().estimator, size_t{1});
-  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2250});
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2950});
+}
+
+TEST(ResourceAccountantTest, Level1MemoryEstimateKeepsFallbackWhenRuntimeWorkspaceIsUnknown) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  const Level1MemoryEstimate level1_estimate{
+      /*runtime_workspace_bytes=*/std::nullopt,
+      /*persistent_prepack_bytes=*/300,
+      /*temporary_prepack_bytes=*/400};
+  const auto resource_count = accountant->ComputeResourceCount(*h.node_a, level1_estimate);
+  EXPECT_EQ(GetSizeT(resource_count), size_t{3700});
+
+  const auto pending_workspace =
+      accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index());
+  EXPECT_EQ(pending_workspace.bytes, size_t{1000});
+  EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kFallback);
+  EXPECT_EQ(pending_workspace.persistent_prepack_bytes, size_t{300});
+  EXPECT_EQ(pending_workspace.temporary_prepack_bytes, size_t{400});
 }
 
 TEST(ResourceAccountantTest, CommittedWorkspaceRejectsOverflow) {
@@ -500,7 +529,7 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   auto* accountant = acc_map->at(kCudaExecutionProvider).get();
 
   auto cost_a = accountant->ComputeResourceCount(
-      *h.node_a, /*workspace_estimate=*/250);
+      *h.node_a, Level1MemoryEstimate{/*runtime_workspace_bytes=*/250});
   EXPECT_EQ(GetSizeT(cost_a), size_t{1000});
   const auto pending_workspace_a =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index());
@@ -508,7 +537,7 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   EXPECT_EQ(pending_workspace_a.source, WorkspaceEstimateSource::kProfileAndEstimator);
 
   auto cost_b = accountant->ComputeResourceCount(
-      *h.node_b, /*workspace_estimate=*/800);
+      *h.node_b, Level1MemoryEstimate{/*runtime_workspace_bytes=*/800});
   EXPECT_EQ(GetSizeT(cost_b), size_t{900});
   const auto pending_workspace_b =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_b->Index());

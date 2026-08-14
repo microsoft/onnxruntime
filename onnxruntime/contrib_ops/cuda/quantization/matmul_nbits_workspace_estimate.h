@@ -3,7 +3,7 @@
 
 #pragma once
 
-// Slim forward-declaring header for the Level-1 (partition-time) MatMulNBits workspace estimate
+// Slim forward-declaring header for the Level-1 (partition-time) MatMulNBits memory estimate
 // (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). It deliberately pulls in NO CUTLASS
 // or kernel headers so that CUDAExecutionProvider::GetCapability() can call the estimate without
 // dragging the heavy fpA_intB template headers into cuda_execution_provider.cc. The full definition
@@ -19,6 +19,8 @@
 
 #include <cuda_runtime_api.h>
 #include <gsl/gsl>
+
+#include "core/framework/level1_memory_estimate.h"
 
 namespace onnxruntime {
 // NOTE: we deliberately do NOT forward-declare Node here. This header has exactly two includers,
@@ -40,9 +42,10 @@ namespace cuda {
 // This graph-type-free helper is shared by the Level-1 shape wrappers and Level-2 TensorShape path.
 std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape);
 
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, const cudaDeviceProp& device_prop);
 // Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
-std::optional<size_t> EstimateMatMulNBitsWorkspace(
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 
 }  // namespace cuda

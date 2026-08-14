@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/ep_context_utils.h"
@@ -1543,13 +1544,25 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
         const size_t total_estimate = std::get<size_t>(consumed);
         const size_t workspace_estimate = accountant->GetCommittedWorkspaceEstimate();
+        const size_t persistent_prepack_estimate =
+            accountant->GetCommittedPersistentPrepackEstimate();
+        const size_t temporary_prepack_estimate =
+            accountant->GetCommittedTemporaryPrepackEstimate();
         const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
         const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
+        const size_t categorized_estimate =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate) +
+                                persistent_prepack_estimate +
+                                temporary_prepack_estimate);
         const size_t non_workspace_estimate =
-            total_estimate >= workspace_estimate ? total_estimate - workspace_estimate : 0;
+            total_estimate >= categorized_estimate
+                ? total_estimate - categorized_estimate
+                : 0;
         LOGS(logger, INFO) << "Resource estimation for EP '" << ep_type << "': "
                            << "non-workspace memory: " << non_workspace_estimate << " bytes, "
                            << "workspace memory: " << workspace_estimate << " bytes, "
+                           << "persistent prepack memory: " << persistent_prepack_estimate << " bytes, "
+                           << "temporary prepack memory: " << temporary_prepack_estimate << " bytes, "
                            << "total estimated memory: " << total_estimate << " bytes, "
                            << "workspace sources: fallback=" << source_counts.fallback
                            << ", profile=" << source_counts.profile

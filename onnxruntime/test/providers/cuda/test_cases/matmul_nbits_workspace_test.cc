@@ -42,6 +42,7 @@ namespace onnxruntime {
 namespace test {
 
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
+using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
@@ -130,6 +131,42 @@ TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 90, 100).has_value());
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 90, 100).has_value());
 #endif
+}
+
+TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
+  // B: 256*1024*4/8 = 131072 bytes.
+  // Scale: 256*(1024/32)*sizeof(fp16) = 16384 bytes.
+  const auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+      kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_FALSE(estimate->runtime_workspace_bytes.has_value());
+  EXPECT_EQ(estimate->persistent_prepack_bytes, size_t{131072 + 16384});
+  EXPECT_EQ(estimate->temporary_prepack_bytes, size_t{131072 + 32 * sizeof(int32_t)});
+
+  const auto with_zero_points = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+      kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/true);
+  ASSERT_TRUE(with_zero_points.has_value());
+  EXPECT_EQ(with_zero_points->persistent_prepack_bytes, size_t{131072 + 2 * 16384});
+
+  const auto offline_prepacked = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+      kMatMulNBitsWeightPrepackedSm80, /*has_zero_points=*/false);
+  ASSERT_TRUE(offline_prepacked.has_value());
+  EXPECT_EQ(offline_prepacked->persistent_prepack_bytes, size_t{131072 + 16384});
+  EXPECT_EQ(offline_prepacked->temporary_prepack_bytes, size_t{0});
+}
+
+TEST(MatMulNBitsWorkspace, PrepackMemoryRejectsInvalidMetadata) {
+  EXPECT_FALSE(ComputeMatMulNBitsPrepackMemoryEstimate(
+                   /*n=*/0, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+                   kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false)
+                   .has_value());
+  EXPECT_FALSE(ComputeMatMulNBitsPrepackMemoryEstimate(
+                   /*n=*/256, /*k=*/1024, /*nbits=*/3, /*block_size=*/32,
+                   kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false)
+                   .has_value());
 }
 
 // ---------------------------------------------------------------------------

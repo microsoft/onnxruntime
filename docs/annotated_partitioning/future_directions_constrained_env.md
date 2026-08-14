@@ -550,6 +550,15 @@ Kernels without estimation continue using `ONNX_OPERATOR_TYPED_KERNEL_EX` unchan
 
 The estimation function is called during budget enforcement — by the EP directly (in-tree) or by the host bridge (plugin). The result is combined with the base cost from `IResourceAccountant`.
 
+The MatMulNBits pilot now returns a structured Level-1 estimate rather than collapsing allocations with
+different lifetimes into one workspace scalar. `runtime_workspace_bytes` is optional so dynamic shapes can
+fall back to the heuristic while still reporting shape-independent prepack memory.
+`persistent_prepack_bytes` describes kernel-owned packed destinations, and `temporary_prepack_bytes`
+describes initialization-only packing scratch. The current byte-count accountant conservatively charges
+all fields cumulatively; modeling temporary prepack memory as a session-wide peak remains future work.
+`DeclareWorkspaceRequirements()` remains a Level-2 runtime-workspace declaration and does not report
+already-allocated persistent prepack buffers.
+
 **Multiplier handling — non-member helper approach:**
 
 `ComputeResourceCount()` currently applies a 1.5x multiplier to approximate workspace for kernels without estimation functions. With precise workspace estimates available, the multiplier must be skipped. Rather than changing `ComputeResourceCount()`'s signature, we move the multiplier out and into a non-member helper that encapsulates the budget decision:

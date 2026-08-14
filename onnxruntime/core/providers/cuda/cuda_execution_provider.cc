@@ -3537,12 +3537,12 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     } else {
       auto* node = graph.GetNode(node_index);
-      std::optional<size_t> level1_workspace_estimate;
+      std::optional<Level1MemoryEstimate> level1_memory_estimate;
 
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
-      // kernel-independent workspace estimate for MatMulNBits. The resource accountant replaces
-      // its generic safety-margin workspace with this estimate before the budget decision.
+      // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
+      // allocations remain separate so their different lifetimes are visible in reporting.
       if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
@@ -3550,20 +3550,25 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
                 ? nullptr
                 : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
-        const auto ws = input_a_shape != nullptr
-                            ? contrib::cuda::EstimateMatMulNBitsWorkspace(
-                                  *node, input_a_shape->GetDims(), GetDeviceProp())
-                            : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
-        if (ws.has_value()) {
-          level1_workspace_estimate = *ws;
-          LOGS(logger, VERBOSE) << "Level-1 workspace estimate for " << node->Name()
-                                << ": " << *ws << " bytes";
+        level1_memory_estimate =
+            input_a_shape != nullptr
+                ? contrib::cuda::EstimateMatMulNBitsMemory(
+                      *node, input_a_shape->GetDims(), GetDeviceProp())
+                : contrib::cuda::EstimateMatMulNBitsMemory(*node, GetDeviceProp());
+        if (level1_memory_estimate.has_value()) {
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                                << " bytes, persistent prepack="
+                                << level1_memory_estimate->persistent_prepack_bytes
+                                << " bytes, temporary prepack="
+                                << level1_memory_estimate->temporary_prepack_bytes << " bytes";
         }
       }
 #endif
 
       const auto resource_count_variant =
-          resource_accountant->ComputeResourceCount(*node, level1_workspace_estimate);
+          resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
       const auto resource_count = std::get<size_t>(resource_count_variant);
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
