@@ -41,9 +41,11 @@ Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
 
   // validate workgroup size
-  auto workgroup_size_x = program_.WorkgroupSizeX();
-  auto workgroup_size_y = program_.WorkgroupSizeY();
-  auto workgroup_size_z = program_.WorkgroupSizeZ();
+  // normalize 0 (meaning "use default") the same way GenerateSourceCode() does, so validation
+  // below reflects the effective workgroup size that will actually be used in the shader.
+  auto workgroup_size_x = program_.WorkgroupSizeX() == 0 ? uint32_t(WORKGROUP_SIZE) : program_.WorkgroupSizeX();
+  auto workgroup_size_y = program_.WorkgroupSizeY() == 0 ? uint32_t(1) : program_.WorkgroupSizeY();
+  auto workgroup_size_z = program_.WorkgroupSizeZ() == 0 ? uint32_t(1) : program_.WorkgroupSizeZ();
 
   ORT_RETURN_IF_NOT(workgroup_size_x <= limits_.maxComputeWorkgroupSizeX &&
                         workgroup_size_y <= limits_.maxComputeWorkgroupSizeY &&
