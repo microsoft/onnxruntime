@@ -174,7 +174,7 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 13 | `k_norm_weight` | `T` (opt) | `(head_size,)` | **new — §7** |
 | 14 | `k_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8** |
 | 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8**; absent in `LATENT` |
-| 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` | **new — trusted bounds only, §4.7** |
+| 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` or `(3,)` | **new — trusted bounds only, §4.7** |
 | 17 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
 | 18 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
 
@@ -316,7 +316,8 @@ Three derivations satisfy the rule, none of which needs a synchronization:
 | Quantity | Source | Replay-safe because |
 |---|---|---|
 | decode vs. prefill dispatch | static shapes: `query.shape[0] == cumulative_sequence_length.shape[0] - 1` | shapes are fixed for a captured graph |
-| grid size, split count, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
+| grid size, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
+| split-KV eligibility | `min_max_kv_len_for_split` lower bound, when supplied | proves splitting is worthwhile on every replay |
 | per-sequence KV length, causal and window masking, gather trip counts | device `past_seqlens` / `cumulative_sequence_length` | re-read from device memory on every replay |
 
 The shape test is a **performance heuristic only**. `token_count <= batch_size` does not prove that
@@ -333,12 +334,14 @@ per-step sync.
 `attention_metadata` is consequently demoted to optional **replay-wide bounds**:
 
 ```text
-attention_metadata : (2,) int32, OrtMemTypeCPUInput
+attention_metadata : (2,) or (3,) int32, OrtMemTypeCPUInput
   [0] max_query_len_bound   # 0 = unknown. Replay-wide upper bound on tokens from any one sequence.
   [1] max_kv_len_bound      # 0 = unknown. Replay-wide upper bound on total KV length of any sequence.
+  [2] min_max_kv_len_for_split  # Optional; 0 = unknown. Replay-wide lower bound on the
+                                # largest per-sequence KV length in the batch.
 ```
 
-- Both entries are **upper bounds, never exact values**, and must hold for *every* step the node —
+- The first two entries are **upper bounds, never exact values**, and must hold for *every* step the node —
   or the captured graph containing it — will serve.
 - `0` means "no bound"; the implementation falls back to `token_count` for query length and to
   `block_table.shape[1] * block_size` for KV length.
@@ -349,6 +352,10 @@ attention_metadata : (2,) int32, OrtMemTypeCPUInput
 - A valid bound may only shrink launch dimensions and workspace sizes. It must not enter a mask
   comparison. Device loops use the current device lengths, additionally bounded by the trusted
   launch/workspace extent.
+- `min_max_kv_len_for_split` is a performance-only lower bound on
+  `max_i(past_seqlens[i] + query_len[i])`. Split-KV is enabled only when this value proves every
+  replay has a sufficiently long sequence. Shape `(2,)` remains supported and treats the lower
+  bound as unknown, disabling split-KV unless an exact device readback is already required.
 - Even for an invalid bound, every device read must remain memory-safe: device lengths and static
   tensor capacities guard all accesses. This safety property does not imply a correct result when
   the producer violates the upper-bound contract.
@@ -376,7 +383,8 @@ which must now be sized by `batch_size * max_kv_len_bound` so that the allocatio
 > | Host quantity | Consumer | Bound used |
 > |---|---|---|
 > | `max_query_len` | `params.seqlen_q` (Flash), `p.sequence_length` (MEA) — grid extent only | `max_query_len_bound`, else `token_count` |
-> | `max_kv_len` | quantized-Flash `max_seqlen_k`, decode split count | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
+> | `max_kv_len` | quantized-Flash `max_seqlen_k`, split workspace sizing | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
+| split-KV eligibility | FlashAttention decode dispatch | `min_max_kv_len_for_split`, else disabled unless exact lengths were read back |
 > | `total_kv_tokens` | gather staging buffer extent | `batch_size * max_kv_len_bound` |
 >
 > Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:

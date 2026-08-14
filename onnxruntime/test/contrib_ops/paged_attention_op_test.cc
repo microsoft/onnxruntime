@@ -279,7 +279,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_GT(max_num_blocks_per_seq, past_seqlen / block_size);
   ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
   ASSERT_EQ(num_heads % kv_num_heads, 0);
-  ASSERT_TRUE(c.attention_metadata.empty() || c.attention_metadata.size() == 2);
+  ASSERT_TRUE(c.attention_metadata.empty() ||
+              c.attention_metadata.size() == 2 ||
+              c.attention_metadata.size() == 3);
 
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
@@ -325,7 +327,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   NodeArg* attention_metadata_arg = &empty_optional_arg;
   if (!c.attention_metadata.empty()) {
     attention_metadata_arg = &graph.GetOrCreateNodeArg(
-        "attention_metadata", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
+        "attention_metadata",
+        add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                        {static_cast<int64_t>(c.attention_metadata.size())}));
   }
   std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
                                       &cumulative_sequence_length_arg, &past_seqlens_arg, &block_table_arg,
@@ -393,7 +397,8 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue attention_metadata_value;
   if (!c.attention_metadata.empty()) {
-    Tensor cpu_tensor(DataTypeImpl::GetType<int32_t>(), TensorShape({2}),
+    Tensor cpu_tensor(DataTypeImpl::GetType<int32_t>(),
+                      TensorShape({static_cast<int64_t>(c.attention_metadata.size())}),
                       const_cast<int32_t*>(c.attention_metadata.data()), cpu_alloc->Info());
     Tensor::InitOrtValue(std::move(cpu_tensor), attention_metadata_value);
   }
@@ -597,8 +602,11 @@ TEST(PagedAttention, Cuda_DebugInfoIncludesDispatchBounds) {
     GTEST_SKIP() << "CUDA EP not available.";
   }
 
+  IoBindingCase c;
+  c.attention_metadata = {1, 256};
+
   testing::internal::CaptureStdout();
-  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true);
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
 
   EXPECT_NE(debug_output.find("Operator=PagedAttention"), std::string::npos) << debug_output;
@@ -633,7 +641,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
   c.max_num_blocks_per_seq = 16;
   c.past_seqlen = 2047;
   c.split_sensitive_values = true;
-  c.attention_metadata = {1, 2048};
+  c.attention_metadata = {1, 2048, 2048};
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -645,6 +653,43 @@ TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
   const size_t split_pos = debug_output.find(split_prefix);
   ASSERT_NE(split_pos, std::string::npos) << debug_output;
   EXPECT_GT(std::stoi(debug_output.substr(split_pos + split_prefix.size())), 1) << debug_output;
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
+TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 16;
+  c.max_num_blocks_per_seq = 16;
+  c.past_seqlen = 127;
+  c.attention_metadata = {1, 2048, 128};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=2048"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("NumSplits=1"), std::string::npos) << debug_output;
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif
