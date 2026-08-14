@@ -58,8 +58,22 @@ Abstract:
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <arm_sve.h>
+
+// This header is self-contained: it is normally included after mlasi.h (which
+// defines MLAS_FORCEINLINE), but must also compile stand-alone -- the frozen
+// path builds qgemm_mmla_sve_impl.cpp with gen_sve_asm.py, outside the MLAS
+// include graph.
+#if !defined(MLAS_FORCEINLINE)
+#if defined(_MSC_VER)
+#define MLAS_FORCEINLINE __forceinline
+#else
+#define MLAS_FORCEINLINE __attribute__((always_inline)) inline
+#endif
+#endif
 
 //
 // MMLA instruction select, matching the NEON kernels this shares packing with:
@@ -194,18 +208,29 @@ MlasQGemmSveRowSumPattern(size_t r0, size_t r1, size_t Rows, const int32_t* RowS
 // The loads are predicated to the columns that actually exist, so this never
 // reads past the caller's buffers.
 //
+// `col` must be a MlasQGemmSveSafeCol() result, not the raw pass column: a tail
+// pass can span past CountN, and forming ColumnSumBuffer + col would then be
+// undefined behaviour (past one-past-the-end) even though the all-false
+// predicate makes the load touch no memory. MlasQGemmSveSafeCol returns the
+// column unchanged whenever col < CountN -- i.e. whenever ColsValid != 0, the
+// only case whose result is kept -- and otherwise substitutes the last valid
+// aligned column, so this both stays in bounds and computes the same values.
+// The substituted accumulator is never stored: both store helpers return early
+// on ColsValid == 0, and in the paired store the second accumulator only feeds
+// lanes beyond ColsPerAcc, which the store mask excludes.
+//
 static MLAS_FORCEINLINE svint32_t
-MlasQGemmSveSeed(svint32_t RowSumPattern, size_t c0, size_t ColsValid,
+MlasQGemmSveSeed(svint32_t RowSumPattern, size_t col, size_t ColsValid,
                  const int32_t* ColumnSumBuffer, const int32_t* ZeroPointB)
 {
     const svbool_t pgc = svwhilelt_b32_u64(uint64_t(0), uint64_t(ColsValid));
 
-    const svuint64_t cs = svreinterpret_u64_s32(svld1_s32(pgc, ColumnSumBuffer + c0));
+    const svuint64_t cs = svreinterpret_u64_s32(svld1_s32(pgc, ColumnSumBuffer + col));
     const svint32_t ColumnTerm = svreinterpret_s32_u64(svzip1_u64(cs, cs));
 
     svint32_t ZeroPointTerm;
     if (ZeroPointB != nullptr) {
-        const svuint64_t z = svreinterpret_u64_s32(svld1_s32(pgc, ZeroPointB + c0));
+        const svuint64_t z = svreinterpret_u64_s32(svld1_s32(pgc, ZeroPointB + col));
         ZeroPointTerm = svreinterpret_s32_u64(svzip1_u64(z, z));
     } else {
         ZeroPointTerm = svdup_n_s32(1);
@@ -329,30 +354,30 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
             const size_t l2 = MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc);
             const size_t l3 = MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc);
 
-            svint32_t a00 = MlasQGemmSveSeed(rp0, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a01 = MlasQGemmSveSeed(rp0, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a02 = MlasQGemmSveSeed(rp0, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a03 = MlasQGemmSveSeed(rp0, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a10 = MlasQGemmSveSeed(rp1, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a11 = MlasQGemmSveSeed(rp1, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a12 = MlasQGemmSveSeed(rp1, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a13 = MlasQGemmSveSeed(rp1, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a20 = MlasQGemmSveSeed(rp2, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a21 = MlasQGemmSveSeed(rp2, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a22 = MlasQGemmSveSeed(rp2, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a23 = MlasQGemmSveSeed(rp2, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a30 = MlasQGemmSveSeed(rp3, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a31 = MlasQGemmSveSeed(rp3, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a32 = MlasQGemmSveSeed(rp3, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a33 = MlasQGemmSveSeed(rp3, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a40 = MlasQGemmSveSeed(rp4, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a41 = MlasQGemmSveSeed(rp4, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a42 = MlasQGemmSveSeed(rp4, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a43 = MlasQGemmSveSeed(rp4, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a50 = MlasQGemmSveSeed(rp5, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a51 = MlasQGemmSveSeed(rp5, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a52 = MlasQGemmSveSeed(rp5, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a53 = MlasQGemmSveSeed(rp5, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a00 = MlasQGemmSveSeed(rp0, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a01 = MlasQGemmSveSeed(rp0, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a02 = MlasQGemmSveSeed(rp0, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a03 = MlasQGemmSveSeed(rp0, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a10 = MlasQGemmSveSeed(rp1, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a11 = MlasQGemmSveSeed(rp1, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a12 = MlasQGemmSveSeed(rp1, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a13 = MlasQGemmSveSeed(rp1, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a20 = MlasQGemmSveSeed(rp2, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a21 = MlasQGemmSveSeed(rp2, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a22 = MlasQGemmSveSeed(rp2, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a23 = MlasQGemmSveSeed(rp2, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a30 = MlasQGemmSveSeed(rp3, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a31 = MlasQGemmSveSeed(rp3, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a32 = MlasQGemmSveSeed(rp3, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a33 = MlasQGemmSveSeed(rp3, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a40 = MlasQGemmSveSeed(rp4, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a41 = MlasQGemmSveSeed(rp4, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a42 = MlasQGemmSveSeed(rp4, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a43 = MlasQGemmSveSeed(rp4, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a50 = MlasQGemmSveSeed(rp5, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a51 = MlasQGemmSveSeed(rp5, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a52 = MlasQGemmSveSeed(rp5, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a53 = MlasQGemmSveSeed(rp5, l3, v3, ColumnSumBuffer, ZeroPointB);
 
             // Column bases are loop-invariant; only the K-block offset moves.
             const int8_t* bp0 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l0);
@@ -465,30 +490,30 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
             const size_t l4 = MlasQGemmSveSafeCol(c4, CountN, ColsPerAcc);
             const size_t l5 = MlasQGemmSveSafeCol(c5, CountN, ColsPerAcc);
 
-            svint32_t a00 = MlasQGemmSveSeed(rp0, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a01 = MlasQGemmSveSeed(rp0, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a02 = MlasQGemmSveSeed(rp0, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a03 = MlasQGemmSveSeed(rp0, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a04 = MlasQGemmSveSeed(rp0, c4, v4, ColumnSumBuffer, ZeroPointB);
-            svint32_t a05 = MlasQGemmSveSeed(rp0, c5, v5, ColumnSumBuffer, ZeroPointB);
-            svint32_t a10 = MlasQGemmSveSeed(rp1, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a11 = MlasQGemmSveSeed(rp1, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a12 = MlasQGemmSveSeed(rp1, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a13 = MlasQGemmSveSeed(rp1, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a14 = MlasQGemmSveSeed(rp1, c4, v4, ColumnSumBuffer, ZeroPointB);
-            svint32_t a15 = MlasQGemmSveSeed(rp1, c5, v5, ColumnSumBuffer, ZeroPointB);
-            svint32_t a20 = MlasQGemmSveSeed(rp2, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a21 = MlasQGemmSveSeed(rp2, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a22 = MlasQGemmSveSeed(rp2, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a23 = MlasQGemmSveSeed(rp2, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a24 = MlasQGemmSveSeed(rp2, c4, v4, ColumnSumBuffer, ZeroPointB);
-            svint32_t a25 = MlasQGemmSveSeed(rp2, c5, v5, ColumnSumBuffer, ZeroPointB);
-            svint32_t a30 = MlasQGemmSveSeed(rp3, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t a31 = MlasQGemmSveSeed(rp3, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t a32 = MlasQGemmSveSeed(rp3, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t a33 = MlasQGemmSveSeed(rp3, c3, v3, ColumnSumBuffer, ZeroPointB);
-            svint32_t a34 = MlasQGemmSveSeed(rp3, c4, v4, ColumnSumBuffer, ZeroPointB);
-            svint32_t a35 = MlasQGemmSveSeed(rp3, c5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a00 = MlasQGemmSveSeed(rp0, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a01 = MlasQGemmSveSeed(rp0, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a02 = MlasQGemmSveSeed(rp0, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a03 = MlasQGemmSveSeed(rp0, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a04 = MlasQGemmSveSeed(rp0, l4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a05 = MlasQGemmSveSeed(rp0, l5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a10 = MlasQGemmSveSeed(rp1, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a11 = MlasQGemmSveSeed(rp1, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a12 = MlasQGemmSveSeed(rp1, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a13 = MlasQGemmSveSeed(rp1, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a14 = MlasQGemmSveSeed(rp1, l4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a15 = MlasQGemmSveSeed(rp1, l5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a20 = MlasQGemmSveSeed(rp2, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a21 = MlasQGemmSveSeed(rp2, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a22 = MlasQGemmSveSeed(rp2, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a23 = MlasQGemmSveSeed(rp2, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a24 = MlasQGemmSveSeed(rp2, l4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a25 = MlasQGemmSveSeed(rp2, l5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a30 = MlasQGemmSveSeed(rp3, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a31 = MlasQGemmSveSeed(rp3, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a32 = MlasQGemmSveSeed(rp3, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a33 = MlasQGemmSveSeed(rp3, l3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a34 = MlasQGemmSveSeed(rp3, l4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a35 = MlasQGemmSveSeed(rp3, l5, v5, ColumnSumBuffer, ZeroPointB);
 
             // Column bases are loop-invariant; only the K-block offset moves.
             const int8_t* bp0 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l0);
@@ -605,19 +630,20 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
             const size_t v2 = (CountN > c2) ? std::min(ColsPerAcc, CountN - c2) : 0;
             const size_t v3 = (CountN > c3) ? std::min(ColsPerAcc, CountN - c3) : 0;
 
-            const int8_t* bp0 = MlasQGemmSveBPtr(
-                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c0, CountN, ColsPerAcc));
-            const int8_t* bp1 = MlasQGemmSveBPtr(
-                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c1, CountN, ColsPerAcc));
-            const int8_t* bp2 = MlasQGemmSveBPtr(
-                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc));
-            const int8_t* bp3 = MlasQGemmSveBPtr(
-                PackedB, BGroupStride, 0, MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc));
+            const size_t l0 = MlasQGemmSveSafeCol(c0, CountN, ColsPerAcc);
+            const size_t l1 = MlasQGemmSveSafeCol(c1, CountN, ColsPerAcc);
+            const size_t l2 = MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc);
+            const size_t l3 = MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc);
 
-            svint32_t acc0 = MlasQGemmSveSeed(rp, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t acc1 = MlasQGemmSveSeed(rp, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t acc2 = MlasQGemmSveSeed(rp, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t acc3 = MlasQGemmSveSeed(rp, c3, v3, ColumnSumBuffer, ZeroPointB);
+            const int8_t* bp0 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l0);
+            const int8_t* bp1 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l1);
+            const int8_t* bp2 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l2);
+            const int8_t* bp3 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l3);
+
+            svint32_t acc0 = MlasQGemmSveSeed(rp, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc1 = MlasQGemmSveSeed(rp, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc2 = MlasQGemmSveSeed(rp, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc3 = MlasQGemmSveSeed(rp, l3, v3, ColumnSumBuffer, ZeroPointB);
 
             for (size_t kb = 0; kb < PackedCountK; ++kb) {
                 const size_t koff = kb * 64;
@@ -674,10 +700,10 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
 
             const svint32_t rp = MlasQGemmSveRowSumPattern(r0, r1, Rows, RowSumBuffer);
 
-            svint32_t acc0 = MlasQGemmSveSeed(rp, c0, v0, ColumnSumBuffer, ZeroPointB);
-            svint32_t acc1 = MlasQGemmSveSeed(rp, c1, v1, ColumnSumBuffer, ZeroPointB);
-            svint32_t acc2 = MlasQGemmSveSeed(rp, c2, v2, ColumnSumBuffer, ZeroPointB);
-            svint32_t acc3 = MlasQGemmSveSeed(rp, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc0 = MlasQGemmSveSeed(rp, l0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc1 = MlasQGemmSveSeed(rp, l1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc2 = MlasQGemmSveSeed(rp, l2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc3 = MlasQGemmSveSeed(rp, l3, v3, ColumnSumBuffer, ZeroPointB);
 
             const int8_t* aptr = PackedA + ip * 16;
 
