@@ -3,9 +3,12 @@
 
 #include "gtest/gtest.h"
 
+#include <algorithm>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <vector>
 
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/optional.h"
@@ -386,6 +389,381 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   const auto status =
       reduce_matrix_columns(0, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes);
   ASSERT_FALSE(status.IsOK());
+}
+
+// ---------------------------------------------------------------------------
+// arg_min_max_last_axis
+// ---------------------------------------------------------------------------
+namespace {
+template <typename T>
+struct ArgTestTraits {
+  static T FromFloat(float value) { return static_cast<T>(value); }
+  static double ToDouble(T value) { return static_cast<double>(value); }
+};
+
+template <>
+struct ArgTestTraits<half> {
+  static half FromFloat(float value) { return __float2half(value); }
+  static double ToDouble(half value) { return static_cast<double>(__half2float(value)); }
+};
+
+// Mirrors the sequential semantics of the reduction: seed with the first
+// element, keep the first occurrence of the extreme value and never select a
+// NaN (every comparison against NaN is false, so a leading NaN wins the row).
+template <typename T, bool IsArgMax>
+std::vector<int64_t> ExpectedArgMinMaxIndices(const std::vector<T>& values, int m, int n) {
+  std::vector<int64_t> expected(m);
+  for (int row = 0; row < m; ++row) {
+    double best = ArgTestTraits<T>::ToDouble(values[static_cast<size_t>(row) * n]);
+    int64_t best_index = 0;
+    for (int i = 1; i < n; ++i) {
+      const double value = ArgTestTraits<T>::ToDouble(values[static_cast<size_t>(row) * n + i]);
+      if (IsArgMax ? (value > best) : (value < best)) {
+        best = value;
+        best_index = i;
+      }
+    }
+    expected[row] = best_index;
+  }
+  return expected;
+}
+
+template <typename T, bool IsArgMax>
+void CheckArgMinMaxLastAxis(const std::vector<T>& values, int m, int n) {
+  SCOPED_TRACE(MakeString("m: ", m, ", n: ", n, ", is_arg_max: ", IsArgMax));
+
+  auto d_input = AllocateDeviceMemory<T>(static_cast<size_t>(m) * n);
+  auto d_output = AllocateDeviceMemory<int64_t>(m);
+  cudaMemcpy(d_input.get(), values.data(), static_cast<size_t>(m) * n * sizeof(T), cudaMemcpyHostToDevice);
+  // Poison the output so a kernel that never writes a row is detected.
+  cudaMemset(d_output.get(), 0xff, static_cast<size_t>(m) * sizeof(int64_t));
+
+  const size_t buffer_size_in_bytes = compute_arg_min_max_last_axis_buffer_size<T>(m, n);
+  auto d_buffer = AllocateDeviceMemory<char>(std::max<size_t>(buffer_size_in_bytes, 1));
+  // Dirty the intermediate buffer: the implementation must not assume it is zeroed.
+  if (buffer_size_in_bytes > 0) {
+    cudaMemset(d_buffer.get(), 0x5a, buffer_size_in_bytes);
+  }
+
+  ASSERT_STATUS_OK((arg_min_max_last_axis<T, IsArgMax>(
+      0, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes)));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+
+  std::vector<int64_t> actual(m);
+  cudaMemcpy(actual.data(), d_output.get(), static_cast<size_t>(m) * sizeof(int64_t), cudaMemcpyDeviceToHost);
+  const auto expected = ExpectedArgMinMaxIndices<T, IsArgMax>(values, m, n);
+  for (int row = 0; row < m; ++row) {
+    ASSERT_EQ(actual[row], expected[row]) << "row: " << row;
+  }
+}
+
+template <typename T>
+std::vector<T> MakeRandomValues(int m, int n, RandomValueGenerator::RandomSeedType seed) {
+  RandomValueGenerator random{seed};
+  const TensorShape shape{m, n};
+  const auto float_values = random.Uniform<float>(shape.GetDims(), -100.0f, 100.0f);
+  std::vector<T> values(float_values.size());
+  for (size_t i = 0; i < float_values.size(); ++i) {
+    values[i] = ArgTestTraits<T>::FromFloat(float_values[i]);
+  }
+  return values;
+}
+
+template <typename T>
+void TestArgMinMaxLastAxisRandom(int m, int n, RandomValueGenerator::RandomSeedType seed = 0) {
+  const auto values = MakeRandomValues<T>(m, n, seed);
+  CheckArgMinMaxLastAxis<T, true>(values, m, n);
+  CheckArgMinMaxLastAxis<T, false>(values, m, n);
+}
+
+// Fills rows with duplicates, infinities and NaNs. The row count is fixed, the
+// width is not, so every dispatch path can be exercised with the same rows.
+template <typename T>
+std::vector<T> MakeSpecialValueRows(int n) {
+  constexpr int kNumSpecialRows = 8;
+  const float infinity = std::numeric_limits<float>::infinity();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float lowest_finite = std::is_same<T, half>::value ? -65504.0f : -3.0e38f;
+  const float highest_finite = -lowest_finite;
+
+  std::vector<T> values(static_cast<size_t>(kNumSpecialRows) * n);
+  for (int row = 0; row < kNumSpecialRows; ++row) {
+    for (int i = 0; i < n; ++i) {
+      values[static_cast<size_t>(row) * n + i] = ArgTestTraits<T>::FromFloat(static_cast<float>((i * 37) % 11) - 5.0f);
+    }
+  }
+  auto set = [&](int row, int index, float value) {
+    values[static_cast<size_t>(row) * n + index] = ArgTestTraits<T>::FromFloat(value);
+  };
+  auto fill = [&](int row, float value) {
+    for (int i = 0; i < n; ++i) set(row, i, value);
+  };
+
+  // row 0: leading NaN.
+  set(0, 0, nan);
+  // row 1: NaN in the middle plus a unique maximum after it.
+  set(1, n / 2, nan);
+  set(1, n - 1, 42.0f);
+  // row 2: every element is -infinity.
+  fill(2, -infinity);
+  // row 3: -infinity everywhere except one finite element that must win ArgMax.
+  fill(3, -infinity);
+  set(3, n - 2, lowest_finite);
+  // row 4: all elements equal, ties must resolve to the lowest index.
+  fill(4, 1.0f);
+  // row 5: duplicated +infinity maximum and duplicated -infinity minimum.
+  set(5, 1, infinity);
+  set(5, n - 1, infinity);
+  set(5, 2, -infinity);
+  set(5, n - 2, -infinity);
+  // row 6: every element is NaN.
+  fill(6, nan);
+  // row 7: finite extremes at the ends.
+  set(7, n - 1, highest_finite);
+  set(7, n / 3, lowest_finite);
+
+  return values;
+}
+
+template <typename T>
+void TestArgMinMaxLastAxisSpecialValues(int n) {
+  constexpr int kNumSpecialRows = 8;
+  const auto values = MakeSpecialValueRows<T>(n);
+  CheckArgMinMaxLastAxis<T, true>(values, kNumSpecialRows, n);
+  CheckArgMinMaxLastAxis<T, false>(values, kNumSpecialRows, n);
+}
+}  // namespace
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisNarrowRows) {
+  // Below the cooperative threshold: one thread per row.
+  for (int n : {1, 2, 3, 7, 31, 32, 33, 64, 127}) {
+    for (int m : {1, 3, 1024}) {
+      TestArgMinMaxLastAxisRandom<float>(m, n, n);
+    }
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisSingleBlockRows) {
+  // Wide enough for the cooperative kernel, narrow enough for a single block.
+  for (int n : {128, 129, 255, 256, 511, 1024, 4095}) {
+    for (int m : {1, 3, 1024}) {
+      TestArgMinMaxLastAxisRandom<float>(m, n, n);
+    }
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisMultiBlockRows) {
+  // Few, very wide rows: several blocks cooperate on each row.
+  for (int n : {8192, 32000, 65535, 65536, 202048, 262144}) {
+    for (int m : {1, 2, 4, 8}) {
+      TestArgMinMaxLastAxisRandom<float>(m, n, n);
+    }
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisManyRows) {
+  // More rows than grid rows, so blocks loop over rows.
+  TestArgMinMaxLastAxisRandom<float>(40000, 128);
+  TestArgMinMaxLastAxisRandom<float>(40000, 1024);
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisTypes) {
+  for (int n : {64, 1024, 65536}) {
+    TestArgMinMaxLastAxisRandom<half>(3, n, n);
+    TestArgMinMaxLastAxisRandom<float>(3, n, n);
+    TestArgMinMaxLastAxisRandom<double>(3, n, n);
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisSpecialValues) {
+  // 64 -> one thread per row, 1024 -> single block per row, 200000 -> many blocks per row.
+  for (int n : {64, 1024, 200000}) {
+    TestArgMinMaxLastAxisSpecialValues<half>(n);
+    TestArgMinMaxLastAxisSpecialValues<float>(n);
+    TestArgMinMaxLastAxisSpecialValues<double>(n);
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisEmptyRows) {
+  auto d_input = AllocateDeviceMemory<float>(1);
+  auto d_output = AllocateDeviceMemory<int64_t>(1);
+  // No rows: nothing to do, and no buffer is required.
+  ASSERT_STATUS_OK((arg_min_max_last_axis<float, true>(0, d_input.get(), d_output.get(), 0, 1024, nullptr, 0)));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  ASSERT_EQ(compute_arg_min_max_last_axis_buffer_size<float>(0, 1024), 0u);
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisInvalidBufferSize) {
+  const int m = 4;
+  const int n = 202048;
+  const size_t buffer_size_in_bytes = compute_arg_min_max_last_axis_buffer_size<float>(m, n);
+  ASSERT_GT(buffer_size_in_bytes, 0u);
+
+  auto d_input = AllocateDeviceMemory<float>(static_cast<size_t>(m) * n);
+  auto d_output = AllocateDeviceMemory<int64_t>(m);
+  auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
+
+  const auto status = arg_min_max_last_axis<float, true>(
+      0, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes / 10);
+  ASSERT_FALSE(status.IsOK());
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisBufferOffsets) {
+  const int m = 4;
+  const int n = 202048;
+  const size_t max_buffer_offset = 15;
+  const size_t buffer_size_in_bytes =
+      compute_arg_min_max_last_axis_buffer_size<double>(m, n) + max_buffer_offset;
+
+  const auto values = MakeRandomValues<double>(m, n, 7);
+  auto d_input = AllocateDeviceMemory<double>(static_cast<size_t>(m) * n);
+  auto d_output = AllocateDeviceMemory<int64_t>(m);
+  auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
+  cudaMemcpy(d_input.get(), values.data(), static_cast<size_t>(m) * n * sizeof(double), cudaMemcpyHostToDevice);
+  const auto expected = ExpectedArgMinMaxIndices<double, true>(values, m, n);
+
+  for (size_t buffer_offset = 1; buffer_offset <= max_buffer_offset; ++buffer_offset) {
+    SCOPED_TRACE(MakeString("buffer offset: ", buffer_offset));
+    ASSERT_STATUS_OK((arg_min_max_last_axis<double, true>(
+        0, d_input.get(), d_output.get(), m, n, d_buffer.get() + buffer_offset,
+        buffer_size_in_bytes - buffer_offset)));
+    ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+
+    std::vector<int64_t> actual(m);
+    cudaMemcpy(actual.data(), d_output.get(), static_cast<size_t>(m) * sizeof(int64_t), cudaMemcpyDeviceToHost);
+    for (int row = 0; row < m; ++row) {
+      ASSERT_EQ(actual[row], expected[row]) << "row: " << row;
+    }
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisCudaGraphCaptureAndReplay) {
+  const int m = 2;
+  const int n = 202048;
+  const auto values = MakeRandomValues<float>(m, n, 11);
+  const auto expected = ExpectedArgMinMaxIndices<float, true>(values, m, n);
+
+  auto d_input = AllocateDeviceMemory<float>(static_cast<size_t>(m) * n);
+  auto d_output = AllocateDeviceMemory<int64_t>(m);
+  const size_t buffer_size_in_bytes = compute_arg_min_max_last_axis_buffer_size<float>(m, n);
+  ASSERT_GT(buffer_size_in_bytes, 0u);
+  auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
+  cudaMemcpy(d_input.get(), values.data(), static_cast<size_t>(m) * n * sizeof(float), cudaMemcpyHostToDevice);
+
+  cudaStream_t stream = nullptr;
+  ASSERT_TRUE(CUDA_CALL(cudaStreamCreate(&stream)).IsOK());
+
+  // Warm up outside of the capture, the same way the CUDA EP does.
+  ASSERT_STATUS_OK((arg_min_max_last_axis<float, true>(
+      stream, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes)));
+  ASSERT_TRUE(CUDA_CALL(cudaStreamSynchronize(stream)).IsOK());
+
+  cudaGraph_t graph = nullptr;
+  cudaGraphExec_t graph_exec = nullptr;
+  ASSERT_TRUE(CUDA_CALL(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal)).IsOK());
+  ASSERT_STATUS_OK((arg_min_max_last_axis<float, true>(
+      stream, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes)));
+  ASSERT_TRUE(CUDA_CALL(cudaStreamEndCapture(stream, &graph)).IsOK());
+  ASSERT_TRUE(CUDA_CALL(cudaGraphInstantiate(&graph_exec, graph, nullptr, nullptr, 0)).IsOK());
+
+  // Replaying must give the same answer every time: the block done counters are
+  // reset by the captured memset, not by the host.
+  for (int replay = 0; replay < 3; ++replay) {
+    cudaMemsetAsync(d_output.get(), 0xff, static_cast<size_t>(m) * sizeof(int64_t), stream);
+    ASSERT_TRUE(CUDA_CALL(cudaGraphLaunch(graph_exec, stream)).IsOK());
+    ASSERT_TRUE(CUDA_CALL(cudaStreamSynchronize(stream)).IsOK());
+
+    std::vector<int64_t> actual(m);
+    cudaMemcpy(actual.data(), d_output.get(), static_cast<size_t>(m) * sizeof(int64_t), cudaMemcpyDeviceToHost);
+    for (int row = 0; row < m; ++row) {
+      ASSERT_EQ(actual[row], expected[row]) << "replay: " << replay << ", row: " << row;
+    }
+  }
+
+  ASSERT_TRUE(CUDA_CALL(cudaGraphExecDestroy(graph_exec)).IsOK());
+  ASSERT_TRUE(CUDA_CALL(cudaGraphDestroy(graph)).IsOK());
+  ASSERT_TRUE(CUDA_CALL(cudaStreamDestroy(stream)).IsOK());
+}
+
+// Not run by default: prints a timing table for the shapes that matter for the
+// last axis ArgMax/ArgMin dispatch. Run it with
+// "GTEST_FILTER=ReductionFunctionsTest.DISABLED_ArgMinMaxLastAxisPerf
+// onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All
+// --gtest_also_run_disabled_tests".
+TEST(ReductionFunctionsTest, DISABLED_ArgMinMaxLastAxisPerf) {
+  struct Shape {
+    int m;
+    int n;
+  };
+  const std::vector<Shape> shapes = {
+      // few rows, very wide: sampling / classification over a large vocabulary
+      {1, 32000},
+      {1, 50257},
+      {1, 128256},
+      {1, 151936},
+      {1, 200000},
+      {1, 202048},
+      {1, 262144},
+      {2, 202048},
+      {4, 202048},
+      {8, 202048},
+      {16, 202048},
+      {32, 202048},
+      // many rows
+      {4096, 128},
+      {4096, 1024},
+      {4096, 4096},
+      {65536, 256},
+      {65536, 1024},
+      // narrow rows, handled by the one thread per row kernel
+      {4096, 8},
+      {4096, 32},
+      {4096, 64},
+      {65536, 64},
+  };
+
+  constexpr int kWarmupIterations = 20;
+  constexpr int kTimedIterations = 100;
+
+  cudaStream_t stream = nullptr;
+  ASSERT_TRUE(CUDA_CALL(cudaStreamCreate(&stream)).IsOK());
+  cudaEvent_t start, stop;
+  ASSERT_TRUE(CUDA_CALL(cudaEventCreate(&start)).IsOK());
+  ASSERT_TRUE(CUDA_CALL(cudaEventCreate(&stop)).IsOK());
+
+  std::cout << "rows,cols,scratch_bytes,microseconds\n";
+  for (const auto& shape : shapes) {
+    const auto values = MakeRandomValues<float>(shape.m, shape.n, static_cast<uint32_t>(shape.n));
+    auto d_input = AllocateDeviceMemory<float>(static_cast<size_t>(shape.m) * shape.n);
+    auto d_output = AllocateDeviceMemory<int64_t>(shape.m);
+    cudaMemcpy(d_input.get(), values.data(), static_cast<size_t>(shape.m) * shape.n * sizeof(float),
+               cudaMemcpyHostToDevice);
+    const size_t buffer_size_in_bytes = compute_arg_min_max_last_axis_buffer_size<float>(shape.m, shape.n);
+    auto d_buffer = AllocateDeviceMemory<char>(std::max<size_t>(buffer_size_in_bytes, 1));
+
+    for (int i = 0; i < kWarmupIterations; ++i) {
+      ASSERT_STATUS_OK((arg_min_max_last_axis<float, true>(stream, d_input.get(), d_output.get(), shape.m,
+                                                           shape.n, d_buffer.get(), buffer_size_in_bytes)));
+    }
+    ASSERT_TRUE(CUDA_CALL(cudaStreamSynchronize(stream)).IsOK());
+
+    ASSERT_TRUE(CUDA_CALL(cudaEventRecord(start, stream)).IsOK());
+    for (int i = 0; i < kTimedIterations; ++i) {
+      ASSERT_STATUS_OK((arg_min_max_last_axis<float, true>(stream, d_input.get(), d_output.get(), shape.m,
+                                                           shape.n, d_buffer.get(), buffer_size_in_bytes)));
+    }
+    ASSERT_TRUE(CUDA_CALL(cudaEventRecord(stop, stream)).IsOK());
+    ASSERT_TRUE(CUDA_CALL(cudaEventSynchronize(stop)).IsOK());
+
+    float elapsed_ms = 0.0f;
+    ASSERT_TRUE(CUDA_CALL(cudaEventElapsedTime(&elapsed_ms, start, stop)).IsOK());
+    std::cout << shape.m << "," << shape.n << "," << buffer_size_in_bytes << ","
+              << (elapsed_ms * 1000.0f / kTimedIterations) << "\n";
+  }
+
+  ASSERT_TRUE(CUDA_CALL(cudaEventDestroy(start)).IsOK());
+  ASSERT_TRUE(CUDA_CALL(cudaEventDestroy(stop)).IsOK());
+  ASSERT_TRUE(CUDA_CALL(cudaStreamDestroy(stream)).IsOK());
 }
 
 TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
