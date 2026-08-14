@@ -29,7 +29,11 @@ import numpy as np
 
 FORCE_ENV_VAR = "ORT_MATMULNBITS_M1_PERF_VALIDATION_FORCE_COLS_PER_BLOCK"
 
-LAT_RE = re.compile(r"(Min|Max|P50|P90|P95|P99) Latency is ([0-9.]+)\s*sec", re.IGNORECASE)
+# onnxruntime_perf_test's actual -s output format is "<Stat> Latency: <float> s"
+# (observed on the A10 CI runner: e.g. "P50 Latency: 0.0002084 s"), not the
+# "Latency is <float>sec" format originally assumed. Accept both to be robust
+# to minor formatting differences across onnxruntime_perf_test versions.
+LAT_RE = re.compile(r"(Min|Max|P50|P90|P95|P99)\s+Latency\s*(?:is|:)\s*([0-9.]+)\s*s(?:ec)?\b", re.IGNORECASE)
 
 
 def run_numerics_check(python_exe, script_dir, model_path, workdir):
