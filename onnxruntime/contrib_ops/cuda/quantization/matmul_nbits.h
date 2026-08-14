@@ -8,6 +8,7 @@
 //
 #pragma once
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -150,6 +151,10 @@ class MatMulNBits final : public CudaKernel {
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
 #endif
+
+    const Tensor* group_index_initializer = nullptr;
+    group_index_is_initializer_ = has_g_idx_ &&
+                                  info.TryGetConstantInput(kInputIndexGroupIndex, &group_index_initializer);
     sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
     force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
@@ -292,6 +297,8 @@ class MatMulNBits final : public CudaKernel {
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
+  bool group_index_is_initializer_{false};
+  mutable std::mutex group_index_validation_mutex_;
   mutable std::atomic<bool> is_group_index_validated_{false};
   bool has_bias_{false};
   bool has_zero_points_{false};

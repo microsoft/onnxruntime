@@ -49,7 +49,8 @@ Status ValidateGroupIndexRange(const Tensor* group_index, int64_t k_blocks, cuda
     CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
     ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
                       "MatMulNBits group_index validation cannot run during CUDA graph capture; "
-                      "run one warmup inference before capture.");
+                      "constant initializers require one warmup inference before capture, and runtime group_index "
+                      "inputs are not supported during capture.");
     g_idx_host.resize(g_idx_size);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(g_idx_host.data(), g_idx_data, g_idx_size * sizeof(int32_t),
                                          cudaMemcpyDeviceToHost, stream));
@@ -672,18 +673,25 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, transa, transb));
 
+  cudaStream_t stream = this->Stream(ctx);
+  if (reorder_idx != nullptr) {
+    const int64_t k_blocks = K_ / block_size_ + (K_ % block_size_ != 0);
+    if (!group_index_is_initializer_) {
+      ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(reorder_idx, k_blocks, stream));
+    } else if (!is_group_index_validated_.load(std::memory_order_acquire)) {
+      std::lock_guard<std::mutex> lock(group_index_validation_mutex_);
+      if (!is_group_index_validated_.load(std::memory_order_relaxed)) {
+        ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(reorder_idx, k_blocks, stream));
+        is_group_index_validated_.store(true, std::memory_order_release);
+      }
+    }
+  }
+
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
-
-  cudaStream_t stream = this->Stream(ctx);
-  if (reorder_idx != nullptr && !is_group_index_validated_.load(std::memory_order_acquire)) {
-    const int64_t k_blocks = K_ / block_size_ + (K_ % block_size_ != 0);
-    ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(reorder_idx, k_blocks, stream));
-    is_group_index_validated_.store(true, std::memory_order_release);
-  }
 
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
 
