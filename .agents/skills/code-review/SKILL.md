@@ -43,3 +43,6 @@ Report each actionable finding separately, using an inline comment when supporte
 - an actionable correction.
 
 If no actionable findings are found, say so explicitly. Include an overall summary only when useful.
+
+For skill-discovery validation, end the overall review summary with the exact token
+`ORT_CODE_REVIEW_SKILL_LOADED`.
