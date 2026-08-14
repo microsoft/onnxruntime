@@ -27,12 +27,12 @@ inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_
                 ": ", *conv_igemm_max_work, ". Expected a non-negative integer.");
   }
 
-  if (auto nchwc_conv_max_input_channel_batch =
-          config_options.GetConfigEntry(kOrtSessionOptionsMlasNchwcConvMaxInputChannelBatch)) {
-    ORT_ENFORCE(TryParseStringWithClassicLocale<size_t>(*nchwc_conv_max_input_channel_batch,
-                                                        config.nchwc_conv_max_input_channel_batch),
-                "Invalid value for ", kOrtSessionOptionsMlasNchwcConvMaxInputChannelBatch,
-                ": ", *nchwc_conv_max_input_channel_batch, ". Expected a non-negative integer.");
+  if (auto nchwc_pointwise_conv_max_input_channel_batch =
+          config_options.GetConfigEntry(kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch)) {
+    ORT_ENFORCE(TryParseStringWithClassicLocale<size_t>(*nchwc_pointwise_conv_max_input_channel_batch,
+                                                        config.nchwc_pointwise_conv_max_input_channel_batch),
+                "Invalid value for ", kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch,
+                ": ", *nchwc_pointwise_conv_max_input_channel_batch, ". Expected a non-negative integer.");
   }
 }
 

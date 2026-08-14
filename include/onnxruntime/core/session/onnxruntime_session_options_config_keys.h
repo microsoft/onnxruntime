@@ -516,7 +516,7 @@ static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.
 // convolutions at the cost of a larger cache working set.
 // "0" or unset uses the MLAS default (128).
 // This option exists for perf experimentation; the default may be retuned in future releases.
-static const char* const kOrtSessionOptionsMlasNchwcConvMaxInputChannelBatch = "mlas.nchwc_conv_max_input_channel_batch";
+static const char* const kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch = "mlas.nchwc_pointwise_conv_max_input_channel_batch";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

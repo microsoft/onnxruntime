@@ -654,45 +654,15 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     }
 
     //
-    // Map a cost boundary (measured in block-rows: one NCHWc output block of one
-    // output row) to the index of the first work item whose starting cumulative
-    // cost is greater than or equal to that boundary. Within each (batch, group)
-    // segment, filter sets 0..FilterSetCount-2 cost FilterSetSize block-rows per
-    // output row and the last set costs LastSetFilterCount block-rows per row.
+    // Map a cost boundary to a work item index. See MlasNchwcCostToWorkIndex in
+    // mlasi.h, which holds the mapping and its worked example; it lives there so
+    // the partitioning math can be unit tested independently of a convolution.
     //
 
     size_t CostToWorkIndex(size_t Cost, size_t TotalBlockedFilters, size_t LastSetFilterCount) const
     {
-        const size_t CostPerBatchGroup = TotalBlockedFilters * OutputHeight;
-
-        size_t BatchGroup = Cost / CostPerBatchGroup;
-        const size_t Remainder = Cost - BatchGroup * CostPerBatchGroup;
-
-        const size_t FullSetCost = FilterSetSize * OutputHeight;
-
-        size_t Set = Remainder / FullSetCost;
-        size_t SetFilterCount = FilterSetSize;
-
-        if (Set >= FilterSetCount - 1) {
-            Set = FilterSetCount - 1;
-            SetFilterCount = LastSetFilterCount;
-        }
-
-        const size_t SetRemainder = Remainder - Set * FullSetCost;
-
-        size_t Row = (SetRemainder + SetFilterCount - 1) / SetFilterCount;
-
-        if (Row >= OutputHeight) {
-
-            Row = 0;
-
-            if (++Set == FilterSetCount) {
-                Set = 0;
-                BatchGroup += 1;
-            }
-        }
-
-        return (BatchGroup * FilterSetCount + Set) * OutputHeight + Row;
+        return MlasNchwcCostToWorkIndex(Cost, OutputHeight, FilterSetCount, FilterSetSize,
+                                        TotalBlockedFilters, LastSetFilterCount);
     }
 
     //
@@ -722,7 +692,16 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
         WorkRemaining = WorkIndexEnd - WorkIndexBegin;
 
-        SeekToWork(WorkIndexBegin);
+        //
+        // Skip the seek when this thread received no work. TotalCost below tids
+        // leaves surplus threads with an empty cost interval starting at
+        // TotalCost, which maps to WorkIndexBegin == TotalWork; seeking there
+        // would advance the buffer pointers past the end of their tensors.
+        //
+
+        if (WorkRemaining > 0) {
+            SeekToWork(WorkIndexBegin);
+        }
     }
 };
 
@@ -1005,9 +984,9 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         size_t MaximumInputChannelBatch = 128;
 
         if (WorkBlock->BackendKernelSelectorConfig != nullptr &&
-            WorkBlock->BackendKernelSelectorConfig->nchwc_conv_max_input_channel_batch != 0) {
+            WorkBlock->BackendKernelSelectorConfig->nchwc_pointwise_conv_max_input_channel_batch != 0) {
             const size_t RequestedBatch =
-                WorkBlock->BackendKernelSelectorConfig->nchwc_conv_max_input_channel_batch;
+                WorkBlock->BackendKernelSelectorConfig->nchwc_pointwise_conv_max_input_channel_batch;
             MaximumInputChannelBatch =
                 ((RequestedBatch + BlockSize - 1) / BlockSize) * BlockSize;
         }
