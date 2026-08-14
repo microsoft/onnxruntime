@@ -24,16 +24,18 @@ Abstract:
     Because the arithmetic is exact integer accumulation, the results are
     bit-identical to the NEON kernel regardless of the internal tile ordering.
 
-    This translation unit is compiled with -march=armv8.2-a+sve+i8mm (see
-    cmake/onnxruntime_mlas.cmake) and is only wired into the platform dispatch
-    when MLAS_CPUIDINFO::HasArmSVE_I8MM() is true.
+    This translation unit is plain C++ (driver, packing and dispatch); it needs
+    no SVE compiler support and is built without -march=...+sve+i8mm. Only the
+    compute kernel carries that flag -- see sve/qgemm_mmla_sve_impl.cpp and
+    cmake/onnxruntime_mlas.cmake. The dispatch is installed when
+    MLAS_CPUIDINFO::HasArmSVE_I8MM() is true.
 
-    NOTE (v1): the packed layout is the 128-bit-oriented NEON layout, so each
-    svmmla consumes a single 128-bit segment. On this hardware SVE VL == 128
-    bits, giving throughput parity with NEON smmla. Loads are predicated to 16
-    bytes so the kernel remains correct (using only the first 128-bit segment)
-    on wider-VL implementations; a fully VL-agnostic packing is a future
-    optimization.
+    The compute is VECTOR-LENGTH AGNOSTIC. `svmmla` is segment-wise, and the
+    packed layout places consecutive column pairs in consecutive 128-bit
+    segments, so one instruction covers 2 rows x 2 columns per segment: 2
+    columns at VL=128, 4 at VL=256, 8 at VL=512, from the same instruction
+    count and with no repacking. Verified bit-exact on Neoverse V1 at both
+    native VL=256 and prctl-forced VL=128.
 
 --*/
 
@@ -611,7 +613,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA_SVE>(
     //
 
     if (CountM > 0) {
-        // No need to pad the rows to 2, the .S takes care of zero pdding
+        // No need to pad the rows to 2, the .S takes care of zero padding
         const int8_t* a = reinterpret_cast<const int8_t*>(A);
         size_t k = CountK;
         int32x4_t RowSums = vmovq_n_s32(0);

@@ -11,14 +11,23 @@ Module Name:
 
 Abstract:
 
-    This module implements the SVE i8mm (svusmmla) variant of the U8S8 int8
-    QGEMM kernel (unsigned A x signed B). Like qgemm_kernel_smmla_sve.cpp it
-    reuses the NEON ummla A/B packing (byte-identical, PackedK=8, unsigned
-    RowSum) verbatim and only reimplements the compute, which it shares with
-    the S8S8 kernel through MlasQGemmMmlaKernelSve<AUnsigned=true> (svusmmla_s32).
+    This module implements the SVE i8mm (svmmla_u32) variant of the U8X8 int8
+    QGEMM kernel. Like qgemm_kernel_smmla_sve.cpp it reuses the NEON ummla A/B
+    packing (byte-identical, PackedK=8, unsigned RowSum) verbatim and only
+    reimplements the compute, which it shares with the S8S8 kernel through
+    MlasQGemmMmlaKernelSve<AUnsigned=true>.
 
-    Compiled with -march=armv8.2-a+sve+i8mm; wired into GemmU8S8Dispatch when
-    MLAS_CPUIDINFO::HasArmSVE_I8MM() is true.
+    The instruction is svmmla_u32 -- unsigned x UNSIGNED -- not svusmmla:
+    CopyPackB bit-flips signed B to unsigned (XOR 0x80) and compensates via
+    MlasGemmQuantFixupZeroPointB, so both operands are unsigned by the time the
+    kernel sees them. That also makes U8U8 the simpler case of the same kernel
+    type, which is why this dispatch serves both GemmU8S8Dispatch and
+    GemmU8U8Dispatch.
+
+    This translation unit is plain C++ (driver, packing and dispatch); it needs
+    no SVE compiler support and is built without -march=...+sve+i8mm. Only the
+    compute kernel carries that flag -- see sve/qgemm_mmla_sve_impl.cpp. The
+    dispatch is installed when MLAS_CPUIDINFO::HasArmSVE_I8MM() is true.
 
 --*/
 
@@ -597,7 +606,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>(MLAS_GEMM_U8X8_KERNEL_UM
     //
 
     if (CountM > 0) {
-        // No need to pad the rows to 2, the .S takes care of zero pdding
+        // No need to pad the rows to 2, the .S takes care of zero padding
         const uint8_t* a = A;
         size_t k = CountK;
         uint32x4_t RowSums = vmovq_n_u32(0);

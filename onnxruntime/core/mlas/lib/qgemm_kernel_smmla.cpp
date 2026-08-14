@@ -611,7 +611,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
     //
 
     if (CountM > 0) {
-        // No need to pad the rows to 2, the .S takes care of zero pdding
+        // No need to pad the rows to 2, the .S takes care of zero padding
         const int8_t* a = reinterpret_cast<const int8_t*>(A);
         size_t k = CountK;
         int32x4_t RowSums = vmovq_n_s32(0);
