@@ -26,11 +26,11 @@
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <iostream>
 #include <limits>
 #include <mutex>
-#include <vector>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -72,6 +72,7 @@ bool Fp4GemvSkipExpandDisabled() {
 
 void PrintQMoEKernelDebugInfo(const char* route, int64_t num_rows,
                               int64_t row_tile_size, int64_t final_row_tile_size,
+                              int64_t tactic_m, int64_t final_tactic_m,
                               size_t runner_workspace_bytes, size_t total_scratch_bytes) {
   std::cout << "\x1B[36m"
             << "Operator=QMoE"
@@ -81,11 +82,11 @@ void PrintQMoEKernelDebugInfo(const char* route, int64_t num_rows,
             << " RunnerWorkspaceBytes=" << runner_workspace_bytes
             << " TotalScratchBytes=" << total_scratch_bytes
             << " TacticMBucket="
-            << onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(row_tile_size);
+            << onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(tactic_m);
   if (final_row_tile_size != row_tile_size) {
     std::cout << " FinalRowTileSize=" << final_row_tile_size
               << " FinalTacticMBucket="
-              << onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(final_row_tile_size);
+              << onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(final_tactic_m);
   }
   std::cout << "\x1B[0m" << std::endl;
 }
@@ -195,17 +196,19 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
   const auto configured_row_tile_size =
       op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoERowTileSizeConfig);
+  const char* row_tile_size_source = kQMoERowTileSizeConfig;
   if (configured_row_tile_size.has_value()) {
     const auto& value = *configured_row_tile_size;
     const auto parse_result = std::from_chars(value.data(), value.data() + value.size(), row_tile_size_);
     ORT_ENFORCE(parse_result.ec == std::errc{} && parse_result.ptr == value.data() + value.size(),
                 kQMoERowTileSizeConfig, " must be an integer, got '", value, "'.");
   } else {
+    row_tile_size_source = kQMoERowTileSize;
     row_tile_size_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
         kQMoERowTileSize, qmoe::kDisabledRowTileSize);
   }
   ORT_ENFORCE(row_tile_size_ == qmoe::kDisabledRowTileSize || qmoe::IsValidRowTileSize(row_tile_size_),
-              kQMoERowTileSizeConfig, " must be 0 (disabled) or an integer in [1, ",
+              row_tile_size_source, " must be 0 (disabled) or an integer in [1, ",
               std::numeric_limits<int>::max(), "], got ", row_tile_size_, ".");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
@@ -893,13 +896,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     std::optional<MoeConfig> config2;
     size_t workspace_size = 0;
   };
-  std::vector<int64_t> distinct_tile_rows{row_tile_plan.rows_per_tile};
+  std::array<int64_t, 2> distinct_tile_rows{row_tile_plan.rows_per_tile, 0};
+  size_t distinct_tile_row_count = 1;
   const int64_t final_tile_rows = row_tile_plan.RowsInTile(row_tile_plan.TileCount() - 1);
   if (final_tile_rows != row_tile_plan.rows_per_tile) {
-    distinct_tile_rows.push_back(final_tile_rows);
+    distinct_tile_rows[distinct_tile_row_count++] = final_tile_rows;
   }
-  std::vector<RunnerTileConfig> runner_tile_configs;
-  runner_tile_configs.reserve(distinct_tile_rows.size());
+  std::array<RunnerTileConfig, 2> runner_tile_configs{};
+  size_t runner_tile_config_count = 0;
   size_t workspace_size = 0;
   {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
@@ -925,14 +929,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       if (!tactics.empty()) {
         deterministic_config = tactics[0];
       }
-      for (const int64_t tile_rows : distinct_tile_rows) {
+      for (size_t i = 0; i < distinct_tile_row_count; ++i) {
+        const int64_t tile_rows = distinct_tile_rows[i];
         RunnerTileConfig tile_config{tile_rows, deterministic_config, deterministic_config, 0};
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
             tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
             activation_type_, parallelism_config, use_awq);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
-        runner_tile_configs.push_back(std::move(tile_config));
+        runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
       }
     } else {
       AllocatorPtr allocator;
@@ -987,7 +992,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
       MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
 
-      for (const int64_t tile_rows : distinct_tile_rows) {
+      for (size_t i = 0; i < distinct_tile_row_count; ++i) {
+        const int64_t tile_rows = distinct_tile_rows[i];
         RunnerTileConfig tile_config;
         tile_config.num_rows = tile_rows;
         if (!stream_is_capturing) {
@@ -1023,7 +1029,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
             activation_type_, parallelism_config, use_awq);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
-        runner_tile_configs.push_back(std::move(tile_config));
+        runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
       }
     }
   }
@@ -1685,6 +1691,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     if (enable_kernel_debug_info_) {
       PrintQMoEKernelDebugInfo("fp4_gemv", moe_params.num_rows,
                                moe_params.num_rows, moe_params.num_rows,
+                               expanded, expanded,
                                workspace_size, total_scratch_bytes);
     }
     return Status::OK();
@@ -1847,10 +1854,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   for (int64_t tile_index = 0; tile_index < row_tile_plan.TileCount(); ++tile_index) {
     const int64_t row_offset = row_tile_plan.RowOffset(tile_index);
     const int64_t tile_rows = row_tile_plan.RowsInTile(tile_index);
-    const auto tile_config_it =
-        std::find_if(runner_tile_configs.begin(), runner_tile_configs.end(),
-                     [tile_rows](const RunnerTileConfig& config) { return config.num_rows == tile_rows; });
-    ORT_ENFORCE(tile_config_it != runner_tile_configs.end(),
+    const RunnerTileConfig* tile_config = nullptr;
+    for (size_t i = 0; i < runner_tile_config_count; ++i) {
+      if (runner_tile_configs[i].num_rows == tile_rows) {
+        tile_config = &runner_tile_configs[i];
+        break;
+      }
+    }
+    ORT_ENFORCE(tile_config != nullptr,
                 "QMoE did not prepare a runner configuration for row tile size ", tile_rows, ".");
 
     const auto fused_routing = route_tile(row_offset, tile_rows);
@@ -1866,7 +1877,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<char*>(output->MutableDataRaw()) + output_byte_offset;
 
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
-    active_runner->setTactic(tile_config_it->config1, tile_config_it->config2);
+    active_runner->setTactic(tile_config->config1, tile_config->config2);
     active_runner->runMoe(
         tile_input,
         nullptr,
@@ -1894,6 +1905,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   if (enable_kernel_debug_info_) {
     PrintQMoEKernelDebugInfo("grouped_moe", moe_params.num_rows,
+                             row_tile_plan.rows_per_tile, final_tile_rows,
                              row_tile_plan.rows_per_tile, final_tile_rows,
                              workspace_size, total_scratch_bytes);
   }
