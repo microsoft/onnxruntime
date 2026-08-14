@@ -110,6 +110,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   ORT_ENFORCE(local_window_size_attr == -1 || (local_window_size_attr > 0 && local_window_size_attr <= std::numeric_limits<int>::max()),
               "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
   local_window_size_ = static_cast<int>(local_window_size_attr);
+  ORT_ENFORCE(is_unidirectional_ || local_window_size_ == -1,
+              "GroupQueryAttention (CUDA): local_window_size must be -1 when causal is 0.");
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CUDA): sliding_window_cache=1 requires local_window_size > 0.");
@@ -654,9 +656,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // === cuDNN SDPA eligibility (preferred on SM>=90, Hopper/Blackwell) ===
   // Constrained to non-quantized FP16/BF16 KV cache, no softcap, no smooth-softmax / head sink,
   // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
-  // cuDNN handles grouped-query attention natively.
+  // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
+  // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   bool use_cudnn_sdpa = !data.use_xqa &&
-                        !has_attention_bias &&  // GQA's cuDNN path does not compose its mask with a bias
+                        !has_attention_bias &&
                         !is_inputs_quantized &&
                         std::is_same<T, U>::value &&
                         parameters.softcap == 0.0f &&

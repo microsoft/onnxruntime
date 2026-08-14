@@ -133,7 +133,8 @@ static void RunGQACausalMaskTest(
     std::optional<int64_t> causal,
     const std::vector<float>& expected_output,
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-    const std::string& expected_message = "") {
+    const std::string& expected_message = "",
+    std::optional<int64_t> local_window_size = std::nullopt) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int num_heads = 1;
@@ -161,12 +162,19 @@ static void RunGQACausalMaskTest(
   if (causal.has_value()) {
     tester.AddAttribute<int64_t>("causal", *causal);
   }
+  if (local_window_size.has_value()) {
+    tester.AddAttribute<int64_t>("local_window_size", *local_window_size);
+  }
 
-  const std::vector<float> query_and_key(sequence_length * hidden_size, 0.0f);
+  std::vector<float> query(sequence_length * hidden_size, 0.0f);
+  std::vector<float> key(sequence_length * hidden_size, 0.0f);
+  query[0] = 1.0f;
+  query[hidden_size] = 1.0f;
+  key[hidden_size] = std::sqrt(static_cast<float>(head_size)) * std::log(3.0f);
   std::vector<float> value(sequence_length * hidden_size, 1.0f);
   std::fill(value.begin() + hidden_size, value.end(), 3.0f);
-  tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, convert(query_and_key));
-  tester.AddInput<T>("key", {batch_size, sequence_length, hidden_size}, convert(query_and_key));
+  tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, convert(query));
+  tester.AddInput<T>("key", {batch_size, sequence_length, hidden_size}, convert(key));
   tester.AddInput<T>("value", {batch_size, sequence_length, hidden_size}, convert(value));
   tester.AddOptionalInputEdge<T>();  // past_key
   tester.AddOptionalInputEdge<T>();  // past_value
@@ -180,7 +188,7 @@ static void RunGQACausalMaskTest(
 
   tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size}, convert(expected_output));
   tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
-                      convert(query_and_key));
+                      convert(key));
   tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
                       convert(value));
   tester.SetOutputTolerance(0.001f);
@@ -191,17 +199,31 @@ static void RunGQACausalMaskTest(
 }
 
 TEST(GroupQueryAttentionTest, CausalMaskDefaultsToEnabled_CPU) {
-  std::vector<float> expected_output(16, 2.0f);
+  std::vector<float> expected_output(16, 2.5f);
   std::fill(expected_output.begin(), expected_output.begin() + 8, 1.0f);
   RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, std::nullopt, expected_output);
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalMask_CPU) {
-  RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, 0, std::vector<float>(16, 2.0f));
+  RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, 0, std::vector<float>(16, 2.5f));
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalMask_CUDA) {
-  RunGQACausalMaskTest<MLFloat16>(GqaTargetEp::kCuda, 0, std::vector<float>(16, 2.0f));
+  RunGQACausalMaskTest<MLFloat16>(GqaTargetEp::kCuda, 0, std::vector<float>(16, 2.5f));
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalLocalWindowRejected_CPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kCpu, 0, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "GroupQueryAttention (CPU): local_window_size must be -1 when causal is 0.", 1);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalLocalWindowRejected_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 0, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "GroupQueryAttention (CUDA): local_window_size must be -1 when causal is 0.", 1);
 }
 
 TEST(GroupQueryAttentionTest, InvalidCausalValue_CPU) {

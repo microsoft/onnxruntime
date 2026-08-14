@@ -31,7 +31,8 @@ For CPU-specific implementation details (including the quantized KV-cache flash 
 
 GroupQueryAttention implements grouped-query attention with KV-cache (past/present) support.
 The `causal` attribute must be `0` or `1` and defaults to `1`; set it to `0` for bidirectional
-attention when the selected backend supports it.
+attention when the selected backend supports it. Bidirectional attention requires
+`local_window_size=-1`; local windows are defined only for causal attention.
 Grouped-query attention uses fewer key/value heads than query heads: each KV head is shared by a
 group of `num_heads / kv_num_heads` query heads. The operator also supports:
 
@@ -58,7 +59,7 @@ Selected attributes:
 | `scale` | Softmax scale. Defaults to `1/sqrt(head_size)`. |
 | `causal` | Apply the causal mask. Must be `0` or `1` and defaults to `1`; `0` enables bidirectional attention. |
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
-| `local_window_size` | Left window size for local attention. `-1` means global attention. |
+| `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
 | `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps only the most recent tokens, using cache-relative indexing and evicting from the front as needed. Requires `local_window_size > 0`. Defaults to `0` (full-length cache). |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
@@ -267,9 +268,9 @@ order and the first eligible backend wins:
 |----------|---------|-------------------------|
 | 1 | **XQA** | Causal single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention and attention sinks on both the non-quantized and quantized (INT8/FP8) paths. Fastest decode path; supports per-tensor and per-channel quantized caches. |
 | 2 | **cuDNN SDPA** | Non-quantized FP16/BF16 causal or bidirectional attention. Auto-preferred on SM≥90 (Hopper/Blackwell). |
-| 3 | **Flash Attention** | General FP16/BF16 causal or bidirectional prompt and decode, including local window, softcap, and packed QKV. |
+| 3 | **Flash Attention** | General FP16/BF16 causal or bidirectional prompt and decode, including softcap and packed QKV. Local windows are supported for causal attention. |
 | 4 | **Memory Efficient Attention (MEA)** | Non-quantized causal or bidirectional fallback for FP16/FP32 (and BF16 on SM80+). |
-| 5 | **Unfused** | Non-quantized causal or bidirectional last-resort fallback (e.g. `head_size > 256`). Any head size, GQA, sliding window, softcap. |
+| 5 | **Unfused** | Non-quantized causal or bidirectional last-resort fallback (e.g. `head_size > 256`). Any head size, GQA, and softcap; sliding windows are causal-only. |
 
 The selected backend is reported in the kernel debug info as `SdpaKernel=...` when debug info is
 enabled (see §10).

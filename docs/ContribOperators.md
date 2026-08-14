@@ -2628,7 +2628,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
-<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>

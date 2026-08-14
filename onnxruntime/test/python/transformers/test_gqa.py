@@ -1198,7 +1198,7 @@ def parity_check_gqa_prompt(
         v=new_v,
         key_padding_mask=None,
         attention_bias=attention_bias,
-        causal=True,
+        causal=causal,
         window_size=window_size,
         softcap=config.softcap,
         use_smooth_softmax=config.use_smooth_softmax,
@@ -2357,6 +2357,31 @@ class TestFlashGQA(unittest.TestCase):
                 torch_type=torch.float16,
                 ort_type=TensorProto.FLOAT16,
                 causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_gqa_decode_bidirectional(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=2,
+            kv_sequence_length=2,
+            past_kv_sequence_length=4,
+            buffer_sequence_length=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            share_buffer=True,
+        )
+
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=False,
                 rtol=rtol["fp16"],
                 atol=atol["fp16"],
             )

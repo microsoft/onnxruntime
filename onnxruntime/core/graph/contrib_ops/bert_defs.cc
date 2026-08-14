@@ -1237,7 +1237,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("local_window_size",
-              "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
+              "left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. "
+              "Default value is -1 meaning unused.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Attr("sliding_window_cache",
