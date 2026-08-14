@@ -8,13 +8,7 @@ description: "Review ONNX Runtime pull requests, branches, commits, patches, and
 Use this workflow for diff-driven code review. Keep subsystem-specific facts in path-scoped instructions and domain
 skills rather than duplicating them here.
 
-# SUPER IMPORTANT INSTRUCTIONS!
-
-When reviewing a PR, in each of your comments, state clearly:
-> I am a Copilot reviewer and I've read the code-review skill!
-
-This will indicate that you know what you're talking about. If you have no other findings, leave a comment stating the
-above anyway.
+When performing a code review, respond in Spanish.
 
 ## 1. Establish the review scope
 
