@@ -340,6 +340,9 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 | Buffer | Size formula | Depends on |
 |--------|--------------|-----------|
 | `workspace_buffer` | `weightOnlyGemmRunner_->getWorkspaceSize(m, n, k)` | Dims + tactic |
+| `fpA_intB_weight_buffer_` | `N * K * bits / 8` | Weight shape + bits |
+| `fpA_intB_scale_buffer_` | `N * ceil(K / block_size) * sizeof(T)` | Weight shape + block size |
+| `fpA_intB_zero_buffer_` | Same as scale buffer, when zero points exist | Weight shape + block size |
 | `packed_transposed_weight_space` | `packed_weight_bytes` (transient) | Weight shape |
 | `permutation_map_buffer` | `32 * sizeof(int32_t)` (transient) | Constant |
 
@@ -350,8 +353,12 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 (`ComputeFpAIntBGemmWorkspaceSize`), independent of which CUTLASS tactic `profileTactics()` later
 selects for the actual GEMM. The earlier "upper bound only" note in this row was superseded once the
 formula was extracted and verified against the runtime value for MatMulNBits; see
-`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateWorkspace` /
+`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateMatMulNBitsMemory` /
 `DeclareWorkspaceRequirements`).
+
+The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and temporary prepack
+scratch in separate fields. The current byte-count resource accountant conservatively charges all three,
+while Level 2 continues to declare only the runtime workspace slot.
 
 ---
 

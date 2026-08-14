@@ -12,6 +12,7 @@
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/level1_memory_estimate.h"
 #include "core/framework/max_shape_override.h"
 
 namespace onnxruntime {
@@ -40,6 +41,8 @@ struct WorkspaceEstimateSelection {
   WorkspaceEstimateSource source = WorkspaceEstimateSource::kNone;
   size_t profiled_bytes = 0;
   size_t level1_estimated_bytes = 0;
+  size_t persistent_prepack_bytes = 0;
+  size_t temporary_prepack_bytes = 0;
 };
 
 struct WorkspaceEstimateSourceCounts {
@@ -90,11 +93,11 @@ class IResourceAccountant {
   virtual void AddConsumedAmount(const ResourceCount& amount) = 0;
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
 
-  // Computes the complete resource cost for a candidate node. When supplied,
-  // the Level-1 workspace estimate replaces fallback workspace or is maximized
-  // with profiled workspace.
+  // Computes the complete resource cost for a candidate node. A supplied
+  // Level-1 estimate contributes prepack memory and uses its runtime workspace
+  // instead of fallback workspace, or maximizes it with profiled workspace.
   virtual ResourceCount ComputeResourceCount(
-      const Node& node, std::optional<size_t> level1_workspace_estimate = std::nullopt) = 0;
+      const Node& node, std::optional<Level1MemoryEstimate> level1_memory_estimate = std::nullopt) = 0;
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
@@ -156,6 +159,12 @@ class IResourceAccountant {
 
   /// Returns workspace for nodes that were accepted and committed by partitioning.
   virtual size_t GetCommittedWorkspaceEstimate() const { return 0; }
+
+  /// Returns persistent prepack memory conservatively charged for accepted nodes.
+  virtual size_t GetCommittedPersistentPrepackEstimate() const { return 0; }
+
+  /// Returns temporary prepack memory conservatively charged for accepted nodes.
+  virtual size_t GetCommittedTemporaryPrepackEstimate() const { return 0; }
 
   /// Returns accepted-node counts grouped by the workspace source used for budgeting.
   virtual WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const { return {}; }
