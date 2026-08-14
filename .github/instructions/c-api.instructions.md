@@ -19,6 +19,12 @@ For an `OrtApi` addition, append the implementation pointer to the current `ort_
 API structs, append it to the corresponding initializer in `model_editor_c_api.cc`, `compile_api.cc`, `interop_api.cc`,
 or `plugin_ep/ep_api.cc`.
 
+## API Documentation
+
+Fully document every new public C API member with Doxygen comments that explain its behavior, parameters, return value,
+and any ownership or lifetime requirements. Include a `\since Version X.Y.` tag identifying the first ONNX Runtime
+release that provides the API.
+
 ## Release Versioning
 
 Do not bump `ORT_API_VERSION`, rename the current `OrtApi` version table, or add release-boundary markers or
