@@ -262,7 +262,7 @@ pipelines:
           lastModifiedDate: 2026-08-13
         spotbugs:
           lastModifiedDate: 2026-08-13
-  2104:
+  2303:
     retail:
       source:
         policheck:
@@ -272,9 +272,4 @@ pipelines:
         psscriptanalyzer:
           lastModifiedDate: 2026-08-14
         armory:
-          lastModifiedDate: 2026-08-14
-      binary:
-        binskim:
-          lastModifiedDate: 2026-08-14
-        spotbugs:
           lastModifiedDate: 2026-08-14
