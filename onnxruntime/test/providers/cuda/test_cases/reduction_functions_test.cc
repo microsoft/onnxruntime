@@ -584,6 +584,80 @@ TEST(ReductionFunctionsTest, ArgMinMaxLastAxisSpecialValues) {
   }
 }
 
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisScanStepBoundary) {
+  // A single row is scanned by at most 256 blocks x 256 threads, so the widest
+  // per iteration step is 4 * 65536 = 262144 elements. Straddle it to cover the
+  // loop termination arithmetic.
+  for (int n : {262143, 262144, 262145, 524287, 524288, 524289}) {
+    TestArgMinMaxLastAxisRandom<float>(1, n, static_cast<RandomValueGenerator::RandomSeedType>(n));
+  }
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisBufferSizeExtremes) {
+  // Sizing must stay well defined and small for the widest admitted rows.
+  const int int_max = std::numeric_limits<int>::max();
+  for (int n : {1 << 20, 1 << 30, int_max - 1, int_max}) {
+    const size_t float_bytes = compute_arg_min_max_last_axis_buffer_size<float>(1, n);
+    const size_t double_bytes = compute_arg_min_max_last_axis_buffer_size<double>(1, n);
+    EXPECT_GT(float_bytes, 0u) << "n: " << n;
+    EXPECT_LT(float_bytes, size_t{1} << 20) << "n: " << n;
+    EXPECT_GT(double_bytes, float_bytes) << "n: " << n;
+    EXPECT_LT(double_bytes, size_t{1} << 20) << "n: " << n;
+  }
+  // Many narrow rows are handled by the one thread per row kernel, which needs no buffer.
+  EXPECT_EQ(compute_arg_min_max_last_axis_buffer_size<float>(1 << 20, 64), 0u);
+}
+
+TEST(ReductionFunctionsTest, ArgMinMaxLastAxisHugeWidth) {
+  // A row whose width approaches INT_MAX is what breaks 32 bit position arithmetic in
+  // the cooperative scan, so exercise the widest row the dispatch admits. fp16 keeps
+  // the allocation at ~4 GiB; the test is skipped when the device cannot hold it.
+  const int num_cols = std::numeric_limits<int>::max();
+  const size_t input_bytes = static_cast<size_t>(num_cols) * sizeof(half);
+  size_t free_bytes = 0;
+  size_t total_bytes = 0;
+  ASSERT_TRUE(CUDA_CALL(cudaMemGetInfo(&free_bytes, &total_bytes)).IsOK());
+  if (free_bytes < input_bytes + (size_t{256} << 20)) {
+    GTEST_SKIP() << "needs " << (input_bytes >> 20) << " MiB of free device memory, have "
+                 << (free_bytes >> 20) << " MiB";
+  }
+
+  auto d_input = AllocateDeviceMemory<half>(static_cast<size_t>(num_cols));
+  ASSERT_NE(d_input.get(), nullptr) << "allocation of " << (input_bytes >> 20) << " MiB failed";
+  auto d_output = AllocateDeviceMemory<int64_t>(1);
+
+  // Zero fill, then place duplicated extremes: the first occurrence must win, and the
+  // extremes sit in different scan iterations, including the very last one.
+  ASSERT_TRUE(CUDA_CALL(cudaMemset(d_input.get(), 0, input_bytes)).IsOK());
+  const int64_t expected_max_index = num_cols - 3;
+  const int64_t expected_min_index = 1234567890;
+  const half positive = __float2half(1.0f);
+  const half negative = __float2half(-1.0f);
+  for (int64_t index : {expected_max_index, static_cast<int64_t>(num_cols - 1)}) {
+    ASSERT_TRUE(CUDA_CALL(cudaMemcpy(d_input.get() + index, &positive, sizeof(half), cudaMemcpyHostToDevice)).IsOK());
+  }
+  for (int64_t index : {expected_min_index, static_cast<int64_t>(num_cols - 2)}) {
+    ASSERT_TRUE(CUDA_CALL(cudaMemcpy(d_input.get() + index, &negative, sizeof(half), cudaMemcpyHostToDevice)).IsOK());
+  }
+
+  const size_t buffer_size_in_bytes = compute_arg_min_max_last_axis_buffer_size<half>(1, num_cols);
+  ASSERT_GT(buffer_size_in_bytes, 0u);
+  auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
+
+  int64_t actual = -1;
+  ASSERT_STATUS_OK((arg_min_max_last_axis<half, true>(0, d_input.get(), d_output.get(), 1, num_cols,
+                                                      d_buffer.get(), buffer_size_in_bytes)));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  cudaMemcpy(&actual, d_output.get(), sizeof(int64_t), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(actual, expected_max_index);
+
+  ASSERT_STATUS_OK((arg_min_max_last_axis<half, false>(0, d_input.get(), d_output.get(), 1, num_cols,
+                                                       d_buffer.get(), buffer_size_in_bytes)));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  cudaMemcpy(&actual, d_output.get(), sizeof(int64_t), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(actual, expected_min_index);
+}
+
 TEST(ReductionFunctionsTest, ArgMinMaxLastAxisEmptyRows) {
   auto d_input = AllocateDeviceMemory<float>(1);
   auto d_output = AllocateDeviceMemory<int64_t>(1);

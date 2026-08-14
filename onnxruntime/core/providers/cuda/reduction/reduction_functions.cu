@@ -861,27 +861,39 @@ __global__ void arg_min_max_last_axis_cooperative_kernel(
     const TIn* const row_data = input + row_id * num_cols;
 
     // Thread-level reduction (storage change: global memory -> register).
+    // num_cols is only bounded by INT_MAX, so the scan is written with differences
+    // rather than sums: `remaining` and `delta` are both smaller than num_cols, and a
+    // position is only formed as `id + delta` after `delta < remaining` has been
+    // checked, which keeps every value inside [0, num_cols) and cannot overflow. A
+    // plain `id += step` scan would wrap to negative positions and index out of
+    // bounds for the widest admitted rows.
     TIn best_value = arg_reduction_identity<TIn, IsArgMax>();
     int best_index = ARG_REDUCTION_EMPTY_INDEX;
-    for (int id = tid_in_grid_row; id < num_cols;
-         id += MAX_NUM_ELEMENTS_PER_THREAD * num_threads_in_grid_row) {
+    const int scan_step = MAX_NUM_ELEMENTS_PER_THREAD * num_threads_in_grid_row;
+    for (int id = tid_in_grid_row; id < num_cols;) {
+      const int remaining = num_cols - id;
       TIn v[MAX_NUM_ELEMENTS_PER_THREAD];
 
 #pragma unroll
       for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-        const int offset = id + i * num_threads_in_grid_row;
-        if (offset < num_cols) {
-          v[i] = row_data[offset];
+        const int delta = i * num_threads_in_grid_row;
+        if (delta < remaining) {
+          v[i] = row_data[id + delta];
         }
       }
 
 #pragma unroll
       for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-        const int offset = id + i * num_threads_in_grid_row;
-        if (offset < num_cols) {
-          arg_reduction_scan<TIn, IsArgMax>(best_value, best_index, v[i], offset);
+        const int delta = i * num_threads_in_grid_row;
+        if (delta < remaining) {
+          arg_reduction_scan<TIn, IsArgMax>(best_value, best_index, v[i], id + delta);
         }
       }
+
+      if (remaining <= scan_step) {
+        break;
+      }
+      id += scan_step;
     }
 
     // Warp-level reduction (storage change: register -> register).
