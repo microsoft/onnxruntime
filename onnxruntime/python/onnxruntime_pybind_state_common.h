@@ -279,7 +279,7 @@ struct PyInferenceSession {
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
-  virtual ~PyInferenceSession() noexcept {
+  virtual ~PyInferenceSession() {
     if (sess_) {
       sess_.reset();
       ReleaseFreedMemoryToOS();

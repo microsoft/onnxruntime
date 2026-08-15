@@ -2464,7 +2464,11 @@ class TestMemoryReclamation(unittest.TestCase):
             child_environment["MALLOC_TRIM_THRESHOLD_"] = "-1"
             child_environment["MALLOC_MMAP_THRESHOLD_"] = "1073741824"
             child = subprocess.run(
-                [sys.executable, __file__, "TestMemoryReclamation.test_destroy_does_not_accumulate_memory"],
+                [
+                    sys.executable,
+                    str(pathlib.Path(__file__).resolve()),
+                    "TestMemoryReclamation.test_destroy_does_not_accumulate_memory",
+                ],
                 check=False,
                 capture_output=True,
                 env=child_environment,
@@ -2479,18 +2483,19 @@ class TestMemoryReclamation(unittest.TestCase):
         session_options = onnxrt.SessionOptions()
         session_options.enable_cpu_mem_arena = False
 
-        def create_and_destroy_session(model_name: str) -> None:
-            session = onnxrt.InferenceSession(
+        def create_session(model_name: str) -> onnxrt.InferenceSession:
+            return onnxrt.InferenceSession(
                 get_name(model_name), sess_options=session_options, providers=["CPUExecutionProvider"]
             )
-            del session
-            gc.collect()
 
-        # Page in session code and perform one large-model cycle before measuring.
-        create_and_destroy_session("mul_1.onnx")
+        # Page in session code while keeping the warm-up session alive. The large session
+        # is then the first destruction to request an allocator purge in this subprocess.
+        _warmup_session = create_session("mul_1.onnx")
         rss_after_warmup = self._get_rss_kb()
 
-        create_and_destroy_session("bart_tiny.onnx")
+        large_session = create_session("bart_tiny.onnx")
+        del large_session
+        gc.collect()
         rss_after_first_session = self._get_rss_kb()
 
         # Without allocator release, a model-sized working set remains resident. Allow ample

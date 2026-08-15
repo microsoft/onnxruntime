@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cfloat>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -4024,7 +4025,7 @@ TEST(InferenceSessionTests, ReleaseSessionReturnsUnusedMemoryToOS) {
     InlinedVector<char*> child_environment_ptrs;
     child_environment_ptrs.reserve(child_environment.size() + 1);
     for (auto& entry : child_environment) {
-      child_environment_ptrs.push_back(entry.data());
+      child_environment_ptrs.push_back(const_cast<char*>(entry.c_str()));
     }
     child_environment_ptrs.push_back(nullptr);
 
@@ -4036,9 +4037,10 @@ TEST(InferenceSessionTests, ReleaseSessionReturnsUnusedMemoryToOS) {
     };
 
     pid_t child_pid{};
-    ASSERT_EQ(posix_spawn(&child_pid, child_args[0], nullptr, nullptr, child_args.data(),
-                          child_environment_ptrs.data()),
-              0);
+    const int spawn_result = posix_spawn(&child_pid, child_args[0], nullptr, nullptr, child_args.data(),
+                                         child_environment_ptrs.data());
+    ASSERT_EQ(spawn_result, 0) << "posix_spawn failed: " << std::strerror(spawn_result)
+                               << " (" << spawn_result << ")";
 
     int child_status{};
     pid_t wait_result{};
@@ -4067,10 +4069,9 @@ TEST(InferenceSessionTests, ReleaseSessionReturnsUnusedMemoryToOS) {
   Ort::SessionOptions session_options;
   session_options.DisableCpuMemArena();
 
-  // Page in session code and perform one large-model cycle before measuring.
-  {
-    Ort::Session warmup_session{*ort_env, MODEL_URI, session_options};
-  }
+  // Page in session code while keeping the warm-up session alive. The large session
+  // is then the first destruction to request an allocator purge in this subprocess.
+  Ort::Session warmup_session{*ort_env, MODEL_URI, session_options};
   const int64_t rss_after_warmup = get_rss_kb();
   ASSERT_GE(rss_after_warmup, 0);
 
