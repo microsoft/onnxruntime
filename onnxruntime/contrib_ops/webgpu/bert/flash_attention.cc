@@ -1028,7 +1028,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
         parameters.qkv_format_ == Q_K_V_BSNH &&
         seqlen_k != nullptr && seqlens_q != nullptr &&
         ShouldRunFusedPagedPrefill(context, is_fp16_q, parameters.sequence_length_,
-                                   parameters.head_size_);
+                                   parameters.head_size_, static_cast<int>(block_size));
     if (use_paged_prefill) {
       ORT_RETURN_IF_ERROR(ComputeFlashAttentionPagedPrefill(context,
                                                             Q,
@@ -1189,7 +1189,8 @@ bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxrun
 bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
                                 bool is_fp16,
                                 int max_seqlen_q,
-                                int head_size) {
+                                int head_size,
+                                int block_size) {
   // Dev/benchmark kill switch. Matches the env-var read at
   // paged_attention.cc's Unpack/Repack-skip gate; do not touch without
   // updating both.
@@ -1228,6 +1229,15 @@ bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
   const int max_k_from_shm =
       kMinWorkgroupStorageBudgetBytes / (2 * element_size * head_size);
   if (max_k_from_shm < 16) {
+    return false;
+  }
+  // Block-size vs. tile-size alignment: the shader looks up block_table once
+  // per K/V tile and reads linearly (see loadk/loadv), which only works when a
+  // tile fits entirely inside a single paged block. Mirrors the same
+  // max_k_step selection that FlashAttentionPagedPrefillProgram uses (shm
+  // path already ruled out above → this is exactly the shm branch).
+  const int max_k_step = max_k_from_shm >= 32 ? 32 : 16;
+  if (block_size < max_k_step) {
     return false;
   }
   return true;

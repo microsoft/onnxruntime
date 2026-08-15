@@ -409,10 +409,17 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 //     split-reduce decode instead
 //   * head_size satisfies the shared-memory budget for max_k_step >= 16
 //     (fp16: head_size <= 256).
+//   * block_size >= max_k_step — the shader issues one block_table lookup per
+//     K/V tile and reads linearly, so a tile must fit entirely inside one
+//     paged block. paged_attention_helper only enforces block_size >= 16
+//     (power-of-two); configs with block_size < max_k_step (e.g. block_size 16
+//     and fp16 head_size <= 128 → max_k_step 32) would splice into a
+//     physically-adjacent block that is not the next entry in block_table.
 bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
                                 bool is_fp16,
                                 int max_seqlen_q,
-                                int head_size);
+                                int head_size,
+                                int block_size);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 

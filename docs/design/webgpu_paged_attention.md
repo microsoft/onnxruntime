@@ -274,13 +274,12 @@ optimization of that existing path.
   (`1`, `4`, `16`, `31`, `32`, `64`) across MHA, GQA, batch sizes, past lengths,
   packed QKV, rotary, and cache aliasing. Keep correctness tests for every
   route and replace the cutoff with a measured or explicitly documented
-  policy if adapter-specific results require it. Use
-  `test/python/transformers/benchmark_paged_attention_webgpu.py` for both
-  `decode` (one new token per request) and `prompt` (multiple new tokens per
-  request) so the same matrix remains valid when fused prefill lands. Direct
-  paged decode is the production route for short Q sequences; prompt/prefill
-  remains on the gathered fallback until a dedicated paged prefill kernel is
-  validated.
+  policy if adapter-specific results require it. The current benchmark is the
+  C++ Google Benchmark harness at
+  `onnxruntime/test/onnx/microbenchmark/paged_attention.cc`, which covers
+  `decode` (one new token per request) and prefill (uniform and varlen Q
+  lengths) so the same matrix can be revisited as new shapes land. Direct
+  paged decode is the production route for short Q sequences.
 
 2. **Complete deferred Phase 1 feature support.** Add and test the features
   currently rejected by WebGPU: `softcap`, `local_window_size`, `head_sink`,
@@ -371,15 +370,17 @@ onnxruntime/contrib_ops/cpu/bert/paged_attention_helper.h   # provider-neutral s
 Benchmark harness:
 
 ```
-onnxruntime/test/python/transformers/benchmark_paged_attention_webgpu.py
+onnxruntime/test/onnx/microbenchmark/paged_attention.cc
 ```
 
-The harness constructs each session before timing and reports end-to-end
-latency with output synchronization. It intentionally exposes MHA and GQA as
-separate cases: MHA uses one KV head per query head, while GQA shares fewer KV
-heads across groups of query heads. Both `decode` and `prompt` modes use the
-same cache and packed-sequence layout, allowing the fallback and future fused
-prefill paths to be compared directly.
+The C++ harness (Google Benchmark) constructs each session before timing and
+reports end-to-end latency with output synchronization. It intentionally
+exposes MHA and GQA as separate cases: MHA uses one KV head per query head,
+while GQA shares fewer KV heads across groups of query heads. Both `decode`
+(one new token per request) and prefill (uniform and varlen Q lengths) modes
+use the same cache and packed-sequence layout, allowing the fallback and
+fused paged prefill paths to be compared directly (toggle via the
+`ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED` env var).
 
 ---
 

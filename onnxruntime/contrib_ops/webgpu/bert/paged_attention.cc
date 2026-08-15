@@ -751,8 +751,29 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                   static_cast<uint64_t>(max_seqlen_q) *
                                   static_cast<uint64_t>(parameters.hidden_size) * sizeof(MLFloat16);
   const bool use_direct_paged_decode = max_seqlen_q < 32;
-  const bool use_direct_paged_prefill = max_seqlen_q >= 32;
+  // Direct-paged prefill is only safe when the fused paged-prefill shader
+  // will actually run for this (adapter, dtype, shape, block_size) tuple.
+  // If the helper rejects, dense FA would interpret the paged cache as a
+  // BSNH tensor. Same predicate is consulted by ApplyFlashAttention.
+  const bool is_fp16_q =
+      query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool use_direct_paged_prefill =
+      ShouldRunFusedPagedPrefill(context, is_fp16_q,
+                                 static_cast<int>(max_seqlen_q),
+                                 parameters.head_size,
+                                 parameters.block_size);
   const bool use_direct_paged_attention = use_direct_paged_decode || use_direct_paged_prefill;
+  // Unpack/Repack fast paths (see full explanation below at the Q/output view
+  // construction). skip_unpack_repack must be computed before the
+  // q_padded_bytes check because those fast paths do not allocate q_padded /
+  // output_padded and legitimately exceed the binding limit on sparse varlen
+  // batches (B * max_seqlen_q * hidden > limit while token_count * hidden fits).
+  const bool uniform_q_lens =
+      (static_cast<int64_t>(parameters.batch_size) *
+           static_cast<int64_t>(max_seqlen_q) ==
+       static_cast<int64_t>(parameters.token_count));
+  const bool varlen_mode = !uniform_q_lens && use_direct_paged_prefill;
+  const bool skip_unpack_repack = uniform_q_lens || varlen_mode;
   const uint64_t kv_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
                                    static_cast<uint64_t>(parameters.kv_num_heads) *
                                    static_cast<uint64_t>(max_kv_len) *
@@ -763,7 +784,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                            kv_padded_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
                            max_storage_buffer_binding_size, ".");
   }
-  if (q_padded_bytes > max_storage_buffer_binding_size) {
+  if (!skip_unpack_repack && q_padded_bytes > max_storage_buffer_binding_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention (WebGPU): q_padded/output_padded scratch requires ",
                            q_padded_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
@@ -812,7 +833,8 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   // Unpack/Repack fast path: skip the two dispatches whenever we can hand FA
   // a rank-4 view over the raw packed Q/output buffers.
   //
-  // Two skip modes:
+  // Two skip modes (both decided above, next to the storage-binding checks
+  // because those checks must also see skip_unpack_repack):
   //   (a) Uniform-batch mode: when every batch has q_len_b == max_seqlen_q
   //       (B * max_seqlen_q == token_count), the packed varlen buffer is
   //       byte-identical to a BSNH [B, max_seqlen_q, N, H] view. FA
@@ -823,8 +845,9 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   //   (b) Varlen-Q mode: for non-uniform prefill, we pass a rank-4
   //       [token_count, 1, N, H] view and cumulative_seqlens_q. Only the
   //       fused paged-prefill shader knows how to consume this
-  //       (q_varlen #param), so mode (b) is only safe when that shader will
-  //       actually run — mirror its gate below.
+  //       (q_varlen #param), so mode (b) is only safe when
+  //       ShouldRunFusedPagedPrefill would return true — which is exactly
+  //       use_direct_paged_prefill (see storage-binding block above).
   //
   // If neither mode applies, we fall back to Unpack + BSNH-padded scratch.
   //
@@ -832,24 +855,6 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   // Run() on Windows/D3D12, plus the padded scratch allocation
   // (B * max_seqlen_q * hidden * 2 bytes -- can be tens of MB at long
   // prefill).
-  const bool uniform_q_lens =
-      (static_cast<int64_t>(parameters.batch_size) *
-           static_cast<int64_t>(max_seqlen_q) ==
-       static_cast<int64_t>(parameters.token_count));
-  // Anti-drift: consult the shared helper that ApplyFlashAttention will
-  // itself consult when it selects the fused paged-prefill shader. If the
-  // two answers ever disagree, the varlen Q view we build below (rank-4
-  // [token_count, 1, N, H] + cumulative_seqlens_q) would be handed to a
-  // shader that cannot index it. See flash_attention.h ShouldRunFusedPagedPrefill.
-  const bool is_fp16_q =
-      query_for_fa->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  const bool paged_prefill_will_run =
-      use_direct_paged_prefill &&
-      ShouldRunFusedPagedPrefill(context, is_fp16_q,
-                                 static_cast<int>(max_seqlen_q),
-                                 parameters.head_size);
-  const bool varlen_mode = !uniform_q_lens && paged_prefill_will_run;
-  const bool skip_unpack_repack = uniform_q_lens || varlen_mode;
   Tensor k_padded;
   Tensor v_padded;
   Tensor q_padded;
