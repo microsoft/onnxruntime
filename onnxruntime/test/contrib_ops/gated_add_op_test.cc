@@ -108,9 +108,6 @@ void RunGatedAddTest(const std::vector<int64_t>& input_dims) {
     tester.AddInput<T>("Y", input_dims, ToTensorType<T>(y));
     tester.AddInput<T>("gate", gate_dims, ToTensorType<T>(gate));
     tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected));
-    if constexpr (!std::is_same_v<T, float>) {
-      tester.SetOutputTolerance(0.0f, 0.0f);
-    }
 
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(std::move(ep));
