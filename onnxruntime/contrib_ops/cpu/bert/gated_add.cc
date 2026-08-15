@@ -51,7 +51,7 @@ Status GatedAdd<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1, "X must have rank >= 1");
   ORT_RETURN_IF_NOT(y->Shape() == shape, "Y must have the same shape as X");
   ORT_RETURN_IF_NOT(gate->Shape().NumDimensions() == shape.NumDimensions(),
-                     "gate must have the same rank as X");
+                    "gate must have the same rank as X");
 
   const size_t last_axis = shape.NumDimensions() - 1;
   const int64_t hidden_size = shape[last_axis];
@@ -59,7 +59,7 @@ Status GatedAdd<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(gate->Shape()[last_axis] == 1, "gate last dimension must be 1");
   for (size_t axis = 0; axis < last_axis; ++axis) {
     ORT_RETURN_IF_NOT(gate->Shape()[axis] == shape[axis],
-                       "gate dimension ", axis, " must match X");
+                      "gate dimension ", axis, " must match X");
   }
 
   Tensor* output = context->Output(0, shape);

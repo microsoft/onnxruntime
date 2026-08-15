@@ -190,7 +190,7 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
 
   const uint32_t workgroup_size = norm_size <= 64    ? 64
                                   : norm_size <= 128 ? 128
-                                                      : 256;
+                                                     : 256;
 
   GatedRMSNormProgram program{};
   program.CacheHint(workgroup_size)

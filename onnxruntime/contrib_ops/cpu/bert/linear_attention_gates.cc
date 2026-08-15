@@ -12,15 +12,15 @@
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_KERNEL_TYPED(Op, T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      Op,                                                             \
-      kMSDomain,                                                      \
-      1,                                                              \
-      T,                                                              \
-      kCpuExecutionProvider,                                          \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+#define REGISTER_KERNEL_TYPED(Op, T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      Op,                                                              \
+      kMSDomain,                                                       \
+      1,                                                               \
+      T,                                                               \
+      kCpuExecutionProvider,                                           \
+      KernelDefBuilder()                                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("TF", DataTypeImpl::GetTensorType<float>()), \
       Op<T>);
 
@@ -73,9 +73,9 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(num_heads > 0, "a last dimension must be positive");
 
   ORT_RETURN_IF_NOT(dt_bias->Shape().Size() == num_heads,
-                     "dt_bias must have ", num_heads, " elements, got ", dt_bias->Shape().Size());
+                    "dt_bias must have ", num_heads, " elements, got ", dt_bias->Shape().Size());
   ORT_RETURN_IF_NOT(decay_scale->Shape().Size() == num_heads,
-                     "decay_scale must have ", num_heads, " elements, got ", decay_scale->Shape().Size());
+                    "decay_scale must have ", num_heads, " elements, got ", decay_scale->Shape().Size());
 
   Tensor* decay = context->Output(0, a_shape);
   Tensor* beta = context->Output(1, a_shape);
@@ -138,8 +138,8 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(norm_size > 0, "scale must not be empty");
   const int64_t last_dim = shape[shape.NumDimensions() - 1];
   ORT_RETURN_IF_NOT(last_dim % norm_size == 0,
-                     "X last dimension (", last_dim, ") must be a multiple of the scale length (",
-                     norm_size, ")");
+                    "X last dimension (", last_dim, ") must be a multiple of the scale length (",
+                    norm_size, ")");
 
   Tensor* output = context->Output(0, shape);
   const int64_t count = shape.Size();
