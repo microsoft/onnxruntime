@@ -1230,12 +1230,12 @@ __global__ void LinearAttentionDecodeColSplitKernel(
       }
       red[part][tx] = partial;
       __syncthreads();
-      if (part == 0) {
-        float acc = 0.0f;
+      float acc = 0.0f;
 #pragma unroll
-        for (int p = 0; p < RS; ++p) {
-          acc += red[p][tx];
-        }
+      for (int p = 0; p < RS; ++p) {
+        acc += red[p][tx];
+      }
+      if (part == 0) {
         output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
       }
     }
