@@ -384,7 +384,7 @@ which must now be sized by `batch_size * max_kv_len_bound` so that the allocatio
 > |---|---|---|
 > | `max_query_len` | `params.seqlen_q` (Flash), `p.sequence_length` (MEA) — grid extent only | `max_query_len_bound`, else `token_count` |
 > | `max_kv_len` | quantized-Flash `max_seqlen_k`, split workspace sizing | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
-| split-KV eligibility | FlashAttention decode dispatch | `min_max_kv_len_for_split`, else disabled unless exact lengths were read back |
+> | split-KV eligibility | FlashAttention decode dispatch | `min_max_kv_len_for_split`, else disabled unless exact lengths were read back |
 > | `total_kv_tokens` | gather staging buffer extent | `batch_size * max_kv_len_bound` |
 >
 > Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:
