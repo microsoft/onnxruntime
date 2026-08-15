@@ -47,6 +47,7 @@ REGISTER_KERNEL_TYPED(GatedRMSNorm, MLFloat16)
 
 namespace {
 
+// Reuses the CPU unary activation functors' public ElementWiseRangedTransform interface for a scalar input.
 template <typename Activation>
 inline float ApplyFloatActivation(float value) {
   float output;
