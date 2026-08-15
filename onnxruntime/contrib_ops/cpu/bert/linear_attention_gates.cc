@@ -6,7 +6,7 @@
 #include <cmath>
 
 #include "core/framework/tensor.h"
-#include "core/providers/cpu/activation/activations.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -47,15 +47,14 @@ REGISTER_KERNEL_TYPED(GatedRMSNorm, MLFloat16)
 
 namespace {
 
-// Reuses the CPU unary activation functors' public ElementWiseRangedTransform interface for a scalar input.
-template <typename Activation>
-inline float ApplyFloatActivation(float value) {
+inline float SigmoidFloat(float value) {
   float output;
-  Activation activation;
-  activation.input = &value;
-  activation.output = &output;
-  activation(0, 1);
+  MlasComputeLogistic(&value, &output, 1);
   return output;
+}
+
+inline float SoftplusFloat(float value) {
+  return value > 0.0f ? value + std::log(std::exp(-value) + 1.0f) : std::log(std::exp(value) + 1.0f);
 }
 
 }  // namespace
@@ -106,11 +105,9 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
         for (int64_t h = 0; h < num_heads; ++h) {
           const int64_t idx = offset + h;
           const float biased = static_cast<float>(a_data[idx]) + dt_bias_data[h];
-          decay_data[idx] = static_cast<T>(
-              decay_scale_data[h] * ApplyFloatActivation<functors::Softplus<float>>(biased));
+          decay_data[idx] = static_cast<T>(decay_scale_data[h] * SoftplusFloat(biased));
           if (beta_data != nullptr) {
-            beta_data[idx] = static_cast<T>(
-                ApplyFloatActivation<functors::Sigmoid<float>>(static_cast<float>(b_data[idx])));
+            beta_data[idx] = static_cast<T>(SigmoidFloat(static_cast<float>(b_data[idx])));
           }
         }
       },
@@ -167,8 +164,7 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
           const float z = static_cast<float>(gate_data[offset + i]);
           const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *
                                    static_cast<float>(scale_data[i]);
-          output_data[offset + i] = static_cast<T>(
-              normalized * (z * ApplyFloatActivation<functors::Sigmoid<float>>(z)));
+            output_data[offset + i] = static_cast<T>(normalized * (z * SigmoidFloat(z)));
         }
       },
       0);
