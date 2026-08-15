@@ -650,6 +650,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Print debug info
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
+    debug_info.use_latent_attention = use_latent_attention;
     debug_info.use_xqa = use_xqa_decode;
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
