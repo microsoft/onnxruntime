@@ -127,6 +127,41 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
   out[idx] = from_float<T>(q * scale);
 }
 
+constexpr float kFp8E4M3Max = 448.0f;
+
+template <typename T>
+__global__ void DynamicQuantizeActivationFp8Kernel(__nv_fp8_e4m3* __restrict__ output,
+                                                   float* __restrict__ scales,
+                                                   const T* __restrict__ input,
+                                                   int k) {
+  __shared__ float block_max[256];
+
+  const int row = static_cast<int>(blockIdx.x);
+  float thread_max = 0.0f;
+  for (int column = static_cast<int>(threadIdx.x); column < k; column += blockDim.x) {
+    thread_max = fmaxf(thread_max, fabsf(to_float<T>(input[static_cast<size_t>(row) * k + column])));
+  }
+  block_max[threadIdx.x] = thread_max;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      block_max[threadIdx.x] = fmaxf(block_max[threadIdx.x], block_max[threadIdx.x + stride]);
+    }
+    __syncthreads();
+  }
+
+  const float scale = fmaxf(block_max[0] / kFp8E4M3Max, 1.0f / 65504.0f);
+  const float inv_scale = 1.0f / scale;
+  if (threadIdx.x == 0) {
+    scales[row] = scale;
+  }
+  for (int column = static_cast<int>(threadIdx.x); column < k; column += blockDim.x) {
+    const size_t index = static_cast<size_t>(row) * k + column;
+    output[index] = __nv_fp8_e4m3(to_float<T>(input[index]) * inv_scale);
+  }
+}
+
 // In-register form of QuantizeDequantizeActivationFp8Kernel for the 8 activations packed in one
 // uint4. Bit-identical to the standalone kernel, so the GEMV can absorb the W8A8 activation
 // rounding instead of round-tripping A through a scratch buffer.
@@ -792,6 +827,41 @@ Status LaunchQuantizeDequantizeActivationFp8(void* a_out,
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp8Weight requires CUDA 11.8 or later.");
 #endif
 }
+
+Status LaunchDynamicQuantizeActivationFp8(void* a_fp8,
+                                          float* scale_a,
+                                          const void* a,
+                                          int m,
+                                          int k,
+                                          bool is_bf16,
+                                          cudaStream_t stream) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  if (m <= 0 || k <= 0) {
+    return Status::OK();
+  }
+  constexpr int kThreads = 256;
+  if (is_bf16) {
+    DynamicQuantizeActivationFp8Kernel<__nv_bfloat16><<<m, kThreads, 0, stream>>>(
+        reinterpret_cast<__nv_fp8_e4m3*>(a_fp8), scale_a,
+        reinterpret_cast<const __nv_bfloat16*>(a), k);
+  } else {
+    DynamicQuantizeActivationFp8Kernel<half><<<m, kThreads, 0, stream>>>(
+        reinterpret_cast<__nv_fp8_e4m3*>(a_fp8), scale_a,
+        reinterpret_cast<const half*>(a), k);
+  }
+  return CUDA_CALL(cudaGetLastError());
+#else
+  ORT_UNUSED_PARAMETER(a_fp8);
+  ORT_UNUSED_PARAMETER(scale_a);
+  ORT_UNUSED_PARAMETER(a);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(is_bf16);
+  ORT_UNUSED_PARAMETER(stream);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Dynamic FP8 activation quantization requires CUDA 11.8 or later.");
+#endif
+}
+
 Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const void* a,
                                       const void* b_fp8,

@@ -38,6 +38,7 @@ Source files:
 4. [Decode Path - Fused GEMV](#4-decode-path---fused-gemv)
 5. [Default Path - Dequantize + cuBLAS](#5-default-path---dequantize--cublas)
 6. [Optional W8A8 Activation Path](#6-optional-w8a8-activation-path)
+   - [6.1 Opt-in row-wise FP8 prefill](#61-opt-in-row-wise-fp8-prefill)
 7. [Testing and Benchmarking](#7-testing-and-benchmarking)
 
 ---
@@ -214,6 +215,20 @@ result matches native W8A8 execution, while the GEMM stays in the activation
 type (architecture independent). When `a_scale` is absent the activation keeps
 full FP16/BF16 precision (weight-only W8A16).
 
+### 6.1 Opt-in row-wise FP8 prefill
+
+For Hopper and newer, set `ORT_ENABLE_ROW_WISE_FP8_GEMM=1` to try a cuBLASLt
+row-wise FP8 GEMM before the default dequantize + cuBLAS path. The path is
+selected only when `a_scale` and `bias` are absent, `N >= 4096`, `N` and `K`
+are multiples of 16, and one weight scale covers the complete K dimension.
+Each activation row is dynamically scaled to FP8 E4M3; the weight keeps its
+existing FP8 values and per-row scale. If cuBLASLt cannot provide a supported
+algorithm, ORT falls back to the default path.
+
+This path requires CUDA 12.9 or newer to execute. The switch is opt-in because
+it changes the arithmetic from FP16/BF16 activation GEMM to FP8 activation
+GEMM and is intended for model-specific prefill benchmarking.
+
 ---
 
 ## 7. Testing and Benchmarking
@@ -244,6 +259,12 @@ cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
 
 # Default prefill: dequantize + cuBLAS
 cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
+  --op fp8 --activation-dtype fp16 --m 32 --n 4096 --k 4096 --warmup 50 --repeat 200
+
+# Opt-in row-wise FP8 prefill on Hopper+
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
+  ORT_ENABLE_ROW_WISE_FP8_GEMM=1 \
   python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp8 --activation-dtype fp16 --m 32 --n 4096 --k 4096 --warmup 50 --repeat 200
 
