@@ -1089,7 +1089,7 @@ __global__ void LinearAttentionDecodeColKernel(
 // Grid:  (batch_size, kv_num_heads, d_v / kColsPerBlock)
 // Block: (kColsPerBlock, RS)
 // =============================================================================
-template <typename T, int DK, int RS, bool ScalarGatedDelta = false>
+template <typename T, int DK, int RS>
 __global__ void LinearAttentionDecodeColSplitKernel(
     const T* __restrict__ query,
     const T* __restrict__ key,
@@ -1142,7 +1142,7 @@ __global__ void LinearAttentionDecodeColSplitKernel(
 
   __shared__ float k_sh[DK];
   __shared__ float q_sh[DK];
-  __shared__ float g_sh[ScalarGatedDelta ? 1 : DK];
+  __shared__ float g_sh[DK];
   __shared__ float scalar_g;
   __shared__ float red[RS][kColsPerBlock];
 
@@ -1156,11 +1156,7 @@ __global__ void LinearAttentionDecodeColSplitKernel(
     for (int i = tid; i < DK; i += kBlockThreads) {
       k_sh[i] = to_float(key[bt * k_hidden + h_k * DK + i]);
     }
-    if constexpr (ScalarGatedDelta) {
-      if (tid == 0) {
-        scalar_g = expf(to_float(decay[bt * kv_num_heads + h_kv]));
-      }
-    } else if (needs_decay) {
+    if (needs_decay) {
       if (decay_per_key_dim) {
         for (int i = tid; i < DK; i += kBlockThreads) {
           g_sh[i] = expf(to_float(decay[bt * (kv_num_heads * DK) + h_kv * DK + i]));
@@ -1171,13 +1167,7 @@ __global__ void LinearAttentionDecodeColSplitKernel(
     }
     __syncthreads();
 
-    if constexpr (ScalarGatedDelta) {
-      const float g = scalar_g;
-#pragma unroll
-      for (int r = 0; r < DKP; ++r) {
-        s_col[r] *= g;
-      }
-    } else if (needs_decay) {
+    if (needs_decay) {
       if (decay_per_key_dim) {
 #pragma unroll
         for (int r = 0; r < DKP; ++r) {
@@ -1193,7 +1183,7 @@ __global__ void LinearAttentionDecodeColSplitKernel(
     }
 
     float r_col = 0.0f;
-    if (ScalarGatedDelta || needs_retrieval) {
+    if (needs_retrieval) {
       float partial = 0.0f;
 #pragma unroll
       for (int r = 0; r < DKP; ++r) {
@@ -1207,12 +1197,8 @@ __global__ void LinearAttentionDecodeColSplitKernel(
       }
     }
 
-    const float delta_col = ScalarGatedDelta
-                                ? to_float(beta_in[bt]) *
-                                      (to_float(value[bt * v_hidden + h_kv * d_v + col]) - r_col)
-                                : ComputeLinearAttentionDeltaColumn(
-                                      value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads,
-                                      needs_beta, beta_per_head, r_col);
+    const float delta_col = ComputeLinearAttentionDeltaColumn(
+        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
 
 #pragma unroll
     for (int r = 0; r < DKP; ++r) {
@@ -1254,7 +1240,7 @@ __global__ void LinearAttentionDecodeColSplitKernel(
       }
     }
 
-    if (!ScalarGatedDelta && force_sequential_state_roundtrip && t + 1 < seq_len) {
+    if (force_sequential_state_roundtrip && t + 1 < seq_len) {
 #pragma unroll
       for (int r = 0; r < DKP; ++r) {
         s_col[r] = to_float(from_float<T>(s_col[r]));
@@ -1356,24 +1342,11 @@ Status LaunchLinearAttentionKernel(
         constexpr int DK = decltype(dk_tag)::value;
         constexpr int RS = decltype(rs_tag)::value;
         const dim3 split_block(kColsPerBlock, RS, 1);
-        auto launch = [&](auto specialized_tag) {
-          constexpr bool Specialized = decltype(specialized_tag)::value;
-          LinearAttentionDecodeColSplitKernel<T, DK, RS, Specialized><<<decode_grid, split_block, 0, stream>>>(
-              query, key, value, past_state, present_state, decay, beta, output,
-              seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
-              needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval,
-              force_sequential_state_roundtrip, batch_size, state_window);
-        };
-        if constexpr (std::is_same_v<T, half> && DK == 128 && RS == 8) {
-          if (needs_decay && !decay_per_key_dim && needs_beta && !beta_per_head &&
-              needs_retrieval && !force_sequential_state_roundtrip) {
-            launch(std::true_type{});
-          } else {
-            launch(std::false_type{});
-          }
-        } else {
-          launch(std::false_type{});
-        }
+        LinearAttentionDecodeColSplitKernel<T, DK, RS><<<decode_grid, split_block, 0, stream>>>(
+            query, key, value, past_state, present_state, decay, beta, output,
+            seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
+            needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval,
+            force_sequential_state_roundtrip, batch_size, state_window);
         return CUDA_CALL(cudaGetLastError());
       };
 
