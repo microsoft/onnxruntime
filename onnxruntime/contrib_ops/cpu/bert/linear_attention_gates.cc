@@ -164,7 +164,7 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
           const float z = static_cast<float>(gate_data[offset + i]);
           const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *
                                    static_cast<float>(scale_data[i]);
-            output_data[offset + i] = static_cast<T>(normalized * (z * SigmoidFloat(z)));
+          output_data[offset + i] = static_cast<T>(normalized * (z * SigmoidFloat(z)));
         }
       },
       0);
