@@ -33,7 +33,7 @@ Status GatedAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "  let product = quantizeToF16(f32(" << y.GetByOffset("global_idx")
                               << ") * f32(gate_value));\n"
                               << "  let value = f32(" << x.GetByOffset("global_idx") << ") + product;\n"
-                              << "  " << output.SetByOffset("global_idx", "value");
+                              << "  " << output.SetByOffset("global_idx", "f16(value)");
   } else {
     shader.MainFunctionBody() << "  let value = " << x.GetByOffset("global_idx")
                               << " + (" << y.GetByOffset("global_idx") << " * gate_value);\n"
