@@ -102,17 +102,17 @@ Status LinearAttentionGate::ComputeInternal(ComputeContext& context) const {
   program.CacheHint(b != nullptr, beta != nullptr)
       .AddInputs({{a, ProgramTensorMetadataDependency::Type},
                   {dt_bias, ProgramTensorMetadataDependency::None},
-                  {decay_scale, ProgramTensorMetadataDependency::None}})
-      .AddOutput({decay, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(output_size) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(output_size)},
-                            {onnxruntime::narrow<uint32_t>(num_heads)}});
+                  {decay_scale, ProgramTensorMetadataDependency::None}});
   if (b != nullptr) {
     program.AddInput({b, ProgramTensorMetadataDependency::Type});
   }
+  program.AddOutput({decay, ProgramTensorMetadataDependency::None});
   if (beta != nullptr) {
     program.AddOutput({beta, ProgramTensorMetadataDependency::None});
   }
+  program.SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(output_size) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(output_size)},
+                            {onnxruntime::narrow<uint32_t>(num_heads)}});
 
   return context.RunProgram(program);
 }

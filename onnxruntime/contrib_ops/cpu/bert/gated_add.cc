@@ -3,8 +3,6 @@
 
 #include "contrib_ops/cpu/bert/gated_add.h"
 
-#include <limits>
-
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
 
