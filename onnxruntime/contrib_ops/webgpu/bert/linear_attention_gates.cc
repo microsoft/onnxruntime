@@ -124,7 +124,7 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation()
-      << "fn rms_silu_sigmoid(x: f32) -> f32 {\n"
+      << "fn stable_sigmoid(x: f32) -> f32 {\n"
       << "  if (x > 0.0) {\n"
       << "    return 1.0 / (1.0 + exp(-x));\n"
       << "  }\n"
@@ -155,7 +155,7 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  for (var i = local_idx; i < uniforms.norm_size; i += workgroup_size_x) {\n"
       << "    let z = f32(gate[base + i]);\n"
       << "    let normalized = f32(input[base + i]) * inv_rms * f32(scale[i]);\n"
-      << "  output[base + i] = output_element_t(normalized * (z * rms_silu_sigmoid(z)));\n"
+      << "    output[base + i] = output_element_t(normalized * (z * stable_sigmoid(z)));\n"
       << "  }\n";
 
   return Status::OK();
