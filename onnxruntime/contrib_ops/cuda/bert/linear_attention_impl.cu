@@ -1144,6 +1144,8 @@ __global__ void LinearAttentionDecodeColSplitKernel(
   __shared__ float q_sh[DK];
   __shared__ float g_sh[DK];
   __shared__ float scalar_g;
+  __shared__ float value_sh[kColsPerBlock];
+  __shared__ float beta_sh;
   __shared__ float red[RS][kColsPerBlock];
 
   const int k_hidden = n_k_heads * DK;
@@ -1163,6 +1165,12 @@ __global__ void LinearAttentionDecodeColSplitKernel(
         }
       } else if (tid == 0) {
         scalar_g = expf(to_float(decay[bt * kv_num_heads + h_kv]));
+      }
+    }
+    if (part == 0) {
+      value_sh[tx] = to_float(value[bt * v_hidden + h_kv * d_v + col]);
+      if (tx == 0 && needs_beta) {
+        beta_sh = to_float(beta_per_head ? beta_in[bt * kv_num_heads + h_kv] : beta_in[bt]);
       }
     }
     __syncthreads();
@@ -1197,8 +1205,8 @@ __global__ void LinearAttentionDecodeColSplitKernel(
       }
     }
 
-    const float delta_col = ComputeLinearAttentionDeltaColumn(
-        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
+    const float value_col = value_sh[tx];
+    const float delta_col = needs_beta ? beta_sh * (value_col - r_col) : value_col;
 
 #pragma unroll
     for (int r = 0; r < DKP; ++r) {
