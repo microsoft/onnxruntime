@@ -4,10 +4,9 @@
 #include "contrib_ops/cpu/bert/linear_attention_gates.h"
 
 #include <cmath>
-#include <limits>
 
 #include "core/framework/tensor.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/activation/activations.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -48,33 +47,14 @@ REGISTER_KERNEL_TYPED(GatedRMSNorm, MLFloat16)
 
 namespace {
 
-// Matches OP_Sigmoid in core/providers/cpu/math/element_wise_ops.h: the branch keeps the
-// exponent argument non-positive so large-magnitude inputs cannot overflow.
-inline float SigmoidFloat(float x) {
-  return x > 0.0f ? 1.0f / (1.0f + std::exp(-x)) : 1.0f - 1.0f / (1.0f + std::exp(x));
-}
-
-// Matches OP_Softplus in the same file.
-inline float SoftplusFloat(float x) {
-  return x > 0.0f ? x + std::log(std::exp(-x) + 1.0f) : std::log(std::exp(x) + 1.0f);
-}
-
-template <typename T>
-inline float ToFloatValue(T value) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    return value.ToFloat();
-  } else {
-    return value;
-  }
-}
-
-template <typename T>
-inline T FromFloatValue(float value) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    return MLFloat16(value);
-  } else {
-    return static_cast<T>(value);
-  }
+template <typename Activation>
+inline float ApplyFloatActivation(float value) {
+  float output;
+  Activation activation;
+  activation.input = &value;
+  activation.output = &output;
+  activation(0, 1);
+  return output;
 }
 
 }  // namespace
@@ -124,10 +104,12 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
         const int64_t offset = token * num_heads;
         for (int64_t h = 0; h < num_heads; ++h) {
           const int64_t idx = offset + h;
-          const float biased = ToFloatValue<T>(a_data[idx]) + dt_bias_data[h];
-          decay_data[idx] = FromFloatValue<T>(decay_scale_data[h] * SoftplusFloat(biased));
+          const float biased = static_cast<float>(a_data[idx]) + dt_bias_data[h];
+          decay_data[idx] = static_cast<T>(
+              decay_scale_data[h] * ApplyFloatActivation<functors::Softplus<float>>(biased));
           if (beta_data != nullptr) {
-            beta_data[idx] = FromFloatValue<T>(SigmoidFloat(ToFloatValue<T>(b_data[idx])));
+            beta_data[idx] = static_cast<T>(
+                ApplyFloatActivation<functors::Sigmoid<float>>(static_cast<float>(b_data[idx])));
           }
         }
       },
@@ -176,14 +158,16 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
         const int64_t offset = row * norm_size;
         float sum_sq = 0.0f;
         for (int64_t i = 0; i < norm_size; ++i) {
-          const float v = ToFloatValue<T>(input_data[offset + i]);
+          const float v = static_cast<float>(input_data[offset + i]);
           sum_sq += v * v;
         }
         const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(norm_size) + epsilon_);
         for (int64_t i = 0; i < norm_size; ++i) {
-          const float z = ToFloatValue<T>(gate_data[offset + i]);
-          const float normalized = ToFloatValue<T>(input_data[offset + i]) * inv_rms * ToFloatValue<T>(scale_data[i]);
-          output_data[offset + i] = FromFloatValue<T>(normalized * (z * SigmoidFloat(z)));
+          const float z = static_cast<float>(gate_data[offset + i]);
+          const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *
+                                   static_cast<float>(scale_data[i]);
+          output_data[offset + i] = static_cast<T>(
+              normalized * (z * ApplyFloatActivation<functors::Sigmoid<float>>(z)));
         }
       },
       0);
