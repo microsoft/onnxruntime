@@ -218,18 +218,18 @@ pipelines:
     retail:
       source:
         policheck:
-          lastModifiedDate: 2026-07-29
+          lastModifiedDate: 2026-08-15
         eslint:
-          lastModifiedDate: 2026-07-29
+          lastModifiedDate: 2026-08-15
         psscriptanalyzer:
-          lastModifiedDate: 2026-07-29
+          lastModifiedDate: 2026-08-15
         armory:
-          lastModifiedDate: 2026-07-29
+          lastModifiedDate: 2026-08-15
       binary:
         binskim:
-          lastModifiedDate: 2026-07-29
+          lastModifiedDate: 2026-08-15
         spotbugs:
-          lastModifiedDate: 2026-07-29
+          lastModifiedDate: 2026-08-15
   2214:
     retail:
       source:
