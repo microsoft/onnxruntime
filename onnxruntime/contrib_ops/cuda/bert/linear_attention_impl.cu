@@ -1219,7 +1219,6 @@ __global__ void LinearAttentionDecodeColSplitKernel(
     for (int group_index = 0; group_index < head_count; ++group_index) {
       const LinearAttentionReadoutHeads readout_heads =
           GetLinearAttentionReadoutHeads(h_kv, q_num_heads, kv_num_heads, group_index);
-      __syncthreads();
       for (int i = tid; i < DK; i += kBlockThreads) {
         q_sh[i] = to_float(query[bt * q_hidden + readout_heads.query_head * DK + i]);
       }
@@ -1247,7 +1246,6 @@ __global__ void LinearAttentionDecodeColSplitKernel(
         s_col[r] = to_float(from_float<T>(s_col[r]));
       }
     }
-    __syncthreads();  // before next token overwrites k_sh/g_sh
   }
 
 #pragma unroll

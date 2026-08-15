@@ -63,6 +63,15 @@ Status LaunchQuantizeDequantizeActivationFp8(void* a_out,
                                              bool is_bf16,
                                              cudaStream_t stream);
 
+// Dynamically quantizes each activation row to FP8 E4M3. a_fp8 is [M, K] and scale_a is [M].
+Status LaunchDynamicQuantizeActivationFp8(void* a_fp8,
+                                          float* scale_a,
+                                          const void* a,
+                                          int m,
+                                          int k,
+                                          bool is_bf16,
+                                          cudaStream_t stream);
+
 // Fused FP8 weight-only GEMV fast path for the decode phase (small M). Reads the FP8 weight
 // directly (no [N, K] dequant buffer). a is [M, K] activation (FP16/BF16), b_fp8 is [N, K]
 // FP8 E4M3, weight_scale is [N, ceil(K/block_size)] fp32, bias is an optional [N] vector (may be
