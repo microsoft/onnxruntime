@@ -612,12 +612,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     // query-head count makes the occupancy heuristic select two splits. The upper bound sizes the
     // workspaces, while the replay-wide lower bound proves splitting is worthwhile on every replay.
     if (min_max_kv_len_for_split > kFlashSplitKvMinSequenceLength) {
-      size_t softmax_lse_accum_bytes = 0;
-      size_t out_accum_bytes = 0;
-      std::tie(flash_num_splits, softmax_lse_accum_bytes, out_accum_bytes) =
+      const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
           onnxruntime::flash::get_num_splits_and_buffer_sizes(
               parameters.batch_size, 1, max_kv_len, parameters.num_heads,
               parameters.head_size, device_prop.multiProcessorCount);
+      flash_num_splits = static_cast<int>(num_splits);
       flash_softmax_lse_accum_buffer =
           GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
       flash_out_accum_buffer =
