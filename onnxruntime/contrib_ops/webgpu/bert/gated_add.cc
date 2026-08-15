@@ -28,10 +28,17 @@ Status GatedAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let gate_idx = global_idx / uniforms.hidden_size;\n"
-                            << "  let gate_value = " << gate.GetByOffset("gate_idx") << ";\n"
-                            << "  let value = " << x.GetByOffset("global_idx")
-                            << " + (" << y.GetByOffset("global_idx") << " * gate_value);\n"
-                            << "  " << output.SetByOffset("global_idx", "value");
+                            << "  let gate_value = " << gate.GetByOffset("gate_idx") << ";\n";
+  if (is_fp16_) {
+    shader.MainFunctionBody() << "  let product = quantizeToF16(f32(" << y.GetByOffset("global_idx")
+                              << ") * f32(gate_value));\n"
+                              << "  let value = f32(" << x.GetByOffset("global_idx") << ") + product;\n"
+                              << "  " << output.SetByOffset("global_idx", "value");
+  } else {
+    shader.MainFunctionBody() << "  let value = " << x.GetByOffset("global_idx")
+                              << " + (" << y.GetByOffset("global_idx") << " * gate_value);\n"
+                              << "  " << output.SetByOffset("global_idx", "value");
+  }
 
   return Status::OK();
 }
@@ -62,8 +69,9 @@ Status GatedAdd::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  GatedAddProgram program{};
-  program
+  const bool is_fp16 = x->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  GatedAddProgram program{is_fp16};
+  program.CacheHint(is_fp16)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type},
                   {y, ProgramTensorMetadataDependency::Type},
                   {gate, ProgramTensorMetadataDependency::Type}})

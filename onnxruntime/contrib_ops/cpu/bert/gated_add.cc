@@ -75,7 +75,7 @@ Status GatedAdd<T>::Compute(OpKernelContext* context) const {
   const int64_t num_rows = count / hidden_size;
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), static_cast<int32_t>(num_rows),
+      context->GetOperatorThreadPool(), onnxruntime::narrow<ptrdiff_t>(num_rows),
       [&](ptrdiff_t row) {
         const int64_t offset = row * hidden_size;
         const T gate_value = gate_data[row];

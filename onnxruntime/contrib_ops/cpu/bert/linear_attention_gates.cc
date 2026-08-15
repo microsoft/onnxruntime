@@ -100,7 +100,7 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
   const int64_t num_tokens = count / num_heads;
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), static_cast<int32_t>(num_tokens),
+      context->GetOperatorThreadPool(), onnxruntime::narrow<ptrdiff_t>(num_tokens),
       [&](ptrdiff_t token) {
         const int64_t offset = token * num_heads;
         for (int64_t h = 0; h < num_heads; ++h) {
@@ -154,7 +154,7 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
   T* output_data = output->MutableData<T>();
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), static_cast<int32_t>(num_rows),
+      context->GetOperatorThreadPool(), onnxruntime::narrow<ptrdiff_t>(num_rows),
       [&](ptrdiff_t row) {
         const int64_t offset = row * norm_size;
         float sum_sq = 0.0f;
