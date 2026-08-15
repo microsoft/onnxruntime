@@ -650,9 +650,17 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Print debug info
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
+    debug_info.use_latent_attention = use_latent_attention;
+    debug_info.use_xqa = use_xqa_decode;
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
-    debug_info.use_decoder_attention = use_paged_decode;
+    debug_info.use_decoder_attention = use_paged_decode && !use_xqa_decode;
+    if (use_paged_decode && !use_xqa_decode) {
+      debug_info.num_splits = num_splits;
+    }
+    debug_info.gqa_group_size = parameters.num_heads / parameters.kv_num_heads;
+    debug_info.effective_kv_length_bound =
+        parameters.local_window_size > 0 ? std::min(max_kv_len, parameters.local_window_size) : max_kv_len;
 
     debug_info.Print("PagedAttention",
                      this->Node().Name(),
