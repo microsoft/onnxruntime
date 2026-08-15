@@ -23,11 +23,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "core/framework/config_options.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensor.h"
@@ -35,6 +37,7 @@
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
@@ -70,6 +73,10 @@ struct PABenchCase {
   int seq_len;
   int past_seqlen;
   int block_size;
+  // Optional per-batch Q lengths. Empty -> every batch has q_len == seq_len
+  // (uniform). Set to test the varlen Q shader mode of the fused paged
+  // prefill kernel. Sum must equal batch_size * seq_len.
+  std::vector<int> q_lens;
 };
 
 void SetFusedEnv(bool fused) {
@@ -77,6 +84,25 @@ void SetFusedEnv(bool fused) {
   _putenv_s("ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED", fused ? "1" : "0");
 #else
   setenv("ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED", fused ? "1" : "0", 1);
+#endif
+}
+
+// Graph capture records the WebGPU command buffer once and replays it on each
+// Run(), collapsing per-iteration CPU dispatch cost (~150-250us x N kernels on
+// Windows/D3D12) to a single submit (~50us). Without graph capture this
+// benchmark is CPU-dispatch-bound and the paged decode kernels' GPU-time
+// advantage does not surface in wall time. Env-gated so the caller can A/B.
+bool GraphCaptureEnabled() {
+#ifdef _WIN32
+  char buf[8];
+  size_t len = 0;
+  if (getenv_s(&len, buf, sizeof(buf), "ORT_WEBGPU_PA_BENCH_GRAPH_CAPTURE") != 0 || len == 0) {
+    return false;
+  }
+  return len == 2 && buf[0] == '1';
+#else
+  const char* v = std::getenv("ORT_WEBGPU_PA_BENCH_GRAPH_CAPTURE");
+  return v != nullptr && v[0] == '1' && v[1] == '\0';
 #endif
 }
 
@@ -96,7 +122,11 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   const int batch = c.batch_size;
   const int T = c.seq_len;
   const int past = c.past_seqlen;
-  const int total_tokens = batch * T;
+  const bool varlen = !c.q_lens.empty();
+  // Sum of per-batch Q lengths (== batch*T in uniform mode).
+  const int total_tokens = varlen
+                               ? std::accumulate(c.q_lens.begin(), c.q_lens.end(), 0)
+                               : batch * T;
   const int hidden_size = c.num_heads * c.head_size;
   const int kv_hidden_size = c.kv_num_heads * c.head_size;
   const int max_kv_len = past + T;
@@ -177,12 +207,35 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   if (!model->ToProto().SerializeToString(&model_string)) return nullptr;
   std::stringstream model_stream(model_string);
 
-  auto ep_owned = onnxruntime::test::DefaultWebGpuExecutionProvider();
+  auto ep_owned = [&]() -> std::unique_ptr<IExecutionProvider> {
+    onnxruntime::ConfigOptions cfg{};
+    ORT_THROW_IF_ERROR(cfg.AddConfigEntry(
+        onnxruntime::webgpu::options::kStorageBufferCacheMode,
+        onnxruntime::webgpu::options::kBufferCacheMode_Disabled));
+    ORT_THROW_IF_ERROR(cfg.AddConfigEntry(
+        onnxruntime::webgpu::options::kEnableInt64,
+        onnxruntime::webgpu::options::kEnableInt64_ON));
+    if (GraphCaptureEnabled()) {
+      ORT_THROW_IF_ERROR(cfg.AddConfigEntry(
+          onnxruntime::webgpu::options::kEnableGraphCapture,
+          onnxruntime::webgpu::options::kEnableGraphCapture_ON));
+    }
+    return onnxruntime::test::WebGpuExecutionProviderWithOptions(cfg);
+  }();
   if (ep_owned == nullptr) return nullptr;
   IExecutionProvider* ep = ep_owned.get();
 
   SessionOptions session_options;
   session_options.session_logid = "PagedAttentionBench";
+  if (GraphCaptureEnabled()) {
+    // Graph capture requires mem-pattern to be disabled (per graph_capture_test).
+    session_options.enable_mem_pattern = false;
+    // Mirror the EP-level graph capture flag on the session's config so the
+    // WebGPU EP factory picks it up regardless of how it reads the option.
+    ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
+        onnxruntime::webgpu::options::kEnableGraphCapture,
+        onnxruntime::webgpu::options::kEnableGraphCapture_ON));
+  }
   auto session = std::make_unique<InferenceSession>(session_options, env->GetEnvironment());
   if (!session->RegisterExecutionProvider(std::move(ep_owned)).IsOK()) return nullptr;
 
@@ -228,7 +281,10 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   std::vector<MLFloat16> cache_data(cache_elems, MLFloat16(0.01f));
 
   std::vector<int32_t> cum_seqlens(batch + 1);
-  for (int b = 0; b <= batch; ++b) cum_seqlens[b] = b * T;
+  cum_seqlens[0] = 0;
+  for (int b = 0; b < batch; ++b) {
+    cum_seqlens[b + 1] = cum_seqlens[b] + (varlen ? c.q_lens[b] : T);
+  }
   std::vector<int32_t> past_seqlens_vec(batch, past);
   std::vector<int32_t> block_table_vec(batch * max_num_blocks_per_seq);
   for (int b = 0; b < batch; ++b) {
@@ -298,6 +354,69 @@ void BM_PagedAttentionPrefill(benchmark::State& state) {
   }
 
   // Warmup a handful of iterations before timing.
+  for (int i = 0; i < 5; ++i) {
+    auto st = ctx->session->Run(ctx->run_options, *ctx->io_binding);
+    if (!st.IsOK()) {
+      state.SkipWithError(st.ErrorMessage().c_str());
+      return;
+    }
+  }
+  auto sync_st = ctx->io_binding->SynchronizeOutputs();
+  if (!sync_st.IsOK()) {
+    state.SkipWithError(sync_st.ErrorMessage().c_str());
+    return;
+  }
+
+  for (auto _ : state) {
+    const auto start = std::chrono::steady_clock::now();
+    auto run_st = ctx->session->Run(ctx->run_options, *ctx->io_binding);
+    if (!run_st.IsOK()) {
+      state.SkipWithError(run_st.ErrorMessage().c_str());
+      return;
+    }
+    auto out_sync = ctx->io_binding->SynchronizeOutputs();
+    if (!out_sync.IsOK()) {
+      state.SkipWithError(out_sync.ErrorMessage().c_str());
+      return;
+    }
+    const auto end = std::chrono::steady_clock::now();
+    state.SetIterationTime(std::chrono::duration<double>(end - start).count());
+  }
+}
+
+// Variable-length prefill benchmark. Constructs a batch with per-batch Q
+// lengths distributed as {T, T/2, T/4, T/8, ...} (halving) capped at
+// batch_size entries. Exercises the varlen Q shader mode of the fused paged
+// prefill kernel (mode b) vs. Unpack + BSNH scratch (fused=0). Args:
+// {batch, num_heads, kv_num_heads, head_size, max_T, fused}
+void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
+  const int batch = static_cast<int>(state.range(0));
+  const int max_T = static_cast<int>(state.range(4));
+  std::vector<int> q_lens(batch);
+  for (int b = 0; b < batch; ++b) {
+    // Halving pattern, floored at 1: {max_T, max_T/2, max_T/4, ...}.
+    const int q = std::max(1, max_T >> b);
+    q_lens[b] = q;
+  }
+  PABenchCase c{
+      batch,
+      static_cast<int>(state.range(1)),
+      static_cast<int>(state.range(2)),
+      static_cast<int>(state.range(3)),
+      max_T,
+      /*past_seqlen=*/0,
+      /*block_size=*/256,
+      std::move(q_lens),
+  };
+  const bool fused = state.range(5) != 0;
+  SetFusedEnv(fused);
+
+  auto ctx = Setup(c);
+  if (ctx == nullptr) {
+    state.SkipWithError("PagedAttention varlen bench setup failed (WebGPU EP unavailable?)");
+    return;
+  }
+
   for (int i = 0; i < 5; ++i) {
     auto st = ctx->session->Run(ctx->run_options, *ctx->io_binding);
     if (!st.IsOK()) {
@@ -419,15 +538,37 @@ REGISTER_PREFILL(2, 32, 4, 128);
 
 #undef REGISTER_PREFILL
 
+// Varlen prefill: q_lens = {max_T, max_T/2, max_T/4, ...} (halving pattern).
+// Batch >= 2 required to be non-uniform. Args:
+//   {batch, num_heads, kv_num_heads, head_size, max_T, fused}
+#define REGISTER_PREFILL_VARLEN(BATCH, NH, NKV, H)         \
+  BENCHMARK(BM_PagedAttentionPrefillVarlen)                \
+      ->ArgNames({"B", "nH", "nKV", "H", "maxT", "fused"}) \
+      ->Args({BATCH, NH, NKV, H, 512, 1})                  \
+      ->Args({BATCH, NH, NKV, H, 512, 0})                  \
+      ->Args({BATCH, NH, NKV, H, 1024, 1})                 \
+      ->Args({BATCH, NH, NKV, H, 1024, 0})                 \
+      ->Unit(benchmark::kMicrosecond)                      \
+      ->UseManualTime()
+
+REGISTER_PREFILL_VARLEN(2, 16, 16, 128);
+REGISTER_PREFILL_VARLEN(2, 14, 2, 128);
+REGISTER_PREFILL_VARLEN(2, 32, 4, 128);
+REGISTER_PREFILL_VARLEN(4, 16, 16, 128);
+REGISTER_PREFILL_VARLEN(4, 14, 2, 128);
+REGISTER_PREFILL_VARLEN(4, 32, 4, 128);
+
+#undef REGISTER_PREFILL_VARLEN
+
 // Args: {batch, num_heads, kv_num_heads, head_size, past_seqlen, fused}
-#define REGISTER_DECODE(BATCH, NH, NKV, H)                                                         \
-  BENCHMARK(BM_PagedAttentionDecode)                                                               \
-      ->ArgNames({"B", "nH", "nKV", "H", "past", "fused"})                                         \
-      ->Args({BATCH, NH, NKV, H, 512, 1})                                                          \
-      ->Args({BATCH, NH, NKV, H, 512, 0})                                                          \
-      ->Args({BATCH, NH, NKV, H, 2048, 1})                                                         \
-      ->Args({BATCH, NH, NKV, H, 2048, 0})                                                         \
-      ->Unit(benchmark::kMicrosecond)                                                              \
+#define REGISTER_DECODE(BATCH, NH, NKV, H)                 \
+  BENCHMARK(BM_PagedAttentionDecode)                       \
+      ->ArgNames({"B", "nH", "nKV", "H", "past", "fused"}) \
+      ->Args({BATCH, NH, NKV, H, 512, 1})                  \
+      ->Args({BATCH, NH, NKV, H, 512, 0})                  \
+      ->Args({BATCH, NH, NKV, H, 2048, 1})                 \
+      ->Args({BATCH, NH, NKV, H, 2048, 0})                 \
+      ->Unit(benchmark::kMicrosecond)                      \
       ->UseManualTime()
 
 REGISTER_DECODE(1, 16, 16, 64);

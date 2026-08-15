@@ -185,7 +185,8 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
                                     bool has_subgroups,
                                     bool q_BNSH,
                                     bool use_seqlen_k,
-                                    bool use_seqlens_q)
+                                    bool use_seqlens_q,
+                                    bool q_varlen)
       : Program{"FlashAttentionPagedPrefill"},
         is_qualcomm_(is_qualcomm),
         is_fp16_(is_fp16),
@@ -196,7 +197,8 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
         use_shm_path_(is_apple || is_nvidia || !has_subgroups),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
-        use_seqlens_q_(use_seqlens_q) {
+        use_seqlens_q_(use_seqlens_q),
+        q_varlen_(q_varlen) {
     const int element_size = is_fp16 ? 2 : 4;
     constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
     const int max_k_from_shm = kMinWorkgroupStorageBudgetBytes / (2 * element_size * qkv_head_size);
@@ -228,6 +230,7 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
   bool use_seqlen_k_;
   int max_k_step_;
   bool use_seqlens_q_;
+  bool q_varlen_;
 };
 
 Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
@@ -240,7 +243,8 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
                                          const Tensor* seqlens_q,
                                          const WebgpuAttentionParameters& parameters,
                                          uint32_t block_size,
-                                         uint32_t max_num_blocks_per_seq);
+                                         uint32_t max_num_blocks_per_seq,
+                                         const Tensor* cumulative_seqlens_q = nullptr);
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
@@ -387,7 +391,28 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr,
                            const Tensor* total_seqlen = nullptr, const Tensor* seqlens_q = nullptr,
-                           const Tensor* block_table = nullptr, uint32_t block_size = 0, uint32_t max_num_blocks_per_seq = 0);
+                           const Tensor* block_table = nullptr, uint32_t block_size = 0, uint32_t max_num_blocks_per_seq = 0,
+                           const Tensor* cumulative_seqlens_q = nullptr);
+
+// Adapter/config gate for the fused paged-prefill shader
+// (FlashAttentionPagedPrefillProgram). Callers that decide up front whether Q
+// arrives in packed varlen layout or padded BSNH — namely PagedAttention —
+// must ask this before choosing the Q view, or the two decisions can drift and
+// the shader will see a Q buffer it does not know how to index.
+//
+// Predicates checked (all must hold):
+//   * ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED != "0" (dev/benchmark kill switch)
+//   * shm-path adapter (apple || nvidia || !subgroups) — matches the shader's
+//     workgroup layout
+//   * is_fp16 — only fp16 variant is compiled today
+//   * max_seqlen_q >= 32 — below that ApplyFlashAttention routes to
+//     split-reduce decode instead
+//   * head_size satisfies the shared-memory budget for max_k_step >= 16
+//     (fp16: head_size <= 256).
+bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                bool is_fp16,
+                                int max_seqlen_q,
+                                int head_size);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 

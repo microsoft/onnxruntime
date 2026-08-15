@@ -639,5 +639,23 @@ TEST(PagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+// Varlen prefill above the fused-paged-prefill gate: max_seqlen_q >= 32 and
+// B * max_seqlen_q != token_count. Exercises the WebGPU fused shader's
+// q_varlen=1 code path (raw-packed Q read via cumulative_seqlens_q). Uses
+// head_size = 128 to match the shared-memory tile the shader is sized for.
+TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
+  EndToEndCase c{};
+  c.batch_size = 2;
+  c.token_count = 48;  // seq 0: 32 tokens, seq 1: 16 tokens
+  c.num_heads = 2;
+  c.kv_num_heads = 2;  // MHA (n_reps = 1)
+  c.head_size = 128;
+  c.num_blocks = 3;
+  c.cumulative_seqlens_q = {0, 32, 48};
+  c.past_seqlens = {0, 0};
+  c.block_table = {0, 2};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

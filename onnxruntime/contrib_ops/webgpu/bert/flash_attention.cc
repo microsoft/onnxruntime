@@ -291,22 +291,30 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& key_cache = shader.AddInput("key_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& value_cache = shader.AddInput("value_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  // q / key_cache / value_cache / output use plain array indexing in the shader body
+  // (mirroring the dense FA template). block_table uses .getByIndices (2-D lookup).
+  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("key_cache", ShaderUsage::UseUniform);
+  shader.AddInput("value_cache", ShaderUsage::UseUniform);
   const auto& block_table = shader.AddInput("block_table", ShaderUsage::UseUniform);
   shader.AddInput("seqlens_k", ShaderUsage::None);
   shader.AddInput("seqlens_q", ShaderUsage::None);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  if (q_varlen_) {
+    // Optional per-batch running Q-token offsets (size batch_size + 1). Used
+    // by the shader to compute q_row = cumulative_seqlens_q[batch] + q_idx
+    // when Q arrives already-packed (no BSNH padding).
+    shader.AddInput("cumulative_seqlens_q", ShaderUsage::None);
+  }
+  shader.AddOutput("output", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_paged_prefill.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
+                             WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                             WGSL_TEMPLATE_PARAMETER(max_k_step_param, max_k_step_),
+                             WGSL_TEMPLATE_PARAMETER(q_varlen, q_varlen_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
-                             WGSL_TEMPLATE_VARIABLE(block_table, block_table),
-                             WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(q, q),
-                             WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
+                             WGSL_TEMPLATE_VARIABLE(block_table, block_table));
 }
 
 Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
@@ -319,7 +327,8 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
                                          const Tensor* seqlens_q,
                                          const WebgpuAttentionParameters& parameters,
                                          uint32_t block_size,
-                                         uint32_t max_num_blocks_per_seq) {
+                                         uint32_t max_num_blocks_per_seq,
+                                         const Tensor* cumulative_seqlens_q) {
   ORT_RETURN_IF_NOT(q != nullptr && key_cache != nullptr && value_cache != nullptr && block_table != nullptr,
                     "Paged prefill requires Q, K/V cache, and block_table.");
   ORT_RETURN_IF_NOT(seqlen_k != nullptr && seqlens_q != nullptr,
@@ -332,6 +341,7 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
   const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
   const bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
   const bool is_fp16 = q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool q_varlen = cumulative_seqlens_q != nullptr;
   FlashAttentionPagedPrefillProgram program{is_qualcomm,
                                             is_fp16,
                                             parameters.head_size_,
@@ -342,27 +352,44 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
                                             has_subgroups,
                                             /*q_BNSH*/ false,
                                             /*use_seqlen_k*/ true,
-                                            /*use_seqlens_q*/ true};
+                                            /*use_seqlens_q*/ true,
+                                            q_varlen};
+
+  // Dispatch shape mirrors the dense FA shm_path: one workgroup per (batch, head,
+  // Q-tile) triple, where a Q-tile is workgroup_size_x contiguous Q rows.
+  // On Apple GPUs the dense FA uses a 128-lane workgroup to reduce barrier
+  // overhead; other vendors use 64.
+  const uint32_t prefill_tile_size = is_apple ? 128u : 64u;
+  const uint32_t num_seq_tile =
+      (static_cast<uint32_t>(parameters.sequence_length_) + prefill_tile_size - 1u) / prefill_tile_size;
+  const float alpha =
+      parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_)) : parameters.scale_;
+
   constexpr int components = 4;
   program.AddInputs({{q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {key_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {value_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {block_table, ProgramTensorMetadataDependency::TypeAndRank},
                      {seqlen_k, ProgramTensorMetadataDependency::None},
-                     {seqlens_q, ProgramTensorMetadataDependency::None}})
+                     {seqlens_q, ProgramTensorMetadataDependency::None}});
+  if (q_varlen) {
+    program.AddInputs({{cumulative_seqlens_q, ProgramTensorMetadataDependency::None}});
+  }
+  program
       .AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .SetDispatchGroupSize(static_cast<uint32_t>(parameters.batch_size_) *
                             static_cast<uint32_t>(parameters.num_heads_) *
-                            static_cast<uint32_t>(parameters.sequence_length_))
-      .SetWorkgroupSize(1)
+                            num_seq_tile)
+      .SetWorkgroupSize(prefill_tile_size)
       .CacheHint(parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
-                 parameters.kv_num_heads_, block_size, max_num_blocks_per_seq)
+                 parameters.kv_num_heads_, block_size, max_num_blocks_per_seq,
+                 program.max_k_step(), prefill_tile_size, is_fp16, q_varlen)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(parameters.n_reps)},
-                            {parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_)) : parameters.scale_},
-                            {1u},
+                            {alpha},
+                            {num_seq_tile},
                             {block_size},
                             {static_cast<uint32_t>(parameters.kv_num_heads_)}});
   return context.RunProgram(program);
@@ -746,7 +773,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k,
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink,
                            const Tensor* total_seqlen, const Tensor* seqlens_q,
-                           const Tensor* block_table, uint32_t block_size, uint32_t max_num_blocks_per_seq) {
+                           const Tensor* block_table, uint32_t block_size, uint32_t max_num_blocks_per_seq,
+                           const Tensor* cumulative_seqlens_q) {
   constexpr uint32_t tile_size = 64;
   const bool use_seqlens_q = seqlens_q != nullptr;
   const bool use_paged_kv_cache = block_table != nullptr;
@@ -985,18 +1013,22 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const bool use_split_reduce = parameters.sequence_length_ < 32;
 
   if (!use_split_reduce) {
-    // TEMPORARY: ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED gates the fused
-    // paged-prefill path for A/B benchmarking against the gathered fallback.
-    // "0" disables (falls through to FlashAttentionProgram); anything else
-    // (including unset) keeps the fused path on. Remove before PR merge.
-    const bool fused_env_disabled =
-        onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED") == "0";
-    const bool use_paged_prefill = !fused_env_disabled &&
-                                   use_paged_kv_cache && !turbo_quant_enabled &&
-                                   attention_bias == nullptr && head_sink == nullptr &&
-                                   Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-                                   parameters.qkv_format_ == Q_K_V_BSNH &&
-                                   seqlen_k != nullptr && seqlens_q != nullptr;
+    // Ask the shared helper whether the fused paged-prefill shader can run on
+    // this (adapter, config, shape) triple, then AND in the additional
+    // "features not yet supported by the paged shader" bits that only the FA
+    // caller can see (attention_bias, head_sink, turbo_quant, QKV format,
+    // varlen-metadata inputs). Keeping the adapter/dtype/shape gate in the
+    // helper is the anti-drift invariant: PagedAttention uses the same
+    // predicate to decide whether it can hand FA a packed-varlen Q view.
+    const bool is_fp16_q =
+        Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    const bool use_paged_prefill =
+        use_paged_kv_cache && !turbo_quant_enabled &&
+        attention_bias == nullptr && head_sink == nullptr &&
+        parameters.qkv_format_ == Q_K_V_BSNH &&
+        seqlen_k != nullptr && seqlens_q != nullptr &&
+        ShouldRunFusedPagedPrefill(context, is_fp16_q, parameters.sequence_length_,
+                                   parameters.head_size_);
     if (use_paged_prefill) {
       ORT_RETURN_IF_ERROR(ComputeFlashAttentionPagedPrefill(context,
                                                             Q,
@@ -1008,7 +1040,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                             seqlens_q,
                                                             parameters,
                                                             block_size,
-                                                            max_num_blocks_per_seq));
+                                                            max_num_blocks_per_seq,
+                                                            cumulative_seqlens_q));
     } else {
       // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
       bool has_attention_bias = attention_bias != nullptr;
@@ -1151,6 +1184,53 @@ bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxrun
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
          ((context.AdapterInfo().vendor == std::string_view{"qualcomm"} && parameters.head_size_ % 8 == 0) || parameters.head_size_ % 4 == 0);
+}
+
+bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                bool is_fp16,
+                                int max_seqlen_q,
+                                int head_size) {
+  // Dev/benchmark kill switch. Matches the env-var read at
+  // paged_attention.cc's Unpack/Repack-skip gate; do not touch without
+  // updating both.
+  const bool fused_env_disabled =
+      onnxruntime::detail::GetEnvironmentVar(
+          "ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED") == "0";
+  if (fused_env_disabled) {
+    return false;
+  }
+  // v1 fused paged prefill implements the shared-memory path only. Adapters
+  // that would take the subgroup-shuffle path in the dense FA shader (has
+  // subgroups && !nvidia && !apple, e.g. Qualcomm / AMD / Intel) fall
+  // through to the gather + dense-FA fallback.
+  const bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+  const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
+  const bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
+  const bool shm_path = is_apple || is_nvidia || !has_subgroups;
+  if (!shm_path) {
+    return false;
+  }
+  if (!is_fp16) {
+    return false;
+  }
+  // Below the split-reduce threshold ApplyFlashAttention routes to
+  // FlashAttentionPagedDecode* instead of the fused prefill shader.
+  if (max_seqlen_q < 32) {
+    return false;
+  }
+  // Shared-memory budget: FlashAttentionPagedPrefillProgram requires a
+  // K/V tile of at least max_k_step (min = 16) worth of shm. Mirrors the
+  // constructor arithmetic (see flash_attention.h). Falling below 16 would
+  // cause the workgroup to over-declare shm and either fail to compile or
+  // OOB at runtime.
+  const int element_size = is_fp16 ? 2 : 4;
+  constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
+  const int max_k_from_shm =
+      kMinWorkgroupStorageBudgetBytes / (2 * element_size * head_size);
+  if (max_k_from_shm < 16) {
+    return false;
+  }
+  return true;
 }
 
 Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::ComputeContext& context,

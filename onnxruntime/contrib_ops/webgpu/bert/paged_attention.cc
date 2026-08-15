@@ -809,18 +809,85 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   Tensor seqlens_q_gpu = context.CreateGPUTensor(int32_type, TensorShape({batch_size_i64}));
   ORT_RETURN_IF_ERROR(context.CopyTensor(seqlens_q_cpu, seqlens_q_gpu));
 
+  // Unpack/Repack fast path: skip the two dispatches whenever we can hand FA
+  // a rank-4 view over the raw packed Q/output buffers.
+  //
+  // Two skip modes:
+  //   (a) Uniform-batch mode: when every batch has q_len_b == max_seqlen_q
+  //       (B * max_seqlen_q == token_count), the packed varlen buffer is
+  //       byte-identical to a BSNH [B, max_seqlen_q, N, H] view. FA
+  //       consumes it directly.
+  //       Covers: decode (max_seqlen_q == 1), B == 1 prefill, and
+  //       equal-length batched prefill (common in continuous-batching
+  //       runtimes like vLLM).
+  //   (b) Varlen-Q mode: for non-uniform prefill, we pass a rank-4
+  //       [token_count, 1, N, H] view and cumulative_seqlens_q. Only the
+  //       fused paged-prefill shader knows how to consume this
+  //       (q_varlen #param), so mode (b) is only safe when that shader will
+  //       actually run — mirror its gate below.
+  //
+  // If neither mode applies, we fall back to Unpack + BSNH-padded scratch.
+  //
+  // Skipping the two dispatches removes ~300-500us of CPU dispatch cost per
+  // Run() on Windows/D3D12, plus the padded scratch allocation
+  // (B * max_seqlen_q * hidden * 2 bytes -- can be tens of MB at long
+  // prefill).
+  const bool uniform_q_lens =
+      (static_cast<int64_t>(parameters.batch_size) *
+           static_cast<int64_t>(max_seqlen_q) ==
+       static_cast<int64_t>(parameters.token_count));
+  // Anti-drift: consult the shared helper that ApplyFlashAttention will
+  // itself consult when it selects the fused paged-prefill shader. If the
+  // two answers ever disagree, the varlen Q view we build below (rank-4
+  // [token_count, 1, N, H] + cumulative_seqlens_q) would be handed to a
+  // shader that cannot index it. See flash_attention.h ShouldRunFusedPagedPrefill.
+  const bool is_fp16_q =
+      query_for_fa->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool paged_prefill_will_run =
+      use_direct_paged_prefill &&
+      ShouldRunFusedPagedPrefill(context, is_fp16_q,
+                                 static_cast<int>(max_seqlen_q),
+                                 parameters.head_size);
+  const bool varlen_mode = !uniform_q_lens && paged_prefill_will_run;
+  const bool skip_unpack_repack = uniform_q_lens || varlen_mode;
   Tensor k_padded;
   Tensor v_padded;
-  Tensor q_padded = context.CreateGPUTensor(
-      dtype, TensorShape({batch_size_i64,
-                          static_cast<int64_t>(max_seqlen_q),
-                          static_cast<int64_t>(parameters.num_heads),
-                          static_cast<int64_t>(parameters.head_size)}));
-  Tensor output_padded = context.CreateGPUTensor(
-      dtype, TensorShape({batch_size_i64,
-                          static_cast<int64_t>(max_seqlen_q),
-                          static_cast<int64_t>(parameters.num_heads),
-                          static_cast<int64_t>(parameters.head_size)}));
+  Tensor q_padded;
+  Tensor output_padded;
+  // Rank-4 views over the raw Q and output buffers, populated on the fast path.
+  Tensor q_view;
+  Tensor output_view;
+  if (skip_unpack_repack) {
+    const TensorShape view_shape =
+        varlen_mode
+            ? TensorShape({static_cast<int64_t>(parameters.token_count),
+                           1,
+                           static_cast<int64_t>(parameters.num_heads),
+                           static_cast<int64_t>(parameters.head_size)})
+            : TensorShape({batch_size_i64,
+                           static_cast<int64_t>(max_seqlen_q),
+                           static_cast<int64_t>(parameters.num_heads),
+                           static_cast<int64_t>(parameters.head_size)});
+    // FA reads Q; const_cast is safe because the underlying buffer is not
+    // written to via q_view.
+    q_view = Tensor(query_for_fa->DataType(), view_shape,
+                    const_cast<void*>(query_for_fa->DataRaw()),
+                    query_for_fa->Location());
+    output_view = Tensor(output->DataType(), view_shape,
+                         output->MutableDataRaw(),
+                         output->Location());
+  } else {
+    q_padded = context.CreateGPUTensor(
+        dtype, TensorShape({batch_size_i64,
+                            static_cast<int64_t>(max_seqlen_q),
+                            static_cast<int64_t>(parameters.num_heads),
+                            static_cast<int64_t>(parameters.head_size)}));
+    output_padded = context.CreateGPUTensor(
+        dtype, TensorShape({batch_size_i64,
+                            static_cast<int64_t>(max_seqlen_q),
+                            static_cast<int64_t>(parameters.num_heads),
+                            static_cast<int64_t>(parameters.head_size)}));
+  }
 
   if (!use_direct_paged_attention) {
     k_padded = context.CreateGPUTensor(
@@ -842,8 +909,10 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                     block_table, &k_padded, &v_padded));
   }
 
-  ORT_RETURN_IF_ERROR(RunUnpackQuery(context, parameters, max_seqlen_q,
-                                     query_for_fa, cumulative_seqlens_q, &q_padded));
+  if (!skip_unpack_repack) {
+    ORT_RETURN_IF_ERROR(RunUnpackQuery(context, parameters, max_seqlen_q,
+                                       query_for_fa, cumulative_seqlens_q, &q_padded));
+  }
 
   // WebgpuAttentionParameters via the GQA constructor so is_gqa_ is set.
   // kv_sequence_length = 0 triggers FA's kv_empty aliasing path (K=V=nullptr;
@@ -872,10 +941,12 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   ORT_RETURN_IF_NOT(CanApplyFlashAttention(fa_params, context),
                     "PagedAttention (WebGPU): input configuration is not supported by FlashAttention.");
 
+  Tensor* q_for_fa_tensor = skip_unpack_repack ? &q_view : &q_padded;
+  Tensor* output_for_fa_tensor = skip_unpack_repack ? &output_view : &output_padded;
   ORT_RETURN_IF_ERROR(ApplyFlashAttention(
-      &q_padded,
+      q_for_fa_tensor,
       /*K=*/nullptr, /*V=*/nullptr, /*attention_bias=*/nullptr,
-      &output_padded,
+      output_for_fa_tensor,
       /*past_key=*/use_direct_paged_attention ? key_cache_out : &k_padded, /*present_key=*/nullptr,
       /*past_value=*/use_direct_paged_attention ? value_cache_out : &v_padded, /*present_value=*/nullptr,
       fa_params, context, &seqlen_k_gpu,
@@ -883,10 +954,13 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu,
       use_direct_paged_attention ? block_table : nullptr,
       use_direct_paged_attention ? static_cast<uint32_t>(parameters.block_size) : 0u,
-      use_direct_paged_attention ? static_cast<uint32_t>(parameters.max_num_blocks_per_seq) : 0u));
+      use_direct_paged_attention ? static_cast<uint32_t>(parameters.max_num_blocks_per_seq) : 0u,
+      /*cumulative_seqlens_q=*/varlen_mode ? cumulative_seqlens_q : nullptr));
 
-  ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, &output_padded,
-                                      cumulative_seqlens_q, output));
+  if (!skip_unpack_repack) {
+    ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, &output_padded,
+                                        cumulative_seqlens_q, output));
+  }
 
   return Status::OK();
 }

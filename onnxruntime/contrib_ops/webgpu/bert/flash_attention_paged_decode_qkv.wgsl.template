@@ -44,6 +44,10 @@ var<workgroup> tq_v_scales: array<f32, tile_size>;
 var<workgroup> tq_lut: array<f32, 16>;
 #else
 var<workgroup> tile_q: array<array<q_value_t, tile_size_k_vec>, m_tile>;
+// Precomputed paged-KV base offset per row of the tile (non-TQ path).
+// Amortizes the block_table lookup + div/mod from the inner K/V loops
+// (once per row per WG instead of once per K/V element per WG).
+var<workgroup> tile_row_base: array<u32, tile_size>;
 #endif
 var<workgroup> inner_qk_values: array<array<array<q_element_t, tile_size_k_vec>, tile_size>, m_tile>;
 var<workgroup> tile_qk: array<array<q_element_t, tile_size>, m_tile>;
@@ -185,6 +189,23 @@ $MAIN {
     return;
   }
 
+  // Precompute per-row paged K/V base offsets. Each of the tile_size rows in this
+  // workgroup's slice does one block_table lookup + one div/mod here, replacing
+  // the same work done inside the inner QK and PV loops (tile_size_k_vec× fewer
+  // block_table loads). Workgroup memory: tile_size * 4 bytes (e.g. 256B at
+  // tile_size=64). workgroup_size_x (128 for decode) >= tile_size (64) so a
+  // single non-strided init is sufficient.
+  if (local_idx < tile_size) {
+    let seq_idx = total_seq_offset + local_idx;
+    if (seq_idx < total_sequence_length) {
+      let block_off = seq_idx / uniforms.block_size;
+      let slot_in_block = seq_idx % uniforms.block_size;
+      let block_id = u32(block_table.getByIndices(vec2<u32>(batch_idx, block_off)));
+      tile_row_base[local_idx] = ((block_id * uniforms.block_size + slot_in_block) * uniforms.kv_num_heads + kv_head_idx) * uniforms.head_size_vec;
+    }
+  }
+  workgroupBarrier();
+
   // ============================================================
   // Phase 1: QK^T computation
   // ============================================================
@@ -208,7 +229,7 @@ $MAIN {
     if (k + local_col < uniforms.head_size_vec) {
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         if (total_seq_offset + row_offset + local_row < total_sequence_length) {
-          let k_data = present_key.getByOffset(getPagedKVOffset(batch_idx, kv_head_idx, total_seq_offset + row_offset + local_row, k + local_col));
+          let k_data = present_key.getByOffset(tile_row_base[row_offset + local_row] + k + local_col);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             let q_data = tile_q[m][local_col] * q_element_t(uniforms.alpha);
             inner_qk_values[m][row_offset + local_row][local_col] += dot(k_data, q_data);
@@ -330,7 +351,7 @@ $MAIN {
     if (k + local_col < v_head_size_vec) {
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         if (total_seq_offset + row_offset + local_row < total_sequence_length) {
-          let v_data = present_value.getByOffset(getPagedKVOffset(batch_idx, kv_head_idx, total_seq_offset + row_offset + local_row, k + local_col));
+          let v_data = present_value.getByOffset(tile_row_base[row_offset + local_row] + k + local_col);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             qkv_values[m][local_row][local_col] += v_data * tile_qk[m][row_offset + local_row];
           }
