@@ -81,7 +81,7 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
   Tensor* beta = context->Output(1, a_shape);
 
   if (beta != nullptr) {
-    ORT_RETURN_IF_NOT(b != nullptr, "the b input is required when the beta output is requested");
+    ORT_RETURN_IF_NOT(b != nullptr, "The b input is required when the beta output is requested");
     ORT_RETURN_IF_NOT(b->Shape() == a_shape, "b must have the same shape as a");
   }
 
