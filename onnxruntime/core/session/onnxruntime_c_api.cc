@@ -5030,7 +5030,14 @@ ORT_API(void, OrtApis::ReleaseEnv, OrtEnv* value) {
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
+ORT_API(void, OrtApis::ReleaseSession, _Frees_ptr_opt_ OrtSession* value) {
+  if (value == nullptr) {
+    return;
+  }
+
+  delete reinterpret_cast<::onnxruntime::InferenceSession*>(value);
+  ::onnxruntime::ReleaseFreedMemoryToOS();
+}
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
 
 ORT_API_STATUS_IMPL(OrtApis::GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices) {

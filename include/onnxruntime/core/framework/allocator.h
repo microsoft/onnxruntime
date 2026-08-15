@@ -363,6 +363,10 @@ void AllocatorDefaultFree(void* p);
 void* AllocatorDefaultAllocAligned(size_t size, size_t alignment);
 void AllocatorDefaultFreeAligned(void* p, size_t alignment);
 
+// Ask the process allocator to release unused pages to the operating system.
+// This is a no-op when the active allocator does not provide such an operation.
+void ReleaseFreedMemoryToOS() noexcept;
+
 class IArena : public IAllocator {
  public:
   using IAllocator::IAllocator;

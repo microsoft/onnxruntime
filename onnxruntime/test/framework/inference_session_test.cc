@@ -5,7 +5,10 @@
 #include "core/session/inference_session.h"
 
 #include <algorithm>
+#include <array>
+#include <cerrno>
 #include <cfloat>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -14,11 +17,19 @@
 #include <fstream>
 #include <random>
 
+#if defined(__linux__) && defined(__GLIBC__)
+#include <spawn.h>
+#include <sys/wait.h>
+
+extern char** environ;
+#endif
+
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
@@ -195,6 +206,9 @@ class FuseExecutionProvider : public IExecutionProvider {
 namespace test {
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
+#if defined(__linux__) && defined(__GLIBC__) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
+static constexpr const ORTCHAR_T* MODEL_URI_BIG_SIZE = ORT_TSTR("testdata/bart_tiny.onnx");
+#endif
 // static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 void RunModel(InferenceSession& session_object,
@@ -3979,6 +3993,101 @@ TEST(InferenceSessionTests, CompileApiOutputHonorsOptimizationLevel) {
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if defined(__linux__) && defined(__GLIBC__) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
+// Regression test for https://github.com/microsoft/onnxruntime/issues/26831.
+TEST(InferenceSessionTests, ReleaseSessionReturnsUnusedMemoryToOS) {
+  constexpr const char* kMarkerName = "ORT_RUN_SESSION_MEMORY_RECLAMATION_CHILD";
+  constexpr std::string_view kMarkerPrefix = "ORT_RUN_SESSION_MEMORY_RECLAMATION_CHILD=";
+  constexpr std::string_view kTrimThresholdPrefix = "MALLOC_TRIM_THRESHOLD_=";
+  constexpr std::string_view kMmapThresholdPrefix = "MALLOC_MMAP_THRESHOLD_=";
+
+  const char* marker_value = std::getenv(kMarkerName);
+  if (marker_value == nullptr || std::string_view{marker_value} != "1") {
+    InlinedVector<std::string> child_environment;
+
+    for (char** entry = environ; *entry != nullptr; ++entry) {
+      const std::string_view environment_entry{*entry};
+      if (!environment_entry.starts_with(kMarkerPrefix) &&
+          !environment_entry.starts_with(kTrimThresholdPrefix) &&
+          !environment_entry.starts_with(kMmapThresholdPrefix)) {
+        child_environment.emplace_back(environment_entry);
+      }
+    }
+
+    // Disable glibc's automatic trimming and force large allocations through the heap.
+    // The child can then pass only if session release explicitly returns freed pages.
+    child_environment.emplace_back("ORT_RUN_SESSION_MEMORY_RECLAMATION_CHILD=1");
+    child_environment.emplace_back("MALLOC_TRIM_THRESHOLD_=-1");
+    child_environment.emplace_back("MALLOC_MMAP_THRESHOLD_=1073741824");
+
+    InlinedVector<char*> child_environment_ptrs;
+    child_environment_ptrs.reserve(child_environment.size() + 1);
+    for (auto& entry : child_environment) {
+      child_environment_ptrs.push_back(entry.data());
+    }
+    child_environment_ptrs.push_back(nullptr);
+
+    std::array<char*, 4> child_args{
+        const_cast<char*>("/proc/self/exe"),
+        const_cast<char*>("--gtest_filter=InferenceSessionTests.ReleaseSessionReturnsUnusedMemoryToOS"),
+        const_cast<char*>("--gtest_color=no"),
+        nullptr,
+    };
+
+    pid_t child_pid{};
+    ASSERT_EQ(posix_spawn(&child_pid, child_args[0], nullptr, nullptr, child_args.data(),
+                          child_environment_ptrs.data()),
+              0);
+
+    int child_status{};
+    pid_t wait_result{};
+    do {
+      wait_result = waitpid(child_pid, &child_status, 0);
+    } while (wait_result == -1 && errno == EINTR);
+
+    ASSERT_EQ(wait_result, child_pid);
+    ASSERT_TRUE(WIFEXITED(child_status)) << "Memory reclamation subprocess status: " << child_status;
+    EXPECT_EQ(WEXITSTATUS(child_status), 0) << "Memory reclamation subprocess failed.";
+    return;
+  }
+
+  const auto get_rss_kb = []() -> int64_t {
+    std::ifstream status_file{"/proc/self/status"};
+    std::string line;
+    while (std::getline(status_file, line)) {
+      if (line.rfind("VmRSS:", 0) == 0) {
+        return std::stoll(line.substr(6));
+      }
+    }
+
+    return -1;
+  };
+
+  Ort::SessionOptions session_options;
+  session_options.DisableCpuMemArena();
+
+  // Page in session code and perform one large-model cycle before measuring.
+  {
+    Ort::Session warmup_session{*ort_env, MODEL_URI, session_options};
+  }
+  const int64_t rss_after_warmup = get_rss_kb();
+  ASSERT_GE(rss_after_warmup, 0);
+
+  {
+    Ort::Session first_session{*ort_env, MODEL_URI_BIG_SIZE, session_options};
+  }
+  const int64_t rss_after_first_session = get_rss_kb();
+  ASSERT_GE(rss_after_first_session, 0);
+
+  // Without allocator release, a model-sized working set remains resident. Allow ample
+  // headroom for allocator metadata and RSS measurement noise.
+  constexpr int64_t kMaxRssGrowthKB = 10 * 1024;
+  EXPECT_LE(rss_after_first_session - rss_after_warmup, kMaxRssGrowthKB)
+      << "RSS remained elevated after session release. rss_after_warmup=" << rss_after_warmup
+      << ", rss_after_first_session=" << rss_after_first_session;
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

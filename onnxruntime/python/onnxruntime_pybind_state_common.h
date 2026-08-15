@@ -279,7 +279,12 @@ struct PyInferenceSession {
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
-  virtual ~PyInferenceSession() = default;
+  virtual ~PyInferenceSession() noexcept {
+    if (sess_) {
+      sess_.reset();
+      ReleaseFreedMemoryToOS();
+    }
+  }
 
  protected:
   PyInferenceSession(std::unique_ptr<InferenceSession> sess)
