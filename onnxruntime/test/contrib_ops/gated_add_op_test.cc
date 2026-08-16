@@ -107,7 +107,12 @@ void RunGatedAddTest(const std::vector<int64_t>& input_dims) {
     tester.AddInput<T>("X", input_dims, ToTensorType<T>(x));
     tester.AddInput<T>("Y", input_dims, ToTensorType<T>(y));
     tester.AddInput<T>("gate", gate_dims, ToTensorType<T>(gate));
-    tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected));
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      // Allows valid WebGPU FP16 rounding differences near cancellation.
+      tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected), false, 0.001f, 0.01f);
+    } else {
+      tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected));
+    }
 
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(std::move(ep));
