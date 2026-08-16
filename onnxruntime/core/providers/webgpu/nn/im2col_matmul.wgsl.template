@@ -6,6 +6,10 @@
 #param tile_n
 #param use_subgroup
 #param vec_size
+// Mirrors ActivationKind; static_asserts in im2col_matmul.cc enforce these values.
+// 0=None, 1=Relu, 2=Sigmoid, 3=Clip, 4=HardSigmoid, 5=LeakyRelu, 6=Tanh.
+// Keep branches synchronized with IsActivationSupported().
+#param activation_kind
 
 #use .getByOffset .setByOffset
 
@@ -142,6 +146,19 @@ $MAIN {
   let bias = load_bias(n_base);
   for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
     var output_data = results[m_idx] + bias;
+#if activation_kind == 1
+    output_data = max(output_data, output_element_t(0));
+#elif activation_kind == 2
+    output_data = output_element_t(1) / (output_element_t(1) + exp(-output_data));
+#elif activation_kind == 3
+    output_data = clamp(output_data, output_element_t(uniforms.activation_param_0), output_element_t(uniforms.activation_param_1));
+#elif activation_kind == 4
+    output_data = clamp(output_element_t(uniforms.activation_param_0) * output_data + output_element_t(uniforms.activation_param_1), output_element_t(0), output_element_t(1));
+#elif activation_kind == 5
+    output_data = select(output_element_t(uniforms.activation_param_0) * output_data, output_data, output_data >= output_element_t(0));
+#elif activation_kind == 6
+    output_data = tanh(output_data);
+#endif
     write_output(batch, m_base + m_idx, n_base, output_data);
   }
 }  // MAIN
