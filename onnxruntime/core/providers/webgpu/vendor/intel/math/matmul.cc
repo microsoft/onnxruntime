@@ -134,6 +134,8 @@ Status ApplyMatMulIntel(ComputeContext& context,
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
+  // Activation uniforms must remain last because definitions and values are matched by index.
+  AppendActivationUniformsData(activation, program);
 
   if (has_bias) {
     auto bias_components = 1;

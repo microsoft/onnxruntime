@@ -6,7 +6,9 @@
 #endif
 
 #include <functional>
+#include <fstream>
 #include <random>
+#include <sstream>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -3494,6 +3496,238 @@ TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
   check_ints_attr("pads", AsSpan<int64_t>({1, 1, 1, 1}));
   check_ints_attr("kernel_shape", AsSpan<int64_t>({3, 3}));
 }
+
+#if defined(USE_WEBGPU)
+namespace {
+
+using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, NodeArg*)>;
+
+// Compare Level2 fused execution with the Level1 unfused baseline.
+void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
+                                   const std::string& expected_activation,
+                                   int opset_version,
+                                   const std::vector<int64_t>& input_shape = {1, 4, 14, 14},
+                                   const std::vector<int64_t>& weight_shape = {8, 4, 3, 3}) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto build_test_case = [&add_activation, &input_shape, &weight_shape](ModelTestBuilder& builder) {
+    // Include negative inputs for asymmetric activations.
+    auto* input = builder.MakeInput<float>(input_shape, -3.0f, 3.0f);
+    auto* weight = builder.MakeInitializer<float>(weight_shape, -0.5f, 0.5f);
+    auto* bias = builder.MakeInitializer<float>({weight_shape[0]}, -0.5f, 0.5f);
+    auto* conv_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    // Start from NCHW so layout transformation creates the NHWC fusion candidate.
+    builder.AddNode("Conv", {input, weight, bias}, {conv_out});
+    add_activation(builder, conv_out, output);
+  };
+
+  auto check_transformed_graph = [&expected_activation](InferenceSessionWrapper& session) {
+    bool fused = false;
+    std::ostringstream graph_description;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      graph_description << " " << node.Domain() << "." << node.OpType()
+                        << "[" << node.GetExecutionProviderType() << "]";
+      if (node.OpType() != "Conv") {
+        continue;
+      }
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr && activation_attr->s() == expected_activation) {
+        fused = true;
+      }
+    }
+    // Ensure the activation is fused; otherwise this test would not exercise the fused kernel.
+    ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
+                       << ", so the fused kernel was never executed. Graph was:"
+                       << graph_description.str();
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 opset_version,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+ConvActivationBuilder SimpleActivation(const std::string& op_type,
+                                       const std::string& domain = kOnnxDomain,
+                                       const std::function<void(Node&)>& decorate = nullptr) {
+  return [op_type, domain, decorate](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    Node& activation = builder.AddNode(op_type, {conv_out}, {output}, domain);
+    if (decorate) {
+      decorate(activation);
+    }
+  };
+}
+
+// Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
+void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
+                                     const std::string& expected_activation,
+                                     int opset_version) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  const std::vector<int64_t> input_shape{1, 4, 14, 14};
+  const std::vector<int64_t> weight_shape{8, 4, 3, 3};
+
+  auto to_fp16 = [](const std::vector<float>& values) {
+    std::vector<MLFloat16> converted;
+    converted.reserve(values.size());
+    for (float v : values) {
+      converted.push_back(MLFloat16(v));
+    }
+    return converted;
+  };
+
+  // Use deterministic signed inputs for stable fp16 comparisons.
+  auto ramp = [](size_t count, float lo, float hi) {
+    std::vector<float> values(count);
+    for (size_t i = 0; i < count; ++i) {
+      values[i] = lo + (hi - lo) * (static_cast<float>(i % 32) / 31.0f);
+    }
+    return values;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<MLFloat16>(input_shape, to_fp16(ramp(1 * 4 * 14 * 14, -3.0f, 3.0f)));
+    auto* weight = builder.MakeInitializer<MLFloat16>(weight_shape, to_fp16(ramp(8 * 4 * 3 * 3, -0.5f, 0.5f)));
+    auto* bias = builder.MakeInitializer<MLFloat16>({weight_shape[0]}, to_fp16(ramp(8, -0.5f, 0.5f)));
+    auto* conv_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Conv", {input, weight, bias}, {conv_out});
+    add_activation(builder, conv_out, output);
+  };
+
+  bool im2col_selected = false;
+  std::string observed_conv_programs;
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    bool fused = false;
+    std::ostringstream graph_description;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      graph_description << " " << node.Domain() << "." << node.OpType()
+                        << "[" << node.GetExecutionProviderType() << "]";
+      if (node.OpType() != "Conv") {
+        continue;
+      }
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr && activation_attr->s() == expected_activation) {
+        fused = true;
+      }
+    }
+    ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
+                       << ", so no fused kernel ran at all. Graph was:" << graph_description.str();
+
+    // Confirm profiling observed Im2ColMatMulProgram rather than the fallback Conv path.
+    const std::string profile_path = session.EndProfiling();
+    ASSERT_FALSE(profile_path.empty()) << "profiling produced no file, so program selection is unverifiable";
+    std::ifstream profile_stream(profile_path);
+    ASSERT_TRUE(profile_stream.good()) << "cannot read profile " << profile_path;
+    std::stringstream buffer;
+    buffer << profile_stream.rdbuf();
+    const std::string profile_contents = buffer.str();
+
+    im2col_selected = profile_contents.find("Im2ColMatMul") != std::string::npos;
+    for (size_t pos = profile_contents.find("&Conv&"); pos != std::string::npos;
+         pos = profile_contents.find("&Conv&", pos + 1)) {
+      const size_t end = profile_contents.find('"', pos);
+      if (end != std::string::npos) {
+        observed_conv_programs += " " + profile_contents.substr(pos + 6, end - pos - 6);
+      }
+    }
+    ASSERT_FALSE(observed_conv_programs.empty())
+        << "no Conv dispatch appeared in the profile, so this test can no longer tell whether the "
+           "im2col program was selected";
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
+                                 /*per_sample_tolerance=*/2e-2,
+                                 /*relative_per_sample_tolerance=*/2e-2,
+                                 /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
+                                   session_options.enable_profiling = true;
+                                   session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
+
+  // Im2ColMatMulProgram is restricted to Intel Xe-2/Xe-3.
+  if (!im2col_selected) {
+    GTEST_SKIP() << "Im2ColMatMul did not run on this adapter, so the im2col activation epilogue was "
+                    "not exercised. Conv dispatched to:"
+                 << observed_conv_programs
+                 << ". Requires an Intel Xe-2/Xe-3 GPU per IsDeviceSupported().";
+  }
+}
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, WebGpuConvReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvLeakyReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.15f); }),
+      "LeakyRelu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvHardSigmoidFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("HardSigmoid", kOnnxDomain,
+                       [](Node& node) {
+                         node.AddAttribute("alpha", 0.3f);
+                         node.AddAttribute("beta", 0.4f);
+                       }),
+      "HardSigmoid", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
+  auto add_clip = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* min_value = builder.MakeScalarInitializer<float>(-0.25f);
+    auto* max_value = builder.MakeScalarInitializer<float>(0.75f);
+    builder.AddNode("Clip", {conv_out, min_value, max_value}, {output});
+  };
+  RunWebGpuConvActivationParity(add_clip, "Clip", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossParameterValues) {
+  // Keep N and K below 8 to select MatMulNaiveProgram.
+  const std::vector<int64_t> input_shape{1, 4, 8, 8};
+  const std::vector<int64_t> weight_shape{6, 4, 1, 1};
+
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.01f); }),
+      "LeakyRelu", 17, input_shape, weight_shape);
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.5f); }),
+      "LeakyRelu", 17, input_shape, weight_shape);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvLeakyReluFusionMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.25f); }),
+      "LeakyRelu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvHardSigmoidFusionMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(
+      SimpleActivation("HardSigmoid", kOnnxDomain,
+                       [](Node& node) {
+                         node.AddAttribute("alpha", 0.3f);
+                         node.AddAttribute("beta", 0.7f);
+                       }),
+      "HardSigmoid", 17);
+}
+#endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, FuseConvMulNoBias) {

@@ -19,108 +19,108 @@ Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_h
 //  4 | #use .getByOffset .setByOffset
 //  5 | 
 //  6 | fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {
-ss << __str_87;
+ss << __str_306;
 //  7 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
-ss << __str_88;
+ss << __str_307;
 //  8 |     let offset = co * uniforms.I * uniforms.H * uniforms.W +
-ss << __str_89;
+ss << __str_308;
 //  9 |                  ci * uniforms.H * uniforms.W +
-ss << __str_90;
+ss << __str_309;
 // 10 |                  h_w;
-ss << __str_91;
+ss << __str_310;
 // 11 |     return src.getByOffset(offset);
-ss << __str_36;
-ss << __var_src.GetByOffset(__str_86);
-ss << __str_11;
+ss << __str_251;
+ss << __var_src.GetByOffset(__str_305);
+ss << __str_188;
 // 12 |   }
-ss << __str_8;
+ss << __str_217;
 // 13 |   return src_element_t();
-ss << __str_92;
+ss << __str_311;
 // 14 | }
-ss << __str_29;
+ss << __str_244;
 // 15 | 
-ss << __str_9;
+ss << __str_12;
 // 16 | fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {
-ss << __str_93;
+ss << __str_312;
 // 17 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
-ss << __str_88;
+ss << __str_307;
 // 18 |     let offset = co * uniforms.H * uniforms.W * uniforms.I +
-ss << __str_94;
+ss << __str_313;
 // 19 |                  h_w * uniforms.I +
-ss << __str_95;
+ss << __str_314;
 // 20 |                  ci;
-ss << __str_96;
+ss << __str_315;
 // 21 |     output.setByOffset(offset, value);
-ss << __str_47;
-ss << __var_output.SetByOffset(__str_86, __str_3);
-ss << __str_11;
+ss << __str_262;
+ss << __var_output.SetByOffset(__str_305, __str_221);
+ss << __str_188;
 // 22 |   }
-ss << __str_8;
+ss << __str_217;
 // 23 | }
-ss << __str_29;
+ss << __str_244;
 // 24 | 
-ss << __str_9;
+ss << __str_12;
 // 25 | var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;
-ss << __str_97;
+ss << __str_316;
 // 26 | 
-ss << __str_9;
+ss << __str_12;
 // 27 | $MAIN {
 MainFunctionStart();
-ss << __str_9;
+ss << __str_12;
 // 28 |   let group_co : u32 = workgroup_idx / uniforms.Ci_tiles;
-ss << __str_98;
+ss << __str_317;
 // 29 |   let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;
-ss << __str_99;
+ss << __str_318;
 // 30 | 
-ss << __str_9;
+ss << __str_12;
 // 31 |   if (group_co >= uniforms.O || group_ci >= uniforms.I) {
-ss << __str_100;
+ss << __str_319;
 // 32 |     return;
-ss << __str_101;
+ss << __str_320;
 // 33 |   }
-ss << __str_8;
+ss << __str_217;
 // 34 | 
-ss << __str_9;
+ss << __str_12;
 // 35 |   for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {
-ss << __str_102;
+ss << __str_321;
 // 36 |     // load
-ss << __str_9;
+ss << __str_12;
 // 37 |     for (var ci_idx = 0u; ci_idx < 64u; ci_idx += 16u) {
-ss << __str_103;
+ss << __str_322;
 // 38 |       let load_ci_idx = ci_idx + local_idx / 4;
-ss << __str_104;
+ss << __str_323;
 // 39 |       let load_h_w_idx = local_idx % 4;
-ss << __str_105;
+ss << __str_324;
 // 40 | 
-ss << __str_9;
+ss << __str_12;
 // 41 |       data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,
-ss << __str_106;
+ss << __str_325;
 // 42 |                                                        group_ci + load_ci_idx,
-ss << __str_107;
+ss << __str_326;
 // 43 |                                                        h_w_idx * 4 + load_h_w_idx);
-ss << __str_108;
+ss << __str_327;
 // 44 |     }
-ss << __str_65;
+ss << __str_134;
 // 45 |     workgroupBarrier();
-ss << __str_71;
+ss << __str_167;
 // 46 | 
-ss << __str_9;
+ss << __str_12;
 // 47 |     // store
 // 48 |     for (var local_h_w_idx = 0u; local_h_w_idx < 4u; local_h_w_idx++) {
-ss << __str_109;
+ss << __str_328;
 // 49 |       let output_data = data_cache[local_h_w_idx][local_idx];
-ss << __str_110;
+ss << __str_329;
 // 50 |       write_output(group_co, h_w_idx * 4 + local_h_w_idx, group_ci + local_idx, output_data);
-ss << __str_111;
+ss << __str_330;
 // 51 |     }
-ss << __str_65;
+ss << __str_134;
 // 52 |     workgroupBarrier();
-ss << __str_71;
+ss << __str_167;
 // 53 |   }
-ss << __str_8;
+ss << __str_217;
 // 54 | }  // MAIN
 MainFunctionEnd();
-ss << __str_9;
+ss << __str_12;
 // 55 | 
 
 
