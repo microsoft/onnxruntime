@@ -33,6 +33,17 @@ TEST(ActivationCacheKeyTest, ParametersDoNotAffectTheKey) {
       << "Clip bounds are uniforms, so they must not fork the pipeline cache";
 }
 
+TEST(ActivationCacheKeyTest, QuickGeluUnitAlphaIsKeyedSeparately) {
+  const auto unit_alpha = MakeActivation(webgpu::ActivationKind::QuickGelu, 1.0f);
+  const auto other_alpha = MakeActivation(webgpu::ActivationKind::QuickGelu, 1.702f);
+
+  EXPECT_NE(unit_alpha.ToString(), other_alpha.ToString())
+      << "QuickGelu drops the multiply at alpha == 1, which is different shader text";
+
+  const auto another_alpha = MakeActivation(webgpu::ActivationKind::QuickGelu, 0.5f);
+  EXPECT_EQ(other_alpha.ToString(), another_alpha.ToString());
+}
+
 TEST(ActivationCacheKeyTest, IdenticalActivationsProduceIdenticalKeys) {
   const auto activation_a = MakeActivation(webgpu::ActivationKind::LeakyRelu, 0.01f);
   const auto activation_b = MakeActivation(webgpu::ActivationKind::LeakyRelu, 0.01f);

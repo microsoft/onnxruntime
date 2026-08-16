@@ -3,6 +3,9 @@
 
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/framework/op_kernel_info.h"
+#include <iomanip>
+#include <limits>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,6 +14,13 @@ namespace webgpu {
 
 namespace {
 
+// Emit enough digits to round-trip each f32 exactly.
+std::string FloatLiteral(float value) {
+  std::ostringstream oss;
+  oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
+  return oss.str();
+}
+
 // Parameters occupy uniform slots in activation_params_.values_ order.
 size_t GetActivationUsedUniformCount(const Activation& activation) {
   switch (activation.activation_kind_) {
@@ -18,7 +28,11 @@ size_t GetActivationUsedUniformCount(const Activation& activation) {
     case ActivationKind::HardSigmoid:
       return 2;
     case ActivationKind::LeakyRelu:
+    case ActivationKind::Elu:
+    case ActivationKind::ThresholdedRelu:
       return 1;
+    case ActivationKind::QuickGelu:
+      return activation.HasUnitQuickGeluAlpha() ? 0 : 1;
     default:
       return 0;
   }
@@ -37,6 +51,23 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
       activation.activation_kind_ = ActivationKind::Tanh;
     } else if (activation_type == "Sigmoid") {
       activation.activation_kind_ = ActivationKind::Sigmoid;
+    } else if (activation_type == "HardSwish") {
+      // ONNX fixes HardSwish alpha and beta.
+      activation.activation_kind_ = ActivationKind::HardSwish;
+    } else if (activation_type == "Softplus") {
+      activation.activation_kind_ = ActivationKind::Softplus;
+    } else if (activation_type == "Erf") {
+      activation.activation_kind_ = ActivationKind::Erf;
+    } else if (activation_type == "Gelu" || activation_type == "FastGelu") {
+      // activation_params[0] selects erf (0) or tanh (1); FastGelu always uses tanh.
+      bool tanh_approximation = activation_type == "FastGelu";
+      if (!tanh_approximation) {
+        std::vector<float> approximate_param;
+        if (info.GetAttrs<float>("activation_params", approximate_param).IsOK() && !approximate_param.empty()) {
+          tanh_approximation = approximate_param[0] != 0.0f;
+        }
+      }
+      activation.activation_kind_ = tanh_approximation ? ActivationKind::GeluTanh : ActivationKind::Gelu;
     } else {
       // The remaining activation types have additional parameters to be pulled out.
       size_t activation_params_count;
@@ -49,6 +80,15 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
       } else if (activation_type == "HardSigmoid") {
         activation.activation_kind_ = ActivationKind::HardSigmoid;
         activation_params_count = 2;
+      } else if (activation_type == "QuickGelu") {
+        activation.activation_kind_ = ActivationKind::QuickGelu;
+        activation_params_count = 1;
+      } else if (activation_type == "Elu") {
+        activation.activation_kind_ = ActivationKind::Elu;
+        activation_params_count = 1;
+      } else if (activation_type == "ThresholdedRelu") {
+        activation.activation_kind_ = ActivationKind::ThresholdedRelu;
+        activation_params_count = 1;
       } else {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
       }
@@ -69,11 +109,50 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
   return Status::OK();
 }
 
-std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type) {
-  auto base_type_cast = [base_type](float value) -> std::string {
-    return base_type + "(" + std::to_string(value) + ")";
+std::string GetActivationDeclaration(const Activation& activation, std::string value_type, std::string base_type) {
+  auto base_type_cast = [&base_type](float value) -> std::string {
+    return base_type + "(" + FloatLiteral(value) + ")";
   };
-  auto value_type_cast = [base_type_cast, value_type](float f) -> std::string {
+  auto value_type_cast = [&base_type_cast, &value_type](float f) -> std::string {
+    return value_type + "(" + base_type_cast(f) + ")";
+  };
+
+  // Match the standalone Erf/Gelu implementation (Abramowitz & Stegun 7.1.26).
+  auto erf_fn = [&]() -> std::string {
+    return "fn fused_act_erf(v: " + value_type + ") -> " + value_type + " {\n" +
+           "  let a = abs(v);\n" +
+           "  let t = " + value_type_cast(1.0f) + " / (" + value_type_cast(1.0f) + " + " +
+           value_type_cast(0.3275911f) + " * a);\n" +
+           "  return sign(v) * (" + value_type_cast(1.0f) + " - ((((" + value_type_cast(1.061405429f) + " * t + " +
+           value_type_cast(-1.453152027f) + ") * t + " + value_type_cast(1.421413741f) + ") * t + " +
+           value_type_cast(-0.284496736f) + ") * t + " + value_type_cast(0.254829592f) + ") * t * exp(-a * a));\n" +
+           "}\n";
+  };
+
+  // WGSL tanh returns NaN for large inputs; this equivalent form stays finite.
+  auto tanh_fn = [&]() -> std::string {
+    return "fn fused_act_tanh(v: " + value_type + ") -> " + value_type + " {\n" +
+           "  let e = exp(" + value_type_cast(-2.0f) + " * abs(v));\n" +
+           "  return sign(v) * ((" + value_type_cast(1.0f) + " - e) / (" + value_type_cast(1.0f) + " + e));\n" +
+           "}\n";
+  };
+
+  switch (activation.activation_kind_) {
+    case ActivationKind::Gelu:
+    case ActivationKind::Erf:
+      return erf_fn();
+    case ActivationKind::GeluTanh:
+      return tanh_fn();
+    default:
+      return "";
+  }
+}
+
+std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type) {
+  auto base_type_cast = [&base_type](float value) -> std::string {
+    return base_type + "(" + FloatLiteral(value) + ")";
+  };
+  auto value_type_cast = [&base_type_cast, &value_type](float f) -> std::string {
     return value_type + "(" + base_type_cast(f) + ")";
   };
   // Cast f32 activation uniforms to the shader's scalar or vector value type.
@@ -97,6 +176,33 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
       return "value = select(" + base_param(0) + " * value, value, value >= " + value_type_cast(0.0) + ");";
     case ActivationKind::Tanh:
       return "value = tanh(value);";
+    case ActivationKind::QuickGelu:
+      // Alpha 1 omits the multiply and uniform read.
+      if (activation.HasUnitQuickGeluAlpha()) {
+        return "value = value * (" + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-value)));";
+      }
+      return "value = value * (" + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-(" +
+             base_param(0) + " * value))));";
+    case ActivationKind::HardSwish:
+      return "value = value * clamp(value * " + value_type_cast(1.0f / 6.0f) + " + " + value_type_cast(0.5) + ", " +
+             value_type_cast(0.0) + ", " + value_type_cast(1.0) + ");";
+    case ActivationKind::Elu:
+      return "value = select(" + base_param(0) + " * (exp(value) - " + value_type_cast(1.0) +
+             "), value, value >= " + value_type_cast(0.0) + ");";
+    case ActivationKind::ThresholdedRelu:
+      return "value = select(" + value_type_cast(0.0) + ", value, value > " + value_param(0) + ");";
+    case ActivationKind::Erf:
+      return "value = fused_act_erf(value);";
+    case ActivationKind::Gelu:
+      return "value = " + value_type_cast(0.5) + " * value * (" + value_type_cast(1.0) + " + fused_act_erf(value * " +
+             value_type_cast(0.70710678118654752f) + "));";
+    case ActivationKind::GeluTanh:
+      return "value = value * (" + value_type_cast(0.5) + " + " + value_type_cast(0.5) + " * fused_act_tanh(value * (" +
+             value_type_cast(0.035677408136300125f) + " * value * value + " +
+             value_type_cast(0.79788456080286535f) + ")));";
+    case ActivationKind::Softplus:
+      // Use the overflow-safe softplus form.
+      return "value = max(value, " + value_type_cast(0.0) + ") + log(" + value_type_cast(1.0) + " + exp(-abs(value)));";
     default:
       return "";
   }
