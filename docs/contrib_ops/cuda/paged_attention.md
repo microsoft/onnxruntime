@@ -748,30 +748,30 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > `PagedAttention<T, T_CACHE>` registered for `{MLFloat16, BFloat16} × {int8_t, Float8E4M3FN}` in
 > addition to the unquantized pairs. Deviations from the text above:
 >
-> - **Read path is §8.5 Phase 2 only.** `GatherAndExpandPagedKVCache` dequantizes while gathering,
->   and the Flash varlen path is routed through the same gather when the cache is quantized (using
->   `num_heads = kv_num_heads` so no GQA expansion happens, which keeps Flash's grouped layout). The
->   §8.5 Phase 3 paged decode kernel with in-kernel dequantization is **not** implemented.
+> - **Both §8.5 read paths are implemented.** Multi-token steps use `GatherAndExpandPagedKVCache`
+>   to dequantize while gathering, and the Flash varlen path uses the gathered grouped layout.
+>   Single-token decode reads and dequantizes the cache in place through XQA when eligible or
+>   `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
 > - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`, so
 >   `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type.
-> - **No SM89/SM90 gate for FP8.** `Float8E4M3FN`'s converting constructor uses
+> - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
->   onward, so the arch check in §8.7 would reject working configurations. FP8 remains gated at
->   *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
+>   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
 > - Parity tests compare the updated cache at one quantization step of slack. Rotary and RMSNorm are
 >   computed ~1 fp16 ULP differently on the host, which is enough to move a value across a rounding
 >   boundary and flip the stored code by one LSB.
 
-> **Implementation note (P5, implemented).** §8.5 Phase 3 is now in place as a purpose-built
-> flash-decoding kernel (`PagedDecodeSplitKV` + `PagedDecodeReduce` in `paged_attention_impl.cu`),
-> not by reusing the vendored XQA kernel. XQA does have paged-KV support, but its page list is
-> `[batch][beam][2][max_pages]` over a *single* K/V pool whereas PagedAttention has two pools and one
-> shared `block_table`, and it restricts `head_size ∈ {64, 128, 256}` and `group_size ∈ {4, 8, 16,
-> 32}` while multiplying instantiations across page size × group size × head size × dtype × quant
-> type. A ~250-line kernel covers the whole schema instead.
+> **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
+> one token per sequence, `head_size ∈ {64, 128}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap, and
+> a block size divisible by 128. The CUDA image selected at runtime must contain compatible XQA
+> device code generated for SM80 or newer; INT8 XQA requires an SM80-or-newer GPU and FP8 XQA
+> requires SM89 or SM90+. Setting `ORT_ENABLE_XQA=0` disables XQA. The operator also falls back when
+> the selected image has no XQA kernel or its dynamic shared-memory requirement exceeds the device
+> limit. Other supported configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
+> `paged_attention_impl.cu`.
 >
 > - **Both scale foldings are exact and granularity-agnostic.** K folds into Q at load time
 >   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so

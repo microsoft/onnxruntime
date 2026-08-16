@@ -452,7 +452,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         device_prop.major >= 8 &&
         parameters.softcap == 0.0f &&
         (parameters.head_size == 64 || parameters.head_size == 128) &&
-        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
+        (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
         (parameters.block_size % kXqaTokensPerPage) == 0 &&
         is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
         // FP8 arithmetic in the XQA kernel needs Ada (sm_89) or Hopper+.
@@ -532,7 +532,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
             device_prop, parameters.head_size, parameters.num_heads, parameters.kv_num_heads,
             IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8,
             std::is_same<T, BFloat16>::value);
-        xqa_smem_ok = (required_smem == 0 || required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+        // A zero result means the selected CUDA image has no compatible XQA symbol or the symbol
+        // query failed. Either case must use the portable fallback rather than attempting a launch.
+        xqa_smem_ok = (required_smem != 0 && required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
         xqa_shared_memory_ok_.store(xqa_smem_ok, std::memory_order_relaxed);
       } else {
         xqa_smem_ok = 0;
