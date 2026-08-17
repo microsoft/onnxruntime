@@ -196,7 +196,13 @@ ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Re
 ABSL_FLAG(std::string, plugin_ep_libs, "",
           "Specifies a list of plugin execution provider (EP) registration names and their corresponding shared libraries to register.\n"
           "[Usage]: --plugin_ep_libs \"plugin_ep_name_1|plugin_ep_1.dll plugin_ep_name_2|plugin_ep_2.dll ... \"");
-ABSL_FLAG(std::string, plugin_eps, "", "Specifies a semicolon-separated list of plugin execution providers (EPs) to use.");
+ABSL_FLAG(std::string, plugin_eps, "",
+          "Specifies a semicolon-separated list of plugin execution providers (EPs) to use.\n"
+          "  [VitisAI only] [enable_npu_shared_memory_allocator]: pass via --plugin_ep_options for the \"VitisAI\" entry\n"
+          "  to allocate I/O tensors from the VitisAI plugin EP's shared NPU allocator instead of the default CPU\n"
+          "  allocator. Defaults to '0' (disabled), i.e. VitisAI EP runs with the default CPU allocator unless this\n"
+          "  is set. Combine with '--plugin_ep_options \"enable_npu_shared_memory_allocator|1 try_use_zero_copy|1\"'\n"
+          "  and '-I' to also exercise the EP's zero-copy bind path.");
 ABSL_FLAG(std::string, plugin_ep_options, "",
           "Specifies provider options for each EP listed in --plugin_eps. Options (key-value pairs) for each EP are separated by space and EPs are separated by semicolons.\n"
           "[Usage]: --plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;ep_2_option_1_key|ep_2_option_1_value ...;... \" or \n"
