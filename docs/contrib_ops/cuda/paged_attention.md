@@ -1277,6 +1277,13 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > stricter gate — it needs `token_count == batch_size` *and* `max_query_len == 1`, the latter from
 > `attention_metadata` or, failing that, from the readback — because its output layout is one row
 > per batch index rather than per query token.
+>
+> XQA uses fixed 128-token pages. When PagedAttention's `block_size` is 128, its native
+> `block_table` is already in XQA page units and is passed directly to the kernel: no page-table
+> scratch buffer is allocated and `ExpandBlockTableToPages` is not launched. This preserves every
+> entry, including `-1`, unchanged. Larger supported block sizes remain on the expanded path; for
+> example, each 256-token block maps to two consecutive XQA pages in a per-invocation scratch table.
+> Debug output reports the selected path as `XqaPageTable=native` or `XqaPageTable=expanded`.
 
 ## 14. Shared Code with GroupQueryAttention
 
