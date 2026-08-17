@@ -2,11 +2,10 @@
 # project's Torch/pybind wrapper and pin the exact source revision used to select
 # the AOT DSV4 configurations.
 include(FetchContent)
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
   deep_gemm
-  GIT_REPOSITORY https://github.com/deepseek-ai/DeepGEMM.git
-  GIT_TAG 559d79fb6994a58b8a15b4b93bf13ccc16edf247
-  GIT_SHALLOW FALSE
+  URL ${DEP_URL_deep_gemm}
+  URL_HASH SHA1=${DEP_SHA1_deep_gemm}
   EXCLUDE_FROM_ALL
 )
 

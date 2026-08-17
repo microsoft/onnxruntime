@@ -1276,7 +1276,8 @@ __global__ void QMoEFp4ToFp8BlockScaleKernel(
     float scale = 1.0f;
     if (amax > 0.0f) {
       int exponent = 0;
-      frexpf(amax * (1.0f / kQMoEFp8Max), &exponent);
+      const float mantissa = frexpf(amax * (1.0f / kQMoEFp8Max), &exponent);
+      exponent -= mantissa == 0.5f;
       scale = exp2f(static_cast<float>(exponent));
     }
     output_scales[(static_cast<int64_t>(expert) * (n / kQMoEFp8BlockN) + n_block) * (k / kQMoEFp8BlockK) + k_block] =

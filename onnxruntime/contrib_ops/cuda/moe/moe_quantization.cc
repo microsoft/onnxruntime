@@ -40,6 +40,8 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 namespace {
+constexpr size_t kMinH200GlobalMemoryBytes = size_t{120} << 30;
+
 void LogQMoESwigluFusionRemapOnce() {
   static std::once_flag log_warning;
   std::call_once(log_warning, []() {
@@ -213,8 +215,8 @@ int StaticDsv4DeepGemmNumExperts(const OpKernelInfo& op_kernel_info) {
   }
 #endif
 
-  const bool supported =
-      onnxruntime::llm::kernels::deep_gemm_sm90::NumExpertsSupported(fc1_e) && fc2_e == fc1_e &&
+    const bool supported =
+      fc1_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExpertsWorld8 && fc2_e == fc1_e &&
       fc1_k == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
       fc1_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize &&
       fc2_k == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
@@ -337,7 +339,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   dsv4_deep_gemm_num_experts_ = StaticDsv4DeepGemmNumExperts(op_kernel_info);
   enable_dsv4_deep_gemm_ =
-      quant_type_ == "fp4" && !is_fp16_ && sm_ == 90 && GetDeviceProp().multiProcessorCount == 132 && k_ == 6 &&
+      quant_type_ == "fp4" && !is_fp16_ && sm_ == 90 && GetDeviceProp().multiProcessorCount == 132 &&
+      GetDeviceProp().totalGlobalMem >= kMinH200GlobalMemoryBytes && k_ == 6 &&
       activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
       dsv4_deep_gemm_num_experts_ > 0 &&
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DSV4_FP4_DEEPGEMM", 0) == 1;

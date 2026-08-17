@@ -86,10 +86,14 @@
     LLM_SOURCES onnxruntime_cuda_llm_srcs
     LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
   )
-  if(UNIX)
+  if(MSVC OR UNIX)
     foreach(_src IN LISTS onnxruntime_cuda_llm_sm90_srcs)
       if(_src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
-        set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=-Wno-unknown-pragmas")
+        if(MSVC)
+          set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=/wd4068")
+        else()
+          set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=-Wno-unknown-pragmas")
+        endif()
       endif()
     endforeach()
   endif()
