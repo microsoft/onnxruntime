@@ -1546,6 +1546,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
                                check_load_cancellation_fn_, on_partition_assignment_fn);
 
+  // AOT capability discovery may copy initializer data, so reject arbitrary in-memory references first.
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ValidateInMemoryInitializers());
+
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =
           session_options_.config_options.GetConfigOrDefault(
