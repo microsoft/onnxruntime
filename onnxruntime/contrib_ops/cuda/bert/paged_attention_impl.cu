@@ -1465,7 +1465,8 @@ Status PagedDecodeAttention(
 //     [num_blocks, block_size, kv_num_heads, head_size] -- and XQA's PAGED_KV_CACHE_LAYOUT == 1
 //     page is exactly [tokens_per_page, kv_num_heads, head_size], block b is bit-for-bit the
 //     concatenation of pages [b * pages_per_block, (b + 1) * pages_per_block). ExpandBlockTable-
-//     ToPages rewrites the block table accordingly; it costs O(batch * max_num_blocks_per_seq).
+//     ToPages rewrites blocks larger than 128 tokens accordingly. A 128-token block table is
+//     already in XQA page units and passes through without scratch allocation or expansion.
 //  2. Per-channel scales. XQA only accepts a scalar dequantization scale per cache. A PER_CHANNEL
 //     scale is folded out exactly the same way GroupQueryAttention does it (see the derivation
 //     next to LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh): k_scale into Q
@@ -1537,12 +1538,16 @@ Status PagedXqaDecodeAttention(
 
   const int pages_per_block = parameters.block_size / onnxruntime::contrib::cuda::kXqaTokensPerPage;
   const int max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
-  {
+  const int* page_table = data.block_table;
+  if (pages_per_block > 1) {
+    ORT_RETURN_IF_NOT(data.xqa_page_table_scratch, "XQA page-table scratch was not allocated.");
     const int total_pages = batch_size * max_pages_per_seq;
     const int blocks = (total_pages + max_threads_per_block - 1) / max_threads_per_block;
     ExpandBlockTableToPages<<<blocks, max_threads_per_block, 0, stream>>>(
-        data.block_table, data.xqa_page_table, parameters.max_num_blocks_per_seq, pages_per_block, total_pages);
+        data.block_table, data.xqa_page_table_scratch,
+        parameters.max_num_blocks_per_seq, pages_per_block, total_pages);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    page_table = data.xqa_page_table_scratch;
   }
 
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
@@ -1581,7 +1586,7 @@ Status PagedXqaDecodeAttention(
       reinterpret_cast<const void*>(data.key_cache),
       reinterpret_cast<const void*>(data.value_cache),
       reinterpret_cast<void*>(data.output),
-      data.xqa_page_table,
+      page_table,
       batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
       scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
       // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so the

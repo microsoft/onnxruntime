@@ -467,7 +467,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         device_prop.major >= 8 &&
         parameters.softcap == 0.0f &&
         (parameters.head_size == 64 || parameters.head_size == 128) &&
-        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
+        (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
         (parameters.block_size % kXqaTokensPerPage) == 0 &&
         is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
         // FP8 arithmetic in the XQA kernel needs Ada (sm_89) or Hopper+.
@@ -548,7 +548,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
             device_prop, parameters.head_size, parameters.num_heads, parameters.kv_num_heads,
             IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8,
             std::is_same<T, BFloat16>::value);
-        xqa_smem_ok = (required_smem == 0 || required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+        // A zero result means the selected CUDA image has no compatible XQA symbol or the symbol
+        // query failed. Either case must use the portable fallback rather than attempting a launch.
+        xqa_smem_ok = (required_smem != 0 && required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
         xqa_shared_memory_ok_.store(xqa_smem_ok, std::memory_order_relaxed);
       } else {
         xqa_smem_ok = 0;
@@ -648,16 +650,19 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
   }
 
-  // XQA scratch: semaphores + the multi-block (Flash Decoding) partials, plus the expanded page
-  // table, the optional pre-scaled Q copy and the fp32 attention sinks.
+  // XQA scratch: semaphores + the multi-block (Flash Decoding) partials, the optional expanded page
+  // table, the optional pre-scaled Q copy and the fp32 attention sinks. A native 128-token block
+  // table is already in XQA page units and is passed through without an allocation.
   IAllocatorUniquePtr<void> xqa_workspace_buffer;
   IAllocatorUniquePtr<void> xqa_page_table_buffer;
   IAllocatorUniquePtr<void> xqa_query_buffer;
   IAllocatorUniquePtr<void> xqa_head_sink_buffer;
   size_t xqa_workspace_bytes = 0;
   int xqa_max_pages_per_seq = 0;
+  bool xqa_page_table_expanded = false;
   if (use_xqa_decode) {
     const int pages_per_block = parameters.block_size / kXqaTokensPerPage;
+    xqa_page_table_expanded = pages_per_block > 1;
     xqa_max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
     xqa_workspace_bytes = GetXQAScratchSize(
         device_prop, parameters.batch_size, parameters.num_heads, parameters.kv_num_heads,
@@ -665,9 +670,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8,
         std::is_same<T, BFloat16>::value);
     xqa_workspace_buffer = GetScratchBuffer<void>(xqa_workspace_bytes, GetComputeStream(context));
-    xqa_page_table_buffer = GetScratchBuffer<void>(
-        sizeof(int) * static_cast<size_t>(parameters.batch_size) * xqa_max_pages_per_seq,
-        GetComputeStream(context));
+    if (xqa_page_table_expanded) {
+      xqa_page_table_buffer = GetScratchBuffer<void>(
+          sizeof(int) * static_cast<size_t>(parameters.batch_size) * xqa_max_pages_per_seq,
+          GetComputeStream(context));
+    }
     if (k_quant_type_ == KVQuantizationType::PER_CHANNEL) {
       xqa_query_buffer = GetScratchBuffer<void>(
           sizeof(T) * static_cast<size_t>(parameters.batch_size) * parameters.num_heads * parameters.head_size,
@@ -707,6 +714,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     debug_info.gqa_group_size = parameters.num_heads / parameters.kv_num_heads;
     debug_info.effective_kv_length_bound =
         parameters.local_window_size > 0 ? std::min(max_kv_len, parameters.local_window_size) : max_kv_len;
+    if (use_xqa_decode) {
+      debug_info.xqa_page_table_expanded = xqa_page_table_expanded;
+    }
 
     debug_info.Print("PagedAttention",
                      this->Node().Name(),
@@ -768,7 +778,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   if (use_xqa_decode) {
     data.xqa_workspace = xqa_workspace_buffer.get();
     data.xqa_workspace_size = xqa_workspace_bytes;
-    data.xqa_page_table = reinterpret_cast<int*>(xqa_page_table_buffer.get());
+    data.xqa_page_table_scratch = reinterpret_cast<int*>(xqa_page_table_buffer.get());
     data.xqa_query = reinterpret_cast<CudaT*>(xqa_query_buffer.get());
     data.xqa_head_sink = reinterpret_cast<float*>(xqa_head_sink_buffer.get());
   }

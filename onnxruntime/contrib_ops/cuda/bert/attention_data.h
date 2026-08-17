@@ -325,14 +325,13 @@ struct PagedAttentionData {
 
   // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
   // (quantized cache, one new token per sequence -- see use_xqa_decode).
-  //   xqa_workspace   : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
-  //   xqa_page_table  : block_table expanded from PagedAttention blocks to XQA's fixed 128-token
-  //                     pages, shape [batch_size, max_num_blocks_per_seq * pages_per_block].
-  //   xqa_query       : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
-  //   xqa_head_sink   : head_sink converted to fp32, which is what XQA consumes.
+  //   xqa_workspace          : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
+  //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
+  //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
+  //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
   void* xqa_workspace = nullptr;
   size_t xqa_workspace_size = 0;
-  int* xqa_page_table = nullptr;
+  int* xqa_page_table_scratch = nullptr;
   T* xqa_query = nullptr;
   float* xqa_head_sink = nullptr;
 
