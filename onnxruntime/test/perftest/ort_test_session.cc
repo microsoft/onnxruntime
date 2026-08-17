@@ -110,6 +110,54 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         device_memory_name_.empty()) {
       device_memory_name_ = CUDA;
     }
+
+    // VitisAI NPU shared allocator: opt-in only, via
+    // --plugin_ep_options "enable_npu_shared_memory_allocator|1" for the
+    // "VitisAI" entry in --plugin_eps (mirrors QNN's
+    // enable_htp_shared_memory_allocator naming below). Without this option,
+    // the VitisAI plugin EP still runs inference normally, but I/O tensors
+    // stay on the default CPU allocator -- useful as a CPU-allocator baseline
+    // while still exercising the plugin EP (as opposed to allocator + EP both
+    // varying at once).
+    //
+    // When enabled, fetch the EP's shared allocator (e.g. a page-aligned,
+    // zero-copy-capable NPU allocator) via Ort::Env::CreateSharedAllocator()
+    // and route I/O tensor allocation through it instead. Unlike QNN/CUDA/
+    // OpenVINO below, VitisAI's allocator is owned by the plugin EP factory
+    // rather than registered by name in core/framework/allocator.h, so it
+    // cannot be obtained by constructing an Ort::MemoryInfo from a string name
+    // -- it must come from the OrtEpDevice via CreateSharedAllocator().
+    auto& plugin_ep_list = performance_test_config.machine_config.plugin_provider_type_list;
+    auto vitisai_ep_it = std::find(plugin_ep_list.begin(), plugin_ep_list.end(), "VitisAI");
+    if (device_memory_name_.empty() && vitisai_ep_it != plugin_ep_list.end()) {
+      std::vector<std::unordered_map<std::string, std::string>> plugin_ep_options_list;
+      ParseEpOptions(ToUTF8String(performance_test_config.run_config.ep_runtime_config_string),
+                     plugin_ep_options_list);
+      const size_t vitisai_ep_index = static_cast<size_t>(vitisai_ep_it - plugin_ep_list.begin());
+      bool enable_npu_allocator = false;
+      if (vitisai_ep_index < plugin_ep_options_list.size()) {
+        auto opt_it = plugin_ep_options_list[vitisai_ep_index].find("enable_npu_shared_memory_allocator");
+        enable_npu_allocator = opt_it != plugin_ep_options_list[vitisai_ep_index].end() && opt_it->second == "1";
+      }
+
+      if (enable_npu_allocator) {
+        for (auto& device : env.GetEpDevices()) {
+          if (std::string(device.EpName()) != "VitisAI") continue;
+
+          try {
+            Ort::UnownedAllocator vitisai_allocator = env.CreateSharedAllocator(
+                device, OrtDeviceMemoryType_HOST_ACCESSIBLE, OrtDeviceAllocator, nullptr);
+            allocator_ = vitisai_allocator;
+            device_memory_name_ = "VitisAINpuAllocator";
+          } catch (const Ort::Exception& e) {
+            // The VitisAI EP build/config in use doesn't expose a shared allocator
+            // (e.g. no NPU allocator support). Fall back to the default allocator.
+            fprintf(stderr, "[WARNING] VitisAI EP does not support a shared allocator: %s\n", e.what());
+          }
+          break;
+        }
+      }
+    }
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -975,7 +1023,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  if (!device_memory_name_.empty()) {
+  // Note: "VitisAINpuAllocator" is a plugin-EP-owned shared allocator already
+  // fetched and assigned to allocator_ above via CreateSharedAllocator(). It has
+  // no entry in core/framework/allocator.h's name table, so it must skip the
+  // generic Ort::MemoryInfo-by-name construction used by CUDA/QNN/OpenVINO.
+  if (!device_memory_name_.empty() && device_memory_name_ != "VitisAINpuAllocator") {
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
