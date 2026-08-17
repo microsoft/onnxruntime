@@ -96,8 +96,9 @@ extraction, not complete migration of ORT's operator test suite.
 
 The MVP should provide:
 
-- A native runner for dynamic plugin EPs whose execution boundary uses only released public ORT APIs.
-- A static-runner target or SDK using the same case data.
+- A shared conformance-runner core for case loading, execution, comparison, and reporting.
+- A prebuilt native executable that uses the core and loads dynamic plugin EP libraries.
+- A small SDK or CMake target that uses the same core and lets an external EP link its static factory registration.
 - CPU fallback prevention or reliable assignment verification.
 - Case, provider-profile, and report schemas.
 - Structured `PASS`, `UNSUPPORTED`, `FAIL`, `EXCLUDED`, and `NOT_RUN` results.
@@ -109,9 +110,15 @@ The representative set should be chosen from the current WebGPU support surface 
 exercise capability discovery, model loading, execution, output comparison, unsupported behavior, and fallback
 detection.
 
-ORT may build and publish the native runner itself. Restricting its execution boundary to public APIs ensures an
-external EP can use the released runner and case archive without an ORT source checkout or a dependency on ORT's
-private C++ ABI. A small source or CMake SDK may additionally be published for statically linked runners.
+The dynamic and static runners should be thin registration frontends over the same runner core so that linkage mode
+does not change case interpretation or result semantics.
+
+The shared runner core must interact with ORT through released public APIs. The dynamic executable could technically
+link ORT-private test libraries because ORT builds and distributes it as a self-contained binary. The same core,
+however, must also be consumable by an external EP repository to build a statically linked runner. Requiring private
+ORT headers or libraries there would couple the external repository to ORT's source layout and private C++ ABI.
+Keeping the shared core on the public API boundary allows ORT to distribute one implementation for both frontends and
+lets an external EP build the static form against a released ORT SDK without an ORT source checkout.
 
 ## Coverage continuity rules
 
