@@ -106,6 +106,7 @@ scope requires an explicit compatibility decision rather than silently dropping 
 The source move is ready when:
 
 - Static and dynamic forms execute the same provider implementation through the public plugin EP API.
+- Process-global initialization and teardown in the static plugin setup work correctly.
 - `plugin-ep-webgpu/` builds from a clean copy without private ORT implementation headers or libraries.
 - Every existing test is classified and current tested behavior remains blocking.
 - WebGPU-specific tests run from the isolated provider tree.

@@ -48,6 +48,34 @@ The design must address:
 
 The facility must be generic and validated with at least one non-WebGPU test plugin where practical.
 
+### Process-global ownership and teardown
+
+Static registration removes the dynamic-library unload boundary. The current WebGPU plugin cleanup path cannot be
+reused unchanged: releasing a factory clears global WebGPU contexts and kernel registries, destroys a global logger
+wrapper, and shuts down protobuf. In a statically linked process, those subsystems may still be used by ORT, another
+factory, or another static plugin.
+
+Before static WebGPU parity is considered complete, classify every process-global subsystem as:
+
+- Factory-owned and safe to release with that factory.
+- Provider-registration-owned and released after the last factory and session using that registration.
+- Host-owned and never finalized by the provider.
+
+The static registration and provider lifetime design must cover:
+
+- Multiple factories and devices from one registration.
+- Multiple static plugin registrations in one process.
+- Duplicate registration and partial initialization failures.
+- ORT environment and session teardown ordering.
+- Browser worker and process-exit behavior.
+- Reference counting where provider-global state is shared.
+- Logging lifetime without invalidating the host logger.
+- Protobuf lifetime without calling `ShutdownProtobufLibrary()` on host-owned state.
+- WebGPU context and kernel-registry caches without invalidating live sessions or factories.
+
+`ReleaseEpFactory` must release only state whose ownership and last-user condition are established. A prototype that
+executes correctly but retains unsafe dynamic cleanup behavior does not satisfy static parity.
+
 ### WebGPU plugin-path parity
 
 Compile the existing WebGPU adapter implementation as both a shared plugin and a static plugin library. Exercise the
@@ -62,7 +90,7 @@ Parity work includes:
 - Provider option behavior.
 - GPU tensor and buffer interoperability.
 - Error and diagnostic behavior.
-- Process and session lifetime behavior.
+- Process, environment, factory, and session lifetime behavior.
 
 The direct in-tree WebGPU provider path remains only as a temporary comparison baseline.
 
@@ -105,12 +133,13 @@ The bridge should not expose unrelated ORT private implementation details.
 ## Parallel work packages
 
 1. **Static registration core:** implement and contract-test generic static factory registration.
-2. **Emscripten prototype:** compile the adapter path statically and run a small model.
-3. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
-4. **Browser bridge:** specify and prototype object and lifetime exchange.
-5. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
+2. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
+3. **Emscripten prototype:** compile the adapter path statically and run a small model.
+4. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
+5. **Browser bridge:** specify and prototype object and lifetime exchange.
+6. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
 
-The first four packages can proceed largely in parallel. Legacy-path removal waits for their convergence.
+The first five packages can proceed largely in parallel. Legacy-path removal waits for their convergence.
 
 ## Interfaces with other workstreams
 
@@ -129,6 +158,9 @@ The first four packages can proceed largely in parallel. Legacy-path removal wai
 ## Completion criteria
 
 - Static and dynamic WebGPU builds use the same provider implementation and public API boundary.
+- Factory release and environment teardown cannot shut down process-global state still owned or used by ORT, another
+  factory, or another plugin.
+- Static WebGPU does not shut down host-owned protobuf or logging state.
 - A WebGPU model executes through static registration in `onnxruntime-web`.
 - Existing plugin-path tests are blocking and detect fallback.
 - All required private-runtime interactions have a documented public API or provider-owned replacement.
@@ -139,5 +171,4 @@ The first four packages can proceed largely in parallel. Legacy-path removal wai
 ## Open questions
 
 - Should static factories be registered before environment creation or through environment construction options?
-- How should process-global plugin state be finalized in static builds?
 - What is the stable representation of JavaScript-owned WebGPU objects at the C API boundary?

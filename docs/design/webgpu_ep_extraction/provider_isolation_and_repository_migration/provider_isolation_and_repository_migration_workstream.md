@@ -72,6 +72,26 @@ During isolation:
 - Make generated files and downloaded dependencies explicit build outputs or inputs.
 - Support an ORT build override pointing at an adjacent WebGPU checkout.
 
+### History migration
+
+Create a history-migration manifest that lists every current and historical path whose changes should be retained.
+The implementation has moved across multiple ORT directories, and path filtering does not automatically follow every
+rename. Filtering only the final `plugin-ep-webgpu/` subtree would therefore omit earlier provider history.
+
+Use `git filter-repo` or equivalent tooling to:
+
+- Select the complete historical path set.
+- Remap those paths into the new repository layout.
+- Retain relevant authors, dates, commit messages, branches, tags, and merge relationships where practical.
+- Exclude unrelated ORT source and history.
+
+The filtered import rewrites commit IDs. Pull requests, reviews, issues, and other GitHub metadata are not Git objects
+and do not transfer with repository history. Record the source ORT repository, extraction commit, filtering command or
+script, and path manifest in the new repository so commits can be traced back to their original context.
+
+Perform and review a trial history import before the final source move. Verify representative files with `git log`
+and blame, and confirm that the resulting repository does not contain unrelated or sensitive content.
+
 ## Private dependency removal
 
 Create a machine-reviewable inventory of:
