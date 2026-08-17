@@ -13,14 +13,19 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #if !defined(__wasm__)
-#include "core/providers/webgpu/nn/subgroup_matrix_conv1x1.h"
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 #endif
 
 namespace onnxruntime {
 namespace webgpu {
 
 template <bool is_channels_last, bool is_fused>
-class Conv : public WebGpuKernel {
+class Conv : public WebGpuKernel
+#if !defined(__wasm__)
+             ,
+             public ConvOptImplParent
+#endif
+{
  public:
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
     if (is_fused) {
@@ -40,6 +45,15 @@ class Conv : public WebGpuKernel {
                          AllocatorPtr alloc,
                          /*out*/ bool& is_packed) override;
 
+#if !defined(__wasm__)
+  // ConvOptImplParent: exposes state to the subgroup-matrix 1x1 Conv impl via parent_.
+  const ConvAttributes& ConvAttrs() const override { return conv_attrs_; }
+  const Activation& ConvActivation() const override { return activation_; }
+  bool IsChannelsLast() const override { return is_channels_last; }
+  bool IsWeightConstant() const override { return w_is_constant_; }
+  const Tensor* PrepackedKernel() const override { return transposed_kernel_.get(); }
+#endif
+
  protected:
   ConvAttributes conv_attrs_;
   Activation activation_;
@@ -50,7 +64,7 @@ class Conv : public WebGpuKernel {
   // on the first Compute call (once device capabilities can be queried). Null after
   // initialization means the device has no subgroup-matrix support.
 #if !defined(__wasm__)
-  mutable std::unique_ptr<Conv1x1OptImpl> impl_;
+  mutable std::unique_ptr<ConvOptImpl> impl_;
   mutable std::once_flag impl_init_flag_;
 #endif
 };

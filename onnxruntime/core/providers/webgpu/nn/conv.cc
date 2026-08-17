@@ -35,12 +35,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   // (handled=false, allocating nothing) otherwise and we fall through to the normal
   // path order below.
   std::call_once(impl_init_flag_, [&]() {
-    impl_ = CreateSubgroupMatrixConv1x1Impl(context);
+    impl_ = CreateSubgroupMatrixConvImpl(*this, context);
   });
   if (impl_ != nullptr) {
     bool handled = false;
-    ORT_RETURN_IF_ERROR(impl_->Compute(context, conv_attrs_, activation_, is_channels_last,
-                                       transposed_kernel_.get(), w_is_constant_, handled));
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
     if (handled) {
       return Status::OK();
     }

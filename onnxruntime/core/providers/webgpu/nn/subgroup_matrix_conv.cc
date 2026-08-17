@@ -3,7 +3,7 @@
 
 #if !defined(__wasm__)
 
-#include "core/providers/webgpu/nn/subgroup_matrix_conv1x1.h"
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -26,28 +26,35 @@ namespace {
 // Subgroup-matrix implementation of the 1x1 / same-size Conv matmul. Runs its own
 // Conv shape inference to decide eligibility (mirroring Conv::ComputeInternal), then
 // builds the matmul operands and dispatches the shared subgroup-matrix kernel.
-class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
+class SubgroupMatrixConvImpl final : public ConvOptImpl {
  public:
-  SubgroupMatrixConv1x1Impl(int32_t config_index, SubgroupMatrixTilingSelector tiling_selector)
-      : config_index_(config_index), tiling_selector_(std::move(tiling_selector)) {}
+  SubgroupMatrixConvImpl(const ConvOptImplParent& parent, int32_t config_index,
+                            SubgroupMatrixTilingSelector tiling_selector)
+      : ConvOptImpl(parent), config_index_(config_index), tiling_selector_(std::move(tiling_selector)) {}
 
-  Status Compute(ComputeContext& context, const ConvAttributes& conv_attrs,
-                 const Activation& activation, bool is_channels_last,
-                 const Tensor* prepacked_kernel, bool w_is_constant,
-                 /*out*/ bool& handled) override {
+  Status Compute(ComputeContext& context, /*out*/ bool& handled) override {
     handled = false;
 
-    // Only a constant, channels-last, non-prepacked weight is served here: constant so
-    // the runtime transpose can be cached once (below), channels-last / non-prepacked so
-    // the weight is read from input 1. It must also be a plain, non-grouped matmul with
-    // no fused activation; anything else falls back to the normal Conv path.
-    if (!is_channels_last || prepacked_kernel != nullptr || !w_is_constant ||
+    const ConvAttributes& conv_attrs = parent_.ConvAttrs();
+    const Activation& activation = parent_.ConvActivation();
+    const bool is_channels_last = parent_.IsChannelsLast();
+    const bool w_is_constant = parent_.IsWeightConstant();
+    const Tensor* prepacked_kernel = parent_.PrepackedKernel();
+
+    // Only a constant, channels-last weight is served here (constant so a runtime
+    // transpose can be cached once; a prepacked weight is already transposed). It must
+    // also be a plain, non-grouped matmul with no fused activation; anything else falls
+    // back to the normal Conv path.
+    if (!is_channels_last || !w_is_constant ||
         activation.activation_kind_ != ActivationKind::None || conv_attrs.group != 1) {
       return Status::OK();
     }
 
     const auto* input = context.Input<Tensor>(0);
-    const auto* kernel = context.Input<Tensor>(1);
+    // A prepacked weight is the OIHW->HWIO transposed kernel; otherwise read the
+    // original OIHW weight from input 1.
+    const bool kernel_is_prepacked = prepacked_kernel != nullptr;
+    const Tensor* kernel = kernel_is_prepacked ? prepacked_kernel : context.Input<Tensor>(1);
     const Tensor* bias = context.InputCount() > 2 ? context.Input<Tensor>(2) : nullptr;
 
     // Shape inference mirrors Conv::ComputeInternal (channels-last). Only Conv2D (a
@@ -56,7 +63,9 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
     if (input_shape.NumDimensions() != 4) {
       return Status::OK();
     }
-    TensorShape kernel_shape = kernel->Shape();
+    TensorShape kernel_shape = kernel_is_prepacked
+                                   ? TensorShape(TensorShapeVector{kernel->Shape()[3], kernel->Shape()[2], kernel->Shape()[0], kernel->Shape()[1]})
+                                   : kernel->Shape();
     ConvAttributes::ConvPadVector local_pads(conv_attrs.pads.begin(), conv_attrs.pads.end());
     TensorShapeVector local_dilations(conv_attrs.dilations.begin(), conv_attrs.dilations.end());
     TensorShapeVector local_strides(conv_attrs.strides.begin(), conv_attrs.strides.end());
@@ -100,9 +109,13 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
 
     auto* output = context.Output(0, output_shape);
 
-    // The weight is constant, so transpose it (OIHW->HWIO) once and reuse the cached
-    // copy on later runs. The matmul runs A=activation, B=weight.
-    ORT_RETURN_IF_ERROR(EnsureTransposedKernel(context, kernel, kernel_shape));
+    // B is the OIHW->HWIO transposed weight. A prepacked weight is already transposed;
+    // otherwise transpose the constant weight once and reuse the cached copy.
+    const Tensor* weight = prepacked_kernel;
+    if (weight == nullptr) {
+      ORT_RETURN_IF_ERROR(EnsureTransposedKernel(context, kernel, kernel_shape));
+      weight = cached_transposed_kernel_.get();
+    }
 
     // The operands are a plain 2D weight matmul (M x K) @ (K x N): a 1x1 conv makes each
     // N,H,W position an independent row; same-size folds the whole window into one row
@@ -119,7 +132,7 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
     }
 
     return DispatchSubgroupMatrixMatMul(context, config_index_, tiling_selector_, pad_cache_,
-                                        input, cached_transposed_kernel_.get(), bias, output, a_shape, b_shape,
+                                        input, weight, bias, output, a_shape, b_shape,
                                         /*b_is_constant=*/true, handled);
   }
 
@@ -152,13 +165,14 @@ class SubgroupMatrixConv1x1Impl final : public Conv1x1OptImpl {
 
 }  // namespace
 
-std::unique_ptr<Conv1x1OptImpl> CreateSubgroupMatrixConv1x1Impl(const ComputeContextBase& context) {
+std::unique_ptr<ConvOptImpl> CreateSubgroupMatrixConvImpl(const ConvOptImplParent& parent,
+                                                             const ComputeContextBase& context) {
   int32_t config_index = 0;
   SubgroupMatrixTilingSelector tiling_selector;
   if (!TrySelectSubgroupMatrixConfig(context, config_index, tiling_selector)) {
     return nullptr;
   }
-  return std::make_unique<SubgroupMatrixConv1x1Impl>(config_index, std::move(tiling_selector));
+  return std::make_unique<SubgroupMatrixConvImpl>(parent, config_index, std::move(tiling_selector));
 }
 
 }  // namespace webgpu
