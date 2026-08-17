@@ -2948,7 +2948,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
 #if defined(HAS_SM90_OR_LATER)
     if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                   std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
-        const bool use_fp4_deep_gemm =
+      const bool use_fp4_deep_gemm =
           use_fp4_deep_gemm_ && fp4_deep_gemm_workspace_ != nullptr && num_rows > 0 &&
           fp4_deep_gemm_fc1_weight_scales_ != nullptr && fp4_deep_gemm_fc2_weight_scales_ != nullptr &&
           num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&

@@ -215,7 +215,7 @@ int StaticFp4DeepGemmNumExperts(const OpKernelInfo& op_kernel_info) {
   }
 #endif
 
-    const bool supported =
+  const bool supported =
       fc1_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExpertsWorld8 && fc2_e == fc1_e &&
       fc1_k == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
       fc1_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize &&
@@ -896,7 +896,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       !(is_nvfp4 && fp4_prefill_min_tokens_ > 0 &&
         static_cast<int64_t>(moe_params.num_rows) < fp4_prefill_min_tokens_);
 #if defined(HAS_SM90_OR_LATER)
-    const bool use_fp4_deep_gemm =
+  const bool use_fp4_deep_gemm =
       enable_fp4_deep_gemm_ && moe_params.num_rows > 0 &&
       moe_params.num_rows <= onnxruntime::llm::kernels::deep_gemm_sm90::kMaxTokensPerExpert &&
       moe_params.num_experts == fp4_deep_gemm_num_experts_ &&
@@ -2058,8 +2058,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                 "QMoE FP4 DeepGEMM received an unexpected ", fc1 ? "fc1" : "fc2", weight ? " weight" : " scale",
                 " shape: ", shape.ToString());
     IAllocatorUniquePtr<void>& staged =
-         weight ? (fc1 ? fp4_deep_gemm_fc1_staged_weights_ : fp4_deep_gemm_fc2_staged_weights_)
-           : (fc1 ? fp4_deep_gemm_fc1_staged_block_scales_ : fp4_deep_gemm_fc2_staged_block_scales_);
+        weight ? (fc1 ? fp4_deep_gemm_fc1_staged_weights_ : fp4_deep_gemm_fc2_staged_weights_)
+               : (fc1 ? fp4_deep_gemm_fc1_staged_block_scales_ : fp4_deep_gemm_fc2_staged_block_scales_);
     bool staged_packed = false;
     PrePackCopyToGpu(tensor, stream, alloc, staged, staged_packed);
   }
