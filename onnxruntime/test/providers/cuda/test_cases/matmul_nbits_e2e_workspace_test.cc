@@ -16,11 +16,9 @@
 //                                                                    (read through the provider-world
 //                                                                    probe in the .cc companion TU).
 //
-// Scope / what this does NOT prove: this test does not drive a full GetCapability()-based partition-time
-// run with a real IResourceAccountant. It exercises the estimator that GetCapability() delegates to, not
-// GetCapability()'s own partition-time wiring (device_prop plumbing, resource_accountant invocation),
-// which is covered elsewhere / is out of scope for this test's specific claim. In short, it proves the
-// estimator itself is consistent with Level 2 and with the real runtime allocation.
+// The agreement tests exercise the estimator directly. GetCapabilityBudgetUsesLevel1Estimate separately
+// drives the full estimator -> CUDA GetCapability -> resource-accountant budget path and verifies
+// acceptance/rejection around the structured estimate.
 //
 // This translation unit runs a real InferenceSession, so it includes the core framework headers.
 // Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
@@ -52,6 +50,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 
@@ -254,6 +253,54 @@ const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
 }
 
 }  // namespace
+
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
+  const std::string model_bytes = BuildMatMulNBitsModelBytes();
+
+  // For this model the legacy 1.5x fallback is below 500 KiB, while the
+  // structured Level-1 total (runtime workspace + persistent/temporary
+  // prepack memory) is above 500 KiB and below 600 KiB. The two budgets
+  // therefore prove that CUDA GetCapability applies the estimator result.
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "600,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "500,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    EXPECT_NE(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+}
 
 TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();

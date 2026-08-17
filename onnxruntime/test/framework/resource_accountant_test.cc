@@ -271,6 +271,21 @@ TEST(ResourceAccountantTest, CommittedWorkspaceRejectsOverflow) {
   EXPECT_EQ(source_counts.estimator, size_t{0});
 }
 
+TEST(ResourceAccountantTest, ConsumedAmountRejectsOverflowAndUnderflow) {
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  accountant->AddConsumedAmount(std::numeric_limits<size_t>::max());
+  EXPECT_ANY_THROW(accountant->AddConsumedAmount(size_t{1}));
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), std::numeric_limits<size_t>::max());
+
+  accountant->RemoveConsumedAmount(std::numeric_limits<size_t>::max());
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{0});
+  EXPECT_ANY_THROW(accountant->RemoveConsumedAmount(size_t{1}));
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{0});
+}
+
 // ResetForNewPass clears the stop flag so a second GetCapability pass
 // (e.g., after layout transformation) can run from scratch.
 TEST(ResourceAccountantTest, ResetForNewPass_ClearsStopFlag) {
