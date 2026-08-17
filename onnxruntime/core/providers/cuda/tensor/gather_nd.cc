@@ -86,21 +86,25 @@ Status GatherNDBase::PrepareCompute(
       }
     }
   } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
-    // Use on-device kernel for CUDA tensors to avoid full D2H transfer
-    TArray<int64_t> input_dims(input_shape.GetDims());
-    auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
-    const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
-        cuda_stream,
-        batch_dims,
-        input_dims,
-        num_slices,
-        num_slice_dims,
-        indices_data,
-        validation_result_buffer.get());
+    cudaStreamCaptureStatus capture_status{};
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(cuda_stream, &capture_status));
+    if (capture_status == cudaStreamCaptureStatusNone) {
+      // Use on-device validation and copy back only the first invalid index for error reporting.
+      TArray<int64_t> input_dims(input_shape.GetDims());
+      auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
+      const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
+          cuda_stream,
+          batch_dims,
+          input_dims,
+          num_slices,
+          num_slice_dims,
+          indices_data,
+          validation_result_buffer.get());
 
-    if (validation_result.position != -1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid index found, index = ", validation_result.value);
+      if (validation_result.position != -1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "invalid index found, index = ", validation_result.value);
+      }
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -117,21 +121,15 @@ Status GatherNDBase::PrepareCompute(
     indices_data = indices_device_buffer.get();
   }
 
-  std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
+  // Pass strides by value so captured graphs do not retain a pointer to temporary host storage.
+  TArray<int64_t> sizes_from_slice_dims(static_cast<int32_t>(num_slice_dims));
   {
     auto running_product = slice_size;
     for (int64_t i = 0; i < num_slice_dims; ++i) {
-      sizes_from_slice_dims[num_slice_dims - 1 - i] = running_product;
+      sizes_from_slice_dims[static_cast<size_t>(num_slice_dims - 1 - i)] = running_product;
       running_product *= input_shape[batch_dims + num_slice_dims - 1 - i];
     }
   }
-
-  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), alloc_stream);
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-      sizes_from_slice_dims_buffer.get(),
-      sizes_from_slice_dims.data(),
-      sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice, cuda_stream));
 
   input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, alloc_stream);
 
@@ -145,7 +143,7 @@ Status GatherNDBase::PrepareCompute(
       num_slices_per_batch,
       input_batch_stride,
       num_slice_dims,
-      sizes_from_slice_dims_buffer.get(),
+      sizes_from_slice_dims,
       indices_data,
       input_slice_offsets_buffer.get());
 
