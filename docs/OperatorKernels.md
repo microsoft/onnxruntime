@@ -757,6 +757,7 @@ The **OpSet Version** column uses the following notation:
 |||[1, 8]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Floor|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
+|GatedLatentPool|*in* kv:**P**<br> *in* score:**P**<br> *in* past_state_kv:**M**<br> *in* past_state_score:**M**<br> *in* ape:**M**<br> *in* norm_weight:**M**<br> *in* cos:**M**<br> *in* sin:**M**<br> *in* past_lens:**I**<br> *out* rows:**T**<br> *out* first_slot:**I**<br> *out* last_slot:**I**<br> *out* row_count:**I**<br> *out* present_state_kv:**M**<br> *out* present_state_score:**M**|1+|**I** = tensor(int64)<br/> **M** = tensor(float)<br/> **P** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |GRU|*in* X:**T**<br> *in* W:**T**<br> *in* R:**T**<br> *in* B:**T**<br> *in* sequence_lens:**T1**<br> *in* initial_h:**T**<br> *out* Y:**T**<br> *out* Y_h:**T**|22+|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
 |||[14, 21]|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
 |||[7, 13]|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
@@ -1008,6 +1009,7 @@ The **OpSet Version** column uses the following notation:
 |||[1, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
 |SpaceToDepth|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
+|SparseRowSelect|*in* query:**T**<br> *in* cos:**M**<br> *in* sin:**M**<br> *in* rows:**T**<br> *in* first_slot:**I**<br> *in* last_slot:**I**<br> *in* past_cache:**T**<br> *in* weights:**T**<br> *in* past_lens:**I**<br> *out* selection:**I**<br> *out* present_cache:**T**|1+|**I** = tensor(int64)<br/> **M** = tensor(float)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |Split|*in* input:**T**<br> *in* split:**T**<br> *out* outputs...:**T**<br><br>or<br><br>*in* input:**T**<br> *in* split:**tensor(int64)**<br> *out* outputs:**T**<br><br>or<br><br>*in* input:**T**<br> *out* outputs:**T**|18+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[13, 17]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[11, 12]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
