@@ -2756,7 +2756,7 @@ static bool HandleReshapeSplit(HandlerArgs& args) {
 //   -> Reshape({1, 80, 1600})    -> {1, 80, 1600}
 //
 //   After: input -> Reshape({1, 1600, 80}) -> Transpose(perm=[0,2,1]) -> {1, 80, 1600}
-static bool HandleReshapeFlatten(HandlerArgs& args) {
+static bool HandleReshapeMerge(HandlerArgs& args) {
   // Need a concrete transpose-input shape (i.e. the original pre-transpose tensor).
   auto transpose_input_shape_opt = args.ctx.graph.GetValueInfo(args.transpose.Inputs()[0])->Shape();
   if (!transpose_input_shape_opt.has_value()) {
@@ -2843,8 +2843,7 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
 
   // Build the new Reshape shape: one dim per run. Each run's pre-image is contiguous in ascending
   // order (verified above), so the product of its pre-transpose dims equals the corresponding
-  // requested dim — reuse requested_shape directly rather than recomputing the product, which
-  // would risk int64 overflow on large concrete dims.
+  // requested dim — reuse requested_shape directly rather than recomputing the product.
   std::vector<int64_t> new_reshape_shape;
   new_reshape_shape.reserve(runs.size());
   std::vector<int64_t> run_first_orig_axis;  // first pre-transpose axis index of each run
@@ -2859,13 +2858,12 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
   // permutation taking that sorted order back to the original run order is the
   // new perm. If the runs are already in sorted order, the perm is identity
   // and we can skip the Transpose entirely (cleanest win).
-  std::vector<size_t> sorted_indices(runs.size());
-  for (size_t i = 0; i < runs.size(); ++i) sorted_indices[i] = i;
+  std::vector<int64_t> sorted_indices(runs.size());
+  for (size_t i = 0; i < runs.size(); ++i) sorted_indices[i] = gsl::narrow_cast<int64_t>(i);
   std::sort(sorted_indices.begin(), sorted_indices.end(),
-            [&](size_t a, size_t b) { return run_first_orig_axis[a] < run_first_orig_axis[b]; });
+            [&](int64_t a, int64_t b) { return run_first_orig_axis[a] < run_first_orig_axis[b]; });
 
   std::vector<int64_t> sorted_reshape_shape(runs.size());
-  std::vector<int64_t> new_perm(runs.size());
   for (size_t i = 0; i < runs.size(); ++i) {
     // sorted_indices[i] = which original-run is at position i after sorting.
     // The new Reshape's axis i is that run, so the post-Reshape tensor's axis
@@ -2873,12 +2871,9 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
     // original Reshape output ordering we need a Transpose whose perm[j] tells
     // us "the axis in the post-Reshape tensor that becomes output axis j",
     // which is the inverse mapping of sorted_indices.
-    sorted_reshape_shape[i] = new_reshape_shape[sorted_indices[i]];
+    sorted_reshape_shape[i] = new_reshape_shape[gsl::narrow_cast<size_t>(sorted_indices[i])];
   }
-  // inverse: new_perm[sorted_indices[i]] = i
-  for (size_t i = 0; i < runs.size(); ++i) {
-    new_perm[sorted_indices[i]] = gsl::narrow_cast<int64_t>(i);
-  }
+  std::vector<int64_t> new_perm = InvertPerm(sorted_indices);
 
   // Rewrite the graph:
   //   1) Replace the Reshape's data input with the *pre-transpose* tensor, and
@@ -2923,7 +2918,7 @@ bool HandleReshape(HandlerArgs& args) {
 
   // Fall back to the run-merge rewrite: Transpose -> Reshape where the Reshape
   // collapses contiguous, ascending pre-transpose axes into fewer output dims.
-  return HandleReshapeFlatten(args);
+  return HandleReshapeMerge(args);
 }
 
 constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transposes_outputs*/ false};

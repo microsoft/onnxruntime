@@ -4573,12 +4573,12 @@ TEST(TransposeOptimizerTests, TestReshapeWithMinusOne) {
 //   expected_transposes: surviving Transpose count (1 for the typical rewrite, 0 if new perm is identity)
 //   expected_reshape_shape: the shape initializer value on the surviving Reshape
 //   expected_post_transpose_perm: perm attr of the surviving (post-Reshape) Transpose, if any
-static void TestTransposeReshapeFlatten(const std::vector<int64_t>& input_shape,
-                                        const std::vector<int64_t>& perms,
-                                        const std::vector<int64_t>& reshape_shape,
-                                        int expected_transposes,
-                                        const std::vector<int64_t>& expected_reshape_shape,
-                                        const std::vector<int64_t>& expected_post_transpose_perm = {}) {
+static void TestTransposeReshapeMerge(const std::vector<int64_t>& input_shape,
+                                      const std::vector<int64_t>& perms,
+                                      const std::vector<int64_t>& reshape_shape,
+                                      int expected_transposes,
+                                      const std::vector<int64_t>& expected_reshape_shape,
+                                      const std::vector<int64_t>& expected_post_transpose_perm = {}) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, 0.0, 1.0);
     auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
@@ -4636,26 +4636,26 @@ static void TestTransposeReshapeFlatten(const std::vector<int64_t>& input_shape,
 
 // Motivating case: Transpose([0,3,1,2]) -> Reshape({1,80,1600}) on a {1,40,40,80} input.
 // Expect the rewrite: Reshape({1,1600,80}) -> Transpose([0,2,1]).
-TEST(TransposeOptimizerTests, TestReshapeFlattenAfterTranspose) {
-  TestTransposeReshapeFlatten({1, 40, 40, 80}, {0, 3, 1, 2},  // perm => post-transpose shape {1,80,40,40}
-                              {1, 80, 1600},                   // reshape merges last two post-transpose dims
-                              /*expected_transposes*/ 1,
-                              /*expected_reshape_shape*/ {1, 1600, 80},
-                              /*expected_post_transpose_perm*/ {0, 2, 1});
+TEST(TransposeOptimizerTests, TestReshapeMergeAfterTranspose) {
+  TestTransposeReshapeMerge({1, 40, 40, 80}, {0, 3, 1, 2},  // perm => post-transpose shape {1,80,40,40}
+                            {1, 80, 1600},                  // reshape merges last two post-transpose dims
+                            /*expected_transposes*/ 1,
+                            /*expected_reshape_shape*/ {1, 1600, 80},
+                            /*expected_post_transpose_perm*/ {0, 2, 1});
 }
 
 // Identity Transpose + merging Reshape: the end state should have zero Transposes.
 // Exercises the helper's expected_transposes==0 branch and locks in that identity
 // perms are never left behind (whether removed directly or via the flatten rewrite
 // producing an identity new_perm that is dropped).
-TEST(TransposeOptimizerTests, TestReshapeFlattenDropsIdentityTranspose) {
-  TestTransposeReshapeFlatten({1, 80, 40, 40}, {0, 1, 2, 3},
-                              {1, 80, 1600},
-                              /*expected_transposes*/ 0,
-                              /*expected_reshape_shape*/ {1, 80, 1600});
+TEST(TransposeOptimizerTests, TestReshapeMergeDropsIdentityTranspose) {
+  TestTransposeReshapeMerge({1, 80, 40, 40}, {0, 1, 2, 3},
+                            {1, 80, 1600},
+                            /*expected_transposes*/ 0,
+                            /*expected_reshape_shape*/ {1, 80, 1600});
 }
 
-TEST(TransposeOptimizerTests, TestReshapeFlattenContiguousMergeMultipleRuns) {
+TEST(TransposeOptimizerTests, TestReshapeMergeContiguousMultipleRuns) {
   // Pre-transpose: {2,3,4,5,6}. Transpose perm [2,3,4,0,1] => {4,5,6,2,3}.
   // Reshape({4,5,6,6}) merges last two post-transpose axes (2*3 = 6).
   // Pre-transpose indices per run: [2], [3], [4], [0,1] — all contiguous ascending.
@@ -4666,14 +4666,14 @@ TEST(TransposeOptimizerTests, TestReshapeFlattenContiguousMergeMultipleRuns) {
   // new_perm such that new_perm[sorted_indices[i]] = i:
   //   sorted_indices = [3,0,1,2] => new_perm[3]=0, new_perm[0]=1, new_perm[1]=2, new_perm[2]=3
   //   => new_perm = [1,2,3,0].
-  TestTransposeReshapeFlatten({2, 3, 4, 5, 6}, {2, 3, 4, 0, 1},
-                              {4, 5, 6, 6},
-                              /*expected_transposes*/ 1,
-                              /*expected_reshape_shape*/ {6, 6, 4, 5},
-                              /*expected_post_transpose_perm*/ {1, 2, 3, 0});
+  TestTransposeReshapeMerge({2, 3, 4, 5, 6}, {2, 3, 4, 0, 1},
+                            {4, 5, 6, 6},
+                            /*expected_transposes*/ 1,
+                            /*expected_reshape_shape*/ {6, 6, 4, 5},
+                            /*expected_post_transpose_perm*/ {1, 2, 3, 0});
 }
 
-TEST(TransposeOptimizerTests, TestReshapeFlattenMergesAllAxesIntoTwoRuns) {
+TEST(TransposeOptimizerTests, TestReshapeMergeAllAxesIntoTwoRuns) {
   // Pre-transpose: {1,2,3,4}. Transpose perm [2,3,0,1] => post-transpose {3,4,1,2}.
   // Reshape({12,2}) merges the first two and last two post-transpose axes.
   // Pre-transpose indices per run: [2,3], [0,1] — both contiguous ascending.
@@ -4681,14 +4681,14 @@ TEST(TransposeOptimizerTests, TestReshapeFlattenMergesAllAxesIntoTwoRuns) {
   // run_first_orig_axis = [2, 0] => sorted_indices = [1, 0]
   //   => sorted_reshape_shape = {2, 12}.
   // new_perm such that new_perm[sorted_indices[i]] = i => new_perm = {1, 0}.
-  TestTransposeReshapeFlatten({1, 2, 3, 4}, {2, 3, 0, 1},
-                              {12, 2},
-                              /*expected_transposes*/ 1,
-                              /*expected_reshape_shape*/ {2, 12},
-                              /*expected_post_transpose_perm*/ {1, 0});
+  TestTransposeReshapeMerge({1, 2, 3, 4}, {2, 3, 0, 1},
+                            {12, 2},
+                            /*expected_transposes*/ 1,
+                            /*expected_reshape_shape*/ {2, 12},
+                            /*expected_post_transpose_perm*/ {1, 0});
 }
 
-TEST(TransposeOptimizerTests, TestReshapeFlattenBailsOnNonContiguousRun) {
+TEST(TransposeOptimizerTests, TestReshapeMergeBailsOnNonContiguousRun) {
   // Pre-transpose: {2,3,4,5}. Transpose perm [0,2,1,3] => {2,4,3,5}.
   // Transpose perm [0,2,1,3] — NOT ascending. Bail.
   // Also HandleReshapeAsTranspose can't help (ranks differ). Graph stays unchanged.
@@ -4724,7 +4724,7 @@ TEST(TransposeOptimizerTests, TestReshapeFlattenBailsOnNonContiguousRun) {
 
 // Negative: a Reshape output dim that does not equal the product of any contiguous run
 // of post-transpose dims (i.e. it would have to split a transposed axis). Must bail.
-TEST(TransposeOptimizerTests, TestReshapeFlattenBailsOnSplittingDim) {
+TEST(TransposeOptimizerTests, TestReshapeMergeBailsOnSplittingDim) {
   // Pre-transpose: {1,4,4,6}. Transpose perm [0,3,1,2] => post-transpose {1,6,4,4} (size 96).
   // Reshape({1,3,2,16}).
   // Reshape not merging on contiguous axes -> Bailed.
