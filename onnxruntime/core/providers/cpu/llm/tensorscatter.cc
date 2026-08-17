@@ -75,6 +75,18 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
     write_indices = write_indices_tensor->Data<int64_t>();
   }
 
+  if (write_indices != nullptr) {
+    for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+      const int64_t wi = write_indices[batch_idx];
+      ORT_ENFORCE(wi >= 0, "TensorScatter: write_indices[", batch_idx, "] = ", wi, " is negative");
+      if (!circular_) {
+        ORT_ENFORCE(wi <= max_sequence_length - sequence_length,
+                    "TensorScatter linear mode: write_indices[", batch_idx, "] + sequence_length (",
+                    wi, " + ", sequence_length, ") exceeds max_sequence_length (", max_sequence_length, ")");
+      }
+    }
+  }
+
   // Allocate output with the same shape as past_cache.
   Tensor* present_cache = context->Output(0, cache_shape);
 
@@ -90,15 +102,6 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
   }
 
   if (sequence_length == 0) {
-    for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-      const int64_t wi = write_indices != nullptr ? write_indices[batch_idx] : 0;
-      ORT_ENFORCE(wi >= 0, "TensorScatter: write_indices[", batch_idx, "] = ", wi, " is negative");
-      if (!circular_) {
-        ORT_ENFORCE(wi <= max_sequence_length,
-                    "TensorScatter linear mode: write_indices[", batch_idx, "] + sequence_length (",
-                    wi, " + 0) exceeds max_sequence_length (", max_sequence_length, ")");
-      }
-    }
     return Status::OK();
   }
 
@@ -139,7 +142,6 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
   for (int64_t p = 0; p < prefix_count; ++p) {
     int64_t batch_idx = p / prefix_stride_for_batch;
     int64_t wi = (write_indices != nullptr) ? write_indices[batch_idx] : 0;
-    ORT_ENFORCE(wi >= 0, "TensorScatter: write_indices[", batch_idx, "] = ", wi, " is negative");
 
     ptrdiff_t update_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(p) * update_axis_stride);
     ptrdiff_t cache_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(p) * cache_axis_stride);
@@ -147,9 +149,6 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
     uint8_t* cache_base = dst_bytes + cache_offset;
 
     if (!circular_) {
-      ORT_ENFORCE(wi <= max_sequence_length - sequence_length,
-                  "TensorScatter linear mode: write_indices[", batch_idx, "] + sequence_length (",
-                  wi, " + ", sequence_length, ") exceeds max_sequence_length (", max_sequence_length, ")");
       // Single contiguous memcpy for the whole slice.
       ptrdiff_t wi_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(wi) * suffix_bytes);
       size_t copy_len = SafeInt<size_t>(sequence_length) * suffix_bytes;
