@@ -105,6 +105,12 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             persistent_prepack_bytes + temporary_prepack_bytes;
         return static_cast<size_t>(resource_count);
       }
+
+      // Preserve the established partial-profile behavior: a node absent from
+      // the stats file has zero cost. Falling through to ad-hoc accounting
+      // would change existing partition decisions and mix profile-based costs
+      // with initializer bookkeeping that the profile path does not use.
+      return static_cast<size_t>(0);
     }
 
     const auto* graph = node.GetContainingGraph();
