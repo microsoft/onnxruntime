@@ -568,7 +568,7 @@ Status CheckInputs(const T* query,
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(k_cache_dtype, cache_storage_dtype, "k_cache_dtype"));
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(v_cache_dtype, cache_storage_dtype, "v_cache_dtype"));
 
-  // Optional host-side [max_query_len_bound, max_kv_len_bound, min_max_kv_len_for_split].
+  // Optional host-side [max_query_len_bound, max_kv_len_bound, min_max_kv_len_bound].
   // The first two entries are trusted upper bounds and cannot be cross-checked against the device
   // tensors they bound without the readback this input exists to remove. The optional third entry
   // is a performance-only lower bound. See docs/contrib_ops/cuda/paged_attention.md section 4.7.

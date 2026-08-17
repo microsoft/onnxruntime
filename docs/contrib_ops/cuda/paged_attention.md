@@ -317,7 +317,7 @@ Three derivations satisfy the rule, none of which needs a synchronization:
 |---|---|---|
 | decode vs. prefill dispatch | static shapes: `query.shape[0] == cumulative_sequence_length.shape[0] - 1` | shapes are fixed for a captured graph |
 | grid size, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
-| split-KV eligibility | `min_max_kv_len_for_split` lower bound, when supplied | proves splitting is worthwhile on every replay |
+| split-KV eligibility | `min_max_kv_len_bound` lower bound, when supplied | proves splitting is worthwhile on every replay |
 | per-sequence KV length, causal and window masking, gather trip counts | device `past_seqlens` / `cumulative_sequence_length` | re-read from device memory on every replay |
 
 The shape test is a **performance heuristic only**. `token_count <= batch_size` does not prove that
@@ -337,8 +337,8 @@ per-step sync.
 attention_metadata : (2,) or (3,) int32, OrtMemTypeCPUInput
   [0] max_query_len_bound   # 0 = unknown. Replay-wide upper bound on tokens from any one sequence.
   [1] max_kv_len_bound      # 0 = unknown. Replay-wide upper bound on total KV length of any sequence.
-  [2] min_max_kv_len_for_split  # Optional; 0 = unknown. Replay-wide lower bound on the
-                                # largest per-sequence KV length in the batch.
+  [2] min_max_kv_len_bound  # Optional; 0 = unknown. Replay-wide lower bound on the largest
+                            # per-sequence KV length in the batch.
 ```
 
 - The first two entries are **upper bounds, never exact values**, and must hold for *every* step the node —
@@ -352,10 +352,13 @@ attention_metadata : (2,) or (3,) int32, OrtMemTypeCPUInput
 - A valid bound may only shrink launch dimensions and workspace sizes. It must not enter a mask
   comparison. Device loops use the current device lengths, additionally bounded by the trusted
   launch/workspace extent.
-- `min_max_kv_len_for_split` is a performance-only lower bound on
-  `max_i(past_seqlens[i] + query_len[i])`. Split-KV is enabled only when this value proves every
-  replay has a sufficiently long sequence. Shape `(2,)` remains supported and treats the lower
-  bound as unknown, disabling split-KV unless an exact device readback is already required.
+- `min_max_kv_len_bound` is a provider-neutral, performance-only lower bound on
+  `max_i(past_seqlens[i] + query_len[i])`. CUDA currently uses it for split-KV eligibility, but its
+  contract does not name or require that backend. Shape `(2,)` remains supported and defaults this
+  value to `0` (unknown), disabling split-KV unless an exact device readback is already required.
+- The upper bound or block-table capacity cannot be substituted for this lower bound. A producer may
+  pad a short live sequence to a large replay capacity, and treating that capacity as live length
+  would force split/combine overhead on every early replay.
 - Even for an invalid bound, every device read must remain memory-safe: device lengths and static
   tensor capacities guard all accesses. This safety property does not imply a correct result when
   the producer violates the upper-bound contract.
@@ -384,7 +387,7 @@ which must now be sized by `batch_size * max_kv_len_bound` so that the allocatio
 > |---|---|---|
 > | `max_query_len` | `params.seqlen_q` (Flash), `p.sequence_length` (MEA) — grid extent only | `max_query_len_bound`, else `token_count` |
 > | `max_kv_len` | quantized-Flash `max_seqlen_k`, split workspace sizing | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
-> | split-KV eligibility | FlashAttention decode dispatch | `min_max_kv_len_for_split`, else disabled unless exact lengths were read back |
+> | split-KV eligibility | FlashAttention decode dispatch | `min_max_kv_len_bound`, else disabled unless exact lengths were read back |
 > | `total_kv_tokens` | gather staging buffer extent | `batch_size * max_kv_len_bound` |
 >
 > Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:
@@ -1352,10 +1355,10 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
   every logical element type this operator stores is expressible as an ONNX element type. The
   reserved sub-byte values are rejected until a `uint8` packed cache exists. FP8 availability is
   controlled by `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
-- `attention_metadata`: rank 1, `dim0 == 2`, `int32`, CPU-resident; entries `>= 0`; each non-zero
-  entry is clamped to its static limit before use and may only size launch dimensions and workspace
-  (§4.7). It must never enter a mask comparison. Each value is a trusted upper bound for every step
-  served by the node or captured graph.
+- `attention_metadata`: rank 1, `dim0 ∈ {2, 3}`, `int32`, CPU-resident; entries `>= 0`; the first
+  two entries are trusted upper bounds and the optional third is a trusted lower bound for every
+  step served by the node or captured graph (§4.7). Bounds may only select implementations or size
+  launch dimensions and workspace; they must never enter a mask comparison.
 - `query_positions`: rank 1, `dim0 == token_count`, `int32`, entries `>= 0`.
 - `attention_bias`: rank 4; `dim0 ∈ {1, batch_size}`, `dim1 ∈ {1, num_heads}`,
   `dim2 == query_length_capacity`, and `dim3 == context_length_capacity`; both capacities must cover

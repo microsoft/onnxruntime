@@ -379,7 +379,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> fmha_buffer;
 
   // 'attention_metadata' supplies replay-wide upper bounds on the per-sequence query and KV
-  // lengths, plus an optional lower bound used only to decide whether split-KV is worthwhile
+  // lengths, plus an optional replay-wide lower bound on the largest KV length
   // (docs/contrib_ops/cuda/paged_attention.md section 4.7). Bounds are all the backends need from
   // the host: they only select the kernel, size launch dimensions and size workspaces.
   // Every per-sequence length that enters a mask is re-read from device memory by the kernel
@@ -393,18 +393,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool has_metadata_bounds = attention_metadata != nullptr;
   int max_query_len_bound = parameters.token_count;
   int max_kv_len_bound = max_kv_len_capacity;
-  int min_max_kv_len_for_split = 0;
+  int min_max_kv_len_bound = 0;
   if (has_metadata_bounds) {
     const int* metadata = attention_metadata->Data<int>();
     const int metadata_query_bound = metadata[0];
     const int metadata_kv_bound = metadata[1];
-    const int metadata_split_lower_bound =
+    const int metadata_kv_lower_bound =
         attention_metadata->Shape().Size() == 3 ? metadata[2] : 0;
-    if (metadata_query_bound < 0 || metadata_kv_bound < 0 || metadata_split_lower_bound < 0) {
+    if (metadata_query_bound < 0 || metadata_kv_bound < 0 || metadata_kv_lower_bound < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "PagedAttention: 'attention_metadata' entries must be non-negative, got [",
                              metadata_query_bound, ", ", metadata_kv_bound, ", ",
-                             metadata_split_lower_bound, "]. Use 0 for 'unknown'.");
+                             metadata_kv_lower_bound, "]. Use 0 for 'unknown'.");
     }
     // Clamp each bound to the static limit it can never exceed, so an over-large (or unknown)
     // bound degrades to the same sizing we would use with no metadata at all.
@@ -414,13 +414,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     if (metadata_kv_bound > 0 && metadata_kv_bound < max_kv_len_bound) {
       max_kv_len_bound = metadata_kv_bound;
     }
-    if (metadata_split_lower_bound > max_kv_len_bound) {
+    if (metadata_kv_lower_bound > max_kv_len_bound) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "PagedAttention: attention_metadata min_max_kv_len_for_split (",
-                             metadata_split_lower_bound, ") must not exceed max_kv_len_bound (",
+                             "PagedAttention: attention_metadata min_max_kv_len_bound (",
+                             metadata_kv_lower_bound, ") must not exceed max_kv_len_bound (",
                              max_kv_len_bound, ").");
     }
-    min_max_kv_len_for_split = metadata_split_lower_bound;
+    min_max_kv_len_bound = metadata_kv_lower_bound;
   }
 
   // Backend selection from static shapes alone.
@@ -525,7 +525,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       }
     }
     total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
-    min_max_kv_len_for_split = max_kv_len;
+    min_max_kv_len_bound = max_kv_len;
     if (total_kv_tokens <= 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "PagedAttention: total_kv_tokens is not positive (", total_kv_tokens,
@@ -611,7 +611,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     // The combine kernel costs more than it saves for short decode contexts, even when a high
     // query-head count makes the occupancy heuristic select two splits. The upper bound sizes the
     // workspaces, while the replay-wide lower bound proves splitting is worthwhile on every replay.
-    if (min_max_kv_len_for_split > kFlashSplitKvMinSequenceLength) {
+    if (min_max_kv_len_bound > kFlashSplitKvMinSequenceLength) {
       const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
           onnxruntime::flash::get_num_splits_and_buffer_sizes(
               parameters.batch_size, 1, max_kv_len, parameters.num_heads,
