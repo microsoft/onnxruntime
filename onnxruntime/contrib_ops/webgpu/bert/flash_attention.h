@@ -175,29 +175,18 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 // block_table instead of materializing dense K/V scratch tensors.
 class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPagedPrefillProgram> {
  public:
-  FlashAttentionPagedPrefillProgram(bool is_qualcomm,
-                                    bool is_fp16,
+  FlashAttentionPagedPrefillProgram(bool is_fp16,
                                     int qkv_head_size,
                                     int qkv_num_heads,
                                     bool is_unidirectional,
-                                    bool is_nvidia,
-                                    bool is_apple,
-                                    bool has_subgroups,
-                                    bool q_BNSH,
-                                    bool use_seqlen_k,
-                                    bool use_seqlens_q,
+                                    bool use_shm_path,
                                     bool q_varlen)
       : Program{"FlashAttentionPagedPrefill"},
-        is_qualcomm_(is_qualcomm),
         is_fp16_(is_fp16),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
-        is_nvidia_(is_nvidia),
-        use_shm_path_(is_apple || is_nvidia || !has_subgroups),
-        q_BNSH_(q_BNSH),
-        use_seqlen_k_(use_seqlen_k),
-        use_seqlens_q_(use_seqlens_q),
+        use_shm_path_(use_shm_path),
         q_varlen_(q_varlen) {
     const int element_size = is_fp16 ? 2 : 4;
     constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
@@ -219,17 +208,12 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
                                           {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
-  bool is_qualcomm_;
   bool is_fp16_;
   int qkv_head_size_;
   int qkv_num_heads_;
   bool is_unidirectional_;
-  bool is_nvidia_;
   bool use_shm_path_;
-  bool q_BNSH_;
-  bool use_seqlen_k_;
   int max_k_step_;
-  bool use_seqlens_q_;
   bool q_varlen_;
 };
 

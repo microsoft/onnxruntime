@@ -336,23 +336,19 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
   ORT_RETURN_IF(parameters.qkv_format_ != Q_K_V_BSNH,
                 "Paged prefill supports BSNH Q layout only.");
 
-  const bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
   const bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
   const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
   const bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
   const bool is_fp16 = q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   const bool q_varlen = cumulative_seqlens_q != nullptr;
-  FlashAttentionPagedPrefillProgram program{is_qualcomm,
-                                            is_fp16,
+  // shm-path adapters mirror ShouldRunFusedPagedPrefill; the caller already
+  // gated on this before dispatching us, so it must be true here.
+  const bool use_shm_path = is_apple || is_nvidia || !has_subgroups;
+  FlashAttentionPagedPrefillProgram program{is_fp16,
                                             parameters.head_size_,
                                             parameters.num_heads_,
                                             parameters.is_unidirectional_,
-                                            is_nvidia,
-                                            is_apple,
-                                            has_subgroups,
-                                            /*q_BNSH*/ false,
-                                            /*use_seqlen_k*/ true,
-                                            /*use_seqlens_q*/ true,
+                                            use_shm_path,
                                             q_varlen};
 
   // Dispatch shape mirrors the dense FA shm_path: one workgroup per (batch, head,
