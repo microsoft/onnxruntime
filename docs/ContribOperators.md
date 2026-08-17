@@ -52,6 +52,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
+  * <a href="#com.microsoft.InverseRotaryRegroup">com.microsoft.InverseRotaryRegroup</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
@@ -81,6 +82,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
+  * <a href="#com.microsoft.QKNormRotaryEmbedding">com.microsoft.QKNormRotaryEmbedding</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
   * <a href="#com.microsoft.QLinearConcat">com.microsoft.QLinearConcat</a>
@@ -2936,6 +2938,60 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.InverseRotaryRegroup"></a><a name="com.microsoft.inverserotaryregroup">**com.microsoft.InverseRotaryRegroup**</a>
+
+  Undoes the rotation QKNormRotaryEmbedding applied to the query and regroups the heads for a grouped output projection.
+  
+  The rotation is the inverse of the forward one, so the signed swap flips sign:
+    x[nope + t] = x[nope + t] * cos[t] + (t odd ? -x[nope + t - 1] : x[nope + t + 1]) * sin[t]
+  
+  The regrouping is the reshape/transpose/reshape trio that turns (tokens, num_heads * head_dim) into (num_groups, tokens, group_dim) with group_dim = num_heads * head_dim / num_groups. Both views index the same flat channel, so this is only a change of addressing.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Width of one head.</dd>
+<dt><tt>num_groups</tt> : int</dt>
+<dd>Output projection groups on this rank.</dd>
+<dt><tt>num_heads</tt> : int</dt>
+<dd>Query heads on this rank.</dd>
+<dt><tt>rope_head_dim</tt> : int</dt>
+<dd>Width of the trailing slice that gets rotated.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Attention output, shape (tokens, num_heads * head_dim).</dd>
+<dt><tt>cos</tt> : M</dt>
+<dd>Rotary cosines for this step, shape (tokens, rope_head_dim).</dd>
+<dt><tt>sin</tt> : M</dt>
+<dd>Rotary sines for this step, same shape as cos.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Regrouped output, shape (num_groups, tokens, group_dim).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain the rotary tables to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Irfft"></a><a name="com.microsoft.irfft">**com.microsoft.Irfft**</a>
 
   This function computes the inverse of the one-dimensional n-point RFFT computed in 'com.microsoft.rfft'.
@@ -4793,6 +4849,77 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain output zero point types to 8 bit tensors.</dd>
 <dt><tt>TY</tt> : tensor(float), tensor(uint8), tensor(int8)</dt>
 <dd>Constrain output type to float32 or 8 bit tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QKNormRotaryEmbedding"></a><a name="com.microsoft.qknormrotaryembedding">**com.microsoft.QKNormRotaryEmbedding**</a>
+
+  Per-token preparation of the query and a shared latent KV row, from the raw projections up to the attention kernel, as used by MLA-style attention.
+  
+  The query is split into heads and given a weightless RMS norm:
+    q = Reshape(query, (batch, seq, num_heads, head_dim))
+    q = q * T(1 / Sqrt(ReduceMean(q * q, -1) + epsilon))
+  The reciprocal is rounded to T before the multiply, and the multiply itself is done in T, matching the unfused subgraph.
+  
+  The latent KV row is shared by every head and gets a weighted RMS norm:
+    kv = kv_norm_weight * kv / Sqrt(ReduceMean(kv * kv, -1) + epsilon)
+  computed in float and then rounded to T.
+  
+  Both rows then have their trailing `rope_head_dim` channels rotated with `cos`/`sin`, which are stored pre-interleaved so the rotation is the signed swap of each adjacent pair:
+    x[nope + t] = x[nope + t] * cos[t] + (t odd ? x[nope + t - 1] : -x[nope + t + 1]) * sin[t]
+  
+  Finally, when `simulate_fp8` is set, the leading `head_dim - rope_head_dim` channels of the KV row are put through a simulated FP8-E4M3 round trip in blocks of 64 with a power-of-two scale, which is what the attention kernel's cache expects.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Value added to each mean of squares before the square root.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Width of one head, and of the latent KV row.</dd>
+<dt><tt>num_heads</tt> : int</dt>
+<dd>Query heads on this rank.</dd>
+<dt><tt>rope_head_dim</tt> : int</dt>
+<dd>Width of the trailing slice that gets rotated.</dd>
+<dt><tt>simulate_fp8</tt> : int</dt>
+<dd>Simulate the FP8 round trip on the KV row's non-rotary half.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query projection, shape (batch, seq, num_heads * head_dim).</dd>
+<dt><tt>kv</tt> : T</dt>
+<dd>Latent KV projection, shape (batch, seq, head_dim).</dd>
+<dt><tt>kv_norm_weight</tt> : M</dt>
+<dd>Gain for the KV norm, shape (head_dim).</dd>
+<dt><tt>cos</tt> : M</dt>
+<dd>Rotary cosines for this step, shape (batch, seq, rope_head_dim).</dd>
+<dt><tt>sin</tt> : M</dt>
+<dd>Rotary sines for this step, same shape as cos.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>query_out</tt> : T</dt>
+<dd>Prepared query, shape (batch, seq, num_heads, head_dim).</dd>
+<dt><tt>kv_out</tt> : T</dt>
+<dd>Prepared latent KV row, shape (batch, seq, head_dim).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain the norm gain and rotary tables to float tensors.</dd>
 </dl>
 
 
