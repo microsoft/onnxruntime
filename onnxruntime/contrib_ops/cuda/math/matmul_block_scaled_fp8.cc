@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp8.h"
 
+#include <algorithm>
 #include <type_traits>
 
 #include "core/common/safeint.h"
@@ -19,6 +20,14 @@ bool FusedFp8ActivationQdqDisabled() {
   static const bool disabled =
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FUSED_FP8_ACT_QDQ", false);
   return disabled;
+}
+
+// Upper bound on the weight dequantization scratch buffer, in MiB. 256 MiB was picked by sweeping
+// it on Qwen3.8-27B: 128 MiB costs 13.9% TTFT, 1 GiB gives up a quarter of the memory saving.
+// Read per call rather than cached in a static so a test can force the multi-tile path.
+int64_t DequantScratchLimitMiB() {
+  const int64_t limit = ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP8_DEQUANT_SCRATCH_MIB", 256);
+  return limit > 0 ? limit : 256;
 }
 }  // namespace
 
@@ -139,39 +148,53 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         Stream(context));
   }
 
-  // Dequantize the FP8 weight into a scratch [N, K] buffer of the activation type, then GEMM.
-  IAllocatorUniquePtr<CudaT> b_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(n) * SafeInt<size_t>(k),
-                                                                 GetComputeStream(context));
-  ORT_RETURN_IF_ERROR(LaunchDequantizeBlockScaledFp8(
-      b_dequant.get(),
-      b->DataRaw(),
-      b_scale->Data<float>(),
-      SafeInt<int>(n),
-      SafeInt<int>(k),
-      SafeInt<int>(block_size_),
-      std::is_same<T, BFloat16>::value,
-      Stream(context)));
+  // Dequantize the FP8 weight into a scratch buffer of the activation type, then GEMM. The scratch
+  // is tiled over N because a full [N, K] buffer is 2.37 GiB for a 248320 x 5120 LM head.
+  const size_t max_scratch_bytes = static_cast<size_t>(DequantScratchLimitMiB()) * 1024 * 1024;
+  const int64_t rows_per_scratch =
+      static_cast<int64_t>(max_scratch_bytes / (static_cast<size_t>(k) * sizeof(CudaT)));
+  const int64_t tile_rows = std::clamp<int64_t>(rows_per_scratch, 1, n);
+
+  IAllocatorUniquePtr<CudaT> b_dequant =
+      GetScratchBuffer<CudaT>(SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k), GetComputeStream(context));
 
   const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
   const CudaT zero = ToCudaType<T>::FromFloat(0.f);
+  const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
+  const float* b_scale_data = b_scale->Data<float>();
 
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      GetCublasHandle(context),
-      CUBLAS_OP_T,  // transB: dequantized weight is [N, K] row-major == K-major [K, N]
-      CUBLAS_OP_N,  // transA
-      n_i,
-      m_i,
-      k_i,
-      &alpha,
-      b_dequant.get(),
-      helper.Ldb(transb),
-      reinterpret_cast<const CudaT*>(a_ptr),
-      helper.Lda(transa),
-      &zero,
-      reinterpret_cast<CudaT*>(Y->MutableDataRaw()),
-      helper.Ldc(),
-      GetDeviceProp(),
-      UseTF32()));
+  for (int64_t n_offset = 0; n_offset < n; n_offset += tile_rows) {
+    const int rows = SafeInt<int>(std::min<int64_t>(tile_rows, n - n_offset));
+    const size_t row_offset = static_cast<size_t>(n_offset);
+    ORT_RETURN_IF_ERROR(LaunchDequantizeBlockScaledFp8(
+        b_dequant.get(),
+        b_data + row_offset * static_cast<size_t>(k),
+        b_scale_data + row_offset * static_cast<size_t>(k_blocks),
+        rows,
+        SafeInt<int>(k),
+        SafeInt<int>(block_size_),
+        std::is_same<T, BFloat16>::value,
+        Stream(context)));
+
+    // The row-major [M, N] output is column-major [N, M] to cuBLAS, so an N tile is a row offset.
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        GetCublasHandle(context),
+        CUBLAS_OP_T,  // transB: dequantized weight is [N, K] row-major == K-major [K, N]
+        CUBLAS_OP_N,  // transA
+        rows,
+        m_i,
+        k_i,
+        &alpha,
+        b_dequant.get(),
+        helper.Ldb(transb),
+        reinterpret_cast<const CudaT*>(a_ptr),
+        helper.Lda(transa),
+        &zero,
+        reinterpret_cast<CudaT*>(Y->MutableDataRaw()) + n_offset,
+        helper.Ldc(),
+        GetDeviceProp(),
+        UseTF32()));
+  }
 
   if (bias != nullptr) {
     ORT_RETURN_IF_ERROR(LaunchAddBiasBlockScaledFp8(
