@@ -50,6 +50,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
+  * <a href="#com.microsoft.HyperConnectionMix">com.microsoft.HyperConnectionMix</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
@@ -2807,6 +2808,87 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain KV cache scale types.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionMix"></a><a name="com.microsoft.hyperconnectionmix">**com.microsoft.HyperConnectionMix**</a>
+
+  Fused hyper-connection post mix, pre mix and layer norm, as used between two consecutive blocks of a hyper-connection network.
+  
+  The post mix folds the finished block output back into the `hc` residual streams:
+    residual_out[..,h,:] = post_mix[..,h] * x[..,:] + ReduceSum(comb_mix[..,g,h] * residual[..,g,:], g)
+  The pre mix then collapses those streams into the next block's input and produces the weights that block will need when its own output comes back:
+    flat   = Reshape(residual_out, (.., hc * dim))
+    mixes  = MatMul(flat, fn) / Sqrt(ReduceMean(flat * flat, -1) + epsilon)
+    pre    = Sigmoid(mixes[..,0:hc] * scale[0] + base[0:hc]) + hc_epsilon
+    post_mix_out = Sigmoid(mixes[..,hc:2*hc] * scale[1] + base[hc:2*hc]) * post_alpha
+    comb   = Reshape(mixes[..,2*hc:] * scale[2] + base[2*hc:], (.., hc, hc))
+    comb_mix_out = SinkhornNormalize(Softmax(comb, -1) + hc_epsilon)
+    y      = ReduceSum(pre[..,h] * residual_out[..,h,:], h)
+    layer_input = norm_weight * y / Sqrt(ReduceMean(y * y, -1) + epsilon)
+  
+  Intermediates are computed in float. `y` and `residual_out` are rounded to T, matching the unfused subgraph.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Value added to each mean of squares before the square root.</dd>
+<dt><tt>hc_epsilon</tt> : float</dt>
+<dd>Floor added to the gates and to the combination matrix.</dd>
+<dt><tt>post_alpha</tt> : float</dt>
+<dd>Multiplier applied to the post gate after the sigmoid.</dd>
+<dt><tt>sinkhorn_epsilon</tt> : float</dt>
+<dd>Value added to each Sinkhorn sum before dividing.</dd>
+<dt><tt>sinkhorn_iterations</tt> : int</dt>
+<dd>Number of Sinkhorn iterations applied to the combination matrix.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T</dt>
+<dd>Output of the block that just finished, shape (batch, seq, dim).</dd>
+<dt><tt>residual</tt> : T</dt>
+<dd>Residual streams, shape (batch, seq, hc, dim).</dd>
+<dt><tt>post_mix</tt> : M</dt>
+<dd>Post gate produced by the previous mix, shape (batch, seq, hc).</dd>
+<dt><tt>comb_mix</tt> : M</dt>
+<dd>Combination matrix produced by the previous mix, shape (batch, seq, hc, hc).</dd>
+<dt><tt>fn</tt> : M</dt>
+<dd>Mixing weights, shape (hc * dim, (2 + hc) * hc).</dd>
+<dt><tt>scale</tt> : M</dt>
+<dd>Scales for the pre gate, the post gate and the combination matrix, shape (3).</dd>
+<dt><tt>base</tt> : M</dt>
+<dd>Biases for the same three slices, shape ((2 + hc) * hc).</dd>
+<dt><tt>norm_weight</tt> : M</dt>
+<dd>Weights of the RMS norm applied to the pre-mix output, shape (dim).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>residual_out</tt> : T</dt>
+<dd>Updated residual streams, same shape as residual.</dd>
+<dt><tt>post_mix_out</tt> : M</dt>
+<dd>Post gate for the next block, same shape as post_mix.</dd>
+<dt><tt>comb_mix_out</tt> : M</dt>
+<dd>Combination matrix for the next block, same shape as comb_mix.</dd>
+<dt><tt>layer_input</tt> : T</dt>
+<dd>Normalized input of the next block, same shape as x.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain the mixing state and the weights to float tensors.</dd>
 </dl>
 
 
