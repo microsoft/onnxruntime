@@ -79,13 +79,15 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
       auto hit = node_stats_->find(node_name);
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
-        const auto level1_workspace_estimate =
-            level1_memory_estimate.has_value()
-                ? level1_memory_estimate->runtime_workspace_bytes
-                : std::nullopt;
-        const bool has_estimator = level1_workspace_estimate.has_value();
+        size_t level1_workspace_bytes = 0;
+        bool has_estimator = false;
+        if (level1_memory_estimate.has_value() &&
+            level1_memory_estimate->runtime_workspace_bytes.has_value()) {
+          level1_workspace_bytes = *level1_memory_estimate->runtime_workspace_bytes;
+          has_estimator = true;
+        }
         const size_t selected_workspace =
-            has_estimator ? std::max(stats.total_temp_allocations, *level1_workspace_estimate)
+            has_estimator ? std::max(stats.total_temp_allocations, level1_workspace_bytes)
                           : stats.total_temp_allocations;
         const size_t persistent_prepack_bytes =
             level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
@@ -98,7 +100,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
                 has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
                               : WorkspaceEstimateSource::kProfile,
                 stats.total_temp_allocations,
-                level1_workspace_estimate.value_or(0),
+                level1_workspace_bytes,
                 persistent_prepack_bytes,
                 temporary_prepack_bytes});
         const SafeInt<size_t> resource_count =
@@ -189,11 +191,15 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     SafeInt<size_t> estimated = total_size + output_size;
     const size_t fallback_workspace =
         static_cast<size_t>(estimated * (kAdHocSafetyMultiplierPercent - 100) / 100);
-    const auto level1_workspace_estimate =
-        level1_memory_estimate.has_value()
-            ? level1_memory_estimate->runtime_workspace_bytes
-            : std::nullopt;
-    const size_t selected_workspace = level1_workspace_estimate.value_or(fallback_workspace);
+    size_t level1_workspace_bytes = 0;
+    bool has_estimator = false;
+    if (level1_memory_estimate.has_value() &&
+        level1_memory_estimate->runtime_workspace_bytes.has_value()) {
+      level1_workspace_bytes = *level1_memory_estimate->runtime_workspace_bytes;
+      has_estimator = true;
+    }
+    const size_t selected_workspace =
+        has_estimator ? level1_workspace_bytes : fallback_workspace;
     const size_t persistent_prepack_bytes =
         level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
     const size_t temporary_prepack_bytes =
@@ -202,10 +208,10 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         node.Index(),
         WorkspaceEstimateSelection{
             selected_workspace,
-            level1_workspace_estimate.has_value() ? WorkspaceEstimateSource::kEstimator
-                                                  : WorkspaceEstimateSource::kFallback,
+            has_estimator ? WorkspaceEstimateSource::kEstimator
+                          : WorkspaceEstimateSource::kFallback,
             0,
-            level1_workspace_estimate.value_or(0),
+            level1_workspace_bytes,
             persistent_prepack_bytes,
             temporary_prepack_bytes});
     return static_cast<size_t>(estimated + selected_workspace +
