@@ -218,7 +218,18 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
         capability->sub_graph->SetAccountant(resource_accountant);
         for (auto cost_node_index : capability->sub_graph->nodes) {
           const Node* cost_node = graph_viewer.GetNode(cost_node_index);
-          capability->sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(*cost_node));
+          const Level1MemoryEstimate estimate =
+              cost_node->OpType() == "Conv"
+                  ? Level1MemoryEstimate{
+                        /*runtime_workspace_bytes=*/101,
+                        /*persistent_prepack_bytes=*/102,
+                        /*temporary_prepack_bytes=*/103}
+                  : Level1MemoryEstimate{
+                        /*runtime_workspace_bytes=*/201,
+                        /*persistent_prepack_bytes=*/202,
+                        /*temporary_prepack_bytes=*/203};
+          capability->sub_graph->AppendNodeCost(
+              resource_accountant->ComputeResourceCount(*cost_node, estimate));
         }
       }
 
@@ -472,8 +483,18 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   IResourceAccountant* ref_ls_acc = make_accountant(ref_ls_map);
   ASSERT_NE(ref_conv_acc, nullptr);
   ASSERT_NE(ref_ls_acc, nullptr);
-  const size_t expected_conv_cost = get_size(ref_conv_acc->ComputeResourceCount(*conv_node));
-  const size_t expected_log_softmax_cost = get_size(ref_ls_acc->ComputeResourceCount(*log_softmax_node));
+  const Level1MemoryEstimate conv_estimate{
+      /*runtime_workspace_bytes=*/101,
+      /*persistent_prepack_bytes=*/102,
+      /*temporary_prepack_bytes=*/103};
+  const Level1MemoryEstimate log_softmax_estimate{
+      /*runtime_workspace_bytes=*/201,
+      /*persistent_prepack_bytes=*/202,
+      /*temporary_prepack_bytes=*/203};
+  const size_t expected_conv_cost =
+      get_size(ref_conv_acc->ComputeResourceCount(*conv_node, conv_estimate));
+  const size_t expected_log_softmax_cost =
+      get_size(ref_ls_acc->ComputeResourceCount(*log_softmax_node, log_softmax_estimate));
   ASSERT_GT(expected_conv_cost, 0u);
   ASSERT_GT(expected_log_softmax_cost, 0u);
 
@@ -498,10 +519,21 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   // on_partition_assignment_fn runs after GetCapabilityForEP completes (and therefore
   // after the deferred commit), but before PlaceNode adds any further cost.
   std::optional<size_t> observed_consumed;
+  std::optional<size_t> observed_workspace;
+  std::optional<size_t> observed_persistent_prepack;
+  std::optional<size_t> observed_temporary_prepack;
+  std::optional<WorkspaceEstimateSourceCounts> observed_source_counts;
   OnPartitionAssignmentFunction on_assignment =
       [&](const Graph&, const ComputeCapability&, const std::string& assigned_ep_type) {
         if (assigned_ep_type == kCudaExecutionProvider && ep_raw->observed_accountant() != nullptr) {
           observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
+          observed_workspace = ep_raw->observed_accountant()->GetCommittedWorkspaceEstimate();
+          observed_persistent_prepack =
+              ep_raw->observed_accountant()->GetCommittedPersistentPrepackEstimate();
+          observed_temporary_prepack =
+              ep_raw->observed_accountant()->GetCommittedTemporaryPrepackEstimate();
+          observed_source_counts =
+              ep_raw->observed_accountant()->GetWorkspaceEstimateSourceCounts();
         }
       };
 
@@ -534,6 +566,15 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   // LogSoftmax was dropped on the second pass: its cost must not leak (no phantom budget).
   EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
       << "Dropped LogSoftmax must not consume budget.";
+  ASSERT_TRUE(observed_workspace.has_value());
+  ASSERT_TRUE(observed_persistent_prepack.has_value());
+  ASSERT_TRUE(observed_temporary_prepack.has_value());
+  ASSERT_TRUE(observed_source_counts.has_value());
+  EXPECT_EQ(*observed_workspace, *conv_estimate.runtime_workspace_bytes);
+  EXPECT_EQ(*observed_persistent_prepack, conv_estimate.persistent_prepack_bytes);
+  EXPECT_EQ(*observed_temporary_prepack, conv_estimate.temporary_prepack_bytes);
+  EXPECT_EQ(observed_source_counts->estimator, size_t{1});
+  EXPECT_EQ(observed_source_counts->fallback, size_t{0});
 }
 
 // Infrastructure that was used to check NNAPI coverage.

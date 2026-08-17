@@ -42,14 +42,16 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     return consumed_amount_;
   }
 
-  void AddConsumedAmount(const ResourceCount& amount) noexcept override {
+  void AddConsumedAmount(const ResourceCount& amount) override {
     if (std::holds_alternative<size_t>(amount)) {
-      consumed_amount_ += std::get<size_t>(amount);
+      consumed_amount_ =
+          static_cast<size_t>(SafeInt<size_t>(consumed_amount_) + std::get<size_t>(amount));
     }
   }
-  void RemoveConsumedAmount(const ResourceCount& amount) noexcept override {
+  void RemoveConsumedAmount(const ResourceCount& amount) override {
     if (std::holds_alternative<size_t>(amount)) {
-      consumed_amount_ -= std::get<0>(amount);
+      consumed_amount_ =
+          static_cast<size_t>(SafeInt<size_t>(consumed_amount_) - std::get<size_t>(amount));
     }
   }
 
