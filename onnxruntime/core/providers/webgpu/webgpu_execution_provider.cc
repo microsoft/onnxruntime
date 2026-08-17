@@ -606,7 +606,23 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); }, false)} {
+  recording_ = std::make_unique<webgpu::CommandRecordingState>();
+  // Give this session its own buffer caches and command recording state instead of sharing the
+  // context's. See the comments on recording_ / session_buffer_mgr_ in the header.
+  const auto& cache_config = context_.BufferCacheConfig();
+  session_buffer_mgr_ = webgpu::BufferManagerFactory::Create(context_,
+                                                             *recording_,
+                                                             cache_config.storage.mode,
+                                                             cache_config.uniform.mode,
+                                                             cache_config.query_resolve.mode,
+                                                             cache_config.default_entry.mode);
+  session_initializer_buffer_mgr_ = webgpu::BufferManagerFactory::Create(context_,
+                                                                         *recording_,
+                                                                         webgpu::BufferCacheMode::LazyRelease,
+                                                                         webgpu::BufferCacheMode::LazyRelease,
+                                                                         webgpu::BufferCacheMode::Disabled,
+                                                                         webgpu::BufferCacheMode::Disabled);
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -627,7 +643,7 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // allocator for initializers
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
+          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
@@ -836,6 +852,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       if (inserted) {
         it->second = webgpu::BufferManagerFactory::Create(
             context_,
+            *recording_,
             webgpu::BufferCacheMode::Graph,
             webgpu::BufferCacheMode::GraphSimple,
             webgpu::BufferCacheMode::Disabled,
@@ -863,7 +880,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   if (!flush_status.IsOK()) {
     if (IsGraphCaptureEnabled()) {
-      context_.CaptureEnd();
+      context_.CaptureEnd(BufferManager());
       auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
       if (commands_it != captured_graphs_.end()) {
         context_.ReleaseGraphResources(commands_it->second);
@@ -879,7 +896,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {
-      context_.CaptureEnd();
+      context_.CaptureEnd(BufferManager());
       captured_graph_ids_.insert(current_graph_annotation_id_);
       ORT_RETURN_IF_ERROR(ReplayGraph(current_graph_annotation_id_));
     } else {
@@ -969,7 +986,7 @@ webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
       return *it->second;
     }
   }
-  return context_.BufferManager();
+  return *session_buffer_mgr_;
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {
