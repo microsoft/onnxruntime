@@ -393,7 +393,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool has_metadata_bounds = attention_metadata != nullptr;
   int max_query_len_bound = parameters.token_count;
   int max_kv_len_bound = max_kv_len_capacity;
-  int min_max_kv_len_bound = 0;
+  int max_kv_len_lower_bound = 0;
   if (has_metadata_bounds) {
     const int* metadata = attention_metadata->Data<int>();
     const int metadata_query_bound = metadata[0];
@@ -416,11 +416,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     }
     if (metadata_kv_lower_bound > max_kv_len_bound) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "PagedAttention: attention_metadata min_max_kv_len_bound (",
+                             "PagedAttention: attention_metadata max_kv_len_lower_bound (",
                              metadata_kv_lower_bound, ") must not exceed max_kv_len_bound (",
                              max_kv_len_bound, ").");
     }
-    min_max_kv_len_bound = metadata_kv_lower_bound;
+    max_kv_len_lower_bound = metadata_kv_lower_bound;
   }
 
   // Backend selection from static shapes alone.
@@ -525,7 +525,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       }
     }
     total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
-    min_max_kv_len_bound = max_kv_len;
+    max_kv_len_lower_bound = max_kv_len;
     if (total_kv_tokens <= 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "PagedAttention: total_kv_tokens is not positive (", total_kv_tokens,
@@ -613,7 +613,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     // The combine kernel costs more than it saves for short decode contexts, even when a high
     // query-head count makes the occupancy heuristic select two splits. The upper bound sizes the
     // workspaces, while the replay-wide lower bound proves splitting is worthwhile on every replay.
-    if (min_max_kv_len_bound > kFlashSplitKvMinSequenceLength) {
+    if (max_kv_len_lower_bound > kFlashSplitKvMinSequenceLength) {
       const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
           onnxruntime::flash::get_num_splits_and_buffer_sizes(
               parameters.batch_size, 1, max_kv_len, parameters.num_heads,

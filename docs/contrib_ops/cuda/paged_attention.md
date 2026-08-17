@@ -317,7 +317,7 @@ Three derivations satisfy the rule, none of which needs a synchronization:
 |---|---|---|
 | decode vs. prefill dispatch | static shapes: `query.shape[0] == cumulative_sequence_length.shape[0] - 1` | shapes are fixed for a captured graph |
 | grid size, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
-| split-KV eligibility | `min_max_kv_len_bound` lower bound, when supplied | proves splitting is worthwhile on every replay |
+| split-KV eligibility | `max_kv_len_lower_bound` lower bound, when supplied | proves splitting is worthwhile on every replay |
 | per-sequence KV length, causal and window masking, gather trip counts | device `past_seqlens` / `cumulative_sequence_length` | re-read from device memory on every replay |
 
 The shape test is a **performance heuristic only**. `token_count <= batch_size` does not prove that
@@ -337,8 +337,8 @@ per-step sync.
 attention_metadata : (2,) or (3,) int32, OrtMemTypeCPUInput
   [0] max_query_len_bound   # 0 = unknown. Replay-wide upper bound on tokens from any one sequence.
   [1] max_kv_len_bound      # 0 = unknown. Replay-wide upper bound on total KV length of any sequence.
-  [2] min_max_kv_len_bound  # Optional; 0 = unknown. Replay-wide lower bound on the largest
-                            # per-sequence KV length in the batch.
+  [2] max_kv_len_lower_bound  # Optional; 0 = unknown. Replay-wide lower bound on the largest
+                              # per-sequence KV length in the batch.
 ```
 
 - The first two entries are **upper bounds, never exact values**, and must hold for *every* step the node —
@@ -352,7 +352,7 @@ attention_metadata : (2,) or (3,) int32, OrtMemTypeCPUInput
 - A valid bound may only shrink launch dimensions and workspace sizes. It must not enter a mask
   comparison. Device loops use the current device lengths, additionally bounded by the trusted
   launch/workspace extent.
-- `min_max_kv_len_bound` is a provider-neutral, performance-only lower bound on
+- `max_kv_len_lower_bound` is a provider-neutral, performance-only lower bound on
   `max_i(past_seqlens[i] + query_len[i])`. CUDA currently uses it for split-KV eligibility, but its
   contract does not name or require that backend. Shape `(2,)` remains supported and defaults this
   value to `0` (unknown), disabling split-KV unless an exact device readback is already required.
@@ -387,7 +387,7 @@ which must now be sized by `batch_size * max_kv_len_bound` so that the allocatio
 > |---|---|---|
 > | `max_query_len` | `params.seqlen_q` (Flash), `p.sequence_length` (MEA) — grid extent only | `max_query_len_bound`, else `token_count` |
 > | `max_kv_len` | quantized-Flash `max_seqlen_k`, split workspace sizing | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
-> | split-KV eligibility | FlashAttention decode dispatch | `min_max_kv_len_bound`, else disabled unless exact lengths were read back |
+> | split-KV eligibility | FlashAttention decode dispatch | `max_kv_len_lower_bound`, else disabled unless exact lengths were read back |
 > | `total_kv_tokens` | gather staging buffer extent | `batch_size * max_kv_len_bound` |
 >
 > Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:
@@ -810,8 +810,10 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
 > - Split-KV: `ComputePagedDecodeSplits` splits the KV range across up to 32 CTAs only when
 >   `token_count * num_heads` would leave the device under-occupied. `max_kv_len` may be an upper
->   bound. Empty splits publish `(max = -FLT_MAX, denom = 0)` and the reduce kernel skips them, so
->   their accumulator slice is never read.
+>   bound. FlashAttention keeps the replay-wide split count and workspaces fixed while partitioning
+>   each varlen sequence from its live device length, so loose upper bounds do not concentrate useful
+>   tiles in the first split. Empty splits publish `(max = -FLT_MAX, denom = 0)` and the reduce kernel
+>   skips them, so their accumulator slice is never read.
 > - The `FlashAttention` / `EfficientAttention` prologue (packed-QKV unpack, fused QK-Norm + rotary,
 >   `ReshapeAndCache`) was factored into a shared `PrepareQueryAndCache`, which the decode backend
 >   reuses. It lives outside the `USE_FLASH_ATTENTION` / `USE_MEMORY_EFFICIENT_ATTENTION` guards
