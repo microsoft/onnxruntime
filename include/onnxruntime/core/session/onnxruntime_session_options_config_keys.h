@@ -261,6 +261,14 @@ static const char* const kOrtSessionOptionsAvx2PrecisionMode = "session.x64quant
 static const char* const kOrtSessionOptionsConfigMinimalBuildOptimizations =
     "optimization.minimal_build_optimizations";
 
+/// <summary>
+/// Set to "1" to enable replay of saved runtime optimizations from an ORT format model.
+/// Saved runtime optimizations contain graph rewrite instructions and must only be enabled for trusted models.
+/// The default is "0".
+/// </summary>
+static const char* const kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations =
+    "session.enable_saved_runtime_optimizations";
+
 // Note: The options specific to an EP should be specified prior to appending that EP to the session options object in
 // order for them to take effect.
 

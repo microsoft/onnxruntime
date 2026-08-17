@@ -10,9 +10,13 @@
 # license information.
 # -------------------------------------------------------------------------
 import math
+import os
 import platform
 import random
+import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -1080,6 +1084,26 @@ def parity_check_paged_attention(
         numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
+def capture_native_stdout(run_func):
+    """Capture output written by the native runtime directly to file descriptor 1."""
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    try:
+        with tempfile.TemporaryFile() as tmp:
+            os.dup2(tmp.fileno(), 1)
+            try:
+                run_func()
+            finally:
+                try:
+                    sys.stdout.flush()
+                finally:
+                    os.dup2(saved_fd, 1)
+            tmp.seek(0)
+            return tmp.read().decode(errors="replace")
+    finally:
+        os.close(saved_fd)
+
+
 def has_cuda_device():
     """Every test in this file allocates torch tensors on "cuda" and runs the CUDA EP.
 
@@ -1097,6 +1121,20 @@ def has_flash_attention():
         platform.system() == "Linux"
         or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse("12.0"))
     )
+
+
+def has_xqa():
+    if not has_cuda_device():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    return major * 10 + minor >= 80
+
+
+def has_fp8_xqa():
+    if not has_cuda_device():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    return major * 10 + minor >= 89
 
 
 def has_memory_efficient_attention():
@@ -1993,14 +2031,14 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
 
-@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
+@unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
 class TestPagedAttentionXqaDecode(unittest.TestCase):
     """Coverage for the XQA decode backend.
 
     XQA is the tensor-core decode kernel (shared with GroupQueryAttention) reading the paged cache
     in place. It is auto-selected ahead of the portable decode kernel when the cache is quantized
     and the step fits its constraints: exactly one new token per sequence, head_size in {64, 128},
-    a query/KV group size in {4, 8, 16, 32}, no softcap, and block_size a multiple of 128 (a block
+    a query/KV group size in {4, 6, 8, 16, 32}, no softcap, and block_size a multiple of 128 (a block
     is presented to the kernel as several 128-token pages). Anything outside that falls back, which
     is what the ORT_ENABLE_XQA=0 comparison below pins down.
 
@@ -2009,8 +2047,6 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
 
     def setUp(self):
         torch.manual_seed(0)
-        if not has_fp8_kv_cache():
-            self.skipTest("quantized KV cache kernels are not built")
 
     def _config(self, **overrides):
         kwargs = {
@@ -2035,6 +2071,12 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         return config
 
     def _check_xqa(self, quant_type="PER_TENSOR", kv_cache_type="int8", rtol=5e-3, atol=5e-3, **overrides):
+        if kv_cache_type == "fp8":
+            if not has_fp8_kv_cache():
+                self.skipTest("FP8 KV cache kernels are not built")
+            if not has_fp8_xqa():
+                self.skipTest("FP8 XQA requires an SM89 or newer GPU")
+
         config = self._config(
             kv_cache_type=kv_cache_type,
             k_quant_type=quant_type,
@@ -2043,15 +2085,51 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         )
         parity_check_paged_attention(config, rtol=rtol, atol=atol)
 
+    def _capture_xqa_debug(self, config):
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            return capture_native_stdout(lambda: parity_check_paged_attention(config, rtol=5e-3, atol=5e-3))
+
     # ---- shapes -------------------------------------------------------------------------
 
     @parameterized.expand([("64", 64), ("128", 128)])
     def test_xqa_head_size(self, _, head_size):
         self._check_xqa(head_size=head_size)
 
-    @parameterized.expand([("grp4", 8, 2), ("grp8", 8, 1), ("grp16", 16, 1), ("grp32", 32, 1)])
+    @parameterized.expand([("grp4", 8, 2), ("grp6", 12, 2), ("grp8", 8, 1), ("grp16", 16, 1), ("grp32", 32, 1)])
     def test_xqa_head_grouping(self, _, num_heads, kv_num_heads):
         self._check_xqa(num_heads=num_heads, kv_num_heads=kv_num_heads)
+
+    @parameterized.expand([("head64_per_tensor", 64, "PER_TENSOR"), ("head128_per_channel", 128, "PER_CHANNEL")])
+    def test_xqa_group_size_six_dispatch(self, _, head_size, quant_type):
+        # Six query heads exercise XQA's padded query-row path. Parity checks the visible rows,
+        # while debug telemetry proves the result did not come from the fallback kernel.
+        baseline_config = self._config(
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=head_size,
+            kv_cache_type="int8",
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+        )
+        baseline_debug_output = self._capture_xqa_debug(baseline_config)
+        if "SdpaKernel=XQA" not in baseline_debug_output:
+            self.skipTest("Paged XQA is not runnable for this head size and quantization configuration")
+
+        config = self._config(
+            num_heads=48,
+            kv_num_heads=8,
+            head_size=head_size,
+            kv_cache_type="int8",
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+        )
+        debug_output = self._capture_xqa_debug(config)
+        self.assertIn("Operator=PagedAttention", debug_output)
+        self.assertIn("SdpaKernel=XQA", debug_output)
+        self.assertIn("GqaGroupSize=6", debug_output)
 
     @parameterized.expand([("128", 128), ("256", 256), ("512", 512)])
     def test_xqa_block_size(self, _, block_size):

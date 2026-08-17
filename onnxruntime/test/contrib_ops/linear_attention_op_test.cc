@@ -149,7 +149,7 @@ void LinearAttentionGQAReference(
     const std::vector<float>* initial_state,  // (B, kv_num_heads, dk, dv)
     const std::vector<float>* decay,          // (B, kv_num_heads, T[, dk])
     const std::vector<float>* beta,           // (B, kv_num_heads, T)
-    std::vector<float>& output,               // (B, kv_num_heads, T, dv)
+    std::vector<float>& output,               // (B, max(q_num_heads, kv_num_heads), T, dv)
     std::vector<float>& final_state) {        // (B, kv_num_heads, dk, dv)
   int bht_kv = batch_size * kv_num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
@@ -1433,8 +1433,19 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N16) {
   RunStandardGQA("gated_delta", 16, 1, 32, 64);
 }
 
+// All four update rules at a fixed n_out=4 ratio: "linear"/"gated" take the no-retrieval
+// (no-beta) branch, "delta"/"gated_delta" the retrieval branch, and "gated"/"gated_delta"
+// additionally apply the decay gate.
 TEST(ContribOpLinearAttentionTest, LinearRule_StandardGQA_N4) {
   RunStandardGQA("linear", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedRule_StandardGQA_N4) {
+  RunStandardGQA("gated", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, DeltaRule_StandardGQA_N4) {
+  RunStandardGQA("delta", 8, 2, 32, 64);
 }
 
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) {
@@ -1597,6 +1608,65 @@ static void RunLinearAttentionStateWindowTest(int B, int q_H, int kv_H, int n_k,
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(ContribOpLinearAttentionTest, RejectsQNumHeadsOverflow) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered";
+    return;
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<float>("scale", 1.0f);
+  tester.AddAttribute<int64_t>("q_num_heads", 4294967296LL);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+
+  tester.AddInput<float>("query", {1, 1, 0}, {});
+  tester.AddInput<float>("key", {1, 1, 0}, {});
+  tester.AddInput<float>("value", {1, 1, 0}, {});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 0}, {});
+  tester.AddOutput<float>("present_state", {1, 1, 0, 0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "q_num_heads must be an integer in [1, INT_MAX]",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpLinearAttentionTest, RejectsKvNumHeadsOverflow) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered";
+    return;
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<float>("scale", 1.0f);
+  tester.AddAttribute<int64_t>("q_num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 4294967296LL);
+
+  tester.AddInput<float>("query", {1, 1, 0}, {});
+  tester.AddInput<float>("key", {1, 1, 0}, {});
+  tester.AddInput<float>("value", {1, 1, 0}, {});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 0}, {});
+  // present_state carries H_kv as its second dimension, so it must be declared with the
+  // oversized attribute value for shape inference to agree. The tensor is still empty
+  // because d_k and d_v are both 0, and the kernel rejects the attribute before any use.
+  tester.AddOutput<float>("present_state", {1, 4294967296LL, 0, 0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "kv_num_heads must be an integer in [1, INT_MAX]",
+             {}, nullptr, &execution_providers);
+}
+
 // d_k = 4 is not a decode fast-path shape, so this lands on the generic recurrent kernel.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow) {
   RunLinearAttentionStateWindowTest(/*B=*/1, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/2, /*T=*/5,
@@ -1621,8 +1691,8 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_DecodeWarpKernel) 
                                     /*dk=*/256, /*dv=*/64, /*W=*/3);
 }
 
-// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel,
-// whose final state write is a vectorized epilogue into slot W-1.
+// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel
+// when the device has enough shared memory, or the column kernel fallback otherwise.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_FixedShapeKernel) {
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {

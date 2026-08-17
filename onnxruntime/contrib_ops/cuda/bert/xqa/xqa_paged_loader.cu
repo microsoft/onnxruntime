@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 //
 // Head-size / dtype / cache-dtype dispatcher for the paged-KV XQA decode kernels. The kernels
-// themselves live in xqa_paged_<query>_<cache>_<head>.cu (each of which instantiates the four
+// themselves live in xqa_paged_<query>_<cache>_<head>.cu (each of which instantiates the five
 // supported query/KV group sizes through xqa_paged_loader_impl.cuh).
 
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"

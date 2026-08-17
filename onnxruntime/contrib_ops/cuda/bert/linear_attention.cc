@@ -241,6 +241,7 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
       row_split_,
       GetDeviceProp().multiProcessorCount,
       GetDeviceProp().maxThreadsPerBlock,
+      GetDeviceProp().sharedMemPerBlockOptin,
       state_slots);
 }
 
