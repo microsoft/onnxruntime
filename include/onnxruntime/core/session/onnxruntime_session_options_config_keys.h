@@ -623,6 +623,28 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // (internal and external) and works in both JIT and AOT flows.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
 
+// Layout of the Value KV-cache tensors that the application binds to the past_value input and
+// present_value output of com.microsoft.GroupQueryAttention. Applies to every GQA node in the
+// model. The Key cache (past_key/present_key) is not affected.
+//
+// Option values:
+// - "BNSH": (batch_size, num_heads, sequence_length, head_size). Matches the operator schema. [DEFAULT]
+// - "BNHS": (batch_size, num_heads, head_size, sequence_length).
+//
+// When "BNHS" is selected, ORT keeps the GQA node itself in BNSH and inserts a
+// Transpose(perm=[0,1,3,2]) between the past_value graph input and the node, and another between
+// the node and the present_value graph output. An EP that prefers BNHS is expected to fuse that
+// Transpose -> GroupQueryAttention -> Transpose sequence into a single operation; an EP that does
+// not will execute the transposes, which is correct but costs a full copy of the Value cache in
+// each direction per step and prevents past/present buffer sharing.
+//
+// Query an EP's preference via the "gqa_preferred_value_layout" OrtEpDevice metadata key
+// (kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout in onnxruntime_ep_device_ep_metadata_keys.h).
+//
+// This option takes effect at all graph optimization levels, including ORT_DISABLE_ALL, because it
+// changes the layout the session expects at its inputs and outputs rather than optimizing the graph.
+static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_layout";
+
 // Enable weightless mode for all initializers (internal and external).
 //
 // When enabled, ONNX Runtime requests that the execution provider operate without embedding or copying

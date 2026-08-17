@@ -1,0 +1,357 @@
+# BNHS Value layout for GroupQueryAttention
+
+Status: partially implemented (see [Sequencing](#8-sequencing))
+Last updated: 2026-08-15
+
+## Motivation
+
+Some execution providers can execute `com.microsoft.GroupQueryAttention` (GQA) more efficiently when
+the Value KV-cache is laid out as `BNHS` — `(batch, num_heads, head_size, seq)` — rather than the
+`BNSH` layout the operator schema mandates. The second attention matmul (`attn_weights @ V`) becomes
+an NT gemm, which maps better onto some hardware.
+
+The GQA schema cannot simply change: it is a stable contrib op, and most EPs are BNSH-only. This
+design lets an application discover an EP's preference, allocate its KV-cache accordingly, and tell
+ORT — without changing the operator schema.
+
+The approach is to keep the GQA node BNSH and move the layout conversion into the graph, where an
+EP compiler can absorb it:
+
+```
+past_value (BNHS, graph input) -> Transpose[0,1,3,2] -> GQA -> Transpose[0,1,3,2] -> present_value (BNHS, graph output)
+```
+
+An EP that prefers BNHS fuses the whole `Transpose -> GQA -> Transpose` sequence into a single op
+that reads V as BNHS and aliases `past_value`/`present_value` to one buffer. For that EP the
+transposes are notation, not work. An EP that cannot fuse them executes them for real: still
+correct, but slow (see [Fallback cost](#fallback-cost)).
+
+## Design contract
+
+| Item | Decision |
+|---|---|
+| GQA schema | **Unchanged.** The node is always BNSH. No new attribute, no `ContribOperators.md` regeneration. |
+| Scope | **Value only.** `past_key`, `present_key` and `k_scale` are untouched. |
+| Meaning of the session key | Layout of the KV-cache buffers **at the main-graph boundary** — what the application binds to `past_value` and reads from `present_value`. |
+| Mechanism | `Transpose(perm=[0,1,3,2])` between graph input `past_value` and GQA input 4; and between GQA output 2 and graph output `present_value`. |
+| Consumer | The EP compiler fuses the sequence into one op that reads BNHS V and aliases past/present to one buffer. |
+| Fallback | A non-fusing EP executes the transposes: correct, slow. Diagnosed by a warning, not an error. |
+| Scope of application | **Main graph only** (`graph_level == 0`). Subgraphs (BeamSearch decoder body, Loop) are out of scope — the boundary there is not the application's. |
+| Precondition | `past_value` must be a graph input and `present_value` a graph output. Otherwise warn and skip the node. |
+
+GQA operand indices, from [`docs/ContribOperators.md`](../ContribOperators.md#commicrosoftgroupqueryattention):
+`past_value` = input **4**, `present_value` = output **2**.
+
+## 1. EP advertises its preference
+
+No new C API is required. `OrtApi::EpDevice_EpMetadata`
+(`include/onnxruntime/core/session/onnxruntime_c_api.h`, C++ `ConstEpDevice::EpMetadata()`)
+already returns an `OrtKeyValuePairs`. This is a well-known-key contract only.
+
+**1.1** Add to `include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h`:
+
+```cpp
+// Preferred layout for the GroupQueryAttention Value KV-cache at the graph boundary.
+// Values: "BNSH" (batch, num_heads, seq, head_size) or "BNHS" (batch, num_heads, head_size, seq).
+// If absent, "BNSH" is assumed. The application passes the chosen layout to the session via
+// kOrtSessionOptionsGqaValueLayout.
+static const char* const kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout =
+    "gqa_preferred_value_layout";
+```
+
+A single value, not a list. If "supports both, prefers X" is needed later, the value can become a
+comma-separated preference list with the first entry preferred — backward compatible with a
+single-value reader.
+
+**1.2** The compiling EP's factory populates the key in `GetSupportedDevices` before calling
+`CreateEpDevice`. EPs without GQA support omit it.
+
+**1.3** Add the key to `onnxruntime/test/autoep/library/example_plugin_ep/ep_factory.cc`, next to
+the existing `"supported_devices"` entry, so there is a test fixture.
+
+**1.4** Language bindings need no change. Python `get_ep_devices()` and C# `OrtEpDevice.EpMetadata`
+already surface arbitrary metadata.
+
+## 2. Application communicates the choice
+
+**2.1** Add to `include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h`:
+
+```cpp
+// Layout of the GroupQueryAttention Value KV-cache tensors (past_value input / present_value
+// output) as bound by the application. "BNSH" (default) or "BNHS".
+// When "BNHS", ORT inserts Transpose nodes so the GQA node still sees BNSH; an EP that prefers
+// BNHS is expected to fuse Transpose->GQA->Transpose. Query the EP's preference via the
+// "gqa_preferred_value_layout" OrtEpDevice metadata key.
+// Applies to every GQA node in the model.
+static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_layout";
+```
+
+**2.2** Validate at session initialization. Anything other than `"BNSH"` or `"BNHS"` returns
+`ORT_INVALID_ARGUMENT` with the offending value in the message. No silent fallback.
+
+## 3. The graph transform
+
+New files `onnxruntime/core/optimizer/gqa_value_layout_transformer.{h,cc}`. Both
+`onnxruntime/core/optimizer/*.cc` and `*.h` are globbed by `cmake/onnxruntime_optimizer.cmake`, so
+**no CMake change is needed**.
+
+### 3.1 Header
+
+```cpp
+class GqaValueLayoutTransformer : public GraphTransformer {
+ public:
+  GqaValueLayoutTransformer() noexcept
+      : GraphTransformer("GqaValueLayoutTransformer") {}
+  bool ShouldOnlyApplyOnce() const override { return true; }
+
+ private:
+  Status ApplyImpl(Graph&, bool& modified, int graph_level, const logging::Logger&) const override;
+};
+```
+
+It is constructed only when the layout is BNHS, so it needs no configuration.
+
+### 3.2 Algorithm
+
+```
+ApplyImpl(graph, modified, graph_level, logger):
+  if graph_level != 0: return OK          // main graph only; do NOT Recurse
+
+  for node in graph.Nodes():
+    if node.OpType() != "GroupQueryAttention" or node.Domain() != kMSDomain: continue
+    if AlreadyTransformed(graph, node): continue                      // 3.4
+    ORT_RETURN_IF_ERROR(ValidateNode(graph, node))                    // 3.5
+
+    inputs  = node.MutableInputDefs()
+    outputs = node.MutableOutputDefs()
+
+    // ---- input side ----
+    if inputs.size() > 4 and inputs[4]->Exists():
+      NodeArg* boundary = inputs[4]                    // graph input, declared BNSH today
+      NodeArg& bnsh = graph.GetOrCreateNodeArg(
+          graph.GenerateNodeArgName(boundary->Name() + "_bnsh"), boundary->TypeAsProto());
+      Node& tp = graph.AddNode(
+          graph.GenerateNodeName(node.Name() + "/past_value_bnhs_to_bnsh"),
+          "Transpose", "GQA past_value BNHS->BNSH",
+          {boundary}, {&bnsh}, nullptr, kOnnxDomain);
+      tp.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+      graph_utils::ReplaceNodeInput(node, 4, bnsh);
+      SwapLastTwoDims(*boundary);        // graph input now declares BNHS
+      modified = true;
+
+    // ---- output side ----
+    if outputs.size() > 2 and outputs[2]->Exists():
+      NodeArg* boundary = outputs[2]                   // graph output, declared BNSH today
+      NodeArg& bnsh = graph.GetOrCreateNodeArg(
+          graph.GenerateNodeArgName(boundary->Name() + "_bnsh"), boundary->TypeAsProto());
+      outputs[2] = &bnsh;                              // retarget GQA output 2
+      Node& tp = graph.AddNode(
+          graph.GenerateNodeName(node.Name() + "/present_value_bnsh_to_bnhs"),
+          "Transpose", "GQA present_value BNSH->BNHS",
+          {&bnsh}, {boundary}, nullptr, kOnnxDomain);
+      tp.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+      SwapLastTwoDims(*boundary);        // graph output now declares BNHS
+      modified = true;
+
+```
+
+On shapes: the **new** `_bnsh` NodeArgs inherit the original (BNSH) type and shape and need no
+adjustment — `Graph::Resolve` confirms them. It is the **boundary** NodeArgs whose declared shapes
+are swapped to BNHS. This is what keeps `InferenceSession::ValidateInputsOutputs` happy at `Run`
+time: it hard-fails on any static dimension mismatch, and `head_size` is essentially always static
+in exported models.
+
+`SwapLastTwoDims(NodeArg&)`: if the arg has no declared shape, no-op (an unshaped input accepts any
+shape). Otherwise require rank 4 and `SetShape` a copy with dims 2 and 3 exchanged. The type is
+already set, so `SetType` is not needed — but note the ordering constraint documented in
+`include/onnxruntime/core/graph/node_arg.h` if that ever changes.
+
+Neither `Graph::SetInputs` nor `Graph::SetOutputs` is called. The set of graph inputs and outputs is
+unchanged; only the NodeArgs' shapes and their producer/consumer wiring change.
+
+### 3.3 `v_scale` requires no change
+
+An earlier revision of this design called for transposing the `PER_CHANNEL` `v_scale` from
+`[1, num_heads_k, 1, head_size]` to `[1, num_heads_k, head_size, 1]`. That is not needed.
+
+`v_scale` is consumed by the GQA node, and the GQA node operates entirely in BNSH after the
+transform: its `past_value` operand is the Transpose output and its `present_value` operand is the
+Transpose input, both BNSH. The scale therefore still has to be broadcastable to a BNSH tensor,
+exactly as it is today. The only BNHS tensors in the graph are the boundary NodeArgs, and `Transpose`
+does not consume scales.
+
+This does mean the application supplies `v_scale` in the model-declared
+`[1, num_heads_k, 1, head_size]` shape regardless of the cache layout it chose, which is worth
+stating in the user-facing documentation. `k_scale` is likewise unaffected.
+
+### 3.4 Idempotency
+
+Required, because a model saved via `session.optimized_model_filepath` already contains the
+transposes and the BNHS boundary. Reloading it with the key still set would insert a second pair and
+swap the boundary back to a BNSH declaration while the application still feeds BNHS — broken, and
+broken quietly.
+
+`AlreadyTransformed(graph, node)` returns true when input 4's producer is a `Transpose` with
+`perm == [0,1,3,2]` whose own input is a graph input, **or** output 2's sole consumer is such a
+Transpose producing a graph output.
+
+Detect this via graph structure rather than a metadata marker; a marker does not survive the
+ORT-format round trip reliably.
+
+### 3.5 Validation
+
+`ValidateNode` returns an **error** for:
+
+- **4-bit KV cache with BNHS.** When `v_quant_type != "NONE" && kv_cache_bit_width == 4`, V is
+  `uint8` with two 4-bit values packed along `head_size`. A byte-wise `Transpose` cannot transpose
+  sub-byte-packed data, and the declared-shape swap would be wrong as well. A fusing EP never
+  executes the Transpose so it may be fine there, but the CPU fallback would be silently incorrect.
+  Rejected until the packing semantics under BNHS are defined — see [Open items](#open-items).
+- Rank of `past_value` or `present_value` present but not equal to 4.
+
+`ValidateNode` **warns and skips** (does not error) when `past_value` is not a graph input or
+`present_value` is not a graph output. The session key describes an application boundary; if the
+tensor is produced or consumed inside the graph, that premise does not hold.
+
+## 4. Wiring into the session
+
+**4.1** In `InferenceSession::TransformGraph` (`onnxruntime/core/session/inference_session.cc`),
+immediately after the Level1 `ApplyTransformers` call and before `partitioner.Partition`:
+
+```cpp
+ORT_RETURN_IF_ERROR_SESSIONID_(
+    graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+
+#if !defined(ORT_MINIMAL_BUILD)
+if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGqaValueLayout, "BNSH") == "BNHS") {
+  GqaValueLayoutTransformer gqa_value_layout{};
+  ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout, *session_logger_, graph));
+}
+#endif
+```
+
+`apply_transformer_once` is the existing lambda in `TransformGraph`; this mirrors how
+`EnsureUniqueDQForNodeUnit` is invoked just above the Level1 call.
+
+This placement is deliberate and buys two properties:
+
+- **Runs at optimization level 0.** `InferenceSession::AddPredefinedTransformers` gates registration
+  on `graph_optimization_level >= level`, so a transformer registered through
+  `optimizer_utils::GenerateTransformers` is silently absent at `ORT_DISABLE_ALL`. A direct call
+  bypasses that gate. It also bypasses `optimizers_to_disable_`, which is correct: this is a
+  correctness-affecting transform, not an optimization.
+- **The pattern reaches the EP intact.** `TransposeOptimizer` is the *last* Level1 transformer
+  (`onnxruntime/core/optimizer/graph_transformer_utils.cc`) and its job is moving, merging and
+  cancelling Transpose nodes. Running after it means nothing perturbs `Transpose -> GQA -> Transpose`
+  before `GetCapability`. The Level2 `TransposeOptimizer` is CPU-EP-filtered and runs
+  post-partitioning, so it only touches transposes that fell back to CPU — harmless, possibly
+  helpful.
+
+Nothing is registered in `graph_transformer_utils.cc`, and no `GenerateTransformersForMinimalBuild`
+counterpart is needed.
+
+**4.2 Fusion diagnostic.** After `partitioner.Partition`, when the key is BNHS, walk the GQA nodes
+and compare each node's `GetExecutionProviderType()` against that of its flanking Transposes. If
+they differ, log at **WARNING**:
+
+> GQA node '\<name\>': Value-layout Transpose nodes were not claimed by EP '\<ep\>'. The BNHS cache
+> will be transposed at runtime — expect significant per-token cost and loss of past/present buffer
+> sharing.
+
+This is the difference between a diagnosable perf cliff and an invisible one.
+
+### Fallback cost
+
+When the transposes are not fused, each generated token costs two full transposing copies of the
+Value cache per layer, and past/present buffer sharing is lost (the GQA kernel can no longer append
+in place into the application's `max_sequence_length` buffer), roughly doubling KV-cache memory. For
+a 32-layer model at 4k context this dwarfs the attention math itself. It is correct, but it is not a
+configuration anyone should ship; hence the warning in 4.2.
+
+## 5. ORT-format path
+
+`PartitionOrtFormatModel` does not go through `TransformGraph`, so `.ort` models receive no
+insertion. Two options:
+
+- **(a)** Add the same guarded call there. Requires the transformer to be available in minimal
+  builds.
+- **(b)** Document that BNHS requires the transform to have been applied at ORT-format conversion
+  time, and rely on the idempotency in 3.4 to make re-loading with the key set a no-op.
+
+Recommendation: **(b)** for the first drop — zero code and correct — with (a) as a follow-up if a
+minimal-build consumer needs it.
+
+## 6. Tests
+
+**6.1** `onnxruntime/test/optimizer/gqa_value_layout_transformer_test.cc` (globbed by
+`cmake/onnxruntime_unittests.cmake`, no CMake change):
+
+- No-op when the key is absent, and when it is `"BNSH"`.
+- Transposes inserted on both sides with `perm == [0,1,3,2]`; GQA input 4 and output 2 rewired.
+- Graph input `past_value` and graph output `present_value` declared shapes have dims 2 and 3
+  swapped; the intermediate `_bnsh` args retain BNSH.
+- Idempotency: running the transformer twice produces the same graph as running it once.
+- `past_value` absent (prefill-only model) yields only the output-side transpose, and
+  `present_value` absent yields only the input-side transpose.
+- `past_value` produced by a node, or `present_value` consumed by one: warn and skip, graph
+  unchanged.
+- 4-bit quantized Value cache returns an error.
+
+Three session-level tests cover the plumbing that a graph-level test cannot reach, by loading a
+serialized model into an `InferenceSessionWrapper`:
+
+- The transform is applied at `ORT_DISABLE_ALL`. This is the test that pins down the placement
+  decision in 4.1; a registered level 1 optimizer would be skipped entirely at that level.
+- No transposes are inserted for the default `"BNSH"` value.
+- An invalid value fails session initialization.
+
+Subgraphs are not covered by a test. `ApplyImpl` returns immediately for `graph_level != 0` and never
+calls `Recurse`, so a subgraph node is unreachable by construction; a test would exercise the
+transformer base class rather than this transformer.
+
+**6.2** `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc` — end-to-end numerical
+parity on the CPU EP. The same model run with a BNSH boundary and with a BNHS boundary fed a
+pre-transposed cache must produce bit-identical `output`, and identical `present_value` after
+transposing back. Cover fp32, fp16, and the 8-bit quantized cache.
+
+**6.3** `onnxruntime/test/autoep/` — the new metadata key round-trips from the example plugin EP
+through `EpDevice_EpMetadata`.
+
+**6.4** On the compiling EP — fusion actually fires (assert that the GQA node and both Transposes
+land on that EP, i.e. the 4.2 warning does *not* trigger), and multi-token decode with a single
+aliased buffer bound to both `past_value` and `present_value` matches the CPU BNSH reference.
+
+**6.5** Negative — an invalid session key value is rejected at session initialization.
+
+## 7. Documentation
+
+- The two header comments are the primary reference.
+- The plugin-EP author guide gains the metadata-key contract and a description of what an EP must
+  fuse in order to benefit.
+- A short note wherever KV-cache binding is documented for genai-style consumers: query the EP, set
+  the session key, allocate the cache BNHS, bind one buffer to both `past_value` and
+  `present_value`.
+- `docs/ContribOperators.md`: **no change** — the operator schema is untouched.
+
+## 8. Sequencing
+
+| PR | Contents | Status |
+|---|---|---|
+| 1-3 | Both public keys, validation, example-EP metadata, autoep test, transformer, `TransformGraph` wiring, fusion diagnostic, 6.1 unit tests, docs | Implemented |
+| 3b | CPU-fallback numerical parity tests (6.2) | Not started |
+| 4 | Compiling EP advertises the key, implements the fusion, 6.4 tests | Not started (EP-side) |
+| 5 | Optional: ORT-format path (5a) | Not started |
+
+## Open items
+
+1. **4-bit packed V cache under BNHS.** Currently planned as a hard error (3.5). To support it we
+   must define whether the packing axis follows `head_size` or becomes the (now-minor) `seq` axis,
+   and the declared shape has to encode that choice. Worth deciding before PR 2 lands, since it
+   turns a validation rule into a code path.
+2. **Heterogeneous sessions.** The session key is session-wide. If one EP fuses and another does
+   not, the non-fusing EP's layers hit the 4.2 warning path with no per-node escape. Acceptable
+   initially; a per-EP override key would be the escape hatch if this becomes real.
+3. **Fusion pattern contract.** The EP compiler's match criteria should be written down explicitly —
+   in particular whether it tolerates non-adjacent Transposes, and whether it requires `perm` to be
+   literally `[0,1,3,2]` versus any last-two-dimension swap. The 4.1 placement guarantees adjacency
+   today, but pinning the contract protects against future transformer churn.
