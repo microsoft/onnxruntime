@@ -114,7 +114,14 @@ struct Tensorrt_Provider : Provider {
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
     info.dump_ep_context_model = options.trt_dump_ep_context_model != 0;
     info.ep_context_file_path = options.trt_ep_context_file_path == nullptr ? "" : options.trt_ep_context_file_path;
+    const bool embeds_ep_context = options.trt_ep_context_embed_mode == 1;
+    const bool uses_sidecar_ep_context = options.trt_ep_context_embed_mode == 0;
+    ORT_ENFORCE(embeds_ep_context || uses_sidecar_ep_context, "trt_ep_context_embed_mode must be 0 or 1");
     info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
+    ORT_ENFORCE(options.trt_engine_deserialization_enable == 0 ||
+                    options.trt_engine_deserialization_enable == 1,
+                "trt_engine_deserialization_enable must be 0 or 1");
+    info.engine_deserialization_enable = options.trt_engine_deserialization_enable == 1;
     info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
     info.engine_hw_compatible = options.trt_engine_hw_compatible != 0;
     info.onnx_bytestream = options.trt_onnx_bytestream;

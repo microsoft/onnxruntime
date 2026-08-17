@@ -80,7 +80,7 @@ class TestInferenceSessionWithCtxNode(unittest.TestCase):
 
         # Second session and run to test ctx node with engine cache path
         self.create_ctx_node(cache_path=os.path.join(self.trt_engine_cache_path_, cache_name))
-        providers = [("TensorrtExecutionProvider", {})]
+        providers = [("TensorrtExecutionProvider", {"trt_engine_deserialization_enable": True})]
         session = onnxrt.InferenceSession(get_name(self.ctx_node_model_name_), providers=providers)
         session.run(
             ["Y"],

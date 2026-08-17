@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
+#include "core/common/parse_string.h"
 #include "core/common/path_utils.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
@@ -1409,6 +1410,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dump_ep_context_model_ = info.dump_ep_context_model;
     ep_context_file_path_ = info.ep_context_file_path;
     ep_context_embed_mode_ = info.ep_context_embed_mode;
+    engine_deserialization_enable_ = info.engine_deserialization_enable;
     enable_engine_cache_for_ep_context_model();
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
@@ -1550,6 +1552,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string ep_context_embed_mode_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextEmbedMode);
       if (!ep_context_embed_mode_env.empty()) {
         ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
+      }
+      const std::string engine_deserialization_enable_env =
+          onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineDeserializationEnable);
+      if (!engine_deserialization_enable_env.empty()) {
+        int value = 0;
+        ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(engine_deserialization_enable_env, value));
+        ORT_ENFORCE(value == 0 || value == 1,
+                    tensorrt_env_vars::kEngineDeserializationEnable, " must be 0 or 1");
+        engine_deserialization_enable_ = value == 1;
       }
       // incase the EP context is dumped the engine cache has to be enabled
       if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
@@ -4457,7 +4468,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            onnx_model_bytestream_size_,
                                                            onnx_external_data_bytestream_,
                                                            onnx_external_data_bytestream_size_,
-                                                           detailed_build_log_);
+                                                           detailed_build_log_,
+                                                           engine_deserialization_enable_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());

@@ -77,12 +77,17 @@ void SmallModelTest(CompileParam test_param, bool fully_supported_model) {
 
   CreateBaseModel(model_name, graph_name, dims, !fully_supported_model);
 
-  Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> option_map{
+  Ort::SessionOptions compile_session_options;
+  std::unordered_map<std::string, std::string> compile_option_map{
       {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer, std::to_string(test_param.external_initialzier_for_parser)}};
-  auto ep = AppendTrtEtxEP(session_options, option_map);
+  auto compile_ep = AppendTrtEtxEP(compile_session_options, compile_option_map);
 
-  Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
+  Ort::SessionOptions reload_session_options;
+  std::unordered_map<std::string, std::string> reload_option_map{
+      {onnxruntime::nv::provider_option_names::kEngineDeserializationEnable, "1"}};
+  auto reload_ep = AppendTrtEtxEP(reload_session_options, reload_option_map);
+
+  Ort::ModelCompilationOptions model_compile_options(*ort_env, compile_session_options);
   model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
 
   void* output_context = nullptr;
@@ -102,9 +107,9 @@ void SmallModelTest(CompileParam test_param, bool fully_supported_model) {
   // JIT time
   Ort::Session session_object{nullptr};
   if (test_param.bytestream_io) {
-    session_object = Ort::Session(*ort_env, output_context, output_context_size, session_options);
+    session_object = Ort::Session(*ort_env, output_context, output_context_size, reload_session_options);
   } else {
-    session_object = Ort::Session(*ort_env, model_name_ctx.c_str(), session_options);
+    session_object = Ort::Session(*ort_env, model_name_ctx.c_str(), reload_session_options);
   }
   auto io_binding = generate_io_binding(session_object);
   Ort::RunOptions run_options;
@@ -139,13 +144,18 @@ TEST_P(CompileApiTest, LargeModel) {
     CreateLargeLLMModel(model_name, external_data_name);
   }
 
-  Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> option_map{
+  Ort::SessionOptions compile_session_options;
+  std::unordered_map<std::string, std::string> compile_option_map{
       {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
        std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)}};
-  auto ep = AppendTrtEtxEP(session_options, option_map);
+  auto compile_ep = AppendTrtEtxEP(compile_session_options, compile_option_map);
 
-  Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
+  Ort::SessionOptions reload_session_options;
+  std::unordered_map<std::string, std::string> reload_option_map{
+      {onnxruntime::nv::provider_option_names::kEngineDeserializationEnable, "1"}};
+  auto reload_ep = AppendTrtEtxEP(reload_session_options, reload_option_map);
+
+  Ort::ModelCompilationOptions model_compile_options(*ort_env, compile_session_options);
   model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
 
   void* output_context = nullptr;
@@ -160,7 +170,8 @@ TEST_P(CompileApiTest, LargeModel) {
     file_names = {external_data_name};
     file_buffers = {input_data.data()};
     lengths = {input_data.size()};
-    session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
+    compile_session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
+    reload_session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 
     model_compile_options.SetInputModelFromBuffer(input_onnx.data(), input_onnx.size());
     model_compile_options.SetOutputModelBuffer(Ort::AllocatorWithDefaultOptions(), &output_context, &output_context_size);
@@ -176,9 +187,9 @@ TEST_P(CompileApiTest, LargeModel) {
   // JIT time
   std::unique_ptr<Ort::Session> session;
   if (test_param.bytestream_io) {
-    session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, session_options);
+    session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, reload_session_options);
   } else {
-    session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), session_options);
+    session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), reload_session_options);
   }
 
   auto io_binding = generate_io_binding(*session);

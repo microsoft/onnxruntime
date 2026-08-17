@@ -62,6 +62,7 @@ constexpr const char* kExternalDataBytestreamSize = "trt_external_data_bytestrea
 constexpr const char* kOpTypesToExclude = "trt_op_types_to_exclude";
 constexpr const char* kPreviewFeatures = "trt_preview_features";
 constexpr const char* kGraphIncludeInitializer = "trt_load_user_initializer";
+constexpr const char* kEngineDeserializationEnable = "trt_engine_deserialization_enable";
 
 }  // namespace provider_option_names
 }  // namespace tensorrt
@@ -131,7 +132,14 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpEpContextModel, info.dump_ep_context_model)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextFilePath, info.ep_context_file_path)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
+          .AddValueParser(
+              tensorrt::provider_option_names::kEpContextEmbedMode,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.ep_context_embed_mode));
+                ORT_RETURN_IF_NOT(info.ep_context_embed_mode == 0 || info.ep_context_embed_mode == 1,
+                                  "trt_ep_context_embed_mode must be 0 or 1");
+                return Status::OK();
+              })
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineHwCompatible, info.engine_hw_compatible)
           .AddValueParser(
               tensorrt::provider_option_names::kONNXBytestream,
@@ -154,6 +162,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kOpTypesToExclude, info.op_types_to_exclude)
           .AddAssignmentToReference(tensorrt::provider_option_names::kPreviewFeatures, info.preview_features)
           .AddAssignmentToReference(tensorrt::provider_option_names::kGraphIncludeInitializer, info.load_user_initializer)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEngineDeserializationEnable, info.engine_deserialization_enable)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
@@ -215,6 +224,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kOpTypesToExclude, MakeStringWithClassicLocale(info.op_types_to_exclude)},
       {tensorrt::provider_option_names::kPreviewFeatures, MakeStringWithClassicLocale(info.preview_features)},
       {tensorrt::provider_option_names::kGraphIncludeInitializer, MakeStringWithClassicLocale(info.load_user_initializer)},
+      {tensorrt::provider_option_names::kEngineDeserializationEnable, MakeStringWithClassicLocale(info.engine_deserialization_enable)},
   };
   return options;
 }
@@ -284,6 +294,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.trt_external_data_bytestream_size)},
       {tensorrt::provider_option_names::kOpTypesToExclude, kOpTypesToExclude_},
       {tensorrt::provider_option_names::kGraphIncludeInitializer, MakeStringWithClassicLocale(info.trt_load_user_initializer)},
+      {tensorrt::provider_option_names::kEngineDeserializationEnable, MakeStringWithClassicLocale(info.trt_engine_deserialization_enable)},
   };
   return options;
 }
@@ -385,6 +396,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
   trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
   trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
+  trt_provider_options_v2.trt_engine_deserialization_enable = internal_options.engine_deserialization_enable;
   trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
   trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
   trt_provider_options_v2.trt_onnx_bytestream = internal_options.onnx_bytestream;

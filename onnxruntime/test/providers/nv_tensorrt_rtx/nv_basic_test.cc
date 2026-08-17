@@ -69,7 +69,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_engine_deserialization_enable", "1"}});
     Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
@@ -111,7 +111,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_engine_deserialization_enable", "1"}});
     Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
@@ -156,7 +156,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_engine_deserialization_enable", "1"}});
     Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;

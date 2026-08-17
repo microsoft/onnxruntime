@@ -191,8 +191,14 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
   auto& attrs = node->GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
+  ORT_RETURN_IF(embed_mode != 0 && embed_mode != 1,
+                "TensorRT EPContext embed_mode must be 0 or 1, got ", embed_mode);
 
-  if (embed_mode) {
+  ORT_RETURN_IF_NOT(allow_engine_deserialization_,
+                    "TensorRT EPContext engine deserialization is disabled. Set provider option ",
+                    "'trt_engine_deserialization_enable' to '1' only when loading trusted EPContext models.");
+
+  if (embed_mode == 1) {
     // Get engine from byte stream.
     const std::string& context_binary = attrs.at(EP_CACHE_CONTEXT).s();
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),

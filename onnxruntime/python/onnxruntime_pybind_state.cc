@@ -1041,8 +1041,18 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
           } else if (option.first == "trt_ep_context_embed_mode") {
             if (!option.second.empty()) {
               params.trt_ep_context_embed_mode = std::stoi(option.second);
+              ORT_ENFORCE(params.trt_ep_context_embed_mode == 0 || params.trt_ep_context_embed_mode == 1,
+                          "[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be '0' or '1'.");
             } else {
-              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be '0' or '1'.\n");
+            }
+          } else if (option.first == "trt_engine_deserialization_enable") {
+            if (option.second == "True" || option.second == "true" || option.second == "1") {
+              params.trt_engine_deserialization_enable = 1;
+            } else if (option.second == "False" || option.second == "false" || option.second == "0") {
+              params.trt_engine_deserialization_enable = 0;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_deserialization_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else if (option.first == "trt_engine_hw_compatible") {
             if (option.second == "True" || option.second == "true") {

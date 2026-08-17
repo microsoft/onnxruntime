@@ -97,4 +97,6 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_engine_hw_compatible{0};                    // Enable hardware compatibility. Default 0 = false, nonzero = true
   const char* trt_op_types_to_exclude{};              // Exclude specific ops from running on TRT.
   int trt_load_user_initializer{0};                   // Save initializers locally instead of to disk. Default 0 = false, nonzero = true
+  int trt_engine_deserialization_enable{0};           // Allow loading precompiled TensorRT engines from trusted EPContext models.
+                                                      // Default 0. Set to 1 only for trusted embedded or sidecar engine plans.
 };

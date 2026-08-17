@@ -1048,6 +1048,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   dump_ep_context_model_ = info.dump_ep_context_model;
   ep_context_file_path_ = info.ep_context_file_path;
   ep_context_embed_mode_ = info.ep_context_embed_mode;
+  engine_deserialization_enable_ = info.engine_deserialization_enable;
   compile_only_mode_ = info.compile_only_mode;
   enable_engine_cache_for_ep_context_model();
   cache_prefix_ = info.engine_cache_prefix;
@@ -3375,7 +3376,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
                                                            onnx_model_bytestream_size_,
                                                            onnx_external_data_bytestream_,
                                                            onnx_external_data_bytestream_size_,
-                                                           detailed_build_log_);
+                                                           detailed_build_log_,
+                                                           engine_deserialization_enable_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(*graph_body_viewer.GetNode(node_idx));
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());

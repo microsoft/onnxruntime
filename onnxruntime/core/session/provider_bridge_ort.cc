@@ -2550,9 +2550,13 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
-  OrtTensorRTProviderOptionsV2 tensorrt_options;
-  tensorrt_options.device_id = device_id;
-  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(options, &tensorrt_options);
+  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(device_id);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
   API_IMPL_END
 }
 

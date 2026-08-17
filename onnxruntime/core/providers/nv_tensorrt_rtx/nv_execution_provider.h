@@ -417,6 +417,7 @@ class NvExecutionProvider : public IExecutionProvider {
   bool compile_only_mode_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
+  bool engine_deserialization_enable_ = false;
   std::string ctx_model_path_;
   std::string engine_cache_relative_path_to_context_model_dir;
 

@@ -58,7 +58,8 @@ class TensorRTCacheModelHandler {
                             size_t onnx_model_bytestream_size,
                             const void* onnx_external_data_bytestream,
                             size_t onnx_external_data_bytestream_size,
-                            bool detailed_build_log)
+                            bool detailed_build_log,
+                            bool allow_engine_deserialization)
       : trt_engine_(trt_engine),
         trt_runtime_(trt_runtime),
         ep_context_model_path_(ep_context_model_path),
@@ -69,7 +70,8 @@ class TensorRTCacheModelHandler {
         onnx_model_bytestream_size_(onnx_model_bytestream_size),
         onnx_external_data_bytestream_(onnx_external_data_bytestream),
         onnx_external_data_bytestream_size_(onnx_external_data_bytestream_size),
-        detailed_build_log_(detailed_build_log) {
+        detailed_build_log_(detailed_build_log),
+        allow_engine_deserialization_(allow_engine_deserialization) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -89,5 +91,6 @@ class TensorRTCacheModelHandler {
   const void* onnx_external_data_bytestream_;
   size_t onnx_external_data_bytestream_size_;
   bool detailed_build_log_;
+  bool allow_engine_deserialization_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

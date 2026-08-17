@@ -483,6 +483,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object3{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params3;
+  params3.trt_engine_deserialization_enable = 1;
   PathString ctx_model_name = ToPathString(params.trt_ep_context_file_path);
   params3.trt_engine_cache_enable = 1;
   execution_provider = TensorrtExecutionProviderWithOptions(&params3);
@@ -512,6 +513,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object4{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params4;
+  params4.trt_engine_deserialization_enable = 1;
   ctx_model_name = ToPathString("./context_model_folder/EPContextNode_test_ctx.onnx");
   execution_provider = TensorrtExecutionProviderWithOptions(&params4);
   EXPECT_TRUE(session_object4.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -549,6 +551,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   InferenceSession session_object6{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params6;
   params6.trt_ep_context_embed_mode = 1;
+  params6.trt_engine_deserialization_enable = 1;
   ctx_model_name = ToPathString(params5.trt_ep_context_file_path);
   execution_provider = TensorrtExecutionProviderWithOptions(&params6);
   EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -594,6 +597,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   auto ctx_model_bytes = ReadFileFromDisk(ctx_model_name);
   InferenceSession session_object8{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params8;
+  params8.trt_engine_deserialization_enable = 1;
   params8.trt_weight_stripped_engine_enable = 1;
   params8.trt_onnx_bytestream = model_bytes.data();
   params8.trt_onnx_bytestream_size = model_bytes.size();
@@ -612,6 +616,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object9{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params9;
+  params9.trt_engine_deserialization_enable = 1;
   params9.trt_weight_stripped_engine_enable = 1;
   params9.trt_onnx_model_folder_path = model_name_str.c_str();
   execution_provider = TensorrtExecutionProviderWithOptions(&params9);
@@ -1414,7 +1419,8 @@ TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
  */
 void CreateSyntheticEPContextModel(const std::string& model_path_str,
                                    const std::string& source_attr,
-                                   bool include_source_attr = true) {
+                                   bool include_source_attr = true,
+                                   int64_t embed_mode = 1) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model.add_opset_import();
@@ -1455,7 +1461,7 @@ void CreateSyntheticEPContextModel(const std::string& model_path_str,
   auto* attr_embed = node->add_attribute();
   attr_embed->set_name("embed_mode");
   attr_embed->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  attr_embed->set_i(1);
+  attr_embed->set_i(embed_mode);
 
   // ep_cache_context attribute (dummy data)
   auto* attr_cache = node->add_attribute();
@@ -1508,6 +1514,98 @@ TEST(TensorrtExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
 
   // Clean up
   std::filesystem::remove(model_path);
+}
+
+TEST(TensorrtExecutionProviderTest, EPContextNode_EmbeddedEngineRequiresOptIn) {
+  const std::string model_path_str = "ep_context_embedded_engine_requires_opt_in.onnx";
+  const PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, kTensorrtExecutionProvider);
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_EmbeddedEngineRequiresOptIn";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session.Load(model_path));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("EPContext engine deserialization is disabled"));
+
+  std::error_code ec;
+  std::filesystem::remove(model_path, ec);
+}
+
+TEST(TensorrtExecutionProviderTest, EPContextNode_SidecarEngineRequiresOptIn) {
+  const std::string model_path_str = "ep_context_sidecar_engine_requires_opt_in.onnx";
+  const PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, kTensorrtExecutionProvider,
+                                /*include_source_attr=*/true, /*embed_mode=*/0);
+
+  SessionOptions so;
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+  ASSERT_STATUS_OK(session.Load(model_path));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("EPContext engine deserialization is disabled"));
+
+  std::error_code ec;
+  std::filesystem::remove(model_path, ec);
+}
+
+TEST(TensorrtExecutionProviderTest, EPContextNode_InvalidEmbedModeRejected) {
+  const std::string model_path_str = "ep_context_invalid_embed_mode.onnx";
+  const PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, kTensorrtExecutionProvider,
+                                /*include_source_attr=*/true, /*embed_mode=*/2);
+
+  SessionOptions so;
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+  ASSERT_STATUS_OK(session.Load(model_path));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("embed_mode must be 0 or 1"));
+
+  std::error_code ec;
+  std::filesystem::remove(model_path, ec);
+}
+
+TEST(TensorrtExecutionProviderTest, LegacyEnvironmentAllowsTrustedSidecarEngine) {
+  const std::string model_path_str = "ep_context_legacy_environment_opt_in.onnx";
+  const PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, kTensorrtExecutionProvider,
+                                /*include_source_attr=*/true, /*embed_mode=*/0);
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_TENSORRT_ENGINE_DESERIALIZATION_ENABLE", "1"}}};
+
+  Ort::SessionOptions so;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(so, 0));
+  try {
+    Ort::Session session(*ort_env, model_path.c_str(), so);
+    FAIL() << "Expected the synthetic sidecar engine to fail loading";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_EQ(std::string(ex.what()).find("EPContext engine deserialization is disabled"), std::string::npos);
+  }
+
+  std::error_code ec;
+  std::filesystem::remove(model_path, ec);
+}
+
+TEST(TensorrtExecutionProviderTest, EngineDeserializationOptionRejectsInvalidV2Value) {
+  OrtTensorRTProviderOptionsV2 invalid_v2;
+  invalid_v2.trt_engine_deserialization_enable = 2;
+  EXPECT_THROW(TensorrtExecutionProviderWithOptions(&invalid_v2), OnnxRuntimeException);
+
+  invalid_v2.trt_engine_deserialization_enable = 0;
+  invalid_v2.trt_ep_context_embed_mode = 2;
+  EXPECT_THROW(TensorrtExecutionProviderWithOptions(&invalid_v2), OnnxRuntimeException);
 }
 
 /*

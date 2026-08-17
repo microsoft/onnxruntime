@@ -62,6 +62,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
           .AddAssignmentToReference(nv::provider_option_names::kUseExternalDataInitializer, info.use_external_data_initializer)
           .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
           .AddAssignmentToReference(nv::provider_option_names::kRuntimeCacheFile, info.runtime_cache_path)
+          .AddAssignmentToReference(nv::provider_option_names::kEngineDeserializationEnable, info.engine_deserialization_enable)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
@@ -97,7 +98,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
       embed_mode = 0;
   }
 
-  if (0 <= embed_mode || embed_mode < 2) {
+  if (0 <= embed_mode && embed_mode < 2) {
     info.ep_context_embed_mode = embed_mode;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEmbedMode, " must 0 or 1");
@@ -122,7 +123,8 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
       {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)},
-      {nv::provider_option_names::kRuntimeCacheFile, MakeStringWithClassicLocale(info.runtime_cache_path)}};
+      {nv::provider_option_names::kRuntimeCacheFile, MakeStringWithClassicLocale(info.runtime_cache_path)},
+      {nv::provider_option_names::kEngineDeserializationEnable, MakeStringWithClassicLocale(info.engine_deserialization_enable)}};
   return options;
 }
 }  // namespace onnxruntime

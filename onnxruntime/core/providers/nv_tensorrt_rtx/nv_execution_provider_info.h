@@ -51,6 +51,7 @@ struct NvExecutionProviderInfo {
   bool dump_ep_context_model{false};
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};
+  bool engine_deserialization_enable{false};
   // Set internally by OrtCompileAPI::CompileModel(). When true, the EP skips GPU
   // deserialization and execution context creation since the session will not run inference.
   bool compile_only_mode{false};

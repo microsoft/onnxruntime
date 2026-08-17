@@ -64,6 +64,7 @@ static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
 static const std::string kCudaGraphEnable = "ORT_TENSORRT_CUDA_GRAPH_ENABLE";
 static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
 static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
+static const std::string kEngineDeserializationEnable = "ORT_TENSORRT_ENGINE_DESERIALIZATION_ENABLE";
 static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
 static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
 static const std::string kOpTypesToExclude = "ORT_TENSORRT_OP_TYPES_TO_EXCLUDE";
@@ -388,6 +389,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool dump_ep_context_model_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
+  bool engine_deserialization_enable_ = false;
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
