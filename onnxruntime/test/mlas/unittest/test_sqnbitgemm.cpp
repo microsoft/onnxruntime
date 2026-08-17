@@ -21,8 +21,11 @@ Abstract:
 #include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
-#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)
+#include "core/mlas/lib/mlasi.h"
+#if defined(MLAS_ENABLE_TEST_HOOKS)
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
+#endif
 #endif
 
 static constexpr const char* ComputeTypeName(MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType) {
@@ -461,6 +464,62 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     return suite_name.c_str();
   }
 };
+
+TEST(SQNBitGemmKleidiAIValidation, ZeroKRejectsKleidiAIOverride) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)
+  constexpr size_t BlkBitWidth = 4;
+  constexpr size_t BlkLen = 128;
+  constexpr size_t SupportedK = BlkLen;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+  config.use_kleidiai = true;
+
+  const auto is_supported = GetMlasPlatform().MlasQNBitGemmIsSupportedOverride;
+  if (is_supported == nullptr ||
+      !is_supported(SupportedK, BlkBitWidth, BlkLen, false, SQNBIT_CompInt8, &config)) {
+    GTEST_SKIP() << "KleidiAI symmetric SQ4 path is unavailable.";
+  }
+
+  for (bool has_zero_point : {false, true}) {
+    EXPECT_FALSE(is_supported(
+        0, BlkBitWidth, BlkLen, has_zero_point, SQNBIT_CompInt8, &config));
+  }
+#else
+  GTEST_SKIP() << "KleidiAI Q4 tests require an Arm64 KleidiAI build.";
+#endif
+}
+
+TEST(SQNBitGemmKleidiAIValidation, ZeroMOrNIsNoOp) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)
+  constexpr size_t BlkBitWidth = 4;
+  constexpr size_t BlkLen = 128;
+  constexpr size_t M = 1;
+  constexpr size_t N = 16;
+  constexpr size_t K = BlkLen;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+  config.use_kleidiai = true;
+
+  const auto is_supported = GetMlasPlatform().MlasQNBitGemmIsSupportedOverride;
+  if (is_supported == nullptr ||
+      !is_supported(K, BlkBitWidth, BlkLen, false, SQNBIT_CompInt8, &config)) {
+    GTEST_SKIP() << "KleidiAI symmetric SQ4 path is unavailable.";
+  }
+
+  MLAS_THREADPOOL* thread_pool = GetMlasThreadPool();
+  if (thread_pool == nullptr) {
+    GTEST_SKIP() << "Threaded KleidiAI Q4 test requires an MLAS thread pool.";
+  }
+
+  MLAS_QNBIT_GEMM_DATA_PARAMS<float> params{};
+  EXPECT_NO_THROW(MlasQNBitGemmBatch(
+      0, N, K, 1, BlkBitWidth, BlkLen, SQNBIT_CompInt8,
+      &params, nullptr, thread_pool, &config));
+  EXPECT_NO_THROW(MlasQNBitGemmBatch(
+      M, 0, K, 1, BlkBitWidth, BlkLen, SQNBIT_CompInt8,
+      &params, nullptr, thread_pool, &config));
+#else
+  GTEST_SKIP() << "KleidiAI Q4 tests require an Arm64 KleidiAI build.";
+#endif
+}
 
 TEST(SQNBitGemmKleidiAIValidation, MixedZeroPointBatchRejected) {
 #if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)

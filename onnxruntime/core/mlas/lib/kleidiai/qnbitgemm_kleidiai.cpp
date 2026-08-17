@@ -56,7 +56,7 @@ IsKleidiAIQ4ShapeSupported(
         return false;
     }
 
-    if (BlkLen == 0) {
+    if (K == 0 || BlkLen == 0) {
         return false;
     }
 
@@ -705,7 +705,8 @@ void
     MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
     MLAS_UNREFERENCED_PARAMETER(ComputeType);
 
-    if (BatchN == 0) {
+    // Empty outputs are no-ops; K == 0 falls back because bias may still be required.
+    if (BatchN == 0 || M == 0 || N == 0) {
         return;
     }
 
