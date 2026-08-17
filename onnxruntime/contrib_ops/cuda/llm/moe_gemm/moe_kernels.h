@@ -289,11 +289,11 @@ class CutlassMoeFCRunnerInterface {
   // pushes it in here, so inference-time config selection does not depend on the live environment.
   // Default no-op for runners that do not implement the SM80 FP4 path.
   virtual void setUseSm80Fp4(bool /*use_sm80_fp4*/) {}
-  virtual void setUseDsv4DeepGemm(bool /*use_dsv4_deep_gemm*/) {}
+  virtual void setUseFp4DeepGemm(bool /*use_fp4_deep_gemm*/) {}
 
-  // fp32 per-[128 N, 128 K] block scales for the prepacked e4m3 DSV4 DeepGEMM weights. The
+  // fp32 per-[128 N, 128 K] block scales for the prepacked e4m3 QMoE DeepGEMM weights. The
   // weights themselves still arrive through the fc1/fc2 weight pointers of runMoe.
-  virtual void setDsv4DeepGemmWeightScales(const float* /*fc1_scales*/, const float* /*fc2_scales*/) {}
+  virtual void setFp4DeepGemmWeightScales(const float* /*fc1_scales*/, const float* /*fc2_scales*/) {}
 
   virtual void runMoe(const void* input_activations, const void* input_sf, const int* token_selected_experts,
                       const float* token_final_scales, const void* fc1_expert_weights, const void* fc1_expert_biases,
@@ -446,13 +446,13 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
     }
   }
 
-  void setUseDsv4DeepGemm(bool use_dsv4_deep_gemm) override {
-    use_dsv4_deep_gemm_ = use_dsv4_deep_gemm;
+  void setUseFp4DeepGemm(bool use_fp4_deep_gemm) override {
+    use_fp4_deep_gemm_ = use_fp4_deep_gemm;
   }
 
-  void setDsv4DeepGemmWeightScales(const float* fc1_scales, const float* fc2_scales) override {
-    dsv4_deep_gemm_fc1_weight_scales_ = fc1_scales;
-    dsv4_deep_gemm_fc2_weight_scales_ = fc2_scales;
+  void setFp4DeepGemmWeightScales(const float* fc1_scales, const float* fc2_scales) override {
+    fp4_deep_gemm_fc1_weight_scales_ = fc1_scales;
+    fp4_deep_gemm_fc2_weight_scales_ = fc2_scales;
   }
 
   static std::vector<cutlass_extensions::CutlassGemmConfig> getTactics(int sm) {
@@ -624,9 +624,9 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
 
   std::optional<cutlass_extensions::CutlassGemmConfig> gemm1_config_;
   std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config_;
-  bool use_dsv4_deep_gemm_ = false;
-  const float* dsv4_deep_gemm_fc1_weight_scales_ = nullptr;
-  const float* dsv4_deep_gemm_fc2_weight_scales_ = nullptr;
+  bool use_fp4_deep_gemm_ = false;
+  const float* fp4_deep_gemm_fc1_weight_scales_ = nullptr;
+  const float* fp4_deep_gemm_fc2_weight_scales_ = nullptr;
 
   // Pointers
   int* permuted_row_to_unpermuted_row_{};
@@ -649,7 +649,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   const float** alpha_scale_ptr_array_fc2_ = nullptr;
   float* moe_gemv_splitk_partials_{};
   void* smoothed_act_{};
-  void* dsv4_deep_gemm_workspace_{};
+  void* fp4_deep_gemm_workspace_{};
 
   TmaWarpSpecializedGroupedGemmInput tma_ws_grouped_gemm1_input_;
   TmaWarpSpecializedGroupedGemmInput tma_ws_grouped_gemm2_input_;

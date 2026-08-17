@@ -229,7 +229,7 @@ void LaunchQMoEDequantizeFp4Weights(
 
 // Converts MXFP4 expert weights ([E, K, N/2] n-packed E2M1 nibbles, Float8E8M0 block scales of
 // group size 32, per-expert fp32 global scale) into the e4m3 weights + fp32 per-[128 N, 128 K]
-// block scales the DSV4 DeepGEMM FP8 kernel consumes. ``output`` is [E, N, K] e4m3 bytes and
+// block scales the QMoE DeepGEMM FP8 kernel consumes. ``output`` is [E, N, K] e4m3 bytes and
 // ``output_scales`` is [E, N/128, K/128] fp32.
 //
 // The block scale is rounded up to a power of two, which makes the conversion bit-exact for

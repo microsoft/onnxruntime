@@ -1218,7 +1218,7 @@ void LaunchQMoEDequantizeFp4Weights(
 }
 
 // ---------------------------------------------------------------------------
-// MXFP4 -> FP8 (e4m3) weight conversion for the DSV4 DeepGEMM path.
+// MXFP4 -> FP8 (e4m3) weight conversion for the QMoE DeepGEMM path.
 //
 // The FP8 GEMM scales B by one fp32 factor per [128 N, 128 K] block. Picking that factor as a
 // *power of two* makes the conversion bit-exact: an E2M1 code carries at most two significant

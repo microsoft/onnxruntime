@@ -2212,15 +2212,15 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
 
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
                                      : 0;  // Extra workspace required by AWQ for smoothing activations
-  size_t dsv4_deep_gemm_workspace_size = 0;
+  size_t fp4_deep_gemm_workspace_size = 0;
 #if defined(HAS_SM90_OR_LATER)
   if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                 std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
-    if (use_dsv4_deep_gemm_ && num_rows > 0 && num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
+    if (use_fp4_deep_gemm_ && num_rows > 0 && num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
         hidden_size == deep_gemm_sm90::kHiddenSize && inter_size == deep_gemm_sm90::kInterSize &&
         deep_gemm_sm90::NumExpertsSupported(num_experts_per_node) && experts_per_token == 6 &&
         activation_type == ActivationType::Swiglu && !use_awq) {
-      dsv4_deep_gemm_workspace_size = deep_gemm_sm90::GetWorkspaceSize(num_experts_per_node);
+      fp4_deep_gemm_workspace_size = deep_gemm_sm90::GetWorkspaceSize(num_experts_per_node);
     }
   }
 #endif
@@ -2254,7 +2254,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   ADD_NAME(tma_ws_gemm2_workspace, tma_ws_size);
   ADD(gemm_workspace);
   ADD(smoothed_act);
-  ADD(dsv4_deep_gemm_workspace);
+  ADD(fp4_deep_gemm_workspace);
 
   return out_map;
 
@@ -2354,7 +2354,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   if (use_awq) {
     smoothed_act_ = getWsPtr(int8_t{}, "smoothed_act");
   }
-  dsv4_deep_gemm_workspace_ = getWsPtr(int8_t{}, "dsv4_deep_gemm_workspace");
+  fp4_deep_gemm_workspace_ = getWsPtr(int8_t{}, "fp4_deep_gemm_workspace");
 }
 template <class T, class WeightType, class OutputType, class InputType, class ScaleBiasType, class Enable>
 const T* CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>::applyPrequantScale(
@@ -2948,9 +2948,9 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
 #if defined(HAS_SM90_OR_LATER)
     if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                   std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
-      const bool use_dsv4_deep_gemm =
-          use_dsv4_deep_gemm_ && dsv4_deep_gemm_workspace_ != nullptr && num_rows > 0 &&
-          dsv4_deep_gemm_fc1_weight_scales_ != nullptr && dsv4_deep_gemm_fc2_weight_scales_ != nullptr &&
+        const bool use_fp4_deep_gemm =
+          use_fp4_deep_gemm_ && fp4_deep_gemm_workspace_ != nullptr && num_rows > 0 &&
+          fp4_deep_gemm_fc1_weight_scales_ != nullptr && fp4_deep_gemm_fc2_weight_scales_ != nullptr &&
           num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
           hidden_size == deep_gemm_sm90::kHiddenSize && inter_size == deep_gemm_sm90::kInterSize &&
           deep_gemm_sm90::NumExpertsSupported(num_experts_per_node) && experts_per_token == 6 &&
@@ -2959,14 +2959,14 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
           parallelism_config.tp_size == 1 && parallelism_config.ep_size == 1 &&
           parallelism_config.cluster_size == 1 && quant_params.groupwise.group_size <= 0 &&
           quant_params.wo.fc1_weight_scales == nullptr && quant_params.wo.fc2_weight_scales == nullptr;
-      if (use_dsv4_deep_gemm) {
-        // WeightType stays bf16 at the ORT level; the prepacked DSV4 buffers are e4m3 bytes.
+      if (use_fp4_deep_gemm) {
+        // WeightType stays bf16 at the ORT level; the prepacked DeepGEMM buffers are e4m3 bytes.
         deep_gemm_sm90::Run(
             reinterpret_cast<const __nv_bfloat16*>(permuted_data_), expert_first_token_offset_,
-            reinterpret_cast<const __nv_fp8_e4m3*>(fc1_expert_weights), dsv4_deep_gemm_fc1_weight_scales_,
-            reinterpret_cast<const __nv_fp8_e4m3*>(fc2_expert_weights), dsv4_deep_gemm_fc2_weight_scales_,
+            reinterpret_cast<const __nv_fp8_e4m3*>(fc1_expert_weights), fp4_deep_gemm_fc1_weight_scales_,
+            reinterpret_cast<const __nv_fp8_e4m3*>(fc2_expert_weights), fp4_deep_gemm_fc2_weight_scales_,
             reinterpret_cast<__nv_bfloat16*>(fc2_result_), num_experts_per_node, activation_params.alpha,
-            activation_params.beta, activation_params.limit, dsv4_deep_gemm_workspace_, stream);
+            activation_params.beta, activation_params.limit, fp4_deep_gemm_workspace_, stream);
         finalizeMoeRoutingKernelLauncher<OutputType, T, ScaleBiasType>(
             static_cast<const T*>(fc2_result_), final_output, nullptr, token_topk_unpermuted_scales,
             unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row_, token_selected_experts,

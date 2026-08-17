@@ -9,8 +9,8 @@
 
 namespace onnxruntime::llm::kernels::deep_gemm_sm90 {
 
-// A DSV4 rank owns 256 / world experts; eight and four ranks are the two shipped splits, and
-// the grouped GEMM takes the count as a template argument, so both are instantiated.
+// The fixed-shape model owns 256 / world experts; eight and four ranks are the supported splits,
+// and the grouped GEMM takes the count as a template argument, so both are instantiated.
 constexpr int kNumExpertsWorld8 = 32;
 constexpr int kNumExpertsWorld4 = 64;
 constexpr int kPaddedTokensPerExpert = 64;
