@@ -241,6 +241,72 @@ struct Fp4Cvt<nv_bfloat16> {
   static __device__ __forceinline__ float2 ToFloat2(T2 v) { return Traits::to_float2(v); }
 };
 
+// Vectorized dequantization for K % 8 == 0 and even block_size. Each thread owns exactly one
+// 8-element K chunk of a row, so a warp issues one contiguous 128-byte packed load and one
+// contiguous 512-byte store; giving a thread a wider chunk instead would make every store
+// instruction strided across lanes, which measures ~2x slower on H200 (1.9 vs 3.9 TB/s).
+// Codes are decoded with the branch-free Fp4Cvt above rather than the software-emulated
+// __nv_cvt_fp4x2_to_halfraw2(). The row index comes from a 2D grid (blockIdx.y), which removes the
+// 64-bit idx / half_k division of the scalar kernel, and weight_scale_2 is hoisted into a register.
+// Because block_size is even, both codes of a byte always share a scale, so the scale index only
+// advances once per block_size/2 bytes - tracked incrementally instead of by per-element division.
+// Fp4Cvt reproduces the intrinsic's bit pattern exactly, so the output is bitwise identical to
+// DequantizeNvFp4Kernel.
+template <typename T>
+__global__ void DequantizeNvFp4Vec8Kernel(T* __restrict__ out,
+                                          const uint8_t* __restrict__ b_packed,
+                                          const uint8_t* __restrict__ weight_scale,
+                                          const float* __restrict__ weight_scale_2,
+                                          int n,
+                                          int k,
+                                          int k_blocks,
+                                          int block_size,
+                                          int chunks_per_row) {
+  using Cvt = Fp4Cvt<T>;
+  using T2 = typename Cvt::T2;
+
+  const int chunk = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (chunk >= chunks_per_row) {
+    return;
+  }
+  // Scale bookkeeping is done in units of T2 pairs (= one packed byte).
+  const int pair0 = chunk << 2;  // first packed byte of the chunk within the row
+  const int pairs_per_block = block_size >> 1;
+  const int blk0 = pair0 / pairs_per_block;
+  const int left0 = pairs_per_block - (pair0 - blk0 * pairs_per_block);
+  const float g = *weight_scale_2;
+
+  for (int row = blockIdx.y; row < n; row += gridDim.y) {
+    const uint32_t word = reinterpret_cast<const uint32_t*>(b_packed + static_cast<size_t>(row) * (k >> 1))[chunk];
+    const uint8_t* srow = weight_scale + static_cast<size_t>(row) * k_blocks;
+
+    T2 pairs[4];
+    const uint32_t mag = word & 0x77777777u;
+    const uint32_t sgn = (word >> 3) & 0x11111111u;
+    Cvt::DecodeQuad(mag, sgn, pairs[0], pairs[1]);
+    Cvt::DecodeQuad(mag >> 16, sgn >> 16, pairs[2], pairs[3]);
+
+    int blk = blk0;
+    int left = left0;
+    float s = e4m3_to_float(srow[blk]) * g;
+
+    T outv[8];
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      const float2 v = Cvt::ToFloat2(pairs[j]);
+      outv[2 * j] = from_float<T>(v.x * s);
+      outv[2 * j + 1] = from_float<T>(v.y * s);
+      if (--left == 0) {
+        ++blk;
+        left = pairs_per_block;
+        s = (blk < k_blocks) ? e4m3_to_float(srow[blk]) * g : 0.f;
+      }
+    }
+
+    reinterpret_cast<uint4*>(out + static_cast<size_t>(row) * k)[chunk] = *reinterpret_cast<const uint4*>(outv);
+  }
+}
+
 template <typename T, int RowsPerBlock>
 __global__ __launch_bounds__(32 * kGemvWarpsPerBlock,
                              GemvMinBlocksPerSm<RowsPerBlock>::value) void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
@@ -710,10 +776,35 @@ Status LaunchDequantizeNvFp4(void* b_dequant,
     return Status::OK();
   }
   const int k_blocks = (k + block_size - 1) / block_size;
-  constexpr int kThreads = 256;
-  const int blocks = static_cast<int>((total + kThreads - 1) / kThreads);
   const uint8_t* bp = reinterpret_cast<const uint8_t*>(b_packed);
   const uint8_t* ws = reinterpret_cast<const uint8_t*>(weight_scale);
+
+  // Fast path: K is a multiple of 8 (so each thread owns an aligned 8-element chunk and both the
+  // packed load and the FP16/BF16 store are warp-contiguous) and block_size is even (so both codes
+  // of a packed byte share a scale). This is the common prefill layout.
+  if (k % 8 == 0 && block_size % 2 == 0) {
+    const int chunks_per_row = k >> 3;
+    int threads = 32;
+    while (threads < 256 && threads < chunks_per_row) {
+      threads <<= 1;
+    }
+    const unsigned int grid_x = static_cast<unsigned int>((chunks_per_row + threads - 1) / threads);
+    const unsigned int grid_y = static_cast<unsigned int>(n < 65535 ? n : 65535);
+    const dim3 blocks{grid_x, grid_y};
+    if (is_bf16) {
+      DequantizeNvFp4Vec8Kernel<nv_bfloat16><<<blocks, threads, 0, stream>>>(
+          reinterpret_cast<nv_bfloat16*>(b_dequant), bp, ws, weight_scale_2, n, k, k_blocks, block_size,
+          chunks_per_row);
+    } else {
+      DequantizeNvFp4Vec8Kernel<half><<<blocks, threads, 0, stream>>>(
+          reinterpret_cast<half*>(b_dequant), bp, ws, weight_scale_2, n, k, k_blocks, block_size,
+          chunks_per_row);
+    }
+    return CUDA_CALL(cudaGetLastError());
+  }
+
+  constexpr int kThreads = 256;
+  const int blocks = static_cast<int>((total + kThreads - 1) / kThreads);
 
   if (is_bf16) {
     DequantizeNvFp4Kernel<nv_bfloat16><<<blocks, kThreads, 0, stream>>>(
