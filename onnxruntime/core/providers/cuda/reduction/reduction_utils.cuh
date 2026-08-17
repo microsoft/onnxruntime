@@ -18,6 +18,20 @@ __forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   return static_cast<int>(++value_);
 }
 
+__forceinline__ __host__ __device__ bool reduction_scan_delta_is_valid(int delta, int remaining) {
+  return delta < remaining;
+}
+
+__forceinline__ __host__ __device__ bool advance_reduction_scan(int limit, int step, int& position) {
+  const int remaining = limit - position;
+  if (remaining <= step) {
+    return false;
+  }
+
+  position += step;
+  return true;
+}
+
 struct Square {
   template <typename T>
   __forceinline__ __device__ T operator()(const T& value) {
