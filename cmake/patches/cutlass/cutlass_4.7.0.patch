@@ -26,11 +26,17 @@ index a8af62be..22e7332d 100644
    virtual Status memsetDeviceImpl(
      void* destination, ///< Device memory pointer to be filled
      void const* fill_value, ///< Value to be filled in the buffer
+diff --git a/include/cutlass/gemm/kernel/sm100_static_tile_scheduler.hpp b/include/cutlass/gemm/kernel/sm100_static_tile_scheduler.hpp
+index ae31620a..fd559cbb 100644
+--- a/include/cutlass/gemm/kernel/sm100_static_tile_scheduler.hpp
++++ b/include/cutlass/gemm/kernel/sm100_static_tile_scheduler.hpp
+@@ -53 +52,0 @@ public:
+-  CUTLASS_HOST_DEVICE
 diff --git a/include/cutlass/exmy_base.h b/include/cutlass/exmy_base.h
 index be207a49..6028e01d 100644
 --- a/include/cutlass/exmy_base.h
 +++ b/include/cutlass/exmy_base.h
-@@ -1021,18 +1021,18 @@ struct float_exmy_base
+@@ -1021,17 +1021,17 @@ struct float_exmy_base
  
    /// Floating point conversion
    CUTLASS_HOST_DEVICE
@@ -51,4 +57,3 @@ index be207a49..6028e01d 100644
 +  explicit float_exmy_base(unsigned x) {
      storage = static_cast<Derived*>(this)->convert_from_float(float(x)).storage;
    }
- 
