@@ -21,6 +21,7 @@ struct AttentionKernelDebugInfo {
   std::optional<int> num_splits = std::nullopt;
   std::optional<int> gqa_group_size = std::nullopt;
   std::optional<int> effective_kv_length_bound = std::nullopt;
+  std::optional<bool> xqa_page_table_expanded = std::nullopt;
   void SetTrtFusedKernel(bool enable_trt_flash_attention, int sequence_length);
   void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
 };

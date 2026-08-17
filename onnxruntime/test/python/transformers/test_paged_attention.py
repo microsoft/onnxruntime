@@ -1104,6 +1104,17 @@ def capture_native_stdout(run_func):
         os.close(saved_fd)
 
 
+def capture_native_stdout_and_result(run_func):
+    """Capture native stdout while preserving a callable's return value."""
+    result = []
+
+    def save_result():
+        result.append(run_func())
+
+    output = capture_native_stdout(save_result)
+    return output, result[0]
+
+
 def has_cuda_device():
     """Every test in this file allocates torch tensors on "cuda" and runs the CUDA EP.
 
@@ -2133,8 +2144,112 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
 
     @parameterized.expand([("128", 128), ("256", 256), ("512", 512)])
     def test_xqa_block_size(self, _, block_size):
-        # Each block is remapped to block_size / 128 consecutive XQA pages.
+        # Larger blocks are remapped to consecutive 128-token XQA pages; 128-token tables pass through.
         self._check_xqa(paged_kv_block_size=block_size)
+
+    @parameterized.expand(
+        [
+            ("contiguous", [0, 1], -1),
+            ("fragmented", [2, 0], -1),
+            ("negative_one", [-1, 1], 128),
+        ]
+    )
+    def test_xqa_native_page_table_matches_expanded(self, _, expanded_block_ids, local_window_size):
+        """A 128-token native table must be exactly the page expansion of the 256-token table."""
+        # The -1 entries are outside the 128-token local window and therefore never dereferenced.
+        device = "cuda"
+        pages_per_expanded_block = 2
+        expanded_block_table = torch.tensor([expanded_block_ids], dtype=torch.int32, device=device)
+        page_offsets = torch.arange(pages_per_expanded_block, dtype=torch.int32, device=device)
+        native_page_table = torch.where(
+            expanded_block_table.unsqueeze(-1) < 0,
+            torch.full_like(expanded_block_table.unsqueeze(-1) + page_offsets, -1),
+            expanded_block_table.unsqueeze(-1) * pages_per_expanded_block + page_offsets,
+        ).reshape(1, -1)
+
+        expected_pages = []
+        for block_id in expanded_block_ids:
+            expected_pages.extend([-1, -1] if block_id < 0 else [block_id * 2, block_id * 2 + 1])
+        self.assertEqual(native_page_table.cpu().tolist(), [expected_pages])
+
+        physical_blocks = max(expanded_block_ids) + 1
+        expanded_key_cache = torch.randint(
+            -32,
+            33,
+            (physical_blocks, 256, 2, 64),
+            dtype=torch.int8,
+            device=device,
+        )
+        expanded_value_cache = torch.randint(
+            -32,
+            33,
+            (physical_blocks, 256, 2, 64),
+            dtype=torch.int8,
+            device=device,
+        )
+        native_key_cache = expanded_key_cache.reshape(physical_blocks * 2, 128, 2, 64).clone()
+        native_value_cache = expanded_value_cache.reshape(physical_blocks * 2, 128, 2, 64).clone()
+
+        query = torch.randn(1, 8 * 64, dtype=torch.float16, device=device)
+        key = torch.randn(1, 2 * 64, dtype=torch.float16, device=device)
+        value = torch.randn(1, 2 * 64, dtype=torch.float16, device=device)
+        cumulative_seqlens = torch.tensor([0, 1], dtype=torch.int32, device=device)
+        past_seqlens = torch.tensor([383], dtype=torch.int32, device=device)
+        k_scale = torch.tensor([1.0 / 32.0], dtype=torch.float32, device=device)
+        v_scale = torch.tensor([1.0 / 32.0], dtype=torch.float32, device=device)
+
+        def run(block_size, block_table, key_cache, value_cache):
+            config = self._config(
+                batch_size=1,
+                total_sequence_length=512,
+                paged_kv_block_size=block_size,
+                local=local_window_size > 0,
+                kv_cache_type="int8",
+                k_quant_type="PER_TENSOR",
+                v_quant_type="PER_TENSOR",
+                use_attention_metadata=True,
+            )
+            return paged_attention_func(
+                config,
+                query,
+                key,
+                value,
+                key_cache,
+                value_cache,
+                cumulative_seqlens,
+                past_seqlens,
+                block_table,
+                window_size=local_window_size,
+                k_scale=k_scale,
+                v_scale=v_scale,
+            )
+
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            native_debug, native_result = capture_native_stdout_and_result(
+                lambda: run(128, native_page_table, native_key_cache, native_value_cache)
+            )
+            expanded_debug, expanded_result = capture_native_stdout_and_result(
+                lambda: run(256, expanded_block_table, expanded_key_cache, expanded_value_cache)
+            )
+
+        for debug_output, expected_mode in (
+            (native_debug, "native"),
+            (expanded_debug, "expanded"),
+        ):
+            self.assertIn("Operator=PagedAttention", debug_output)
+            self.assertIn("SdpaKernel=XQA", debug_output)
+            self.assertIn(f"XqaPageTable={expected_mode}", debug_output)
+
+        native_output, native_key_cache_out, native_value_cache_out = native_result
+        expanded_output, expanded_key_cache_out, expanded_value_cache_out = expanded_result
+        torch.testing.assert_close(native_output, expanded_output, rtol=0, atol=0)
+        torch.testing.assert_close(native_key_cache_out.reshape(-1), expanded_key_cache_out.reshape(-1), rtol=0, atol=0)
+        torch.testing.assert_close(
+            native_value_cache_out.reshape(-1), expanded_value_cache_out.reshape(-1), rtol=0, atol=0
+        )
 
     def test_xqa_batch_one(self):
         self._check_xqa(batch_size=1)
