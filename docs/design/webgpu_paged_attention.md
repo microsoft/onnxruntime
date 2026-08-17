@@ -1,6 +1,6 @@
 # Design: WebGPU PagedAttention
 
-**Status**: Draft (v1 in progress)
+**Status**: v1 landed. Phase 2 partially landed (direct paged decode + fused paged prefill + Unpack/Repack skip fast paths).
 **Target**: WebGPU EP, `com.microsoft::PagedAttention` v1
 **Owner**: TBD
 **Precision**: `MLFloat16` only in v1
@@ -25,6 +25,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 
 - **[microsoft/onnxruntime#29867](https://github.com/microsoft/onnxruntime/pull/29867)** — draft CPU + WebGPU stubs (`Compute()` returns `NOT_IMPLEMENTED`) and helper cleanups.
 - **[microsoft/onnxruntime#29912](https://github.com/microsoft/onnxruntime/pull/29912)** (merged) — schema extension: `T_CACHE`/`T_KV_SCALE` type constraints; new optional inputs `slot_mapping`, `head_sink`, `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`, `attention_metadata`; new attributes `k_cache_dtype`, `v_cache_dtype`, `k_quant_type`, `v_quant_type`, `kv_cache_layout` (`SEPARATE`/`LATENT`), `v_head_size`, `rotary_offset`, `qk_norm_epsilon`, `use_smooth_softmax`. Also adds portable split-KV decode + XQA quantized decode kernels on CUDA.
+- **[microsoft/onnxruntime#31727](https://github.com/microsoft/onnxruntime/pull/31727)** — WebGPU Phase 2 (partial): direct paged split-reduce decode, fused paged prefill, and Unpack/Repack skip fast paths for uniform-batch and packed-varlen callers.
 - **[microsoft/onnxruntime-genai#2330](https://github.com/microsoft/onnxruntime-genai/pull/2330)** — model builder emits `PagedAttention` in place of GQA when `use_paged_attention=true`; scheduler feeds `block_table` / `cumulative_sequence_lengths` / `past_sequence_lengths`. Currently gated to `-e cuda` and fp16/bf16.
 - **[microsoft/onnxruntime-genai#2333](https://github.com/microsoft/onnxruntime-genai/pull/2333)** — follow-up: quantized KV cache in the builder, `attention_metadata` input wiring (index 16), CUDA-graph capture in the continuous-batching engine, block-accounting bug fix.
 
@@ -137,8 +138,9 @@ all of which line up with our v1 constraints and pre-passes.
 
 ### 4.2 Paged-aware skin around FA (v1)
 
-What we add for v1 is a paged-aware skin consisting of the Phase 1b passes
-(already done) plus three new shape-transform programs:
+v1 shipped a gather-then-flash fallback so `ApplyFlashAttention` could be
+reused verbatim. It composes the Phase 1b passes (already done) with three
+new shape-transform programs:
 
 | Existing (Phase 1b, packed varlen throughout) | Purpose |
 |---|---|
@@ -146,7 +148,7 @@ What we add for v1 is a paged-aware skin consisting of the Phase 1b passes
 | `PagedAttentionRotaryProgram` | RoPE on packed varlen Q or K. |
 | `ScatterKVToPagedCacheProgram` | Write K, V into the paged cache. |
 
-| New (Phase 1, this PR) | Purpose |
+| New (Phase 1) | Purpose |
 |---|---|
 | `PagedAttentionGatherKVProgram` | Un-page `key_cache` / `value_cache` through `block_table` into padded contiguous scratch tensors `(B, kv_num_heads, max_kv_len, head_size)`. |
 | `PagedAttentionUnpackQueryProgram` | Expand packed varlen Q from `(token_count, num_heads * head_size)` to padded BSNH `(B, max_seqlen_q, num_heads, head_size)` using `cumulative_sequence_length`. Padding slots are zero-filled; their outputs are dropped in the repack. |
@@ -160,15 +162,73 @@ K/V scratch through `past_key` / `past_value` and `nullptr` for the present
 K/V parameters, so it reads the contiguous scratch and does not touch the
 paged cache.
 
-### 4.3 Cost of the fallback path
+### 4.3 Direct paged paths (Phase 2, this PR)
+
+Phase 2 keeps the Phase-1b preprocessing untouched but replaces the gather
+step with two paged-aware FA programs that address `key_cache` and
+`value_cache` directly through `block_table`. This eliminates the dense K/V
+scratch and its bandwidth. It also collapses the padded-BSNH Q/output round
+trip on the common uniform-batch and packed-varlen cases (see
+"Unpack/Repack skip" below).
+
+**Two direct paths**, selected by `max_seqlen_q` (mirrors the dense-FA
+split-reduce threshold):
+
+- **Direct paged decode** (`max_seqlen_q < 32`): dispatch
+  `FlashAttentionPagedDecodeQKV` + `FlashAttentionPagedDecodeVxReduce` on the
+  paged cache. No adapter gating — the split-reduce path already sizes its
+  workgroup budget for every WebGPU adapter class.
+- **Fused paged prefill** (`max_seqlen_q >= 32`): dispatch
+  `FlashAttentionPagedPrefillProgram`. This is a straight port of the dense
+  FA prefill shader's shared-memory path, so it is gated to the shm-path
+  adapters (Apple / NVIDIA / any adapter without subgroups). On other
+  adapters (Qualcomm / AMD / Intel with subgroups) the caller falls back to
+  gather-then-flash.
+
+**Selection helper.** All fast-path decisions in `PagedAttention` and
+`ApplyFlashAttention` consult one shared predicate:
+
+```cpp
+bool ShouldRunFusedPagedPrefill(context, is_fp16, max_seqlen_q,
+                                head_size, block_size);
+```
+
+It rejects when: the `ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED=0` kill switch is
+set, the adapter takes the subgroup path, `!is_fp16`, `max_seqlen_q < 32`,
+the workgroup shared-memory budget can't fit a K/V tile
+(fp16: `head_size > 256`), or `block_size < max_k_step` (the tile-per-lookup
+invariant, see §8 pitfalls). Because the same predicate gates the
+"skip `RunGatherKV`", "skip `q_padded` scratch", and "select fused shader"
+decisions, the three cannot drift.
+
+**Unpack/Repack skip.** When direct paged attention is used, the packed
+varlen Q buffer can be handed to FA as a rank-4 view without materializing
+a padded BSNH scratch:
+
+- **Uniform-batch mode** (`B * max_seqlen_q == token_count`): the packed
+  buffer is byte-identical to `[B, max_seqlen_q, N, H]`. Applies to decode
+  (`max_seqlen_q == 1`), `B == 1` prefill, and equal-length batched prefill
+  (the common continuous-batching case).
+- **Varlen-Q mode**: for non-uniform prefill, FA gets a
+  `[token_count, 1, N, H]` view plus `cumulative_seqlens_q`; the fused
+  paged-prefill shader reads Q rows through `q_row = cumulative_seqlens_q[b]
+  + q_idx` (`q_varlen` template variant). Only safe when
+  `ShouldRunFusedPagedPrefill` returns true.
+
+Skipping unpack + repack removes two dispatches (~300–500 µs of CPU
+dispatch cost per Run on D3D12) plus the padded scratch allocation
+(`B * max_seqlen_q * hidden * 2 B`, tens of MB at long prefill).
+
+### 4.4 Cost of the fallback path
 
 Two full paged K/V reads plus two contiguous K/V writes per layer per step
 (gather), Q/output shuffles proportional to `token_count`, and a scratch
 allocation of `2 * B * kv_num_heads * max_kv_len * head_size + B *
-max_seqlen_q * hidden_size` bytes. Fusing all of these into a paged-aware FA
-kernel is the Phase 2 optimization — see §5 Phase 2.
+max_seqlen_q * hidden_size` bytes. Fallback is exercised on adapters or
+configurations that `ShouldRunFusedPagedPrefill` rejects; direct paged
+paths cover the common case.
 
-### 4.4 Host-visible values and graph capture (deferred to Phase 2)
+### 4.5 Host-visible values and graph capture (deferred to Phase 2)
 
 The v1 op performs **one blocking D→H metadata download per node per Run**.
 It packs `cumulative_seqlens_q` and `past_seqlens` into a small GPU buffer,
@@ -264,61 +324,73 @@ layout, with GenAI's builder gate flipped to allow `-e webgpu`.
 
 ### Phase 2 — Perf and forward-looking schema
 
-The following five items define the Phase 2 implementation scope. Packed-QKV
-support itself is already functional in Phase 1; the fourth item is an
-optimization of that existing path.
+Phase 2 originally covered five items. Three landed in
+[#31727](https://github.com/microsoft/onnxruntime/pull/31727); the other two
+remain future work. Numbering is kept for cross-reference.
 
-1. **Validate and tune direct paged decode.** The current implementation uses
-  the direct paged split-reduce kernels when `max_seqlen_q < 32` and retains
-  gather-then-flash for longer requests. Benchmark both paths at the boundary
-  (`1`, `4`, `16`, `31`, `32`, `64`) across MHA, GQA, batch sizes, past lengths,
-  packed QKV, rotary, and cache aliasing. Keep correctness tests for every
-  route and replace the cutoff with a measured or explicitly documented
-  policy if adapter-specific results require it. The current benchmark is the
-  C++ Google Benchmark harness at
-  `onnxruntime/test/onnx/microbenchmark/paged_attention.cc`, which covers
-  `decode` (one new token per request) and prefill (uniform and varlen Q
-  lengths) so the same matrix can be revisited as new shapes land. Direct
-  paged decode is the production route for short Q sequences.
+#### Phase 2 items landed in this PR
 
-2. **Complete deferred Phase 1 feature support.** Add and test the features
-  currently rejected by WebGPU: `softcap`, `local_window_size`, `head_sink`,
-  `use_smooth_softmax`, `q_norm_weight`, and `k_norm_weight`. Evaluate
-  `slot_mapping` including negative-slot skip-write semantics, plus
-  `rotary_offset` and non-default `v_head_size` when model compatibility
-  requires them. Add `bfloat16` only when target WebGPU adapters provide a
-  reliable storage and shader path. Each feature should have a support test
-  and an explicit unsupported-path test until implemented.
+**1. Validate and tune direct paged decode.** ✅ Direct paged split-reduce
+kernels (`FlashAttentionPagedDecodeQKV` + `FlashAttentionPagedDecodeVxReduce`)
+are the production route when `max_seqlen_q < 32`. Both paths (direct paged
+and gather-then-flash fallback) are tested end-to-end in
+`onnxruntime/test/contrib_ops/paged_attention_op_test.cc` for MHA, GQA,
+mixed batch lengths, packed QKV, rotary, and cache-aliasing configs, and are
+A/B-benchmarked in
+`onnxruntime/test/onnx/microbenchmark/paged_attention.cc` (toggle via the
+`ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED` env var). The `< 32` cutoff is the
+same threshold FA uses internally between its split-reduce decode and
+single-kernel prefill tiers; no adapter-specific override has been needed.
 
-3. **Implement fused paged prefill.** Replace the prefill gather-then-flash
-  sequence with a dedicated `FlashAttentionPagedPrefillProgram` that indexes
-  `key_cache` and `value_cache` directly through `block_table`. It should
-  retain the single-kernel prefill algorithm and workgroup Q tiling of
-  `FlashAttentionProgram`; only the K/V tile loads become page-table-aware.
-  The first implementation supports fp16, no attention bias, no head sink,
-  no TurboQuant, and no graph capture. It must preserve variable-Q-length
-  causal masking via `seqlen_k` and `seqlens_q`. The goal is to eliminate the
-  dense K/V scratch allocation and gather bandwidth. Compare latency, peak
-  scratch memory, and output parity against the current fallback for MHA,
-  GQA, mixed batch lengths, and rotary inputs.
+**3. Fused paged prefill.** ✅ `FlashAttentionPagedPrefillProgram` (in
+`flash_attention.{h,cc}` and `flash_attention_paged_prefill.wgsl.template`)
+indexes `key_cache` / `value_cache` directly through `block_table`,
+preserving the single-kernel prefill algorithm and workgroup Q tiling of
+`FlashAttentionProgram`. It supports fp16, both BSNH Q and packed varlen Q
+(`q_varlen` template variant), variable-Q-length causal masking via
+`seqlen_k` + `seqlens_q`, and no attention bias / head sink / TurboQuant.
+`ShouldRunFusedPagedPrefill` (see §4.3) is the shared selection gate.
+Measured 1.11×–1.49× fused-vs-fallback wins across the benchmarked shape
+matrix on the tested adapters.
 
-4. **Fuse packed-QKV preprocessing.** Combine the existing split-packed-QKV,
-  rotary, reshape, and cache-scatter stages, mirroring
-  `SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram`. This should remove
-  intermediate Q/K/V tensors and avoid an extra full-token read/write cycle.
-  Preserve the Phase 1 packed-QKV behavior and add parity tests for packed
-  non-rotary, packed rotary, interleaved rotary, MHA, and GQA cases.
+**Skip Unpack/Repack fast paths.** ✅ New in this PR, not in the original
+Phase 2 list. When direct paged attention is active, the packed varlen Q
+buffer is handed to FA as a rank-4 view without materializing padded BSNH
+Q/output scratch. Uniform-batch mode (`B * max_seqlen_q == token_count`)
+covers decode, `B == 1` prefill, and equal-length batched prefill; varlen-Q
+mode covers non-uniform prefill through the fused shader's `q_varlen`
+template variant. Regression tested by
+`EndToEnd_Prefill_MultiBatch_Varlen_Fused` in
+`paged_attention_op_test.cc`. See §4.3 for the correctness invariant.
 
-5. **Make PagedAttention graph-capture-safe.** Consume
-  `attention_metadata: int32[2]` (input 16 under the merged schema) as
-  `[max_query_len_bound, max_kv_len_bound]`, so scratch buffers can be sized
-  once from stable bounds. Move `seqlen_k` and per-batch Q-length derivation
-  to the GPU, then write indirect dispatch dimensions for
-  `PagedAttentionGatherKVProgram`, `PagedAttentionUnpackQueryProgram`, the
-  FlashAttention prefill/decode programs, and
-  `PagedAttentionRepackOutputProgram`. This removes the current GPU-to-CPU
-  metadata copy and per-step shape-dependent allocation, the two blockers to
-  graph capture. The GenAI integration belongs in Phase 5.
+#### Phase 2 items remaining (future work)
+
+**2. Complete deferred Phase 1 feature support.** Add and test the features
+currently rejected by WebGPU: `softcap`, `local_window_size`, `head_sink`,
+`use_smooth_softmax`, `q_norm_weight`, and `k_norm_weight`. Evaluate
+`slot_mapping` including negative-slot skip-write semantics, plus
+`rotary_offset` and non-default `v_head_size` when model compatibility
+requires them. Add `bfloat16` only when target WebGPU adapters provide a
+reliable storage and shader path. Each feature should have a support test
+and an explicit unsupported-path test until implemented.
+
+**4. Fuse packed-QKV preprocessing.** Combine the existing split-packed-QKV,
+rotary, reshape, and cache-scatter stages, mirroring
+`SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram`. This should remove
+intermediate Q/K/V tensors and avoid an extra full-token read/write cycle.
+Preserve the Phase 1 packed-QKV behavior and add parity tests for packed
+non-rotary, packed rotary, interleaved rotary, MHA, and GQA cases.
+
+**5. Make PagedAttention graph-capture-safe.** Consume
+`attention_metadata: int32[2]` (input 16 under the merged schema) as
+`[max_query_len_bound, max_kv_len_bound]`, so scratch buffers can be sized
+once from stable bounds. Move `seqlen_k` and per-batch Q-length derivation
+to the GPU, then write indirect dispatch dimensions for
+`PagedAttentionGatherKVProgram`, `PagedAttentionUnpackQueryProgram`, the
+FlashAttention prefill/decode programs, and
+`PagedAttentionRepackOutputProgram`. This removes the current GPU-to-CPU
+metadata copy and per-step shape-dependent allocation, the two blockers to
+graph capture. The GenAI integration belongs in Phase 5.
 
 ### Phase 3 — Quantized KV cache (`T_CACHE = int8`)
 
@@ -354,12 +426,21 @@ onnxruntime/contrib_ops/webgpu/bert/
   paged_attention.cc                                     # host dispatch and validation
   paged_attention_pack_metadata.wgsl.template            # pack metadata for one D→H readback
   paged_attention_split_packed_qkv.wgsl.template         # split packed QKV input
-  paged_attention_rotary.wgsl.template                  # rotary embedding for Q or K
+  paged_attention_rotary.wgsl.template                   # rotary embedding for Q or K
   paged_attention_scatter_kv.wgsl.template               # scatter K/V into paged cache
-  paged_attention_gather_kv.wgsl.template                # gather paged K/V into padded scratch
-  paged_attention_unpack_query.wgsl.template             # unpack packed Q into LEFT-aligned BSNH
-  paged_attention_repack_output.wgsl.template            # repack padded output to packed output
+  paged_attention_gather_kv.wgsl.template                # gather paged K/V into padded scratch (fallback)
+  paged_attention_unpack_query.wgsl.template             # unpack packed Q into LEFT-aligned BSNH (fallback)
+  paged_attention_repack_output.wgsl.template            # repack padded output to packed output (fallback)
+  # Paged-aware FA programs (Phase 2, in flash_attention.{h,cc}):
+  flash_attention_paged_decode_qkv.wgsl.template         # direct paged split-K decode QKV
+  flash_attention_paged_decode_vx_reduce.wgsl.template   # direct paged split-K decode reduce
+  flash_attention_paged_prefill.wgsl.template            # fused paged prefill (q_varlen variant)
 ```
+
+The direct paged decode / fused paged prefill programs are declared in
+`flash_attention.h` alongside the dense-FA programs so they can share the
+same `ApplyFlashAttention` dispatch surface, adapter cache hints, and
+`ShouldRunFusedPagedPrefill` selection helper.
 
 Shared helper (already exists on CUDA, refactor location in Phase 1):
 
@@ -384,7 +465,7 @@ fused paged prefill paths to be compared directly (toggle via the
 
 ---
 
-## 7. Dispatch cascade (Phase 1)
+## 7. Dispatch cascade
 
 ```
 ComputeInternal:
@@ -400,18 +481,50 @@ ComputeInternal:
   if do_rotary:
     RunRotaryEmbedding() for Q and K
   RunScatterKVToPagedCache()
-  RunGatherKV()          # -> [B, kv_num_heads, max_kv_len, head_size]
-  RunUnpackQuery()       # -> [B, max_seqlen_q, num_heads, head_size]
-  ApplyFlashAttention()  # decode and prefill tiers selected internally
-  RunRepackOutput()      # -> [token_count, hidden_size]
-    return OK
+
+  # Route selection:
+  use_direct_paged_decode   = (max_seqlen_q  < 32)
+  use_direct_paged_prefill  = ShouldRunFusedPagedPrefill(context, is_fp16,
+                                                        max_seqlen_q,
+                                                        head_size, block_size)
+  use_direct_paged_attention = use_direct_paged_decode or use_direct_paged_prefill
+
+  # Unpack/Repack skip:
+  uniform_q_lens   = (B * max_seqlen_q == token_count)
+  varlen_mode      = (not uniform_q_lens) and use_direct_paged_prefill
+  skip_unpack_repack = uniform_q_lens or varlen_mode
+
+  # (a) Direct-paged fast path (Phase 2, common case):
+  if use_direct_paged_attention:
+    if skip_unpack_repack:
+      q_view      = view over packed Q as [B, max_seqlen_q, N, H]
+                    (uniform) or [token_count, 1, N, H] (varlen)
+      output_view = matching view over the packed output buffer
+      ApplyFlashAttention(q_view, key_cache, value_cache, block_table,
+                          seqlens_q, seqlen_k, output_view,
+                          cumulative_seqlens_q=varlen ? ptr : nullptr)
+                          # picks FlashAttentionPagedPrefillProgram or
+                          # FlashAttentionPagedDecode{QKV,VxReduce}
+    else:
+      RunUnpackQuery()      # padded BSNH Q
+      ApplyFlashAttention() on paged cache directly (no gather)
+      RunRepackOutput()
+
+  # (b) Fallback (rejected by ShouldRunFusedPagedPrefill, e.g. subgroup adapter):
+  else:
+    RunGatherKV()          # -> [B, kv_num_heads, max_kv_len, head_size]
+    RunUnpackQuery()       # -> [B, max_seqlen_q, num_heads, head_size]
+    ApplyFlashAttention()  # dense FA reads gathered K/V scratch
+    RunRepackOutput()      # -> [token_count, hidden_size]
+
+  return OK
 ```
 
 `max_seqlen_q` and `max_kv_len` are derived from one packed metadata D→H
-readback per node. `ApplyFlashAttention` selects its decode or prefill tier
-internally based on the padded Q sequence length. Phase 2 uses
-`attention_metadata` and GPU-side metadata preparation to remove this host
-readback and make the path graph-capture-safe.
+readback per node. Phase 2 direct paths remove the gather step and, on
+uniform-batch and packed-varlen callers, the padded Q/output round trip.
+The residual D→H readback is a graph-capture blocker addressed by
+outstanding Phase 2 item 5 (`attention_metadata` + indirect dispatch).
 
 Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 
@@ -427,9 +540,11 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 | Pitfall | Mitigation |
 |---|---|
 | WGSL has no dynamic 4-D array indexing into storage buffers. | Linearize the cache addressing in the shader: `((block_row * block_size + in_block) * kv_num_heads + head) * head_size + c`. Pass `block_size`, `kv_num_heads`, `head_size`, `max_num_blocks_per_seq` as uniforms. |
-| Storage buffer binding max is adapter-dependent (128 MiB on some). | The paged cache is addressed through per-layer bindings, and the gather-then-flash scratch buffers are checked against `maxStorageBufferBindingSize` before allocation. |
+| Storage buffer binding max is adapter-dependent (128 MiB on some). | The paged cache is addressed through per-layer bindings, and the gather-then-flash scratch buffers are checked against `maxStorageBufferBindingSize` before allocation. On the direct-paged fast paths, the padded Q/output scratch check is skipped (see `skip_unpack_repack` in §4.3) so sparse varlen batches whose padded-Q size would exceed the limit but whose actual `token_count * hidden_size` Q buffer fits are not rejected. |
 | WebGPU graph capture forbids host-visible reads mid-graph. | Consume `attention_metadata` (Phase 2) instead of D→H syncing `cumulative_seqlens_q`. |
 | Subgroup width varies (16 Intel, 32 NV/AMD, 64 Qualcomm/Apple). | Copy the `is_qualcomm`/`is_nvidia`/`is_apple`/`has_subgroups` cache-hint knobs from `FlashAttentionProgram`. |
+| WGSL forbids mixed `i32 + u32` arithmetic. `cumulative_seqlens_q` is stored as `array<i32>` but the row index is `u32`; tint reports the resolution failure as an opaque `absl::…raw_hash_map<>::at` at runtime. | Cast the storage-buffer element to `u32` before the addition (`u32(cumulative_seqlens_q[b]) + q_idx`). Applies in both the fused prefill shader's `loadq` and `writeo`. |
+| Fused paged prefill assumes one K/V tile lives entirely inside a single paged block, so both `loadk` and `loadv` do one `block_table` lookup per tile. `paged_attention_helper` only enforces `block_size >= 16` (power-of-two), so `block_size = 16` combined with fp16 `head_size <= 128` (`max_k_step = 32`) would splice into a physically-adjacent block that need not be the next entry in `block_table`. | `ShouldRunFusedPagedPrefill` rejects `block_size < max_k_step`; callers fall back to gather-then-flash. Both values are powers of two ≥ 16, so `>=` implies alignment. |
 
 ---
 
@@ -438,6 +553,13 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 - **Correctness (host-side enforce paths, lavapipe-compatible)**: input
   validation tests. See the [`webgpu-local-testing`](../../.agents/skills/webgpu-local-testing/SKILL.md)
   skill for lavapipe details.
+- **End-to-end op tests** (`onnxruntime/test/contrib_ops/paged_attention_op_test.cc`,
+  `PagedAttention.EndToEnd_*`): cover MHA, GQA, single/multi-batch,
+  variable past lengths, empty tokens (`token_count == 0` cache-only
+  copy), packed QKV, rotary, mixed prefill+decode batches, and cache
+  aliasing (via IO-binding). `EndToEnd_Prefill_MultiBatch_Varlen_Fused`
+  is the regression test for the fused paged-prefill varlen path
+  (§4.3).
 - **Numerical correctness against GQA**: [`test_paged_attention.py`](../../onnxruntime/test/python/transformers/test_paged_attention.py)
   is EP-parametrized on `Config.ep`. The CUDA classes
   (`TestPagedAttention`, `TestPagedAttentionMEA`,
@@ -449,6 +571,14 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
   lavapipe crashes on MatMul, the numerical tests must run on
   **macOS-arm64 Metal** or on a discrete Windows/Linux WebGPU adapter as the
   source of truth (same policy as the expanded-Attention tests).
+- **Micro-benchmark A/B** (`onnxruntime/test/onnx/microbenchmark/paged_attention.cc`,
+  Google Benchmark): decode and prefill (uniform + varlen) shape matrix.
+  Toggle the fused paged-prefill path with
+  `ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED=0|1` to compare against
+  gather-then-flash on the same session. Peak scratch memory can be
+  inspected in adapter tooling since the direct path skips the
+  `k_padded`/`v_padded` and (for `skip_unpack_repack`) `q_padded`/
+  `output_padded` allocations.
 - **GenAI E2E**: run Phi-3-mini or Llama-3.2-1B through the GenAI continuous
   batching engine on WebGPU once GenAI PR #2330's `-e webgpu` gate is
   flipped.
