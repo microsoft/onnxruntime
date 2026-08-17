@@ -7,6 +7,8 @@
 #include <cuda.h>
 #endif
 
+#include <algorithm>
+
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -521,10 +523,9 @@ struct MmaShape {
   int64_t k;
 };
 
-// N = 8704 gives 544 column tiles, i.e. 136 blocks at ColTiles = 4, which is above the SM count
-// of every current device and so selects the wide shape. N = 36 leaves 4 columns in the last
-// 16-column tile, which is the only way to make a lane's *low* column fall out of range (N = 40
-// only exercises the high column), so it covers the lo_ok == false predication.
+// N = 8704 gives 544 column tiles and exercises a large, ragged grid. N = 36 leaves 4 columns in
+// the last 16-column tile, which is the only way to make a lane's *low* column fall out of range
+// (N = 40 only exercises the high column), so it covers the lo_ok == false predication.
 constexpr MmaShape kMmaShapes[] = {{36, 128}, {40, 128}, {512, 256}, {2048, 512}, {8704, 256}};
 
 }  // namespace
@@ -596,6 +597,76 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
     test.AddOptionalInputEdge<float>();  // input_scale (skipped)
     test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
     test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+    test.SetOutputTolerance(0.5f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+// Covers the shape thresholds added for Qwen3.8 MTP: a medium-wide grid keeps ColTiles == 1 and
+// selects KSplit == 2, the same grid with a long reduction selects KSplit == 8, and a wide grid
+// selects ColTiles == 4. The N values are derived from the device's SM count so each case lands on
+// the intended grid-wave boundary on H200 and on smaller SM80+ devices.
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundariesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  int device = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaDeviceProp prop{};
+  ASSERT_EQ(cudaGetDeviceProperties(&prop, device), cudaSuccess);
+
+  struct Case {
+    int64_t n;
+    int64_t k;
+  };
+  const int64_t sm_count = prop.multiProcessorCount;
+  const Case cases[] = {
+      {64 * sm_count, 5120},  // 4 waves of single-column blocks, ordinary reduction
+      {64 * sm_count, 8192},  // same grid, long reduction retains KSplit 8
+      {512 * sm_count, 512},  // 8 waves of four-column blocks, wide-column configuration
+  };
+
+  constexpr int64_t m = 4;
+  for (const Case& shape : cases) {
+    const int64_t n = shape.n;
+    const int64_t k = shape.k;
+    const int64_t k_blocks = k / 16;
+    SCOPED_TRACE("N = " + std::to_string(n) + ", K = " + std::to_string(k));
+
+    static const uint8_t kWeightBytes[] = {0x22, 0x44, 0xAA, 0x11};
+    static const float kWeightValues[] = {1.0f, 2.0f, -1.0f, 0.5f};
+    std::vector<uint8_t> b(static_cast<size_t>(n * (k / 2)));
+    std::vector<uint8_t> weight_scale(static_cast<size_t>(n * k_blocks), 0x38);
+    for (int64_t col = 0; col < n; ++col) {
+      const int pattern = static_cast<int>(col & 3);
+      std::fill(b.begin() + static_cast<size_t>(col * (k / 2)),
+                b.begin() + static_cast<size_t>((col + 1) * (k / 2)), kWeightBytes[pattern]);
+    }
+
+    std::vector<float> a(static_cast<size_t>(m * k));
+    for (int64_t row = 0; row < m; ++row) {
+      std::fill(a.begin() + static_cast<size_t>(row * k),
+                a.begin() + static_cast<size_t>((row + 1) * k), static_cast<float>(row + 1));
+    }
+    std::vector<float> expected(static_cast<size_t>(m * n));
+    for (int64_t row = 0; row < m; ++row) {
+      for (int64_t col = 0; col < n; ++col) {
+        expected[static_cast<size_t>(row * n + col)] =
+            static_cast<float>(k) * static_cast<float>(row + 1) * kWeightValues[col & 3];
+      }
+    }
+
+    OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("block_size", 16);
+    test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+    test.AddInput<uint8_t>("B", {n, k / 2}, b);
+    test.AddInput<uint8_t>("weight_scale", {n, k_blocks}, weight_scale);
+    test.AddInput<float>("weight_scale_2", {1}, {1.0f});
+    test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
     test.SetOutputTolerance(0.5f);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
