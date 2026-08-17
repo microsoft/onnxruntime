@@ -36,6 +36,8 @@ class GpuBufferAllocator : public IAllocator {
   std::function<const BufferManager&()> buffer_manager_getter_;
   std::function<bool()> should_submit_zero_initialize_;
   bool mapped_at_creation_;
+  // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
+  // "lazy_clear_resource_on_first_use" toggle, which is enabled by WebGpuContext.
   bool initialize_to_zero_;
 };
 

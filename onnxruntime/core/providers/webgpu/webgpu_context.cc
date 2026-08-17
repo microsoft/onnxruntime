@@ -332,11 +332,11 @@ Status WebGpuContext::EncodeDeferredDispatches() {
     return Status::OK();
   }
 
-  ORT_ENFORCE(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
-                  max_num_pending_dispatches_,
-              "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
-              num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
-              ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
+  ORT_RETURN_IF_NOT(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
+                        max_num_pending_dispatches_,
+                    "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
+                    num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
+                    ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
 
   auto reset_deferred_state = [this]() {
     deferred_dispatches_.clear();

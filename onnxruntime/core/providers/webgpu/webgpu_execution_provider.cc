@@ -854,12 +854,12 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
-  run_active_ = true;
+  run_active_.store(true);
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  run_active_ = false;
+  run_active_.store(false);
 
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
