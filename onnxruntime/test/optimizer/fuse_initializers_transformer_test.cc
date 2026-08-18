@@ -520,10 +520,10 @@ TEST(TransformerTest, FuseInitializersSkipsOverridableInitializer) {
   ModelTestBuilder builder(graph);
 
   NodeArg* initializer = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(1.0f)});
-  NodeArg* cast_output = builder.MakeIntermediate<float>({1});
+  NodeArg* cast_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1});
   builder.AddNode("Cast", {initializer}, {cast_output})
       .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-  NodeArg* output = builder.MakeOutput<float>({1});
+  NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{1});
   builder.AddNode("Neg", {cast_output}, {output});
 
   graph.SetInputs({initializer});
