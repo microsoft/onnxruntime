@@ -29,24 +29,16 @@ OrtStatus* ORT_API_CALL StreamImpl::FlushImpl(_In_ OrtSyncStreamImpl* /*this_ptr
 /*static*/
 OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
   auto& impl = *static_cast<StreamImpl*>(this_ptr);
-  auto* arena = impl.factory_->GetArenaAllocator();
-  if (arena) {
-    arena->ResetChunksUsingStream(this_ptr);
-  }
-
-  return nullptr;
+  return impl.factory_->ResetArenaChunksUsingStream(this_ptr);
 }
 
 // callback for EP library to release any internal state
 /*static*/
 void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ OrtSyncStreamImpl* this_ptr) noexcept {
   auto& impl = *static_cast<StreamImpl*>(this_ptr);
-  if (auto* arena = impl.factory_->GetArenaAllocator(); arena != nullptr) {
-    // Reset stream-tagged chunks before the stream object is deleted.
-    OrtStatus* status = arena->ResetChunksUsingStream(this_ptr);
-    if (status != nullptr) {
-      impl.ort_api.ReleaseStatus(status);
-    }
+  OrtStatus* status = impl.factory_->ResetArenaChunksUsingStream(this_ptr);
+  if (status != nullptr) {
+    impl.ort_api.ReleaseStatus(status);
   }
 
   delete &impl;

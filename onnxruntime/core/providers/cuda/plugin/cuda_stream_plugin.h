@@ -91,6 +91,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   // reference it have completed, so we synchronize the stream first.
   mutable std::mutex deferred_cpu_buffers_mutex_;
   std::vector<void*> deferred_cpu_buffers_;
+  bool stream_synchronized_and_chunks_reset_ = false;
 };
 
 /// CUDA event-based notification for stream synchronization.

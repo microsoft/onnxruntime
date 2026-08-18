@@ -229,6 +229,7 @@ ArenaImpl::ChunkHandle ArenaImpl::AllocateChunk() {
     ChunkHandle h = free_chunks_list_;
     Chunk* c = ChunkFromHandle(h);
     free_chunks_list_ = c->next;
+    *c = Chunk{};
     return h;
   }
   ChunkHandle h = chunks_.size();
@@ -254,6 +255,8 @@ void ArenaImpl::DeallocateChunk(ChunkHandle h) {
     c->stream_sync_id = 0;
   }
 
+  c->quarantined = false;
+
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
 }
@@ -275,6 +278,10 @@ void* ArenaImpl::Reserve(size_t size) {
     return nullptr;
 
   std::lock_guard<std::mutex> lock(lock_);
+
+  if (abandoned_) {
+    return nullptr;
+  }
 
   // Check remaining budget before allocating.
   // Use narrow<> to catch truncation (int64_t -> size_t), then avoid overflow
@@ -340,11 +347,24 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bo
 
   std::lock_guard<std::mutex> lock(lock_);
 
+  if (abandoned_) {
+    return nullptr;
+  }
+
   if (stream && stream_to_chunks_.find(stream) == stream_to_chunks_.end()) {
-    stream_to_chunks_.insert({stream, std::set<size_t>{}});
     const OrtSyncStreamImpl* stream_impl = ep_api_.SyncStream_GetImpl(stream);
     assert(stream_impl);
-    impl_to_stream_.insert({stream_impl, stream});
+    bool impl_inserted = false;
+    ORT_TRY {
+      impl_inserted = impl_to_stream_.insert({stream_impl, stream}).second;
+      stream_to_chunks_.insert({stream, std::set<size_t>{}});
+    }
+    ORT_CATCH(...) {
+      if (impl_inserted) {
+        impl_to_stream_.erase(stream_impl);
+      }
+      ORT_RETHROW;
+    }
   }
 
   auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream);
@@ -394,6 +414,10 @@ OrtStatus* ArenaImpl::GetStats(OrtKeyValuePairs** stats) {
 OrtStatus* ArenaImpl::Shrink() {
   std::lock_guard<std::mutex> lock(lock_);
 
+  if (abandoned_) {
+    return nullptr;
+  }
+
   // Note: Reserved memory (via Reserve()) is allocated directly through the device
   // allocator and stored in reserved_chunks_, bypassing the region/chunk system.
   // Shrink() intentionally does NOT free reserved memory because it is used for
@@ -420,7 +444,7 @@ OrtStatus* ArenaImpl::Shrink() {
     ChunkHandle h = region_begin_chunk;
     while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
-      if (c->in_use()) {
+      if (c->in_use() || c->quarantined) {
         // at-least one used chunk found in the allocation region -
         // so we cannot deallocate it
         deallocate_region = false;
@@ -499,6 +523,10 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, 
       Chunk* chunk = ChunkFromHandle(h);
       CUDA_ARENA_ENFORCE(!chunk->in_use(), __FUNCTION__);
 
+      if (chunk->quarantined) {
+        continue;
+      }
+
       if (chunk->size >= rounded_bytes) {
         bool safe_to_use = chunk->stream == stream ||
                            !chunk->stream ||
@@ -506,12 +534,35 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, 
                             chunk->stream_sync_id < ep_api_.GetSyncIdForLastWaitOnSyncStream(chunk->stream, stream));
 
         if (safe_to_use) {
-          chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+          bool inserted_destination_mapping = false;
+          if (stream) {
+            inserted_destination_mapping = stream_to_chunks_.at(stream).insert(h).second;
+          }
+
+          ORT_TRY {
+            chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+          }
+          ORT_CATCH(...) {
+            if (inserted_destination_mapping) {
+              stream_to_chunks_.at(stream).erase(h);
+            }
+            ORT_RETHROW;
+          }
 
           if (stream) {
+            if (chunk->stream && chunk->stream != stream) {
+              OrtSyncStream* previous_stream = chunk->stream;
+              auto previous_it = stream_to_chunks_.find(previous_stream);
+              if (previous_it != stream_to_chunks_.end()) {
+                previous_it->second.erase(h);
+                if (previous_it->second.empty()) {
+                  stream_to_chunks_.erase(previous_it);
+                  impl_to_stream_.erase(ep_api_.SyncStream_GetImpl(previous_stream));
+                }
+              }
+            }
             chunk->stream = stream;
             chunk->stream_sync_id = ep_api_.SyncStream_GetSyncId(stream);
-            stream_to_chunks_[stream].insert(h);
           }
 
           return chunk;
@@ -532,13 +583,20 @@ void ArenaImpl::SplitChunk(ChunkHandle h, size_t num_bytes) {
   Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
   new_chunk->stream = c->stream;
   new_chunk->stream_sync_id = c->stream_sync_id;
+  new_chunk->quarantined = c->quarantined;
 
   // Track the remainder chunk's stream assignment so ResetChunksUsingStream
   // can clear it later. Without this, the free remainder retains a stale
   // stream pointer after the stream is released — risking use-after-free
   // in GetSyncIdForLastWaitOnSyncStream.
   if (new_chunk->stream) {
-    stream_to_chunks_[new_chunk->stream].insert(h_new_chunk);
+    ORT_TRY {
+      stream_to_chunks_.at(new_chunk->stream).insert(h_new_chunk);
+    }
+    ORT_CATCH(...) {
+      DeallocateChunk(h_new_chunk);
+      ORT_RETHROW;
+    }
   }
 
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
@@ -567,6 +625,9 @@ void ArenaImpl::Free(void* p) {
   }
 
   std::lock_guard<std::mutex> lock(lock_);
+  if (abandoned_) {
+    return;
+  }
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(device_allocator_.get(), it->first);
@@ -588,7 +649,9 @@ void ArenaImpl::DeallocateRawInternal(void* ptr) {
 void ArenaImpl::Merge(ChunkHandle h1, ChunkHandle h2) {
   Chunk* c1 = ChunkFromHandle(h1);
   Chunk* c2 = ChunkFromHandle(h2);
-  CUDA_ARENA_ENFORCE(!c1->in_use() && !c2->in_use() && c1->stream == c2->stream, __FUNCTION__);
+  CUDA_ARENA_ENFORCE(!c1->in_use() && !c2->in_use() &&
+                         c1->stream == c2->stream && c1->quarantined == c2->quarantined,
+                     __FUNCTION__);
 
   ChunkHandle h3 = c2->next;
   c1->next = h3;
@@ -657,7 +720,7 @@ ArenaImpl::ChunkHandle ArenaImpl::Coalesce(ChunkHandle h) {
 
   if (c->next != kInvalidChunkHandle) {
     Chunk* cnext = ChunkFromHandle(c->next);
-    if (!cnext->in_use() && cnext->stream == c->stream) {
+    if (!cnext->in_use() && cnext->stream == c->stream && cnext->quarantined == c->quarantined) {
       chunk_to_reassign = h;
       RemoveFreeChunkFromBin(c->next);
       Merge(h, ChunkFromHandle(h)->next);
@@ -667,7 +730,7 @@ ArenaImpl::ChunkHandle ArenaImpl::Coalesce(ChunkHandle h) {
   c = ChunkFromHandle(h);
   if (c->prev != kInvalidChunkHandle) {
     Chunk* cprev = ChunkFromHandle(c->prev);
-    if (!cprev->in_use() && cprev->stream == c->stream) {
+    if (!cprev->in_use() && cprev->stream == c->stream && cprev->quarantined == c->quarantined) {
       chunk_to_reassign = c->prev;
       RemoveFreeChunkFromBin(c->prev);
       Merge(ChunkFromHandle(h)->prev, h);
@@ -811,6 +874,38 @@ OrtStatus* ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream_imp
   }
 
   return nullptr;
+}
+
+OrtStatus* ArenaImpl::QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined) {
+  std::lock_guard<std::mutex> lock(lock_);
+  quarantined = false;
+
+  auto impl_it = impl_to_stream_.find(stream_impl);
+  if (impl_it == impl_to_stream_.end()) {
+    return nullptr;
+  }
+
+  const OrtSyncStream* stream = impl_it->second;
+  auto chunks_it = stream_to_chunks_.find(stream);
+  if (chunks_it != stream_to_chunks_.end()) {
+    quarantined = !chunks_it->second.empty();
+    for (size_t handle : chunks_it->second) {
+      Chunk* chunk = ChunkFromHandle(handle);
+      assert(chunk->stream == stream);
+      chunk->stream = nullptr;
+      chunk->stream_sync_id = 0;
+      chunk->quarantined = true;
+    }
+    stream_to_chunks_.erase(chunks_it);
+  }
+
+  impl_to_stream_.erase(impl_it);
+  return nullptr;
+}
+
+void ArenaImpl::Abandon() {
+  std::lock_guard<std::mutex> lock(lock_);
+  abandoned_ = true;
 }
 
 // CudaArenaAllocator factory method

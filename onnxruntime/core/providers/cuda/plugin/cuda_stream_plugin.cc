@@ -225,19 +225,20 @@ void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
 }
 
 OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
-  std::vector<void*> buffers_to_free;
-  {
-    std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
-    buffers_to_free.swap(deferred_cpu_buffers_);
-  }
-
+  std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
   OrtStatus* first_error = nullptr;
-  for (void* buf : buffers_to_free) {
-    cudaError_t err = cudaFreeHost(buf);
-    if (err != cudaSuccess && first_error == nullptr) {
-      first_error = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("CUDA error: ") + cudaGetErrorName(err) + ": " + cudaGetErrorString(err)).c_str());
+  auto it = deferred_cpu_buffers_.begin();
+  while (it != deferred_cpu_buffers_.end()) {
+    cudaError_t err = cudaFreeHost(*it);
+    if (err != cudaSuccess) {
+      if (first_error == nullptr) {
+        first_error = Ort::GetApi().CreateStatus(
+            ORT_EP_FAIL,
+            (std::string("CUDA error: ") + cudaGetErrorName(err) + ": " + cudaGetErrorString(err)).c_str());
+      }
+      ++it;
+    } else {
+      it = deferred_cpu_buffers_.erase(it);
     }
   }
   return first_error;
@@ -278,6 +279,7 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 
 /*static*/ OrtStatus* ORT_API_CALL CudaSyncStream::OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+  stream->stream_synchronized_and_chunks_reset_ = false;
   if (stream->cuda_stream_ == nullptr) {
     return stream->CleanupDeferredCPUBuffers();
   }
@@ -293,10 +295,11 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
     OrtStatus* arena_status = stream->factory_.ResetDeviceArenaChunksUsingStream(
         stream->device_id_, this_ptr);
     if (arena_status != nullptr) {
-      // Ignore the arena reset error and continue session run end — buffer cleanup is more critical.
-      Ort::GetApi().ReleaseStatus(arena_status);
+      return arena_status;
     }
   }
+
+  stream->stream_synchronized_and_chunks_reset_ = true;
 
   return stream->CleanupDeferredCPUBuffers();
 }
@@ -306,25 +309,20 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 /// device fail with an invalid-handle error, so the device is selected explicitly.
 /// Returns false if the stream could not be drained, leaving no sticky error latched.
 bool CudaSyncStream::DrainOnOwningDevice() noexcept {
-  // Synchronizing a stream that is mid graph capture is not permitted and would abort
-  // the capture. FlushImpl applies the same guard. Nothing is in flight to drain yet,
-  // so treat this as success rather than quarantining the wrapper.
-  if (!owns_stream_) {
-    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
-    if (cudaStreamIsCapturing(cuda_stream_, &capture_status) == cudaSuccess &&
-        capture_status == cudaStreamCaptureStatusActive) {
-      return true;
-    }
-  }
-
   int prev_device = -1;
   const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
   bool drained = false;
   if (cudaSetDevice(device_id_) == cudaSuccess) {
-    OrtStatus* status = OnSessionRunEndImpl(this);
-    drained = status == nullptr;
-    Ort::GetApi().ReleaseStatus(status);
+    // Synchronizing an active capture is prohibited. Treat capture-query failure
+    // conservatively because completion cannot be established.
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    const cudaError_t capture_error = cudaStreamIsCapturing(cuda_stream_, &capture_status);
+    if (capture_error == cudaSuccess && capture_status != cudaStreamCaptureStatusActive) {
+      OrtStatus* status = OnSessionRunEndImpl(this);
+      drained = status == nullptr || stream_synchronized_and_chunks_reset_;
+      Ort::GetApi().ReleaseStatus(status);
+    }
   }
 
   if (!drained) {
@@ -348,8 +346,16 @@ bool CudaSyncStream::DrainOnOwningDevice() noexcept {
   }
 
   // The stream could not be drained, so device work may still be in flight and arena
-  // chunks may still refer to this stream. Keep the wrapper alive so those chunks never
-  // become globally reusable, but drop it from the lookup map first: the raw
+  // chunks must not become reusable. Detach the outer OrtSyncStream pointer before ORT
+  // releases it, and permanently quarantine the associated arena capacity.
+  OrtStatus* quarantine_status = stream->factory_.QuarantineAndAbandonDeviceArena(
+      stream->device_id_, this_ptr);
+  if (quarantine_status != nullptr) {
+    Ort::GetApi().ReleaseStatus(quarantine_status);
+  }
+
+  // Keep the inner wrapper alive because destroying its CUDA resources is unsafe while
+  // completion is unknown, but drop it from the lookup map first: the raw
   // cudaStream_t value can be recycled by a later stream creation, and a stale entry
   // would resolve that new handle to this abandoned wrapper.
   if (stream->registered_) {
