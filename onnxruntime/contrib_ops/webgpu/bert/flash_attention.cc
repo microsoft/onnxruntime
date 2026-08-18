@@ -1038,6 +1038,35 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                             max_num_blocks_per_seq,
                                                             cumulative_seqlens_q));
     } else {
+      // Fall-through defensive guard. When use_paged_kv_cache is true,
+      // past_key / past_value point at the paged KV cache (shape
+      // (num_blocks, block_size, kv_num_heads, head_size)), not a dense
+      // BNSH tensor. The dense FlashAttentionProgram below would read them
+      // as if they were BNSH and silently corrupt the output — bit-for-bit
+      // wrong, no crash.
+      //
+      // Today the AND-chain above holds by construction: PagedAttention v1
+      // rejects head_sink / softcap / TurboQuant / non-SEPARATE-layout at
+      // input validation and force-sets qkv_format = BSNH, so
+      // use_paged_prefill collapses to ShouldRunFusedPagedPrefill(). When
+      // that helper rejects (non-shm adapter, block_size < max_k_step,
+      // head_size > 256), PagedAttention takes the gather-then-flash
+      // cascade upstream and calls FA with block_table = nullptr, so this
+      // branch is never reached with use_paged_kv_cache == true.
+      //
+      // If a future Phase-2 item (softcap, head_sink, q_norm_weight, ...)
+      // is added to PagedAttention without matching support in
+      // FlashAttentionPagedPrefillProgram, this guard makes the mismatch a
+      // loud CI failure instead of a silent output-corruption bug.
+      if (use_paged_kv_cache) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "FlashAttention (WebGPU): paged KV cache present but the fused "
+                               "paged-prefill path was rejected by the extra prefill AND-chain "
+                               "(attention_bias / head_sink / turbo_quant / non-BSNH qkv_format / "
+                               "missing seqlen). Extend FlashAttentionPagedPrefillProgram to "
+                               "support the requested feature, or gate the feature off at the "
+                               "PagedAttention layer before dispatching FA.");
+      }
       // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
       bool has_attention_bias = attention_bias != nullptr;
       bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
@@ -1152,6 +1181,22 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                    num_present_sequence_length_tile, tile_size,
                                                                    head_sink, m_tile, use_seqlen_k));
     } else {
+      // Fall-through defensive guard (symmetric to the prefill branch above).
+      // When use_paged_kv_cache is true, dropping into the dense
+      // FlashAttentionDecodeQKV shader would misinterpret the paged cache as
+      // dense BNSH and silently corrupt output. Today
+      // use_paged_kv_cache && turbo_quant_enabled is unreachable because
+      // PagedAttention v1 rejects TurboQuant at input validation, but land
+      // the guard now so a future TQ-on-paged wire-up fails loud instead of
+      // silently corrupting.
+      if (use_paged_kv_cache) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "FlashAttention (WebGPU): paged KV cache present but the paged "
+                               "decode path was rejected (turbo_quant_enabled). Extend "
+                               "FlashAttentionPagedDecodeQKV to support the requested feature, "
+                               "or gate the feature off at the PagedAttention layer before "
+                               "dispatching FA.");
+      }
       ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeQKV(context, Q, attention_bias, &out_split_vx, qkv_present_key, qkv_present_value,
                                                          &metadata, seqlen_k,
                                                          parameters, indirect_buffer_ptr, num_total_seq_length_tile,

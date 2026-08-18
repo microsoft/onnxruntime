@@ -200,6 +200,23 @@ invariant, see §8 pitfalls). Because the same predicate gates the
 "skip `RunGatherKV`", "skip `q_padded` scratch", and "select fused shader"
 decisions, the three cannot drift.
 
+The exact three call sites the anti-drift invariant covers are:
+
+1. `PagedAttention::ComputeInternal` — `use_direct_paged_prefill` (drives
+   whether `RunGatherKV` runs and whether `k_padded`/`v_padded` are allocated);
+   see [`onnxruntime/contrib_ops/webgpu/bert/paged_attention.cc`](../../onnxruntime/contrib_ops/webgpu/bert/paged_attention.cc).
+2. `PagedAttention::ComputeInternal` — `varlen_mode` inside the
+   `skip_unpack_repack` decision (drives whether the Q buffer is handed to FA
+   as a rank-4 `[token_count, 1, N, H]` view or a padded BSNH scratch).
+3. `ApplyFlashAttention` — `use_paged_prefill` (drives whether
+   `FlashAttentionPagedPrefillProgram` runs vs. the dense
+   `FlashAttentionProgram`); see [`onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc`](../../onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc).
+
+`ApplyFlashAttention` also refuses to fall through to the dense prefill
+program when `use_paged_kv_cache == true` (a `NOT_IMPLEMENTED` guard),
+so a future feature added to `PagedAttention` without matching support in the
+fused shader fails loud instead of silently corrupting the output.
+
 **Unpack/Repack skip.** When direct paged attention is used, the packed
 varlen Q buffer can be handed to FA as a rank-4 view without materializing
 a padded BSNH scratch:

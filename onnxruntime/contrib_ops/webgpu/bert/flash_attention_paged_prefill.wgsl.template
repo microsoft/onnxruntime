@@ -53,8 +53,12 @@ const max_k_step : u32 = max_k_step_param;
 const vec_factor : u32 = 4u;
 const head_size_vec : u32 = head_size / vec_factor;
 
-// K and V tiles in shared memory (16 KB budget @ fp16, head_size 128, max_k_step 32
-// = 2 * 128 * 32 * 2 B = 16384 B — matches the dense FA sizing).
+// K and V tiles in shared memory. Budget = 2 * head_size * max_k_step *
+// element_size B (two tiles, k and v). Sized for the 16 KiB shm budget
+// enforced by ShouldRunFusedPagedPrefill:
+//   * fp16 head_size 128, max_k_step 32 -> 2 * 128 * 32 * 2 = 16 KiB
+//   * fp16 head_size 256, max_k_step 16 -> 2 * 256 * 16 * 2 = 16 KiB
+// (matches the dense FA sizing at shm-path adapters.)
 var<workgroup> k_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 

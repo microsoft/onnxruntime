@@ -701,5 +701,27 @@ TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+// Force the ShouldRunFusedPagedPrefill *reject* branch. With fp16 head_size
+// 128, max_k_step is 32, so block_size 16 fails the block_size >= max_k_step
+// guard. PagedAttention must then take the gather-then-flash cascade (the
+// merged #31611 code path). Verifies output parity against the reference in
+// the fallback path, locking down the reject-boundary so a future refactor
+// of ShouldRunFusedPagedPrefill can't silently change it.
+TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 64;  // prefill (>= 32)
+  c.num_heads = 2;
+  c.kv_num_heads = 2;  // MHA
+  c.head_size = 128;
+  c.block_size = 16;  // < max_k_step (=32 for fp16 head_size<=128) => rejected
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 4;  // 64 tokens / 16 slots per block
+  c.cumulative_seqlens_q = {0, 64};
+  c.past_seqlens = {0};
+  c.block_table = {3, 1, 5, 2};  // non-contiguous physical pages
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
