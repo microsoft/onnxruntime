@@ -61,11 +61,11 @@ Status GatherNDBase::PrepareCompute(
   // Passed to the kernel by value rather than staged through device memory: an async
   // copy out of this function's own vector would be recorded by CUDA graph capture as
   // a read of host memory that no longer exists by the time the graph is replayed.
-  TArray<int64_t> sizes_from_slice_dims(static_cast<int32_t>(num_slice_dims));
+  TArray<int64_t> sizes_from_slice_dims(gsl::narrow_cast<int32_t>(num_slice_dims));
   {
     auto running_product = slice_size;
     for (int64_t i = 0; i < num_slice_dims; ++i) {
-      sizes_from_slice_dims[static_cast<size_t>(num_slice_dims - 1 - i)] = running_product;
+      sizes_from_slice_dims[gsl::narrow_cast<int32_t>(num_slice_dims - 1 - i)] = running_product;
       running_product *= input_shape[batch_dims + num_slice_dims - 1 - i];
     }
   }
