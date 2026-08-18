@@ -698,6 +698,11 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
           goto string_tensor_cleanup;
         }
         (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+          code = ORT_FAIL;
+          (*jniEnv)->DeleteLocalRef(jniEnv, tempString);
+          goto string_tensor_cleanup;
+        }
         (*jniEnv)->DeleteLocalRef(jniEnv, tempString);
       }
     }
