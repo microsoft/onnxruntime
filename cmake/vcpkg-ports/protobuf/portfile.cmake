@@ -1,14 +1,11 @@
 vcpkg_minimum_required(VERSION 2022-10-12) # for ${VERSION}
 
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protobuf-33.6.tar.gz"
-    FILENAME "protobuf-33.6.tar.gz"
-    SHA512 8959e7592622ee64ffdc4e3f373a77e161e163e4f06434a35a29b2715ff2968a35c7e2b689a2f35392aaf33acf2101ad6c4b2138cbed14e862fdcd28b169ed17
-)
-
-vcpkg_extract_source_archive(
-    SOURCE_PATH
-    ARCHIVE "${ARCHIVE}"
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO protocolbuffers/protobuf
+    REF v33.6
+    SHA512 16f8689ec7aba47d29f27c2360c33c78d6e11ae9f29e815f792e6b943713395e680f0ab6d48f9395e8bec1df44c4afdc212ad4e4fc3629b820e7b3ac82e132e9
+    HEAD_REF master
     PATCHES
         protobuf_cmake.patch
 )
