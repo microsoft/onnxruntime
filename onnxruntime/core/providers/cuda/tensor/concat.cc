@@ -54,15 +54,10 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
 
   CudaAsyncBuffer<const void*> input_ptr(this, input_count);
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
-  int index = 0;
   for (int i = 0; i < input_count; ++i) {
     const auto& input = p.inputs[i];
     concat_sizes.push_back(input.tensor->Shape()[p.axis]);
     input_ptr_cpuspan[i] = input.tensor->DataRaw();
-    for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
-      axis_dimension_input_output_mapping.at(index++) = i;
-    }
   }
 
   auto element_bytes = p.output_tensor->DataType()->Size();
@@ -95,6 +90,13 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                    p.output_tensor->MutableDataRaw(), input_ptr_array,
                                    static_cast<size_t>(p.output_num_elements)));
   } else {
+    std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
+    int index = 0;
+    for (int i = 0; i < input_count; ++i) {
+      for (int j = 0; j < concat_sizes[i]; ++j) {
+        axis_dimension_input_output_mapping.at(index++) = i;
+      }
+    }
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
     std::vector<int64_t> concat_sizes_range(concat_sizes);
