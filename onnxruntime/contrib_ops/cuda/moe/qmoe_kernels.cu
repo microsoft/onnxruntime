@@ -1220,12 +1220,12 @@ void LaunchQMoEDequantizeFp4Weights(
 // ---------------------------------------------------------------------------
 // MXFP4 -> FP8 (e4m3) weight conversion for the QMoE DeepGEMM path.
 //
-// The FP8 GEMM scales B by one fp32 factor per [128 N, 128 K] block. Picking that factor as a
+// The FP8 GEMM scales B by one fp32 factor per [128 N, 128 K] block. Factoring the arbitrary
+// per-expert global scale out of the FP8 value and rounding the remaining block scale to a
 // *power of two* makes the conversion bit-exact: an E2M1 code carries at most two significant
 // bits, e4m3 carries four, and a power-of-two scale only shifts exponents. The conventional
-// amax/448 block scale is not a power of two, so every weight would acquire a full mantissa
-// before being rounded back to three bits (measured 4.76% max relative error), which is why the
-// scale below is rounded up to a power of two instead.
+// amax/448 scale would give every weight a full mantissa before rounding it to three bits
+// (measured 4.76% max relative error).
 //
 // Losslessness still needs the quantized magnitudes to stay inside e4m3's range, i.e. the
 // per-block spread of the MXFP4 group exponents must be at most 14. It is 6 for this model, but
@@ -1269,16 +1269,18 @@ __global__ void QMoEFp4ToFp8BlockScaleKernel(
     const float odd = DecodeFp4E2M1(static_cast<uint8_t>(packed >> 4)) * DecodeUE8M0(block_scales[scale_base + scale_k]);
     local_max = fmaxf(local_max, fmaxf(fabsf(even), fabsf(odd)));
   }
-  const float amax = BlockReduceMax<BlockReduce>(local_max, temp_storage) * fabsf(global_scales[expert]);
+  const float amax = BlockReduceMax<BlockReduce>(local_max, temp_storage);
 
   if (threadIdx.x == 0) {
-    // Smallest power of two >= amax / 448: frexpf gives amax/448 = m * 2^e with m in [0.5, 1).
+    // Preserve the arbitrary fp32 global scale and round only the MXFP4 exponent component.
+    // frexpf gives amax/448 = m * 2^e with m in [0.5, 1).
     float scale = 1.0f;
-    if (amax > 0.0f) {
+    const float global_scale = fabsf(global_scales[expert]);
+    if (amax > 0.0f && global_scale > 0.0f) {
       int exponent = 0;
       const float mantissa = frexpf(amax * (1.0f / kQMoEFp8Max), &exponent);
       exponent -= mantissa == 0.5f;
-      scale = exp2f(static_cast<float>(exponent));
+      scale = ldexpf(global_scale, exponent);
     }
     output_scales[(static_cast<int64_t>(expert) * (n / kQMoEFp8BlockN) + n_block) * (k / kQMoEFp8BlockK) + k_block] =
         scale;
@@ -1309,14 +1311,12 @@ __global__ void QMoEFp4ToFp8WeightsKernel(
 
   const int scale_k = k >> 5;
   const float group_scale =
-      DecodeUE8M0(block_scales[(static_cast<int64_t>(expert) * n + row) * scale_k + (k_base >> 5)]) *
-      global_scales[expert];
+      DecodeUE8M0(block_scales[(static_cast<int64_t>(expert) * n + row) * scale_k + (k_base >> 5)]);
   const float block_scale =
       output_scales[(static_cast<int64_t>(expert) * (n / kQMoEFp8BlockN) + row / kQMoEFp8BlockN) *
                         (k / kQMoEFp8BlockK) +
                     k_base / kQMoEFp8BlockK];
-  // block_scale is a power of two, so both the reciprocal and the multiplication are exact.
-  const float inverse_block_scale = 1.0f / block_scale;
+  const float scaled_global = global_scales[expert] / block_scale;
 
   union {
     uint4 vec;
@@ -1326,8 +1326,9 @@ __global__ void QMoEFp4ToFp8WeightsKernel(
 #pragma unroll
   for (int j = 0; j < kQMoEFp8VecK; ++j) {
     const uint8_t packed = packed_weights[weight_base + static_cast<int64_t>(j) * packed_n];
-    const float value = DecodeFp4E2M1(static_cast<uint8_t>((packed >> shift) & 0x0F)) * group_scale;
-    const __nv_fp8_e4m3 quantized(value * inverse_block_scale);
+    const float fp4_value = DecodeFp4E2M1(static_cast<uint8_t>((packed >> shift) & 0x0F));
+    const float value = fp4_value * group_scale * global_scales[expert];
+    const __nv_fp8_e4m3 quantized(fp4_value * group_scale * scaled_global);
     staged.bytes[j] = quantized.__x;
     exact = exact && (static_cast<float>(quantized) * block_scale == value);
   }

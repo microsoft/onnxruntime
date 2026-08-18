@@ -86,20 +86,20 @@ ConversionResult ConvertSingleBlock(uint8_t default_scale, float global_scale,
 
 TEST(CUDA_EP_Unittest, QMoEFp4ToFp8PreservesExactPowerOfTwoScale) {
   const ConversionResult result = ConvertSingleBlock(127, 448.0f / 6.0f);
-  EXPECT_FLOAT_EQ(result.scale, 1.0f);
+  EXPECT_FLOAT_EQ(result.scale, 448.0f / (6.0f * 64.0f));
   EXPECT_EQ(result.inexact, 0);
 }
 
 TEST(CUDA_EP_Unittest, QMoEFp4ToFp8RoundsScaleUp) {
   const ConversionResult result = ConvertSingleBlock(127, 300.0f / 6.0f);
-  EXPECT_FLOAT_EQ(result.scale, 1.0f);
+  EXPECT_FLOAT_EQ(result.scale, 300.0f / (6.0f * 64.0f));
   EXPECT_EQ(result.inexact, 0);
 }
 
 TEST(CUDA_EP_Unittest, QMoEFp4ToFp8ReportsWideExponentSpread) {
   constexpr float largest_group_scale = 1048576.0f;
   const ConversionResult result = ConvertSingleBlock(127, 448.0f / (6.0f * largest_group_scale), 147);
-  EXPECT_FLOAT_EQ(result.scale, 1.0f);
+  EXPECT_FLOAT_EQ(result.scale, 448.0f / (6.0f * 64.0f));
   EXPECT_EQ(result.inexact, 1);
 }
 
