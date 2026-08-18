@@ -498,6 +498,42 @@ TEST(NchwcOptimizerTests, ConvAveragePool) {
   test_case(true);
 }
 
+// PR #29629 (M1): AveragePool with ceil_mode==1 && count_include_pad==1 must NOT be converted to
+// NchwcAveragePool. NchwcAveragePool routes to MlasAveragePoolingIncludePad, which divides by the
+// full kernel size and cannot drop the ceil_mode phantom tail cells — reintroducing the wrong
+// average that the default float CPU kernel was fixed for. The transformer bails out for this
+// combo, leaving the node as the ONNX AveragePool on the fixed CPU path. The Level2-vs-Level3
+// output comparison inside NchwcOptimizerTester additionally guards correctness: if the node were
+// (incorrectly) converted, the buggy NCHWc divisor would diverge from the fixed unconverted kernel
+// and fail the comparison.
+TEST(NchwcOptimizerTests, ConvAveragePoolCeilCountIncludePadNotConverted) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 34, 34});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {128, 48, 5, 5});
+
+    // kernel 4 / stride 4 over the 30x30 conv output: ceil_mode adds a trailing window that
+    // overruns the input, so the buggy full-kernel divisor and the fixed clamped divisor differ.
+    auto& pool_node = helper.AddNode("AveragePool", {conv_output_arg}, {output_arg});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{4, 4});
+    pool_node.AddAttribute("strides", std::vector<int64_t>{4, 4});
+    pool_node.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+    pool_node.AddAttribute("count_include_pad", static_cast<int64_t>(1));
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // Conv still converts; the AveragePool stays on the fixed ONNX CPU path (not NCHWc).
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.AveragePool"], 0);
+    EXPECT_EQ(op_to_count["AveragePool"], 1);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, ConvGlobalPool) {
   auto test_case = [&](const std::string& op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {

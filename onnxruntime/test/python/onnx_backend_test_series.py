@@ -20,6 +20,13 @@ import onnxruntime.backend as backend  # pylint: disable=consider-using-from-imp
 
 pytest_plugins = ("onnx.backend.test.report",)
 
+# Minimum number of ONNX "node" test cases that must be discovered on disk. This is the Python-leg
+# twin of the C++ onnx_test_runner -m floor and the CMake ORT_ONNX_NODE_MIN_CASES gate; all three
+# MUST move in lockstep if the floor is ever raised. It guards against the node corpus silently
+# disappearing (e.g. post-onnx#7959 when the bundled node/ data is removed, leaving this series to
+# quietly lose node coverage). Today's corpus is ~1799 cases; 1500 leaves ~17% headroom.
+MIN_NODE_CASES = 1500
+
 
 class OrtBackendTest(onnx.backend.test.runner.Runner):
     """ONNX test runner with ORT-specific behavior."""
@@ -32,6 +39,11 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
     ):
         self._rtol_overrides = rtol_overrides
         self._atol_overrides = atol_overrides
+        # Counts "node"-kind test cases discovered on disk. Set before super().__init__ because the
+        # base Runner scans the data dirs (calling _add_model_test) during construction. NOTE: onnx's
+        # Runner passes the *capitalized* category label ("Node"), not the lowercase load kind, so the
+        # match below is case-insensitive.
+        self._node_case_count = 0
 
         super().__init__(backend, parent_module=__name__)
 
@@ -67,6 +79,9 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
             attrs = vars(model_test)
         attrs["rtol"] = self._rtol_overrides[model_test.name]
         attrs["atol"] = self._atol_overrides[model_test.name]
+
+        if kind.lower() == "node":
+            self._node_case_count += 1
 
         super()._add_model_test(onnx.backend.test.case.test_case.TestCase(**attrs), kind)
 
@@ -116,6 +131,17 @@ def create_backend_test(test_name=None):
     atol_overrides.update(overrides["atol_overrides"])
 
     backend_test = OrtBackendTest(rtol_overrides, atol_overrides)
+
+    # Consumption-point floor (full runs only; a targeted -t/test_name run intentionally collects a
+    # subset). Fires if the node corpus failed to materialize or has otherwise silently shrunk.
+    if not test_name and backend_test._node_case_count < MIN_NODE_CASES:
+        raise RuntimeError(
+            f"Node test corpus collapsed -- discovered only {backend_test._node_case_count} ONNX "
+            f"'node' test case(s), but at least {MIN_NODE_CASES} are required. See "
+            f"onnx-opset-bump-checklist gotcha (p): onnx#7959 removes the on-disk node-test corpus "
+            f"and corpus absence is otherwise silent-green. The corpus appears missing, empty, or "
+            f"truncated (e.g. #7959 landed and no materialized corpus replaced it)."
+        )
 
     # Type not supported
     backend_test.exclude(r"(FLOAT16)")

@@ -234,6 +234,8 @@ void SaveAndLoadRuntimeOptimizationsForModel(
     {
       SessionOptions so{};
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+      ASSERT_STATUS_OK(
+          so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1"));
       so.graph_optimization_level = TransformerLevel::Level2;
 
       ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
@@ -256,6 +258,8 @@ void CheckNhwcTransformerIsApplied(const PathString& ort_model_path,
   // load and replay runtime optimizations
   SessionOptions so{};
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  ASSERT_STATUS_OK(
+      so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1"));
   so.graph_optimization_level = TransformerLevel::Level3;
 
   GraphCheckerFn graph_checker = [](const Graph& graph) {
@@ -325,6 +329,19 @@ void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
 };
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace
+
+TEST(GraphRuntimeOptimizationTest, SavedRuntimeOptimizationsDisabledByDefault) {
+  SessionOptions so{};
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  so.graph_optimization_level = TransformerLevel::Level2;
+
+  ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
+      so,
+      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort"),
+      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+        EXPECT_EQ(initialized_ops, loaded_ops);
+      }));
+}
 
 TEST(GraphRuntimeOptimizationTest, QDQConv) {
   SaveAndLoadRuntimeOptimizationsForModel(

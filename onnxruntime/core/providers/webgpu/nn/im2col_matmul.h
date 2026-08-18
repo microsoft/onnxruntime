@@ -65,7 +65,8 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
                                  const bool is_fused,
                                  const TensorShape kernel_shape,
-                                 const uint32_t group);
+                                 const uint32_t group,
+                                 const MLDataType data_type);
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const bool is_channels_last,

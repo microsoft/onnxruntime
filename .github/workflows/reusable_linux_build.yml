@@ -53,6 +53,11 @@ on:
         required: false
         type: boolean
         default: true
+      run_go_tests:
+        description: 'Whether to run the Go binding race tests against the built shared library'
+        required: false
+        type: boolean
+        default: false
       upload_build_output:
         description: 'Whether to upload the build output directory as an artifact (used when tests are skipped)'
         required: false
@@ -73,6 +78,7 @@ jobs:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
       - "JobId=${{ inputs.job_identifier }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
@@ -149,6 +155,24 @@ jobs:
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
           extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
           python_path_prefix: ${{ inputs.python_path_prefix }}
+
+      - name: Set up Go
+        if: inputs.run_go_tests == true
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go/go.mod
+          cache: false
+
+      - name: Test Go bindings
+        if: inputs.run_go_tests == true
+        shell: bash
+        working-directory: go
+        env:
+          ORT_LIB_PATH: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}
+        run: |
+          set -euo pipefail
+          test -f "${ORT_LIB_PATH}/libonnxruntime.so"
+          go test -race -count=1 ./onnxruntime
 
       # ------------- Prepare Artifact Step -------------
       - name: Prepare Build Output for Upload

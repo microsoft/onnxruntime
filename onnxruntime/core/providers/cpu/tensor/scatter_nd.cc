@@ -343,6 +343,9 @@ struct ScatterNDDispatchTarget {
         } break;
       }
     };
+    if (context->Input<Tensor>(0)->IsDataTypeString()) {
+      tp = nullptr;
+    }
     concurrency::ThreadPool::TryParallelFor(
         tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {

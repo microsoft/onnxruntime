@@ -317,6 +317,12 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+
+#if defined(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE)
+  // Available from Windows 11 24H2 SDKs; older SDKs lack the constant, in
+  // which case SVE stays disabled at runtime.
+  has_arm_sve_ = has_arm_sve_ || IsProcessorFeaturePresent(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE) != 0;
+#endif
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)

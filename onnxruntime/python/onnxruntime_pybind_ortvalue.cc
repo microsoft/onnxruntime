@@ -204,15 +204,24 @@ void addOrtValueMethods(pybind11::module& m) {
         } else if (device.Type() == OrtDevice::GPU) {
 #ifdef USE_CUDA
           if (device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
-            if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            MemCpyFunc cpu_to_device_copy_fn = CpuToCudaMemCpy;
+            if (TryGetProviderInfo_CUDA() != nullptr) {
+              if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+                throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+              }
+            } else {
+              cpu_to_device_copy_fn = CreateDataTransferMemCpy(OrtDevice{}, device);
+              if (!cpu_to_device_copy_fn) {
+                throw std::runtime_error(
+                    "Unsupported GPU device: Cannot find the supported GPU device.");
+              }
             }
 
             onnxruntime::python::CopyDataToTensor(
                 py_values,
                 values_type,
                 *(ml_value->GetMutable<Tensor>()),
-                CpuToCudaMemCpy);
+                cpu_to_device_copy_fn);
           } else
 #endif
 #if USE_MIGRAPHX
@@ -451,6 +460,10 @@ void addOrtValueMethods(pybind11::module& m) {
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
+            if (TryGetProviderInfo_CUDA() == nullptr) {
+              return GetPyObjFromTensor(*ml_value, nullptr, nullptr,
+                                        /*zero_copy_non_owning=*/true);
+            }
             return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device),
                                       /*zero_copy_non_owning=*/true);
 #endif
