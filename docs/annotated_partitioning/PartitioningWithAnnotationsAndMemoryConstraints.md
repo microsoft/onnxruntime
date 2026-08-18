@@ -311,6 +311,20 @@ opts.add_session_config_entry(
 )
 ```
 
+For dynamic-shape models, `session.max_shape_override` supplies planning shapes:
+
+```python
+opts.add_session_config_entry(
+    "session.max_shape_override",
+    "input_ids:[8,4096];attention_mask:[8,4096]"
+)
+```
+
+ONNX Runtime propagates these values through a separate shape-inference graph. The resulting shapes
+are used for ad-hoc dynamic-output sizes and Level-1 workspace estimates, so they directly affect the
+hard partitioning budget and can change CUDA/CPU assignment. They do not constrain runtime inputs and
+are estimation hints rather than guaranteed upper bounds.
+
 ### Setting Format Summary
 The value of `session.resource_cuda_partitioning_settings` is a comma-separated pair:
 

@@ -993,6 +993,10 @@ a scalar with a sentinel value is.
 - For dynamic models, `session.max_shape_override` is applied to a disposable shadow graph. Normal ORT
   shape inference propagates those input hints to intermediate values without changing executable-graph
   metadata or runtime input validation.
+- With capacity-aware partitioning enabled, those propagated shapes feed both ad-hoc dynamic-output
+  sizing and Level-1 workspace estimation. They therefore affect the hard memory budget and can change
+  EP assignment. This is a planning decision based on user-provided estimates, not enforcement of a
+  runtime maximum.
 
 Level 1 consumes the current shadow result during `GetCapability()`. It reuses that result for the second
 capability pass when layout transformation reports no modification and rebuilds it after known graph

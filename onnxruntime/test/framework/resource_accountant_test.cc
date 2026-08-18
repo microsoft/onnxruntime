@@ -651,6 +651,23 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
+TEST(RealAccountantTest, FactoryRetainsSessionConfigForLevel1Estimation) {
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+
+  std::optional<ResourceAccountantMap> acc_map;
+  ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
+  ASSERT_TRUE(acc_map.has_value());
+  auto* accountant = acc_map->at(kCudaExecutionProvider).get();
+
+  EXPECT_EQ(accountant->GetSessionConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
+            std::optional<std::string>{"1"});
+  EXPECT_FALSE(accountant->GetSessionConfigEntry("missing.config").has_value());
+}
+
 // Factory returns empty optional when no config is set.
 TEST(RealAccountantTest, Factory_NoConfigReturnsEmpty) {
   ConfigOptions config;

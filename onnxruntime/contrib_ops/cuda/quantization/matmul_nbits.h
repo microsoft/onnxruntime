@@ -16,7 +16,9 @@
 #include "core/framework/level1_memory_estimate.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "core/platform/env_var_utils.h"
 
@@ -91,8 +93,8 @@ inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstima
 // same kernel. Each key overrides its ORT_* environment-variable equivalent (config wins).
 //   ep.cuda.fpa_intb_gemm       <-> ORT_FPA_INTB_GEMM       (0/off, 1/on)
 //   ep.cuda.fpa_intb_profile_m  <-> ORT_FPA_INTB_PROFILE_M  (initial profile M buckets)
-constexpr const char* kConfigFpAIntBGemm = "ep.cuda.fpa_intb_gemm";
-constexpr const char* kConfigFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
+constexpr const char* kConfigFpAIntBGemm = kOrtSessionOptionsCudaFpAIntBGemm;
+constexpr const char* kConfigFpAIntBProfileM = kOrtSessionOptionsCudaFpAIntBProfileM;
 
 // Resolves a setting from the session config first (per-session, EP-agnostic), then the environment
 // variable, else empty. Session config wins so a model/session can override a process-wide env var.
@@ -142,15 +144,6 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t weight_prepacked, bool has_g_idx,
                              int device_sm, int fpa_intb_option);
 
-// Level 1 partition-time memory estimate for a MatMulNBits node, callable during GetCapability()
-// before any kernel instance exists. Runtime workspace is nullopt when the leading (M) dimension
-// is not statically known. The complete estimate is nullopt when the node is not fpA_intB-eligible
-// or prepack memory arithmetic overflows.
-std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
-    const Node& node, const cudaDeviceProp& device_prop);
-// Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
-std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
-    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 #endif
 
 template <typename T>
