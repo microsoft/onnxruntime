@@ -59,10 +59,47 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsOutOfRa
       1,
       1,
       16,
-      4);
+      4,
+      1);
 
   EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("block_table values must be in [0, num_blocks)"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("live block_table values must be in [0, num_blocks)"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsBlockIdBelowSentinel) {
+  const int32_t cumulative_sequence_length[] = {0, 0};
+  const int32_t past_seqlens[] = {0};
+  const int32_t block_table[] = {-2};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length, past_seqlens, block_table, 1, 1, 16, 1, 0);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("padding block_table values must be in [-1, num_blocks)"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsSentinelForLivePage) {
+  const int32_t cumulative_sequence_length[] = {0, 1};
+  const int32_t past_seqlens[] = {16};
+  const int32_t block_table[] = {0, -1};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length, past_seqlens, block_table, 1, 2, 16, 1, 1);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("live block_table values must be in [0, num_blocks)"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsOutOfRangePaddingBlock) {
+  const int32_t cumulative_sequence_length[] = {0, 0};
+  const int32_t past_seqlens[] = {0};
+  const int32_t block_table[] = {1};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length, past_seqlens, block_table, 1, 1, 16, 1, 0);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("padding block_table values must be in [-1, num_blocks)"));
 }
 
 TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsPastSeqlensOverflow) {
@@ -77,7 +114,8 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsPastSeq
       1,
       1,
       16,
-      1);
+      1,
+      2);
 
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("past_seqlens + query_length exceeds block_table capacity"));
@@ -95,7 +133,8 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesAcceptsValidIn
       2,
       2,
       16,
-      4);
+      4,
+      5);
 
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
@@ -112,7 +151,8 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsNegativ
       1,
       1,
       16,
-      4);
+      4,
+      2);
 
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cumulative_sequence_length must start with 0"));
@@ -130,7 +170,8 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsCumulat
       1,
       1,
       16,
-      4);
+      4,
+      2);
 
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cumulative_sequence_length must start with 0"));
@@ -148,7 +189,8 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsNegativ
       1,
       1,
       16,
-      4);
+      4,
+      2);
 
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("past_seqlens values must be non-negative"));
@@ -168,7 +210,8 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesAllowsFullCach
       1,
       1,
       256,
-      1);
+      1,
+      0);
 
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
@@ -187,10 +230,34 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsFullCac
       1,
       1,
       256,
+      1,
       1);
 
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("past_seqlens must be less than max_num_blocks_per_seq * block_size when q_len > 0"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsTokenCountMismatch) {
+  const int32_t cumulative_sequence_length[] = {0, 1};
+  const int32_t past_seqlens[] = {0};
+  const int32_t block_table[] = {0};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length, past_seqlens, block_table, 1, 1, 16, 1, 2);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("must end with token_count"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesAllowsUnmappedBlockSentinel) {
+  const int32_t cumulative_sequence_length[] = {0, 1};
+  const int32_t past_seqlens[] = {0};
+  const int32_t block_table[] = {0, -1};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length, past_seqlens, block_table, 1, 2, 16, 1, 1);
+
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
 }  // namespace test

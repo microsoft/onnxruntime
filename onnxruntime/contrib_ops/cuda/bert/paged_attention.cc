@@ -536,7 +536,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         parameters.batch_size,
         parameters.max_num_blocks_per_seq,
         parameters.block_size,
-        parameters.num_blocks));
+        parameters.num_blocks,
+        parameters.token_count));
 
     for (int i = 0; i < parameters.batch_size; ++i) {
       const int q_len_i = cum_q_pinned.get()[i + 1] - cum_q_pinned.get()[i];

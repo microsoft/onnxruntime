@@ -390,7 +390,8 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
                                                   int batch_size,
                                                   int max_num_blocks_per_seq,
                                                   int block_size,
-                                                  int num_blocks) {
+                                                  int num_blocks,
+                                                  int token_count) {
   if (batch_size <= 0 || max_num_blocks_per_seq <= 0 || block_size <= 0 || num_blocks <= 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention validation requires positive "
@@ -401,6 +402,12 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "cumulative_sequence_length must start with 0, got ",
                            cumulative_sequence_length[0]);
+  }
+
+  if (cumulative_sequence_length[batch_size] != token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_sequence_length must end with token_count (", token_count,
+                           "), got ", cumulative_sequence_length[batch_size]);
   }
 
   const int64_t max_cache_sequence_length = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
@@ -448,15 +455,22 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
                                "past_seqlens + query_length exceeds block_table capacity for a sequence.");
       }
     }
-  }
 
-  const int64_t block_table_size = static_cast<int64_t>(batch_size) * max_num_blocks_per_seq;
-  for (int64_t i = 0; i < block_table_size; ++i) {
-    const int32_t block_id = block_table[i];
-    if (block_id < 0 || block_id >= num_blocks) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "block_table values must be in [0, num_blocks). Invalid value: ",
-                             block_id);
+    const int64_t live_tokens = static_cast<int64_t>(past_length) + q_len;
+    const int64_t required_blocks = (live_tokens + block_size - 1) / block_size;
+    for (int block_index = 0; block_index < max_num_blocks_per_seq; ++block_index) {
+      const int32_t block_id = block_table[static_cast<int64_t>(b) * max_num_blocks_per_seq + block_index];
+      if (block_index < required_blocks) {
+        if (block_id < 0 || block_id >= num_blocks) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "live block_table values must be in [0, num_blocks). Invalid value: ",
+                                 block_id);
+        }
+      } else if (block_id < -1 || block_id >= num_blocks) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "padding block_table values must be in [-1, num_blocks). Invalid value: ",
+                               block_id);
+      }
     }
   }
 
