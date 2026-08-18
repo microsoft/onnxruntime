@@ -33,7 +33,7 @@ struct GatedLatentPoolParams {
 };
 
 // Shared floats the finish kernel needs: the row itself, a warp-reduction staging area, a
-// copy of the rotary slice, and one scale per quantisation block.
+// copy of the rotary slice, and one scale per quantization block.
 inline int GatedLatentPoolFinishSharedFloats(const GatedLatentPoolParams& p) {
   const int quant_blocks = p.simulate_fp8 ? p.nope_dim / 64 : 0;
   const int rotate_blocks = p.simulate_rotated_fp4 ? p.head_dim / 32 : 0;

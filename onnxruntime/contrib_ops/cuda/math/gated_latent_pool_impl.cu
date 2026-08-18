@@ -3,10 +3,10 @@
 
 #include "contrib_ops/cuda/math/gated_latent_pool_impl.h"
 
-#include <algorithm>
 #include <cfloat>
-#include <cmath>
 #include <cuda_fp16.h>
+#include <algorithm>
+#include <cmath>
 
 #include "contrib_ops/cuda/math/quant_sim_common.cuh"
 #include "core/platform/env_var_utils.h"
