@@ -272,7 +272,9 @@ export const importWasmModule = async (
       }
     } else {
       // if the script source is available, we can check if it is from the same origin.
-      useEmbeddedModule = isSameOrigin(scriptSrc);
+      // Also use the embedded module when wasmBinary is provided and single-threaded (eg. Blob URL workers
+      // where isSameOrigin fails but no file resolution or worker spawning is needed).
+      useEmbeddedModule = isSameOrigin(scriptSrc) || (isWasmOverridden && !isMultiThreaded);
     }
   }
   if (useEmbeddedModule) {

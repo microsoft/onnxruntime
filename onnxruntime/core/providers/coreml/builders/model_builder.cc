@@ -814,7 +814,7 @@ Status ModelBuilder::RegisterInitializers() {
                        [](int64_t dim) -> uint64_t { return SafeInt<uint64_t>(dim); });
       }
 
-      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor));
+      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor, *this));
       *layer->mutable_output()->Add() = name;
       AddLayer(std::move(layer));
     }
@@ -917,6 +917,12 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
           AddInt64Output(name);
         }
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        // ArrayFeatureType has no bool, so (like int64) the external feature is INT32. The int32<->bool
+        // cast at the ML Program boundary is wired up below / in RewriteBoolGraphIOBoundaries(), and the
+        // runtime int32<->bool data conversion is handled in model.mm.
+        multi_array->set_datatype(ArrayFeatureType::INT32);
+        break;
       default: {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -932,22 +938,123 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     return Status::OK();
   }
 
+  const bool is_bool = data_type == ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+
   if (create_ml_program_) {
     if (is_input) {
       // the model inputs need to be wired up as args to the 'main' function.
       auto tensor_value_type = CreateNamedTensorValueType(node_arg, /*convert_scalar*/ true);
 
-      // Handle conversion from int64 to int32
+      // Handle conversion from int64 to int32. A bool feature is exposed as int32 too, so the function
+      // arg is int32; the int32->bool cast is inserted immediately below so the op builders see bool.
       tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
-          OnnxDataTypeToMILSpec(data_type));
+          OnnxDataTypeToMILSpec(is_bool ? ONNX_NAMESPACE::TensorProto_DataType_INT32 : data_type));
 
       tensor_value_type.set_name(name);
 
       mlprogram_main_fn_->mutable_inputs()->Add(std::move(tensor_value_type));
+
+      if (is_bool) {
+        // Emit the int32->bool cast now (ahead of any consumer in the block). Consumers still reference
+        // `name`; RewriteBoolGraphIOBoundaries() repoints them at the bool value once they've been added.
+        const std::string bool_name = GetUniqueName(name + "_to_bool");
+        AddBoundaryCastOp(name, bool_name, ONNX_NAMESPACE::TensorProto_DataType_BOOL, shape);
+        bool_input_value_rename_[name] = bool_name;
+      }
     } else {
       // the model outputs need to be set as outputs of the Block for the 'main' function
       *mlprogram_main_block_->mutable_outputs()->Add() = name;
+
+      if (is_bool) {
+        // The op builders produce a bool value named `name`; RewriteBoolGraphIOBoundaries() inserts a
+        // bool->int32 cast so the int32 feature/block-output `name` is satisfied.
+        bool_graph_outputs_.emplace_back(name, shape);
+      }
     }
+  }
+
+  return Status::OK();
+}
+
+void ModelBuilder::AddBoundaryCastOp(std::string_view input_value_name, std::string_view output_value_name,
+                                     int32_t output_onnx_type, gsl::span<const int64_t> shape) {
+  auto op = std::make_unique<MILSpec::Operation>();
+  op->set_type("cast");
+  (*op->mutable_attributes())["name"] =
+      CreateScalarTensorValue(GetUniqueName(MakeString("boundary_cast_", output_value_name)));
+
+  AddOperationInput(*op, "x", input_value_name);
+  const std::string mil_dtype =
+      output_onnx_type == ONNX_NAMESPACE::TensorProto_DataType_BOOL ? "bool" : "int32";
+  AddOperationInput(*op, "dtype", AddScalarConstant(op->type(), "dtype", mil_dtype));
+  AddIntermediateOperationOutput(*op, output_value_name, output_onnx_type, shape);
+
+  AddOperation(std::move(op));
+}
+
+Status ModelBuilder::RewriteBoolGraphIOBoundaries() {
+  if (bool_input_value_rename_.empty() && bool_graph_outputs_.empty()) {
+    return Status::OK();
+  }
+
+  // bool graph inputs: the int32->bool cast was already emitted (ahead of consumers) in
+  // RegisterModelInputOutput. Repoint each consumer at the bool value. The cast ops themselves
+  // legitimately reference the original int32 input, so skip any op whose output is a rename target.
+  if (!bool_input_value_rename_.empty()) {
+    std::unordered_set<std::string> cast_outputs;
+    for (const auto& [orig, bool_name] : bool_input_value_rename_) {
+      cast_outputs.insert(bool_name);
+    }
+    for (auto& op : *mlprogram_main_block_->mutable_operations()) {
+      bool is_boundary_cast = false;
+      for (const auto& out : op.outputs()) {
+        if (Contains(cast_outputs, out.name())) {
+          is_boundary_cast = true;
+          break;
+        }
+      }
+      if (is_boundary_cast) {
+        continue;
+      }
+      for (auto& input : *op.mutable_inputs()) {
+        for (auto& arg : *input.second.mutable_arguments()) {
+          auto it = bool_input_value_rename_.find(arg.name());
+          if (it != bool_input_value_rename_.end()) {
+            arg.set_name(it->second);
+          }
+        }
+      }
+    }
+  }
+
+  // bool graph outputs: the op builders produced a bool value named `name`. Rename that producer's output
+  // (and any internal consumers) to a bool intermediate, then append a bool->int32 cast producing the
+  // int32 feature/block-output `name`.
+  for (const auto& [name, shape] : bool_graph_outputs_) {
+    const std::string pre_name = GetUniqueName(name + "_from_bool");
+    bool found = false;
+    for (auto& op : *mlprogram_main_block_->mutable_operations()) {
+      for (auto& out : *op.mutable_outputs()) {
+        if (out.name() == name) {
+          out.set_name(pre_name);
+          found = true;
+        }
+      }
+    }
+    if (!found) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "RewriteBoolGraphIOBoundaries: bool graph output not produced by any operation: ", name);
+    }
+    for (auto& op : *mlprogram_main_block_->mutable_operations()) {
+      for (auto& input : *op.mutable_inputs()) {
+        for (auto& arg : *input.second.mutable_arguments()) {
+          if (arg.name() == name) {
+            arg.set_name(pre_name);
+          }
+        }
+      }
+    }
+    AddBoundaryCastOp(pre_name, name, ONNX_NAMESPACE::TensorProto_DataType_INT32, shape);
   }
 
   return Status::OK();
@@ -994,6 +1101,7 @@ Status ModelBuilder::CreateModel() {
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
 
   if (create_ml_program_) {
+    ORT_RETURN_IF_ERROR(RewriteBoolGraphIOBoundaries());
     SanitizeNames();
   }
 
@@ -1081,7 +1189,7 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
                                            const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::optional<gsl::span<const int64_t>> shape) {
   const auto data_type = tensor.data_type();
-  Initializer unpacked_tensor(tensor);
+  const Initializer unpacked_tensor(graph_viewer_.GetGraph(), tensor, graph_viewer_.ModelPath());
   std::string_view ret;
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -1189,5 +1297,6 @@ const std::string& ModelBuilder::GetUniqueName(const Node& node, std::string_vie
     return GetUniqueName(node.Name() + std::string(suffix));
   }
 }
+
 }  // namespace coreml
 }  // namespace onnxruntime

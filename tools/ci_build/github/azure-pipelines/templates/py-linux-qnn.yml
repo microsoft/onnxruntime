@@ -79,3 +79,4 @@ jobs:
       arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
     env:
       ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)

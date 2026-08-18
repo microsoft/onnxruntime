@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "string_concat.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/common/common.h"
@@ -58,3 +60,5 @@ Status StringConcat::Compute(OpKernelContext* context) const {
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

@@ -5,6 +5,8 @@ import argparse
 import glob
 import os
 import re
+import shutil
+import subprocess
 import sys
 import zipfile  # Available Python 3.2 or higher
 
@@ -27,6 +29,8 @@ gpu_related_header_files = [
     "onnxruntime_cxx_api.h",
     "onnxruntime_float16.h",
     "onnxruntime_cxx_inline.h",
+    "onnxruntime_experimental_c_api.h",
+    "onnxruntime_experimental_c_api.inc",
 ]
 dmlep_related_header_files = [
     "cpu_provider_factory.h",
@@ -35,6 +39,8 @@ dmlep_related_header_files = [
     "onnxruntime_float16.h",
     "onnxruntime_cxx_inline.h",
     "dml_provider_factory.h",
+    "onnxruntime_experimental_c_api.h",
+    "onnxruntime_experimental_c_api.inc",
 ]
 training_related_header_files = [
     "onnxruntime_c_api.h",
@@ -44,6 +50,8 @@ training_related_header_files = [
     "onnxruntime_training_c_api.h",
     "onnxruntime_training_cxx_api.h",
     "onnxruntime_training_cxx_inline.h",
+    "onnxruntime_experimental_c_api.h",
+    "onnxruntime_experimental_c_api.inc",
 ]
 
 
@@ -66,6 +74,10 @@ def parse_arguments():
     parser.add_argument(
         "--verify_nuget_signing",
         help="Flag indicating if Nuget package signing is to be verified. Only accepts 'true' or 'false'",
+    )
+    parser.add_argument(
+        "--is_release_build",
+        help="Flag indicating if validating a release build or dev build. Only accepts 'true' or 'false'",
     )
 
     return parser.parse_args()
@@ -226,15 +238,12 @@ def validate_tarball(args):
         raise Exception("No packages / more than one packages found in the given path.")
 
     package_name = args.package_name
-    if "-gpu-" in package_name.lower():
-        is_gpu_package = True
-    else:
-        is_gpu_package = False
+    is_gpu_package = "-gpu_cuda" in package_name.lower()
 
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
     print("tar zxvf " + package_name)
-    os.system("tar zxvf " + package_name)
+    subprocess.run(["tar", "zxvf", package_name], check=True)
 
     is_windows_ai_package = False
     zip_file = None
@@ -260,10 +269,7 @@ def validate_zip(args):
         raise Exception("No packages / more than one packages found in the given path.")
 
     package_name = args.package_name
-    if "-gpu-" in package_name.lower():
-        is_gpu_package = True
-    else:
-        is_gpu_package = False
+    is_gpu_package = "-gpu_cuda" in package_name.lower()
 
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
@@ -285,7 +291,14 @@ def validate_zip(args):
 
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
-    nuget_packages_found_in_path = [i for i in files if i.endswith(".nupkg") and "Managed" not in i]
+    is_release_build = args.is_release_build and args.is_release_build.lower() == "true"
+    nuget_packages_found_in_path = [
+        i
+        for i in files
+        if i.endswith(".nupkg")
+        and "Managed" not in i
+        and ((is_release_build and "-dev" not in i) or (not is_release_build and "-dev" in i))
+    ]
     if len(nuget_packages_found_in_path) != 1:
         print("Nuget packages found in path: ")
         print(nuget_packages_found_in_path)
@@ -325,7 +338,7 @@ def validate_nuget(args):
 
         # Make a copy of the Nuget package
         print("Copying [" + full_nuget_path + "] -> [" + nupkg_copy_name + "], and extracting its contents")
-        os.system("copy " + full_nuget_path + " " + nupkg_copy_name)
+        shutil.copy2(full_nuget_path, nupkg_copy_name)
 
         # Convert nupkg to zip
         os.rename(nupkg_copy_name, zip_copy_name)

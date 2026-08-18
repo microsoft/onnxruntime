@@ -137,7 +137,7 @@ class OVInferRequest {
     return ovInfReq;
   }
   virtual void RewindKVCache([[maybe_unused]] size_t index) {}
-  virtual void ReorderKVCache([[maybe_unused]] const std::vector<int32_t>& src_indices, [[maybe_unused]] const std::vector<int32_t>& dst_indices) {}
+  virtual void SetReorderKVCacheStatus([[maybe_unused]] const std::vector<int32_t>& src_indices, [[maybe_unused]] const std::vector<int32_t>& dst_indices) {}
 };
 
 class StatefulOVInferRequest : public OVInferRequest {
@@ -146,7 +146,7 @@ class StatefulOVInferRequest : public OVInferRequest {
 
   void Infer() override;
   void RewindKVCache(size_t index) override;
-  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
+  void SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
   void FillTensor(const std::string& tensor_name, const ov::element::Type& type,
                   const std::vector<size_t>& shape, int32_t fill_value);
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
@@ -157,6 +157,7 @@ class StatefulOVInferRequest : public OVInferRequest {
  private:
   void PreProcessInferRequest();
   void PostProcessInferRequest();
+  void CleanReorderKVCacheStatus();
   std::string target_device;
 
   std::vector<int64_t> cached_input_ids;

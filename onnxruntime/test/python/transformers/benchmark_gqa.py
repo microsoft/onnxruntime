@@ -22,6 +22,7 @@ except ImportError:
 class TestConfig:
     test_int4: bool = False
     test_int8: bool = False
+    test_fp8: bool = False
 
 
 def get_plot_algos(sm: int, local_window_size: int | None, config: TestConfig | None):
@@ -37,17 +38,21 @@ def get_plot_algos(sm: int, local_window_size: int | None, config: TestConfig | 
 
     # Add quantized variants if requested
     if sm >= 80 and config:
-        quant_vals = ["ort_gqa_int4", "ort_gqa_int8"]
-        quant_names = ["ORT-GQA-INT4", "ORT-GQA-INT8"]
-        quant_styles = [("purple", "dotted"), ("orange", "dashdot")]
+        quant_vals = ["ort_gqa_int4", "ort_gqa_int8", "ort_gqa_fp8"]
+        quant_names = ["ORT-GQA-INT4", "ORT-GQA-INT8", "ORT-GQA-FP8"]
+        quant_styles = [("purple", "dotted"), ("orange", "dashdot"), ("brown", "dashed")]
         if config.test_int4:
-            line_vals.extend(quant_vals[:1])
-            line_names.extend(quant_names[:1])
-            styles.extend(quant_styles[:1])
+            line_vals.append(quant_vals[0])
+            line_names.append(quant_names[0])
+            styles.append(quant_styles[0])
         if config.test_int8:
-            line_vals.extend(quant_vals[1:])
-            line_names.extend(quant_names[1:])
-            styles.extend(quant_styles[1:])
+            line_vals.append(quant_vals[1])
+            line_names.append(quant_names[1])
+            styles.append(quant_styles[1])
+        if config.test_fp8:
+            line_vals.append(quant_vals[2])
+            line_names.append(quant_names[2])
+            styles.append(quant_styles[2])
 
     return {
         "line_vals": line_vals,
@@ -116,6 +121,9 @@ def plot_prompt_performance(
         elif "_int8" in provider:
             k_quant_type = v_quant_type = "PER_TENSOR"
             kv_cache_type = "int8"
+        elif "_fp8" in provider:
+            k_quant_type = v_quant_type = "PER_TENSOR"
+            kv_cache_type = "fp8"
 
         config: GroupQueryAttentionConfig = GroupQueryAttentionConfig(
             batch_size=batch_size,
@@ -205,6 +213,10 @@ def plot_token_performance(
             k_quant_type = v_quant_type = "PER_TENSOR"
             kv_cache_type = "int8"
             share_kv_scale = True  # XQA requires shared scale
+        elif "_fp8" in provider:
+            k_quant_type = v_quant_type = "PER_TENSOR"
+            kv_cache_type = "fp8"
+            share_kv_scale = True  # XQA requires shared scale
 
         config: GroupQueryAttentionConfig = GroupQueryAttentionConfig(
             batch_size=batch_size,
@@ -247,6 +259,7 @@ def run_performance_test(
     # Note: some models use bf16.
     # We use fp16/bf16 for all models in this test.
     configures = [
+        (40, 128, 8, 8192, None, "Qwen3-14B"),
         (32, 128, 8, 8192, None, "Llama3-8B"),
         (64, 128, 8, 8192, None, "Llama3-70B"),
         (32, 128, 8, 32768, 4096, "Mistral-7B-v0.1"),
@@ -254,6 +267,13 @@ def run_performance_test(
         (32, 96, 32, 131072, None, "Phi-3-mini-128k"),
         (32, 128, 8, 131072, None, "Phi-3-small-128k"),  # Sparsity is not used in this test
         (40, 128, 10, 131072, None, "Phi-3-medium-128K"),
+        # Gemma 4 global attention layers: num_attention_heads=8,
+        # num_key_value_heads=4, head_dim=512. Head_dim > 256 is unsupported by
+        # Flash / Memory-Efficient Attention, so this exercises the GQA unfused
+        # fallback kernel (issue #28195). Listed twice: global (dense) and local
+        # (sliding window) variants.
+        (8, 512, 4, 32768, None, "Gemma4-global-h512"),
+        (8, 512, 4, 32768, 4096, "Gemma4-local-h512"),
     ]
 
     if fast:
@@ -303,7 +323,7 @@ if __name__ == "__main__":
 
     s = torch.cuda.Stream()
     with torch.cuda.stream(s), torch.no_grad():
-        config = TestConfig(test_int4=False, test_int8=True)
+        config = TestConfig(test_int4=False, test_int8=True, test_fp8=True)
         run_performance_test(sm, fast=True, config=config, dtype="float16", is_prompt=True)
         run_performance_test(sm, fast=True, config=config, dtype="float16", is_prompt=False)
         # run_performance_test(sm, fast=True, config=config, dtype="bfloat16", is_prompt=True)

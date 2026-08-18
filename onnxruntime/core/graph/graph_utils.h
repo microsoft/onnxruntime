@@ -8,6 +8,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 
 /** Returns the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+
+/** Checks whether a Shape node returns the full tensor shape (all dimensions).
+ * Returns false if start/end attributes restrict the output to a subset of dimensions. */
+bool IsFullShapeNode(const Node& node);
 
 /** Add a new initializer to 'graph'.
 Checks that new_initializer does not already exist in 'graph' before adding it.
@@ -345,6 +350,12 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 */
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
+/** Set a non-variadic optional node input, materializing omitted slots up to target_input_idx.
+@remarks Existing empty slots retain their argument count. Newly materialized slots must correspond to omitted
+         optional inputs with argument count zero. There is no edge between an initializer or graph input and a Node.
+*/
+void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, NodeArg& new_input);
+
 /** Finalize the fusion of second_node into first_node.
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
     e.g. Conv + Add fusion fuses the 'Add' into the Conv.
@@ -474,6 +485,22 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+/// <summary>
+/// This function creates an indexed subgraph from a collection of nodes
+/// using the graph instance. The IndexedSubgraph can then be used to create
+/// a filtered GraphViewer instance that only contains the nodes in the collection.
+/// </summary>
+/// <param name="nodes"></param>
+/// <param name="graph"></param>
+/// <param name="indexed_subgraph"></param>
+/// <returns></returns>
+Status CreateFilteredIndexedGraph(gsl::span<const Node* const> nodes, const Graph& graph,
+                                  std::unique_ptr<IndexedSubGraph>& indexed_subgraph);
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime

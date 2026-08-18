@@ -23,10 +23,12 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
   Im2ColMatMulProgram(bool has_bias,
                       uint32_t tile_m,
                       uint32_t tile_n,
+                      uint32_t vec_size,
                       bool use_subgroup) : Program("Im2ColMatMul"),
                                            has_bias_(has_bias),
                                            tile_m_(tile_m),
                                            tile_n_(tile_n),
+                                           vec_size_(vec_size),
                                            use_subgroup_(use_subgroup) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
@@ -55,6 +57,7 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
 
   uint32_t tile_m_;
   uint32_t tile_n_;
+  uint32_t vec_size_;
   bool use_subgroup_;
 };
 
@@ -62,7 +65,8 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
                                  const bool is_fused,
                                  const TensorShape kernel_shape,
-                                 const uint32_t group);
+                                 const uint32_t group,
+                                 const MLDataType data_type);
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const bool is_channels_last,

@@ -64,8 +64,21 @@ popd
 
 set PATH=C:\Program Files\Git\usr\bin;%PATH%
 
-call %ROOT%build.bat --config %CONFIG% %CONFIG_EXTRA_FLAG% --skip_submodule_sync --build_wasm --skip_tests^
- --enable_wasm_simd --enable_wasm_threads --use_jsep --use_webnn --target onnxruntime_webassembly --build_dir %BUILD_DIR%
+call %ROOT%build.bat^
+ --config %CONFIG%^
+ %CONFIG_EXTRA_FLAG%^
+ --parallel^
+ --skip_submodule_sync^
+ --build_wasm^
+ --target onnxruntime_webassembly^
+ --skip_tests^
+ --enable_wasm_simd^
+ --enable_wasm_threads^
+ --use_jsep^
+ --use_webnn^
+ --build_dir %BUILD_DIR%^
+ --include_ops_by_config %ROOT%onnxruntime\wasm\reduced_types.config^
+ --enable_reduced_operator_type_support
 
 IF NOT "%ERRORLEVEL%" == "0" (
   exit /b %ERRORLEVEL%

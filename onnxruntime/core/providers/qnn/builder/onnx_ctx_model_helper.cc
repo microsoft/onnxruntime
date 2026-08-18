@@ -91,7 +91,8 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
-    const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
+    static const std::string empty_context_binary;
+    const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, empty_context_binary);
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
                                                                "",
@@ -103,27 +104,16 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
   std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
   ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
-#ifdef _WIN32
-  onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
-  auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
-  ORT_RETURN_IF(ctx_file_path.is_absolute(), "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
-                external_qnn_ctx_binary_file_name);
-  auto relative_path = ctx_file_path.lexically_normal().make_preferred().wstring();
-  if (relative_path.find(L"..", 0) != std::string::npos) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+
+  // Validate that the cache path does not escape the model directory.
+  // Rejects absolute paths, ".." traversal, and symlink-based escapes.
+  auto validate_status = ::onnxruntime::utils::ValidateExternalDataPath(
+      std::filesystem::path(ctx_onnx_model_path), std::filesystem::path(external_qnn_ctx_binary_file_name));
+  if (!validate_status.IsOK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage());
   }
 
-  std::filesystem::path context_binary_path = folder_path.append(relative_path);
-#else
-  ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
-                "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
-                external_qnn_ctx_binary_file_name);
-  if (external_qnn_ctx_binary_file_name.find("..", 0) != std::string::npos) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
-  }
-  std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
-  std::string file_full_path = context_binary_path.string();
-#endif
+  std::filesystem::path context_binary_path = folder_path / external_qnn_ctx_binary_file_name;
   if (!std::filesystem::is_regular_file(context_binary_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
@@ -269,7 +259,7 @@ Status CreateEPContextNodes(Model* model,
         }
 
         context_bin_path = context_bin_path + ToPathString("_qnn.bin");
-        context_cache_name = std::filesystem::path(context_bin_path).filename().string();
+        context_cache_name = PathToUTF8String(std::filesystem::path(context_bin_path).filename().native());
 
         // If generate ctx.onnx with share_ep_context enabled, all ctx.onnx should point to the same ctx.bin
         if (share_ep_contexts) {

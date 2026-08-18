@@ -1,5 +1,4 @@
 flatbuffers
 numpy >= 1.21.6
 packaging
-protobuf
-sympy
+protobuf>=4.25.8

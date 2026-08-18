@@ -4,6 +4,14 @@
 
 #include <string.h>
 #include <atomic>
+#include <charconv>
+#include <cerrno>
+#include <cstdint>
+#include <cstdlib>
+#include <mutex>
+#include <unordered_map>
+#include <string_view>
+#include <cuda.h>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -11,8 +19,16 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
-#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
+
+// D3D12 headers for graphics interop on Windows
+#if defined(_WIN32) && USE_DX_INTEROP
+#include <d3d12.h>
+#endif
+// NVML for driver version checking (optional; see HAVE_NVML in CMake)
+#if defined(HAVE_NVML)
+#include <nvml.h>
+#endif
 
 #include "onnx_ctx_model_helper.h"
 #include "nv_provider_factory.h"
@@ -20,6 +36,7 @@
 #include "nv_provider_factory_creator.h"
 #include "nv_data_transfer.h"
 #include "nv_allocator.h"
+#include "nv_scoped_context.h"
 
 using namespace onnxruntime;
 
@@ -62,7 +79,7 @@ struct NvProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
-                                                     const OrtLogger& session_logger);
+                                                     const OrtLogger& session_logger) override;
 
  private:
   NvExecutionProviderInfo info_;
@@ -110,7 +127,7 @@ struct Nv_Provider : Provider {
     return std::make_shared<NvProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) override {
     if (param == nullptr) {
       LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
       return nullptr;
@@ -220,6 +237,7 @@ struct NvTrtRtxOrtAllocator : OrtAllocator {
     Info = InfoImpl;
     Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
     GetStats = nullptr;   // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
+    Shrink = nullptr;
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
@@ -529,8 +547,6 @@ struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
   const OrtApi& ort_api;
 };
 
-#if defined(_WIN32)
-
 // External Resource Import Implementation (D3D12 to CUDA)
 /**
  * @brief Derived handle for imported external memory from D3D12 to CUDA.
@@ -632,8 +648,13 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       _In_ OrtExternalMemoryHandleType handle_type) noexcept {
     (void)this_ptr;
     // CUDA supports both D3D12 resource and heap handles
+#if defined(_WIN32)
     return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
-           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP ||
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32;
+#elif __linux__
+    return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL ImportMemoryImpl(
@@ -684,6 +705,14 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
         cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
         is_dedicated = false;  // D3D12 heaps are not dedicated
         break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32;
+        is_dedicated = false;  // API header currently, documents that this handle currently is non-dedicated
+        break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD;
+        is_dedicated = false;  // API header currently, documents that this handle currently is non-dedicated
+        break;
       default:
         // Should not reach here - CanImportMemory already validated handle type
         return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
@@ -692,7 +721,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Setup external memory handle descriptor
     CUDA_EXTERNAL_MEMORY_HANDLE_DESC ext_mem_desc = {};
     ext_mem_desc.type = cu_handle_type;
+#if defined(_WIN32)
     ext_mem_desc.handle.win32.handle = desc->native_handle;
+#else
+    ext_mem_desc.handle.fd = static_cast<int>(reinterpret_cast<intptr_t>((desc->native_handle)));
+#endif
     ext_mem_desc.size = desc->size_bytes;
     ext_mem_desc.flags = is_dedicated ? CUDA_EXTERNAL_MEMORY_DEDICATED : 0;
 
@@ -815,8 +848,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       _In_ const OrtExternalResourceImporterImpl* this_ptr,
       _In_ OrtExternalSemaphoreType type) noexcept {
     (void)this_ptr;
-    // CUDA supports D3D12 timeline fences
-    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
+#if defined(_WIN32)
+    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE || type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32;
+#else
+    return type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL ImportSemaphoreImpl(
@@ -847,8 +883,25 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
 
     // Setup external semaphore handle descriptor for D3D12 fence
     CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC ext_sem_desc = {};
-    ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+    switch (desc->type) {
+      case ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+        break;
+      case ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_WIN32;
+        break;
+      case ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_FD;
+        break;
+      default:
+        // Should not reach here - ImportSemaphoreImpl already validated handle type
+        return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
+    }
+#if defined(_WIN32)
     ext_sem_desc.handle.win32.handle = desc->native_handle;
+#else
+    ext_sem_desc.handle.fd = static_cast<int>(reinterpret_cast<intptr_t>(desc->native_handle));
+#endif
     ext_sem_desc.flags = 0;
 
     // Import the external semaphore
@@ -946,7 +999,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Get the CUDA stream from OrtSyncStream
     cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
 
-    // Setup signal parameters for D3D12 fence (timeline semaphore)
+    // Setup signal parameters for D3D12 fence / VK timeline semaphore
     CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signal_params = {};
     signal_params.params.fence.value = value;
     signal_params.flags = 0;
@@ -984,8 +1037,6 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
   const OrtEpApi& ep_api;
 };
 
-#endif  // defined(_WIN32)
-
 // OrtEpApi infrastructure to be able to use the NvTensorRTRTX EP as an OrtEpFactory for auto EP selection.
 struct NvTensorRtRtxEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
@@ -1011,7 +1062,13 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
     ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
+
+    // Graphics interop support (added in ORT 1.25)
+    InitGraphicsInterop = InitGraphicsInteropImpl;
+    DeinitGraphicsInterop = DeinitGraphicsInteropImpl;
+
     CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
+    GetHardwareDeviceIncompatibilityDetails = GetHardwareDeviceIncompatibilityDetailsImpl;
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
   }
 
@@ -1051,9 +1108,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
    *    compute capability is at least 8.0 (Ampere) or newer.
    *
    * @param device The OrtHardwareDevice to check.
+   * @param major Optional output parameter for the major compute capability version.
+   * @param minor Optional output parameter for the minor compute capability version.
    * @return True if the device is a supported NVIDIA GPU, false otherwise.
    */
-  bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device) {
+  bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device, int* major = nullptr, int* minor = nullptr) {
 #if _WIN32
     const auto& metadata_entries = device.metadata.Entries();
     const auto it = metadata_entries.find("LUID");
@@ -1085,11 +1144,19 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
         continue;
       }
 
-      // Ensure the LUID is 8 bytes and reinterpret it directly as a uint64_t for comparison.
+      // Copy LUID into uint64_t to avoid unaligned read and strict aliasing (luid is a byte array).
       static_assert(sizeof(prop.luid) == sizeof(uint64_t), "cudaDeviceProp::luid should be 8 bytes");
-      uint64_t current_luid = *reinterpret_cast<const uint64_t*>(prop.luid);
+      uint64_t current_luid;
+      memcpy(&current_luid, prop.luid, sizeof(current_luid));
 
       if (current_luid == target_luid) {
+        // Set output parameters if provided
+        if (major != nullptr) {
+          *major = prop.major;
+        }
+        if (minor != nullptr) {
+          *minor = prop.minor;
+        }
         // Ampere architecture or newer is required.
         return prop.major >= 8;
       }
@@ -1112,9 +1179,235 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     if (cudaGetDeviceProperties(&prop, cuda_device_idx) != cudaSuccess) {
       return false;
     }
+    // Set output parameters if provided
+    if (major != nullptr) {
+      *major = prop.major;
+    }
+    if (minor != nullptr) {
+      *minor = prop.minor;
+    }
     // Ampere architecture or newer is required.
     return prop.major >= 8;
 #endif
+  }
+
+  /**
+   * @brief Parses NVML driver version string and compares with minimum required version.
+   *
+   * NVML returns driver versions as "major.minor" on Windows and "major.minor.patch" on Linux.
+   * Only major and minor are needed for the minimum-version checks below.
+   *
+   * @param driver_version_str NVML driver version string (e.g., "581.80" or "555.42.06")
+   * @param min_version_str Minimum required version string (e.g., "570.00")
+   * @return true if driver_version >= min_version, false otherwise
+   */
+  static bool CompareNVMLDriverVersion(std::string_view driver_version_str, std::string_view min_version_str) {
+    auto parseVersion = [](std::string_view version_str, int& major, int& minor) -> bool {
+      size_t dot_pos = version_str.find('.');
+      if (dot_pos == std::string::npos || dot_pos == version_str.length() - 1 || dot_pos == 0) {
+        return false;
+      }
+
+      auto parsePart = [](std::string_view part, int& value) -> bool {
+        if (part.empty()) {
+          return false;
+        }
+
+        int parsed_value = 0;
+        const char* const begin = part.data();
+        const char* const end = begin + part.size();
+        const auto result = std::from_chars(begin, end, parsed_value);
+        if (result.ec != std::errc{} || result.ptr != end || parsed_value < 0) {
+          return false;
+        }
+
+        value = parsed_value;
+        return true;
+      };
+
+      const size_t minor_start = dot_pos + 1;
+      const size_t second_dot_pos = version_str.find('.', minor_start);
+      const size_t minor_length = second_dot_pos == std::string::npos
+                                      ? version_str.length() - minor_start
+                                      : second_dot_pos - minor_start;
+      if (!parsePart(version_str.substr(0, dot_pos), major) ||
+          !parsePart(version_str.substr(minor_start, minor_length), minor)) {
+        return false;
+      }
+
+      // Linux NVML versions include a patch component. Validate it when present, but it is not part of
+      // the minimum-version comparison.
+      if (second_dot_pos != std::string::npos) {
+        int patch = 0;
+        return parsePart(version_str.substr(second_dot_pos + 1), patch);
+      }
+
+      return true;
+    };
+
+    int driver_major = 0, driver_minor = 0;
+    int min_major = 0, min_minor = 0;
+
+    if (!parseVersion(driver_version_str, driver_major, driver_minor) ||
+        !parseVersion(min_version_str, min_major, min_minor)) {
+      // If parsing fails, conservatively treat as incompatible (fail safe)
+      return false;
+    }
+
+    // Compare versions numerically
+    if (driver_major > min_major) return true;
+    if (driver_major < min_major) return false;
+    return driver_minor >= min_minor;
+  }
+
+  /**
+   * @brief Checks for hardware device incompatibility reasons with NvTensorRTRTX EP.
+   *
+   * This function is called by ORT's GetHardwareDeviceEpIncompatibilityDetails() API
+   * to provide diagnostic information about why a device may be incompatible with
+   * this execution provider.
+   *
+   * Currently checks:
+   * - Compute capability: Requires Ampere (8.0) or newer GPU architecture
+   * - Driver version: Uses NVML to check NVIDIA graphics driver version
+   *   - CC 8.x-11.x devices: Requires R555 or newer
+   *   - Blackwell (CC 12.x): Requires R570 or newer
+   *
+   * @param hw The hardware device to check for incompatibility.
+   * @param details Pre-allocated incompatibility details object initialized by ORT.
+   * @return nullptr on success (compatible or details set), OrtStatus on error.
+   */
+  OrtStatus* GetHardwareDeviceIncompatibilityDetailsInternal(
+      const OrtHardwareDevice* hw,
+      OrtDeviceEpIncompatibilityDetails* details) {
+    if (hw == nullptr || details == nullptr) {
+      return ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                  "[NvTensorRTRTX EP] Invalid arguments: hw or details is null");
+    }
+
+    // Check if the device is a GPU from NVIDIA vendor
+    OrtHardwareDeviceType device_type = ort_api.HardwareDevice_Type(hw);
+    uint32_t hardware_vendor_id = ort_api.HardwareDevice_VendorId(hw);
+
+    if (device_type != OrtHardwareDeviceType::OrtHardwareDeviceType_GPU ||
+        hardware_vendor_id != vendor_id) {
+      // Not a NVIDIA GPU - device type/vendor incompatible
+      uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+      return ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          "NvTensorRTRTX EP only supports NVIDIA GPU devices");
+    }
+
+    // Check compute capability and get major/minor for driver version check
+    int compute_capability_major = 0;
+    int compute_capability_minor = 0;
+    if (!IsOrtHardwareDeviceSupported(*hw, &compute_capability_major, &compute_capability_minor)) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+      // If both are still 0, the CUDA device lookup failed (device not matched by LUID/PCI bus ID)
+      if (compute_capability_major == 0 && compute_capability_minor == 0) {
+        return ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+            details,
+            reasons,
+            0,  // error_code
+            "NvTensorRTRTX EP could not determine the compute capability of this NVIDIA GPU. "
+            "Ensure the CUDA runtime is installed and the device is accessible.");
+      }
+      // Device architecture not supported - compute capability too low
+      std::string cc_string = std::to_string(compute_capability_major) + "." + std::to_string(compute_capability_minor);
+      std::string msg = "NvTensorRTRTX EP does not support GPU with Compute Capability " + cc_string +
+                        ". Requires Ampere (8.0+) or newer GPU architecture.";
+      return ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          msg.c_str());
+    }
+
+#if defined(HAVE_NVML)
+    // Determine minimum driver version based on GPU architecture
+    const char* min_driver_version = nullptr;
+    if (compute_capability_major >= 12) {
+      // Blackwell architecture (CC 12.x) requires the R570 branch or newer.
+      min_driver_version = "570.00";
+    } else if (compute_capability_major >= 8) {
+      // CC 8.x-11.x devices use the R555 branch minimum.
+#if _WIN32
+      min_driver_version = "555.85";
+#else
+      min_driver_version = "555.42";
+#endif
+    } else {
+      // Should not reach here (already checked compute capability above)
+#if _WIN32
+      min_driver_version = "555.85";
+#else
+      min_driver_version = "555.42";
+#endif
+    }
+
+    // Initialize NVML and get driver version
+    nvmlReturn_t nvml_result = nvmlInit_v2();
+    if (nvml_result != NVML_SUCCESS) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
+      std::string msg = "Failed to initialize NVML (" + std::string(nvmlErrorString(nvml_result)) +
+                        "). NVML may be unavailable due to missing or incompatible NVIDIA driver, insufficient permissions, or runtime/container restrictions.";
+      return ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          msg.c_str());
+    }
+
+    char driver_version_str[NVML_SYSTEM_DRIVER_VERSION_BUFFER_SIZE] = {0};
+    nvml_result = nvmlSystemGetDriverVersion(driver_version_str, sizeof(driver_version_str));
+
+    // Shutdown NVML before returning
+    nvmlShutdown();
+
+    if (nvml_result != NVML_SUCCESS) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
+      std::string msg = "Failed to query NVIDIA driver version: " + std::string(nvmlErrorString(nvml_result));
+      return ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          msg.c_str());
+    }
+
+    // Compare driver version with minimum required
+    if (!CompareNVMLDriverVersion(driver_version_str, min_driver_version)) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
+      std::string msg = "NVIDIA driver version " + std::string(driver_version_str) +
+                        " is too old. Minimum required: " + min_driver_version + " or higher";
+
+      return ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code (could store parsed version if needed)
+          msg.c_str());
+    }
+#endif  // HAVE_NVML
+
+    // Device is compatible - details are already initialized with default values by ORT
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetailsImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* hw,
+      OrtDeviceEpIncompatibilityDetails* details) noexcept {
+    auto* factory = static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+    try {
+      return factory->GetHardwareDeviceIncompatibilityDetailsInternal(hw, details);
+    } catch (const std::exception&) {
+      return factory->ort_api.CreateStatus(ORT_FAIL,
+                                           "[NvTensorRTRTX EP] Exception in GetHardwareDeviceIncompatibilityDetails");
+    } catch (...) {
+      return factory->ort_api.CreateStatus(ORT_FAIL,
+                                           "[NvTensorRTRTX EP] Unknown exception in GetHardwareDeviceIncompatibilityDetails");
+    }
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -1214,9 +1507,23 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
     cudaStream_t stream = nullptr;
-    ScopedContext ctx(device_id);
+    CUcontext cig_context = factory.GetCigContext(device_id);
 
-    CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    try {
+      // Push context so stream is created on it; pop on scope exit to restore thread's prior context.
+      if (cig_context != nullptr) {
+        ScopedContext scoped(cig_context);
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      } else {
+        ScopedContext scoped(device_id);
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      }
+    } catch (const std::exception& e) {
+      return onnxruntime::CreateStatus(ORT_FAIL, e.what());
+    } catch (...) {
+      return onnxruntime::CreateStatus(ORT_FAIL,
+                                       "[NvTensorRTRTX EP] Failed to set context current for stream creation.");
+    }
 
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
 
@@ -1250,17 +1557,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     *out_importer = nullptr;
 
-#if defined(_WIN32)
     // Create the external resource importer
     auto importer = std::make_unique<NvTrtRtxExternalResourceImporterImpl>(ep_device, factory.ort_api);
     *out_importer = importer.release();
 
     return nullptr;
-#else
-    ORT_UNUSED_PARAMETER(ep_device);
-    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                        "External resource import is only available on Windows builds.");
-#endif
   }
 
   /**
@@ -1377,6 +1678,241 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     }
   }
 
+  // Initialize graphics interop for a device. Creates a CIG (CUDA Interop Graphics) context
+  // bound to the provided graphics command queue/device.
+  // This follows Scott's suggestion to pass in everything required so we don't end up with multiple
+  // init function signatures, and the factory stores the queue to utilize in stream creation.
+  static OrtStatus* ORT_API_CALL InitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                         const OrtEpDevice* ep_device,
+                                                         const OrtGraphicsInteropConfig* config) noexcept {
+    if (ep_device == nullptr) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: ep_device is null");
+    }
+    if (config == nullptr) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: config is null");
+    }
+    if (config->version != ORT_API_VERSION) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: config version does not match ORT_API_VERSION");
+    }
+
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    // Extract device_id from OrtEpDevice options
+    const OrtKeyValuePairs* ep_options = factory.ort_api.EpDevice_EpOptions(ep_device);
+    const char* device_id_str = factory.ort_api.GetKeyValue(ep_options, "device_id");
+    if (device_id_str == nullptr) {
+      return onnxruntime::CreateStatus(ORT_FAIL,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: device_id not found in ep_device options");
+    }
+    char* parse_end = nullptr;
+    errno = 0;
+    long device_id_long = strtol(device_id_str, &parse_end, 10);
+    if (parse_end == device_id_str || *parse_end != '\0' || errno == ERANGE ||
+        device_id_long < static_cast<long>(INT32_MIN) || device_id_long > static_cast<long>(INT32_MAX)) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: invalid device_id in ep_device options");
+    }
+    int32_t device_id = static_cast<int32_t>(device_id_long);
+
+    // Validate graphics API
+    if (config->graphics_api == ORT_GRAPHICS_API_NONE) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: graphics_api cannot be NONE");
+    }
+
+    // Initialize CUDA driver API
+    CUresult cu_result = cuInit(0);
+    if (cu_result != CUDA_SUCCESS) {
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "[NvTensorRTRTX EP] Failed to initialize CUDA driver API: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+    }
+
+    // Get CUDA device properties to retrieve LUID
+    cudaDeviceProp cuda_prop;
+    cudaError_t cuda_err = cudaGetDeviceProperties(&cuda_prop, device_id);
+    if (cuda_err != cudaSuccess) {
+      std::string error_msg = "[NvTensorRTRTX EP] Failed to get CUDA device properties: ";
+      error_msg += cudaGetErrorString(cuda_err);
+      return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+    }
+
+    // Create CIG context based on graphics API type
+    CUcontext cig_context = nullptr;
+
+    if (config->graphics_api == ORT_GRAPHICS_API_D3D12) {
+#if defined(_WIN32) && USE_DX_INTEROP
+      // command_queue is optional (performance optimization for GPU-side sync). Without it, skip CIG context.
+      if (config->command_queue == nullptr) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] InitGraphicsInterop: command_queue not passed; skipping graphics interop context (streams will use default context).";
+        return nullptr;  // Success; Interop API still works, streams will use default context
+      }
+
+      ID3D12CommandQueue* d3d12_queue = reinterpret_cast<ID3D12CommandQueue*>(config->command_queue);
+
+      // Get device from command queue (no separate device param; avoids mismatch)
+      ID3D12Device* d3d12_device = nullptr;
+      HRESULT hr = d3d12_queue->GetDevice(IID_PPV_ARGS(&d3d12_device));
+      if (FAILED(hr) || d3d12_device == nullptr) {
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] InitGraphicsInterop: failed to get D3D12 device from command queue");
+      }
+
+      // Get LUID from CUDA device (OrtEpDevice identifies the GPU via device_id)
+      if (cuda_prop.luidDeviceNodeMask == 0) {
+        d3d12_device->Release();
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] CUDA device does not have a valid LUID");
+      }
+      uint64_t cuda_luid;
+      memcpy(&cuda_luid, cuda_prop.luid, sizeof(cuda_luid));
+
+      // Ensure graphics device from command queue and OrtEpDevice GPU are logically the same
+      LUID d3d12_luid = d3d12_device->GetAdapterLuid();
+      uint64_t d3d12_luid_64 = (static_cast<uint64_t>(d3d12_luid.HighPart) << 32) | d3d12_luid.LowPart;
+      d3d12_device->Release();
+
+      if (d3d12_luid_64 != cuda_luid) {
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] D3D12 device LUID does not match CUDA device LUID");
+      }
+
+      // Create CIG context bound to D3D12 command queue
+
+      CUctxCigParam cig_param = {CIG_DATA_TYPE_D3D12_COMMAND_QUEUE, d3d12_queue};
+      CUctxCreateParams ctx_params = {nullptr, 0, &cig_param};
+
+      cu_result = cuCtxCreate_v4(&cig_context, &ctx_params, 0, device_id);
+      if (cu_result != CUDA_SUCCESS) {
+        const char* error_str = nullptr;
+        cuGetErrorString(cu_result, &error_str);
+        std::string error_msg = "[NvTensorRTRTX EP] Failed to create CIG context for D3D12: ";
+        error_msg += error_str ? error_str : "unknown error";
+        return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+      }
+#else
+      return onnxruntime::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                       "[NvTensorRTRTX EP] D3D12 CIG context creation not supported on this platform");
+#endif
+    } else if (config->graphics_api == ORT_GRAPHICS_API_VULKAN) {
+      int cig_supported{false};
+      if (cudaSuccess != cudaDeviceGetAttribute(&cig_supported, cudaDevAttrVulkanCigSupported, device_id)) {
+        return onnxruntime::CreateStatus(ORT_EP_FAIL,
+                                         "[NvTensorRTRTX EP] Could not determine CiG support for CUDA device");
+      }
+      if (!cig_supported) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] InitGraphicsInterop: CiG for Vulkan is not supported on the given device. Will use the default CUDA context";
+        return nullptr;
+      }
+      const char* nv_blob_ptr_str = factory.ort_api.GetKeyValue(config->additional_options, onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data);
+      if (!nv_blob_ptr_str) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] InitGraphicsInterop: Can't enable CUDA in Graphics (CiG) for Vulkan without onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data";
+        return nullptr;
+      }
+      uint64_t nv_blob_ptr = std::stoull(nv_blob_ptr_str);
+      if (nv_blob_ptr == 0) {
+        return onnxruntime::CreateStatus(ORT_EP_FAIL,
+                                         "[NvTensorRTRTX EP] Could not parse provided values for onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data or onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data_len");
+      }
+
+      CUctxCigParam cig_params{};
+      cig_params.sharedDataType = CIG_DATA_TYPE_NV_BLOB;
+      cig_params.sharedData = reinterpret_cast<void*>(nv_blob_ptr);
+      CUctxCreateParams params{};
+      params.cigParams = &cig_params;
+
+      cu_result = cuCtxCreate_v4(&cig_context, &params, 0, device_id);
+      if (cu_result != CUDA_SUCCESS) {
+        const char* error_str = nullptr;
+        cuGetErrorString(cu_result, &error_str);
+        std::string error_msg = "[NvTensorRTRTX EP] Failed to create CIG context for Vulkan: ";
+        error_msg += error_str ? error_str : "unknown error";
+        return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+      }
+    } else {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] Unsupported graphics API for CIG context");
+    }
+
+    // Store the CIG context for this device
+    {
+      std::lock_guard<std::mutex> lock(factory.cig_contexts_mutex_);
+      factory.cig_contexts_[device_id] = cig_context;
+    }
+
+    return nullptr;
+  }
+
+  // Deinitialize graphics interop for a device. Destroys the CIG context (cuCtxDestroy) and removes
+  // it from the map. Callers must release dependent resources (OrtSyncStream, semaphore, importer)
+  // before calling Deinit so the context is not in use.
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                           const OrtEpDevice* ep_device) noexcept {
+    if (ep_device == nullptr) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] DeinitGraphicsInterop: ep_device is null");
+    }
+
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    // Extract device_id from OrtEpDevice options
+    const OrtKeyValuePairs* ep_options = factory.ort_api.EpDevice_EpOptions(ep_device);
+    const char* device_id_str = factory.ort_api.GetKeyValue(ep_options, "device_id");
+    if (device_id_str == nullptr) {
+      return onnxruntime::CreateStatus(ORT_FAIL,
+                                       "[NvTensorRTRTX EP] DeinitGraphicsInterop: device_id not found in ep_device options");
+    }
+    char* parse_end = nullptr;
+    errno = 0;
+    long device_id_long = strtol(device_id_str, &parse_end, 10);
+    if (parse_end == device_id_str || *parse_end != '\0' || errno == ERANGE ||
+        device_id_long < static_cast<long>(INT32_MIN) || device_id_long > static_cast<long>(INT32_MAX)) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] DeinitGraphicsInterop: invalid device_id in ep_device options");
+    }
+    int32_t device_id = static_cast<int32_t>(device_id_long);
+
+    CUcontext cig_context = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(factory.cig_contexts_mutex_);
+      auto it = factory.cig_contexts_.find(device_id);
+      if (it != factory.cig_contexts_.end()) {
+        cig_context = it->second;
+        factory.cig_contexts_.erase(it);
+      }
+    }
+
+    // Destroy the CIG context. Callers must release dependent resources (OrtSyncStream,
+    // external semaphore/importer, etc.) before Deinit so the context is not in use.
+    if (cig_context != nullptr) {
+      CUresult cu_result = cuCtxDestroy(cig_context);
+      if (cu_result != CUDA_SUCCESS) {
+        const char* error_str = nullptr;
+        cuGetErrorString(cu_result, &error_str);
+        std::string error_msg = "[NvTensorRTRTX EP] DeinitGraphicsInterop: cuCtxDestroy failed: ";
+        error_msg += error_str ? error_str : "unknown error";
+        return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+      }
+    }
+
+    return nullptr;
+  }
+
+  // Get the CIG CUDA context for a device (for use in stream creation)
+  CUcontext GetCigContext(int32_t device_id) const {
+    std::lock_guard<std::mutex> lock(cig_contexts_mutex_);
+    auto it = cig_contexts_.find(device_id);
+    if (it != cig_contexts_.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+
   OrtStatus* CreateMemoryInfoForDevices(int num_devices) {
     gpu_memory_infos.reserve(num_devices);
     host_accessible_memory_infos.reserve(num_devices);
@@ -1420,6 +1956,12 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
   // we use a shared instance for the OrtDataTransferImpl instead of creating a new one on every call to
   NvTrtRtxDataTransferImpl data_transfer_impl;
+
+  // CIG contexts per device (keyed by device_id).
+  // Threading: InitGraphicsInteropImpl, DeinitGraphicsInteropImpl, and CreateSyncStreamForDeviceImpl
+  // (via GetCigContext) may be called from different threads. All access is guarded by cig_contexts_mutex_.
+  mutable std::mutex cig_contexts_mutex_;
+  std::unordered_map<int, CUcontext> cig_contexts_;
 
   NvTensorRtRtxEpFactory(const NvTensorRtRtxEpFactory&) = delete;
   NvTensorRtRtxEpFactory& operator=(const NvTensorRtRtxEpFactory&) = delete;

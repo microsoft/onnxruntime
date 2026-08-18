@@ -1082,7 +1082,7 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     // Configure to use our CUDA stream
     char stream_address[32];
     size_t stream_addr_val = reinterpret_cast<size_t>(ort_api_->SyncStream_GetHandle(ort_stream));
-    sprintf(stream_address, "%llu", static_cast<uint64_t>(stream_addr_val));
+    sprintf_s(stream_address, "%llu", static_cast<uint64_t>(stream_addr_val));
     const char* option_keys[] = {
         // TODO we should no longer require to set the compute stream at this point but there are too many cudaSetDevice calls from allocators and stream handling (NVBUG 5822116)
         onnxruntime::nv::provider_option_names::kUserComputeStream,
@@ -1095,7 +1095,7 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     };
     char aux_stream_address[32];
     size_t aux_streams[] = {stream_addr_val};
-    sprintf(aux_stream_address, "%llu", reinterpret_cast<uint64_t>(aux_streams));
+    sprintf_s(aux_stream_address, "%llu", reinterpret_cast<uint64_t>(aux_streams));
     std::string max_shared_mem_size = std::to_string(1024 * 28);  // 28 KiB
     const char* option_values[] = {
         stream_address,

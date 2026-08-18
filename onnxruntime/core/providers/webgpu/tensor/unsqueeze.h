@@ -48,5 +48,9 @@ class Unsqueeze final : public OpKernel, public UnsqueezeBase {
   }
 };
 
+// Create Unsqueeze kernel info with appropriate type constraints based on int64 support
+KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateUnsqueezeKernelInfo(int since_version, bool enable_int64);
+
 }  // namespace webgpu
 }  // namespace onnxruntime

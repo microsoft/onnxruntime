@@ -1,0 +1,21 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
+// (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
+// Gives B an even row stride so the subgroup-matrix f16 load's 4-byte row-start
+// alignment holds for odd N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+  let r = global_idx / uniforms.N_b;                 // padded-output row
+  let c = global_idx % uniforms.N_b;                 // padded-output column
+  var v = output_value_t(0);
+  if (c < uniforms.N) {                              // real column -> copy; else zero pad
+    v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
+  }
+  output.setByOffset(global_idx, v);
+}  // MAIN

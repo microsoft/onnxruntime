@@ -112,9 +112,39 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   Scan<9>);
 
 // Opset 19 starts to support float 8 types for the type constraint "V"
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  19, 20,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  Scan<9>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  21, 22,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  Scan<9>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  Scan<9>);
+
 ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
-                        19,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             // 'I' is in the ONNX spec but is not used for any inputs or outputs

@@ -124,6 +124,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   logits_processor = logits_processor_tensor ? static_cast<int>(*logits_processor_tensor->Data<int32_t>()) : 0;
   ORT_ENFORCE(logits_processor >= 0,
               "logits_processor shall be a non-negative integer, got ", logits_processor);
+  ValidateWhisperTimestampTokenId();
 
   if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
     auto* temperature_tensor = context->Input<Tensor>(14);
@@ -144,13 +145,27 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
-  // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
+  // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch).
+  // Reject an explicitly supplied vocab_size that exceeds the decoder logits width.
   if (vocab_size == -1 || vocab_size == 0) {
     vocab_size = vocabulary_size;
+  } else if (vocab_size > vocabulary_size) {
+    ORT_THROW("vocab_size attribute (", vocab_size,
+              ") cannot exceed decoder subgraph logits width (", vocabulary_size, ")");
   }
+
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;
+}
+
+void BeamSearchParameters::ValidateWhisperTimestampTokenId() const {
+  if (model_type == IGenerationParameters::kModelTypeWhisper &&
+      logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
+    ORT_ENFORCE(beginning_timestamp_token_id > 0 && beginning_timestamp_token_id < vocab_size,
+                "beginning_timestamp_token_id is out of range, it is ", beginning_timestamp_token_id,
+                ", vocab_size is ", vocab_size);
+  }
 }
 
 void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {

@@ -76,7 +76,7 @@ jobs:
       git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Testing: force EOL to lf on windows for /js/**'
-  
+
   - template: setup-build-tools.yml
     parameters:
       host_cpu_arch: 'x64'
@@ -129,9 +129,10 @@ jobs:
   - script: |
       npm run format
     workingDirectory: '$(Build.SourcesDirectory)\js'
-    displayName: 'Clang-format'
+    displayName: 'npm run format'
+  # stash any changes to `NuGet.config` (expected from setup-feed auth) to prevent false positives. restore after diff check.
   - script: |
-      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+      node -e "a=require('child_process').execSync('git diff --name-only -- .').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Check unformatted files'
   - script: |
@@ -139,7 +140,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Generating documents'
   - script: |
-      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+      node -e "a=require('child_process').execSync('git diff --name-only -- .').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
   - task: Cache@2

@@ -32,7 +32,8 @@ QNBitGemmPackQuantBDataSize_Lasx(
     size_t K,
     size_t BlkLen,
     bool /* HasZeroPoint */,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
@@ -64,7 +65,8 @@ SQ4BitGemmPackQuantBData_Lasx(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -145,7 +147,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum_Lasx(
     bool has_zp_input,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 4>& packed_quant_b,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
@@ -191,7 +194,8 @@ SQ8BitGemmPackQuantBDataAndBlkSum_Lasx(
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 8>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);

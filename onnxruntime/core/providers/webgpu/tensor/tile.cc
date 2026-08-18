@@ -5,26 +5,14 @@
 #include "core/providers/webgpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+
+#include <limits>
+#include <algorithm>
 
 namespace onnxruntime {
 namespace webgpu {
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Tile,
-    kOnnxDomain,
-    6, 12,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1),
-    Tile);
-
-ONNX_OPERATOR_KERNEL_EX(
-    Tile,
-    kOnnxDomain,
-    13,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1),
-    Tile);
 
 Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -41,7 +29,16 @@ Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << input.IndicesSet("input_indices", i, input_dim_value) << ";\n";
   }
 
-  shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
+  if (is_int64_) {
+    // For int64 (stored as vec2<u32>), copy the raw storage bits to preserve the full
+    // 64-bit value without loss. Using GetByIndices would silently truncate to i32.
+    const auto input_value =
+        input.GetByOffset("input_raw_offset", /*use_storage_type=*/true);
+    shader.MainFunctionBody() << "let input_raw_offset = " << input.IndicesToOffset("input_indices") << ";\n"
+                              << output.SetByOffset("global_idx", input_value, /*use_storage_type=*/true);
+  } else {
+    shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
+  }
 
   return Status::OK();
 }
@@ -52,16 +49,73 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
   size_t input_rank = input_shape.NumDimensions();
 
   const auto* repeats_tensor = context.Input(1);
-  const auto* repeats_data = repeats_tensor->Data<int64_t>();
-  std::vector<uint32_t> repeats;
-
-  for (size_t i = 0; i < static_cast<uint32_t>(repeats_tensor->Shape().Size()); i++) {
-    repeats.push_back(static_cast<uint32_t>(repeats_data[i]));
+  if (repeats_tensor->Shape().NumDimensions() != 1) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "'repeat' input tensor must be 1 dimensional");
   }
+  if (size_t(repeats_tensor->Shape().Size()) != input_rank) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "'repeat' input tensor must have the same length as the 'input' tensor");
+  }
+  const auto* repeats_data = repeats_tensor->Data<int64_t>();
+  InlinedVector<uint32_t> repeats;
+  repeats.reserve(input_rank);
 
   auto output_dims = input_shape.AsShapeVector();
+  // Bound the total tiled byte count and detect overflow with division-based
+  // checks so we return INVALID_ARGUMENT instead of throwing a SafeInt
+  // overflow exception. Mirrors the CPU Tile implementation.
+  constexpr int64_t kMaxTileOutputBytes = int64_t{4} * 1024 * 1024 * 1024;  // 4 GiB
+  constexpr int64_t kMaxSupportedTileOutputBytes =
+      std::numeric_limits<size_t>::max() < static_cast<uint64_t>(kMaxTileOutputBytes)
+          ? static_cast<int64_t>(std::numeric_limits<size_t>::max())
+          : kMaxTileOutputBytes;
+  const int64_t element_size = narrow<int64_t>(input_tensor->DataType()->Size());
+  // The WebGPU shader uses a uint32_t uniform for the total output element
+  // count and dispatches based on it. Clamp the per-element budget to
+  // uint32_t::max() so that any combination of repeats producing more than
+  // 2^32 - 1 elements is rejected by the byte-cap check below instead of
+  // silently truncating to a smaller dispatch / OOB-guard value.
+  const int64_t max_elements =
+      std::min<int64_t>(kMaxSupportedTileOutputBytes / element_size,
+                        static_cast<int64_t>(std::numeric_limits<uint32_t>::max()));
+  int64_t total_elements = 1;
   for (size_t axis = 0; axis < input_rank; axis++) {
-    output_dims[axis] *= repeats[axis];
+    if (repeats_data[axis] < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value must be non-negative, got: ", repeats_data[axis]);
+    }
+    const int64_t input_dim = output_dims[axis];
+    const int64_t r = repeats_data[axis];
+    int64_t dim;
+    if (input_dim == 0 || r == 0) {
+      dim = 0;
+    } else if (input_dim > max_elements / r) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxSupportedTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxSupportedTileOutputBytes, " bytes.");
+    } else {
+      dim = input_dim * r;
+    }
+    output_dims[axis] = dim;
+    if (dim > 0 && total_elements > max_elements / dim) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxSupportedTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxSupportedTileOutputBytes, " bytes.");
+    }
+    total_elements *= dim;
+  }
+  for (size_t axis = 0; axis < input_rank; axis++) {
+    if (repeats_data[axis] > std::numeric_limits<uint32_t>::max()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value exceeds the WebGPU supported maximum of ",
+                             std::numeric_limits<uint32_t>::max(), ": ", repeats_data[axis]);
+    }
+    repeats.push_back(static_cast<uint32_t>(repeats_data[axis]));
   }
 
   TensorShape output_shape(output_dims);
@@ -72,7 +126,8 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  TileProgram program{};
+  bool is_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
+  TileProgram program{is_int64};
   program
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({output_tensor})
@@ -80,6 +135,46 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {repeats}});
   return context.RunProgram(program);
+}
+
+KernelCreateInfo CreateTileVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Tile>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Tile")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(start_version, end_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+KernelCreateInfo CreateTileKernelInfo(int since_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Tile>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Tile")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(since_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
 }
 
 }  // namespace webgpu

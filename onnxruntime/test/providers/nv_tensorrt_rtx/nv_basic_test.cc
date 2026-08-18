@@ -349,14 +349,14 @@ TEST(NvExecutionProviderTest, LoadUnloadPluginLibrary) {
   size_t num_devices = 0;
 
   ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
-  // should be one device for the example EP
+  // should be at least one device for the example EP
   auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
                                            [&registration_name, &c_api](const OrtEpDevice* device) {
                                              // the example uses the registration name for the EP name
                                              // but that is not a requirement and the two can differ.
                                              return c_api->EpDevice_EpName(device) == registration_name;
                                            });
-  ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
+  ASSERT_GE(num_test_ep_devices, 1) << "Expected at least one OrtEpDevice to have been created by the test library.";
 
   // and this should unload it
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env,

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -32,6 +33,44 @@ struct OrtHardwareDevice {
     }
 
     return h;
+  }
+
+  std::string ToString() const {
+    const char* type_str = "UNKNOWN";
+    switch (type) {
+      case OrtHardwareDeviceType_CPU:
+        type_str = "CPU";
+        break;
+      case OrtHardwareDeviceType_GPU:
+        type_str = "GPU";
+        break;
+      case OrtHardwareDeviceType_NPU:
+        type_str = "NPU";
+        break;
+      default:
+        break;
+    }
+
+    std::ostringstream oss;
+    oss << "OrtHardwareDevice{"
+        << "type=" << type_str
+        << ", vendor_id=" << vendor_id
+        << ", device_id=" << device_id
+        << ", vendor=\"" << vendor << "\"";
+
+    if (!metadata.Entries().empty()) {
+      oss << ", metadata={";
+      bool first = true;
+      for (const auto& [k, v] : metadata.Entries()) {
+        if (!first) oss << ", ";
+        first = false;
+        oss << k << "=" << v;
+      }
+      oss << "}";
+    }
+
+    oss << "}";
+    return oss.str();
   }
 };
 
@@ -74,6 +113,40 @@ struct OrtEpDevice {
   // the user provides const OrtEpDevice instances, but the OrtEpFactory API takes non-const instances for all
   // get/create methods to be as flexible as possible. this helper converts to a non-const factory instance.
   OrtEpFactory* GetMutableFactory() const { return ep_factory; }
+
+  std::string ToString() const {
+    std::ostringstream oss;
+    oss << "OrtEpDevice{"
+        << "ep_name=\"" << ep_name << "\""
+        << ", ep_vendor=\"" << ep_vendor << "\""
+        << ", device=" << (device ? device->ToString() : "null");
+
+    if (!ep_metadata.Entries().empty()) {
+      oss << ", ep_metadata={";
+      bool first = true;
+      for (const auto& [k, v] : ep_metadata.Entries()) {
+        if (!first) oss << ", ";
+        first = false;
+        oss << k << "=" << v;
+      }
+      oss << "}";
+    }
+
+    if (!ep_options.Entries().empty()) {
+      oss << ", ep_options={";
+      bool first = true;
+      for (const auto& [k, v] : ep_options.Entries()) {
+        if (!first) oss << ", ";
+        first = false;
+        oss << k << "=" << v;
+      }
+      oss << "}";
+    }
+
+    oss << "}";
+
+    return oss.str();
+  }
 };
 
 struct OrtDeviceEpIncompatibilityDetails {

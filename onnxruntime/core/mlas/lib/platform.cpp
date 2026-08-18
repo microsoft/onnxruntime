@@ -19,20 +19,34 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#include "gelu_neon_fp16.h"
+#endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#include <thread>
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+#include <riscv_vector.h>
+#endif
+
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
 #include <sys/auxv.h>
 #elif defined(_AIX)
-#define POWER_10       0x40000
-#define POWER_10_ANDUP (POWER_10)
 #include <sys/systemcfg.h>
+#if !defined(POWER_10)
+#define POWER_10       0x40000
+#endif
+#if !defined(POWER_10_ANDUP)
+#define POWER_10_ANDUP (POWER_10)
+#endif
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
 #elif defined(__FreeBSD__)
 #include <machine/cpu.h>
@@ -44,6 +58,8 @@ Abstract:
 #if defined(MLAS_TARGET_S390X)
 #include <sys/auxv.h>
 #endif
+
+
 
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
@@ -261,6 +277,79 @@ Return Value:
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
 
+    //
+    // Linear attention: portable baseline for every target. ISA-specific
+    // implementations override this in the target-specific blocks below.
+    //
+    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchDefault;
+
+#if defined(MLAS_TARGET_RISCV64)
+    this->GemmFloatKernel = nullptr;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
+    this->TanhKernelRoutine = MlasTanhKernel;
+    this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+
+#if defined(MLAS_USE_RVV)
+    this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->ErfKernelRoutine = MlasErfKernelRvv;
+    this->LogisticKernelRoutine = MlasLogisticKernelRvv;
+    this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
+    this->SiluKernelRoutine = MlasSiluKernelRvv;
+    this->TanhKernelRoutine = MlasTanhKernelRvv;
+    this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+    this->RopeDispatch = &MlasRopeDispatchRvv;
+    this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
+    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
+
+#if defined(MLAS_USE_RVV_ZVFH)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
+        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
+    }
+#endif
+
+    // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
+    if (__riscv_vlenb() >= 16) {
+        this->NchwcBlockSize = 16;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
+    } else {
+        this->NchwcBlockSize = 1;
+        this->ConvNchwFloatKernel = nullptr;
+        this->ConvNchwcFloatKernel = nullptr;
+        this->ConvDepthwiseFloatKernel = nullptr;
+        this->ConvPointwiseFloatKernel = nullptr;
+        this->PoolFloatKernel[MlasMaximumPooling] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = nullptr;
+    }
+#endif
+#endif
+
 #if defined(MLAS_TARGET_AMD64_IX86)
 
     //
@@ -283,7 +372,9 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ErfKernelRoutine = MlasErfKernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
@@ -301,6 +392,7 @@ Return Value:
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
     this->DequantizeLinearS8Kernel = MlasDequantizeLinearS8Kernel;
     this->DequantizeLinearU8Kernel = MlasDequantizeLinearU8Kernel;
+    this->DequantizeBlockwise2BitsKernel = MlasDequantizeBlockwise2BitsKernel;
 #ifndef __APPLE__
 #ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
@@ -398,6 +490,7 @@ Return Value:
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
                 this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
+                this->DequantizeBlockwise2BitsKernel = MlasDequantizeBlockwise2BitsKernelAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
@@ -420,6 +513,8 @@ Return Value:
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
+                this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
+                this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
@@ -445,7 +540,6 @@ Return Value:
 
                 if ((Cpuid7_1[0] & 0x10) != 0) {
 
-                    this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
@@ -460,7 +554,8 @@ Return Value:
                 //
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
-
+                    this->GeluErfKernelRoutine = MlasGeluErfKernelAvx512F;
+                    this->SiluKernelRoutine = MlasSiluKernelAvx512F;
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
@@ -473,6 +568,7 @@ Return Value:
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
+                    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
@@ -500,12 +596,13 @@ Return Value:
 
                         if ((Cpuid7[2] & 0x800) != 0) {
 
-                            this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                             this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
+                            this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx512Vnni;
+                            this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
                         }
                     }
                 }
@@ -540,7 +637,6 @@ Return Value:
                     (Cpuid7[3] & 0b1 << 25) != 0 &&
                     (xcr0 & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE) {
                     if (MlasInitAMX()) {
-                        this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
@@ -562,6 +658,7 @@ Return Value:
     this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
     this->GemmS8S8Dispatch = &MlasGemmX8S8DispatchNeon;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -569,13 +666,25 @@ Return Value:
     this->HGemmDispatch = &MlasHGemmDispatchNeon;
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
+    this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
+    this->KVQuantGemmFp16Supported_ = true;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
+    // Use the AArch64 assembly implementation on non-Windows platforms.
+#if !defined(_WIN32)
+    // Prefer the hand written micro-kernel for the NCHW convolution path. It
+    // offers a tighter schedule and a specialised two-output inner loop that
+    // reduces pressure on the memory system compared to the generic kernel.
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeonAsm;
+#else
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+#endif
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    this->ConvNchwBf16Kernel = MlasConvNchwBf16KernelNeon;
+    this->ConvDepthwiseBf16Kernel = MlasConvDepthwiseBf16KernelNeon;
     this->ConvPointwiseBf16Kernel = MlasConvPointwiseBf16KernelNeon;
 #endif
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
@@ -602,6 +711,7 @@ Return Value:
     if (HasDotProductInstructions) {
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmS8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
@@ -609,12 +719,31 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-        this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
-        this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
-        this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()){
+        this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
+        this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
+        this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
+        this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
+        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
+        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
+        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
+        this->MlasHalfConvPrepareOverride = ArmKleidiAI::MlasHalfConvPrepare;
+        this->MlasHalfConvOverride = ArmKleidiAI::MlasHalfConv;
+        this->MlasHalfConvPackWeightsAndBiasSizeOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBiasSize;
+        this->MlasHalfConvPackWeightsAndBiasOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBias;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+        this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
+#if defined(__aarch64__) && defined(__linux__)
+        // Currently only an SME2 variant of SBGEMM exists
+        if (ArmKleidiAI::UseSME2){
+            this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;
+            this->MlasSBGemmPackBSizeOverride = ArmKleidiAI::MlasSBGemmPackBSize;
+            this->MlasSBGemmPackBOverride = ArmKleidiAI::MlasSBGemmPackB;
+        }
+#endif
     }
 #endif
 
@@ -622,7 +751,10 @@ Return Value:
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         this->ErfKernelRoutine = MlasSveErfKernel;
         this->LogisticKernelRoutine = MlasSveLogisticKernel;
+        this->ComputeExpF32Kernel = MlasSveComputeExpF32Kernel;
+        this->TanhKernelRoutine = MlasSveTanhKernel;
         this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
+        this->ReduceMinimumMaximumF32Kernel = MlasSveReduceMinimumMaximumF32Kernel;
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
@@ -630,11 +762,39 @@ Return Value:
     else{
         this->ErfKernelRoutine = MlasErfKernel;
         this->LogisticKernelRoutine = MlasLogisticKernel;
+        this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+        this->TanhKernelRoutine = MlasTanhKernel;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    //
+    // The SVE fp16 kernels are portable machine code and available on every
+    // platform; the NEON fp16 fallbacks are only built on non-Windows
+    // targets. On Windows without SVE hardware the routines stay null and
+    // the callers use their scalar fallbacks.
+    //
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasSveGeluFP16Kernel;
+            this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
+        }
+        else{
+        #if !defined(_WIN32)
+            this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+        #endif
+        }
+    #elif !defined(_WIN32)
+        this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+        this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+    #endif
 #endif
 
     //

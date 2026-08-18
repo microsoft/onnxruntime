@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include <memory>
@@ -20,10 +22,12 @@ class TfIdfVectorizer final : public OpKernel {
 
  private:
   void ComputeImpl(const void* x_data_raw, size_t elem_size, ptrdiff_t row_num, size_t row_size, bool is_input_string,
-                   gsl::span<float> output_data, std::function<void(size_t, gsl::span<float>&)>& fn_weight) const;
+                   gsl::span<float> output_data, std::function<void(size_t, size_t, gsl::span<float>&)>& fn_weight) const;
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

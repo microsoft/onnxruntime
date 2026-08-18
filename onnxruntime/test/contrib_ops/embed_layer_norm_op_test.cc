@@ -153,7 +153,12 @@ static void RunTest(const embedlayernorm::OpData& data,
       execution_providers.push_back(DefaultDmlExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else {
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+      if (sum_output) {
+        // OpenVINO EP only supports 2 outputs for EmbedLayerNormalization, skip when 3rd output (embedding_sum) is requested
+        tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+      } else {
+        tester.Run();
+      }
     }
   }
 }
@@ -195,6 +200,16 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
           /* sum_output = */ true);
 }
 
+// Regression test: shape inference with mask_index_type=0 and 2 outputs (no embedding_sum)
+// must not write to output index 2, which would be out-of-bounds.
+// Before the fix in EmbedLayerNormalizationShapeInference (shape_inference_functions.cc),
+// this case triggered a heap OOB write when getNumOutputs()==2 and mask_index_type==0.
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_NoMaskIndex_NoSumOutput) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(),
+          /* use_float16 = */ false,
+          /* sum_output = */ false);
+}
+
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());
 }
@@ -210,6 +225,65 @@ TEST(EmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch_Distill) {
   RunTest(embedlayernorm::EmbedLayerNormBatch_Distill());
+}
+
+// Regression test: negative position_ids must be rejected to not cause OOB read.
+TEST(EmbedLayerNormTest, EmbedLayerNormNegativePositionIds) {
+  int batch_size = 1;
+  int sequence_size = 2;
+  int hidden_size = 4;
+
+  std::vector<int64_t> input_ids_dims = {batch_size, sequence_size};
+  std::vector<int64_t> position_ids_dims = {batch_size, sequence_size};
+
+  // 6 words (rows) x hidden_size=4
+  std::vector<int64_t> word_embedding_dims = {6, hidden_size};
+  // 3 positions x hidden_size=4
+  std::vector<int64_t> position_embedding_dims = {3, hidden_size};
+  // 2 segments x hidden_size=4
+  std::vector<int64_t> segment_embedding_dims = {2, hidden_size};
+
+  std::vector<int64_t> gamma_dims = {hidden_size};
+  std::vector<int64_t> beta_dims = {hidden_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_size, hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+
+  OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
+  tester.AddInput<int32_t>("input_ids", input_ids_dims, {1, 3});
+  tester.AddInput<int32_t>("segment_ids", input_ids_dims, {0, 1});
+  tester.AddInput<float>("word_embedding", word_embedding_dims,
+                         {0.2f, 0.1f, 0.4f, -0.6f,
+                          0.3f, 0.2f, 0.5f, 0.6f,
+                          0.6f, 0.7f, 0.0f, -0.1f,
+                          0.8f, 0.6f, 0.9f, 1.2f,
+                          0.1f, 0.3f, 0.5f, 0.9f,
+                          1.0f, -2.0f, 1.1f, 0.8f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("position_embedding", position_embedding_dims,
+                         {0.1f, 0.1f, 0.4f, 0.6f,
+                          0.6f, 0.0f, 0.8f, 0.6f,
+                          0.3f, 0.9f, -2.0f, 0.8f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("segment_embedding", segment_embedding_dims,
+                         {0.3f, 0.4f, 0.9f, 0.1f,
+                          0.7f, 0.3f, 0.5f, 0.2f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("gamma", gamma_dims, {0.25f, 0.15f, 0.45f, -0.66f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("beta", beta_dims, {0.6f, 0.2f, 0.5f, -0.6f},
+                         /*is_initializer=*/true);
+  tester.AddAttribute("epsilon", embedlayernorm::kEpsilon);
+  // Skip mask (input 7) - add optional edge
+  tester.AddOptionalInputEdge<int32_t>();
+  // Negative position_ids - this is the malicious input
+  tester.AddInput<int32_t>("position_ids", position_ids_dims, {-5, 1});
+
+  // Dummy outputs (won't be checked since we expect failure)
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_size * hidden_size, 0.0f));
+  tester.AddOutput<int32_t>("mask_index", mask_index_dims, {0});
+
+  // Run CPU only - expect failure due to negative position_ids
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test

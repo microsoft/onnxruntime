@@ -30,7 +30,7 @@
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
         // TODO(titaiwang): onnx 1.21 should fix lpnorm zero norm issue
-        "^test_l2normalization*",  // LpNormalization(22) not implemented
+        "^test_l2normalization*",
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
@@ -41,17 +41,24 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
-        // TODO: support the following tests in Attention-cuda (softcap, softmax precision and qk_matmul_mode)
-        "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_3d_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
-        "test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
-        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_4d_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_4d_with_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
-        "^test_attention_4d_attn_mask_bool_cuda", // bool mask not supported in Attention-cuda
-        "^test_attention_4d_attn_mask_bool_4d_cuda", // bool mask not supported in Attention-cuda
+        // #28904: preemptive skip — onnx pinned at v1.21.0 lacks these #8068 tests; de-skip when the onnx pin is bumped to a release containing #8068
+        // bottom-right is_causal + nonpad_kv_seqlen and composed is_causal+attn_mask fully-masked-row->0 (onnx#8068). The "^" prefix also matches the _expanded (function-body) and EP-suffixed variants.
+        "^test_attention_4d_gqa_causal_nonpad_decode",            // #28904 bottom-right decode
+        "^test_attention_4d_gqa_causal_nonpad_decode_fp16",       // #28904 bottom-right decode (fp16)
+        "^test_attention_4d_causal_nonpad_continued_prefill",     // #28904 bottom-right continued-prefill
+        "^test_attention_causal_boolmask_nan_robustness",         // #28904 fully-masked-row -> 0 (Bug-2, opset-24)
+        "^test_attention_23_boolmask_fullymasked_row_nan_robustness", // #28904 fully-masked-row -> 0 (Bug-2, opset-23 errata)
+        // #28994: preemptive skip — onnx pinned at v1.21.0 lacks these #8068 mode-3 tests; the
+        // regex is a no-op today and prevents CI breakage the moment the onnx pin is bumped past
+        // #8068. CUDA returns NOT_IMPLEMENTED for qk_matmul_output modes beyond kQK
+        // (cuda/llm/attention.cc:1477). De-skip when mode>kQK is supported (#27712). See #28994 Section A.
+        // Matches: test_attention_{23,24}_fullymasked_qk_matmul_output_mode3_zero[_expanded] and
+        // test_attention_24_qk_matmul_output_mode3_softmax_precision[_expanded].
+        "^test_attention_(23|24)_.*qk_matmul_output_mode3", // #28994 CUDA NOT_IMPLEMENTED mode>kQK (attention.cc:1477); #27712 to support
+        // TODO: support qk_matmul_output modes beyond kQK in Attention-cuda (see issue #27712)
+        // Tests combining qk_matmul with softcap need unfused-path qk_matmul support (deferred).
+        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // qk_matmul modes beyond kQK not supported
+        "^test_attention_4d_with_qk_matmul_softcap_cuda", // qk_matmul modes beyond kQK not supported
         "^test_attention_3d_with_past_and_present_qk_matmul_bias_cuda",  // QK matmul + bias not supported in Attention-cuda
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_cuda", // QK matmul + bias not supported in Attention-cuda
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_cuda", // QK matmul + bias not supported in Attention-cuda
@@ -59,27 +66,18 @@
         "^test_attention_4d_with_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
         "^test_attention_3d_with_past_and_present_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
-        // is_causal=Truen && q_seq_len != kv_seq_len not supported in Attention-cuda
-        "^test_attention_3d_causal_cuda",
-        "^test_attention_3d_diff_heads_sizes_causal_cuda",
-        "^test_attention_4d_attn_mask_3d_causal_cuda",
-        "^test_attention_4d_attn_mask_4d_causal_cuda",
-        "^test_attention_4d_causal_cuda",
-        "^test_attention_4d_diff_heads_sizes_causal_cuda",
-        // GQA Attention-cuda does not support fp16 and 4d QKV
-        "^test_attention_4d_gqa_with_past_and_present_fp16_cuda",  // 4d QKV
-        "^test_attention_4d_gqa_with_past_and_present_cuda",  // fp32
-        "^test_attention_4d_gqa_softcap_cuda",  // fp32
-        "^test_attention_4d_gqa_scaled_cuda",  // fp32
-        "^test_attention_4d_gqa_cuda",  // fp32
-        "^test_attention_3d_gqa_attn_mask_cuda",  // fp32
-        "^test_attention_3d_gqa_causal_cuda",  // fp32
-        "^test_attention_3d_gqa_cuda", // fp32
-        "^test_attention_3d_gqa_scaled_cuda", // fp32
-        "^test_attention_3d_gqa_softcap_cuda",  // fp32
-        "^test_attention_3d_gqa_with_past_and_present_cuda",  // fp32
-        "^test_attention_4d_gqa_attn_mask_cuda",  // fp32
-        "^test_attention_4d_gqa_causal_cuda",  // fp32
+        // CPU attention impl now matches post-#7867/#7913 spec; the bundled ONNX submodule
+        // (cmake/external/onnx, v1.21.0) still encodes the pre-edit ordering. Remove these
+        // 7 entries when cmake/external/onnx is bumped to v1.22+. See also the matching
+        // C++ skip block in onnxruntime/test/onnx/TestCase.cc::GetBrokenTests().
+        // TODO(onnx-v1.22): remove the 7 entries below when cmake/external/onnx is bumped to v1.22+ which includes ONNX PRs #7867 + #7913.
+        "^test_attention_3d_with_past_and_present_qk_matmul_bias_cpu", // pre-onnx#7913 fixture
+        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cpu", // pre-onnx#7867 fixture
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_cpu", // pre-onnx#7913 fixture
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_cpu", // pre-onnx#7913 fixture
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_cpu", // pre-onnx#7913 fixture
+        "^test_attention_4d_with_qk_matmul_bias_cpu", // pre-onnx#7913 fixture
+        "^test_attention_4d_with_qk_matmul_softcap_cpu", // pre-onnx#7867 fixture
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
@@ -306,6 +304,8 @@
         "^test_reduce_log_sum_empty_set_expanded_cuda",
         "^test_reduce_log_sum_exp_empty_set_cuda",
         "^test_reduce_log_sum_exp_empty_set_expanded_cuda",
+        "^test_reduce_max_empty_set_cuda",
+        "^test_reduce_min_empty_set_cuda",
         "^test_reduce_prod_empty_set_cuda",
         "^test_reduce_sum_empty_set_cuda",
         "^test_reduce_sum_square_empty_set_cuda",
@@ -379,7 +379,40 @@
         "^test_quantizelinear_int4",
         "^test_quantizelinear_uint4",
         // topk uint64 is not implemented in ORT yet.
-        "^test_top_k_uint64"
+        "^test_top_k_uint64",
+        // ORT DFT rfft/irfft outputs are numerically near-correct but a few
+        // near-zero elements exceed the runner's tight ~1e-5 absolute tolerance
+        // (platform-dependent FFT roundoff: passes on Windows CPU, fails on Linux
+        // CPU by <=~1.6e-4). Mirrors onnxruntime/test/onnx/TestCase.cc so the C++
+        // materialized runner stays at parity with this python conformance suite.
+        "^test_dft_rfft",
+        "^test_dft_irfft",
+        "^test_dft_rfft_opset19",
+        "^test_dft_irfft_opset19",
+        // ORT BitCast kernel does not support bool type.
+        "^test_bitcast_bool_to_uint8",
+        // --- ONNX 1.22.0 / opset 27 integration (issue #28752) ---
+        // Most opset-27 node tests pass on the CPU EP: CausalConvWithState and LinearAttention
+        // are ONNX *function* ops, and the float16 Range-27 op carries an ONNX function body, so
+        // ORT expands them into primitive nodes at graph-partition time (verified with
+        // onnx_test_runner -e cpu, output-compared, under ALLOW_RELEASED_ONNX_OPSET_ONLY=0).
+        // Two categories still need exclusions in the Python onnx_backend_test_series harness:
+        //
+        // 1. FlexAttention is a brand-new ONNX 1.22 op in the ai.onnx.preview domain. It DOES carry
+        //    a (context-dependent) ONNX function body, but ORT does not register the ai.onnx.preview
+        //    domain at all, so it has neither a native kernel nor function-body expansion -> the node
+        //    cannot resolve on any EP yet ("ai.onnx.preview:FlexAttention is not a registered op").
+        //    Scope: exclude ONLY the base node tests (which contain the unresolved FlexAttention
+        //    node). The 11 *_expanded_ver26 variants decompose to standard ai.onnx ops (no preview
+        //    node; the ai.onnx.preview opset_import in their header is unused and harmless), so they
+        //    load and pass -- the negative lookahead keeps them running to retain that coverage.
+        //    Follow-up: register ai.onnx.preview / implement FlexAttention.
+        "^test_flexattention_(?!.*expanded)",
+        // 2. The bfloat16 Range-27 node tests feed bf16 tensors that the Python backend harness
+        //    cannot materialize as numpy arrays ("Numpy_type 256 can't be converted to
+        //    MLDataType"); the CPU/CUDA Range kernels also have no native bf16 specialization
+        //    (deferred to ONNX function expansion). Covers both the base and _expanded variants.
+        "^test_range_bfloat16_type_positive_delta"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -826,7 +859,9 @@
         "^test_clip_min_greater_than_max_cpu",
         // Fail since v1.20.1 (new matmul 1D tests)
         "^test_matmul_1d_1d_cpu",
-        "^test_matmul_4d_1d_cpu"
+        "^test_matmul_4d_1d_cpu",
+        // DML precision issue: 27 / 27 mismatched elements (max rel diff ~25)
+        "^test_mvn_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

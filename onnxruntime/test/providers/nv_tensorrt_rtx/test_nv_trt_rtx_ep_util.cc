@@ -14,6 +14,7 @@
 #include "test/util/include/api_asserts.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/model.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/model_saving_options.h"
 #include "core/graph/schema_registry.h"

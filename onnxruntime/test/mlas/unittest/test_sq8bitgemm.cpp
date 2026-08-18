@@ -176,7 +176,55 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
   }
-#else  // not MLAS_TARGET_ARM64
+#elif defined(MLAS_TARGET_RISCV64)
+  // The RVV dispatch uses a plain layout private to itself: weights [N][ldb],
+  // scales [N][BlockCountK], block-sums [N][BlockCountK] with block-sum =
+  // scale * zeroPoint (zeroPoint defaults to 128). These references mirror that
+  // layout so the prepack self-consistency check matches what the RVV kernels
+  // consume. End-to-end correctness is covered separately by SQ8BitGemmKernel.
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void PrepackB(const uint8_t* src, uint8_t* dst, float* /*blkUnsignedQuantAZeroPointCorrection*/) {
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        dst[n * ldb + k] = src[n * ldb + k];
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* /*corr*/) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        const size_t idx = n * BlkCount + k;
+        const float zpv = zp ? static_cast<float>(zp[idx]) : 128.f;
+        packedScale[idx] = scale[idx];
+        blkSum[idx] = scale[idx] * zpv;
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void CheckB(const uint8_t* packedB, const uint8_t* refB) {
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        ASSERT_EQ(packedB[n * ldb + k], refB[n * ldb + k]) << " at n=" << n << " k=" << k;
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void CheckScale(const float* packedScale, const float* refScale) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        ASSERT_EQ(packedScale[n * BlkCount + k], refScale[n * BlkCount + k]) << " at n=" << n << " k=" << k;
+      }
+    }
+  }
+#else  // not MLAS_TARGET_ARM64 and not MLAS_TARGET_RISCV64 (e.g. x86)
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void PrepackB(const uint8_t* src, uint8_t* dst, float* blkUnsignedQuantAZeroPointCorrection) {
     MLAS_UNREFERENCED_PARAMETER(blkUnsignedQuantAZeroPointCorrection);
@@ -334,7 +382,11 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
 
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < BlkCount; ++k) {
+#if defined(MLAS_TARGET_RISCV64)
+        size_t idx = n * BlkCount + k;  // RVV dispatch stores block-sums in a plain [N][BlockCountK] layout
+#else
         size_t idx = (((n) / 16) * BlkCount + k) * 16 + (n) % 16;
+#endif
         ASSERT_EQ(packedBlkSum[idx], refBlkSum[idx])
             << " n " << n << " k " << k;
       }
@@ -350,7 +402,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     constexpr size_t Ldb = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t PackBCount = N * Ldb;
     constexpr size_t ScaleCount = BlkCount * N;
-    const size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
+    const size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8, nullptr);
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
 
     const auto* inputB = inputB_.GetFilledBuffer(PackBCount, [this](uint8_t* p, size_t t) {
@@ -389,15 +441,14 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, hasZp, inputZp, nullptr);
+        inputScale, hasZp, inputZp, nullptr, nullptr);
 
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        inputScale, hasZp, nullptr, nullptr);
-
+        inputScale, hasZp, nullptr, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        nullptr, hasZp, inputZp, nullptr);
+        nullptr, hasZp, inputZp, nullptr, nullptr);
 
     PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB, refBlkUnsignedQuantAZeroPointCorrection);
     PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum, refBlkUnsignedQuantAZeroPointCorrection);
@@ -582,7 +633,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     constexpr size_t Lda = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t PackACount = M * Lda;
     constexpr size_t ScaleCount = M * BlkCount;
-    const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8);
+    const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8, nullptr);
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
@@ -751,7 +802,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         N,
         nullptr);
 
-    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
+    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8, nullptr);
     auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
     // Models the packing calls from MatmulNBits operator - we will have 3 separate calls
@@ -763,15 +814,14 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, HasZp, inputZp, nullptr);
+        inputScale, HasZp, inputZp, nullptr, nullptr);
 
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        inputScale, HasZp, nullptr, nullptr);
-
+        inputScale, HasZp, nullptr, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        nullptr, HasZp, inputZp, nullptr);
+        nullptr, HasZp, inputZp, nullptr, nullptr);
 
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
     PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, isQuantAUnsigned);
@@ -786,7 +836,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     })
                          : nullptr;
 
-    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, 8, BlkLen, HasZp, SQNBIT_CompInt8);
+    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, 8, BlkLen, HasZp, SQNBIT_CompInt8, nullptr);
     auto* workspace = workspace_.GetBuffer(workspace_size, true);
 
     MLAS_QNBIT_GEMM_DATA_PARAMS<float> data;
@@ -800,7 +850,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     data.C = C;
     data.ldc = ldc;
 
-    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr);
+    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr, nullptr);
 
     MatMul<M, K, N, BlkLen>(A, lda, B, bias, ref, ldc);
     Check<M, K, N, BlkLen>(C, ref, ldc, 0.01f, 0.02f);

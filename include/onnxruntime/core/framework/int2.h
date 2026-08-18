@@ -7,6 +7,7 @@
 #include <type_traits>
 #include "core/common/common.h"
 #include <gsl/gsl>
+#include "onnxruntime_config.h"
 
 namespace onnxruntime {
 
@@ -137,8 +138,16 @@ struct Int2x4Base {
     const size_t full_quads = src.size() / 4;
 
     // Process complete groups of 4 elements
+
     for (; dst_i < full_quads; dst_i++) {
+#if defined(__GNUC__) && defined(HAS_ARRAY_BOUNDS)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
       dst[dst_i] = Int2x4Base<Signed>(src[src_i], src[src_i + 1], src[src_i + 2], src[src_i + 3]);
+#if defined(__GNUC__) && defined(HAS_ARRAY_BOUNDS)
+#pragma GCC diagnostic pop
+#endif
       src_i += 4;
     }
 

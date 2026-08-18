@@ -7,11 +7,10 @@
         BeforeTargets="Build"
         Condition="
           '$(SuppressOnnxRuntimePlatformCompatibilityError)' != 'true' AND
-          $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'ios' AND
           $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android' AND
-          '$(PlatformTarget)' == 'x86'">
+          ('$(PlatformTarget)' == 'x86' OR '$(Prefer32Bit)' == 'true')">
 
-  <Error Text="Microsoft.ML.OnnxRuntime does not support x86. Please use x64 or ARM64." />
+        <Error Text="Microsoft.ML.OnnxRuntime does not support 32-bit targets. Please use x64 or ARM64." />
 
 </Target>
 

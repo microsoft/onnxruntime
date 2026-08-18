@@ -27,6 +27,7 @@ void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateDepthToSpaceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateDropoutOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateDynamicQuantizeLinearOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -41,6 +42,7 @@ void CreateGroupQueryAttentionOpBuilder(const std::string& op_type, OpBuilderReg
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateLpNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLstmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMatMulNBitsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

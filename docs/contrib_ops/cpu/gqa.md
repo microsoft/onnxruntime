@@ -1,0 +1,629 @@
+# GroupQueryAttention CPU Implementation Notes
+
+This document describes the current CPU implementation of the `com.microsoft.GroupQueryAttention` operator in ONNX Runtime, with emphasis on quantized KV-cache execution.
+
+## Scope
+
+The CPU GroupQueryAttention kernel is implemented in:
+
+- `onnxruntime/contrib_ops/cpu/bert/group_query_attention.cc`
+- `onnxruntime/contrib_ops/cpu/bert/gqa_attention_base.h`
+- `onnxruntime/contrib_ops/cpu/bert/group_query_attention_helper.h`
+
+Quantized KV-cache GEMM helpers are implemented in MLAS:
+
+- `onnxruntime/core/mlas/inc/mlas_qkv_quant.h`
+- `onnxruntime/core/mlas/lib/qkv_quant.cpp`
+- `onnxruntime/core/mlas/lib/qkv_quant_kernel_avx2.cpp`
+- `onnxruntime/core/mlas/lib/qkv_quant_kernel_avx512vnni.cpp`
+- `onnxruntime/core/mlas/lib/qkv_quant_kernel_neon.cpp`
+- `onnxruntime/core/mlas/lib/flashattn_qkv.cpp` (quantized-KV flash attention tiled kernel)
+
+The non-quantized flash attention tiled kernel is implemented in MLAS:
+
+- `onnxruntime/core/mlas/lib/flashattn_gqa.cpp` (FP32-KV flash attention tiled kernel)
+- `onnxruntime/core/mlas/inc/mlas.h` (`MlasFlashAttentionGQA` declaration and `MlasFlashAttentionGQAArgs`)
+
+The operator schema itself is defined in:
+
+- `onnxruntime/core/graph/contrib_ops/contrib_defs.cc`
+
+Relevant tests and benchmarks are in:
+
+- `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc`
+- `onnxruntime/test/python/transformers/test_gqa_cpu_quantized.py`
+- `onnxruntime/test/python/transformers/test_gqa.py`
+- `onnxruntime/test/mlas/unittest/test_qkv_quant.cpp`
+- `onnxruntime/test/mlas/bench/bench_qkv_quant.cpp`
+
+This document focuses on runtime behavior on the CPU Execution Provider, not on the full operator schema.
+
+## High-Level Execution Flow
+
+At a high level, the CPU kernel executes GroupQueryAttention in these stages:
+
+1. Validate attributes, input ranks, cache shapes, sequence lengths, and optional scale tensors.
+2. Prepare query, key, and value views, including packed QKV input handling when applicable.
+3. Apply rotary embeddings when requested.
+4. Build or extend the present K/V cache.
+5. Compute QK attention scores.
+6. Apply attention bias, local-window masking, causal masking, softcap, and softmax.
+7. Compute softmax-times-V and write the output tensor.
+8. Return present K/V cache tensors.
+
+The non-quantized and quantized paths share the surrounding validation, masking, softmax, and output flow. Their main difference is how the K/V cache is stored and read during QK and SV GEMMs.
+
+Both the non-quantized and quantized paths have two execution strategies:
+
+- **Naive (full materialization)**: Computes the full `[S, T]` attention score matrix, applies masking and softmax, then computes the SV product. Simple but memory-intensive for long sequences.
+- **Flash Attention (tiled, online softmax)**: Processes K/V in L2-cache-sized blocks using the online softmax algorithm (Milakov & Gimelshein, 2018). Avoids materializing the full attention matrix, reducing peak memory from O(S×T) to O(S×Bc) per head. Multi-threaded via the MLAS thread pool.
+
+The quantized path uses `MlasFlashAttentionQuantizedKV` (`flashattn_qkv.cpp`); the non-quantized FP32 path uses `MlasFlashAttentionGQA` (`flashattn_gqa.cpp`). Both share the same tiling, masking, online-softmax, and flash-decoding structure.
+
+The flash path is selected by default when conditions are met (see below). Set `ORT_GQA_DISABLE_FLASH_ATTENTION=1` to force the naive path (applies to both the quantized and non-quantized paths).
+
+## Supported Cache Modes
+
+### Non-quantized cache
+
+When `k_quant_type` and `v_quant_type` are `NONE`, `kv_cache_bit_width` must be `0`. The past and present K/V tensors use the same floating-point element type as the kernel specialization.
+
+### Quantized cache
+
+When quantization is enabled, `k_quant_type` and `v_quant_type` must match and may be:
+
+- `PER_TENSOR`
+- `PER_CHANNEL`
+
+The CPU quantized path supports:
+
+- `kv_cache_bit_width = 8` for signed INT8 cache values
+- `kv_cache_bit_width = 4` for signed INT4 cache values packed into `uint8`
+
+The scale inputs are always `float` tensors:
+
+- `PER_TENSOR`: `k_scale` and `v_scale` each contain exactly one element
+- `PER_CHANNEL`: each scale tensor contains `kv_num_heads * head_size` elements
+
+For per-channel scales, each KV head uses a contiguous `head_size` scale slice. For per-tensor scales, all heads share the single scale value.
+
+## Quantized Cache Layout
+
+The past and present KV cache tensors use BNSH layout:
+
+- `batch_size`
+- `kv_num_heads`
+- `cache_sequence_length`
+- `head_size`
+
+For INT4, two signed 4-bit values are stored in each byte. The packed head dimension is `ceil(head_size / 2)` bytes. For INT8, the packed head dimension is `head_size` bytes.
+
+During quantized execution, new key/value vectors are quantized on write into the present cache. Existing past-cache data and newly written present-cache data are then consumed by MLAS quantized GEMM helpers.
+
+## Naive Path: QK GEMM + Softmax + SV GEMM
+
+The naive (full materialization) path executes attention as three separate stages:
+
+### QK GEMM
+
+The QK stage computes:
+
+```text
+attention_scores = scale * query * K_cache^T
+```
+
+For quantized K cache, the CPU path calls `MlasQKGemm` with:
+
+- FP32 query input `A`
+- packed quantized K cache `B`
+- a scalar or per-channel K scale buffer
+- FP32 attention score output
+
+The default MLAS contract is exact with respect to the FP32 query operand: only the K cache is dequantized on the fly. The query row is not quantized by default.
+
+### Softmax and Masking
+
+After QK GEMM, the CPU path applies the same attention-score processing used by the non-quantized path, including supported combinations of:
+
+- attention bias
+- causal masking
+- local-window masking
+- softcap
+- smooth softmax / head sink
+- optional QK output capture
+
+The quantized cache mode does not change these score-processing semantics.
+
+### SV GEMM
+
+The SV stage computes:
+
+```text
+output = attention_probs * V_cache
+```
+
+For quantized V cache, the CPU path calls `MlasSVGemm` with:
+
+- FP32 attention probabilities `A`
+- packed quantized V cache `B`
+- a scalar or per-channel V scale buffer
+- FP32 output tile
+
+As with QK GEMM, the default MLAS contract preserves the FP32 left-hand operand and dequantizes only the cached V values on the fly.
+
+## Quantized Flash Attention Path
+
+The quantized flash attention path (`MlasFlashAttentionQuantizedKV`) processes K/V in blocks with online softmax, fusing QK, masking, softmax, and SV into a single tiled loop. This avoids the O(S×T) memory allocation for the full attention matrix.
+
+### Algorithm
+
+For each (batch, head, q_block) tile:
+
+1. **QK GEMM** — `MlasQKGemm` on a block slice of quantized K cache (Bc rows at a time)
+1b. **Attention bias** — Add the corresponding tile of the bias tensor (if present) to QK scores
+2. **Causal + local window masking** — Set masked positions to −∞ before softmax
+3. **Online softmax** — Track running max `m` and sum `l`, rescale accumulated output with `exp(m_old − m_new)`
+4. **Fused SV accumulate** — `MlasSVGemm(..., Beta=1.0)` dequantizes V on the fly and accumulates `softmax(QK_block) × V_block` into the output in a single pass (no intermediate FP32 buffer)
+5. **Finalize** — Normalize accumulated output by `1/l` after all KV blocks are processed
+
+### Activation Conditions
+
+The flash path is selected when ALL of the following hold:
+
+- `ORT_GQA_DISABLE_FLASH_ATTENTION` environment variable is not set (or set to `0`)
+- `total_sequence_length > 1`
+- No softcap
+- No smooth softmax
+- No head sink
+- No output QK capture
+
+Attention bias is fully supported in the flash path (applied per-tile after QK GEMM). The bias tensor shape `[B|1, N|1, S, T]` supports broadcast along both batch and head dimensions.
+
+When any condition is not met, the kernel falls back to the naive full-materialization path.
+
+### Block Size Selection
+
+Block sizes are chosen based on L2 cache size:
+
+- `kv_block_size (Bc)`: Sized so that a full KV block's scores + dequantized V fit within L2. Typical values: 128–256.
+- `q_block_size (Br)`: Sized for the query tile. Typical value: 64.
+
+### Threading
+
+The flash kernel parallelizes across `(batch, head, q_block)` tiles using the ORT intra-op thread pool. Each thread gets a private working buffer containing space for:
+
+- `l[Br]` and `m[Br]` — running softmax statistics
+- `scores[Br × Bc]` — QK scores for current KV block
+- `temp_output[Br × H]` — accumulated output
+
+The V dequantization temp buffer was eliminated by fusing dequantization into `MlasSVGemm` with `Beta=1.0` (accumulate mode). This reduces per-thread buffer size by `Bc × H × 4` bytes (e.g., 64 KB for Bc=128, H=128).
+
+### Flash Decoding (Decode Optimization)
+
+For decode steps (`sequence_length == 1`), the standard `(batch, head, q_block)` partitioning yields only `batch × num_heads` tasks, which can underutilize thread pools on machines with many cores (e.g., 96 threads with batch=1, num_heads=32 produces only 32 tasks).
+
+When `batch × num_heads < thread_count` and `kv_chunk_count > 1`, the kernel switches to a **flash decoding** strategy that also partitions along the KV sequence dimension:
+
+- **Phase 1** (parallel over `batch × num_heads × kv_chunk_count` tasks): Each thread computes partial attention for one KV chunk, producing per-chunk `(m, l, S_exp × V)` stored in a partials buffer.
+- **Phase 2** (parallel over `batch × num_heads` tasks): Merge partials using log-sum-exp rescaling: `output = Σ_c(exp(m_c − m_global) × partial_c) / Σ_c(exp(m_c − m_global) × l_c)`.
+
+The partials buffer is allocated alongside the per-thread scratch in a single allocation:
+- Per-thread scratch: `scores[Bc]` (one float per KV block element)
+- Partials: `batch × num_heads × kv_chunks × (2 + H)` floats (m, l, and partial output per chunk)
+
+## Non-Quantized Flash Attention Path
+
+The non-quantized flash attention path (`MlasFlashAttentionGQA`, in `flashattn_gqa.cpp`) is the FP32-KV-cache counterpart of the quantized path. It is selected for the `float` kernel specialization and reuses the same tiling, online-softmax, masking, and flash-decoding structure.
+
+### Differences from the Quantized Path
+
+- **Cache element type**: The present K/V cache is FP32, laid out as BNSH (`[batch, kv_num_heads, seqlen_present, head_size]`). There is no quantize-on-write or dequantize-on-read step.
+- **QK GEMM**: Uses the single-threaded SGEMM primitive `MlasSgemmOperation(CblasNoTrans, CblasTrans, ...)` on an FP32 K block instead of `MlasQKGemm`.
+- **SV accumulate**: Uses `MlasSgemmOperation(CblasNoTrans, CblasNoTrans, ..., beta)` with `beta = 0` for the first KV block and `beta = 1` afterwards (accumulate) instead of `MlasSVGemm`.
+- **Cache concat**: New K/V tokens are appended into the FP32 present cache with `ConcatStateChunkGQA<float>` before the tiled loop runs.
+
+### Algorithm
+
+For each (batch, head, q_block) tile:
+
+1. **QK GEMM** — `MlasSgemmOperation` of the query tile against a block slice of the FP32 K cache (Bc rows at a time)
+1b. **Attention bias** — Add the corresponding tile of the bias tensor (if present) to QK scores
+2. **Causal + local window masking** — Set masked positions to −∞ before softmax
+3. **Online softmax** — Track running max `m` and sum `l`, rescale accumulated output with `exp(m_old − m_new)`
+4. **SV accumulate** — `MlasSgemmOperation(..., beta)` accumulates `softmax(QK_block) × V_block` into the output tile
+5. **Finalize** — Normalize accumulated output by `1/l` after all KV blocks are processed
+
+#### Causal early-termination
+
+During prefill, every KV block whose start index is at or beyond the largest global query
+position in the current q_block is fully causally masked and contributes nothing. The kernel
+computes a per-q_block bound
+`kv_causal_limit = past_seqlen + q_idx + row_size_q` and breaks out of the KV loop once
+`ir >= kv_causal_limit`, instead of computing and then discarding the masked upper-triangle
+QK/SV GEMMs. This skips roughly half of the QK/SV work for square prefill (S = T) and is the
+main reason the FP32 flash path is faster than naive even at short sequence lengths
+(see the benchmark results below). Decode (q_block of size 1 at the cache tail) attends to all
+KV positions, so the bound equals `total_seqlen` and nothing is skipped.
+
+### Activation Conditions
+
+The non-quantized flash path is selected when ALL of the following hold:
+
+- The kernel specialization is `float` (FP16 uses the naive path)
+- `ORT_GQA_DISABLE_FLASH_ATTENTION` environment variable is not set (or set to `0`)
+- `total_sequence_length > 1`
+- No softcap
+- No smooth softmax
+- No head sink
+- No output QK capture
+- `present_key` and `present_value` are provided
+
+Attention bias, causal masking, local window attention, GQA head grouping (`num_heads != kv_num_heads`), ragged per-batch sequence lengths, shared past/present buffers, and flash decoding are all supported, mirroring the quantized flash path. When any condition is not met, the kernel falls back to the naive full-materialization path.
+
+### Block Sizes, Threading, and Flash Decoding
+
+Block-size selection (`kv_block_size`, `q_block_size`), `(batch, head, q_block)` task partitioning, the per-thread working buffer layout (`l`, `m`, `scores`, `temp_output`), and the two-phase flash-decoding strategy for single-token decode are identical to the quantized path described above. The only difference is that the per-thread `temp_output` tile is accumulated directly by the SV SGEMM rather than via a fused dequantization.
+
+#### Decode uses a dedicated GEMV kernel (`sequence_length == 1`)
+
+The tiled online-softmax SGEMM kernel (`MlasFlashAttentionGQAThreaded`) is used **only for
+prefill** (`sequence_length > 1`), where each KV tile is reused across the `q_block_size`
+query rows and tiling delivers real cache-locality and SGEMM packing benefits.
+
+For single-token decode the query tile has `M = 1`, so every K/V element is streamed
+exactly once with no reuse across query rows. Tiling provides **no** cache-locality
+benefit, and routing the `1 × T × H` work through `MlasSgemmOperation` pays the SGEMM
+B-packing/setup cost on every call — which previously made the flash decode path *slower*
+than the naive path (≈0.4–0.6x) for short-to-medium total sequence lengths.
+
+Decode is therefore handled by a dedicated GEMV kernel (`MlasGQADecodeGQAThreaded`),
+dispatched whenever `sequence_length == 1` and flash decoding is not active. It
+parallelizes over `(batch, head)` and, per head, computes the attention directly with two
+matrix-vector products and a two-pass softmax:
+
+- **QK GEMV** — `scores[t] = scale · dot(q, K[t])` for `t ∈ [0, total_seqlen)`.
+- two-pass softmax over `scores` using the dispatched `ReduceMaximumF32Kernel` /
+  `ComputeSumExpF32Kernel` helpers.
+- **SV GEMV** — `out[h] = Σ_t probs[t] · V[t][h]`, then normalize by `1/Σ probs`.
+
+Both GEMV helpers (`MlasGQADecodeQK`, `MlasGQADecodeSV`) live in the baseline-ISA MLAS
+translation unit, so their inner loops use independent accumulator lanes / map-style
+updates that vectorize under SSE2 without `-ffast-math`. Decode needs no causal mask (the
+single new token is the most recent position and attends to every cached token); only
+optional local-window masking and additive attention bias are applied. The kernel streams
+K and V exactly once each, so it is memory-bandwidth bound.
+
+The two-phase flash-decoding path (active when `batch × heads < threads`, KV partitioned
+across idle threads) now also uses these GEMV helpers for its per-chunk QK and SV products
+instead of `M = 1` SGEMM calls, removing the same packing overhead.
+
+
+## MLAS Dispatch Paths
+
+MLAS selects the best available quantized KV-cache GEMM implementation through the platform dispatch table.
+
+Current CPU paths include:
+
+- scalar fallback in `qkv_quant.cpp`
+- AVX2 FP32 fused-dequant kernels
+- AVX512 FP32 fused-dequant kernels
+- ARM NEON kernels
+
+The AVX512 implementation also contains an optional approximate VNNI QK path for INT8 per-tensor K cache. It is disabled by default because it quantizes the FP32 query row before the dot product, which changes the `MlasQKGemm` numeric contract and can make results differ from scalar, AVX2, and NEON paths.
+
+To opt in explicitly, set:
+
+```bash
+ORT_MLAS_QKGEMM_S8_APPROX_VNNI=1
+```
+
+This opt-in currently applies only to AVX512 INT8 per-tensor `MlasQKGemm`. It does not affect INT8 per-channel, INT4, or `MlasSVGemm` paths.
+
+## Tests and Benchmarks
+
+### Test locations
+
+CPU GroupQueryAttention coverage is split across operator-level and MLAS-level tests:
+
+- `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc`
+  - C++ operator tests, including quantized INT8/INT4 prompt cases and validation failures.
+- `onnxruntime/test/python/transformers/test_gqa_cpu_quantized.py`
+  - Python integration tests for CPU quantized KV-cache decoding accuracy.
+- `onnxruntime/test/python/transformers/test_gqa.py`
+  - Broader GroupQueryAttention test helper coverage, including cache-type configuration.
+- `onnxruntime/test/mlas/unittest/test_qkv_quant.cpp`
+  - MLAS `MlasKVQuantize`, `MlasKVDequantize`, `MlasQKGemm`, and `MlasSVGemm` contract tests.
+
+The MLAS benchmark for quantized KV-cache GEMM and flash attention is:
+
+- `onnxruntime/test/mlas/bench/bench_qkv_quant.cpp`
+
+### Running tests
+
+Build and test commands depend on the local build directory. For an existing CPU Release build rooted at `build/cpu_test/Release`, the focused tests can be run with:
+
+```bash
+cd build/cpu_test/Release
+
+# MLAS quantized KV-cache primitive tests.
+./onnxruntime_mlas_test
+
+# CPU operator tests for quantized GroupQueryAttention.
+./onnxruntime_test_all --gtest_filter="*GroupQueryAttentionQuantized*"
+```
+
+The Python integration test can be run from the repository root after activating the build/test environment:
+
+```bash
+python onnxruntime/test/python/transformers/test_gqa_cpu_quantized.py
+```
+
+### Running benchmarks
+
+Rebuild the benchmark target after changing MLAS code:
+
+```bash
+cmake --build build/cpu_test/Release --target onnxruntime_mlas_benchmark -j $(nproc)
+```
+
+Run the representative INT8 per-tensor QKGemm decode benchmark for scalar, AVX2, and the default platform dispatch:
+
+```bash
+cd build/cpu_test/Release
+unset ORT_MLAS_QKGEMM_S8_APPROX_VNNI
+./onnxruntime_mlas_benchmark \
+  --benchmark_filter='BM_QKGemm(/M:1/N_seqlen:512/K_head:128/QuantType:0|_Scalar/M:1/N:512/K:128/QuantType:0|_Avx2/M:1/N:512/K:128/QuantType:0)' \
+  --benchmark_min_time=0.5s \
+  --benchmark_repetitions=3 \
+  --benchmark_report_aggregates_only=true
+```
+
+Run the opt-in approximate AVX512 VNNI path with:
+
+```bash
+cd build/cpu_test/Release
+ORT_MLAS_QKGEMM_S8_APPROX_VNNI=1 ./onnxruntime_mlas_benchmark \
+  --benchmark_filter='BM_QKGemm/M:1/N_seqlen:512/K_head:128/QuantType:0' \
+  --benchmark_min_time=0.5s \
+  --benchmark_repetitions=3 \
+  --benchmark_report_aggregates_only=true
+```
+
+Run flash vs naive full-attention benchmark:
+
+```bash
+cd build/cpu_test/Release
+./onnxruntime_mlas_benchmark \
+  --benchmark_filter='BM_GQA_(Naive|Flash)' \
+  --benchmark_min_time=0.5s \
+  --benchmark_repetitions=3 \
+  --benchmark_report_aggregates_only=true
+```
+
+To force the naive path at the operator level (for A/B testing during inference):
+
+```bash
+ORT_GQA_DISABLE_FLASH_ATTENTION=1 ./your_inference_app
+```
+
+### Updated benchmark results
+
+The following results were measured on an Intel Xeon Platinum 8480C, 96 CPUs, using the CPU Release benchmark binary. Shape: `M=1`, `N=512`, `K=128`, INT8 per-tensor QKGemm.
+
+| Implementation | Latency (ns, mean) | vs Scalar |
+|---|---:|---:|
+| Scalar fallback | 31,027 | 1.0x |
+| AVX2 FP32 fused dequant-dot | 4,234 | 7.3x |
+| AVX512 FP32 fused dequant-dot, default | 3,736 | 8.3x |
+| AVX512 VNNI approximate, `ORT_MLAS_QKGEMM_S8_APPROX_VNNI=1` | 2,020 | 15.4x |
+
+For comparison, the earlier PR description reported the approximate AVX512 VNNI path at 1,938 ns for this shape, with scalar at 30,179 ns and AVX2 at 4,219 ns. The default AVX512 path is now the exact FP32 fused-dequant implementation, so it is slower than approximate VNNI but preserves the `MlasQKGemm` FP32-query contract.
+
+### Flash Attention vs Naive benchmark results
+
+Measured on Intel Xeon Platinum 8480C, 96 CPUs. INT8 quantized KV cache, threads=8.
+
+Two benchmark levels are reported:
+- **Operator-level** (`benchmark_gqa_cpu_flash.py`): Measures the full GQA operator via `InferenceSession`, including KV cache concatenation, quantization of new K/V, and Python/C++ boundary overhead.
+- **MLAS kernel-level** (`bench_qkv_quant.cpp`): Measures only the attention kernel (QK+softmax+SV), isolating the algorithmic gain from operator overhead.
+
+```bash
+# Operator-level Python benchmark:
+cd /tmp
+PYTHONPATH=build/cpu/Release python \
+  onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py --warmup 5 --repeats 20
+
+# MLAS kernel-level C++ benchmark:
+cd build/cpu/Release
+./onnxruntime_mlas_benchmark \
+  --benchmark_filter='BM_GQA_(Naive|Flash)' \
+  --benchmark_min_time=0.5s \
+  --benchmark_repetitions=3 \
+  --benchmark_report_aggregates_only=true
+```
+
+#### Latency — Prefill (S = T, prompt phase)
+
+Shape: B=1, num_heads=16, kv_num_heads=8, head_size=128, INT8 per-tensor.
+
+| Seq Length | Naive (ms) | Flash (ms) | Speedup | Source |
+|---:|---:|---:|---:|:---|
+| 512 | 7.7 | 8.9 | 0.9x | operator |
+| 1024 | 36.8 | 30.2 | 1.2x | operator |
+| 2048 | 157.9 | 110.2 | 1.4x | operator |
+| 4096 | 790.6 | 427.1 | 1.9x | operator |
+| 512 | 9.9 | 8.1 | 1.2x | MLAS kernel |
+| 1024 | 44.4 | 27.0 | 1.6x | MLAS kernel |
+| 2048 | 190.9 | 116.9 | 1.6x | MLAS kernel |
+| 4096 | 1257.8 | 461.6 | 2.7x | MLAS kernel |
+
+The operator-level naive path is faster than the MLAS-level naive at small S because the naive path's QK GEMM batches all heads in one call, amortizing thread dispatch. At larger S, the flash kernel's O(S×Bc) tiling wins decisively.
+
+MLAS kernel-level per-channel results:
+
+| Seq Length | Naive (ms) | Flash (ms) | Speedup | Source |
+|---:|---:|---:|---:|:---|
+| 512 | 10.7 | 10.8 | 1.0x | MLAS kernel |
+| 1024 | 49.5 | 41.7 | 1.2x | MLAS kernel |
+| 2048 | 212.1 | 164.1 | 1.3x | MLAS kernel |
+| 4096 | 1223.9 | 607.8 | 2.0x | MLAS kernel |
+
+#### Latency — Decode (S = 1, token generation)
+
+Shape: B=1, num_heads=16, kv_num_heads=8, head_size=128, INT8 per-tensor.
+Flash decoding is NOT active for this config (batch×heads=16 > threads=8).
+
+| Total Seqlen | Naive | Flash | Speedup | Source |
+|---:|---:|---:|---:|:---|
+| 513 | 0.133 ms | 0.149 ms | 0.9x | operator |
+| 1025 | 0.258 ms | 0.224 ms | 1.2x | operator |
+| 2049 | 0.453 ms | 0.394 ms | 1.2x | operator |
+| 4097 | 0.681 ms | 0.679 ms | 1.0x | operator |
+| 512 | 32 us | 22 us | 1.4x | MLAS kernel |
+| 1024 | 71 us | 47 us | 1.5x | MLAS kernel |
+| 2048 | 120 us | 87 us | 1.4x | MLAS kernel |
+| 4096 | 210 us | 174 us | 1.2x | MLAS kernel |
+
+At the MLAS kernel level, the flash path is consistently 1.2–1.5x faster for decode due to fused single-pass KV access (better cache locality). At the operator level, the gain is partially masked by KV cache concatenation overhead (~100us), which dominates at short sequences but becomes less significant at longer ones.
+
+MLAS kernel-level per-channel decode results:
+
+| Total Seqlen | Naive (us) | Flash (us) | Speedup | Source |
+|---:|---:|---:|---:|:---|
+| 512 | 53 | 31 | 1.7x | MLAS kernel |
+| 1024 | 86 | 52 | 1.7x | MLAS kernel |
+| 2048 | 172 | 97 | 1.8x | MLAS kernel |
+| 4096 | 299 | 191 | 1.6x | MLAS kernel |
+
+#### Latency — Flash Decoding (S = 1, KV partitioned across threads)
+
+Shape: B=1, num_heads=4, kv_num_heads=4 (MHA), head_size=128, threads=8.
+Flash decoding IS active (batch×heads=4 < threads=8, KV partitioned across idle threads).
+
+| Total Seqlen | Naive (us) | Flash (us) | Speedup | Quant |
+|---:|---:|---:|---:|:---|
+| 512 | 31 | 25 | 1.2x | per-tensor |
+| 1024 | 41 | 25 | 1.6x | per-tensor |
+| 2048 | 67 | 34 | 2.0x | per-tensor |
+| 4096 | 197 | 54 | 3.7x | per-tensor |
+| 512 | 25 | 28 | 0.9x | per-channel |
+| 1024 | 72 | 27 | 2.7x | per-channel |
+| 2048 | 144 | 37 | 3.9x | per-channel |
+| 4096 | 304 | 60 | 5.1x | per-channel |
+
+(Source: MLAS kernel-level benchmark)
+
+#### Peak Memory — Prefill (S = T, prompt phase)
+
+| Seq Length | Naive Peak (MB) | Flash Peak (MB) | Memory Reduction |
+|---:|---:|---:|---:|
+| 2048 | +294 | +44 | 6.7x |
+| 4096 | +1107 | +82 | 13.5x |
+| 4096 (N=32) | +2131 | +87 | 24.5x |
+
+**Summary**: The flash path's primary benefit for prefill is **memory reduction** — avoiding the full O(N×S×T) attention matrix. For S=4096 with 16 heads, the naive path allocates ~1 GB for attention scores while the flash path uses ~80 MB regardless of sequence length. The prefill latency speedup (1.2–2.7x at kernel level, 1.2–1.9x at operator level) comes from improved cache locality. For decode, the tiled kernel provides 1.2–1.8x kernel-level speedup from fused single-pass KV access; at operator level the gain is visible for T≥1024 but masked by KV concat overhead at shorter sequences. When flash decoding is active (batch×heads < threads), KV partitioning across idle threads yields an additional 2–5x speedup for long sequences.
+### Non-Quantized (FP32) Flash Attention vs Naive benchmark results
+
+Measured on an AMD EPYC 7763 (32 logical / 16 physical cores), threads=8, FP32 KV cache,
+`B=1, num_heads=16, kv_num_heads=8, head_size=128`. Operator-level, measured with:
+
+```bash
+python onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py \
+  --fp32 --prompt_only --warmup 10 --repeats 30
+```
+
+#### Latency — Prefill (S = T, prompt phase)
+
+| Seq Length | Naive (ms) | Flash (ms) | Speedup |
+|---:|---:|---:|---:|
+| 512  | 5.8\u20138.4   | 4.2\u20135.3   | 1.4\u20131.6x |
+| 1024 | 25\u201329     | 13\u201318     | 1.6\u20132.0x |
+| 2048 | 87\u2013118    | 52\u201365     | 1.5\u20132.0x |
+| 4096 | 365\u2013380   | 213\u2013234   | 1.6\u20131.7x |
+
+The FP32 flash path is faster than naive across all measured prefill lengths. With the causal
+early-termination described above, roughly half of the QK/SV work (the causally masked
+upper triangle of the square prefill attention matrix) is skipped entirely, which more than
+offsets the intrinsic per-KV-block online-softmax overhead (running max/exp/output rescale).
+The same advantage holds single-threaded (1.4\u20131.8x at threads=1), confirming the gain is
+algorithmic rather than purely from threading.
+
+#### Latency — Decode (S = 1, token generation)
+
+For single-token decode at this head configuration (`batch\u00d7heads = 16 > threads = 8`, so
+flash decoding KV-partitioning is not active), the workload per `Run` is tiny (a `1 × T × H`
+GEMV pair per head) and operator-level latency is dominated by fixed per-`Run` overhead
+(session dispatch, KV-cache concatenation), so operator-level measurements on the EPYC dev
+box are extremely noisy. The numbers below come from a min-of-many-repeats MLAS-path harness
+to suppress that jitter.
+
+| Total Seqlen | Naive (ms) | Flash (ms) | Speedup |
+|---:|---:|---:|---:|
+| 513  | 0.50 | 0.42 | ~1.0\u20131.2x (noisy) |
+| 1025 | 0.78 | 0.69 | ~1.0\u20131.1x (noisy) |
+| 2049 | 1.89 | 1.73 | ~1.0\u20131.1x (noisy) |
+| 4097 | 6.1  | 4.5  | 1.35\u20131.5x |
+
+Decode is now handled by the dedicated GEMV kernel (`MlasGQADecodeGQAThreaded`) instead of
+the prefill tiling kernel; see *Decode uses a dedicated GEMV kernel* above. Replacing the
+per-head `M = 1` `MlasSgemmOperation` QK/SV calls with direct GEMVs removes the SGEMM
+B-packing overhead that previously made flash decode noticeably **slower** than naive
+(measured ≈0.4\u20130.6x across all lengths before the change). Flash decode is now at parity
+for short/medium sequences (where the work is memory-bandwidth bound and overhead-dominated)
+and consistently ahead for long contexts (T≥4097, ~1.4\u20131.5x) where the streamed
+single-pass KV access wins. Short decode remains overhead-bound rather than algorithm-bound,
+so it is not the target of the prefill-oriented causal early-termination optimization.
+## Current CPU Limitations
+
+The current CPU GroupQueryAttention implementation has a few important limitations:
+
+- Quantized K and V cache modes must match.
+- Quantized CPU cache scales are `float` only.
+- `kv_cache_bit_width` must be `0` when quantization is disabled, and `4` or `8` when quantization is enabled.
+- INT4 cache storage uses packed `uint8` bytes and requires consumers to use the packed head dimension.
+- The default AVX512 quantized KV-cache GEMM path preserves FP32 query and attention-probability operands; the approximate VNNI QK path is opt-in only.
+- Hardware dispatch affects performance, but should not change default numeric semantics.
+- The flash attention path does not support softcap, smooth softmax, head sink, or QK output capture. These features fall back to the naive path.
+- The MLAS quantized GEMM helpers operate on one per-batch/per-head tile at a time; outer parallelism is managed by the GQA kernel (or by the flash attention kernel internally).
+
+## Future Work
+
+Further optimization opportunities include:
+
+- Improve the exact AVX512 INT8 per-tensor QK path without quantizing the FP32 query, for example by processing multiple K-cache rows per query row while keeping FP32 FMA semantics.
+- Add AVX512-specific exact micro-kernels for common decode shapes such as `M=1`, `N=512/2048`, and `K=64/128`.
+- Add dedicated accuracy/performance tests for the approximate VNNI opt-in path before enabling it in any production configuration.
+- Reduce temporary copies in quantized cache concatenation when past and present buffers cannot be shared directly.
+- Explore prepacking or layout transforms for long-lived quantized KV caches when the cache update pattern makes that worthwhile.
+
+CPU features that are limited or not implemented relative to the broader operator schema include:
+
+- Float8 KV-cache execution is described by the contrib operator schema, but the current CPU quantized path covered here is INT8/INT4.
+- The CPU quantized path requires K and V quantization modes to match.
+- Scale shapes are restricted to the CPU implementation's scalar or per-head-channel forms, rather than arbitrary broadcastable shapes.
+- The approximate AVX512 VNNI QK path is opt-in only and is not part of the default numeric contract.
+- Some schema features are supported by validation and shared attention code, but may not have the same optimized coverage in every CPU quantized path.
+
+## Code Structure Summary
+
+- `GroupQueryAttentionBase<T>::GroupQueryAttentionBase(...)`
+  - reads attributes such as `num_heads`, `kv_num_heads`, quantization type, and `kv_cache_bit_width`
+- `GroupQueryAttention<T>::Compute(...)`
+  - validates input tensors, scale tensors, and sequence lengths
+  - allocates output and present-cache tensors
+  - dispatches to the quantized or non-quantized attention path
+- `GroupQueryAttentionBase<T>::ApplyAttentionQuantized(...)`
+  - quantizes new K/V values into the present cache
+  - concatenates past and present cache chunks when needed
+  - calls `MlasQKGemm` and `MlasSVGemm`
+- `GroupQueryAttentionBase<T>::ApplyAttentionQuantizedFlash(...)`
+  - concatenates new K/V into present cache (parallel over batch × kv_heads)
+  - invokes `MlasFlashAttentionQuantizedKV` with L2-cache-aware block sizes
+- `MlasQKGemm(...)`
+  - computes FP32 query times quantized K cache transpose
+- `MlasSVGemm(...)`
+  - computes `C = Beta*C + A*dequant(B)` where A is FP32 attention probabilities and B is quantized V cache
+  - `Beta=0` (overwrite) for naive path; `Beta=1.0` (accumulate) for flash path
+- `MlasFlashAttentionQuantizedKV(...)`
+  - flash attention kernel with online softmax, tiled QK/SV over quantized KV cache
+  - parallelizes across (batch, head, q_block) tiles via thread pool

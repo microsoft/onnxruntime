@@ -214,7 +214,7 @@ struct MaxPool1DTask final {
       int64_t h_index = -1;
       for (int64_t h = hstart; h < hend; h += dilation_h) {
         if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
-          if (x_d[h] > Yh) {
+          if (h_index < 0 || x_d[h] > Yh) {
             Yh = x_d[h];
             h_index = h;
           }
@@ -276,7 +276,7 @@ struct MaxPool2DTask final {
             for (int64_t w = wstart; w < wend; w += dilation_w) {
               if (math::is_a_ge_zero_and_a_lt_b(w, width)) {
                 const int64_t input_index = h * width + w;
-                if (x_d[input_index] > Yh) {
+                if (h_index < 0 || x_d[input_index] > Yh) {
                   Yh = x_d[input_index];
                   h_index = h;
                   w_index = w;
@@ -355,7 +355,7 @@ struct MaxPool3DTask {
                   for (int64_t d = dstart; d < dend; d += dilation_d) {
                     if (math::is_a_ge_zero_and_a_lt_b(d, depth)) {
                       const int64_t input_index = h * width * depth + w * depth + d;
-                      if (x_d[input_index] > Yh) {
+                      if (h_index < 0 || x_d[input_index] > Yh) {
                         Yh = x_d[input_index];
                         h_index = h;
                         w_index = w;
@@ -462,7 +462,7 @@ struct AveragePool2DTask final {
     for (int64_t ph = 0; ph < pooled_height; ++ph) {
       int64_t hstart = ph * stride_h - pads[0];
       int64_t hend = hstart + kernel_shape[0] * dilation_h;
-      hend = std::min(hend, height + pads[1]);
+      hend = std::min(hend, height + pads[2]);
       for (int64_t pw = 0; pw < pooled_width; ++pw) {
         int64_t wstart = pw * stride_w - pads[1];
         int64_t wend = wstart + kernel_shape[1] * dilation_w;
@@ -535,11 +535,11 @@ struct AveragePool3DTask {
     for (int64_t ph = 0; ph < pooled_height; ++ph) {
       int64_t hstart = ph * stride_h - pads[0];
       int64_t hend = hstart + kernel_shape[0] * dilation_h;
-      hend = std::min(hend, height + pads[1]);
+      hend = std::min(hend, height + pads[3]);
       for (int64_t pw = 0; pw < pooled_width; ++pw) {
         int64_t wstart = pw * stride_w - pads[1];
         int64_t wend = wstart + kernel_shape[1] * dilation_w;
-        wend = std::min(wend, width + pads[3]);
+        wend = std::min(wend, width + pads[4]);
         for (int64_t pd = 0; pd < pooled_depth; ++pd) {
           int64_t dstart = pd * stride_d - pads[2];
           int64_t dend = dstart + kernel_shape[2] * dilation_d;

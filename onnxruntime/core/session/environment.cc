@@ -17,6 +17,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_env_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -59,6 +60,10 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
+#include "absl/debugging/symbolize.h"
+#endif
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -68,6 +73,7 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+std::once_flag symbolizerInitOnceFlag;
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -267,6 +273,17 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
 
+  // Initialize abseil symbolizer for readable stack traces in debug builds.
+  // Restricted to Linux: InitializeSymbolizer(nullptr) relies on /proc/self/exe
+  // to locate the executable, which is Linux-specific. Other platforms either
+  // use a different mechanism (Windows: C++23 <stacktrace>) or would need a real
+  // argv[0] path plumbed through, which is out of scope for this debug helper.
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
+  std::call_once(symbolizerInitOnceFlag, []() {
+    absl::InitializeSymbolizer(nullptr);
+  });
+#endif
+
   ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
@@ -442,6 +459,13 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+Status Environment::SetPerSessionWorkCallbacks(const OrtThreadPoolCallbacksConfig& config) {
+  per_session_work_callbacks_ = config;
+  return Status::OK();
+}
+#endif
+
 Environment::~Environment() {
   // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed.
   // this is because any entry in shared_allocators_ wrapping an OrtAllocator from a plugin EP owns the OrtAllocator
@@ -539,8 +563,13 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
+
   if (ep_libraries_.count(registration_name) > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
+    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
+    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
+    return status;
   }
 
   auto status = Status::OK();
@@ -592,11 +621,17 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     });
   }
 
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
   return status;
 }
 
 Status Environment::CreateAndRegisterInternalEps() {
-  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps();
+  // Capture allow_virtual_devices here (lock-free) and pass it to the internal EP factories at
+  // construction. The internal WebGPU EP factory needs it in GetSupportedDevices but cannot query the
+  // OrtEnv singleton there: internal EPs are registered while OrtEnv's creation mutex is already held on
+  // this thread, so the query would self-deadlock.
+  const bool allow_virtual_devices = num_allow_virtual_device_uses_ > 0;
+  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps(allow_virtual_devices);
   for (auto& ep_library : internal_ep_libraries) {
     // we do a std::move in the function call so need a valid pointer for the args after the move
     auto* internal_library_ptr = ep_library.get();
@@ -610,6 +645,9 @@ Status Environment::CreateAndRegisterInternalEps() {
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   std::lock_guard<std::mutex> lock{mutex_};
+
+  std::string lib_file_name = PathToUTF8String(std::filesystem::path(lib_path).filename().native());
+  Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
 
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
@@ -838,14 +876,22 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                            "EP library should be opaque to ORT");
   }
 
+  auto* ep_factory = ep_device.ep_factory;
   auto ort_allocator = OrtAllocatorUniquePtr(allocator,
-                                             [&ep_device](OrtAllocator* allocator) {
-                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
+                                             [ep_factory](OrtAllocator* allocator) {
+                                               ep_factory->ReleaseAllocator(ep_factory, allocator);
                                              });
 
   shared_ort_allocators_.insert(allocator);
 
-  AllocatorPtr shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+  // Wrap as IArena when the plugin allocator implements Shrink(), making it
+  // discoverable by session-level arena management (e.g. ShrinkMemoryArenas).
+  AllocatorPtr shared_allocator;
+  if (allocator->version >= 25 && allocator->Shrink != nullptr) {
+    shared_allocator = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+  } else {
+    shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+  }
   shared_allocators_.push_back(std::move(shared_allocator));
 
   if (allocator_out != nullptr) {
@@ -896,8 +942,15 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
         factory.GetSupportedDevices(&factory, sorted_devices.data(), sorted_devices.size(),
                                     ep_devices.data(), ep_devices.size(), &num_ep_devices)));
 
+    const auto* library_path = instance.library->LibraryPath();
     for (size_t i = 0; i < num_ep_devices; ++i) {
-      if (ep_devices[i] != nullptr) {                            // should never happen but just in case...
+      if (ep_devices[i] != nullptr) {  // should never happen but just in case...
+        if (library_path != nullptr) {
+          // Add library path to EP metadata if available.
+          // This is used by GenAI for custom library loading so we want to consistently set it.
+          ep_devices[i]->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_LibraryPath, library_path->string());
+        }
+
         instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }

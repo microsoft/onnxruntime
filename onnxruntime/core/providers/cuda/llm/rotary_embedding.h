@@ -8,8 +8,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 template <typename T>
 class RotaryEmbedding final : public CudaKernel {
  public:

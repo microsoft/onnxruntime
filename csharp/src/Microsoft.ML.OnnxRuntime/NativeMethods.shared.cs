@@ -452,6 +452,36 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
         public IntPtr CreateExternalInitializerInfo;
+
+        // v1.24 APIs
+        public IntPtr TensorTypeAndShape_HasShape;
+        public IntPtr KernelInfo_GetConfigEntries;
+        public IntPtr KernelInfo_GetOperatorDomain;
+        public IntPtr KernelInfo_GetOperatorType;
+        public IntPtr KernelInfo_GetOperatorSinceVersion;
+        public IntPtr GetInteropApi;
+        public IntPtr SessionGetEpDeviceForOutputs;
+        public IntPtr GetNumHardwareDevices;
+        public IntPtr GetHardwareDevices;
+        public IntPtr GetHardwareDeviceEpIncompatibilityDetails;
+        public IntPtr DeviceEpIncompatibilityDetails_GetReasonsBitmask;
+        public IntPtr DeviceEpIncompatibilityDetails_GetNotes;
+        public IntPtr DeviceEpIncompatibilityDetails_GetErrorCode;
+        public IntPtr ReleaseDeviceEpIncompatibilityDetails;
+        public IntPtr GetCompatibilityInfoFromModel;
+        public IntPtr GetCompatibilityInfoFromModelBytes;
+        public IntPtr CreateEnvWithOptions;
+        public IntPtr Session_GetEpGraphAssignmentInfo;
+        public IntPtr EpAssignedSubgraph_GetEpName;
+        public IntPtr EpAssignedSubgraph_GetNodes;
+        public IntPtr EpAssignedNode_GetName;
+        public IntPtr EpAssignedNode_GetDomain;
+        public IntPtr EpAssignedNode_GetOperatorType;
+        public IntPtr RunOptionsSetSyncStream;
+        public IntPtr GetTensorElementTypeAndShapeDataReference;
+        // v1.25 APIs
+        public IntPtr RunOptionsEnableProfiling;
+        public IntPtr RunOptionsDisableProfiling;
     }
 
     internal static class NativeMethods
@@ -476,9 +506,25 @@ namespace Microsoft.ML.OnnxRuntime
         static NativeMethods()
         {
 #if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
-            // Register a custom DllImportResolver to handle platform-specific library loading.
-            // Replaces default resolution specifically on Windows for case-sensitivity.
-            NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
+            if (!OrtEnv.DisableDllImportResolver)
+            {
+                try
+                {
+                    // Register a custom DllImportResolver to handle platform-specific library loading.
+                    // Replaces default resolution specifically on Windows for case-sensitivity.
+                    NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
+                }
+                catch (InvalidOperationException)
+                {
+                    // A resolver is already registered for this assembly (e.g., by the host application).
+                    // This is not fatal — the host's resolver will handle library loading.
+                    System.Diagnostics.Trace.WriteLine(
+                        "[OnnxRuntime] A DllImportResolver is already registered for this assembly. "
+                        + "OnnxRuntime's built-in resolver will not be used. "
+                        + "To suppress this message, set OrtEnv.DisableDllImportResolver = true "
+                        + "before using any OnnxRuntime APIs.");
+                }
+            }
 #endif
 
 #if NETSTANDARD2_0
@@ -834,6 +880,42 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateExternalInitializerInfo,
                     typeof(DOrtCreateExternalInitializerInfo));
 
+            // Version 24 additions
+            OrtGetNumHardwareDevices =
+                (DOrtGetNumHardwareDevices)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetNumHardwareDevices,
+                    typeof(DOrtGetNumHardwareDevices));
+
+            OrtGetHardwareDevices =
+                (DOrtGetHardwareDevices)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetHardwareDevices,
+                    typeof(DOrtGetHardwareDevices));
+
+            OrtGetHardwareDeviceEpIncompatibilityDetails =
+                (DOrtGetHardwareDeviceEpIncompatibilityDetails)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetHardwareDeviceEpIncompatibilityDetails,
+                    typeof(DOrtGetHardwareDeviceEpIncompatibilityDetails));
+
+            OrtDeviceEpIncompatibilityDetails_GetReasonsBitmask =
+                (DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask)Marshal.GetDelegateForFunctionPointer(
+                    api_.DeviceEpIncompatibilityDetails_GetReasonsBitmask,
+                    typeof(DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask));
+
+            OrtDeviceEpIncompatibilityDetails_GetNotes =
+                (DOrtDeviceEpIncompatibilityDetails_GetNotes)Marshal.GetDelegateForFunctionPointer(
+                    api_.DeviceEpIncompatibilityDetails_GetNotes,
+                    typeof(DOrtDeviceEpIncompatibilityDetails_GetNotes));
+
+            OrtDeviceEpIncompatibilityDetails_GetErrorCode =
+                (DOrtDeviceEpIncompatibilityDetails_GetErrorCode)Marshal.GetDelegateForFunctionPointer(
+                    api_.DeviceEpIncompatibilityDetails_GetErrorCode,
+                    typeof(DOrtDeviceEpIncompatibilityDetails_GetErrorCode));
+
+            OrtReleaseDeviceEpIncompatibilityDetails =
+                (DOrtReleaseDeviceEpIncompatibilityDetails)Marshal.GetDelegateForFunctionPointer(
+                    api_.ReleaseDeviceEpIncompatibilityDetails,
+                    typeof(DOrtReleaseDeviceEpIncompatibilityDetails));
+
             OrtCreateSharedAllocator =
                 (DOrtCreateSharedAllocator)Marshal.GetDelegateForFunctionPointer(
                     api_.CreateSharedAllocator,
@@ -868,6 +950,16 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
                     api_.CopyTensors,
                     typeof(DOrtCopyTensors));
+
+            OrtGetCompatibilityInfoFromModel =
+                (DOrtGetCompatibilityInfoFromModel)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetCompatibilityInfoFromModel,
+                    typeof(DOrtGetCompatibilityInfoFromModel));
+
+            OrtGetCompatibilityInfoFromModelBytes =
+                (DOrtGetCompatibilityInfoFromModelBytes)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetCompatibilityInfoFromModelBytes,
+                    typeof(DOrtGetCompatibilityInfoFromModelBytes));
         }
 
         internal class NativeLib
@@ -892,41 +984,128 @@ namespace Microsoft.ML.OnnxRuntime
         /// It handles the addition of "lib" prefix and file extensions (.so/.dylib) for Linux/macOS,
         /// and .dll extension for Windows (handling case-sensitivity).
         /// </summary>
+#if NET5_0_OR_GREATER
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000:Avoid accessing Assembly file path when publishing as a single file", Justification = "We also check AppContext.BaseDirectory as a fallback")]
+#endif
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
+            try
             {
-                string mappedName = null;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
                 {
-                    // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
-                    mappedName = libraryName + ".dll";
-                }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                {
-                    // Explicitly load with .so extension and lib prefix
-                    mappedName = "lib" + libraryName + ".so";
-                }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                {
-                    // Explicitly load with .dylib extension and lib prefix
-                    mappedName = "lib" + libraryName + ".dylib";
-                }
-
-                if (mappedName != null)
-                {
-                    if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                    string mappedName = null;
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
-                        return handle;
+                        // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
+                        mappedName = libraryName + ".dll";
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    {
+                        // Explicitly load with .so extension and lib prefix
+                        mappedName = "lib" + libraryName + ".so";
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    {
+                        // Explicitly load with .dylib extension and lib prefix
+                        mappedName = "lib" + libraryName + ".dylib";
+                    }
+
+                    if (mappedName != null)
+                    {
+                        // 1. Try default loading (name only)
+                        if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                        {
+                            return handle;
+                        }
+
+                        // 2. Try relative to assembly location (look into runtimes subfolders)
+                        string assemblyLocation = null;
+                        try { assemblyLocation = assembly.Location; } catch { }
+                        if (!string.IsNullOrEmpty(assemblyLocation))
+                        {
+                            string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
+                            string rid = RuntimeInformation.RuntimeIdentifier;
+
+                            // Probe the specific RID first, then common fallbacks for the current OS
+                            string[] ridsToTry;
+                            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                            {
+                                ridsToTry = new[] { rid, "win-x64", "win-arm64" };
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                            {
+                                ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                            {
+                                // We no longer provide osx-x64 in official package since 1.24.
+                                // However, we keep it in the list for build-from-source users.
+                                ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
+                            }
+                            else
+                            {
+                                ridsToTry = new[] { rid };
+                            }
+
+                            foreach (var tryRid in ridsToTry)
+                            {
+                                string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
+                                if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+                            }
+                        }
+
+                        // 3. Try AppContext.BaseDirectory as a fallback
+                        try
+                        {
+                            string baseDir = AppContext.BaseDirectory;
+                            if (!string.IsNullOrEmpty(baseDir))
+                            {
+                                string probePath = System.IO.Path.Combine(baseDir, mappedName);
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+
+                                string rid = RuntimeInformation.RuntimeIdentifier;
+                                probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+                            }
+                        }
+                        catch { } // Ignore AppDomainUnloadedException or similar from AppContext.BaseDirectory
+
+                        LogLibLoad($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
+
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                // Unhandled exceptions inside DllImportResolver can result in TypeInitializationException.
+                // Log and swallow the error, returning IntPtr.Zero to fall back to default CLR logic.
+                try { System.Diagnostics.Trace.WriteLine($"[DllImportResolver] Exception during resolution: {ex}"); } catch { }
             }
 
             // Fall back to default resolution
             return IntPtr.Zero;
         }
 
-
+        private static void LogLibLoad(string message)
+        {
+            System.Diagnostics.Trace.WriteLine(message);
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ORT_LOADER_VERBOSITY")))
+            {
+                Console.WriteLine(message);
+            }
+        }
 #endif
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
@@ -1406,12 +1585,12 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
             IntPtr /*(OrtSession*)*/ session,
             IntPtr /*(OrtSessionRunOptions*)*/ runOptions, // can be null to use the default options
-            IntPtr[] /*(char**)*/ inputNames,
-            IntPtr[] /*(OrtValue*[])*/ inputValues,
+            IntPtr /*(char**)*/ inputNames,
+            IntPtr /*(OrtValue*[])*/ inputValues,
             UIntPtr /*(size_t)*/ inputCount,
-            IntPtr[] /*(char**)*/ outputNames,
+            IntPtr /*(char**)*/ outputNames,
             UIntPtr /*(size_t)*/ outputCount,
-            IntPtr[] /*(OrtValue*[])*/ outputValues,
+            IntPtr /*(OrtValue*[])*/ outputValues,
             IntPtr /*(void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status))*/ callback, // callback function
             IntPtr /*(void*)*/ user_data);
         public static DOrtRunAsync OrtRunAsync;
@@ -2677,6 +2856,75 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
+        #region Hardware Device EP Compatibility API
+
+        /// <summary>
+        /// Get the number of available hardware devices.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetNumHardwareDevices(
+            IntPtr /* const OrtEnv* */ env,
+            out UIntPtr /* size_t* */ numDevices);
+
+        /// <summary>
+        /// Get the list of available hardware devices.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetHardwareDevices(
+            IntPtr /* const OrtEnv* */ env,
+            [Out] IntPtr[] /* const OrtHardwareDevice** */ devices,
+            UIntPtr /* size_t */ numDevices);
+
+        /// <summary>
+        /// Check for known incompatibility issues between hardware device and a specific execution provider.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetHardwareDeviceEpIncompatibilityDetails(
+            IntPtr /* const OrtEnv* */ env,
+            byte[] /* const char* */ epName,
+            IntPtr /* const OrtHardwareDevice* */ hw,
+            out IntPtr /* OrtDeviceEpIncompatibilityDetails** */ details);
+
+        /// <summary>
+        /// Get the incompatibility reasons bitmask from OrtDeviceEpIncompatibilityDetails.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask(
+            IntPtr /* const OrtDeviceEpIncompatibilityDetails* */ details,
+            out uint /* uint32_t* */ reasonsBitmask);
+
+        /// <summary>
+        /// Get the notes from OrtDeviceEpIncompatibilityDetails.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtDeviceEpIncompatibilityDetails_GetNotes(
+            IntPtr /* const OrtDeviceEpIncompatibilityDetails* */ details,
+            out IntPtr /* const char** */ notes);
+
+        /// <summary>
+        /// Get the EP-specific error code from OrtDeviceEpIncompatibilityDetails.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtDeviceEpIncompatibilityDetails_GetErrorCode(
+            IntPtr /* const OrtDeviceEpIncompatibilityDetails* */ details,
+            out int /* int32_t* */ errorCode);
+
+        /// <summary>
+        /// Release an OrtDeviceEpIncompatibilityDetails instance.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseDeviceEpIncompatibilityDetails(IntPtr /* OrtDeviceEpIncompatibilityDetails* */ details);
+
+        public static DOrtGetNumHardwareDevices OrtGetNumHardwareDevices;
+        public static DOrtGetHardwareDevices OrtGetHardwareDevices;
+        public static DOrtGetHardwareDeviceEpIncompatibilityDetails OrtGetHardwareDeviceEpIncompatibilityDetails;
+        public static DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask OrtDeviceEpIncompatibilityDetails_GetReasonsBitmask;
+        public static DOrtDeviceEpIncompatibilityDetails_GetNotes OrtDeviceEpIncompatibilityDetails_GetNotes;
+        public static DOrtDeviceEpIncompatibilityDetails_GetErrorCode OrtDeviceEpIncompatibilityDetails_GetErrorCode;
+        public static DOrtReleaseDeviceEpIncompatibilityDetails OrtReleaseDeviceEpIncompatibilityDetails;
+
+        #endregion
+
         #region Auto EP API related
         //
         // OrtKeyValuePairs
@@ -2988,6 +3236,31 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
 
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
+
+        /// <summary>
+        /// Extract EP compatibility info from a precompiled model file.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetCompatibilityInfoFromModel(
+            byte[] /* const ORTCHAR_T* */ model_path,
+            byte[] /* const char* */ ep_type,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* char** */ compatibility_info);
+
+        public static DOrtGetCompatibilityInfoFromModel OrtGetCompatibilityInfoFromModel;
+
+        /// <summary>
+        /// Extract EP compatibility info from precompiled model bytes in memory.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetCompatibilityInfoFromModelBytes(
+            byte[] /* const void* */ model_data,
+            UIntPtr /* size_t */ model_data_length,
+            byte[] /* const char* */ ep_type,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* char** */ compatibility_info);
+
+        public static DOrtGetCompatibilityInfoFromModelBytes OrtGetCompatibilityInfoFromModelBytes;
 
         #endregion
     } // class NativeMethods

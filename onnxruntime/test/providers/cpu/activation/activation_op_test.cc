@@ -1,11 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "activation_op_test.h"
+#include <limits>
 #include "core/providers/cpu/activation/activations.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -522,6 +526,24 @@ TEST_F(ActivationOpTest, PRelu) {
   test.Run();
 }
 
+TEST_F(ActivationOpTest, PRelu_Infinity) {
+  // Regression test: PRelu must not return NaN for +/-inf inputs.
+  // For x > 0, output should be x (so +inf stays +inf).
+  // For x <= 0, output should be x * slope (so -inf with positive slope stays -inf).
+  OpTester test("PRelu");
+
+  const float inf = std::numeric_limits<float>::infinity();
+  std::vector<float> inputs{inf, -inf, 5e30f, -2.5f};
+  std::vector<float> slopes{0.25f, 0.5f, 0.25f, 0.25f};
+  std::vector<float> outputs{inf, -inf, 5e30f, -0.625f};
+
+  std::vector<int64_t> dims{4};
+  test.AddInput<float>("X", dims, inputs);
+  test.AddInput<float>("slope", dims, slopes);
+  test.AddOutput<float>("Y", dims, outputs);
+  test.Run();
+}
+
 TEST_F(ActivationOpTest, PRelu_SingleSlope) {
   auto test = [](bool slope_is_initializer) {
     SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer));
@@ -605,6 +627,125 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
   test(false, 3, 1, 1, 1);
 }
 
+// Edge case: PRelu with +inf and -inf inputs should not produce NaN
+TEST_F(ActivationOpTest, PRelu_InfiniteInputs) {
+  float pos_inf = std::numeric_limits<float>::infinity();
+  float neg_inf = -std::numeric_limits<float>::infinity();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {6}, {pos_inf, neg_inf, pos_inf, neg_inf, 5e30f, -2.5f});
+  test.AddInput<float>("slope", {6}, {0.25f, 0.5f, 0.0f, 0.25f, 0.25f, 0.25f});
+  // +inf >= 0: return +inf
+  // -inf < 0: return -inf * 0.5 = -inf
+  // +inf >= 0: return +inf
+  // -inf < 0: return -inf * 0.25 = -inf
+  // 5e30 >= 0: return 5e30
+  // -2.5 < 0: return -2.5 * 0.25 = -0.625
+  test.AddOutput<float>("Y", {6}, {pos_inf, neg_inf, pos_inf, neg_inf, 5e30f, -0.625f});
+  test.Run();
+}
+
+// Edge case: PRelu with scalar slope and infinite input
+TEST_F(ActivationOpTest, PRelu_InfiniteInputs_ScalarSlope) {
+  float pos_inf = std::numeric_limits<float>::infinity();
+  float neg_inf = -std::numeric_limits<float>::infinity();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {4}, {pos_inf, neg_inf, 1.0f, -1.0f});
+  test.AddInput<float>("slope", {1}, {0.5f});
+  // +inf >= 0: return +inf
+  // -inf < 0: return -inf * 0.5 = -inf
+  // 1.0 >= 0: return 1.0
+  // -1.0 < 0: return -1.0 * 0.5 = -0.5
+  test.AddOutput<float>("Y", {4}, {pos_inf, neg_inf, 1.0f, -0.5f});
+  test.Run();
+}
+
+// Edge case: PRelu with NaN input propagates NaN
+TEST_F(ActivationOpTest, PRelu_NaNPropagation) {
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {3}, {nan_val, nan_val, 1.0f});
+  test.AddInput<float>("slope", {3}, {0.5f, 0.5f, 0.5f});
+  // NaN propagation: NaN in either branch should remain NaN
+  test.AddOutput<float>("Y", {3}, {nan_val, nan_val, 1.0f});
+  test.Run();
+}
+
+// Edge case: -inf * 0 = NaN per IEEE 754 (indeterminate form).
+// PRelu spec says y = slope * x for x < 0, so -inf with slope=0 is 0 * -inf = NaN.
+TEST_F(ActivationOpTest, PRelu_NegInf_ZeroSlope) {
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {3}, {neg_inf, neg_inf, 1.0f});
+  test.AddInput<float>("slope", {3}, {0.0f, 0.5f, 0.0f});
+  // -inf * 0 = NaN (IEEE 754); -inf * 0.5 = -inf; 1.0 >= 0 → 1.0
+  test.AddOutput<float>("Y", {3}, {nan_val, neg_inf, 1.0f});
+  test.Run();
+}
+
+// PRelu is registered on WebGPU for opsets 7-8, 9-15 and 16 (a single kernel). The PRelu tests
+// above run at OpTester's default opset (7); these two cover the other registrations. float16 is
+// used because the CPU EP's PRelu is float-only, so these cannot silently fall back to it.
+TEST_F(ActivationOpTest, PRelu_Float16_Opset9_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("PRelu", 9);
+
+  std::vector<int64_t> x_dims{1, 2, 2, 4};
+  test.AddInput<MLFloat16>("X", x_dims,
+                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f, -4.0f,
+                                               -5.0f, 6.0f, -7.0f, 8.0f,
+                                               -1.0f, 2.0f, -3.0f, 4.0f,
+                                               5.0f, -6.0f, 7.0f, -8.0f}));
+  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, -0.25f}));
+  test.AddOutput<MLFloat16>("Y", x_dims,
+                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f, -2.0f,
+                                                -2.5f, 6.0f, -3.5f, 8.0f,
+                                                0.25f, 2.0f, 0.75f, 4.0f,
+                                                5.0f, 1.5f, 7.0f, 2.0f}));
+  test.SetOutputAbsErr("Y", 0.01f);
+  test.SetOutputRelErr("Y", 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST_F(ActivationOpTest, PRelu_Float16_Opset16_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("PRelu", 16);
+
+  std::vector<int64_t> x_dims{1, 2, 2, 3};
+  test.AddInput<MLFloat16>("X", x_dims,
+                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f,
+                                               -4.0f, 5.0f, -6.0f,
+                                               -1.0f, 2.0f, -3.0f,
+                                               4.0f, -5.0f, 6.0f}));
+  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, 2.0f}));
+  test.AddOutput<MLFloat16>("Y", x_dims,
+                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f,
+                                                -2.0f, 5.0f, -3.0f,
+                                                -2.0f, 2.0f, -6.0f,
+                                                4.0f, -10.0f, 6.0f}));
+  test.SetOutputAbsErr("Y", 0.01f);
+  test.SetOutputRelErr("Y", 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,
@@ -615,6 +756,37 @@ TEST_F(ActivationOpTest, Softplus) {
                               return log1pf(expf(x));
                           });
 }
+
+TEST_F(ActivationOpTest, Softplus_Opset22) {
+  TestActivationOp<float>("Softplus", {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}}, [](float x) {
+                            if (x > 0)
+                              return x + log1pf(expf(-x));
+                            else
+                              return log1pf(expf(x)); }, {}, {}, /*is_tensorrt_supported=*/true, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpTest, Softplus_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softplus", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x > 0 ? x + log1pf(expf(-x)) : log1pf(expf(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
@@ -656,6 +828,41 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
       },
       {}, {}, false);  // Disable TensorRT because result mismatches
 }
+
+TEST_F(ActivationOpNoInfTest, Softsign_Opset22) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
+
+  TestActivationOp<float>(
+      "Softsign",
+      {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}},
+      [](float x) { return x / (1 + std::abs(x)); },
+      {}, {}, /*is_tensorrt_supported=*/false, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpNoInfTest, Softsign_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softsign", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x / (1 + std::abs(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 #if defined(ENABLE_TRAINING_OPS)
 TEST(ReluGradInferenceTest, Basic) {
@@ -752,6 +959,58 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
       {},
       {{"approximate", "tanh"}}, true, 20);
 }
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+TEST_F(ActivationOpTest, Gelu_fp16_tanh) {
+  OpTester test("Gelu", 20);
+  auto formula = [](float x) {
+    return 0.5f * x * (1 + tanhf(0.7978845608028654f * (x + 0.044715f * x * x * x)));
+  };
+  const std::vector<float> X = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  std::vector<float> Y;
+  Y.reserve(X.size());
+  for (float x : X) {
+    Y.push_back(formula(x));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.AddAttribute("approximate", "tanh");
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST_F(ActivationOpTest, Gelu_fp16_erf) {
+  OpTester test("Gelu", 20);
+  auto formula = [](float x) {
+    return static_cast<float>(0.5 * x * (1 + erf(x * M_SQRT1_2)));
+  };
+  const std::vector<float> X = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  std::vector<float> Y;
+  Y.reserve(X.size());
+  for (float x : X) {
+    Y.push_back(formula(x));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.AddAttribute("approximate", "none");
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
 #endif
 
 }  // namespace test

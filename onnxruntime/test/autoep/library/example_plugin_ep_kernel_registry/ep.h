@@ -35,6 +35,9 @@ class ExampleKernelEp : public OrtEp {
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
                                                    OrtEpGraphSupportInfo* graph_support_info) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateProfilerImpl(OrtEp* this_ptr,
+                                                    OrtEpProfilerImpl** profiler) noexcept;
+
   ExampleKernelEpFactory& factory_;
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;

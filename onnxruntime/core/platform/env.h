@@ -90,6 +90,13 @@ struct ThreadOptions {
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  // Optional callbacks for thread pool work scheduling.
+  // The pointed-to struct must remain valid until the ThreadPool constructor returns
+  // (the constructor copies the callback values).
+  const OrtThreadPoolCallbacksConfig* work_callbacks = nullptr;
+#endif
 };
 
 std::ostream& operator<<(std::ostream& os, const LogicalProcessors&);
@@ -221,6 +228,12 @@ class Env {
 
   /** Gets the canonical form of a file path (symlinks resolved). */
   virtual common::Status GetCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const = 0;
+
+  /** Like GetCanonicalPath, but the path is not required to exist. Mirrors
+   *  std::filesystem::weakly_canonical. */
+  virtual common::Status GetWeaklyCanonicalPath(
       const PathString& path,
       PathString& canonical_path) const = 0;
 

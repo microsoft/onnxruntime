@@ -19,7 +19,7 @@ struct OrtInstanceData {
   // Create a new OrtInstanceData object related to the Napi::Env
   static void Create(Napi::Env env, Napi::Function inferenceSessionWrapperFunction);
   // Initialize Ort for the Napi::Env
-  static void InitOrt(Napi::Env env, int log_level, Napi::Function tensorConstructor);
+  static void InitOrt(Napi::Env env, int log_level, Napi::Function tensorConstructor, bool is_main_thread);
   // Get the Tensor constructor reference for the Napi::Env
   static const Napi::FunctionReference& TensorConstructor(Napi::Env env);
 

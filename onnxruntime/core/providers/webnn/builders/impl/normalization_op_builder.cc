@@ -96,33 +96,9 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input type");
       emscripten::val common_options = emscripten::val::object();
 
-      if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        // Decomposed *SimplifiedLayerNormalization may lose precision if its data type is float16.
-        // So cast all inputs to float32 to ensure precision.
-        common_options.set("label", node.Name() + "_cast_input_to_fp32");
-        input = model_builder.GetBuilder().call<emscripten::val>("cast", input,
-                                                                 emscripten::val("float32"), common_options);
-
-        common_options.set("label", node.Name() + "_cast_scale_to_fp32");
-        scale = model_builder.GetBuilder().call<emscripten::val>("cast", scale,
-                                                                 emscripten::val("float32"), common_options);
-
-        if (!bias.isUndefined()) {
-          common_options.set("label", node.Name() + "_cast_bias_to_fp32");
-          bias = model_builder.GetBuilder().call<emscripten::val>("cast", bias,
-                                                                  emscripten::val("float32"), common_options);
-        }
-      }
-
       // If it is SkipSimplifiedLayerNormalization, add the skip and bias (if it exists) to the input.
       if (op_type == "SkipSimplifiedLayerNormalization") {
         emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
-        if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-          // Cast skip to float32
-          common_options.set("label", node.Name() + "_cast_skip_to_fp32");
-          skip = model_builder.GetBuilder().call<emscripten::val>("cast", skip,
-                                                                  emscripten::val("float32"), common_options);
-        }
         common_options.set("label", node.Name() + "_add_skip");
         input = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
         if (!bias.isUndefined()) {
@@ -134,20 +110,12 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         // Now input equals to input_skip_bias_sum.
         if (TensorExists(output_defs, 3)) {
           emscripten::val input_skip_bias_sum = input;
-          if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-            // Cast input_skip_bias_sum back to float16.
-            common_options.set("label", node.Name() + "_cast_input_skip_bias_sum_to_fp16");
-            input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>("cast", input_skip_bias_sum,
-                                                                                   emscripten::val("float16"),
-                                                                                   common_options);
-          }
           model_builder.AddOperand(output_defs[3]->Name(), input_skip_bias_sum);
         }
       }
 
       // Pow
-      emscripten::val pow_constant =
-          model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 2);
+      emscripten::val pow_constant = model_builder.CreateOrGetConstant<float>(input_type, 2);
       common_options.set("label", node.Name() + "_pow");
       emscripten::val pow =
           model_builder.GetBuilder().call<emscripten::val>("pow", input, pow_constant, common_options);
@@ -160,8 +128,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val reduce_mean = model_builder.GetBuilder().call<emscripten::val>("reduceMean", pow, reduce_options);
 
       // Add
-      emscripten::val add_constant =
-          model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, epsilon);
+      emscripten::val add_constant = model_builder.CreateOrGetConstant<float>(input_type, epsilon);
       common_options.set("label", node.Name() + "_add");
       emscripten::val add =
           model_builder.GetBuilder().call<emscripten::val>("add", reduce_mean, add_constant, common_options);
@@ -182,13 +149,6 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       if (!bias.isUndefined()) {
         common_options.set("label", node.Name() + "_add_bias");
         output = model_builder.GetBuilder().call<emscripten::val>("add", output, bias, common_options);
-      }
-
-      if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        // Cast output back to float16.
-        common_options.set("label", node.Name() + "_cast_output_to_fp16");
-        output = model_builder.GetBuilder().call<emscripten::val>("cast", output,
-                                                                  emscripten::val("float16"), common_options);
       }
     }
   } else if (op_type == "InstanceNormalization") {
@@ -333,12 +293,21 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
     }
     // It's complicated to check all the decomposed ops' input rank support.
     // Ensure at least the first input rank is supported by the decomposed ops (pow and div accept the first input).
-    return IsInputRankSupported(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
-           IsInputRankSupported(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
+    return IsRankSupportedByWebNNOp(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
   } else {
     bool is_data_type_supported = IsDataTypeSupportedByOp(op_type, input_types[0], wnn_limits, "input", "X", logger);
     if (op_type == "InstanceNormalization") {
-      // Skip input rank check for InstanceNormalization, as we will reshape the input to 4D if necessary.
+      // WebNN instanceNormalization only accepts 4D input. When the input is not 4D, we reshape it to
+      // 4D (see AddToModelBuilderImpl), so the ONNX input rank no longer matches the WebNN operand rank
+      // and the rank check must be skipped. Only validate the rank for the 4D direct path.
+      std::vector<int64_t> input_shape;
+      if (!GetShape(*input_defs[0], input_shape, logger)) {
+        return false;
+      }
+      if (input_shape.size() == 4) {
+        return is_data_type_supported && IsInputRankSupportedByOp(node, wnn_limits, logger);
+      }
       return is_data_type_supported;
     }
 
@@ -368,7 +337,22 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
     }
     return true;
   } else {
-    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
+    if (!IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger)) {
+      return false;
+    }
+    if (op_type == "InstanceNormalization") {
+      // WebNN instanceNormalization only produces 4D output. When the input is not 4D, we reshape the
+      // output back to the original rank (see AddToModelBuilderImpl), so the ONNX output rank no longer
+      // matches the WebNN operand rank and the rank check must be skipped. Only validate the 4D path.
+      std::vector<int64_t> output_shape;
+      if (!GetShape(*output_defs[0], output_shape, logger)) {
+        return false;
+      }
+      if (output_shape.size() != 4) {
+        return true;
+      }
+    }
+    return IsOutputRankSupportedByOp(node, wnn_limits, logger);
   }
 }
 

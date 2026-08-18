@@ -1,0 +1,54 @@
+diff --git a/include/cute/layout.hpp b/include/cute/layout.hpp
+index cb161369..2fdff179 100644
+--- a/include/cute/layout.hpp
++++ b/include/cute/layout.hpp
+@@ -1487,7 +1487,7 @@ nullspace(Layout<Shape,Stride> const& layout)
+   [[maybe_unused]] auto flat_stride = flatten(layout.stride());
+ 
+   // Select all indices corresponding to stride-0s
+-  auto iseq = cute::fold(make_seq<rank_v<decltype(flat_stride)>>{}, cute::tuple<>{},
++  [[maybe_unused]] auto iseq = cute::fold(make_seq<rank_v<decltype(flat_stride)>>{}, cute::tuple<>{},
+                          [&](auto init, auto i){
+                            if constexpr (is_constant_v<0, decltype(get<i>(flat_stride))>) { return append(init, i); }
+                            else                                                           { return init;            }
+diff --git a/include/cutlass/cuda_host_adapter.hpp b/include/cutlass/cuda_host_adapter.hpp
+index a8af62be..22e7332d 100644
+--- a/include/cutlass/cuda_host_adapter.hpp
++++ b/include/cutlass/cuda_host_adapter.hpp
+@@ -394,6 +394,10 @@ protected:
+    * Fills a buffer in Global Memory with a byte sequence copied from host memory.
+    * This function can be overridden to dispatch to the appropriate cuMemsetD*Async API
+   */
++  // Patching to work around this error:
++  //   include\cutlass/cuda_host_adapter.hpp(414): error #20011-D: calling a __host__ function("memsetDeviceImpl")
++  //     from a __host__ __device__ function("memsetDevice") is not allowed
++  CUTLASS_HOST_DEVICE
+   virtual Status memsetDeviceImpl(
+     void* destination, ///< Device memory pointer to be filled
+     void const* fill_value, ///< Value to be filled in the buffer
+diff --git a/include/cutlass/exmy_base.h b/include/cutlass/exmy_base.h
+index be207a49..6028e01d 100644
+--- a/include/cutlass/exmy_base.h
++++ b/include/cutlass/exmy_base.h
+@@ -1021,18 +1021,18 @@ struct float_exmy_base
+ 
+   /// Floating point conversion
+   CUTLASS_HOST_DEVICE
+-  explicit float_exmy_base<T, Derived>(float x) {
++  explicit float_exmy_base(float x) {
+     storage = static_cast<Derived*>(this)->convert_from_float(x).storage;
+   }
+ 
+   // Integer conversion
+   CUTLASS_HOST_DEVICE
+-  explicit float_exmy_base<T, Derived>(int x) {
++  explicit float_exmy_base(int x) {
+     storage = static_cast<Derived*>(this)->convert_from_float(float(x)).storage;
+   }
+ 
+   CUTLASS_HOST_DEVICE
+-  explicit float_exmy_base<T, Derived>(unsigned x) {
++  explicit float_exmy_base(unsigned x) {
+     storage = static_cast<Derived*>(this)->convert_from_float(float(x)).storage;
+   }
+ 

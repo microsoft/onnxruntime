@@ -16,7 +16,13 @@ using namespace onnxruntime::webgpu;
 
 class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved,
+                                           uint32_t multi_rotary_cache_concat_offset,
+                                           bool use_total_sequence_length_input)
+      : Program{"SplitPackedQKVWithRotaryEmbedding"},
+        interleaved_{interleaved},
+        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset},
+        use_total_sequence_length_input_{use_total_sequence_length_input} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -28,10 +34,13 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
+  const uint32_t multi_rotary_cache_concat_offset_;
+  const bool use_total_sequence_length_input_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {
@@ -54,6 +63,19 @@ class GroupQueryAttention final : public WebGpuKernel {
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+
+    const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
+    ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
+    if (causal == 0) {
+      ORT_NOT_IMPLEMENTED("GroupQueryAttention (WebGPU): causal=0 is not implemented.");
+    }
+
+    // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
+    // CUDA kernel. Fail loudly rather than treating the window-sized buffer as a full-length cache.
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
+                "GroupQueryAttention (WebGPU): sliding_window_cache=1 is not implemented.");
+
+    qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -65,6 +87,10 @@ class GroupQueryAttention final : public WebGpuKernel {
   int local_window_size_;
 
   bool use_smooth_softmax_;
+  // Epsilon used by per-head RMSNorm when q_norm_weight / k_norm_weight (inputs 14 / 15) are
+  // provided. Consumed whenever those optional norm inputs are used (decode fast path or
+  // prefill fallback), and ignored otherwise.
+  float qk_norm_epsilon_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
 

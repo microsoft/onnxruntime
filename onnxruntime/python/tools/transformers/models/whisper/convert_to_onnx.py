@@ -7,6 +7,7 @@
 import argparse
 import logging
 import os
+import re
 import warnings
 
 import onnx
@@ -309,6 +310,18 @@ def parse_arguments(argv=None):
     )
     quant_args.set_defaults(quantize_symmetric=False)
 
+    quant_args.add_argument(
+        "--quant_method",
+        required=False,
+        type=str,
+        default="k_quant",
+        choices=["k_quant", "k_quant_mixed"],
+        help="Quantization method for INT4 precision. "
+        "k_quant = k_quant algorithm with all nodes at INT4. "
+        "k_quant_mixed = k_quant with mixed precision (sensitive layers at INT8, rest at INT4). "
+        "Inspired by llama.cpp k-quant mixed strategy.",
+    )
+
     args = parser.parse_args(argv)
 
     # Collect cross QKs if either flag is enabled
@@ -320,20 +333,121 @@ def parse_arguments(argv=None):
     return args
 
 
-# quant_method is reserved for mixed precision in future
-def make_quant_algo_config(precision, quant_method: str, matmul_nodes=None):
-    customized_weight_config = {}
-    quant_algo_config = None
+def get_sensitive_node_names(matmul_nodes: list[str], encoder_layers: int, decoder_layers: int):
+    """Identify sensitive MatMul nodes that should use INT8 in k_quant_mixed.
 
-    # need to use k_quant for int8
+    Follows the llama.cpp k-quant mixed strategy adapted for Whisper encoder-decoder:
+      - First/last ~12.5% of layers + every 3rd layer in between are "sensitive layers"
+      - Within sensitive layers: attention Q/K/V projections and FFN fc2 (down projection) get INT8
+      - proj_out (LM head) always gets INT8
+
+    Reference: llama.cpp/src/llama-quant.cpp#L136
+
+    Args:
+        matmul_nodes: list of MatMul node names from the ONNX graph.
+        encoder_layers: number of encoder layers in the model.
+        decoder_layers: number of decoder layers in the model.
+
+    Returns:
+        list of node names that should be quantized to INT8.
+    """
+
+    def get_sensitive_layer_indices(num_layers):
+        return [
+            i
+            for i in range(num_layers)
+            if i < num_layers / 8 or i >= 7 * num_layers / 8 or (i - round(num_layers / 8)) % 3 == 2
+        ]
+
+    enc_sensitive_layers = set(get_sensitive_layer_indices(encoder_layers))
+    dec_sensitive_layers = set(get_sensitive_layer_indices(decoder_layers))
+
+    # Patterns for sensitive MatMul types within a sensitive layer:
+    # - Attention projections: q_proj, k_proj, v_proj (most sensitive to quantization)
+    # - FFN fc2 / out_proj equivalent (the down projection)
+    # - Cross-attention k_proj (sensitive based on weight distribution analysis)
+    sensitive_matmul_patterns = [
+        "/self_attn/q_proj/",
+        "/self_attn/k_proj/",
+        "/self_attn/v_proj/",
+        "/self_attn/out_proj/",
+        "/encoder_attn/q_proj/",
+        "/encoder_attn/k_proj/",
+        "/encoder_attn/v_proj/",
+        "/encoder_attn/out_proj/",
+        "/fc2/",
+    ]
+
+    sensitive = []
+    for name in matmul_nodes:
+        # proj_out (LM head equivalent) is always sensitive
+        if "proj_out" in name:
+            sensitive.append(name)
+            continue
+
+        # Determine if this is an encoder or decoder node, and extract layer index
+        layer_match = re.search(r"layers\.(\d+)", name)
+        if not layer_match:
+            # Cross-attention KV projections outside layer hierarchy (e.g. /k_proj/MatMul)
+            # These are always run once; keep them at INT8 for accuracy
+            if any(p.strip("/") in name for p in ["/k_proj/", "/v_proj/"]):
+                sensitive.append(name)
+            continue
+
+        layer_idx = int(layer_match.group(1))
+
+        is_encoder = "/encoder/" in name
+        is_decoder = "/decoder/" in name
+
+        # Check if this layer is in the sensitive set
+        if is_encoder and layer_idx in enc_sensitive_layers:
+            if any(pat in name for pat in sensitive_matmul_patterns):
+                sensitive.append(name)
+        elif is_decoder and layer_idx in dec_sensitive_layers:
+            if any(pat in name for pat in sensitive_matmul_patterns):
+                sensitive.append(name)
+
+    return sensitive
+
+
+def make_quant_algo_config(
+    precision: Precision,
+    quant_method: str,
+    matmul_nodes: list[str] | None = None,
+    encoder_layers: int = 0,
+    decoder_layers: int = 0,
+):
+    """Create quantization algorithm config for Whisper models.
+
+    Args:
+        precision: Precision enum (INT4 or INT8).
+        quant_method: "k_quant" or "k_quant_mixed".
+        matmul_nodes: list of MatMul node names from the ONNX graph.
+        encoder_layers: number of encoder layers (needed for k_quant_mixed).
+        decoder_layers: number of decoder layers (needed for k_quant_mixed).
+
+    Returns:
+        KQuantWeightOnlyQuantConfig with appropriate customized_weight_config.
+    """
+    customized_weight_config = {}
+
     if precision == Precision.INT8:
+        # INT8: set every MatMul to 8-bit
         for node_name in matmul_nodes:
             customized_weight_config[node_name] = {"bits": 8}
-        quant_algo_config = KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
-    else:
-        quant_algo_config = KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
+    elif precision == Precision.INT4 and quant_method == "k_quant_mixed":
+        # k_quant_mixed: sensitive layers at INT8, rest at INT4
+        sensitive_names = get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers)
+        for node_name in sensitive_names:
+            customized_weight_config[node_name] = {"bits": 8}
+        logger.info(
+            f"k_quant_mixed: {len(sensitive_names)} sensitive nodes (INT8) "
+            f"out of {len(matmul_nodes)} total MatMul nodes"
+        )
+        for name in sensitive_names:
+            logger.info(f"  INT8: {name}")
 
-    return quant_algo_config
+    return KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
 
 
 def export_onnx_models(
@@ -356,6 +470,7 @@ def export_onnx_models(
     accuracy_level: int = 0,
     quantize_symmetric: bool = False,
     provider: str = "cpu",
+    quant_method: str = "k_quant",
 ):
     device = torch.device("cuda" if use_gpu else "cpu")
     if not use_gpu:
@@ -458,7 +573,13 @@ def export_onnx_models(
                 if precision in (Precision.INT8, Precision.INT4):
                     onnx_model = onnx.load(onnx_path, load_external_data=True)
                     matmul_nodes = [node.name for node in onnx_model.graph.node if node.op_type == "MatMul"]
-                    quant_algo_config = make_quant_algo_config(precision, "k_quant", matmul_nodes)
+                    quant_algo_config = make_quant_algo_config(
+                        precision,
+                        quant_method,
+                        matmul_nodes,
+                        encoder_layers=config.encoder_layers,
+                        decoder_layers=config.decoder_layers,
+                    )
 
                     quant = MatMulNBitsQuantizer(
                         model=onnx_model,
@@ -533,6 +654,7 @@ def main(argv=None):
         args.accuracy_level,
         args.quantize_symmetric,
         args.provider,
+        args.quant_method,
     )
 
     max_diff = 0

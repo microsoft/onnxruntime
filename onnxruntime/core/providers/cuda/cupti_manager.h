@@ -3,17 +3,13 @@
 
 #pragma once
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if defined(ENABLE_CUDA_PROFILING)
 
 #include <atomic>
 #include <mutex>
 #include <vector>
 
 #include <cupti.h>
-
-// Do not move the check for CUDA_VERSION above #include <cupti.h>
-// the macros are defined in cupti.h
-#if defined(USE_CUDA)
 
 #include "core/common/gpu_profiler_common.h"
 #include "core/common/inlined_containers.h"
@@ -51,5 +47,4 @@ class CUPTIManager : public GPUTracerManager<CUPTIManager> {
 } /* namespace profiling */
 } /* namespace onnxruntime */
 
-#endif /* #if defined(USE_CUDA) */
-#endif /* #if defined (USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
+#endif /* #if defined(ENABLE_CUDA_PROFILING) */

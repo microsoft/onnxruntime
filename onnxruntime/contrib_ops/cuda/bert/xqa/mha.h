@@ -50,7 +50,7 @@ constexpr uint32_t inputSeqLen = 1;  // speculative decoding if > 1
 constexpr bool useKVCache = USE_KV_CACHE;
 
 using SeqLenDataType = uint32_t;
-#endif
+#endif  // MHA_H_COMMON
 
 // Dependent definitions
 #ifndef MHA_H_DEPENDENT
@@ -98,9 +98,9 @@ using KVCachePageIndex = int32_t;  // shape: KVCacheHead[nbKHeads][tokensPerPage
 constexpr bool allowSlidingWindow = SLIDING_WINDOW;
 
 struct BeamSearchParams {
-  uint32_t const* __restrict__ indices;  // shape: [batchSize][beamWidth][capacity]
+  const uint32_t* __restrict__ indices;  // shape: [batchSize][beamWidth][capacity]
   uint32_t capacity;
-  uint32_t const* __restrict__ ctxLenList;  // shape: [batchSize][beamWidth]. Should be [batchSize] but we have to
+  const uint32_t* __restrict__ ctxLenList;  // shape: [batchSize][beamWidth]. Should be [batchSize] but we have to
                                             // match trt-llm API.
 };
 

@@ -3,6 +3,7 @@
 #include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
@@ -24,6 +25,10 @@ DeferredCpuAllocator::DeferredCpuAllocator(CudaStream& cuda_stream) : cuda_strea
         auto self = reinterpret_cast<const DeferredCpuAllocator*>(this_);
         return &self->cuda_stream_.GetCpuAllocator()->Info();
       };
+  OrtAllocator::Reserve = nullptr;
+  OrtAllocator::GetStats = nullptr;
+  OrtAllocator::AllocOnStream = nullptr;
+  OrtAllocator::Shrink = nullptr;
 }
 
 struct CudaNotification : public synchronize::Notification {
@@ -73,13 +78,17 @@ CudaStream::CudaStream(cudaStream_t stream,
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
-    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    if (ep_info_.enable_cudnn && cuda::CudnnLibrary::Get().Available()) {
+      CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+      CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    }
   } else {
     cublas_handle_ = external_cublas_handle;
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
     cudnn_handle_ = external_cudnn_handle;
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    if (cudnn_handle_ != nullptr) {
+      CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    }
   }
 #else
   (void)(external_cudnn_handle);
@@ -92,7 +101,9 @@ CudaStream::~CudaStream() {
 #ifndef USE_CUDA_MINIMAL
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
-    cudnnDestroy(cudnn_handle_);
+    if (cudnn_handle_ != nullptr) {
+      cudnnDestroy(cudnn_handle_);
+    }
     auto* handle = GetHandle();
     if (handle)
       cudaStreamDestroy(static_cast<cudaStream_t>(handle));
@@ -210,7 +221,9 @@ void* CudaStream::GetResource(int version, int id) const {
       return reinterpret_cast<void*>(ep_info_.cudnn_conv1d_pad_to_nc1d);
       break;
     case CudaResource::enable_skip_layer_norm_strict_mode_t:
-      return reinterpret_cast<void*>(ep_info_.enable_skip_layer_norm_strict_mode);
+      // [Deprecated] SkipLayerNorm always accumulates in fp32; the strict-mode option no longer
+      // affects computation. Kept for backward compatibility and always reported as false.
+      return reinterpret_cast<void*>(false);
       break;
     case CudaResource::prefer_nhwc_t:
       return reinterpret_cast<void*>(ep_info_.prefer_nhwc);

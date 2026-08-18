@@ -156,6 +156,32 @@ TEST(ReverseSequenceTest, InvalidInput) {
   }
 }
 
+TEST(ReverseSequenceTest, ZeroSequenceLength) {
+  // A sequence length of 0 must leave that batch's column unchanged rather than
+  // emitting zeros from the uninitialized output buffer. See issue #28490.
+  OpTester test("ReverseSequence", 10);
+
+  std::vector<float> input = {10, 20, 30,
+                              11, 21, 31,
+                              12, 22, 32,
+                              13, 23, 33,
+                              14, 24, 34};
+  std::vector<int64_t> sequence_lens = {4, 0, 2};
+  std::vector<float> expected_output = {13, 20, 31,
+                                        12, 21, 30,
+                                        11, 22, 32,
+                                        10, 23, 33,
+                                        14, 24, 34};
+
+  test.AddAttribute("batch_axis", int64_t(1));
+  test.AddAttribute("time_axis", int64_t(0));
+
+  test.AddInput<float>("input", {5, 3, 1}, input);
+  test.AddInput<int64_t>("sequence_lens", {3}, sequence_lens);
+  test.AddOutput<float>("Y", {5, 3, 1}, expected_output);
+  test.Run();
+}
+
 TEST(ReverseSequenceTest, BadLength) {
   auto run_test = [](bool use_negative) {
     OpTester test("ReverseSequence", 10);

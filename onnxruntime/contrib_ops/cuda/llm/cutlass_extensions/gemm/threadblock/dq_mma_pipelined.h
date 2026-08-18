@@ -87,3 +87,4 @@ class DqMmaPipelined;
 }  // namespace cutlass
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm/threadblock/dq_mma_pipelined_finegrained.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/threadblock/dq_mma_pipelined_percol.h"

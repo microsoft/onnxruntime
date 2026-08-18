@@ -21,6 +21,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/contrib_ops/matmul_nbits_prepack_sharing_test_util.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -47,8 +48,13 @@ struct TestOptions8Bits {
   int64_t accuracy_level{0};
 
   bool has_zero_point{false};
+  bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
+
+  // When set, RunTest8Bits validates cross-session sharing of the pre-packed weights instead of
+  // doing a single run. The model is run in two CPU sessions that use the same container.
+  std::optional<PrepackSharingMode> prepack_sharing_mode{};
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
@@ -59,6 +65,7 @@ struct TestOptions8Bits {
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
+            << ", zp_is_typed:" << opts.zp_is_typed
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
 }
@@ -167,7 +174,23 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   }
 
   if (opts.has_zero_point) {
-    test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+    if (opts.zp_is_typed) {
+      // T-typed zero points: convert uint8 zp to float then to T1
+      std::vector<float> zp_f;
+      zp_f.reserve(q_zp_size_in_bytes);
+      for (size_t i = 0; i < zp.size(); i++) {
+        zp_f.push_back(static_cast<float>(zp[i]));
+      }
+      if constexpr (std::is_same_v<T1, float>) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp_f, true);
+      } else if constexpr (std::is_same_v<T1, MLFloat16>) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, FloatsToMLFloat16s(zp_f), true);
+      } else if constexpr (std::is_same_v<T1, BFloat16>) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, FloatsToBFloat16s(zp_f), true);
+      }
+    } else {
+      test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+    }
   } else {
     test.AddOptionalInputEdge<uint8_t>();
   }
@@ -203,6 +226,14 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     test.SetOutputRelErr("Y", *opts.output_rel_error);
   }
 
+  if (opts.prepack_sharing_mode.has_value()) {
+    // Pre-packed weight sharing is a CPU-EP-only feature; the helper runs the model on the CPU EP
+    // in two sessions and validates the sharing counters.
+    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode,
+                                {q_cols, k_blocks, q_rows / k_blocks}, input1_vals);
+    return;
+  }
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
@@ -216,6 +247,15 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 #else
   if constexpr (std::is_same<T1, float>::value) {
     if (MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8)) {
+      execution_providers.emplace_back(DefaultCpuExecutionProvider());
+      test.ConfigEps(std::move(execution_providers));
+      test.RunWithConfig();
+    }
+  } else if constexpr (std::is_same<T1, MLFloat16>::value) {
+    // accuracy_level=4 maps to HQNBIT_CompInt8, others map to HQNBIT_CompFp16
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type =
+        (opts.accuracy_level == 4) ? HQNBIT_CompInt8 : HQNBIT_CompFp16;
+    if (MlasIsQNBitGemmAvailable(8, 32, compute_type)) {
       execution_providers.emplace_back(DefaultCpuExecutionProvider());
       test.ConfigEps(std::move(execution_providers));
       test.RunWithConfig();
@@ -382,6 +422,100 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
 }
 #endif
 
+// ARM64 fp16 native GEMM path (HQNBIT_CompFp16) for 8-bit weights.
+// accuracy_level=2 maps to HQNBIT_CompFp16 on ARM64.
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+TEST(MatMulNBits, Float16_8b_ARM_CompFp16) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+  TestMatMul8BitsTyped<MLFloat16, 1, 1, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 2, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 64, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 40, 576, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1234, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 1, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 2, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 288, 1024, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 40, 576, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 1, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 2, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 192, 64, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1234, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 2>(abs_error, rel_error);
+
+  // K not divisible by block_size
+  TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 2>(abs_error, rel_error);
+}
+
+// ARM64 fp16 int8 quantized GEMM path (HQNBIT_CompInt8) for 8-bit weights.
+// accuracy_level=4 maps to HQNBIT_CompInt8 on ARM64.
+TEST(MatMulNBits, Float16_8b_ARM_CompInt8) {
+  constexpr float abs_error = 0.1f * 1.02f;
+  constexpr float rel_error = 0.02f * 1.02f;
+  TestMatMul8BitsTyped<MLFloat16, 1, 1, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 2, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 64, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 40, 576, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1234, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 1, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 2, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 288, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 40, 576, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 1, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 2, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 192, 64, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1234, 16, 4>(abs_error, rel_error);
+
+  // K not divisible by block_size
+  TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 4>(abs_error, rel_error);
+
+  // Large N and K
+  TestMatMul8BitsTyped<MLFloat16, 2, 5120, 3072, 32, 4>(abs_error, rel_error);
+}
+#endif
+
 #if defined(USE_CUDA)
 TEST(MatMulNBits, Fp16_Int8_Cuda) {
   constexpr float abs_error = 0.5f;
@@ -421,7 +555,232 @@ TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
   TestMatMul8BitsTyped<BFloat16, 1, 256, 256, 128>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
 }
+
+// Chunked dequant+GEMM path tests for INT8.
+// Force the chunked path with a small chunk size to exercise per-chunk pointer
+// arithmetic (blob, scales, zero_points offsets) and strided cuBLAS output
+// with manageable tensor sizes.
+
+TEST(MatMulNBits, Fp16_Int8_Chunked_Uint8ZeroPoint) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = false;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<MLFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int8_Chunked_Fp16ZeroPoint) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<MLFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int8_Chunked_NoZeroPoint) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = false;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<MLFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int8_Chunked_Uint8ZeroPoint) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = false;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<BFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<BFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int8_Chunked_BFloat16ZeroPoint) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<BFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<BFloat16>(opts);
+  }
+}
+
+// Exercises the CUDA small-M batched GEMV tiles for 8-bit: CtaM in {2,4,8} (M=3,5 hit the row-skip
+// path) and CtaN in {1,2} (N divisible / not divisible by 16). 8-bit caps the batched path at M=5.
+TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+  for (auto block_size : {32, 128}) {
+    for (auto m : {2, 3, 4, 5}) {
+      for (auto n : {256, 24}) {  // N=256 -> CtaN=2, N=24 -> CtaN=1
+        for (auto has_zeropoint : {false, true}) {
+          TestOptions8Bits opts{};
+          opts.M = m, opts.N = n, opts.K = 1024;
+          opts.block_size = block_size;
+          opts.has_zero_point = has_zeropoint;
+          opts.zp_is_typed = false;
+          opts.output_abs_error = abs_error;
+          opts.output_rel_error = rel_error;
+          RunTest8Bits<MLFloat16>(opts);
+        }
+      }
+    }
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int8_SmallMBatchedTiles) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+  for (auto block_size : {32, 128}) {
+    for (auto m : {2, 3, 4, 5}) {
+      for (auto n : {256, 24}) {
+        for (auto has_zeropoint : {false, true}) {
+          TestOptions8Bits opts{};
+          opts.M = m, opts.N = n, opts.K = 1024;
+          opts.block_size = block_size;
+          opts.has_zero_point = has_zeropoint;
+          opts.zp_is_typed = false;
+          opts.output_abs_error = abs_error;
+          opts.output_rel_error = rel_error;
+          RunTest8Bits<BFloat16>(opts);
+        }
+      }
+    }
+  }
+}
 #endif
+
+#if !defined(USE_CUDA) && !defined(USE_WEBGPU)
+#ifndef ENABLE_TRAINING
+// Pre-packing (and therefore cross-session sharing of pre-packed weights) is disabled in a full
+// training build and is only implemented for the CPU EP, so these tests are CPU-only.
+
+namespace {
+// Builds a representative 8-bit MatMulNBits TestOptions for the pre-packed weight sharing tests.
+// accuracy_level 4 selects the int8 compute type (SQNBIT_CompInt8 / HQNBIT_CompInt8), which is the
+// 8-bit path that pre-packs the quantized B weight.
+TestOptions8Bits MakeSharingTestOptions8Bits(int64_t block_size, bool has_zero_point, bool has_bias,
+                                             PrepackSharingMode mode) {
+  TestOptions8Bits opts{};
+  opts.M = 8;
+  opts.N = 32;
+  opts.K = 256;
+  opts.block_size = block_size;
+  opts.accuracy_level = 4;
+  opts.has_zero_point = has_zero_point;
+  opts.has_bias = has_bias;
+  opts.prepack_sharing_mode = mode;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  return opts;
+}
+}  // namespace
+
+// Legacy sharing path for 8-bit weights: B is registered as a shared initializer via
+// SessionOptions::AddInitializer.
+TEST(MatMulNBits, SharedPrepackedWeights_8b_AddInitializer) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
+                                                      PrepackSharingMode::kAddInitializer));
+      RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
+                                                          PrepackSharingMode::kAddInitializer));
+    }
+  }
+}
+
+// Negative control for 8-bit weights: with the shared container present but neither opt-in mechanism
+// enabled, no pre-packed weights are shared across sessions.
+TEST(MatMulNBits, SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
+  RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ true, /*has_bias*/ true,
+                                                  PrepackSharingMode::kNoSharing));
+  RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ false,
+                                                      PrepackSharingMode::kNoSharing));
+}
+#endif  // !ENABLE_TRAINING
+#endif  // !USE_CUDA && !USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime

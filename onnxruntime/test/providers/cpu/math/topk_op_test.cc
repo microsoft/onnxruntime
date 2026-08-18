@@ -30,9 +30,9 @@ static void RunTest(int op_set,
     test.AddAttribute("axis", axis);
   if (op_set <= 9)
     test.AddAttribute("k", k);
-  if (op_set == 11 && largest != 1)
+  if (op_set >= 11 && largest != 1)
     test.AddAttribute("largest", largest);
-  if (op_set == 11 && sorted != 1)
+  if (op_set >= 11 && sorted != 1)
     test.AddAttribute("sorted", sorted);
 
   // Inputs
@@ -621,6 +621,12 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest<int32_t>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<int64_t>(11);
   top_1_explicit_axis_MultiD_input_smallest<int64_t>(11, 0);  // unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int8_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<int8_t>(11, 0);  // unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int16_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<int16_t>(11, 0);  // unsorted
+  top_1_explicit_axis_MultiD_input_smallest<uint8_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<uint8_t>(11, 0);  // unsorted
 }
 
 // test path where SelectTopK is used (select using std::nth_element)
@@ -677,6 +683,54 @@ TEST(TopKOperator, NthElementHalf_NegtiveVals) {
   std::vector<int64_t> expected_indices = {0, 3, 4, 5};
   std::vector<int64_t> expected_dimensions = {4};
   RunTest(11, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, NthElementBFloat16) {
+  if (!CudaHasBF16Support()) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {10.0f, 8.0f, 7.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> expected_vals_f = {10.0f, 8.0f, 7.0f, 6.0f};
+  std::vector<BFloat16> input_vals = FloatsToBFloat16s(input_vals_f);
+  std::vector<BFloat16> expected_vals = FloatsToBFloat16s(expected_vals_f);
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<int64_t> expected_indices = {0, 1, 2, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(24, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, NthElementBFloat16_NegativeVals) {
+  if (!CudaHasBF16Support()) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {10.0f, -8.0f, -7.0f, -4.0f, -5.0f, -6.0f};
+  std::vector<float> expected_vals_f = {10.0f, -4.0f, -5.0f, -6.0f};
+  std::vector<BFloat16> input_vals = FloatsToBFloat16s(input_vals_f);
+  std::vector<BFloat16> expected_vals = FloatsToBFloat16s(expected_vals_f);
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<int64_t> expected_indices = {0, 3, 4, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(24, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopKBFloat16_2D) {
+  if (!CudaHasBF16Support()) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {0.1f, 0.3f, 0.2f, 0.4f,
+                                     0.1f, 0.3f, 0.3f, 0.2f};
+  std::vector<float> expected_vals_f = {0.4f, 0.3f,
+                                        0.3f, 0.3f};
+  std::vector<BFloat16> input_vals = FloatsToBFloat16s(input_vals_f);
+  std::vector<BFloat16> expected_vals = FloatsToBFloat16s(expected_vals_f);
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int64_t> expected_indices = {3, 1,
+                                           1, 2};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(24, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
 }
 
 // test dimension in range (GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * 2], ie. [257, 512]
@@ -859,6 +913,81 @@ TEST(TopKOperator, SelectTopKThreaded) {
   constexpr int64_t batch_size = 500;
   TestThreaded<float>(k, n, batch_size);
   TestThreaded<double>(k, n, batch_size);
+}
+
+// Tests for INT8, INT16, UINT8 types (opset 11+)
+TEST(TopKOperator, TopK_Int8) {
+  std::vector<int8_t> input_vals = {10, 30, 20, 40, 10, 30, 40, 20};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int8_t> expected_vals = {40, 30, 40, 30};
+  std::vector<int64_t> expected_indices = {3, 1, 2, 1};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(11, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopK_Int8_Negative) {
+  std::vector<int8_t> input_vals = {-10, -30, -20, -40, -10, -30, -40, -20};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int8_t> expected_vals = {-10, -20, -10, -20};
+  std::vector<int64_t> expected_indices = {0, 2, 0, 3};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(11, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopK_Int8_Smallest) {
+  std::vector<int8_t> input_vals = {10, 30, 20, 40, 10, 30, 40, 20};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int8_t> expected_vals = {10, 20, 10, 20};
+  std::vector<int64_t> expected_indices = {0, 2, 0, 3};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(11, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, -1, 0);
+}
+
+TEST(TopKOperator, TopK_Int16) {
+  std::vector<int16_t> input_vals = {100, 300, 200, 400, 100, 300, 400, 200};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int16_t> expected_vals = {400, 300, 400, 300};
+  std::vector<int64_t> expected_indices = {3, 1, 2, 1};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(11, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopK_Uint8) {
+  std::vector<uint8_t> input_vals = {10, 30, 20, 40, 10, 30, 40, 20};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<uint8_t> expected_vals = {40, 30, 40, 30};
+  std::vector<int64_t> expected_indices = {3, 1, 2, 1};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(11, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopK_Int8_ExplicitAxis) {
+  std::vector<int8_t> input_vals = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<int64_t> input_dimensions = {2, 2, 2};
+  std::vector<int8_t> expected_vals = {3, 4, 7, 8};
+  std::vector<int64_t> expected_indices = {1, 1, 1, 1};
+  std::vector<int64_t> expected_dimensions = {2, 1, 2};
+  int64_t axis = 1;
+  RunTest(11, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);
+}
+
+// Opset 24 tests for new types
+TEST(TopKOperator, TopK_Int8_Opset24) {
+  std::vector<int8_t> input_vals = {10, 30, 20, 40, 10, 30, 40, 20};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int8_t> expected_vals = {40, 30, 40, 30};
+  std::vector<int64_t> expected_indices = {3, 1, 2, 1};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(24, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopK_Uint8_Opset24) {
+  std::vector<uint8_t> input_vals = {10, 30, 20, 40, 10, 30, 40, 20};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<uint8_t> expected_vals = {40, 30, 40, 30};
+  std::vector<int64_t> expected_indices = {3, 1, 2, 1};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(24, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
 }
 
 }  // namespace test

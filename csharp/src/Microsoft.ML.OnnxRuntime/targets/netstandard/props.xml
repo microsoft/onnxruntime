@@ -16,7 +16,7 @@
   <!-- ========================================================= -->
   <!-- Windows native linking -->
   <!-- ========================================================= -->
-  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x64'">
+  <ItemDefinitionGroup Condition="'$(OS)' == 'Windows_NT' AND '$(PlatformTarget)' == 'x64'">
     <Link>
       <AdditionalDependencies>
         $(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.lib;
@@ -25,7 +25,7 @@
     </Link>
   </ItemDefinitionGroup>
 
-  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'ARM64'">
+  <ItemDefinitionGroup Condition="'$(OS)' == 'Windows_NT' AND '$(PlatformTarget)' == 'ARM64'">
     <Link>
       <AdditionalDependencies>
         $(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.lib;

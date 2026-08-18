@@ -56,7 +56,7 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider(const
     }
   }
 
-  auto it = provider_options.find("external_ep_libray");
+  auto it = provider_options.find("external_ep_library");
   if (it != provider_options.end()) {
     return CreateExecutionProviderFromAnotherEp(it->second, session_options, provider_options);
   }

@@ -11,6 +11,8 @@ stages:
       clean: all
     pool:
       name: ${{ parameters.PoolName }}
+    templateContext:
+      type: validationJob
     variables:
     - name: runCodesignValidationInjection
       value: false

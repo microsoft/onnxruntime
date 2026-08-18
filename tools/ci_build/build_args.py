@@ -8,6 +8,7 @@ import sys
 import warnings
 
 from util import (
+    is_linux,
     is_macOS,
     is_windows,
 )
@@ -228,6 +229,12 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skip_winml_tests", action="store_true", help="Explicitly disable WinML related tests.")
     parser.add_argument("--skip_nodejs_tests", action="store_true", help="Explicitly disable Node.js binding tests.")
     parser.add_argument("--ctest_timeout", default="10800", help="Timeout provided to CTest --timeout (seconds).")
+    parser.add_argument(
+        "--test_parallel",
+        default=None,
+        type=int,
+        help="Max CTest parallel jobs. Defaults to --parallel. Optional value 0 uses num CPUs.",
+    )
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test.")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
@@ -429,7 +436,6 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Must be >=14.40")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
-    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
     parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
@@ -546,12 +552,17 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--disable_contrib_ops", action="store_true", help="Disable contrib operators.")
     parser.add_argument("--disable_ml_ops", action="store_true", help="Disable traditional ML operators.")
+    parser.add_argument(
+        "--disable_generation_ops",
+        action="store_true",
+        help="Disable generation contrib operators (BeamSearch, WhisperBeamSearch, GreedySearch, Sampling).",
+    )
     parser.add_argument("--disable_rtti", action="store_true", help="Disable Run-Time Type Information (RTTI).")
     parser.add_argument(
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float4", "float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor", "string"],
         help="Disable selected data types.",
     )
     parser.add_argument(
@@ -567,6 +578,15 @@ def add_client_package_args(parser: argparse.ArgumentParser) -> None:
         "--client_package_build",
         action="store_true",
         help="Create ORT package with default settings more appropriate for client/on-device workloads.",
+    )
+
+
+def add_threadpool_callback_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for per-session thread pool work callbacks."""
+    parser.add_argument(
+        "--enable_session_threadpool_callbacks",
+        action="store_true",
+        help="Enable per-session thread pool work callbacks.",
     )
 
 
@@ -632,10 +652,15 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cuda_group.add_argument("--enable_cuda_minimal_build", action="store_true", help="Enable CUDA minimal build.")
     cuda_group.add_argument(
         "--nvcc_threads",
-        nargs="?",
-        default=-1,  # -1 signifies auto-detect based on jobs/memory
+        default=4,
         type=int,
-        help="Max NVCC threads per parallel job (-1=auto).",
+        help="Max NVCC threads per parallel job (default is 4).",
+    )
+    cuda_group.add_argument(
+        "--flash_nvcc_threads",
+        default=-1,
+        type=int,
+        help="Max NVCC threads per parallel job for flash attention (default is same value of --nvcc_threads).",
     )
     # CUDA-specific profiling
     cuda_group.add_argument(
@@ -658,6 +683,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # See https://github.com/microsoft/onnxruntime/pull/25580#issuecomment-3335056846 for benchmarking details.
     cpu_group.add_argument(
         "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
+    )
+    cpu_group.add_argument(
+        "--enable_rvv",
+        action="store_true",
+        help="Enable riscv64 MLAS kernels that use the RISC-V Vector extension.",
     )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
@@ -746,22 +776,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     vitis_group = parser.add_argument_group("Vitis-AI Execution Provider (Xilinx)")
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
 
-    # --- ArmNN ---
-    armnn_group = parser.add_argument_group("ArmNN Execution Provider")
-    armnn_group.add_argument("--use_armnn", action="store_true", help="Enable ArmNN EP.")
-    armnn_group.add_argument("--armnn_relu", action="store_true", help="Use ArmNN Relu implementation.")
-    armnn_group.add_argument("--armnn_bn", action="store_true", help="Use ArmNN BatchNormalization implementation.")
-    armnn_group.add_argument("--armnn_home", help="Path to ArmNN home directory.")
-    armnn_group.add_argument("--armnn_libs", help="Path to ArmNN libraries directory.")
-
     # --- ACL (Arm Compute Library) ---
     acl_group = parser.add_argument_group("ACL Execution Provider")
     acl_group.add_argument("--use_acl", action="store_true", help="Enable ACL EP (ARM architectures).")
     acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
     acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
-    acl_group.add_argument(
-        "--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL/ArmNN)."
-    )
+    acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
 
     # --- Qualcomm QMX Library ---
     qmx_group = parser.add_argument_group("QMX kernel library")
@@ -810,9 +830,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     webgpu_group.add_argument(
         "--wgsl_template",
-        choices=["static", "dynamic"],
-        default="static",  # By default, use static WGSL template generation
-        help="Specify the generator for WebGPU WGSL template generation.",
+        choices=["static"],
+        default="static",
+        help="Deprecated no-op. WGSL template generation is always static; kept for backward compatibility.",
     )
 
     # --- XNNPACK ---
@@ -827,6 +847,14 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     azure_group = parser.add_argument_group("Azure Execution Provider")
     azure_group.add_argument("--use_azure", action="store_true", help="Enable Azure EP.")
 
+    # --- DX Interop Feature ---
+    dx_interop_group = parser.add_argument_group("DirectX Interop Feature")
+    dx_interop_group.add_argument(
+        "--enable_dx_interop",
+        action="store_true",
+        help="Enable DirectX Interop feature for graphics API synchronization.",
+    )
+
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for other miscellaneous features."""
@@ -840,6 +868,13 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         "--enable_generic_interface",
         action="store_true",
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
+    )
+    # Telemetry arguments (cross-platform)
+    parser.add_argument(
+        "--no_telemetry",
+        dest="use_telemetry",
+        action="store_false",
+        help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
     )
 
 
@@ -863,18 +898,55 @@ def is_cross_compiling(args: argparse.Namespace) -> bool:
     )
 
 
+def target_supports_telemetry(args: argparse.Namespace) -> bool:
+    """Returns whether the selected build target has a telemetry provider."""
+    if (
+        args.build_wasm
+        or getattr(args, "disable_exceptions", False)
+        or getattr(args, "rv64", False)
+        or getattr(args, "visionos", False)
+        or getattr(args, "tvos", False)
+        or getattr(args, "macos", None) == "Catalyst"
+    ):
+        return False
+
+    if getattr(args, "android", False) or is_windows() or is_macOS():
+        return True
+
+    if not is_linux():
+        return False
+
+    return platform.machine().lower() in {
+        "aarch64",
+        "amd64",
+        "arm",
+        "arm64",
+        "armv6l",
+        "armv7l",
+        "armv8l",
+        "i386",
+        "i686",
+        "x86",
+        "x86_64",
+    }
+
+
 # --- Main Argument Parsing Function ---
 def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
-        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
+        # override argument file line parsing behavior
+        # - allow multiple arguments per line and handle quotes
+        # - allow comment lines starting with '#'
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+            if arg_line.lstrip().startswith("#"):  # ignore comment lines
+                return []
             return shlex.split(arg_line)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""
+        usage=f"""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -883,6 +955,10 @@ def parse_arguments() -> argparse.Namespace:
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
+
+        Arguments can also be passed in an argument file prefixed with '@'.
+        E.g., `{sys.argv[0]} @arguments.txt`.
+        Argument files may contain comment lines starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
@@ -902,6 +978,7 @@ def parse_arguments() -> argparse.Namespace:
     add_extension_args(parser)
     add_size_reduction_args(parser)
     add_client_package_args(parser)
+    add_threadpool_callback_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)
@@ -934,6 +1011,13 @@ def parse_arguments() -> argparse.Namespace:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+
+    # Treat --build_wasm_static_lib as implying --build_wasm
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
+
+    if not target_supports_telemetry(args):
+        args.use_telemetry = False
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:
