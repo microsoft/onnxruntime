@@ -726,7 +726,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
 
 // Validate that a DQ node has the correct structure for MatMulNBits fusion.
 // Supports three quantization granularities:
-// - Blockwise: axis=0, block_size >= 16 and power-of-2, scale/zp rank 2
+// - Blockwise: axis=0, block_size is a power-of-two in [16, 256], scale/zp rank 2
 // - Per-tensor: scale is scalar (rank 0), no block_size attribute
 // - Per-channel (axis=1): scale is 1D with shape [N], weight is 2D [K,N], no block_size attribute
 // In all cases: weight type is 2/4/8-bit int, scale type is float or float16,
@@ -775,8 +775,8 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
       return false;
     }
 
-    auto block_size = block_size_iter->second.i();
-    if (block_size < 16 || ((block_size - 1) & block_size)) {
+    const auto block_size = block_size_iter->second.i();
+    if (!IsValidMatMulNBitsBlockSize(block_size)) {
       return false;
     }
 
@@ -1158,7 +1158,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
   // QNN supports data input quantized with constant_value input non-quantized.
   int num_dq_inputs = static_cast<int>(dq_nodes.size());
-  if (num_dq_inputs > 2) {
+  if (num_dq_inputs < 1 || num_dq_inputs > 2) {
     return false;
   }
 

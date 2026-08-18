@@ -358,9 +358,14 @@ export const createSession = async (
       const loadingPromises = [];
       for (const file of options.externalData) {
         const path = typeof file === 'string' ? file : file.path;
+        const data = typeof file === 'string' ? file : file.data;
+        if (BUILD_DEFS.ENABLE_JSPI && data instanceof Blob) {
+          wasm.mountExternalData(path, data);
+          continue;
+        }
         loadingPromises.push(
-          loadFile(typeof file === 'string' ? file : file.data).then((data) => {
-            wasm.mountExternalData(path, data);
+          loadFile(data).then((fileData) => {
+            wasm.mountExternalData(path, fileData);
           }),
         );
       }

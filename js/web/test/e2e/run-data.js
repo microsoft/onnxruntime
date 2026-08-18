@@ -67,6 +67,8 @@ const BROWSER_TEST_CASES = [
 
   [true, true, './browser-test-wasm-image-tensor-image.js', 'ort.min.js'], // pre-post-process
   [true, true, './browser-test-webgpu-external-data.js', 'ort.webgpu.min.js'], // external data
+  [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.webgpu.min.js'], // external data as Blob (fallback)
+  [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.jspi.min.js'], // external data as Blob (on-demand)
 ];
 
 // [bundle_path, format]

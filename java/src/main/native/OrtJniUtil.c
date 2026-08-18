@@ -1123,6 +1123,8 @@ jint convertErrorCode(OrtErrorCode code) {
             return 13;
         case ORT_NOT_FOUND:
             return 14;
+        case ORT_DEVICE_RESET:
+            return 15;
         default:
             return -1; // Unknown error code
     }

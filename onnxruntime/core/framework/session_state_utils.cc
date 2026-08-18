@@ -136,6 +136,20 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                            deserialized_value,
                                                            &prepacked_for_graph));
 
+      const Tensor& cpu_staging_tensor = deserialized_value.Get<Tensor>();
+      // Bool external initializers are copied verbatim and may carry bytes outside the canonical
+      // {0, 1} set. The CPU staging tensor above can be backed by a read-only mmap, so normalize into
+      // a writable CPU copy before copying to the device (see utils::NormalizeBoolTensorIfNeeded).
+      if (cpu_staging_tensor.IsDataType<bool>()) {
+        Tensor normalized_cpu_tensor;
+        ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
+                                                           tensor_shape, type,
+                                                           default_cpu_alloc, normalized_cpu_tensor));
+        utils::MakeCpuTensorCopy(cpu_staging_tensor, normalized_cpu_tensor);
+        utils::NormalizeBoolTensorIfNeeded(normalized_cpu_tensor);
+        return CopyTensorFromCPUToDevice(data_transfer_mgr, normalized_cpu_tensor, std::move(tensor), ort_value);
+      }
+
       return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
                                        std::move(tensor), ort_value);
     }
@@ -392,8 +406,12 @@ common::Status SaveInitializedTensors(
       if (OrtValue ort_value_from_graph;
           graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
         const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
-        if (memory_info.device == default_cpu_device) {
-          // This is on CPU use directly from the graph
+        const auto& graph_value_device = ort_value_from_graph.Get<Tensor>().Location().device;
+        if (memory_info.device == default_cpu_device || graph_value_device == memory_info.device) {
+          // Either the initializer is planned on CPU, or the user-supplied initializer (e.g. from
+          // AddExternalInitializers) already lives on the planned device. In both cases use it in
+          // place: no per-session device allocation or copy, and the underlying buffer can be
+          // shared across sessions that supply the same OrtValue (matching the AddInitializer path).
           ort_value = std::move(ort_value_from_graph);
         } else {
           TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);

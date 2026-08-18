@@ -1,0 +1,11 @@
+{
+  "type": "generator",
+  "description": "Basic generator test, using the test generator",
+  "entries": {
+    "test.wgsl.template": {
+      "generators": {
+        "static-cpp-literal": {}
+      }
+    }
+  }
+}

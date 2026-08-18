@@ -104,6 +104,20 @@ class ComputeContextBase {
   }
 
   //
+  // Get the KV cache quantization bits (0 = disabled, 4 = 4-bit).
+  //
+  inline uint32_t KvCacheQuantizationBits() const {
+    return ep_.KvCacheQuantizationBits();
+  }
+
+  //
+  // Get whether KV cache quantization is enabled.
+  //
+  inline bool KvCacheQuantizationEnabled() const {
+    return ep_.KvCacheQuantizationEnabled();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {
@@ -216,6 +230,7 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
+    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
     webgpu_context_.EndComputePass();
     auto& command_encoder = webgpu_context_.GetCommandEncoder();
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());

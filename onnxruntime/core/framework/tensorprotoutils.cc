@@ -602,43 +602,6 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   }
 }
 
-size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type) {
-  static const std::unordered_map<ONNX_NAMESPACE::TensorProto_DataType, size_t> tensorproto_data_size{
-      {TensorProto_DataType_FLOAT, sizeof(float)},
-      {TensorProto_DataType_UINT8, sizeof(uint8_t)},
-      {TensorProto_DataType_INT8, sizeof(int8_t)},
-      {TensorProto_DataType_UINT16, sizeof(uint16_t)},
-      {TensorProto_DataType_INT16, sizeof(int16_t)},
-      {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
-      {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
-      {TensorProto_DataType_INT32, sizeof(int32_t)},
-      {TensorProto_DataType_UINT32, sizeof(uint32_t)},
-      {TensorProto_DataType_UINT64, sizeof(uint64_t)},
-      {TensorProto_DataType_INT64, sizeof(int64_t)},
-      {TensorProto_DataType_DOUBLE, sizeof(double)},
-      {TensorProto_DataType_COMPLEX64, sizeof(float)},   /* byteswap each element individually */
-      {TensorProto_DataType_COMPLEX128, sizeof(double)}, /* byteswap each element individually */
-      {TensorProto_DataType_BOOL, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
-      {TensorProto_DataType_UINT4, sizeof(uint8_t)},
-      {TensorProto_DataType_INT4, sizeof(uint8_t)},
-      {TensorProto_DataType_UINT2, sizeof(uint8_t)},
-      {TensorProto_DataType_INT2, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT4E2M1, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E8M0, sizeof(uint8_t)},
-  };
-
-  auto pos = tensorproto_data_size.find(tensor_data_type);
-  if (pos == tensorproto_data_size.end()) {
-    return 0;
-  }
-
-  return pos->second;
-}
-
 void ConvertRawDataInTensorProto(TensorProto& tensor) {
   size_t element_size = 1;
   void* bytes = NULL;
@@ -725,6 +688,17 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   SwapByteOrderInplace(element_size, span);
 }
 
+// Bool tensors must hold canonical {0, 1} byte values. Data sourced from raw_data or external
+// files is copied verbatim and may contain other non-zero bytes; normalize any non-zero byte to 1
+// so every consumer observes a single, consistent value. Operate on the byte representation to
+// avoid loading a bool object that does not yet hold a valid value.
+static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
+  static_assert(sizeof(bool) == 1, "Normalization assumes 1 byte per bool element");
+  for (size_t i = 0; i < num_elements; ++i) {
+    bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
+  }
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
@@ -750,6 +724,19 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 
   return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(T),
                                           reinterpret_cast<unsigned char*>(p_data));
+}
+
+// UnpackTensorWithExternalData<bool>
+// External data is copied verbatim and may contain bytes outside the canonical {0, 1} set, so
+// normalize them (see NormalizeBoolBytes).
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
+                                    /*out*/ bool* p_data) {
+  ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(bool),
+                                                       reinterpret_cast<unsigned char*>(p_data)));
+  NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_num_elements);
+  return Status::OK();
 }
 
 #define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                    \
@@ -800,7 +787,9 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
-INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
+// bool is intentionally omitted: UnpackTensorWithExternalData<bool> is explicitly specialized
+// above (to normalize bytes to {0, 1}), so an explicit instantiation here would have no effect
+// and triggers -Werror,-Winstantiation-after-specialization.
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
 
@@ -907,7 +896,11 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (raw_data != nullptr) {
-    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+    ORT_RETURN_IF_ERROR(UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data));
+    // raw_data is copied verbatim and may contain bytes outside the canonical {0, 1} set (see
+    // NormalizeBoolBytes).
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_size);
+    return Status::OK();
   }
 
   if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
@@ -1881,6 +1874,9 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
     const auto& ext_tensor = ort_value.Get<Tensor>();
     MakeCpuTensorCopy(ext_tensor, tensor);
+    // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
+    // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
+    NormalizeBoolTensorIfNeeded(tensor);
     return Status::OK();
   }
 
@@ -2125,6 +2121,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 
   switch (constant_attribute.type()) {
     case AttributeProto_AttributeType_TENSOR:
+      // Defense-in-depth: reject ORT in-memory address markers on a Constant node's dense tensor
+      // attribute. These markers are an internal ORT sentinel for trusted in-memory buffers and must
+      // never appear in a deserialized protobuf. The Graph constructor also checks all initializers
+      // (including those converted from Constant nodes), but we block early here to prevent the
+      // crafted tensor from propagating further.
+      ORT_RETURN_IF(HasExternalDataInMemory(constant_attribute.t()),
+                    "Constant node '", node.name(),
+                    "' tensor attribute references an ORT in-memory address marker, "
+                    "which is not allowed in a model protobuf.");
       tensor = constant_attribute.t();
       break;
     case AttributeProto_AttributeType_FLOAT:
@@ -2188,6 +2193,13 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
     std::copy(src_span.begin(), src_span.end(), dst_tensor.MutableDataAsSpan<std::string>().begin());
   } else {
     std::memcpy(dst_tensor.MutableDataRaw(), src_tensor.DataRaw(), src_tensor.SizeInBytes());
+  }
+}
+
+void NormalizeBoolTensorIfNeeded(Tensor& tensor) {
+  if (tensor.IsDataType<bool>()) {
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(tensor.MutableDataRaw()),
+                       narrow<size_t>(tensor.Shape().Size()));
   }
 }
 

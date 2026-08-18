@@ -654,5 +654,193 @@ TEST(CausalConvWithStateTest, LargerDimensions) {
       batch_size, channels, input_length, kernel_size, "silu");
 }
 
+// The state tensors grow linearly with state_window, so the schema caps it at 8.
+TEST(CausalConvWithStateTest, StateWindowAboveMaxIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("state_window", 9);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {0.5f, 1.25f});
+  test.AddOutput<float>("present_state", {9, 1, 1, 1}, std::vector<float>(9, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "state_window must be in [0, 8]");
+}
+
+#ifdef USE_CUDA
+TEST(CausalConvWithStateTest, StateWindowRejectsEmptySequence) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("state_window", 1);
+  test.AddInput<float>("input", {1, 3, 0}, {});
+  test.AddInput<float>("weight", {3, 1, 2}, std::vector<float>(6, 1.0f));
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 3, 0}, {});
+  test.AddOutput<float>("present_state", {1, 1, 3, 1}, std::vector<float>(3, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input length must be positive", {}, nullptr,
+           &execution_providers);
+}
+
+// The state_window attribute is only implemented by the CUDA kernel. past_state / present_state
+// then hold the last W per-position carry states, right-aligned; slot W-1 is the state after the
+// last position (what the unwindowed op produces) and is the slot past_state is read from.
+//
+// The CUDA kernel has four families (fixed-K decode, generic-K decode, batched prefill,
+// single-channel prefill) and each computes the slot offsets itself, so every family gets its own
+// shape below. When `window` > `input_length` the slots below W - L hold no position from this
+// call and are zero-filled, with or without a past_state.
+static void RunCausalConvStateWindowTest(int batch_size, int channels, int input_length,
+                                         int kernel_size, int window, bool with_past_state) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  const int state_length = kernel_size - 1;
+  const std::string activation = "silu";
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
+  for (int i = 0; i < static_cast<int>(input_data.size()); ++i) {
+    input_data[i] = 0.5f * std::sin(static_cast<float>(i) * 0.37f);
+  }
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (int i = 0; i < static_cast<int>(weight_data.size()); ++i) {
+    weight_data[i] = 0.25f * std::cos(static_cast<float>(i) * 0.21f);
+  }
+  std::vector<float> bias_data(channels);
+  for (int i = 0; i < channels; ++i) {
+    bias_data[i] = 0.01f * static_cast<float>(i);
+  }
+  std::vector<float> conv_state_data(static_cast<size_t>(batch_size) * channels * state_length);
+  for (int i = 0; i < static_cast<int>(conv_state_data.size()); ++i) {
+    conv_state_data[i] = with_past_state ? 0.5f * std::sin(static_cast<float>(i) * 0.3f) : 0.0f;
+  }
+  const std::vector<float>* past = with_past_state ? &conv_state_data : nullptr;
+
+  // Keep only the first `prefix` positions of a (B, C, L) tensor.
+  auto slice_prefix = [&](const std::vector<float>& src, int prefix) {
+    std::vector<float> dst(static_cast<size_t>(batch_size) * channels * prefix);
+    for (int bc = 0; bc < batch_size * channels; ++bc) {
+      for (int l = 0; l < prefix; ++l) {
+        dst[static_cast<size_t>(bc) * prefix + l] = src[static_cast<size_t>(bc) * input_length + l];
+      }
+    }
+    return dst;
+  };
+
+  std::vector<float> expected_output, expected_state;
+  CausalConvWithStateReference(
+      input_data, weight_data, &bias_data, past,
+      expected_output, expected_state,
+      batch_size, channels, input_length, kernel_size, activation);
+
+  // Slot j holds the state after the first (input_length - window + j + 1) positions; slots for
+  // non-positive prefixes are never computed by the kernel and stay zero. The window axis leads
+  // the batch axis, so a slot is exactly one contiguous (B, C, K-1) reference block.
+  const size_t slot_elems = static_cast<size_t>(channels) * state_length;
+  const size_t batch_slot_elems = static_cast<size_t>(batch_size) * slot_elems;
+  std::vector<float> expected_state_window(static_cast<size_t>(window) * batch_slot_elems, 0.0f);
+  for (int j = 0; j < window; ++j) {
+    const int prefix = input_length - window + j + 1;
+    if (prefix <= 0) continue;
+    std::vector<float> prefix_state;
+    if (prefix == input_length) {
+      prefix_state = expected_state;
+    } else {
+      std::vector<float> prefix_output;
+      CausalConvWithStateReference(
+          slice_prefix(input_data, prefix), weight_data, &bias_data, past,
+          prefix_output, prefix_state,
+          batch_size, channels, prefix, kernel_size, activation);
+    }
+    std::copy_n(prefix_state.begin(), batch_slot_elems,
+                expected_state_window.begin() + static_cast<size_t>(j) * batch_slot_elems);
+  }
+
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", activation);
+  test.AddAttribute<int64_t>("state_window", static_cast<int64_t>(window));
+
+  test.AddInput<float>("input", {batch_size, channels, input_length}, input_data);
+  test.AddInput<float>("weight", {channels, 1, kernel_size}, weight_data);
+  test.AddInput<float>("bias", {channels}, bias_data);
+  if (with_past_state) {
+    // past_state is windowed too, and only slot W-1 is read. Poison the earlier slots to prove it.
+    std::vector<float> past_state_window(static_cast<size_t>(window) * batch_slot_elems, -1e4f);
+    std::copy_n(conv_state_data.begin(), batch_slot_elems,
+                past_state_window.begin() + static_cast<size_t>(window - 1) * batch_slot_elems);
+    test.AddInput<float>("past_state", {window, batch_size, channels, state_length}, past_state_window);
+  } else {
+    test.AddOptionalInputEdge<float>();
+  }
+
+  test.AddOutput<float>("output", {batch_size, channels, input_length}, expected_output);
+  test.AddOutput<float>("present_state", {window, batch_size, channels, state_length},
+                        expected_state_window);
+  test.SetOutputAbsErr("output", 0.01f);
+  test.SetOutputAbsErr("present_state", 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// channels < 4 forces the single-channel prefill kernel.
+TEST(CausalConvWithStateTest, StateWindow) {
+  RunCausalConvStateWindowTest(/*batch_size=*/1, /*channels=*/3, /*input_length=*/5,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/true);
+}
+
+// 2 <= L <= 128 with channels >= 4 selects the batched prefill kernel; B = 2 exercises the batch
+// stride of the window axis.
+TEST(CausalConvWithStateTest, StateWindow_BatchedPrefill) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/6,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/true);
+}
+
+// L > 128 falls back to the single-channel prefill kernel even for wide inputs.
+TEST(CausalConvWithStateTest, StateWindow_LongPrefill) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/140,
+                               /*kernel_size=*/4, /*window=*/5, /*with_past_state=*/true);
+}
+
+// L == 1 with kernel_size in [2, 5] selects the compile-time specialized decode kernel. The window
+// is wider than the sequence here, which is the shape genai actually runs during MTP decode.
+TEST(CausalConvWithStateTest, StateWindow_DecodeFixedK) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/false);
+}
+
+// kernel_size > 5 falls back to the generic decode kernel.
+TEST(CausalConvWithStateTest, StateWindow_DecodeGenericK) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/7, /*window=*/3, /*with_past_state=*/false);
+}
+
+// W > L with a past_state: the kernel writes only slot W-1, so the leading W-1 slots must come
+// back zeroed rather than as uninitialized device memory.
+TEST(CausalConvWithStateTest, StateWindow_DecodeFixedKWithPastState) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/true);
+}
+
+TEST(CausalConvWithStateTest, StateWindow_DecodeGenericKWithPastState) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/7, /*window=*/3, /*with_past_state=*/true);
+}
+#endif  // USE_CUDA
+
 }  // namespace test
 }  // namespace onnxruntime

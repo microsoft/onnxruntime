@@ -29,7 +29,8 @@ namespace onnxruntime {
 // to the WebGPU EP because MatMulNBitsMlp is a WebGPU-only contrib op.
 class MatMulNBitsMlpFusion : public GraphTransformer {
  public:
-  explicit MatMulNBitsMlpFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+  explicit MatMulNBitsMlpFusion(
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("MatMulNBitsMlpFusion", compatible_execution_providers) {}
 
  private:

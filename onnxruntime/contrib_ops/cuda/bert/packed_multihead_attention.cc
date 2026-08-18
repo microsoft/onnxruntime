@@ -240,7 +240,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+      debug_info.SetTrtFusedKernel(this->enable_trt_flash_attention_, parameters.sequence_length);
     }
 
     debug_info.Print("PackedMultiHeadAttention",

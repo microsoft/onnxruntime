@@ -138,7 +138,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
   /// Complex transform on B operand
   static ComplexTransform const kTransformB = Operator::kTransformB;
 
-  static_assert(Base::SharedStorage::ShapeScale::kRow == Stages, "");
+  static_assert(Base::SharedStorage::ShapeScale::kRow == Stages * Base::kFinegrainedScaleRowsPerStage, "");
   static_assert(Base::SharedStorage::ShapeScale::kColumn == Shape::kN, "");
 
   /// Internal structure exposed for introspection.
@@ -190,6 +190,30 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
   /// Iterator to write threadblock-scoped tile of scale and zero operand to shared memory
   SmemIteratorScale smem_iterator_scale_;
 
+  int group_size_;
+
+ private:
+  CUTLASS_DEVICE
+  int scale_rows_per_stage() const {
+    return (Shape::kK + group_size_ - 1) / group_size_;
+  }
+
+  CUTLASS_DEVICE
+  int scale_row_for_warp_mma(int warp_mma_k) const {
+    int const k_offset = warp_mma_k * Shape::kK / Base::kWarpGemmIterations;
+    int const row = k_offset / group_size_;
+    int const rows = scale_rows_per_stage();
+    return row < rows ? row : rows - 1;
+  }
+
+  CUTLASS_DEVICE
+  void advance_dequantizer_after_load(int scale_row) {
+    int const rows = scale_rows_per_stage();
+    int const row_advance = (scale_row + 1 < rows) ? 1 : Base::kFinegrainedScaleRowsPerStage - scale_row;
+    warp_dequantizer_.add_pointer_offset(row_advance * Shape::kN);
+  }
+
+ public:
  public:
   /// Construct from tensor references
   CUTLASS_DEVICE
@@ -204,7 +228,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
       int warp_idx,
       ///< ID of each thread within a warp
       int lane_idx)
-      : Base(shared_storage, thread_idx, warp_idx, lane_idx), warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)}, {shared_storage.operand_zero.data(), LayoutScale(Shape::kN)}, (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM, lane_idx), smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx), smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx), smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), shared_storage.operand_zero.data(), {Base::kStages, Shape::kN}, thread_idx, group_size) {
+      : Base(shared_storage, thread_idx, warp_idx, lane_idx), warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)}, {shared_storage.operand_zero.data(), LayoutScale(Shape::kN)}, (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM, lane_idx), smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx), smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx), smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), shared_storage.operand_zero.data(), {Base::kStages * Base::kFinegrainedScaleRowsPerStage, Shape::kN}, thread_idx, group_size), group_size_(group_size) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension
@@ -234,29 +258,35 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
 
     int const kSrcBytes = sizeof_bits<typename IteratorScale::Element>::value * IteratorScale::kAlignment / 8;
 
-    cutlass::arch::cp_async<kSrcBytes, kCacheOpB>(smem_scale_ptr, gmem_scale_ptr, iterator_scale.valid());
+    int const current_group = iterator_scale.row_groupsize64_ * 64 / iterator_scale.group_size_;
+    int const next_group = (iterator_scale.row_groupsize64_ * 64 + Shape::kK) / iterator_scale.group_size_;
+    int const scale_rows_to_advance = next_group - current_group;
+    int const scale_rows_to_copy = scale_rows_to_advance > 0 ? scale_rows_to_advance : 1;
 
-    if (gmem_zero_ptr != nullptr) {
-      cutlass::arch::cp_async<kSrcBytes, kCacheOpB>(smem_zero_ptr, gmem_zero_ptr, iterator_scale.valid());
-    }
+    CUTLASS_PRAGMA_UNROLL
+    for (int scale_row = 0; scale_row < Base::kFinegrainedScaleRowsPerStage; ++scale_row) {
+      if (scale_row < scale_rows_to_copy) {
+        gmem_scale_ptr = iterator_scale.get_scale();
+        gmem_zero_ptr = iterator_scale.get_zero();
 
-    if (iterator_scale.group_size_ == 64) {
-      iterator_scale.add_tile_offset({1, 0});
-    } else if (iterator_scale.group_size_ == 128) {
-      if constexpr (Shape::kK == 128) {
-        iterator_scale.add_tile_offset({1, 0});
-      } else if constexpr (Shape::kK == 64) {
-        if (iterator_scale.row_groupsize64_ & 0x1) {
+        smem_scale_ptr = reinterpret_cast<typename IteratorScale::AccessType*>(this->smem_iterator_scale_.get_scale());
+        smem_zero_ptr = reinterpret_cast<typename IteratorScale::AccessType*>(this->smem_iterator_scale_.get_zero());
+
+        cutlass::arch::cp_async<kSrcBytes, kCacheOpB>(smem_scale_ptr, gmem_scale_ptr, iterator_scale.valid());
+
+        if (gmem_zero_ptr != nullptr) {
+          cutlass::arch::cp_async<kSrcBytes, kCacheOpB>(smem_zero_ptr, gmem_zero_ptr, iterator_scale.valid());
+        }
+
+        if (scale_row < scale_rows_to_advance) {
           iterator_scale.add_tile_offset({1, 0});
         }
-      } else {
-        static_assert(Shape::kK == 0, "Unsupported k tile shape, can only be 64 or 128");
       }
+
+      this->smem_iterator_scale_.add_tile_offset({1, 0});
     }
 
-    iterator_scale.row_groupsize64_++;
-
-    this->smem_iterator_scale_.add_tile_offset({1, 0});
+    iterator_scale.row_groupsize64_ += Shape::kK / 64;
   }
 
   CUTLASS_DEVICE
@@ -469,7 +499,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
 
     ++this->warp_tile_iterator_A_;
     ++this->warp_tile_iterator_B_;
-    warp_dequantizer_.add_pointer_offset(Shape::kN);
+    advance_dequantizer_after_load(0);
 
     iterator_A.clear_mask(gemm_k_iterations == 0);
     iterator_B.clear_mask(gemm_k_iterations == 0);
@@ -506,6 +536,12 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
               (warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
           this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_k_load_offset + 1) % 2]);
           ++this->warp_tile_iterator_B_;
+        }
+
+        int const scale_row = scale_row_for_warp_mma(warp_mma_k);
+        if (warp_mma_k > 0 && scale_row != scale_row_for_warp_mma(warp_mma_k - 1)) {
+          warp_dequantizer_.load(warp_frag_scales, warp_frag_zeros);
+          advance_dequantizer_after_load(scale_row);
         }
 
         typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
@@ -564,7 +600,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
           if (smem_write_stage_idx == (Base::kStages - 1)) {
             this->smem_iterator_A_.add_tile_offset({0, -Base::kStages});
             this->smem_iterator_B_.add_tile_offset({-Base::kStages, 0});
-            this->smem_iterator_scale_.add_tile_offset({-Base::kStages, 0});
+            this->smem_iterator_scale_.add_tile_offset({-Base::kStages * Base::kFinegrainedScaleRowsPerStage, 0});
             smem_write_stage_idx = 0;
           } else {
             ++smem_write_stage_idx;
@@ -575,7 +611,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
                 {0, -Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterations});
             this->warp_tile_iterator_B_.add_tile_offset(
                 {-Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterationsForB, 0});
-            warp_dequantizer_.add_pointer_offset(-Base::kStages * Shape::kN);
+            warp_dequantizer_.add_pointer_offset(-Base::kStages * Base::kFinegrainedScaleRowsPerStage * Shape::kN);
             smem_read_stage_idx = 0;
           } else {
             ++smem_read_stage_idx;
@@ -591,7 +627,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
       // Load the scale needed for the next tile iteration.
       warp_dequantizer_.load(warp_frag_scales, warp_frag_zeros);
       // Update internal pointer to set of scales in shared memory.
-      warp_dequantizer_.add_pointer_offset(Shape::kN);
+      advance_dequantizer_after_load(0);
     }
 
     if (SharedMemoryClear == SharedMemoryClearOption::kZfill) {

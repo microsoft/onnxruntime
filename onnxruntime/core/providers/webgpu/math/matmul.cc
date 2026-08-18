@@ -13,6 +13,9 @@
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#if !defined(__wasm__)
+#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
+#endif
 
 namespace onnxruntime {
 namespace webgpu {
@@ -120,6 +123,25 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   }
   bool has_bias = context.InputCount() > 2;
 
+#if !defined(__wasm__)
+  // Lazily create the subgroup-matrix implementation (with a vendor-specific tiling
+  // policy) on the first Compute call. PrePack is only invoked for constant
+  // initializers, so it cannot be relied on when B is a runtime tensor (e.g. batched
+  // matmul). Creating it here guarantees the subgroup-matrix path is considered for every
+  // MatMul. std::call_once makes the one-time init safe against concurrent Compute
+  // calls on this shared kernel.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixMatMulImpl(*this, context);
+  });
+  if (impl_) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+#endif
+
   if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
 
     const uint32_t m = narrow<uint32_t>(helper.M());  // left matrix first dimension
@@ -194,15 +216,15 @@ Status ComputeMatMul(ComputeContext* context,
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
   if (batchA != 1 && batchB == 1) {
-    // dimensions of A: [1,`batchA`, M, K]
+    // dimensions of A: [`batchA` * M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+    TensorShapeVector dims_a = {batchAndM, helper.K()};
+    // dimensions of B: [K, N]
+    TensorShapeVector dims_b = {helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchAndM, helper.N()};
+    output_shape = {batchAndM, helper.N()};
   }
 
   // helpful dimension variables

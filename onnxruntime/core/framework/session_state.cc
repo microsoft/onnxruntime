@@ -16,6 +16,9 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
+#include "core/framework/max_shape_override.h"
+#include "core/framework/max_shape_inference.h"
+#include "core/framework/node_shape_resolver.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -376,6 +379,11 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
+const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensorsForKernelCreation() const {
+  return outer_scope_augmented_map_built_ ? outer_scope_augmented_constant_tensors_
+                                          : constant_initialized_tensors_;
+}
+
 const PrepackedWeightsForGraph& onnxruntime::SessionState::GetPrepackedIniitializersForGraph() const {
   return graph_.GetPrepacked();
 }
@@ -498,8 +506,15 @@ Status SessionState::PrepackConstantInitializedTensors(
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                // CPU EP only. An initializer joins the shared pre-packed container either when it was
+                // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
+                // tagged this synthesized initializer with a sharing identity. Only the tag's *presence*
+                // matters here: it is the enrollment signal. The container key below is the packed-bytes
+                // hash, never the tag value (see the rationale at the key computation).
+                const bool enroll_tagged_initializer =
+                    (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
+                if ((is_shared_initializer || enroll_tagged_initializer) &&
+                    should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
 
@@ -518,24 +533,33 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       &weights_to_be_filled_in));
 
                   if (is_packed) {
-                    // BUG CHECK: Ensure that the kernel has filled in the pre-packed weight
-                    // to be cached if the weight was pre-packed
-                    ORT_ENFORCE(weights_to_be_filled_in.buffers_.size() > 0,
-                                "The kernel corresponding to the node ", node.Name(),
-                                " doesn't have an implementation that can cache computed pre-packed weights");
+                    // BUG CHECK: Ensure that a kernel either filled in the pre-packed weights
+                    // to be cached, or explicitly marked the packed weights as kernel-owned.
+                    ORT_RETURN_IF_NOT(!weights_to_be_filled_in.buffers_.empty() ||
+                                          weights_to_be_filled_in.has_kernel_owned_packed_weights_,
+                                      "The kernel corresponding to the node ", node.Name(),
+                                      " doesn't have an implementation that can cache computed pre-packed weights");
+                  }
 
+                  if (is_packed && !weights_to_be_filled_in.has_kernel_owned_packed_weights_) {
                     const auto& op_type = node.OpType();
 
                     // Sanity check
                     // TODO: Check if some version of the ONNX IR allows op_type to be empty
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                    // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
-                    // that we just got by invoking PrePack() on this kernel.
-
+                    // Key by the packed-bytes hash (op_type + a hash of the packed buffer), exactly as the
+                    // AddInitializer path does, so only byte-identical packed buffers are ever shared. The
+                    // tag is solely the enrollment signal that opted this fusion-generated initializer into
+                    // the container; it must NOT be used as the key, because it is derived from the
+                    // *unpacked* initializer content and so cannot distinguish packings that differ by node
+                    // options/attributes that change the packed layout (e.g. mlas.use_lut_gemm or a CPU
+                    // backend-selector difference). Two sessions that share a container but differ in such an
+                    // option compute the same tag yet produce different packed bytes; keying by the packed
+                    // bytes gives them distinct keys and prevents reusing an incompatible buffer
+                    // (wrong results/crash).
                     const std::string prepacked_weights_container_key =
-                        GenerateKeyForPrepackedWeightsMap(op_type,
-                                                          weights_to_be_filled_in);
+                        GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
                         prepacked_weights_container_key);
@@ -556,9 +580,8 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                       // Write references to what is stored in the shared container
                       // and release memory mapped entries this container may have loaded from disk
-                      std::ignore = prepacked_for_graph->ReplaceWithReferenceIfSaving(input_name,
-                                                                                      prepacked_weights_container_key,
-                                                                                      prepacked_shared);
+                      prepacked_for_graph->DiscardAndReplaceWithReferenceIfSaving(
+                          input_name, prepacked_weights_container_key, prepacked_shared);
 
                     } else {
                       // container doesn't contain the pre-packed weight - so write into it for sharing across
@@ -603,7 +626,16 @@ Status SessionState::PrepackConstantInitializedTensors(
                   // within this session. Or if the weight is not present on disk,
                   // we store the newly minted pre-packed data.
 
-                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(
+                      kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  // A plugin EP registered as a separate library may not have an initializer
+                  // allocator registered under the kernel's device key, so the lookup above can
+                  // return null. Fall back to the kernel's own default-memory allocator (resolved
+                  // through the EP), which is always valid. This keeps PrePack implementations from
+                  // each having to special-case a null allocator at the library boundary.
+                  if (!session_initializer_alloc) {
+                    session_initializer_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+                  }
                   PrePackedWeights weights_to_be_filled_in;
                   // The reason we invoke PrePack() before looking into the container for any pre-packed weight
                   // cached by another instance of the same op_type (for the same constant initializer) is because
@@ -615,11 +647,9 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
-                  // Some kernels (matmul_nbits and non-CPU related kernels) do not share their pre-packed results
+                  // Some kernels (non-CPU related kernels) do not share their pre-packed results
                   // even though they set is_packed = true so we leave it up to them.
                   // We can change their behavior if we wish do so in a separate PR
-                  // XXX: Interestingly enough, matmul_nbits does accept shared pre-packs, but does not
-                  // produce them.
                   if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
                     const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(
@@ -1387,10 +1417,27 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
+
+  MaxShapeInferenceResult max_shape_inference_result;
+  const std::string max_shape_config = sess_options_.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsMaxShapeOverride, "");
+  if (!max_shape_config.empty()) {
+#if defined(ORT_MINIMAL_BUILD)
+    LOGS(logger_, WARNING)
+        << "session.max_shape_override is not supported in a minimal build and will be ignored.";
+#else
+    // Partitioning results cannot be reused here because the final graph contains the
+    // completed set of EP fusions and transformations.
+    MaxShapeOverrideMap input_overrides;
+    ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, input_overrides));
+    ORT_RETURN_IF_ERROR(InferMaxShapes(graph_, input_overrides, max_shape_inference_result));
+#endif
+  }
+
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
                                   remove_initializers,
                                   GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
-                                  constant_initializers_use_count);
+                                  constant_initializers_use_count, max_shape_inference_result);
 }
 
 bool SessionState::GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format) {
@@ -1546,6 +1593,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               bool remove_initializers,
                                               bool save_prepacked_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                              const MaxShapeInferenceResult& max_shape_inference_result,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
@@ -1730,11 +1778,93 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CleanInitializedTensorsFromGraph();
   }
 
+  // For subgraph session states: build a merged constant-tensor map (outer_scope_augmented_constant_tensors_)
+  // that extends this subgraph's own constant_initialized_tensors_ with any outer-scope constant initializers
+  // from parent graphs, re-indexed into this subgraph's ort_value_name_idx_map_. This allows
+  // TryGetConstantInput (called from kernel constructors and PrePack) to resolve constants that live in
+  // parent-graph scope, such as the scales/zero_points paired with a MatMulNBits B tensor when all three
+  // initializers belong to the outer graph but the MatMulNBits node is inside a subgraph (e.g. If branch).
+  // The augmented map is only used for kernel creation; PrepackConstantInitializedTensors keeps using the
+  // unaugmented constant_initialized_tensors_ to avoid double-prepacking outer-scope tensors.
+  // After the subgraph finalization loop below, the parent-scope OrtValue copies in this map are erased
+  // (via outer_scope_parent_only_indices_) to allow the parent's constant_initialized_tensors_ to release
+  // memory once all prepack use counts reach zero.
+  if (parent_node != nullptr && parent_ != nullptr) {
+    outer_scope_augmented_constant_tensors_ = constant_initialized_tensors_;
+
+    for (const NodeArg* outer_arg : parent_node->ImplicitInputDefs()) {
+      const std::string& name = outer_arg->Name();
+
+      // Get the index for this name in the current (subgraph) scope.
+      int current_idx = -1;
+      if (!ort_value_name_idx_map_.GetIdx(name, current_idx).IsOK()) {
+        continue;
+      }
+
+      // Skip if this name is already covered by the subgraph's own constants.
+      if (constant_initialized_tensors_.count(current_idx) > 0) {
+        continue;
+      }
+
+      // Walk the parent session state chain (handles deeply nested subgraphs) until we either
+      // find the constant or exhaust all ancestors.
+      const SessionState* p = parent_;
+      while (p != nullptr) {
+        int parent_idx = -1;
+        if (!p->ort_value_name_idx_map_.GetIdx(name, parent_idx).IsOK()) {
+          p = p->parent_;
+          continue;
+        }
+
+        // Use the parent's already-augmented map so that constants from grandparent scopes
+        // are also visible (the parent's FinalizeSessionStateImpl has already run).
+        const auto& parent_const = p->GetConstantInitializedTensorsForKernelCreation();
+        auto it = parent_const.find(parent_idx);
+        if (it != parent_const.end()) {
+          outer_scope_augmented_constant_tensors_.emplace(current_idx, it->second);
+          outer_scope_parent_only_indices_.insert(current_idx);
+          break;
+        }
+
+        p = p->parent_;
+      }
+    }
+
+    outer_scope_augmented_map_built_ = true;
+  }
+
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
   if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
+  }
+
+  // Level-2 workspace declaration: after kernels are created and PrePack'd, call
+  // DeclareWorkspaceRequirements() on each kernel whose input shapes can be resolved.
+  // Static graph shapes remain usable when no max-shape inference result is available.
+  // This collects workspace slot requirements for future offset planning.
+  for (const auto& node : graph_viewer_->Nodes()) {
+    auto* kernel = GetMutableKernel(node.Index());
+    if (kernel == nullptr) continue;
+
+    auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
+    if (!resolved.has_value()) continue;
+
+    InlinedVector<WorkspaceRequirement> requirements;
+    ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
+        gsl::make_span(resolved->data(), resolved->size()), requirements));
+
+    if (!requirements.empty()) {
+      LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                             << "' declared " << requirements.size() << " workspace slot(s)";
+      // TODO: Store requirements in WorkspacePattern for offset planning.
+      // For now, log the declarations so we can verify the wiring works.
+      for (const auto& req : requirements) {
+        LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
+                               << " size=" << req.size_bytes << " bytes";
+      }
+    }
   }
 
   ORT_RETURN_IF_ERROR(
@@ -1775,7 +1905,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
           save_prepacked_initializers,
-          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
+          constant_initializers_use_count, max_shape_inference_result,
+          subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());
@@ -1791,6 +1922,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     // inputs that are fed through as graph inputs in the graph level holding the subgraphs ? Ideally the planned
     // locations for these would be the locations they are explicitly consumed on in nested subgraphs.
   }
+
+  // Release the extra OrtValue copies from parent scope that were added to the augmented constant
+  // map for this subgraph session state. These copies were needed to let TryGetConstantInput resolve
+  // parent-scope constants during CreateKernels and PrepackConstantInitializedTensors above, and to
+  // let any nested (grandchild) subgraph session states read them via GetConstantInitializedTensorsForKernelCreation().
+  // Now that all subgraphs are fully finalized, the copies are no longer needed. Releasing them lets
+  // the parent's constant_initialized_tensors_ free the underlying tensor buffers once all prepack
+  // use counts reach zero, avoiding a memory regression for large initializers such as quantized B
+  // matrices and scales in MatMulNBits subgraph patterns.
+  for (int idx : outer_scope_parent_only_indices_) {
+    outer_scope_augmented_constant_tensors_.erase(idx);
+  }
+  outer_scope_parent_only_indices_.clear();
 
   return Status::OK();
 }

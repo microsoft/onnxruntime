@@ -3,7 +3,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
 
 #include "gtest/gtest.h"
 
@@ -50,10 +50,14 @@ TEST_F(ExperimentalCApiTest, KnownNameResolvesCpp) {
   EXPECT_NE(fn, nullptr);
 }
 
-// Call through typed pointer succeeds and returns the expected sentinel value
+// Call through typed pointer succeeds and returns the expected sentinel value.
+// Uses the throwing accessor (FnOrThrow), which returns a guaranteed-non-null pointer or throws.
+// The throw-on-unavailable path is not directly unit-testable: every .inc entry is registered, so a valid
+// typed accessor never observes a nullptr. Availability checking is covered by the nullable-accessor tests above.
 TEST_F(ExperimentalCApiTest, CallThroughTypedPointer) {
-  auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api_);
+  auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_FnOrThrow(api_);
   ASSERT_NE(fn, nullptr);
+  EXPECT_EQ(fn, Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api_));
 
   int64_t result = 0;
   auto status = Ort::Status{fn(&result)};

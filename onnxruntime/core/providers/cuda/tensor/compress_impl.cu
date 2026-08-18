@@ -22,7 +22,12 @@ namespace cuda {
 // see https://github.com/NVIDIA/cub/issues/384
 struct CastToInt32 {
   __host__ __device__ int32_t operator()(int8_t v) const {
-    return static_cast<int32_t>(v);
+    // Normalize to {0, 1} so the prefix-sum sizing path agrees with the truthiness predicate
+    // (condition_data[div]) used in _CompressKernel. A bool byte may hold any non-zero value;
+    // sign-extending it here would size the output differently from how elements are selected.
+    // bool initializers are normalized to {0, 1} when unpacked (see tensorprotoutils.cc), so the
+    // remaining source of non-canonical bytes is runtime-produced bool condition tensors.
+    return v != 0 ? 1 : 0;
   }
 };
 

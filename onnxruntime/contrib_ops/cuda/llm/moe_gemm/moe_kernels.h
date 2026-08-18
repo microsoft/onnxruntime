@@ -102,11 +102,11 @@ struct MOEParallelismConfig {
     ORT_ENFORCE(ep_size == 1 || cluster_size == 1);
   }
 
-  bool operator==(MOEParallelismConfig const& other) const {
+  bool operator==(const MOEParallelismConfig& other) const {
     return tp_size == other.tp_size && tp_rank == other.tp_rank && ep_size == other.ep_size && ep_rank == other.ep_rank && cluster_size == other.cluster_size && cluster_rank == other.cluster_rank;
   }
 
-  friend std::ostream& operator<<(std::ostream& os, MOEParallelismConfig const& config) {
+  friend std::ostream& operator<<(std::ostream& os, const MOEParallelismConfig& config) {
     os << "tp_size: " << config.tp_size << ", tp_rank: " << config.tp_rank << ", ep_size: " << config.ep_size
        << ", ep_rank: " << config.ep_rank << ", cluster_size: " << config.cluster_size
        << ", cluster_rank: " << config.cluster_rank;
@@ -118,19 +118,19 @@ struct QuantParams {
   // Int weight only quantization params
   struct
   {
-    void const* fc1_weight_scales = nullptr;
-    void const* fc2_weight_scales = nullptr;
+    const void* fc1_weight_scales = nullptr;
+    const void* fc2_weight_scales = nullptr;
   } wo;
 
   // FP8 quantization params
   struct
   {
     bool fc2_use_per_expert_act_scale = false;
-    float const* dequant_fc1 = nullptr;    // (num_experts_per_node, )
-    float const* quant_fc2 = nullptr;      // (1, ) or (num_experts_per_node, ) based on fc2_use_per_expert_act_scale
-    float const* dequant_fc2 = nullptr;    // (num_experts_per_node, )
-    float const* quant_final = nullptr;    // (1, )
-    float const* dequant_input = nullptr;  // (1, )
+    const float* dequant_fc1 = nullptr;    // (num_experts_per_node, )
+    const float* quant_fc2 = nullptr;      // (1, ) or (num_experts_per_node, ) based on fc2_use_per_expert_act_scale
+    const float* dequant_fc2 = nullptr;    // (num_experts_per_node, )
+    const float* quant_final = nullptr;    // (1, )
+    const float* dequant_input = nullptr;  // (1, )
   } fp8;
 
   // FP8 MXFP4 quantization params
@@ -138,9 +138,9 @@ struct QuantParams {
   struct FP8MXFP4Inputs {
     struct GemmInputs {
       bool use_per_expert_act_scale = false;
-      float const* act_global_scale = nullptr;                                                 // (1, ) or (num_experts_per_node, ) based on use_per_expert_act_scale
-      TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF const* weight_block_scale = nullptr;  // (experts, n, k / 32)
-      float const* global_scale = nullptr;                                                     // (num_experts_per_node, )
+      const float* act_global_scale = nullptr;                                                 // (1, ) or (num_experts_per_node, ) based on use_per_expert_act_scale
+      const TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF* weight_block_scale = nullptr;  // (experts, n, k / 32)
+      const float* global_scale = nullptr;                                                     // (num_experts_per_node, )
     };
 
     GemmInputs fc1;
@@ -151,8 +151,8 @@ struct QuantParams {
   // This mode uses block scaled MXFP8 and MXFP4 weights
   struct MXFP8MXFP4Inputs {
     struct GemmInputs {
-      TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF const* weight_block_scale = nullptr;  // (experts, n, k / 32)
-      float const* global_scale = nullptr;                                                     // (num_experts_per_node, )
+      const TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF* weight_block_scale = nullptr;  // (experts, n, k / 32)
+      const float* global_scale = nullptr;                                                     // (num_experts_per_node, )
     };
 
     GemmInputs fc1;
@@ -164,9 +164,9 @@ struct QuantParams {
     struct GemmInputs {
       bool use_per_expert_act_scale = false;
 
-      float const* act_global_scale = nullptr;                                                 // (1, ) or (num_experts_per_node, ) based on use_per_expert_act_scale
-      TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF const* weight_block_scale = nullptr;  // (experts, n, k / 16)
-      float const* global_scale = nullptr;                                                     // (num_experts_per_node, )
+      const float* act_global_scale = nullptr;                                                 // (1, ) or (num_experts_per_node, ) based on use_per_expert_act_scale
+      const TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF* weight_block_scale = nullptr;  // (experts, n, k / 16)
+      const float* global_scale = nullptr;                                                     // (num_experts_per_node, )
     };
 
     GemmInputs fc1;
@@ -176,10 +176,10 @@ struct QuantParams {
   // GPTQ/AWQ quantization params
   struct GroupwiseInputs {
     struct GroupwiseGemmInputs {
-      void const* act_scales = nullptr;
-      void const* weight_scales = nullptr;
-      void const* weight_zeros = nullptr;
-      float const* alpha = nullptr;
+      const void* act_scales = nullptr;
+      const void* weight_scales = nullptr;
+      const void* weight_zeros = nullptr;
+      const float* alpha = nullptr;
     };
 
     int group_size = -1;
@@ -187,26 +187,26 @@ struct QuantParams {
     GroupwiseGemmInputs fc2;
   } groupwise;
 
-  static QuantParams Int(void const* fc1_weight_scales, void const* fc2_weight_scales) {
+  static QuantParams Int(const void* fc1_weight_scales, const void* fc2_weight_scales) {
     QuantParams qp;
     qp.wo = {fc1_weight_scales, fc2_weight_scales};
     return qp;
   }
 
-  static QuantParams FP8(float const* dequant_fc1, float const* quant_fc2, float const* dequant_fc2,
-                         float const* quant_final = nullptr, float const* dequant_input = nullptr,
+  static QuantParams FP8(const float* dequant_fc1, const float* quant_fc2, const float* dequant_fc2,
+                         const float* quant_final = nullptr, const float* dequant_input = nullptr,
                          bool fc2_use_per_expert_act_scale = false) {
     QuantParams qp;
     qp.fp8 = {fc2_use_per_expert_act_scale, dequant_fc1, quant_fc2, dequant_fc2, quant_final, dequant_input};
     return qp;
   }
 
-  static QuantParams FP8MXFP4(float const* fc1_act_global_scale,
-                              TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF const* fc1_weight_block_scale,
-                              float const* fc1_global_scale,  //
-                              float const* fc2_act_global_scale,
-                              TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF const* fc2_weight_block_scale,
-                              float const* fc2_global_scale,  //
+  static QuantParams FP8MXFP4(const float* fc1_act_global_scale,
+                              const TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF* fc1_weight_block_scale,
+                              const float* fc1_global_scale,  //
+                              const float* fc2_act_global_scale,
+                              const TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF* fc2_weight_block_scale,
+                              const float* fc2_global_scale,  //
                               bool fc1_use_per_expert_act_scale = false, bool fc2_use_per_expert_act_scale = false) {
     QuantParams qp;
     qp.fp8_mxfp4.fc1 = {fc1_use_per_expert_act_scale, fc1_act_global_scale, fc1_weight_block_scale, fc1_global_scale};
@@ -214,21 +214,21 @@ struct QuantParams {
     return qp;
   }
 
-  static QuantParams MXFP8MXFP4(TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF const* fc1_weight_block_scale,
-                                float const* fc1_global_scale,  //
-                                TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF const* fc2_weight_block_scale, float const* fc2_global_scale) {
+  static QuantParams MXFP8MXFP4(const TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF* fc1_weight_block_scale,
+                                const float* fc1_global_scale,  //
+                                const TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF* fc2_weight_block_scale, const float* fc2_global_scale) {
     QuantParams qp;
     qp.mxfp8_mxfp4.fc1 = {fc1_weight_block_scale, fc1_global_scale};
     qp.mxfp8_mxfp4.fc2 = {fc2_weight_block_scale, fc2_global_scale};
     return qp;
   }
 
-  static QuantParams FP4(float const* fc1_act_global_scale,
-                         TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF const* fc1_weight_block_scale,
-                         float const* fc1_global_scale,  //
-                         float const* fc2_act_global_scale,
-                         TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF const* fc2_weight_block_scale,
-                         float const* fc2_global_scale,  //
+  static QuantParams FP4(const float* fc1_act_global_scale,
+                         const TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF* fc1_weight_block_scale,
+                         const float* fc1_global_scale,  //
+                         const float* fc2_act_global_scale,
+                         const TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF* fc2_weight_block_scale,
+                         const float* fc2_global_scale,  //
                          bool fc1_use_per_expert_act_scale = false, bool fc2_use_per_expert_act_scale = false)
 
   {
@@ -238,10 +238,10 @@ struct QuantParams {
     return qp;
   }
 
-  static QuantParams GroupWise(int group_size, void const* fc1_weight_scales, void const* fc2_weight_scales,
-                               void const* fc1_activation_scales = nullptr, void const* fc2_activation_scales = nullptr,
-                               void const* fc1_weight_zeros = nullptr, void const* fc2_weight_zeros = nullptr,
-                               float const* fc1_alpha = nullptr, float const* fc2_alpha = nullptr) {
+  static QuantParams GroupWise(int group_size, const void* fc1_weight_scales, const void* fc2_weight_scales,
+                               const void* fc1_activation_scales = nullptr, const void* fc2_activation_scales = nullptr,
+                               const void* fc1_weight_zeros = nullptr, const void* fc2_weight_zeros = nullptr,
+                               const float* fc1_alpha = nullptr, const float* fc2_alpha = nullptr) {
     QuantParams qp;
     qp.groupwise.group_size = group_size;
     qp.groupwise.fc1 = {fc1_activation_scales, fc1_weight_scales, fc1_weight_zeros, fc1_alpha};
@@ -250,70 +250,90 @@ struct QuantParams {
   }
 };
 
+// Optional fused routing (optimization C). When router_logits is non-null, runMoe computes the
+// softmax + top-k itself, fused into the kernel that builds the expert permutation maps, instead of
+// the caller launching a separate softmax/top-k kernel first. At decode both are single-block
+// kernels dominated by launch latency, so merging them removes close to a full kernel's overhead
+// per layer.
+//
+// The caller must have checked isFusedMoeRoutingSupported() for the same shape parameters, and must
+// pass the same buffers it passes as runMoe's token_selected_experts / token_final_scales arguments
+// (runMoe fills them before reading them). router_logits is [num_rows, num_experts] and its element
+// type must match the runner's InputType.
+struct FusedRoutingParams {
+  void const* router_logits{nullptr};
+  int* token_selected_experts{nullptr};
+  float* token_final_scales{nullptr};
+  bool normalize_routing_weights{false};
+};
+
+// Host-side, deterministic predicate for the fused routing prologue. It must be the single source
+// of truth: the caller uses it to decide whether to skip its own softmax/top-k launch, and runMoe
+// re-checks it, so the two can never disagree about who computed the routing.
+bool isFusedMoeRoutingSupported(int64_t const num_tokens, int const num_experts,
+                                int const num_experts_per_node, int const experts_per_token,
+                                int const ep_size);
+
 class CutlassMoeFCRunnerInterface {
  public:
   virtual ~CutlassMoeFCRunnerInterface() = default;
-  virtual size_t getWorkspaceSize(int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
-                                  int const num_experts, int const experts_per_token, ActivationType activation_type,
+  virtual size_t getWorkspaceSize(const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size,
+                                  const int num_experts, const int experts_per_token, ActivationType activation_type,
                                   MOEParallelismConfig parallelism_config, bool use_awq) = 0;
   virtual void setTactic(std::optional<cutlass_extensions::CutlassGemmConfig> gemm1_config,
                          std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config) = 0;
   virtual std::vector<cutlass_extensions::CutlassGemmConfig> getTactics() = 0;
 
-  virtual void runMoe(void const* input_activations, void const* input_sf, int const* token_selected_experts,
-                      float const* token_final_scales, void const* fc1_expert_weights, void const* fc1_expert_biases,
-                      ActivationType fc1_activation_type, void const* fc2_expert_weights, void const* fc2_expert_biases,
-                      QuantParams quant_params, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
-                      int const num_experts, int const experts_per_token, char* workspace_ptr, void* final_output,
+  // wfp4a16 only: route prefill through the SM80 fused-dequant grouped GEMM (vs the SM90 TMA WS
+  // path). The QMoE op decides this at construction time (reading the relevant env vars then) and
+  // pushes it in here, so inference-time config selection does not depend on the live environment.
+  // Default no-op for runners that do not implement the SM80 FP4 path.
+  virtual void setUseSm80Fp4(bool /*use_sm80_fp4*/) {}
+
+  virtual void runMoe(const void* input_activations, const void* input_sf, const int* token_selected_experts,
+                      const float* token_final_scales, const void* fc1_expert_weights, const void* fc1_expert_biases,
+                      ActivationType fc1_activation_type, const void* fc2_expert_weights, const void* fc2_expert_biases,
+                      QuantParams quant_params, const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size,
+                      const int num_experts, const int experts_per_token, char* workspace_ptr, void* final_output,
                       int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
-                      ActivationParameters activation_params,
+                      ActivationParameters activation_params, FusedRoutingParams fused_routing,
                       cudaStream_t stream) = 0;
 
   // Aliases for profiling the gemms
-  virtual void gemm1(void const* const input, void* const output, void* const intermediate_result,
-                     int64_t const* const expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput tma_ws_input_template,
-                     void const* const fc1_expert_weights, void const* const fc1_expert_biases,
-                     int64_t const* const num_valid_tokens_ptr, void const* const fc1_int_scales, float const* const fc1_fp8_dequant,
-                     float const* const fc2_fp8_quant, TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
+  virtual void gemm1(const void* const input, void* const output, void* const intermediate_result,
+                     const int64_t* const expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput tma_ws_input_template,
+                     const void* const fc1_expert_weights, const void* const fc1_expert_biases,
+                     const int64_t* const num_valid_tokens_ptr, const void* const fc1_int_scales, const float* const fc1_fp8_dequant,
+                     const float* const fc2_fp8_quant, const TmaWarpSpecializedGroupedGemmInput::ElementSF* fc1_fp4_act_flat,
                      TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params,
-                     int64_t const num_rows, int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
-                     int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
+                     const int64_t num_rows, const int64_t expanded_num_rows, const int64_t hidden_size, const int64_t inter_size,
+                     const int num_experts_per_node, ActivationType fc1_activation_type, const float** alpha_scale_ptr_array,
                      bool bias_is_broadcast, cudaStream_t stream,
                      cutlass_extensions::CutlassGemmConfig config,
                      ActivationParameters activation_params) = 0;
 
-  virtual void gemm2(void const* const input, void* const gemm_output, void* const final_output,
-                     int64_t const* const expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput const tma_ws_input_template,
-                     void const* const fc2_expert_weights, void const* const fc2_expert_biases, void const* const fc2_int_scales,
-                     float const* const fc2_fp8_dequant, TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat,
-                     QuantParams quant_params, float const* const token_topk_unpermuted_scales,
-                     float const* const token_topk_permuted_scales, int const* const unpermuted_row_to_permuted_row,
-                     int const* permuted_row_to_unpermuted_row, int const* const token_selected_experts,
-                     int64_t const* const num_valid_tokens_ptr, int64_t const num_rows, int64_t const expanded_num_rows,
-                     int64_t const hidden_size, int64_t const inter_size, int const num_experts_per_node,
-                     int64_t const experts_per_token, float const** alpha_scale_ptr_array,
+  virtual void gemm2(const void* const input, void* const gemm_output, void* const final_output,
+                     const int64_t* const expert_first_token_offset, const TmaWarpSpecializedGroupedGemmInput tma_ws_input_template,
+                     const void* const fc2_expert_weights, const void* const fc2_expert_biases, const void* const fc2_int_scales,
+                     const float* const fc2_fp8_dequant, const TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat,
+                     QuantParams quant_params, const float* const token_topk_unpermuted_scales,
+                     const float* const token_topk_permuted_scales, const int* const unpermuted_row_to_permuted_row,
+                     const int* permuted_row_to_unpermuted_row, const int* const token_selected_experts,
+                     const int64_t* const num_valid_tokens_ptr, const int64_t num_rows, const int64_t expanded_num_rows,
+                     const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
+                     const int64_t experts_per_token, const float** alpha_scale_ptr_array,
                      cudaStream_t stream, MOEParallelismConfig parallelism_config,
                      cutlass_extensions::CutlassGemmConfig config) = 0;
 
   virtual std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedDispatch(int64_t const* expert_first_token_offset,
+  computeStridesTmaWarpSpecializedDispatch(const int64_t* expert_first_token_offset,
                                            TmaWarpSpecializedGroupedGemmInput layout_info1, TmaWarpSpecializedGroupedGemmInput layout_info2,
                                            int64_t num_tokens, int64_t expanded_num_tokens, int64_t gemm1_n, int64_t gemm1_k, int64_t gemm2_n,
-                                           int64_t gemm2_k, int const num_experts_per_node, void const* gemm1_in, void const* gemm2_in,
-                                           void const* weights1, void const* weights2, float const* alpha_scale_flat1, float const* alpha_scale_flat2,
-                                           TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat1,
-                                           TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat2, QuantParams quant_params, void const* bias1,
-                                           void const* bias2, void* gemm1_output, void* gemm2_output, cudaStream_t stream) = 0;
-
-  virtual std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedLowLatencyDispatch(TmaWarpSpecializedGroupedGemmInput layout_info1,
-                                                     TmaWarpSpecializedGroupedGemmInput layout_info2, int64_t num_tokens, int64_t gemm1_n, int64_t gemm1_k,
-                                                     int64_t gemm2_n, int64_t gemm2_k, int const num_experts, void const* input1, void const* input2,
-                                                     void const* weights1, void const* weights2, float const* fp8_dequant1, float const* fp8_dequant2,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat, QuantParams quant_params,
-                                                     void const* bias1, void const* bias2, void* output1, void* output2, int const* num_active_experts_per,
-                                                     int const* active_expert_global_ids, int start_expert, cudaStream_t stream) = 0;
+                                           int64_t gemm2_k, const int num_experts_per_node, const void* gemm1_in, const void* gemm2_in,
+                                           const void* weights1, const void* weights2, const float* alpha_scale_flat1, const float* alpha_scale_flat2,
+                                           const TmaWarpSpecializedGroupedGemmInput::ElementSF* fp4_act_flat1,
+                                           const TmaWarpSpecializedGroupedGemmInput::ElementSF* fp4_act_flat2, QuantParams quant_params, const void* bias1,
+                                           const void* bias2, void* gemm1_output, void* gemm2_output, cudaStream_t stream) = 0;
 
   virtual size_t getGemmWorkspaceSize(int num_experts_per_node) const = 0;
 
@@ -393,8 +413,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   static_assert(
       std::is_same_v<T, WeightType> || !std::is_same_v<T, float>, "Does not support float with quantized weights");
 
-  size_t getWorkspaceSize(int64_t const num_rows, int64_t const hidden_size, int64_t const fc1_output_size,
-                          int const num_experts, int const experts_per_token, ActivationType activation_type,
+  size_t getWorkspaceSize(const int64_t num_rows, const int64_t hidden_size, const int64_t fc1_output_size,
+                          const int num_experts, const int experts_per_token, ActivationType activation_type,
                           MOEParallelismConfig parallelism_config, bool use_awq) override;
 
   void setTactic(std::optional<cutlass_extensions::CutlassGemmConfig> gemm1_config,
@@ -409,89 +429,105 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
     return moe_gemm_runner_.getConfigs();
   }
 
+  // Push the QMoE op's SM80-FP4 decision into the inner runner and re-pick a valid default tactic
+  // from the (now filtered) config list, so even if profiling later finds nothing, the preserved
+  // default matches the selected GEMM family (SM80 Ampere vs SM90 TMA WS).
+  void setUseSm80Fp4(bool use_sm80_fp4) override {
+    moe_gemm_runner_.setUseSm80Fp4(use_sm80_fp4);
+    auto tactics = moe_gemm_runner_.getConfigs();
+    if (!tactics.empty()) {
+      gemm1_config_ = tactics[0];
+      gemm2_config_ = tactics[0];
+    }
+  }
+
   static std::vector<cutlass_extensions::CutlassGemmConfig> getTactics(int sm) {
     using RunnerType = decltype(moe_gemm_runner_);
     return RunnerType::getConfigs(sm);
   }
 
-  void runMoe(void const* input_activations, void const* input_sf, int const* token_selected_experts,
-              float const* token_final_scales, void const* fc1_expert_weights, void const* fc1_expert_biases,
-              ActivationType fc1_activation_type, void const* fc2_expert_weights, void const* fc2_expert_biases,
-              QuantParams quant_params, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
-              int const num_experts, int const experts_per_token, char* workspace_ptr, void* final_output,
+  void runMoe(const void* input_activations, const void* input_sf, const int* token_selected_experts,
+              const float* token_final_scales, const void* fc1_expert_weights, const void* fc1_expert_biases,
+              ActivationType fc1_activation_type, const void* fc2_expert_weights, const void* fc2_expert_biases,
+              QuantParams quant_params, const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size,
+              const int num_experts, const int experts_per_token, char* workspace_ptr, void* final_output,
               int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
-              ActivationParameters activation_params,
+              ActivationParameters activation_params, FusedRoutingParams fused_routing,
               cudaStream_t stream) override;
 
   // We make these GEMM1 & GEMM2 static because they need to be stateless for the profiler to work
   static void gemm1(MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>& gemm_runner,
-                    T const* const input, T* const output,
-                    void* const intermediate_result, int64_t const* const expert_first_token_offset,
-                    TmaWarpSpecializedGroupedGemmInput const tma_ws_input_template, WeightType const* const fc1_expert_weights,
-                    ScaleBiasType const* const fc1_expert_biases, int64_t const* const num_valid_tokens_ptr,
-                    ScaleBiasType const* const fc1_int_scales, float const* const fc1_fp8_dequant, float const* const fc2_fp8_quant,
-                    TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
+                    const T* const input, T* const output,
+                    void* const intermediate_result, const int64_t* const expert_first_token_offset,
+                    const TmaWarpSpecializedGroupedGemmInput tma_ws_input_template, const WeightType* const fc1_expert_weights,
+                    const ScaleBiasType* const fc1_expert_biases, const int64_t* const num_valid_tokens_ptr,
+                    const ScaleBiasType* const fc1_int_scales, const float* const fc1_fp8_dequant, const float* const fc2_fp8_quant,
+                    const TmaWarpSpecializedGroupedGemmInput::ElementSF* fc1_fp4_act_flat,
                     TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params,
-                    int64_t const num_rows, int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
-                    int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
-                    bool bias_is_broadcast, cudaStream_t stream, cutlass_extensions::CutlassGemmConfig config,
+                    const int64_t num_rows, const int64_t expanded_num_rows, const int64_t hidden_size, const int64_t inter_size,
+                    const int num_experts_per_node, ActivationType fc1_activation_type, const float** alpha_scale_ptr_array,
+                    const int* permuted_row_to_expert, float* moe_gemv_splitk_partials,
+                    const int* permuted_row_to_source_row, bool bias_is_broadcast,
+                    cudaStream_t stream, MOEParallelismConfig parallelism_config,
+                    cutlass_extensions::CutlassGemmConfig config,
                     ActivationParameters activation_params);
 
   static void gemm2(MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>& gemm_runner,
-                    T const* const input, void* const gemm_output,
-                    OutputType* const final_output, int64_t const* const expert_first_token_offset,
-                    TmaWarpSpecializedGroupedGemmInput const tma_ws_input_template, WeightType const* const fc2_expert_weights,
-                    ScaleBiasType const* const fc2_expert_biases, ScaleBiasType const* const fc2_int_scales,
-                    float const* const fc2_fp8_dequant, TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat,
-                    QuantParams quant_params, float const* const token_topk_unpermuted_scales,
-                    float const* const token_topk_permuted_scales, int const* const unpermuted_row_to_permuted_row,
-                    int const* permuted_row_to_unpermuted_row, int const* const token_selected_experts,
-                    int64_t const* const num_valid_tokens_ptr, int64_t const num_rows, int64_t const expanded_num_rows,
-                    int64_t const hidden_size, int64_t const inter_size, int const num_experts_per_node,
-                    int64_t const experts_per_token, float const** alpha_scale_ptr_array,
+                    const T* const input, void* const gemm_output,
+                    OutputType* const final_output, const int64_t* const expert_first_token_offset,
+                    const TmaWarpSpecializedGroupedGemmInput tma_ws_input_template, const WeightType* const fc2_expert_weights,
+                    const ScaleBiasType* const fc2_expert_biases, const ScaleBiasType* const fc2_int_scales,
+                    const float* const fc2_fp8_dequant, const TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat,
+                    QuantParams quant_params, const float* const token_topk_unpermuted_scales,
+                    const float* const token_topk_permuted_scales, const int* const unpermuted_row_to_permuted_row,
+                    const int* permuted_row_to_unpermuted_row, const int* const token_selected_experts,
+                    const int64_t* const num_valid_tokens_ptr, const int64_t num_rows, const int64_t expanded_num_rows,
+                    const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
+                    const int64_t experts_per_token, const float** alpha_scale_ptr_array,
+                    const int* permuted_row_to_expert,
                     cudaStream_t stream, MOEParallelismConfig parallelism_config,
                     cutlass_extensions::CutlassGemmConfig config);
 
   // Overrides to allow us to forward on to the internal functions with the pointers using the correct type
-  void gemm1(void const* const input, void* const output, void* const intermediate_result,
-             int64_t const* const expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput tma_ws_input_template,
-             void const* const fc1_expert_weights, void const* const fc1_expert_biases,
-             int64_t const* const num_valid_tokens_ptr, void const* const fc1_int_scales, float const* const fc1_fp8_dequant,
-             float const* const fc2_fp8_quant, TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
+  void gemm1(const void* const input, void* const output, void* const intermediate_result,
+             const int64_t* const expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput tma_ws_input_template,
+             const void* const fc1_expert_weights, const void* const fc1_expert_biases,
+             const int64_t* const num_valid_tokens_ptr, const void* const fc1_int_scales, const float* const fc1_fp8_dequant,
+             const float* const fc2_fp8_quant, const TmaWarpSpecializedGroupedGemmInput::ElementSF* fc1_fp4_act_flat,
              TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params,
-             int64_t const num_rows, int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
-             int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
+             const int64_t num_rows, const int64_t expanded_num_rows, const int64_t hidden_size, const int64_t inter_size,
+             const int num_experts_per_node, ActivationType fc1_activation_type, const float** alpha_scale_ptr_array,
              bool bias_is_broadcast, cudaStream_t stream,
              cutlass_extensions::CutlassGemmConfig config,
              ActivationParameters activation_params) override {
-    return Self::gemm1(moe_gemm_runner_, static_cast<T const*>(input),
+    return Self::gemm1(moe_gemm_runner_, static_cast<const T*>(input),
                        static_cast<T*>(output), intermediate_result, expert_first_token_offset, tma_ws_input_template,
-                       static_cast<WeightType const*>(fc1_expert_weights), static_cast<ScaleBiasType const*>(fc1_expert_biases),
-                       num_valid_tokens_ptr, static_cast<ScaleBiasType const*>(fc1_int_scales), fc1_fp8_dequant, fc2_fp8_quant,
+                       static_cast<const WeightType*>(fc1_expert_weights), static_cast<const ScaleBiasType*>(fc1_expert_biases),
+                       num_valid_tokens_ptr, static_cast<const ScaleBiasType*>(fc1_int_scales), fc1_fp8_dequant, fc2_fp8_quant,
                        fc1_fp4_act_flat, fc2_fp4_act_flat, quant_params, num_rows, expanded_num_rows, hidden_size, inter_size,
-                       num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array, bias_is_broadcast, stream, config,
-                       activation_params);
+                       num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array, nullptr, nullptr, nullptr,
+                       bias_is_broadcast, stream, MOEParallelismConfig{}, config, activation_params);
   }
 
-  void gemm2(void const* const input, void* const gemm_output, void* const final_output,
-             int64_t const* const expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput const tma_ws_input_template,
-             void const* const fc2_expert_weights, void const* const fc2_expert_biases, void const* const fc2_int_scales,
-             float const* const fc2_fp8_dequant, TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat,
-             QuantParams quant_params, float const* const token_topk_unpermuted_scales,
-             float const* const token_topk_permuted_scales, int const* const unpermuted_row_to_permuted_row,
-             int const* permuted_row_to_unpermuted_row, int const* const token_selected_experts,
-             int64_t const* const num_valid_tokens_ptr, int64_t const num_rows, int64_t const expanded_num_rows,
-             int64_t const hidden_size, int64_t const inter_size, int const num_experts_per_node,
-             int64_t const experts_per_token, float const** alpha_scale_ptr_array,
+  void gemm2(const void* const input, void* const gemm_output, void* const final_output,
+             const int64_t* const expert_first_token_offset, const TmaWarpSpecializedGroupedGemmInput tma_ws_input_template,
+             const void* const fc2_expert_weights, const void* const fc2_expert_biases, const void* const fc2_int_scales,
+             const float* const fc2_fp8_dequant, const TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat,
+             QuantParams quant_params, const float* const token_topk_unpermuted_scales,
+             const float* const token_topk_permuted_scales, const int* const unpermuted_row_to_permuted_row,
+             const int* permuted_row_to_unpermuted_row, const int* const token_selected_experts,
+             const int64_t* const num_valid_tokens_ptr, const int64_t num_rows, const int64_t expanded_num_rows,
+             const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
+             const int64_t experts_per_token, const float** alpha_scale_ptr_array,
              cudaStream_t stream, MOEParallelismConfig parallelism_config,
              cutlass_extensions::CutlassGemmConfig config) override {
-    return Self::gemm2(moe_gemm_runner_, static_cast<T const*>(input), gemm_output,
+    return Self::gemm2(moe_gemm_runner_, static_cast<const T*>(input), gemm_output,
                        static_cast<OutputType*>(final_output), expert_first_token_offset, tma_ws_input_template,
-                       static_cast<WeightType const*>(fc2_expert_weights), static_cast<ScaleBiasType const*>(fc2_expert_biases),
-                       static_cast<ScaleBiasType const*>(fc2_int_scales), fc2_fp8_dequant, fc2_fp4_act_flat, quant_params,
+                       static_cast<const WeightType*>(fc2_expert_weights), static_cast<const ScaleBiasType*>(fc2_expert_biases),
+                       static_cast<const ScaleBiasType*>(fc2_int_scales), fc2_fp8_dequant, fc2_fp4_act_flat, quant_params,
                        token_topk_unpermuted_scales, token_topk_permuted_scales, unpermuted_row_to_permuted_row,
                        permuted_row_to_unpermuted_row, token_selected_experts, num_valid_tokens_ptr, num_rows, expanded_num_rows,
-                       hidden_size, inter_size, num_experts_per_node, experts_per_token, alpha_scale_ptr_array,
+                       hidden_size, inter_size, num_experts_per_node, experts_per_token, alpha_scale_ptr_array, nullptr,
                        stream, parallelism_config, config);
   }
 
@@ -500,79 +536,50 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   }
 
   std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedDispatch(int64_t const* expert_first_token_offset,
+  computeStridesTmaWarpSpecializedDispatch(const int64_t* expert_first_token_offset,
                                            TmaWarpSpecializedGroupedGemmInput layout_info1, TmaWarpSpecializedGroupedGemmInput layout_info2,
                                            int64_t num_tokens, int64_t expanded_num_tokens, int64_t gemm1_n, int64_t gemm1_k, int64_t gemm2_n,
-                                           int64_t gemm2_k, int const num_experts_per_node, void const* gemm1_in, void const* gemm2_in,
-                                           void const* weights1, void const* weights2, float const* alpha_scale_flat1, float const* alpha_scale_flat2,
-                                           TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat1,
-                                           TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat2, QuantParams quant_params, void const* bias1,
-                                           void const* bias2, void* gemm1_output, void* gemm2_output, cudaStream_t stream) override {
+                                           int64_t gemm2_k, const int num_experts_per_node, const void* gemm1_in, const void* gemm2_in,
+                                           const void* weights1, const void* weights2, const float* alpha_scale_flat1, const float* alpha_scale_flat2,
+                                           const TmaWarpSpecializedGroupedGemmInput::ElementSF* fp4_act_flat1,
+                                           const TmaWarpSpecializedGroupedGemmInput::ElementSF* fp4_act_flat2, QuantParams quant_params, const void* bias1,
+                                           const void* bias2, void* gemm1_output, void* gemm2_output, cudaStream_t stream) override {
     return Self::computeStridesTmaWarpSpecialized(expert_first_token_offset, layout_info1, layout_info2, num_tokens,
                                                   expanded_num_tokens, gemm1_n, gemm1_k, gemm2_n, gemm2_k, num_experts_per_node,
-                                                  reinterpret_cast<T const*>(gemm1_in), reinterpret_cast<T const*>(gemm2_in),
-                                                  reinterpret_cast<WeightType const*>(weights1), reinterpret_cast<WeightType const*>(weights2),
+                                                  reinterpret_cast<const T*>(gemm1_in), reinterpret_cast<const T*>(gemm2_in),
+                                                  reinterpret_cast<const WeightType*>(weights1), reinterpret_cast<const WeightType*>(weights2),
                                                   alpha_scale_flat1, alpha_scale_flat2, fp4_act_flat1, fp4_act_flat2, quant_params,
-                                                  reinterpret_cast<ScaleBiasType const*>(bias1), reinterpret_cast<ScaleBiasType const*>(bias2),
+                                                  reinterpret_cast<const ScaleBiasType*>(bias1), reinterpret_cast<const ScaleBiasType*>(bias2),
                                                   reinterpret_cast<UnfusedGemmOutputType*>(gemm1_output),
                                                   reinterpret_cast<UnfusedGemmOutputType*>(gemm2_output), stream);
-  }
-
-  std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedLowLatencyDispatch(TmaWarpSpecializedGroupedGemmInput layout_info1,
-                                                     TmaWarpSpecializedGroupedGemmInput layout_info2, int64_t num_tokens, int64_t gemm1_n, int64_t gemm1_k,
-                                                     int64_t gemm2_n, int64_t gemm2_k, int const num_experts, void const* input1, void const* input2,
-                                                     void const* weights1, void const* weights2, float const* fp8_dequant1, float const* fp8_dequant2,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat, QuantParams quant_params,
-                                                     void const* bias1, void const* bias2, void* output1, void* output2, int const* num_active_experts_per,
-                                                     int const* active_expert_global_ids, int start_expert, cudaStream_t stream) override {
-    return Self::computeStridesTmaWarpSpecializedLowLatency(layout_info1, layout_info2, num_tokens, gemm1_n,
-                                                            gemm1_k, gemm2_n, gemm2_k, num_experts, reinterpret_cast<T const*>(input1),
-                                                            reinterpret_cast<T const*>(input2), reinterpret_cast<WeightType const*>(weights1),
-                                                            reinterpret_cast<WeightType const*>(weights2), fp8_dequant1, fp8_dequant2, fc1_fp4_act_flat,
-                                                            fc2_fp4_act_flat, quant_params, reinterpret_cast<ScaleBiasType const*>(bias1),
-                                                            reinterpret_cast<ScaleBiasType const*>(bias2), reinterpret_cast<UnfusedGemmOutputType*>(output1),
-                                                            reinterpret_cast<UnfusedGemmOutputType*>(output2), num_active_experts_per, active_expert_global_ids,
-                                                            start_expert, stream);
   }
 
  private:
   std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput> setupTmaWarpSpecializedInputs(
       int64_t num_rows, int64_t expanded_num_rows, ActivationType fc1_activation_type, bool use_fused_gated_activation,
-      int64_t hidden_size, int64_t inter_size, int64_t num_experts_per_node, void const* input_activations_void,
-      TmaWarpSpecializedGroupedGemmInput::ElementSF const* input_sf, void* final_output,
-      WeightType const* fc1_expert_weights, WeightType const* fc2_expert_weights, QuantParams quant_params,
-      ScaleBiasType const* fc1_expert_biases, ScaleBiasType const* fc2_expert_biases,
+      int64_t hidden_size, int64_t inter_size, int64_t num_experts_per_node, const void* input_activations_void,
+      const TmaWarpSpecializedGroupedGemmInput::ElementSF* input_sf, void* final_output,
+      const WeightType* fc1_expert_weights, const WeightType* fc2_expert_weights, QuantParams quant_params,
+      const ScaleBiasType* fc1_expert_biases, const ScaleBiasType* fc2_expert_biases,
       int start_expert,
       MOEParallelismConfig parallelism_config, cudaStream_t stream);
 
   static std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecialized(int64_t const* expert_first_token_offset,
+  computeStridesTmaWarpSpecialized(const int64_t* expert_first_token_offset,
                                    TmaWarpSpecializedGroupedGemmInput layout_info1, TmaWarpSpecializedGroupedGemmInput layout_info2,
                                    int64_t num_tokens, int64_t expanded_num_tokens, int64_t gemm1_n, int64_t gemm1_k, int64_t gemm2_n,
-                                   int64_t gemm2_k, int const num_experts_per_node, T const* gemm1_in, T const* gemm2_in,
-                                   WeightType const* weights1, WeightType const* weights2, float const* alpha_scale_flat1,
-                                   float const* alpha_scale_flat2, TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat1,
-                                   TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat2, QuantParams quant_params,
-                                   ScaleBiasType const* bias1, ScaleBiasType const* bias2, UnfusedGemmOutputType* gemm1_output,
+                                   int64_t gemm2_k, const int num_experts_per_node, const T* gemm1_in, const T* gemm2_in,
+                                   const WeightType* weights1, const WeightType* weights2, const float* alpha_scale_flat1,
+                                   const float* alpha_scale_flat2, const TmaWarpSpecializedGroupedGemmInput::ElementSF* fp4_act_flat1,
+                                   const TmaWarpSpecializedGroupedGemmInput::ElementSF* fp4_act_flat2, QuantParams quant_params,
+                                   const ScaleBiasType* bias1, const ScaleBiasType* bias2, UnfusedGemmOutputType* gemm1_output,
                                    UnfusedGemmOutputType* gemm2_output, cudaStream_t stream);
-  static std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedLowLatency(TmaWarpSpecializedGroupedGemmInput layout_info1,
-                                             TmaWarpSpecializedGroupedGemmInput layout_info2, int64_t num_tokens, int64_t gemm1_n, int64_t gemm1_k,
-                                             int64_t gemm2_n, int64_t gemm2_k, int const num_experts, T const* input1, T const* input2,
-                                             WeightType const* weights1, WeightType const* weights2, float const* fp8_dequant1, float const* fp8_dequant2,
-                                             TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
-                                             TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat, QuantParams quant_params,
-                                             ScaleBiasType const* bias1, ScaleBiasType const* bias2, UnfusedGemmOutputType* output1,
-                                             UnfusedGemmOutputType* output2, int const* num_active_experts_per, int const* active_expert_global_ids,
-                                             int start_expert, cudaStream_t stream);
-  std::map<std::string, std::pair<size_t, size_t>> getWorkspaceDeviceBufferSizes(int64_t const num_rows,
-                                                                                 int64_t const hidden_size, int64_t const inter_size, int const num_experts_per_node,
-                                                                                 int const experts_per_token, ActivationType activation_type,
+  std::map<std::string, std::pair<size_t, size_t>> getWorkspaceDeviceBufferSizes(const int64_t num_rows,
+                                                                                 const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
+                                                                                 const int experts_per_token, ActivationType activation_type,
                                                                                  bool use_awq);
-  void configureWsPtrs(char* ws_ptr, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
-                       int const num_experts_per_node, int const experts_per_token, ActivationType activation_type,
+  void configureWsPtrs(char* ws_ptr, const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size,
+                       const int num_experts_per_node, const int experts_per_token, ActivationType activation_type,
                        MOEParallelismConfig parallelism_config,
                        bool use_awq);
 
@@ -595,8 +602,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                          : TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NONE;
   }
 
-  T const* applyPrequantScale(void* smoothed_act, void const* permuted_data, void const* prequant_scales,
-                              int64_t const* num_valid_tokens_ptr, int64_t const expanded_num_rows, int64_t const seq_len, bool const use_awq,
+  const T* applyPrequantScale(void* smoothed_act, const void* permuted_data, const void* prequant_scales,
+                              const int64_t* num_valid_tokens_ptr, const int64_t expanded_num_rows, const int64_t seq_len, const bool use_awq,
                               cudaStream_t stream);
 
   MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType> moe_gemm_runner_;
@@ -621,8 +628,9 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   // TODO If we fuse the quantization for GEMM2 into GEMM1 we will need two pointers
   TmaWarpSpecializedGroupedGemmInput::ElementSF* fc1_fp4_act_scale_;
   TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_scale_;
-  float const** alpha_scale_ptr_array_fc1_ = nullptr;
-  float const** alpha_scale_ptr_array_fc2_ = nullptr;
+  const float** alpha_scale_ptr_array_fc1_ = nullptr;
+  const float** alpha_scale_ptr_array_fc2_ = nullptr;
+  float* moe_gemv_splitk_partials_{};
   void* smoothed_act_{};
 
   TmaWarpSpecializedGroupedGemmInput tma_ws_grouped_gemm1_input_;
@@ -669,13 +677,13 @@ struct GemmProfilerBackend {
     }
   }
 
-  void prepare(int num_tokens, char* workspace, void const* expert_weights, cudaStream_t stream);
+  void prepare(int num_tokens, char* workspace, const void* expert_weights, cudaStream_t stream);
 
   std::map<std::string, std::pair<size_t, size_t>> getProfilerWorkspaces(int maxM, bool is_tma_ws);
   size_t getWorkspaceSize(int maxM);
 
-  void runProfiler(int num_tokens, cutlass_extensions::CutlassGemmConfig const& tactic, char* workspace_ptr_char, void const* expert_weights,
-                   cudaStream_t const& stream);
+  void runProfiler(int num_tokens, const cutlass_extensions::CutlassGemmConfig& tactic, char* workspace_ptr_char, const void* expert_weights,
+                   const cudaStream_t& stream);
 
   CutlassMoeFCRunnerInterface* mInterface;
 
@@ -711,7 +719,7 @@ struct GemmProfilerBackend {
  private:
   void prepareRouting(int num_tokens, char* workspace, cudaStream_t stream);
   void prepareQuantParams(int num_tokens, char* workspace, cudaStream_t stream);
-  void prepareTmaWsInputs(int num_tokens, char* workspace, void const* expert_weights, cudaStream_t stream);
+  void prepareTmaWsInputs(int num_tokens, char* workspace, const void* expert_weights, cudaStream_t stream);
 };
 
 // Populates a buffer with random values for use with MOE benchmarking

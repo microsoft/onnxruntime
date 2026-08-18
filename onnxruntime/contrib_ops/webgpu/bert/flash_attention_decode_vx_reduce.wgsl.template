@@ -5,7 +5,7 @@
 #param m_tile
 #param seq_tile_size
 #param tile_size
-#param use_indirect_dispatch
+#param use_seqlen_k
 
 #use .getByOffset .setByOffset
 
@@ -32,8 +32,12 @@ $MAIN {
   }
   let local_row = u32(local_idx / tile_size);
   let local_col = local_idx % tile_size;
-  #if use_indirect_dispatch
-  let total_sequence_length = u32(seqlens_k[0]) + 1u;
+  // Per-batch total_sequence_length: short batches contributed neutral metadata
+  // (-inf, 0) for tiles beyond their per-batch total, so reading only this batch's
+  // tiles ensures softmax rescaling is not skewed by garbage tiles.
+  #if use_seqlen_k
+  let batch_idx_for_seqlen = batch_head_idx / uniforms.num_heads;
+  let total_sequence_length = u32(seqlens_k[batch_idx_for_seqlen]) + 1u;
   let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
   #else
   let num_total_seq_length_tile = uniforms.num_total_seq_length_tile;

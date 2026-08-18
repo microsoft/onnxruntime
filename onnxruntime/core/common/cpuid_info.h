@@ -110,6 +110,7 @@ class CPUIDInfo {
   static void LogEarlyWarning(std::string_view message);
 
   CPUIDInfo();
+  ~CPUIDInfo();
 
   void VendorInfoInit();
 

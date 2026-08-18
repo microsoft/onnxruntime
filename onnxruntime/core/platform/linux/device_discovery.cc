@@ -78,6 +78,18 @@ Status DetectGpuSysfsPaths(std::vector<GpuSysfsPathInfo>& gpu_sysfs_paths_out) {
     const auto& dir_item_path = dir_item.path();
 
     if (size_t card_idx{}; detect_card_path(dir_item_path, card_idx)) {
+      // Skip non-PCI DRM cards. On systems with AMD GPU compute partitioning
+      // (XCP), the amdgpu driver creates virtual platform sub-devices
+      // (e.g., amdgpu_xcp_*) that lack standard PCI sysfs attributes.
+      const auto vendor_path = dir_item_path / "device" / "vendor";
+      const bool vendor_path_exists = fs::exists(vendor_path, error_code);
+      ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, vendor_path, "Checking existence of DRM card vendor sysfs attribute"));
+
+      if (!vendor_path_exists) {
+        LOGS_DEFAULT(VERBOSE) << "Skipping non-PCI DRM card: " << dir_item_path;
+        continue;
+      }
+
       GpuSysfsPathInfo path_info{};
       path_info.card_idx = card_idx;
       path_info.path = dir_item_path;

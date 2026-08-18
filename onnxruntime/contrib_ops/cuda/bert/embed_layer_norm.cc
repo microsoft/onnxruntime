@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "embed_layer_norm.h"
@@ -60,6 +62,15 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
+
+  // Element offsets into the output are 32-bit on device; reject shapes whose element count would
+  // exceed the 32-bit indexable range. The maximum output write index is
+  // batch_size * sequence_length * hidden_size - 1, so this guard covers every device write site.
+  const int64_t output_element_count =
+      static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
+  ORT_RETURN_IF_NOT(output_element_count <= static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
+                    "EmbedLayerNormalization: output element count (", output_element_count,
+                    ") exceeds the supported 32-bit indexing range.");
 
   const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
 

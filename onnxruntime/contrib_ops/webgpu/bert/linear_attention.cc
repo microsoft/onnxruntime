@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "contrib_ops/webgpu/bert/linear_attention.h"
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -108,6 +110,8 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   q_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("q_num_heads"));
   kv_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("kv_num_heads"));
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
+              "WebGPU LinearAttention does not support state_window > 0 (CUDA EP only)");
 }
 
 /*
@@ -194,10 +198,10 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   }
 
   // Allocate outputs — output is 3D packed, state is 4D
-  // Output uses kv_num_heads (matches schema inference: output_dim == V_dim).
-  // For inverse GQA (q < kv): each KV head writes its own output slot.
-  // For standard/MHA (q >= kv): q == kv with this schema, so equivalent.
-  TensorShapeVector output_shape({batch_size, seq_length, kv_num_heads_ * head_dim_v});
+  // Output head count = max(q, kv), matching schema inference and the CPU/CUDA kernels:
+  // standard GQA (q >= kv) emits one output per Q head, inverse GQA (q < kv) one per KV head.
+  const int64_t out_num_heads = std::max(q_num_heads_, kv_num_heads_);
+  TensorShapeVector output_shape({batch_size, seq_length, out_num_heads * head_dim_v});
   Tensor* output = context.Output(0, output_shape);
 
   TensorShapeVector state_shape({batch_size, kv_num_heads_, head_dim_k, head_dim_v});

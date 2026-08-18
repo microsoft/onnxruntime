@@ -74,14 +74,14 @@ bool MatchGemmSubgraph(Graph& graph,
   DEBUG_LOG("Start MatchGemmSubgraph");
   // GPT Attention fusion supports opset version 9 or later.
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, dst_arg_index, "Reshape", {5, 13}, kOnnxDomain},
+      {0, dst_arg_index, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gemm", {9, 11, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
       {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
-      {0, 1, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13}, kOnnxDomain},
+      {0, 1, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Slice", {1, 10, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(node_after_gemm_reshape, true, parent_path, edges, logger)) {
@@ -97,6 +97,14 @@ bool MatchGemmSubgraph(Graph& graph,
   const Node& squeeze = edges[5]->GetNode();
   const Node& slice = edges[6]->GetNode();
   const Node& shape_before_slice = edges[7]->GetNode();
+
+  // The downstream Slice/Squeeze/Gather nodes assume Shape returns the full tensor shape so
+  // that indices map directly to tensor dimensions. A partial shape (opset 15+ start/end
+  // attributes) would produce incorrect index mapping.
+  if (!graph_utils::IsFullShapeNode(shape_before_slice)) {
+    DEBUG_LOG("Shape node has non-default start/end attributes");
+    return false;
+  }
 
   const auto& subgraph_input = shape_before_slice.InputDefs()[0];
   if (reshape_before_gemm.InputDefs()[0]->Name() != subgraph_input->Name()) {
@@ -166,9 +174,9 @@ bool MatchGemmSubgraph(Graph& graph,
   // Match: [Input] ----> Shape --> Gather (indices=0 or 1) --> Unsqueeze (axes=0) ----> Concat ( , , )
   for (int i = 0; i < 2; i++) {
     std::vector<graph_utils::EdgeEndToMatch> gather_path1{
-        {0, i, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+        {0, i, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
         {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-        {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+        {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
 
     if (!graph_utils::FindPath(concat_after_gather, true, gather_path1, edges, logger)) {
       DEBUG_LOG("Faild to match gemm gather path");
@@ -375,8 +383,8 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
 bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnidirMaskResult& result, bool use_shared_node, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchUnidirMaskSubgraph");
   std::vector<graph_utils::EdgeEndToMatch> root_path{
-      {0, 0, "Where", {9}, kOnnxDomain},
-      {0, 1, "Div", {7, 13}, kOnnxDomain}};
+      {0, 0, "Where", {9, 16}, kOnnxDomain},
+      {0, 1, "Div", {7, 13, 14}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_node, true, root_path, edges, logger)) {
@@ -392,14 +400,14 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   }
 
   std::vector<graph_utils::EdgeEndToMatch> path1{
-      {0, 0, "Cast", {9, 13}, kOnnxDomain},
+      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Slice", {10, 11, 13}, kOnnxDomain},  // Last Slice
       {0, 0, "Slice", {10, 11, 13}, kOnnxDomain},  // Mask Slice
-      {0, 1, "Unsqueeze", {9, 11, 13}, kOnnxDomain},
-      {0, 0, "Sub", {7, 13}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13}, kOnnxDomain},
+      {0, 1, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Sub", {7, 13, 14}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Slice", {10, 11, 13}, kOnnxDomain},  // Slice 1
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(where_node, true, path1, edges, logger)) {
     DEBUG_LOG("Faild to match path 1 for unidirectional mask");
@@ -454,8 +462,8 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   }
 
   std::vector<graph_utils::EdgeEndToMatch> slice_ends_path{
-      {0, 2, "Unsqueeze", {9, 11, 13}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13}, kOnnxDomain}};
+      {0, 2, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(last_slice, true, slice_ends_path, edges, logger) ||
       edges[1]->GetNode().Index() != squeeze1.Index()) {
@@ -482,9 +490,9 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   }
 
   std::vector<graph_utils::EdgeEndToMatch> path4{
-      {0, 1, "Squeeze", {1, 11, 13}, kOnnxDomain},
+      {0, 1, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Slice", {10, 11, 13}, kOnnxDomain},  // Slice 2
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(sub, true, path4, edges, logger)) {
     DEBUG_LOG("Faild to match path 4 for unidirectional mask");
@@ -632,9 +640,9 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   }
 
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
-      {0, 1, "Mul", {7, 13}, kOnnxDomain},
-      {0, 0, "Sub", {7, 13}, kOnnxDomain}};
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+      {0, 1, "Mul", {7, 13, 14}, kOnnxDomain},
+      {0, 0, "Sub", {7, 13, 14}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(softmax, true, mask_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for mask");
@@ -766,7 +774,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
 
   // expand has another input Shape <-- qk_MatMul
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
-      {0, 1, "Shape", {1, 13}, kOnnxDomain},
+      {0, 1, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
   if (!graph_utils::FindPath(expand, true, shape_path, edges, logger)) {
     DEBUG_LOG("Failed to find shape path");
@@ -791,9 +799,9 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   // reshape node's shape input
   std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_1{
       {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   if (!graph_utils::FindPath(reshape, true, reshape_shape_path_1, edges, logger)) {
     DEBUG_LOG("Failed to find reshape shape path 1");
     return false;
@@ -809,9 +817,9 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   }
 
   std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_2{
-      {0, 3, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 3, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   if (!graph_utils::FindPath(concat, true, reshape_shape_path_2, edges, logger)) {
     DEBUG_LOG("Failed to find reshape shape path 2");
     return false;
@@ -887,7 +895,7 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
                        MatchPastResult& result, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchPastSubgraph");
   std::vector<graph_utils::EdgeEndToMatch> past_k_path{
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain}};
 
   if (transpose_optimized_pattern) {
@@ -904,13 +912,13 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
   const Node& past_k_gather = edges[i++]->GetNode();
 
   std::vector<graph_utils::EdgeEndToMatch> present_k_path{
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Concat", {4, 11, 13}, kOnnxDomain}};
 
   if (transpose_optimized_pattern) {
     present_k_path = {
-        {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+        {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
         {0, 0, "Concat", {4, 11, 13}, kOnnxDomain}};
   }
 
@@ -924,7 +932,7 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
   const Node& present_concat = edges[i++]->GetNode();
 
   std::vector<graph_utils::EdgeEndToMatch> present_past_v_path{
-      {0, 1, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 1, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Concat", {4, 11, 13}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain}};
   if (!graph_utils::FindPath(present_concat, true, present_past_v_path, edges, logger)) {
@@ -1024,7 +1032,7 @@ bool CheckDistilBertReshapeShape(const Graph& graph, const Node& reshape, int64_
   // lazy check: record unqueeze first and then check in the mask path
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
       {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, shape_path, edges, logger)) {
     DEBUG_LOG("Failed to find shape path");
@@ -1339,9 +1347,9 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   }
 
   std::vector<graph_utils::EdgeEndToMatch> path1{
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(*gemm1_result.input_node, true, path1, edges, logger)) {
@@ -1361,9 +1369,9 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   bool has_past = graph_utils::IsSupportedOptypeVersionAndDomain(*v_concat, "Concat", {4, 11, 13}, kOnnxDomain);
 
   std::vector<graph_utils::EdgeEndToMatch> path2{
-      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {2, 0, "Split", {2, 11, 13}, kOnnxDomain}};
+      {0, 1, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {2, 0, "Split", {2, 11, 13, 18}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(has_past ? *v_concat : qkv_matmul, true, path2, edges, logger)) {
     DEBUG_LOG("Faild to find path v to Split");
@@ -1413,9 +1421,9 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_path{
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Split", {2, 11, 13}, kOnnxDomain}};
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Split", {2, 11, 13, 18}, kOnnxDomain}};
 
   const Node* qk_div = unidir_mask_result.div_node;
   if (!graph_utils::FindPath(*qk_div, true, q_path, edges, logger)) {
@@ -1447,7 +1455,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       return false;
     }
 
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*k_concat, "Transpose", {1, 13, 21}, kOnnxDomain)) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*k_concat, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain)) {
       transpose_optimized_pattern = true;
       DEBUG_LOG("Using transpose optimized pattern");
       opt_k_transpose = k_concat;
@@ -1471,9 +1479,9 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
 
   // path to k
   std::vector<graph_utils::EdgeEndToMatch> k_path{
-      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {1, 0, "Split", {2, 11, 13}, kOnnxDomain}};
+      {0, 1, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {1, 0, "Split", {2, 11, 13, 18}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(has_past ? *k_concat : qk_matmul, true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");

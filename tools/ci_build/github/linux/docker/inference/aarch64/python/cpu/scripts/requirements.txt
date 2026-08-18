@@ -7,4 +7,4 @@ wheel
 protobuf==5.29.6
 sympy==1.14
 flatbuffers
-onnx==1.21.0
+onnx==1.22.0

@@ -10,6 +10,7 @@ vcpkg_from_github(
     HEAD_REF master
     PATCHES absl_windows.patch
             absl_cuda_warnings.patch
+            absl_cuda13_member_template.patch
 )
 
 

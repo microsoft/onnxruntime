@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include "core/graph/node_attr_utils.h"
@@ -16,6 +17,7 @@
 #include "test/optimizer/webgpu_fusion_test_util.h"
 
 #include "gtest/gtest.h"
+#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 namespace test {
@@ -245,17 +247,53 @@ Status CheckUnfusedGraph(const Graph& graph) {
 
 }  // namespace
 
-// Helper: build the transformer registered for the WebGPU EP only (matches production).
+// Helper: build the transformer for the original WebGPU-only tests.
 std::unique_ptr<GroupQueryAttentionPreNormFusion> MakeWebGpuTransformer() {
   return std::make_unique<GroupQueryAttentionPreNormFusion>(
       InlinedHashSet<std::string_view>{kWebGpuExecutionProvider});
 }
 
+// Helper: build the production-compatible transformer.
+std::unique_ptr<GroupQueryAttentionPreNormFusion> MakeCudaWebGpuTransformer() {
+  return std::make_unique<GroupQueryAttentionPreNormFusion>(
+      InlinedHashSet<std::string_view>{kCudaExecutionProvider, kWebGpuExecutionProvider});
+}
+
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPattern) {
   auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesCudaAssignedQwenPattern) {
+  auto build = [](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern(builder, BuildOptions{});
+    for (auto& node : builder.graph_.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatternCurrentOpset) {
+  // Uses the current max ONNX opset to catch version-list drift.
+  // If this fails, update version lists in
+  // onnxruntime/core/optimizer/group_query_attention_pre_norm_fusion.cc.
+  const auto& map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto it = map.find(ONNX_NAMESPACE::ONNX_DOMAIN);
+  ASSERT_TRUE(it != map.end()) << "ONNX domain not found in OpSchemaRegistry";
+  int current_opset = it->second.second;
+  auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships.
+  // Tracked by #28966; this runs the CUDA+WebGPU attention-fusion path that surfaced #28969.
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/current_opset, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph,
+      ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionMatchesUnfusedWebGpuResults) {
@@ -325,6 +363,26 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsEpsilonM
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNonPositiveEpsilon) {
+  BuildOptions opts;
+  opts.q_epsilon = 0.0f;
+  opts.k_epsilon = 0.0f;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNonFiniteEpsilon) {
+  BuildOptions opts;
+  opts.q_epsilon = std::numeric_limits<float>::quiet_NaN();
+  opts.k_epsilon = std::numeric_limits<float>::quiet_NaN();
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsBadInnerReshape) {
   BuildOptions opts;
   opts.break_k_inner_reshape_shape = true;
@@ -344,7 +402,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNon1DNor
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsCpuEp) {
-  // Build the pattern but assign all nodes to CPU EP. The fusion is gated to WebGPU only,
+  // Build the pattern but assign all nodes to CPU EP. The fusion is gated to CUDA/WebGPU only,
   // so the graph must remain unfused.
   auto build = [](ModelTestBuilder& builder) {
     BuildQwenQkPostNormPattern(builder, BuildOptions{});
@@ -353,13 +411,13 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsCpuEp) {
     }
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsJsEp) {
   // JSEP does not implement the fused per-head Q/K RMSNorm prologue, so the optimizer
-  // (which we now register for WebGPU only) must leave JSEP-assigned graphs alone.
+  // (which we now register for CUDA/WebGPU only) must leave JSEP-assigned graphs alone.
   auto build = [](ModelTestBuilder& builder) {
     BuildQwenQkPostNormPattern(builder, BuildOptions{});
     for (auto& node : builder.graph_.Nodes()) {
@@ -367,7 +425,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsJsEp) {
     }
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
