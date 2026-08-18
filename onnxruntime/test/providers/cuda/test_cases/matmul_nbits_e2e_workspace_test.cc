@@ -369,9 +369,11 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
                  << "; MatMulNBits fpA_intB path is not eligible.";
   }
 
+  // Prove that Level 1 and the kernel constructor both honor session config
+  // over conflicting process-wide environment variables.
   ScopedEnvironmentVariables scoped_env(
-      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
-                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}}});
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
   const std::string model_bytes = BuildMatMulNBitsModelBytes();
 
   // For this model the legacy 1.5x fallback is below 700 KiB, while the
@@ -381,6 +383,10 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
   // therefore prove that CUDA GetCapability applies the estimator result.
   {
     SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "720,"));
     InferenceSessionWrapper session(so, GetEnvironment());
@@ -396,6 +402,10 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
 
   {
     SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "700,"));
     InferenceSessionWrapper session(so, GetEnvironment());

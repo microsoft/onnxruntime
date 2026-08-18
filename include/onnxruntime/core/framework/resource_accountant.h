@@ -7,6 +7,7 @@
 #include <iosfwd>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 
@@ -157,6 +158,20 @@ class IResourceAccountant {
     return max_shape_inference_result_;
   }
 
+  void SetSessionConfigOptions(const std::unordered_map<std::string, std::string>& config_options) {
+    session_config_options_.clear();
+    session_config_options_.reserve(config_options.size());
+    for (const auto& [key, value] : config_options) {
+      session_config_options_.insert_or_assign(key, value);
+    }
+  }
+
+  std::optional<std::string> GetSessionConfigEntry(const std::string& key) const {
+    const auto it = session_config_options_.find(key);
+    return it == session_config_options_.end() ? std::nullopt
+                                               : std::optional<std::string>{it->second};
+  }
+
   /// Returns workspace for nodes that were accepted and committed by partitioning.
   virtual size_t GetCommittedWorkspaceEstimate() const { return 0; }
 
@@ -181,6 +196,7 @@ class IResourceAccountant {
   std::optional<ResourceCount> threshold_;
   MaxShapeOverrideMap max_shape_overrides_;
   MaxShapeInferenceResult max_shape_inference_result_;
+  InlinedHashMap<std::string, std::string> session_config_options_;
 };
 
 // A map of Ep Type to a resource accountant for this EP

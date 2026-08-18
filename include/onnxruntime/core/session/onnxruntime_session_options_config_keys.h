@@ -415,6 +415,17 @@ static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "sessi
 static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
     "session.resource_cuda_partitioning_settings";
 
+/// Enables the CUDA MatMulNBits fpA_intB path for non-prepacked weights.
+/// "0" or "off" disables it; any other non-empty value enables it.
+/// Overrides the process-wide ORT_FPA_INTB_GEMM environment variable.
+/// Capacity-aware partitioning uses this same resolved value for Level-1 estimation.
+static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_gemm";
+
+/// Comma-separated positive M buckets used for initial CUDA MatMulNBits tactic profiling.
+/// Overrides the process-wide ORT_FPA_INTB_PROFILE_M environment variable.
+/// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
+static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
@@ -461,6 +472,10 @@ static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.n
 /// estimation hints, not guaranteed upper bounds: operator shape transformations are not
 /// necessarily monotonic. Runtime shapes are not constrained by this setting, and consumers
 /// must retain runtime bounds checks and allocation fallbacks.
+///
+/// When capacity-aware partitioning is enabled, propagated shapes are used to calculate
+/// dynamic output sizes and Level-1 workspace estimates. They therefore directly affect the
+/// hard partitioning budget and may change whether a node is assigned to an EP.
 /// </summary>
 static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
 

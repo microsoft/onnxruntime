@@ -484,6 +484,13 @@ Status CreateAccountants(
     }
   }
 
+  if (result.has_value()) {
+    for (auto& [ep_type, accountant] : *result) {
+      ORT_UNUSED_PARAMETER(ep_type);
+      accountant->SetSessionConfigOptions(config_options.GetConfigOptionsMap());
+    }
+  }
+
   // Parse max shape overrides and attach to all accountants
   const std::string max_shape_config = config_options.GetConfigOrDefault(
       kOrtSessionOptionsMaxShapeOverride, "");

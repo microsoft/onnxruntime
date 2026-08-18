@@ -11,6 +11,7 @@
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -3544,6 +3545,17 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
       // allocations remain separate so their different lifetimes are visible in reporting.
       if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
+        const auto fpa_intb_gemm =
+            resource_accountant->GetSessionConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm);
+        const auto profile_m =
+            resource_accountant->GetSessionConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM);
+        const contrib::cuda::MatMulNBitsMemoryEstimateOptions estimate_options{
+            fpa_intb_gemm.has_value()
+                ? std::optional<std::string_view>{*fpa_intb_gemm}
+                : std::nullopt,
+            profile_m.has_value()
+                ? std::optional<std::string_view>{*profile_m}
+                : std::nullopt};
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
         const TensorShape* input_a_shape =
@@ -3553,8 +3565,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         level1_memory_estimate =
             input_a_shape != nullptr
                 ? contrib::cuda::EstimateMatMulNBitsMemory(
-                      *node, input_a_shape->GetDims(), GetDeviceProp())
-                : contrib::cuda::EstimateMatMulNBitsMemory(*node, GetDeviceProp());
+                      *node, input_a_shape->GetDims(), GetDeviceProp(), estimate_options)
+                : contrib::cuda::EstimateMatMulNBitsMemory(
+                      *node, GetDeviceProp(), estimate_options);
         if (level1_memory_estimate.has_value()) {
           LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
                                 << ": runtime workspace="

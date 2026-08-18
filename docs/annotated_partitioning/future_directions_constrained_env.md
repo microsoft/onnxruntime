@@ -993,6 +993,10 @@ stable across compilers/STL versions the way a scalar with a sentinel value is.
   shape inference propagates those input hints to intermediate values without changing executable-graph
   metadata or runtime input validation. These propagated values are estimates, not proven upper
   bounds, because operator shape transformations are not necessarily monotonic.
+- With capacity-aware partitioning enabled, those propagated shapes feed both ad-hoc dynamic-output
+  sizing and Level-1 workspace estimation. They therefore affect the hard memory budget and can change
+  EP assignment. This is a planning decision based on user-provided estimates, not enforcement of a
+  runtime maximum.
 
 Level 1 consumes the current shadow result during `GetCapability()`. It reuses that result for the second
 capability pass when layout transformation reports no modification and rebuilds it after known graph

@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 #include <cuda_runtime_api.h>
 #include <gsl/gsl>
@@ -23,15 +24,17 @@
 #include "core/framework/level1_memory_estimate.h"
 
 namespace onnxruntime {
-// NOTE: we deliberately do NOT forward-declare Node here. This header has exactly two includers,
-// and they live in genuinely different Node "worlds":
+// NOTE: we deliberately do NOT forward-declare Node here. This header has includers in genuinely
+// different Node "worlds":
 //   - core/providers/cuda/cuda_execution_provider.cc includes provider_api.h first, where the
 //     shared-provider bridge declares `struct Node;` (provider_wrappedtypes.h defines `struct Node`).
 //   - test/providers/cuda/test_cases/matmul_nbits_e2e_workspace_test.cc includes core/graph/graph.h
 //     first, where the in-tree `Node` is a `class` (core/graph/graph.h: `class Node { ... }`).
+//   - matmul_nbits.h includes cuda_kernel.h first, which supplies the appropriate Node declaration
+//     for its build world.
 // Forward-declaring Node ourselves would force us to pick a single tag (class or struct); either
-// choice mismatches one of the two includers and triggers MSVC C4099 / GCC-Clang -Wmismatched-tags
-// there. Both real includers already bring in a correct Node declaration (via their own core/bridge
+// choice mismatches an includer and triggers MSVC C4099 / GCC-Clang -Wmismatched-tags
+// there. All includers bring in a correct Node declaration (via their own core/bridge
 // headers) BEFORE including this header, so the `const Node&` parameter below is already visible and
 // no declaration of our own is needed. Keep this header included AFTER a Node-declaring header.
 namespace contrib {
@@ -42,11 +45,18 @@ namespace cuda {
 // This graph-type-free helper is shared by the Level-1 shape wrappers and Level-2 TensorShape path.
 std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape);
 
+struct MatMulNBitsMemoryEstimateOptions {
+  std::optional<std::string_view> fpa_intb_gemm;
+  std::optional<std::string_view> profile_m;
+};
+
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
-    const Node& node, const cudaDeviceProp& device_prop);
+    const Node& node, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options = {});
 // Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
-    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options = {});
 
 }  // namespace cuda
 }  // namespace contrib
