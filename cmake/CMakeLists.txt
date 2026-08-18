@@ -127,7 +127,7 @@ cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory 
 # encoder models. Turning this OFF drops ~14MB of embedded cubin data; attention falls back to
 # flash / memory efficient / cuDNN / unfused kernels.
 cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
-option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
+cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
@@ -571,6 +571,11 @@ if(onnxruntime_USE_SVE)
       message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
       set(onnxruntime_USE_SVE OFF)
     endif()
+  elseif(WIN32 AND onnxruntime_target_platform STREQUAL "ARM64")
+    # The SVE elementwise kernels ship as portable machine-code assembly
+    # (hex-encoded instruction words assembled by armasm64), so no compiler
+    # SVE support is needed; the kernels are runtime-gated on HasArmSve().
+    message(STATUS "SVE enabled via portable machine-code kernels.")
   else()
     message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
     set(onnxruntime_USE_SVE OFF)
@@ -1929,18 +1934,27 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_USE_VCPKG)
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
       string(APPEND PROJECT_CONFIG_CONTENT
         "find_dependency(MSTelemetry CONFIG)\n\
         ")
     endif()
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE AND NOT onnxruntime_USE_VCPKG AND NOT onnxruntime_BUILD_SHARED_LIB)
-      # FetchContent static non-Apple telemetry ships mat plus bundled sqlite3/zlib archives in this
-      # package, but mat still links system libcurl and pthreads; the consumer must re-find them.
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(CURL)\n\
-        find_dependency(Threads)\n\
-        ")
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
+       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
+       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
+       AND NOT onnxruntime_BUILD_SHARED_LIB)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # The embedded curl archive uses the platform Threads target for its resolver.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(Threads)\n\
+          ")
+      else()
+        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(CURL)\n\
+          find_dependency(Threads)\n\
+          ")
+      endif()
     endif()
   endif()
 

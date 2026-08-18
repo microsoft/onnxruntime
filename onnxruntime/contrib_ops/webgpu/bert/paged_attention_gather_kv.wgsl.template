@@ -1,0 +1,52 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// PagedAttention — gather paged K/V into padded BNSH scratch tensors.
+//
+// FA expects dense present_key / present_value in BNSH layout
+//   (batch_size, kv_num_heads, max_kv_len, head_size)
+// but PagedAttention's caches are block-based. This kernel walks the paged
+// cache via block_table and materialises a per-batch contiguous view so
+// ApplyFlashAttention can run unchanged.
+//
+// For each output (b, h, s, d): trailing slots s >= total_kv_len_b are
+// zero-filled; active slots hit the cache via block_table[b, s/block_size].
+//
+// Layout:
+//   key_cache / value_cache   : (num_blocks, block_size, kv_num_heads, head_size)
+//   block_table               : (batch_size, max_num_blocks_per_seq)
+//   past_seqlens              : (batch_size,)
+//   cumulative_sequence_length: (batch_size + 1,)
+//   k_padded / v_padded       : (batch_size, kv_num_heads, max_kv_len, head_size)
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .getByIndices .setByIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let d = global_idx % uniforms.head_size;
+  let s = (global_idx / uniforms.head_size) % uniforms.max_kv_len;
+  let h = (global_idx / (uniforms.head_size * uniforms.max_kv_len)) % uniforms.kv_num_heads;
+  let b = global_idx / (uniforms.head_size * uniforms.max_kv_len * uniforms.kv_num_heads);
+
+  let past_len = u32(past_seqlens.getByOffset(b));
+  let cum_lo = u32(cumulative_sequence_length.getByOffset(b));
+  let cum_hi = u32(cumulative_sequence_length.getByOffset(b + 1u));
+  let total_kv_len_b = past_len + (cum_hi - cum_lo);
+
+  if (s >= total_kv_len_b) {
+    k_padded.setByIndices(vec4<u32>(b, h, s, d), k_padded_value_t(0));
+    v_padded.setByIndices(vec4<u32>(b, h, s, d), v_padded_value_t(0));
+    return;
+  }
+
+  let block_off = s / uniforms.block_size;
+  let slot_in_bk = s % uniforms.block_size;
+  let block_id = u32(block_table.getByIndices(vec2<u32>(b, block_off)));
+
+  let k_val = key_cache.getByIndices(vec4<u32>(block_id, slot_in_bk, h, d));
+  let v_val = value_cache.getByIndices(vec4<u32>(block_id, slot_in_bk, h, d));
+  k_padded.setByIndices(vec4<u32>(b, h, s, d), k_val);
+  v_padded.setByIndices(vec4<u32>(b, h, s, d), v_val);
+}

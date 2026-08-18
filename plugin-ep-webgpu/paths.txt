@@ -6,5 +6,6 @@
 :(top)onnxruntime/core/providers/webgpu
 :(top)onnxruntime/core/session/plugin_ep/ep_factory_webgpu.cc
 :(top)onnxruntime/core/session/plugin_ep/ep_factory_webgpu.h
+:(top)onnxruntime/test/providers/webgpu
 :(top)onnxruntime/test/webgpu
 :(top)plugin-ep-webgpu

@@ -22,6 +22,8 @@ struct BeamSearchParameters : public IGenerationParameters {
   void ParseFromInputs(OpKernelContext* context);
 
   void SetSubgraphParameters(int vocab_size, int num_heads, int head_size, int num_layers);
+
+  void ValidateWhisperTimestampTokenId() const;
 };
 
 struct WhisperBeamSearchParameters : public BeamSearchParameters {

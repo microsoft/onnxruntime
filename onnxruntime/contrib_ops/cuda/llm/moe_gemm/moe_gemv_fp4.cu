@@ -248,7 +248,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
                                    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                    int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                                    int sm, MoeGemvConfig config, bool sm80_pair_interleaved,
-                                   cutlass_kernels::MoeGemvRowSkipParams row_skip, cudaStream_t stream) {
+                                   cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
   // CtaN. Taken either via the opt-in env knob or because the caller pre-packed a single
@@ -263,25 +263,25 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
         fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T, T>(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
-            row_skip, stream);
+            stream);
       } else if constexpr (fiv::kMoeGemvFp4FastSupported<DetailsI, Fp4GemvAccT<T>>) {
         if (!Fp4MoeGemvFastDisabled()) {
           fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedFastCtaN, kInterleavedThreads, T,
                                             Fp4GemvAccT<T>, true>(
               const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
               expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
-              row_skip, stream);
+              stream);
           return;
         }
         fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T, Fp4GemvAccT<T>>(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
-            row_skip, stream);
+            stream);
       } else {
         fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T, Fp4GemvAccT<T>>(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
-            row_skip, stream);
+            stream);
       }
     };
     if (sm80_pair_interleaved) {
@@ -301,7 +301,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
     fiv::dispatch_moe_gemv_group_size<Details, cta_n(), threads(), T, Fp4GemvAccT<T>>(
         const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
         expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
-        row_skip, stream);
+        stream);
   };
   if (config == MoeGemvConfig::kCtaN16) {
     launch([] { return kCtaN16; }, [] { return kDefaultThreads; });
@@ -318,7 +318,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
-    cutlass_kernels::MoeGemvRowSkipParams row_skip, cudaStream_t stream) {
+    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
   // CtaN, fusing SwiGLU. Taken either via the opt-in env knob or because the caller pre-packed a
@@ -335,27 +335,27 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
         fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T, T>(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
-            group_size, activation_params, row_skip, stream);
+            group_size, activation_params, permuted_row_to_source_row, static_cast<int>(num_rows), stream);
       } else if constexpr (fiv::kMoeGemvFp4FastSupported<DetailsI, Fp4GemvAccT<T>>) {
         if (!Fp4MoeGemvFastDisabled()) {
           fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedFastCtaN,
                                                                kInterleavedThreads, T, Fp4GemvAccT<T>, true>(
               const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
               expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
-              group_size, activation_params, row_skip, stream);
+              group_size, activation_params, permuted_row_to_source_row, static_cast<int>(num_rows), stream);
           return;
         }
         fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T,
                                                              Fp4GemvAccT<T>>(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
-            group_size, activation_params, row_skip, stream);
+            group_size, activation_params, permuted_row_to_source_row, static_cast<int>(num_rows), stream);
       } else {
         fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T,
                                                              Fp4GemvAccT<T>>(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
-            group_size, activation_params, row_skip, stream);
+            group_size, activation_params, permuted_row_to_source_row, static_cast<int>(num_rows), stream);
       }
     };
     if (sm80_pair_interleaved) {
@@ -373,7 +373,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, cta_n(), threads(), T, Fp4GemvAccT<T>>(
         const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
         expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
-        activation_params, row_skip, stream);
+        activation_params, permuted_row_to_source_row, static_cast<int>(num_rows), stream);
   };
   if (config == MoeGemvConfig::kCtaN16) {
     launch([] { return kCtaN16; }, [] { return kDefaultThreads; });
@@ -386,20 +386,20 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
 
 template void launch_moe_gemv_fp4_symmetric<half>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, cutlass_kernels::MoeGemvRowSkipParams, cudaStream_t);
+    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, cudaStream_t);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool,
-    cutlass_kernels::MoeGemvRowSkipParams, cudaStream_t);
+    const int*, int64_t, cudaStream_t);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool,
-    cutlass_kernels::MoeGemvRowSkipParams, cudaStream_t);
+    cudaStream_t);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    MoeGemvConfig, bool, cutlass_kernels::MoeGemvRowSkipParams, cudaStream_t);
+    MoeGemvConfig, bool, const int*, int64_t, cudaStream_t);
 #endif
 
 }  // namespace moe_gemv

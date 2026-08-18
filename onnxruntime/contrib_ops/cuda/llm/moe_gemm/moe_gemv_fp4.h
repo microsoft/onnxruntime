@@ -83,14 +83,12 @@ bool is_moe_gemv_fp4_sm80_layout_supported(int64_t n, int64_t k, int group_size)
 // When `sm80_pair_interleaved` is true, `weight` is instead the SM80 grouped-GEMM buffer produced
 // by QMoE::PrePackRepackFP4Weights(gemv_interleaved=true, sm80_pair_interleave=true) and the
 // kernel inverts the nibble pair-interleave while decoding, so prefill and decode share one copy.
-// `row_skip` (all-null to disable) lets a block whose permuted row has a routing weight of exactly
-// 0 write zeros over its output slice and return before streaming any expert weights.
 template <typename T>
 void launch_moe_gemv_fp4_symmetric(
     const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int group_size, int sm, MoeGemvConfig config, bool sm80_pair_interleaved,
-    cutlass_kernels::MoeGemvRowSkipParams row_skip, cudaStream_t stream);
+    cudaStream_t stream);
 
 // Launches the MXFP4 MoE GEMV and fuses interleaved SwiGLU activation.
 //   weight/scales/bias use raw FC1 output width n = 2 * inter_size
@@ -100,8 +98,8 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
-    MoeGemvConfig config, bool sm80_pair_interleaved, cutlass_kernels::MoeGemvRowSkipParams row_skip,
-    cudaStream_t stream);
+    MoeGemvConfig config, bool sm80_pair_interleaved,
+    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream);
 
 }  // namespace moe_gemv
 }  // namespace kernels

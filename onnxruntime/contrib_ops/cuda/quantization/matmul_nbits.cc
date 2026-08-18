@@ -117,7 +117,28 @@ static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
   return static_cast<int64_t>(m);
 }
 
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop) {
+static std::optional<int64_t> LeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
+  if (input_a_shape.empty()) {
+    return std::nullopt;
+  }
+
+  SafeInt<int64_t> m(1);
+  try {
+    for (size_t i = 0; i + 1 < input_a_shape.size(); ++i) {
+      if (input_a_shape[i] < 0) {
+        return std::nullopt;
+      }
+      m *= input_a_shape[i];
+    }
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+
+  return static_cast<int64_t>(m);
+}
+
+static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
+    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m) {
   auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
     // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
     // NodeAttributes exposes bridged iterators (IteratorHolder) that do not support find()/
@@ -179,7 +200,6 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaD
     return std::nullopt;
   }
 
-  const std::optional<int64_t> m = StaticLeadingDimProduct(input_a);
   if (!m.has_value()) {
     return std::nullopt;
   }
@@ -192,6 +212,17 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaD
     // SafeInt<int> narrowing of m/N/K overflowed int range: treat as not estimable.
     return std::nullopt;
   }
+}
+
+std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, StaticLeadingDimProduct(input_a));
+}
+
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
+  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, LeadingDimProduct(input_a_shape));
 }
 
 template <typename T>

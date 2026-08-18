@@ -2519,6 +2519,38 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
 // Graph::Resolve() and reach kernel construction where our ORT_ENFORCE checks fire.
 // Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
 // different error messages.
+TEST(PoolTest, MaxPool_NegativePad) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, -1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 3});
+
+  test.AddInput<float>("X", {1, 1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Pad values must be non-negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(PoolTest, MlasPool_NegativePad) {
+  const int64_t input_shape[] = {1, 1, 1, 4};
+  const int64_t kernel_shape[] = {1, 3};
+  const int64_t pads[] = {0, 0, 0, -1};
+  const int64_t strides[] = {1, 1};
+  const int64_t output_shape[] = {1, 1, 1, 1};
+  const float input[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  float output[1];
+
+  EXPECT_THROW(MlasPool(MlasMaximumPooling, 2, input_shape, kernel_shape, pads, strides,
+                        output_shape, input, output, nullptr),
+               std::invalid_argument);
+}
+#endif
+
 TEST(PoolTest, MaxPool_ZeroStride) {
   OpTester test("MaxPool");
   test.AddShapeToTensorData(false);
