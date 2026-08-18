@@ -355,23 +355,60 @@ TEST(NchwcOptimizerTests, ConvNchwcHardSwishFusion) {
 // Mul(x, HardSigmoid(x)) diamond, must be fused as a plain HardSigmoid activation
 // (not misidentified as HardSwish).
 TEST(NchwcOptimizerTests, ConvNchwcHardSigmoidNotHardSwish) {
-  auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
-    auto* conv_output_arg = helper.MakeIntermediate();
-    auto* output_arg = helper.MakeOutput();
+  // Sub-case 1: plain HardSigmoid with default params, no Mul diamond.
+  // TryFuseNchwcHardSwish rejects it at the output-edge-count check (1 consumer,
+  // not the required HardSigmoid + Mul pair), so the standard HardSigmoid
+  // activation-fusion path fires instead.
+  {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
 
-    helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 3, 3});
-    // Plain HardSigmoid (single consumer, no Mul diamond) with default params.
-    helper.AddNode("HardSigmoid", {conv_output_arg}, {output_arg});
-  };
+      helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 3, 3});
+      helper.AddNode("HardSigmoid", {conv_output_arg}, {output_arg});
+    };
 
-  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["HardSigmoid"], 0);  // fused as HardSigmoid activation
-  };
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["HardSigmoid"], 0);  // fused as HardSigmoid activation
+    };
 
-  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  }
+
+  // Sub-case 2: Mul(x, HardSigmoid(x)) diamond but with mismatched alpha (0.2,
+  // not 1/6). TryFuseNchwcHardSwish must reject it at the alpha/beta guard so
+  // the HardSigmoid is NOT rewritten as a HardSwish activation.
+  {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* hardsigmoid_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 3, 3});
+
+      // alpha=0.2 (ONNX default) is NOT the HardSwish gate value (1/6).
+      auto& hardsigmoid_node = helper.AddNode("HardSigmoid", {conv_output_arg}, {hardsigmoid_output_arg});
+      hardsigmoid_node.AddAttribute("alpha", 0.2f);
+      hardsigmoid_node.AddAttribute("beta", 0.5f);
+
+      helper.AddNode("Mul", {conv_output_arg, hardsigmoid_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      // The conv has two original consumers (HardSigmoid + Mul), so the standard
+      // single-consumer activation-fusion path is also blocked. Neither HardSwish
+      // nor HardSigmoid fusion should fire; both nodes must remain.
+      EXPECT_EQ(op_to_count["HardSigmoid"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  }
 }
 
 TEST(NchwcOptimizerTests, ConvNchwcGrouped) {

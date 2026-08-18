@@ -927,7 +927,8 @@ bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
   const auto* beta_attr = graph_utils::GetNodeAttribute(hardsigmoid, "beta");
   const float alpha = (alpha_attr != nullptr && utils::HasFloat(*alpha_attr)) ? alpha_attr->f() : 0.2f;
   const float beta = (beta_attr != nullptr && utils::HasFloat(*beta_attr)) ? beta_attr->f() : 0.5f;
-  if (std::abs(alpha - (1.0f / 6.0f)) > 1e-6f || std::abs(beta - 0.5f) > 1e-6f) {
+  if (!std::isfinite(alpha) || !std::isfinite(beta) ||
+      std::abs(alpha - (1.0f / 6.0f)) > 1e-6f || std::abs(beta - 0.5f) > 1e-6f) {
     return false;
   }
 
@@ -955,7 +956,9 @@ bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
     }
     Node* candidate = graph_.GetNode(consumer->Index());
     if (candidate == nullptr || candidate->OpType() != "Mul" ||
-        candidate->Domain() != kOnnxDomain || candidate->InputDefs().size() != 2) {
+        candidate->Domain() != kOnnxDomain ||
+        candidate->GetExecutionProviderType() != hardsigmoid.GetExecutionProviderType() ||
+        candidate->InputDefs().size() != 2) {
       return false;
     }
     // The Mul must consume the conv output and the HardSigmoid output.
