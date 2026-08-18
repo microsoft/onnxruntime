@@ -39,6 +39,7 @@ export default [
       'web/types.d.ts',
       'test/data/',
       '**/dist/',
+      '**/build/',
     ],
   },
   ...compat.extends(

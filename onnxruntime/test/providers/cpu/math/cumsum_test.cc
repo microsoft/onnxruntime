@@ -2,12 +2,29 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace test {
+
+namespace {
+
+void RunEmptyAxisFailureTest(std::vector<std::unique_ptr<IExecutionProvider>> execution_providers) {
+  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+  test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
+  test.AddInput<int32_t>("axis", {0}, {});
+  test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
 
 TEST(CumSumTest, _1DTest) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
@@ -37,6 +54,19 @@ TEST(CumSumTest, _1DTestInvalidAxis) {
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
+
+TEST(CumSumTest, _1DTestEmptyAxis) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
+  auto cuda_execution_provider = DefaultCudaExecutionProvider();
+  if (cuda_execution_provider) {
+    execution_providers.push_back(std::move(cuda_execution_provider));
+  }
+
+  RunEmptyAxisFailureTest(std::move(execution_providers));
+}
+
 TEST(CumSumTest, _1DTestNegAxis) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
@@ -226,6 +256,26 @@ TEST(CumSumTest, _1DTestInt32) {
   test.AddOutput<int32_t>("y", {5}, {1, 3, 6, 10, 15});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+#ifdef USE_WEBGPU
+// uint32 is only exercised on the WebGPU EP here.
+TEST(CumSumTest, _1DTestUint32_webgpu) {
+  auto provider = WebGpuExecutionProviderWithOptions(ConfigOptions{});
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+  test.AddInput<uint32_t>("x", {5}, {1, 2, 3, 4, 5});
+  test.AddInput<int32_t>("axis", {}, {0});
+  test.AddOutput<uint32_t>("y", {5}, {1, 3, 6, 10, 15});
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif  // USE_WEBGPU
 TEST(CumSumTest, _1DTestInt64) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<int64_t>("x", {5}, {1, 2, 3, 4, 5});

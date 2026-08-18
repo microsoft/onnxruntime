@@ -136,10 +136,6 @@ static Status ReverseSequenceImpl(const Tensor& X,
   for (int i = 0; i < batch_size; i++) {
     int64_t seq_len = sequence_lengths[i];
 
-    if (seq_len == 0) {
-      continue;
-    }
-
     if (seq_len > max_seq_len || seq_len < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid sequence length: ", seq_len,
                              ". Value must be in range [0,", max_seq_len, "]");

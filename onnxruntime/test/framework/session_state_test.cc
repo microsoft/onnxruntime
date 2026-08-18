@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <absl/base/config.h>
 
 #include "asserts.h"
@@ -141,7 +142,7 @@ class TestOpKernel : public OpKernel {
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};
 
 TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
-  OrtThreadPoolParams to;
+  OrtThreadPoolParams to{};
   to.thread_pool_size = GetParam();
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
   ONNX_OPERATOR_SCHEMA(Variable)
@@ -231,8 +232,8 @@ class SessionStateTestP : public testing::TestWithParam<TestParam> {};
 // Test that we separate out constant and non-constant initializers correctly
 TEST_P(SessionStateTestP, TestInitializerProcessing) {
   const TestParam& param = GetParam();
-  OrtThreadPoolParams to;
-  to.thread_pool_size = to.thread_pool_size;
+  OrtThreadPoolParams to{};
+  to.thread_pool_size = param.thread_count;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
   std::basic_ostringstream<ORTCHAR_T> oss;
@@ -471,7 +472,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   Graph& graph = model->MainGraph();
   ASSERT_STATUS_OK(graph.Resolve());
 
-  OrtThreadPoolParams to;
+  OrtThreadPoolParams to{};
   to.thread_pool_size = 1;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
@@ -496,7 +497,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   LayeringIndex* layering_index = nullptr;
   std::optional<LayeringIndex> layering_index_storage;
   if (!layering_config.empty()) {
-    ASSERT_STATUS_OK(LayeringIndex::Create(graph, layering_config, {}, execution_providers,
+    ASSERT_STATUS_OK(LayeringIndex::Create(graph, layering_config, /*name_based_config_string=*/"", {}, execution_providers,
                                            default_logger, layering_index_storage));
     if (layering_index_storage.has_value()) {
       layering_index = &layering_index_storage.value();
@@ -662,6 +663,7 @@ class PrePackingTestOpKernel : public OpKernel {
   }
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override {
     ORT_UNUSED_PARAMETER(input_idx);
@@ -698,7 +700,28 @@ class PrePackingTestOpKernel : public OpKernel {
   IAllocatorUniquePtr<void> weight_packed_;
 };
 
-static void CreateSimpleGraph(Graph& graph) {
+class BrokenPrePackingTestOpKernel : public OpKernel {
+ public:
+  BrokenPrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    is_packed = true;
+    return Status::OK();
+  }
+};
+
+static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePackingTest") {
   // node creation and placement
   TypeProto type;
   type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -714,7 +737,7 @@ static void CreateSimpleGraph(Graph& graph) {
   onnxruntime::NodeArg output_arg("node_0_output_0", &type);
   outputs.push_back(&output_arg);
 
-  graph.AddNode("node_0", "PrePackingTest", "node 0", inputs, outputs);
+  graph.AddNode("node_0", op_type, "node 0", inputs, outputs);
 
   // add an initializer
   ONNX_NAMESPACE::TensorProto tensor;
@@ -832,17 +855,36 @@ struct PrepackingTestParam {
   bool test_prepacking;
 };
 
+namespace {
+// The PrePackingTest schema is registered into the global ONNX schema registry. Register it only
+// once to avoid duplicate-registration warnings when multiple tests/fixtures run in the same process.
+void RegisterPrePackingTestSchemaOnce() {
+  static std::once_flag pre_packing_schema_registered;
+  std::call_once(pre_packing_schema_registered, []() {
+    ONNX_OPERATOR_SCHEMA(PrePackingTest)
+        .SetDoc("Faking Node for PrePacking")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(BrokenPrePackingTest)
+        .SetDoc("Faking broken Node for PrePacking")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+  });
+}
+}  // namespace
+
 class SessionStatePrepackingTest : public testing::TestWithParam<PrepackingTestParam> {};
 TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   PrepackingTestParam test_param = GetParam();
 
-  OrtThreadPoolParams to;
+  OrtThreadPoolParams to{};
+  // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan)
+  // while still exercising the non-null threadpool path.
+  to.thread_pool_size = 2;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-  ONNX_OPERATOR_SCHEMA(PrePackingTest)
-      .SetDoc("Faking Node for PrePacking")
-      .Input(0, "Input_0", "input 0", "tensor(float)")
-      .Input(1, "Input_1", "input 1", "tensor(float)")
-      .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+  RegisterPrePackingTestSchemaOnce();
 
   ExecutionProviders execution_providers;
   auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
@@ -916,13 +958,11 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   std::unique_ptr<concurrency::ThreadPool> tp;
 
   void SetUp() override {
-    OrtThreadPoolParams to;
+    OrtThreadPoolParams to{};
+    // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan).
+    to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-    ONNX_OPERATOR_SCHEMA(PrePackingTest)
-        .SetDoc("Faking Node for PrePacking")
-        .Input(0, "Input_0", "input 0", "tensor(float)")
-        .Input(1, "Input_1", "input 1", "tensor(float)")
-        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    RegisterPrePackingTestSchemaOnce();
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
     ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
@@ -941,6 +981,19 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
     ASSERT_STATUS_OK(kernel_registry->Register(
         KernelCreateInfo(std::move(kernel_def),
                          [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out =  std::make_unique<PrePackingTestOpKernel>(info); return Status::OK(); })));
+
+    auto broken_kernel_def = KernelDefBuilder()
+                                 .SetName("BrokenPrePackingTest")
+                                 .Provider(kCpuExecutionProvider)
+                                 .SinceVersion(1)
+                                 .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(broken_kernel_def),
+                         [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<BrokenPrePackingTestOpKernel>(info);
+                           return Status::OK();
+                         })));
 
     kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   }
@@ -1172,6 +1225,46 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   // from another instance of the same op_type consuming the same constant initializer.
   // Assert this.
   ASSERT_EQ(session_state_2.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(1));
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, BrokenKernelWithoutCacheableBuffersFails) {
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+  OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+  std::vector<float> float_data(1, 1);
+  auto value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                       reinterpret_cast<void*>(float_data.data()), mem_info, *value);
+
+  ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
+
+  PrepackedWeightsContainer prepacked_weights_container;
+
+  Model model("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+
+  CreateSimpleGraph(model.MainGraph(), "BrokenPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options,
+                             &prepacked_weights_container);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "doesn't have an implementation that can cache computed pre-packed weights");
 }
 
 // Pre-packing enabled + shared initializers +

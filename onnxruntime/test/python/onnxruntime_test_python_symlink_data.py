@@ -65,7 +65,10 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
             const_node = helper.make_node("Constant", [], ["const_out"], value=tensor)
             add_node = helper.make_node("Add", ["input", "const_out"], ["output"])
             graph = helper.make_graph([const_node, add_node], "test_graph", [input_], [output])
-            model = helper.make_model(graph)
+            # Model is opset-agnostic (Constant + Add); pin a released opset so ONNX 1.22
+            # does not default to the under-development opset 27, which fails strict
+            # ALLOW_RELEASED_ONNX_OPSET_ONLY legs (ValidateOpsetForDomain throws).
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 22)])
 
             model_blob_path = os.path.join(blobs_dir, "guid1")
             save(model, model_blob_path)
@@ -143,7 +146,10 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
             const_node = helper.make_node("Constant", [], ["const_out"], value=tensor)
             add_node = helper.make_node("Add", ["input", "const_out"], ["output"])
             graph = helper.make_graph([const_node, add_node], "test_graph", [input_], [output])
-            model = helper.make_model(graph)
+            # Model is opset-agnostic (Constant + Add); pin a released opset so ONNX 1.22
+            # does not default to the under-development opset 27, which fails strict
+            # ALLOW_RELEASED_ONNX_OPSET_ONLY legs (ValidateOpsetForDomain throws).
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 22)])
 
             model_blob_path = os.path.join(blobs_dir, "guid1")
             save(model, model_blob_path)
@@ -222,7 +228,10 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
             const_node = helper.make_node("Constant", [], ["const_out"], value=tensor)
             add_node = helper.make_node("Add", ["input", "const_out"], ["output"])
             graph = helper.make_graph([const_node, add_node], "test_graph", [input_], [output])
-            model = helper.make_model(graph)
+            # Model is opset-agnostic (Constant + Add); pin a released opset so ONNX 1.22
+            # does not default to the under-development opset 27, which fails strict
+            # ALLOW_RELEASED_ONNX_OPSET_ONLY legs (ValidateOpsetForDomain throws).
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 22)])
 
             model_blob_path = os.path.join(model_dir, "guid1")
             save(model, model_blob_path)

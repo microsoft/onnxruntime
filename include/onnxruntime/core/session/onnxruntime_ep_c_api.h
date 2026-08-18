@@ -14,6 +14,9 @@
 extern "C" {
 #endif
 
+/** \addtogroup Global
+ * @{
+ */
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
@@ -30,6 +33,7 @@ ORT_RUNTIME_CLASS(OpSchema);
 ORT_RUNTIME_CLASS(OpSchemaTypeConstraint);
 ORT_RUNTIME_CLASS(ProfilingEventsContainer);
 ORT_RUNTIME_CLASS(ProfilingEvent);  // Based on the Trace Event Format's "complete event"
+/// @}
 
 /** \brief Base struct for imported external memory handles.
  *
@@ -947,6 +951,69 @@ struct OrtScanKernelHelper {
 };
 
 /**
+ * \brief Discriminator for the resource count type stored in an OrtResourceCount.
+ *
+ * New resource accounting types can be added by appending new enum values.
+ * The OrtResourceCount union storage is large enough to hold all current and future types.
+ *
+ * \since Version 1.26.
+ */
+typedef enum OrtResourceCountKind {
+  OrtResourceCountKind_None = 0,        ///< Unset / zero-cost sentinel.
+  OrtResourceCountKind_TotalBytes = 1,  ///< Single uint64_t: byte count (cost or budget).
+} OrtResourceCountKind;
+
+/**
+ * \brief ABI-stable tagged union representing a resource cost or budget.
+ *
+ * This struct is a C-safe variant that can be passed by value across the plugin DLL boundary.
+ * The `kind` field selects which member of the `value` union is active. The
+ * `value.reserved_words` storage reserves space for future resource types without changing
+ * the struct layout.
+ *
+ * Adding new resource types requires only: (a) a new OrtResourceCountKind enum value,
+ * (b) a new union member. No new C API functions are needed.
+ *
+ * \since Version 1.26.
+ */
+typedef struct OrtResourceCount {
+  uint32_t kind;     /**< OrtResourceCountKind discriminator. */
+  uint32_t reserved; /**< Must be zero. Ensures natural alignment for the value union. */
+
+  union {
+    uint64_t total_bytes;       /**< Active when kind == OrtResourceCountKind_TotalBytes. */
+    uint64_t reserved_words[6]; /**< 48 bytes fixed storage for future resource types. */
+  } value;
+
+#ifdef __cplusplus
+  /** Default-construct a None (unset) resource count. */
+  OrtResourceCount() noexcept : kind{OrtResourceCountKind_None}, reserved{0}, value{} {}
+
+  /** Construct a zero/unset resource count. */
+  static OrtResourceCount None() noexcept {
+    return OrtResourceCount{};
+  }
+
+  /** Construct a resource count representing total bytes. */
+  static OrtResourceCount FromTotalBytes(uint64_t bytes) noexcept {
+    OrtResourceCount rc{};
+    rc.kind = OrtResourceCountKind_TotalBytes;
+    rc.value.total_bytes = bytes;
+    return rc;
+  }
+
+  /** Read the total_bytes value (caller must check kind first). */
+  uint64_t AsTotalBytes() const noexcept {
+    return value.total_bytes;
+  }
+#endif
+} OrtResourceCount;
+
+#ifdef __cplusplus
+static_assert(sizeof(OrtResourceCount) == 56, "OrtResourceCount size must not change to maintain ABI stability");
+#endif
+
+/**
  * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
  *
  * \since Version 1.22.
@@ -1552,8 +1619,8 @@ struct OrtEpApi {
    * \param[in] kernel_info The ::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the If node.
-   *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
-   *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
+   *                        Must be released via OrtEpApi::ReleaseKernelImpl, unless ownership is transferred
+   *                        to ORT (see OrtKernelCreateFunc and OrtEpApi::KernelRegistry_AddKernel).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
@@ -1588,8 +1655,8 @@ struct OrtEpApi {
    *                   execution to operate on tensors allocated with the EP's device memory.
    *                   ORT will call OrtLoopKernelHelper::Release() to release the helper and its resources.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the Loop node.
-   *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
-   *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
+   *                        Must be released via OrtEpApi::ReleaseKernelImpl, unless ownership is transferred
+   *                        to ORT (see OrtKernelCreateFunc and OrtEpApi::KernelRegistry_AddKernel).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
@@ -1620,8 +1687,8 @@ struct OrtEpApi {
    *                   execution to operate on tensors allocated with the EP's device memory.
    *                   ORT will call OrtScanKernelHelper::Release() to release the helper and its resources.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the Scan node.
-   *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
-   *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
+   *                        Must be released via OrtEpApi::ReleaseKernelImpl, unless ownership is transferred
+   *                        to ORT (see OrtKernelCreateFunc and OrtEpApi::KernelRegistry_AddKernel).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
@@ -2010,6 +2077,32 @@ struct OrtEpApi {
   ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
                   _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
+
+  /** \brief Get the weightless source model byte buffer from session options.
+   *
+   * Returns the buffer and size set by SessionOptionsSetWeightlessSourceModelBuffer, or NULL/0 if not set.
+   * The EP can use this during CreateEp or Compile to access the source model for weightless
+   * EPContext model sessions.
+   *
+   * \note If the source model is provided as a file path, the EP should read the
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) session config entry
+   *       via GetSessionConfigEntry instead.
+   *
+   * \note Recommended EP precedence for locating the source model:
+   *       buffer (this API) > file path ("ep.context_source_model_path") > "onnx_model_filename" EPContext
+   *       node attribute.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[out] source_model_data Output parameter set to the source model buffer, or NULL if not set.
+   * \param[out] source_model_data_length Output parameter set to the buffer size, or 0 if not set.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_result_maybenull_ const void** source_model_data,
+                  _Out_ size_t* source_model_data_length);
 };
 
 /**
@@ -2028,14 +2121,51 @@ typedef enum OrtEpDataLayout {
 } OrtEpDataLayout;
 
 /**
+ * \brief Node assignment policies for graph capture validation.
+ *
+ * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
+ * compatible with graph capture. An EP can specify which validation policy ORT should apply.
+ *
+ * \since Version 1.26.
+ */
+typedef enum OrtGraphCaptureNodeAssignmentPolicy {
+  /** All nodes in the main graph must be assigned to this EP. No CPU fallback is allowed. */
+  OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP = 0,
+
+  /** Compute nodes must be on this EP. CPU nodes are allowed for shape computation as long as
+   *  no memory copy nodes exist. */
+  OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES = 1,
+} OrtGraphCaptureNodeAssignmentPolicy;
+
+/**
+ * \brief Describes the scope of an EP's weightless mode support.
+ *
+ * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
+ * the EP can operate on without copying.
+ *
+ * \since Version 1.29.
+ */
+typedef enum OrtWeightlessSupport {
+  /** EP does not support weightless mode. */
+  OrtWeightlessSupport_NONE = 0,
+
+  /** EP supports weightless mode for external initializers only.
+   *  Internal initializers are still copied by the EP during compilation. */
+  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
+
+  /** EP supports weightless mode for all initializers (internal and external). */
+  OrtWeightlessSupport_ALL = 2,
+} OrtWeightlessSupport;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
 struct OrtEp {
-  /** \brief The ONNX Runtime version the execution provider was compiled with.
+  /** \brief The ONNX Runtime API version the execution provider was compiled with.
    *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
+   * Implementation should set this to ORT_API_VERSION.
+   * ORT uses this to avoid calling functions that were not available when the EP was compiled.
    *
    * \since Version 1.22.
    */
@@ -2199,6 +2329,8 @@ struct OrtEp {
    * \param[in] run_options The run options for this run.
    *
    * \note Implementation of this function is optional.
+   *       When graph capture/replay is enabled and a graph has already been captured, ORT skips
+   *       normal execution and calls ReplayGraph() directly, so this callback is not invoked for replay runs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2214,6 +2346,8 @@ struct OrtEp {
    *                        Only applicable if there is such a stream.
    *
    * \note Implementation of this function is optional.
+   *       When graph capture/replay is enabled and a graph has already been captured, ORT skips
+   *       normal execution and calls ReplayGraph() directly, so this callback is not invoked for replay runs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2346,6 +2480,234 @@ struct OrtEp {
    */
   ORT_API2_STATUS(CreateProfiler, _In_ OrtEp* this_ptr,
                   _Outptr_result_maybenull_ OrtEpProfilerImpl** profiler);
+
+  /** \brief Indicate whether the graph capturing mode (e.g., CUDA graph) is enabled for the provider.
+   *
+   * Graph capture allows an EP to record a sequence of device (e.g., GPU) operations during an initial run and replay
+   * them on subsequent runs, bypassing per-kernel CPU launch overhead.
+   *
+   * Applications enable graph capture via EP-specific provider options (e.g., `enable_cuda_graph=1`
+   * for the CUDA EP). An EP should return true from this function if it has been configured to enable
+   * graph capture/replay.
+   *
+   * **ORT graph capture/replay summary:**
+   * During OrtSession initialization, ORT calls OrtEp::IsGraphCaptureEnabled() on each EP in the order specified during
+   * provider registration with the session. If an EP returns true, ORT validates that the graph is suitable for
+   * graph capture, and if so, caches the EP for graph capture during the next run. The graph validation ensures
+   * that there are no control flow nodes and that node-to-EP assignments are compatible with the policy specified
+   * by the EP via OrtEp::GetGraphCaptureNodeAssignmentPolicy().
+   * Note that an OrtSession only supports graph capture for one EP (i.e., the first EP to claim support).
+   *
+   * During the first call to OrtApi::Run() for the OrtSession, ORT performs multiple internal runs of the model
+   * until the EP indicates that the graph has been captured by returning `true` from `OrtEp::IsGraphCaptured()`.
+   * If the EP is unable to capture the graph within 8 runs, the call to OrtApi::Run() returns an error OrtStatus.
+   * Each internal run invokes `OrtEp::OnRunStart()`, normal execution, and `OrtEp::OnRunEnd()`. EPs should use
+   * these run callbacks to track the number of necessary warm-up runs and begin/end graph capture when ready.
+   *
+   * After successful graph capture, subsequent calls to OrtApi::Run() skip normal execution and ORT instead calls
+   * `OrtEp::ReplayGraph()` directly.
+   *
+   * Applications can capture and replay multiple graphs (e.g., one per distinct input shape) by setting the
+   * `"gpu_graph_id"` run config entry via `OrtApi::AddRunConfigEntry()` to different integer values. ORT passes
+   * the value as the `graph_annotation_id` parameter to `OrtEp::IsGraphCaptured()` and `OrtEp::ReplayGraph()`.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return true if graph capture mode is enabled, false otherwise.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes graph capture is not enabled.
+   * \note If this function returns true, `OrtEp::IsGraphCaptured` and `OrtEp::ReplayGraph` must also be implemented.
+   *       If either is NULL, ORT will log a warning and ignore this EP for graph capture.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(bool, IsGraphCaptureEnabled, _In_ const OrtEp* this_ptr);
+
+  /** \brief Indicate whether a graph has been captured and instantiated.
+   *
+   * ORT calls this before each `Session::Run()`. If true, ORT calls `ReplayGraph()` instead of
+   * normal execution. After a run where this returns false, ORT automatically retries until it
+   * returns true (handling warm-up runs transparently).
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph_annotation_id Identifies which captured graph to query.
+   *            Applications can set this value via `OrtApi::AddRunConfigEntry()` with the key `"gpu_graph_id"`.
+   *            The default value is 0 when the run config entry is not set.
+   *            Setting different IDs allows the EP to capture and manage multiple graphs (e.g., one per
+   *            distinct input shape). A value of -1 means graph capture/replay should be skipped for this run.
+   * \return true if the graph has been captured, false otherwise.
+   *
+   * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(bool, IsGraphCaptured, _In_ const OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Run the instantiated (captured) graph.
+   *
+   * Called by ORT instead of normal execution when `IsGraphCaptured()` returns true.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph_annotation_id Identifies which captured graph to replay.
+   *            Applications can set this value via `OrtApi::AddRunConfigEntry()` with the key `"gpu_graph_id"`.
+   *            The default value is 0 when the run config entry is not set.
+   *            A value of -1 means graph replay should be skipped for this run.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ReplayGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Get the node assignment validation policy for graph capture.
+   *
+   * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
+   * compatible with graph capture. This function tells ORT which validation policy to apply.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return The node assignment policy for graph capture.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT uses
+   *       OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP (strictest validation).
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(OrtGraphCaptureNodeAssignmentPolicy, GetGraphCaptureNodeAssignmentPolicy,
+            _In_ const OrtEp* this_ptr);
+
+  /** \brief Query the available device resource for partitioning budget.
+   *
+   * Called by ORT during graph partitioning when no explicit resource budget threshold
+   * has been configured via session options. The EP should query its device for the
+   * currently available resource (e.g., free GPU memory) and return it as an OrtResourceCount.
+   *
+   * If the EP does not support resource querying, set this function pointer to NULL.
+   * ORT will skip threshold-based budget enforcement in that case.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] available The available device resource.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, no automatic
+   *       resource threshold is established and budget enforcement requires an explicit
+   *       threshold from session options.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
+
+  /** \brief Called by ORT when session initialization is complete.
+   *
+   * This provides an opportunity for execution providers to optionally synchronize and
+   * clean up temporary resources to reduce memory usage and ensure the first inference run is fast.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes no
+   *       post-initialization work is needed and treats it as a no-op success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
+
+  /** \brief Get the EP's default memory device.
+   *
+   * The EP's default memory device identifies the hardware the EP operates on. ORT uses it to:
+   * - Determine if data copies are needed between EPs (inserting memcpy nodes at EP boundaries)
+   * - Determine if the EP is CPU-based (which affects synchronization and data transfer decisions)
+   * - Bind execution streams to the correct device
+   *
+   * If the implementation allows an EP to be created with multiple EpDevices this should return the OrtMemoryDevice
+   * that ORT should consider as default for this EP instance.
+   *
+   * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
+   * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
+   * `OrtEpApi::EpDevice_AddAllocatorInfo()`. The OrtMemoryDevice returned here must correspond to an
+   * OrtMemoryInfo registered as an `OrtDeviceAllocator` entry (either `OrtDeviceMemoryType_DEFAULT` or
+   * `OrtDeviceMemoryType_HOST_ACCESSIBLE`). An OrtMemoryDevice from an `OrtReadOnlyAllocator` entry is
+   * not accepted as the EP's default/identity device.
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the parent OrtMemoryInfo as a member of the EP).
+   *
+   * If this function is not implemented (NULL), or if it sets `device` to NULL, ORT infers
+   * the default memory device from the first OrtEpDevice's `OrtDeviceAllocator` entry with
+   * `OrtDeviceMemoryType_DEFAULT` registered via `EpDevice_AddAllocatorInfo`. EPs created against
+   * multiple OrtEpDevices whose default memory devices differ should implement this function to
+   * disambiguate; otherwise the first OrtEpDevice's default memory device is used and the others
+   * are ignored for identity purposes. If no such allocator entry is registered, the EP defaults
+   * to a CPU memory device.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] device Set to the EP's default OrtMemoryDevice, or NULL to use the default behavior (described above).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL (not implemented), ORT
+   *       infers the default memory device using the default behavior described above.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ const OrtMemoryDevice** device);
+
+  /** \brief Release a previously captured graph and its associated resources.
+   *
+   * Called when the caller no longer needs the captured graph for the given annotation ID.
+   * This allows the EP to free buffers and other resources tied to this graph.
+   *
+   * \param[in] this_ptr The EP instance.
+   * \param[in] graph_annotation_id The annotation ID of the graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes
+   *       no captured graph release is needed and treats it as a no-op success.
+   *
+   * \note Thread safety: For EPs that support concurrent Run() calls, this method may be
+   *       called concurrently with Run(). The EP is responsible for ensuring thread safety
+   *       of its own state in that case. For non-concurrent EPs, the session serializes
+   *       calls via its internal mutex.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Query the execution provider's weightless mode support.
+   *
+   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
+   * to determine the scope of the EP's weightless support. The EP returns an OrtWeightlessSupport value
+   * indicating whether it supports weightless mode for all initializers, external initializers only, or not
+   * at all.
+   *
+   * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
+   * support weightless mode for all initializers on newer hardware but only for external initializers on
+   * older hardware that requires weight transformation.
+   *
+   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
+   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
+   * these initializers at Compute() time via KernelContext_GetInput().
+   *
+   * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
+   *       Compile() so that the EP can cache and reuse data pointers directly (without going through
+   *       KernelContext) is planned but not yet implemented. Until then, KernelContext_GetInput() is the
+   *       only supported way to access initializer data at Compute() time.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] support Output parameter set to the EP's weightless support scope.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not
+   *       support weightless mode (equivalent to OrtWeightlessSupport_NONE).
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -2760,6 +3122,57 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(DeinitGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device);
+
+  /** \brief Select the best model variant candidate from metadata.
+   *
+   * Evaluates each candidate's metadata against the given hardware device and optional session options,
+   * and returns the index of the best match.
+   *
+   * Each candidate is an OrtKeyValuePairs representing one model variant. The KVP uses indexed keys
+   * so that the EP can inspect each model's metadata independently. A variant always has num_models >= 1.
+   *
+   * Required and optional keys:
+   *   - "num_models"                 — number of models in this variant (>= 1) (required)
+   *   - "\<i\>.ep_compatibility_info"  — compatibility string for model i (required per model)
+   *   - "\<i\>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
+   *   - "\<i\>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
+   *
+   * where \<i\> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
+   *
+   * The implementer should loop from 0 to num_models - 1 and validate each "\<i\>.ep_compatibility_info" entry.
+   * An advanced implementation may additionally consider "role" or other metadata when ranking candidates.
+   *
+   * **Why this function exists:**
+   *
+   * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
+   * compatible model when there are multiple candidates. For example, an EP may support multiple compilation modes
+   * (e.g., "speed optimized" vs "memory optimized") that produce different compatibility strings. The EP can implement
+   * this function to evaluate the candidate metadata and select the best compatible variant based on its own criteria,
+   * the target device, and the session options.
+   *
+   * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
+   *
+   * \note The implementer should validate each "\<i\>.ep_compatibility_info" in the candidate (e.g., by calling
+   * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] device The target hardware device that the EP would run on. Must map to this EP.
+   * \param[in] candidates Array of OrtKeyValuePairs pointers (one per model variant).
+   * \param[in] num_candidates Number of candidates (i.e., number of model variants to evaluate).
+   * \param[in] session_options Optional session options to consider when selecting the best candidate.
+   *                            May be nullptr if no session-level preferences are relevant.
+   * \param[out] selected_index Selected candidate index, or SIZE_MAX if all unsupported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(SelectBestModelCandidate, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtHardwareDevice* device,
+                  _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+                  _In_ size_t num_candidates,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Out_ size_t* selected_index);
 };
 
 #ifdef __cplusplus

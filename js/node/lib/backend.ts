@@ -41,7 +41,12 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     if (typeof pathOrBuffer === 'string') {
       this.#inferenceSession.loadModel(pathOrBuffer, options);
     } else {
-      this.#inferenceSession.loadModel(pathOrBuffer.buffer, pathOrBuffer.byteOffset, pathOrBuffer.byteLength, options);
+      this.#inferenceSession.loadModel(
+        pathOrBuffer.buffer as ArrayBuffer,
+        pathOrBuffer.byteOffset,
+        pathOrBuffer.byteLength,
+        options,
+      );
     }
 
     // prepare input/output names and metadata

@@ -324,6 +324,18 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
 void NchwcTransformerImpl::TransformConv(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
+  NchwcArgument* nchwc_sum_input = nullptr;
+
+  // The internal NCHWc Conv kernel can consume an optional fused Sum input, but it expects
+  // that tensor to already be in NCHWc layout. Only allow transforming a pre-existing
+  // FusedConv(X, W, B, Sum) when the Sum input already has a tracked NCHWc variant that
+  // can be wired through directly.
+  if (node.OpType() == "FusedConv" && input_defs.size() >= 4 && input_defs[3] != nullptr && input_defs[3]->Exists()) {
+    nchwc_sum_input = LookupNchwcArgument(input_defs[3]);
+    if (nchwc_sum_input == nullptr) {
+      return;
+    }
+  }
 
   // Require that the weights tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
@@ -490,6 +502,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
   }
 
+  if (nchwc_sum_input != nullptr) {
+    nchwc_node.MutableInputDefs()[3] = nchwc_sum_input->nchwc_arg_;
+    nchwc_sum_input->remaining_original_uses_--;
+  }
+
   NchwcArgument::Shape output_shape(output_defs[0]);
 
   if (do_reorder_input) {
@@ -514,6 +531,31 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   // Bail out if MaxPool has the optional index tensor specified.
   if (output_defs.size() > 1) {
     return;
+  }
+
+  // Bail out for AveragePool with ceil_mode==1 && count_include_pad==1. The default float CPU
+  // AveragePool kernel was fixed (PR #29629) to divide the trailing ceil_mode window by its
+  // clamped size instead of the full kernel size. NchwcAveragePool routes to
+  // MlasAveragePoolingIncludePad, which still uses the full-kernel-size divisor and would
+  // silently reintroduce the wrong-average bug for optimized NCHWc graphs. Leaving this combo
+  // unconverted keeps it on the fixed CPU path; every other AveragePool (and all MaxPool /
+  // global pooling) conversion is unaffected, so there is no perf impact on the common case.
+  if (node.OpType() == "AveragePool") {
+    const NodeAttributes& attrs = node.GetAttributes();
+    const auto get_int_attr = [&attrs](const char* name) -> int64_t {
+      const auto it = attrs.find(name);
+      return (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT)
+                 ? it->second.i()
+                 : 0;
+    };
+    // Gate count_include_pad as (!= 0) to match how PoolBase and the float (pool.cc) / fp16
+    // kernels treat it: any nonzero value enables include-pad. Using == 1 here would let an
+    // out-of-spec count_include_pad=2 model escape the bail-out, convert to NchwcAveragePool,
+    // and silently hit the buggy full-kernel divisor in the optimized graph. ceil_mode stays
+    // == 1 because the kernels gate the ceil-window fix on exactly ceil_mode == 1.
+    if (get_int_attr("ceil_mode") == 1 && get_int_attr("count_include_pad") != 0) {
+      return;
+    }
   }
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();

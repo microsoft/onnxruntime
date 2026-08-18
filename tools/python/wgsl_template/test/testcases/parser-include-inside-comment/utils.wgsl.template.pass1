@@ -1,0 +1,6 @@
+
+
+
+fn utility_function() -> f32 {
+    return 42.0;
+}

@@ -12,6 +12,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/int4.h"
 #include "core/optimizer/graph_transformer_level.h"
+#include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -39,6 +40,16 @@
 
 namespace onnxruntime {
 namespace test {
+
+// Value for ModelOptions::allow_released_opsets_only (the first ModelOptions ctor argument) used
+// by the *CurrentOpset fusion tests. Those tests build models stamped at the in-development ONNX
+// opset (e.g. opset 27 while 26 is the latest released opset); ORT's default strict load-time
+// validation would reject them. Passing allow_released_opsets_only=false loads them via the
+// warn-and-proceed path instead. Named to mirror the ctor argument so each call site reads
+// ModelOptions{kAllowReleasedOpsetsOnly, ...} (false = do not restrict to released opsets, i.e.
+// allow the not-yet-released opset). Remove once the opset is released (tracked by #28966).
+constexpr bool kAllowReleasedOpsetsOnly = false;
+
 template <typename T>
 struct IsTypeQuantLinearCompatible : utils::IsByteType<T> {};
 
@@ -570,7 +581,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        std::unique_ptr<GraphTransformer> transformer = nullptr,
                        const std::function<void(SessionOptions&)>& add_session_options = {},
                        const InlinedHashSet<std::string>& disabled_optimizers = {},
-                       std::unique_ptr<IExecutionProvider> ep = nullptr);
+                       std::unique_ptr<IExecutionProvider> ep = nullptr,
+                       const ModelOptions& model_options = {});
 
 void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
@@ -598,7 +610,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker);
+                            const std::function<Status(Graph&)>& post_graph_checker,
+                            const ModelOptions& model_options = {});
 
 /**
  * @brief Apply a GraphTransformer to a graph, and run graph checkers before and after applying the transformer.
@@ -611,11 +624,14 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
  * @param steps The step count of the GraphTransformerManager
  * @param pre_graph_checker The graph checker function before applying the transformer
  * @param post_graph_checker The graph checker function after applying the transformer
+ * @param model_options Options used when constructing the test model (e.g. to allow loading
+ *                      under-development/unreleased ONNX opsets). Defaults to released-opset-only.
  */
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                             const std::vector<int>& opset_versions,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker);
+                            const std::function<Status(Graph&)>& post_graph_checker,
+                            const ModelOptions& model_options = {});
 }  // namespace test
 }  // namespace onnxruntime

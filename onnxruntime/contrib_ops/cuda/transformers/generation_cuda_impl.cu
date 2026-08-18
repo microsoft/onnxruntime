@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cub/util_type.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -675,7 +675,7 @@ void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
   constexpr unsigned ThreadPerBlock = 256;
   unsigned num_blocks = (unsigned)((final_scores.size() + (ThreadPerBlock - 1)) / ThreadPerBlock);
 
-  typedef typename ToCudaType<float>::MappedType CudaT;
+  typedef typename ToCudaType<T>::MappedType CudaT;
 
   FloatConvertAndCopyKernel<<<num_blocks, ThreadPerBlock, 0, stream>>>(
       final_scores.data(), (CudaT*)output_scores.data(), final_scores.size());

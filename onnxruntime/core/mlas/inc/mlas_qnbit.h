@@ -43,6 +43,10 @@ template <typename T>
 struct MLAS_QNBIT_GEMM_DATA_PARAMS {
     const T* A = nullptr;                         ///< address of A (float32/16 matrix)
     size_t lda = 0;                               ///< leading dimension of A
+    /// Optional fp16 A source for the CompInt8 path. When set (and the platform
+    /// provides a fp16 A quantizer), the workspace init quantizes A directly from
+    /// fp16 and `A` above is ignored, avoiding a separate fp16 -> fp32 copy of A.
+    const MLAS_FP16* AFp16 = nullptr;
     const void* QuantBDataWorkspace;              ///< address of quantized B (quantized n-bit int values)
     const std::byte* PackedQuantBData = nullptr;  /// address of packed quantized B data
     const T* QuantBScale = nullptr;               ///< address of scale values of quantized B, one per block
@@ -61,6 +65,11 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
 
     const T* Bias = nullptr;  ///< optional address of Bias, vector size N
     T* C = nullptr;           ///< address of result matrix
+    /// Optional fp16 output for the CompInt8 path. When set (and the platform provides
+    /// a fp16 C epilogue), each worker converts its output tile to fp16 as it is
+    /// produced and writes it here, so `C` above can point at a small scratch instead
+    /// of a full fp32 copy of the result. Uses the same leading dimension `ldc`.
+    MLAS_FP16* CFp16 = nullptr;
     size_t ldc = 0;           ///< leading dimension of C
 
     ///< optional post processing to apply to result matrix
@@ -128,6 +137,29 @@ MlasIsQNBitGemmAvailable(
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
+
+/**
+ * @brief Whether the current platform can quantize a fp16 activation matrix directly to
+ *        int8 for the CompInt8 path. When true, a fp16 MatMulNBits can set
+ *        MLAS_QNBIT_GEMM_DATA_PARAMS::AFp16 and skip converting A to fp32 before the int8
+ *        GEMM; the quantized A is bit-identical to converting A to fp32 first and using
+ *        the float quantizer. Independent of BlkBitWidth/BlkLen; pair with
+ *        MlasIsQNBitGemmAvailable(..., SQNBIT_CompInt8) to confirm the GEMM itself runs.
+ */
+bool MLASCALL
+MlasQNBitGemmFp16DirectQuantASupported();
+
+/**
+ * @brief Whether the given compute path can write its result directly as fp16 for the
+ *        given weight bit width. When true, a fp16 MatMulNBits can set
+ *        MLAS_QNBIT_GEMM_DATA_PARAMS::CFp16 instead of allocating a full fp32 copy of
+ *        the result; each worker converts its output strip to fp16 in place. The fp16
+ *        result is bit-identical to computing in fp32 and converting with
+ *        MlasConvertFloatToHalfBuffer. Supported for CompInt8 (2, 4 and 8 bit) and for
+ *        the 4 bit CompFp32 path.
+ */
+bool MLASCALL
+MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth, MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType);
 
 /**
  * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM
@@ -319,7 +351,12 @@ MlasLutGemmPackedSize(
  * @param[in]   HasZeroPoint        whether zero points are provided
  * @param[in]   QuantBData          quantized B data (nullptr to skip B packing)
  * @param[in]   QuantBScale         quantized B scales (nullptr to skip scale packing)
- * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false)
+ * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false).
+ *                                  When IsFloatZeroPoint is false, this is packed uint8 data.
+ *                                  When IsFloatZeroPoint is true, this is a float array with one
+ *                                  value per quantization group, shape (N, ceil(K/BlkLen)).
+ *                                  Only the first K/BlkLen groups per row are used by the packer.
+ * @param[in]   IsFloatZeroPoint    if true, QuantBZeroPoint is interpreted as const float*
  * @param[out]  PackedBuf           output buffer (must be at least MlasLutGemmPackedSize bytes)
  * @param[in]   ThreadPool          thread pool for parallel packing
  */
@@ -332,7 +369,8 @@ MlasLutGemmPack(
     bool HasZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     std::byte* PackedBuf,
     MLAS_THREADPOOL* ThreadPool
 );
@@ -352,6 +390,11 @@ MlasLutGemmPack(
  * @param[in]   N               column size of matrix B
  * @param[in]   HasZeroPoint    whether zero points are provided
  * @param[in]   threadpool      thread pool for parallel computation
+ * @param[in]   Bias            optional bias vector of length N (one value per output feature).
+ *                              When non-null, it is broadcast-added to every row of the [M, N]
+ *                              output. The addition is fused into the per-tile compute loop so
+ *                              it inherits the same multi-threading as the GEMM itself.
+ *                              Pass nullptr if no bias is to be applied.
  */
 void MLASCALL
 MlasLutGemm(
@@ -363,5 +406,6 @@ MlasLutGemm(
     size_t M,
     size_t N,
     bool HasZeroPoint,
-    MLAS_THREADPOOL* threadpool
+    MLAS_THREADPOOL* threadpool,
+    const float* Bias = nullptr
 );

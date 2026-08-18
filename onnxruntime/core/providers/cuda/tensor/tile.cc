@@ -5,6 +5,8 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "tile_impl.h"
 
+#include <limits>
+
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
@@ -117,12 +119,47 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_shape = input_tensor.Shape();
   const auto input_dims = input_shape.GetDims();
   auto output_dims(input_shape.AsShapeVector());
+
+  // Bound the total tiled byte count and detect overflow with division-based
+  // checks so we return INVALID_ARGUMENT instead of throwing a SafeInt
+  // overflow exception. Mirrors the CPU Tile implementation.
+  constexpr int64_t kMaxTileOutputBytes = int64_t{4} * 1024 * 1024 * 1024;  // 4 GiB
+  constexpr int64_t kMaxSupportedTileOutputBytes =
+      std::numeric_limits<size_t>::max() < static_cast<uint64_t>(kMaxTileOutputBytes)
+          ? static_cast<int64_t>(std::numeric_limits<size_t>::max())
+          : kMaxTileOutputBytes;
+  const int64_t element_size_bytes = narrow<int64_t>(input_tensor.DataType()->Size());
+  const int64_t max_elements = kMaxSupportedTileOutputBytes / element_size_bytes;
+  int64_t total_elements = 1;
+
   for (int32_t axis = 0; axis < input_rank; axis++) {
     if (repeats[axis] < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Tile repeat value must be non-negative, got: ", repeats[axis]);
     }
-    output_dims[axis] = SafeInt<int64_t>(output_dims[axis]) * repeats[axis];
+    const int64_t input_dim = output_dims[axis];
+    const int64_t r = repeats[axis];
+    int64_t dim;
+    if (input_dim == 0 || r == 0) {
+      dim = 0;
+    } else if (input_dim > max_elements / r) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxSupportedTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxSupportedTileOutputBytes, " bytes.");
+    } else {
+      dim = input_dim * r;
+    }
+    output_dims[axis] = dim;
+    if (dim > 0 && total_elements > max_elements / dim) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxSupportedTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxSupportedTileOutputBytes, " bytes.");
+    }
+    total_elements *= dim;
   }
 
   TensorShape output_shape(output_dims);

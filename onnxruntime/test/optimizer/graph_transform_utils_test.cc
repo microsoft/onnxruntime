@@ -70,6 +70,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
 #endif
 }
+
 TEST(GraphTransformerUtilsTests, TestDQMatMulNBitsFusionConfigWithContribGating) {
   SessionOptions session_options;
   const auto status = session_options.config_options.AddConfigEntry(

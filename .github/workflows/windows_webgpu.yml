@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - rel-*
+      - plugin-ep-webgpu/rel-*
   pull_request:
     branches:
       - main
       - rel-*
+      - plugin-ep-webgpu/rel-*
   workflow_dispatch:
 
 concurrency:
@@ -20,13 +22,13 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}-${{ matrix.wgsl_template }}"
       ]
     timeout-minutes: 300
     strategy:
       matrix:
         vcpkg_option: [novcpkg, vcpkg]
-        wgsl_template: [static, dynamic]
+        wgsl_template: [static]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -51,6 +53,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -131,55 +138,6 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Run tests (onnxruntime_provider_test) with verbose logging for shader key validation
-        timeout-minutes: 60
-        shell: pwsh
-        run: |
-          # Test correctness is already validated by CTest in the "Build and Test" step.
-          # This step re-runs onnxruntime_provider_test with verbose logging to capture
-          # WebGPU shader compilation logs (stderr) for shader key validation.
-          #
-          # We use GTest sharding to split tests across multiple processes. Running all
-          # provider tests in a single process causes Dawn/WebGPU to hang because hundreds
-          # of tests share one WebGPU context and accumulated GPU staging buffers from
-          # MapAsync calls eventually exhaust resources (observed hang at ActivationOpTest.Elu).
-          # Each shard runs in its own process with an isolated WebGPU context, so GPU
-          # resources are released between shards.
-          #
-          # Use 2 shards (not more) to reduce D3D12 device creation/teardown cycles.
-          # Each shard process creates and destroys a D3D12 command queue; Windows WDDM
-          # releases those resources asynchronously, so rapid successive device creations
-          # can exhaust GPU memory (E_OUTOFMEMORY). Fewer shards means fewer cycles.
-          # A 15-second pause between shards gives WDDM time to drain the previous
-          # shard's deferred cleanup before the next shard creates a new device.
-          $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          $totalShards = 2
-          for ($i = 0; $i -lt $totalShards; $i++) {
-            if ($i -gt 0) {
-              Write-Host "Waiting 15 seconds for WDDM to release GPU resources from previous shard..."
-              Start-Sleep -Seconds 15
-            }
-            $env:GTEST_TOTAL_SHARDS = $totalShards
-            $env:GTEST_SHARD_INDEX = $i
-            Write-Host "Running shard $($i + 1) of $totalShards..."
-            .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
-            if ($lastExitCode -ne 0) {
-              Write-Error "Shard $($i + 1) failed with exit code $lastExitCode"
-              exit $lastExitCode
-            }
-          }
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
-
-      - name: Check log file
-        shell: cmd
-        run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
-
-      - name: Validate shader keys
-        uses: ./.github/actions/webgpu-validate-shader-key
-        with:
-          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
-
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
@@ -218,6 +176,11 @@ jobs:
         with:
           architecture: x64
 
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
+        with:
+          architecture: x64
+
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
@@ -246,7 +209,6 @@ jobs:
             --cmake_generator "Visual Studio 17 2022" `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
-            --wgsl_template static `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 `
             --disable_rtti `
@@ -288,6 +250,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -345,6 +312,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 

@@ -3,12 +3,6 @@
 
 import { Tensor } from 'onnxruntime-common';
 
-// a dummy type declaration for Float16Array in case any polyfill is available.
-declare global {
-  // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
-  const Float16Array: any;
-}
-
 // This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
 
 /**
@@ -177,8 +171,9 @@ export const tensorTypeToTypedArrayConstructor = (
   | BigUint64ArrayConstructor => {
   switch (type) {
     case 'float16':
-      // allow Float16Array polyfill.
-      return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
+      // Float16 tensor data is stored as raw 16-bit values. Prefer a native or polyfilled Float16Array when
+      // available so callers can work with float16 values directly; otherwise fall back to Uint16Array storage.
+      return typeof Float16Array !== 'undefined' ? (Float16Array as unknown as Uint16ArrayConstructor) : Uint16Array;
     case 'float32':
       return Float32Array;
     case 'uint8':

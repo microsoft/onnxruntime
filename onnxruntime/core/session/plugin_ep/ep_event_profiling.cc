@@ -47,7 +47,7 @@ PluginEpProfiler::~PluginEpProfiler() {
   profiler_impl_.Release(&profiler_impl_);
 }
 
-bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
+Status PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
   // Store the epoch-based profiling start time for computing absolute correlation IDs in Start()/Stop().
   profiling_start_time_epoch_us_ = static_cast<uint64_t>(
       std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count());
@@ -56,17 +56,15 @@ bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
   int64_t offset_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::high_resolution_clock::now() - profiling_start_time)
                           .count();
-  bool success = true;
+
   Status status = ToStatusAndRelease(profiler_impl_.StartProfiling(&profiler_impl_, offset_ns));
 
   if (!status.IsOK()) {
-    // Log error but don't throw as profiling failures shouldn't break execution.
     LOGS(logger_, ERROR) << "OrtEpProfilerImpl::StartProfiling() for " << ep_name_ << " returned an error OrtStatus: "
                          << status.ErrorMessage();
-    success = false;
   }
 
-  return success;
+  return status;
 }
 
 void PluginEpProfiler::EndProfiling(TimePoint /*profiling_start_time*/, profiling::Events& events) {

@@ -157,6 +157,29 @@ TEST(ScatterNDOpTest, ScatterND_sliced_index_string_int64) {
   test.Run();
 }
 
+TEST(ScatterNDOpTest, ScatterND_string_duplicate_indices) {
+  OpTester test("ScatterND", 18);
+  test.AddInput<std::string>("data", {2}, {"original", "untouched"});
+  test.AddInput<int64_t>("indices", {3, 1}, {0, 0, 0});
+  test.AddInput<std::string>("updates", {3},
+                             {"first value longer than the small string optimization",
+                              "second value longer than the small string optimization",
+                              "last value longer than the small string optimization"});
+  test.AddOutput<std::string>("output", {2},
+                              {"last value longer than the small string optimization", "untouched"});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterNDOpTest, ScatterND_string_add_duplicate_indices) {
+  OpTester test("ScatterND", 18);
+  test.AddAttribute("reduction", "add");
+  test.AddInput<std::string>("data", {2}, {"base", "untouched"});
+  test.AddInput<int64_t>("indices", {3, 1}, {0, 0, 0});
+  test.AddInput<std::string>("updates", {3}, {"-first", "-second", "-last"});
+  test.AddOutput<std::string>("output", {2}, {"base-first-second-last", "untouched"});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 TEST(ScatterNDOpTest, ScatterND_batched_3tensor_int64) {
   OpTester test1("ScatterND", 11);
   test1.AddInput<uint32_t>("data", {2, 2, 2}, {0, 0, 0, 0, 0, 0, 0, 0});

@@ -1561,6 +1561,8 @@ template <>
 inline bool Tensor::IsDataType<Float8E5M2>() const { return g_host->Tensor__IsDataType_Float8E5M2(this); }
 template <>
 inline bool Tensor::IsDataType<Float8E5M2FNUZ>() const { return g_host->Tensor__IsDataType_Float8E5M2FNUZ(this); }
+template <>
+inline bool Tensor::IsDataType<Float8E8M0>() const { return g_host->Tensor__IsDataType_Float8E8M0(this); }
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -1612,6 +1614,8 @@ template <>
 inline Float8E5M2* Tensor::MutableData<Float8E5M2>() { return g_host->Tensor__MutableData_Float8E5M2(this); }
 template <>
 inline Float8E5M2FNUZ* Tensor::MutableData<Float8E5M2FNUZ>() { return g_host->Tensor__MutableData_Float8E5M2FNUZ(this); }
+template <>
+inline Float8E8M0* Tensor::MutableData<Float8E8M0>() { return g_host->Tensor__MutableData_Float8E8M0(this); }
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -1663,6 +1667,8 @@ template <>
 inline const Float8E5M2* Tensor::Data<Float8E5M2>() const { return g_host->Tensor__Data_Float8E5M2(this); }
 template <>
 inline const Float8E5M2FNUZ* Tensor::Data<Float8E5M2FNUZ>() const { return g_host->Tensor__Data_Float8E5M2FNUZ(this); }
+template <>
+inline const Float8E8M0* Tensor::Data<Float8E8M0>() const { return g_host->Tensor__Data_Float8E8M0(this); }
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)

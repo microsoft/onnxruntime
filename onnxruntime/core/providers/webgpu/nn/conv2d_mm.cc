@@ -136,23 +136,24 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
 }
 
 Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& result = shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias);
+
   std::stringstream declaration_functions;
   declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << ") {\n"
-                        << "  result[flatIndex] = " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "(value);\n"
+                        << "  " << result.SetByOffset("u32(flatIndex)", (is_vec4_ ? "vec4<x_element_t>(value)" : "x_element_t(value)")) << "\n"
                         << "}\n"
                         << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "){\n"
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex, value);\n"
                         << "}\n";
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&x, &w};
-  ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias));
   if (has_bias_) {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     inputs.push_back(&bias);
     declaration_functions << "fn getBiasByOutputCoords(coords : vec4<i32>) -> bias_value_t {" << "\n"
-                          << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y") << "];\n"
+                          << "  return " << bias.GetByOffset(is_channels_last_ ? "u32(coords.w)" : "u32(coords.y)") << ";\n"
                           << "}";
   }
   shader.AdditionalImplementation()
@@ -217,7 +218,8 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     std::transform(vec.begin(), vec.end(), std::ostream_iterator<std::string>(oss, ","), [](uint32_t i) { return std::to_string(i); });
     return oss.str();
   };
-  program.CacheHint(activation.ToString(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_a_outer, tile_inner, static_cast<uint32_t>(components)}))
+
+  program.CacheHint(activation.ToString(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_b_outer, tile_inner, static_cast<uint32_t>(components)}))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])

@@ -27,6 +27,8 @@ static size_t EstimateInputsOutputs(gsl::span<const Node* const> nodes) {
   return num;
 }
 
+OptimizerExecutionFrame::Info::~Info() = default;
+
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
                                     const std::filesystem::path& model_path,

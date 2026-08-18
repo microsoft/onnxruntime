@@ -174,9 +174,11 @@ bool AreRangesEqual(const Range& lhs, const Range& rhs) {
 // Check if two tensor attributes are equal scalar tensors, mainly to support ConstantOfShape Op.
 bool AreScalarTensorAttributeEqual(const ONNX_NAMESPACE::TensorProto& lhs_t, const ONNX_NAMESPACE::TensorProto& rhs_t) {
   if (!(utils::HasDataType(lhs_t) && utils::HasDataType(rhs_t) && lhs_t.data_type() == rhs_t.data_type() &&
-        lhs_t.data_type() != onnx::TensorProto_DataType_STRING &&
         lhs_t.dims_size() == 1 && rhs_t.dims_size() == 1 && lhs_t.dims()[0] == 1 && rhs_t.dims()[0] == 1)) {
     return false;
+  }
+  if (utils::HasString(lhs_t)) {
+    return AreRangesEqual(lhs_t.string_data(), rhs_t.string_data());
   }
   std::vector<uint8_t> unpacked_lhs_tensor, unpacked_rhs_tensor;
   if (!utils::UnpackInitializerData(lhs_t, unpacked_lhs_tensor).IsOK() ||
@@ -228,12 +230,14 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
 std::size_t GetTensorAttributeHash(const ONNX_NAMESPACE::TensorProto& attr_t) {
   std::size_t hash = 0;
   if (utils::HasDataType(attr_t) && attr_t.dims_size() == 1 && attr_t.dims()[0] == 1) {
-    int data_type = attr_t.data_type();
-    ORT_ENFORCE(data_type != onnx::TensorProto_DataType_STRING, "Unexpected tensor string type");
-    std::vector<uint8_t> unpacked_tensor;
-    if (utils::UnpackInitializerData(attr_t, unpacked_tensor).IsOK()) {
-      UpdateHash(data_type, hash);
-      UpdateHashWithContainer(unpacked_tensor, hash);
+    UpdateHash(attr_t.data_type(), hash);
+    if (utils::HasString(attr_t)) {
+      UpdateHashWithContainer(attr_t.string_data(), hash);
+    } else {
+      std::vector<uint8_t> unpacked_tensor;
+      if (utils::UnpackInitializerData(attr_t, unpacked_tensor).IsOK()) {
+        UpdateHashWithContainer(unpacked_tensor, hash);
+      }
     }
   }
   return hash;

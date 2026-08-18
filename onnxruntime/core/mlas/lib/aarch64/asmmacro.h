@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#include "kai_asm_macros.h"
+
 /*++
 
 Macro Description:
@@ -32,11 +34,15 @@ Arguments:
 #if defined(__APPLE__)
         .globl  _\FunctionName\()
 _\FunctionName\():
+#elif defined(_WIN32)
+        .globl  \FunctionName\()
+\FunctionName\():
 #else
         .globl  \FunctionName\()
         .type   \FunctionName\(),%function
 \FunctionName\():
 #endif
+        KAI_ASM_BTI_C
 
         .endm
 

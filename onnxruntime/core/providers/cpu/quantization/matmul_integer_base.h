@@ -80,6 +80,7 @@ class MatMulIntegerBase : public OpKernel {
   }
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override {
     used_shared_buffers = false;
@@ -207,6 +208,9 @@ class MatMulIntegerBase : public OpKernel {
     }
 
     if (ctx.bias != nullptr) {
+      if (ctx.bias->Shape().Size() != static_cast<int64_t>(ctx.N)) {
+        return false;
+      }
       dynamic_quant_mlas_bias_data_was_packed_ = true;
     }
 

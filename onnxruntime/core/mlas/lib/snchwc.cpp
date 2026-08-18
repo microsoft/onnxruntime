@@ -104,7 +104,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
     return GetMlasPlatform().NchwcBlockSize;
 #else
     return 1;
@@ -551,14 +551,8 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         FilterCount = std::min(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
     }
 
-    void PrepareWork(ptrdiff_t Index)
+    void SeekToWork(size_t WorkIndex)
     {
-        const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * OutputHeight;
-
-        size_t WorkIndex;
-
-        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
-
         //
         // Extract the current batch, group, filter cluster, and output line
         // from the starting work index.
@@ -595,6 +589,19 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         //
 
         ComputeFilterCount();
+    }
+
+    void PrepareWork(ptrdiff_t Index)
+    {
+        const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * OutputHeight;
+
+        size_t WorkIndex;
+
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
+
+        if (WorkRemaining > 0) {
+            SeekToWork(WorkIndex);
+        }
     }
 
     void CompleteWork(size_t WorkThisIteration)
@@ -645,6 +652,57 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             ph = 0;
         }
     }
+
+    //
+    // Map a cost boundary to a work item index. See MlasNchwcCostToWorkIndex in
+    // mlasi.h, which holds the mapping and its worked example; it lives there so
+    // the partitioning math can be unit tested independently of a convolution.
+    //
+
+    size_t CostToWorkIndex(size_t Cost, size_t TotalBlockedFilters, size_t LastSetFilterCount) const
+    {
+        return MlasNchwcCostToWorkIndex(Cost, OutputHeight, FilterSetCount, FilterSetSize,
+                                        TotalBlockedFilters, LastSetFilterCount);
+    }
+
+    //
+    // Partition proportionally to FLOP cost rather than uniformly by work item.
+    // Work items belonging to a ragged last filter set (FilterCount less than
+    // FilterSetSize) cost proportionally less than items of full sets, so a
+    // uniform index split leaves threads with unequal amounts of compute.
+    //
+
+    void PrepareWorkWeighted(ptrdiff_t Index)
+    {
+        const size_t TotalBlockedFilters = OutputChannels / BlockSize;
+        const size_t LastSetFilterCount =
+            TotalBlockedFilters - (FilterSetCount - 1) * FilterSetSize;
+
+        const size_t TotalCost = BatchCount * GroupCount * TotalBlockedFilters * OutputHeight;
+
+        size_t CostStart;
+        size_t CostCount;
+
+        MlasPartitionWork(Index, WorkBlock->tids, TotalCost, &CostStart, &CostCount);
+
+        const size_t WorkIndexBegin =
+            CostToWorkIndex(CostStart, TotalBlockedFilters, LastSetFilterCount);
+        const size_t WorkIndexEnd =
+            CostToWorkIndex(CostStart + CostCount, TotalBlockedFilters, LastSetFilterCount);
+
+        WorkRemaining = WorkIndexEnd - WorkIndexBegin;
+
+        //
+        // Skip the seek when this thread received no work. TotalCost below tids
+        // leaves surplus threads with an empty cost interval starting at
+        // TotalCost, which maps to WorkIndexBegin == TotalWork; seeking there
+        // would advance the buffer pointers past the end of their tensors.
+        //
+
+        if (WorkRemaining > 0) {
+            SeekToWork(WorkIndexBegin);
+        }
+    }
 };
 
 constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
@@ -667,7 +725,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         // Setup the convolution state based on the thread index.
         //
 
-        PrepareWork(Index);
+        PrepareWorkWeighted(Index);
 
         //
         // Loop until all of the work has been completed.
@@ -683,7 +741,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwcFloatKernel;
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwcFloatKernel;
@@ -793,8 +851,14 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwFloatKernel;
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+        MLAS_CONV_FLOAT_KERNEL* const KernelFloat = GetMlasPlatform().ConvNchwFloatKernel;
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvNchwBf16Kernel;
+        }
+#endif
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwFloatKernel;
 #endif
@@ -813,6 +877,26 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih,
                 &EffectiveKernelHeight);
 
+            MLAS_CONV_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+            if (WorkBlock->UseBf16 &&
+                EffectiveKernelHeight == 3 &&
+                KernelWidth == 3) {
+                //
+                // The current direct BF16 asm uses a two-output load pattern
+                // that reads one float past the end of the third source row.
+                // That is valid for interior rows because the next row is
+                // contiguous in memory, but it would step into the guard page
+                // on the final source row of the image.
+                //
+                const bool HasTrailingSourceRow =
+                    (ih + (EffectiveKernelHeight - 1) * DilationHeight + 1) < InputHeight;
+                if (!HasTrailingSourceRow) {
+                    KernelToUse = KernelFloat;
+                }
+            }
+#endif
+
             //
             // Apply the convolution kernel to each channel of the input tensor.
             //
@@ -828,7 +912,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Invoke the convolution kernel.
                 //
 
-                Kernel(input + (ih * InputWidth - PaddingLeftX), filter, output,
+                KernelToUse(input + (ih * InputWidth - PaddingLeftX), filter, output,
                     StrideWidthBytes, DilationWidthBytes, FilterCount, InputStrideBytes,
                     FilterStrideBytes, OutputStrideBytes, EffectiveKernelHeight,
                     KernelWidth, input + (ih * InputWidth), InputWidthBytes,
@@ -877,7 +961,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         // Setup the convolution state based on the thread index.
         //
 
-        PrepareWork(Index);
+        PrepareWorkWeighted(Index);
 
         //
         // Loop until all of the work has been completed.
@@ -888,14 +972,33 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const size_t FilterStrideBytes = BlockSize * InputChannels * sizeof(float);
         const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+        //
+        // Determine the maximum number of input channels to accumulate per kernel
+        // invocation. Shrinking the batch size causes a slowdown from additional
+        // flushing of intermediate results to the output tensor. Extending the
+        // batch size causes a slowdown from processor cache thrashing. The default
+        // may be overridden via session configuration for tuning; the value is
+        // rounded up to a multiple of the block size expected by the kernel.
+        //
+
+        size_t MaximumInputChannelBatch = 128;
+
+        if (WorkBlock->BackendKernelSelectorConfig != nullptr &&
+            WorkBlock->BackendKernelSelectorConfig->nchwc_pointwise_conv_max_input_channel_batch != 0) {
+            const size_t RequestedBatch =
+                WorkBlock->BackendKernelSelectorConfig->nchwc_pointwise_conv_max_input_channel_batch;
+            MaximumInputChannelBatch =
+                ((RequestedBatch + BlockSize - 1) / BlockSize) * BlockSize;
+        }
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
         // AArch64 assembly kernel pointwise convolution computes multiple
         // output positions at once and significantly reduces memory traffic.
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* const KernelFast = MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
         if (WorkBlock->UseBf16) {
             Kernel = GetMlasPlatform().ConvPointwiseBf16Kernel;
         }
@@ -927,10 +1030,6 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             //
             // Apply the convolution kernel to batches of the input tensor.
             //
-            // Shrinking the batch size causes a slowdown from additional
-            // flushing of intermediate results to the output tensor. Extending
-            // the batch sizes causes a slowdown from processor cache thrashing.
-            //
 
             const float* input = Input + BlockSize * (ph * StrideHeight * InputWidth);
             const float* filter = Filter;
@@ -938,8 +1037,6 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
             size_t InputChannelBatch = 0;
             for (size_t ic = 0; ic < InputChannels; ) {
-
-                constexpr size_t MaximumInputChannelBatch = 128;
 
                 InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
@@ -1043,10 +1140,15 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* const KernelFast = MlasConvDepthwiseFloatKernelNeonAsm;
+#endif
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvDepthwiseBf16Kernel;
+        }
 #endif
 #else
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
@@ -1073,7 +1175,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
             MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* KernelToUse = Kernel;
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
-            if (OutputWidth >= 4) {
+            if (!WorkBlock->UseBf16 && OutputWidth >= 4) {
                 KernelToUse = KernelFast;
             }
 #endif
@@ -1129,7 +1231,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 {
-#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !(defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !(defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) && !(defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
     static MLAS_POOL_FLOAT_KERNEL* const PoolKernels[];
 #endif
 
@@ -1167,7 +1269,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
         MLAS_POOL_FLOAT_KERNEL* Kernel = GetMlasPlatform().PoolFloatKernel[WorkBlock->PoolingKind];
 #else
         MLAS_POOL_FLOAT_KERNEL* Kernel = PoolKernels[WorkBlock->PoolingKind];
@@ -1233,7 +1335,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     }
 };
 
-#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !(defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !(defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) && !(defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
 
 MLAS_POOL_FLOAT_KERNEL* const MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 {
@@ -1663,7 +1765,7 @@ Return Value:
     }
 }
 
-#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !(defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
+#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !(defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) && !(defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
 
 //
 // Convolution and pooling kernel stubs for architectures that do not yet have

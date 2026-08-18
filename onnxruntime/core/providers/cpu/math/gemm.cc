@@ -205,30 +205,42 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
 
   if (c_data == nullptr)
     beta = onnxruntime::MLFloat16::Zero;
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-  bool support_mlas = false;
+
+  // Guard against using generic half GEMM when no accelerated implementation is
+  // available. Native packing support currently also signals an accelerated
+  // backend path.
+  const bool has_accelerated_half_gemm =
+      MlasFp16AccelerationSupported() ||
+      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans,
+                                  static_cast<size_t>(N), static_cast<size_t>(K),
+                                  mlas_backend_kernel_selector_config) != 0;
+  bool support_mlas_bias = false;
   if (c_shape == nullptr) {
-    support_mlas = true;
+    support_mlas_bias = true;
   } else if (c_shape->NumDimensions() == 1 && (*c_shape)[0] == N) {
-    support_mlas = true;
-  } else if (c_shape->NumDimensions() == 2 && (((*c_shape)[0] == 1 && (*c_shape)[1] == N) || ((*c_shape)[0] == N && (*c_shape)[1] == 1))) {
-    support_mlas = true;
+    support_mlas_bias = true;
+  } else if (c_shape->NumDimensions() == 2 &&
+             (((*c_shape)[0] == 1 && (*c_shape)[1] == N) || ((*c_shape)[0] == N && (*c_shape)[1] == 1))) {
+    support_mlas_bias = true;
   }
-  if (trans_a == CblasNoTrans && trans_b == CblasNoTrans && support_mlas && alpha.ToFloat() == 1.0 && beta.ToFloat() == 1.0) {
-    MLAS_HALF_GEMM_DATA_PARAMS data;
+  const bool use_mlas_no_bias = beta == onnxruntime::MLFloat16::Zero;
+  const bool use_mlas_bias = beta == onnxruntime::MLFloat16::One && support_mlas_bias;
+  if (has_accelerated_half_gemm && trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
+      alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
+    MLAS_HALF_GEMM_DATA_PARAMS data{};
     data.A = a_data;
     data.lda = K;
     data.B = b_data;
     data.ldb = N;
     data.C = y_data;
     data.ldc = N;
-    if (c_shape != nullptr) {
+    if (use_mlas_bias && c_shape != nullptr) {
       data.Bias = c_data;
     }
+    data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
-#endif
   // Fallback to Eigen
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
@@ -296,6 +308,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
 
 template <typename T>
 Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                           int /*input_idx*/,
                                           /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -304,6 +317,7 @@ Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepac
 
 template <>
 Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                               int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;

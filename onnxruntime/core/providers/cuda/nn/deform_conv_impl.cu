@@ -1,8 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 //
-// CUDA implementation of DeformConv: deformable im2col kernel + bilinear interpolation.
-// Reference: torchvision deform_conv2d_kernel.cu, ONNX DeformConv spec.
+// CUDA device code for DeformConv: deformable im2col kernel(s) and bias-add kernel.
+// Host orchestration and GEMM: `deform_conv.cc` (pipeline described there, aligned with CPU `nn/deform_conv.cc`).
+//
+// This file corresponds to CPU step (1) on GPU: each thread contributes im2col entries by sampling X with
+// bilinear interpolation at offset positions (+ optional mask), instead of CPU's precomputed AoSoA plan + fill.
+//
+// Reference: torchvision deform_conv2d_kernel.cu, ONNX DeformConv.
+//
+// ONNX shapes (this EP; batch chunk = parallel_imgs):
+//   X     [parallel_imgs, C, H, W]
+//   offset[parallel_imgs, offset_group * 2*kH*kW, out_h, out_w]  — per (n, oh, ow), channels are
+//         (dy, dx) pairs for kernel taps in order (i=0..kH-1, j=0..kW-1): ch = 2*(i*kW+j) for dy, +1 for dx.
+//   mask  [parallel_imgs, offset_group * kH*kW, out_h, out_w]      — optional; ch = i*kW+j.
+//   col   row-major [C * kH * kW, parallel_imgs * out_h * out_w]; GEMM uses this as in deform_conv.cc.
+//
+// Sampling (same as CPU / typical DCN): for output (oh, ow), kernel tap (i, j),
+//   h_ref = oh * stride_h - pad_h + i * dilation_h + Δh(oh,ow,i,j)
+//   w_ref = ow * stride_w - pad_w + j * dilation_w + Δw(oh,ow,i,j)
+// then bilinear sample X at (h_ref, w_ref); multiply by mask if present.
 
 #include "deform_conv_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -31,13 +48,33 @@ inline int GetGridSize(size_t n, size_t threads_per_block) {
   return static_cast<int>(std::min(blocks_needed, static_cast<size_t>(std::numeric_limits<int>::max())));
 }
 
+template <typename... Values>
+inline bool Needs64BitIndex(Values... values) {
+  constexpr int64_t kInt32Max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+  return ((static_cast<int64_t>(values) > kInt32Max) || ...);
+}
+
+inline bool ProductExceedsInt32Max(std::initializer_list<int64_t> factors) {
+  constexpr int64_t kInt32Max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+  int64_t acc = 1;
+  for (int64_t v : factors) {
+    // DeformConv dimensions are expected to be non-negative after validation.
+    // If violated unexpectedly, conservatively force the 64-bit kernel path.
+    if (v < 0) return true;
+    if (v == 0) return false;
+    if (acc > kInt32Max / v) return true;
+    acc *= v;
+  }
+  return false;
+}
+
 // __ldg has no overload for BFloat16*; use 16-bit load + FromBits. Other types use __ldg directly.
 template <typename T>
-__device__ __inline__ T DeformConvLdg(const T* p) {
+__device__ __inline__ T DeformConvLdg(const T* __restrict__ p) {
   return __ldg(p);
 }
 template <>
-__device__ __inline__ BFloat16 DeformConvLdg<BFloat16>(const BFloat16* p) {
+__device__ __inline__ BFloat16 DeformConvLdg<BFloat16>(const BFloat16* __restrict__ p) {
   return BFloat16::FromBits(__ldg(reinterpret_cast<const uint16_t*>(p)));
 }
 
@@ -50,7 +87,7 @@ template <typename T>
 struct DeformConvBilinearTraits {
   using ComputeT = T;
 
-  __device__ static __inline__ ComputeT Load(const T* p) {
+  __device__ static __inline__ ComputeT Load(const T* __restrict__ p) {
     return __ldg(p);
   }
 
@@ -67,7 +104,7 @@ template <>
 struct DeformConvBilinearTraits<half> {
   using ComputeT = float;
 
-  __device__ static __inline__ ComputeT Load(const half* p) {
+  __device__ static __inline__ ComputeT Load(const half* __restrict__ p) {
     return __half2float(__ldg(p));
   }
 
@@ -84,7 +121,7 @@ template <>
 struct DeformConvBilinearTraits<BFloat16> {
   using ComputeT = float;
 
-  __device__ static __inline__ ComputeT Load(const BFloat16* p) {
+  __device__ static __inline__ ComputeT Load(const BFloat16* __restrict__ p) {
     return static_cast<float>(DeformConvLdg(p));
   }
 
@@ -105,9 +142,19 @@ struct DeformConvBilinearTraits<BFloat16> {
 // DeformConvBilinearTraits to avoid precision loss. We keep floor() results in CoordT and
 // cast to int only for indices (h_low/w_low), which avoids unnecessary CoordT->int->CoordT
 // round trips when computing lh/lw/hh/hw.
+//
+// Historical note: before switching to branchless masked loads, this workload had the following
+// "edge sample" ratio (counts = samples with >=1 OOB neighbor / total bilinear samples).
+// The numbers remain useful as boundary-hit context, but no longer imply control-flow divergence.
+// Example workload only; not a benchmark or representative ratio.
+//   kernel 1x1: 1.3746%  (2421 / 176128)
+//   kernel 3x3: 1.4833%  (11756 / 792576)
+//   kernel 7x7: 4.7593%  (52537 / 1103872)
+// Current implementation always issues safe-address loads and masks invalid neighbors to zero.
+// Offsets are often spatially smooth, so nearby threads still tend to exhibit similar validity patterns.
 template <typename T>
 __device__ __inline__ T BilinearInterpolate(
-    const T* in,
+    const T* __restrict__ in,
     int height,
     int width,
     typename DeformConvBilinearTraits<T>::ComputeT h,
@@ -115,12 +162,20 @@ __device__ __inline__ T BilinearInterpolate(
   using Traits = DeformConvBilinearTraits<T>;
   using CoordT = typename Traits::ComputeT;
 
-  // [Optimization 1]: Early exit for clearly out-of-bounds (skip floor() for OOB case).
+  // [Optimization 1]: Early exit for clearly out-of-bounds (skip floor() and neighbor loads for OOB case).
+  // Semantics guardrail: if sample point is outside [-1, H) x [-1, W), ONNX bilinear contribution is exactly 0.
+  // Why keep this even with branchless masked loads below:
+  //   - The branchless path guarantees safe addressing and correct masked zero, but still pays floor/weight math
+  //     and four global loads.
+  //   - This early return avoids all of that work for clearly OOB samples.
+  // About divergence: mixed in/out-of-bound warps can diverge here, but OOB lanes terminate immediately while
+  // in-bound lanes continue useful work; in practice this often wins unless OOB distribution is highly random
+  // and branch hit-rate is very high.
   if (h <= static_cast<CoordT>(-1) || h >= height || w <= static_cast<CoordT>(-1) || w >= width) {
     return Traits::Zero();
   }
 
-  // [Optimization 2]: Keep floor result in T; cast to int only for indices. Avoids float->int->float in lh/lw.
+  // [Optimization 2]: Keep floor result in CoordT; cast to int only for indices. Avoids float->int->float in lh/lw.
   CoordT h_floor = _Floor(h);
   CoordT w_floor = _Floor(w);
   int h_low = static_cast<int>(h_floor);
@@ -133,28 +188,44 @@ __device__ __inline__ T BilinearInterpolate(
   CoordT hh = static_cast<CoordT>(1) - lh;
   CoordT hw = static_cast<CoordT>(1) - lw;
 
-  // [Optimization 3]: Avoid a second multiply for base_high.
-  // Original code computed both bases as:
-  //   base_low  = h_low  * width;
-  //   base_high = h_high * width;
-  // Since h_high = h_low + 1, we can rewrite base_high as base_low + width and
-  // save one integer multiply in the hot path:
-  //   base_low  = h_low  * width;
-  //   base_high = base_low + width;
-  int base_low = h_low * width;
-  int base_high = base_low + width;
+  // [Optimization 3]: Branchless neighbor loads via "safe address + one-sided clamp".
+  // Given the early return above, coordinates are in (-1, H) x (-1, W), so each index only needs one-sided clamp:
+  //   h_low in [-1, H-1], h_high in [0, H], w_low in [-1, W-1], w_high in [0, W].
+  // We always load from legal addresses; validity is applied by 2D neighbor masks below.
+  // CUDA compilers usually lower this to predicated/selp-style code without control-flow branches.
+  const int safe_h_low = max(0, h_low);
+  const int safe_h_high = min(h_high, height - 1);
+  const int safe_w_low = max(0, w_low);
+  const int safe_w_high = min(w_high, width - 1);
 
-  CoordT v1 = (h_low >= 0 && w_low >= 0) ? Traits::Load(in + base_low + w_low) : static_cast<CoordT>(0);
-  CoordT v2 = (h_low >= 0 && w_high < width) ? Traits::Load(in + base_low + w_high) : static_cast<CoordT>(0);
-  CoordT v3 = (h_high < height && w_low >= 0) ? Traits::Load(in + base_high + w_low) : static_cast<CoordT>(0);
-  CoordT v4 = (h_high < height && w_high < width) ? Traits::Load(in + base_high + w_high) : static_cast<CoordT>(0);
+  // [Optimization 4]: One-sided validity checks under the same invariant.
+  // Keep 2D neighbor masks (m1..m4), algebraically equivalent to masking invalid neighbor terms to zero.
+  // Use one/zero ternaries directly in CoordT to encourage selp.f32/f16 generation.
+  const CoordT one = static_cast<CoordT>(1);
+  const CoordT zero = static_cast<CoordT>(0);
+  const CoordT m1 = (h_low >= 0 && w_low >= 0) ? one : zero;
+  const CoordT m2 = (h_low >= 0 && w_high < width) ? one : zero;
+  const CoordT m3 = (h_high < height && w_low >= 0) ? one : zero;
+  const CoordT m4 = (h_high < height && w_high < width) ? one : zero;
 
-  CoordT w1 = hh * hw, w2 = hh * lw, w3 = lh * hw, w4 = lh * lw;
-  return Traits::ToResult(w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
+  const int safe_base_low = safe_h_low * width;
+  const int safe_base_high = safe_h_high * width;
+
+  const CoordT v1 = Traits::Load(in + safe_base_low + safe_w_low) * m1;
+  const CoordT v2 = Traits::Load(in + safe_base_low + safe_w_high) * m2;
+  const CoordT v3 = Traits::Load(in + safe_base_high + safe_w_low) * m3;
+  const CoordT v4 = Traits::Load(in + safe_base_high + safe_w_high) * m4;
+
+  // [Optimization 5]: Factor bilinear into horizontal blends on two rows, then vertical blend.
+  // Algebraically equivalent to w1*v1 + w2*v2 + w3*v3 + w4*v4 with w1..w4 from hh/hw/lh/lw;
+  // this form tends to produce fewer independent multiplies and friendlier FFMA scheduling.
+  CoordT top = hw * v1 + lw * v2;
+  CoordT bottom = hw * v3 + lw * v4;
+  return Traits::ToResult(hh * top + lh * bottom);
 }
 
 // kH/kW = -1 means dynamic (runtime); >= 0 means compile-time constant for loop unrolling.
-template <typename T, typename IndexT, int kH = -1, int kW = -1>
+template <typename T, typename IndexT, int kH = -1, int kW = -1, bool UseMask = false>
 __global__ void DeformableIm2ColKernel(
     IndexT num_kernels,
     const T* __restrict__ input,
@@ -176,213 +247,316 @@ __global__ void DeformableIm2ColKernel(
     DivMod<IndexT> out_w_div,
     DivMod<IndexT> parallel_imgs_div,
     DivMod<IndexT> channel_per_offset_grp_div,
-    bool use_mask,
     T* __restrict__ data_col) {
+  // Aliasing contract for this kernel:
+  // - input/offset/mask are read-only and may alias each other,
+  // - data_col is write-only and must not overlap any input buffer.
   constexpr bool is_fixed = (kH >= 0 && kW >= 0);
-  const int64_t h_dim = is_fixed ? kH : weight_h;
-  const int64_t w_dim = is_fixed ? kW : weight_w;
+  const int64_t h_dim_i64 = is_fixed ? kH : weight_h;
+  const int64_t w_dim_i64 = is_fixed ? kW : weight_w;
+  const IndexT h_dim = static_cast<IndexT>(h_dim_i64);
+  const IndexT w_dim = static_cast<IndexT>(w_dim_i64);
 
-  // Reconstruct dimensions from DivMod objects
-  const int64_t out_h = out_h_div.d_;
-  const int64_t out_w = out_w_div.d_;
-  const int64_t parallel_imgs = parallel_imgs_div.d_;
+  // Linear thread index `index` encodes (in_c, out_b, out_y, out_x) with x fastest:
+  //   index = out_x + out_w * (out_y + out_h * (out_b + parallel_imgs * in_c))
+  // Unroll: divmod by out_w -> out_x; by out_h -> out_y; by parallel_imgs -> out_b, in_c.
+  const IndexT out_h = out_h_div.d_;
+  const IndexT out_w = out_w_div.d_;
+  const IndexT parallel_imgs = parallel_imgs_div.d_;
 
-  const int64_t out_size = out_h * out_w;
+  const IndexT out_size = out_h * out_w;
   // The stride for data_col is (parallel_imgs * out_h * out_w)
-  const int64_t col_stride = parallel_imgs * out_size;
+  const IndexT col_stride = parallel_imgs * out_size;  // columns span one spatial map per image in the chunk
+  const int64_t out_size_i64 = static_cast<int64_t>(out_size);
+  const int64_t col_stride_i64 = static_cast<int64_t>(col_stride);
+  const int64_t channel_hw_i64 = static_cast<int64_t>(height) * static_cast<int64_t>(width);
+  const int64_t batch_input_stride_i64 = static_cast<int64_t>(channels) * channel_hw_i64;
+  // One (n, offset_group g) slice of `offset` in linear memory: 2*kH*kW planes of shape (out_h, out_w).
+  const int64_t offset_group_block_size_i64 = static_cast<int64_t>(2) * h_dim_i64 * w_dim_i64 * out_size_i64;
+  // Same for `mask`: kH*kW planes of (out_h, out_w).
+  [[maybe_unused]] const int64_t mask_group_block_size_i64 = UseMask ? (h_dim_i64 * w_dim_i64 * out_size_i64) : int64_t{0};
+  const int height_i = static_cast<int>(height);
+  const int width_i = static_cast<int>(width);
 
   using CoordT = typename DeformConvBilinearTraits<T>::ComputeT;
 
-  for (IndexT index = blockIdx.x * blockDim.x + threadIdx.x; index < num_kernels; index += blockDim.x * gridDim.x) {
+  for (IndexT index = static_cast<IndexT>(blockIdx.x) * blockDim.x + threadIdx.x; index < num_kernels; index += static_cast<IndexT>(blockDim.x) * gridDim.x) {
     IndexT val = index;
     IndexT out_x, out_y, out_b, in_c;
 
-    // Fast division/modulo to recover coordinates
     out_w_div.divmod(val, val, out_x);
     out_h_div.divmod(val, val, out_y);
     parallel_imgs_div.divmod(val, in_c, out_b);
 
-    // [Optimization 3] Avoid expensive division if offset_group is 1 (very common case).
+    // [Im2Col] offset_group==1: channel_per_offset_grp_div is unused; skip divmod.
     IndexT offset_grp = 0;
     if (offset_group > 1) {
       IndexT dummy;
       channel_per_offset_grp_div.divmod(in_c, offset_grp, dummy);
     }
 
-    // [Optimization 2] Common Subexpression Elimination (CSE) & Pointer Arithmetic
-    // Pre-calculate base pointers to reduce integer arithmetic inside the inner loops.
+    // [Im2Col] CSE: base pointers for this thread (one output pixel × input channel).
 
-    // 1. Input pointer base for this batch and channel.
-    const T* input_ptr = input + static_cast<int64_t>(out_b) * (channels * height * width) + static_cast<int64_t>(in_c) * (height * width);
+    // 1. Input X: NCHW; offset to (out_b, in_c) is out_b * (C*H*W) + in_c * (H*W).
+    const IndexT channel_hw = static_cast<IndexT>(channel_hw_i64);
+    const IndexT batch_input_stride = static_cast<IndexT>(batch_input_stride_i64);
+    const IndexT input_base = out_b * batch_input_stride + in_c * channel_hw;
+    const T* __restrict__ input_ptr = input + static_cast<int64_t>(input_base);
 
     // 2. Spatial index in the output feature map.
-    const int64_t spatial_idx = static_cast<int64_t>(out_y) * out_w + static_cast<int64_t>(out_x);
+    const IndexT spatial_idx = static_cast<IndexT>(out_y * out_w + out_x);
 
-    // 3. Offset pointer base calculation.
-    // Layout: (N, offset_groups, 2*KH*KW, OH, OW)
-    // We pre-calculate the pointer to the start of the specific (n, g) block, plus spatial_idx.
-    const int64_t offset_group_block_size = 2 * h_dim * w_dim * out_size;
-    const T* offset_ptr_base = offset + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * offset_group_block_size + spatial_idx;
+    // 3. Offset: linear index to (dy,dx) channel 0 at (out_y, out_x) for image out_b, deformable group offset_grp.
+    //   ng = out_b * offset_group + offset_grp
+    //   offset_base = ng * (2*kH*kW*out_h*out_w) + (out_y*out_w + out_x)
+    const IndexT offset_group_idx = static_cast<IndexT>(offset_group);
+    const IndexT ng = out_b * offset_group_idx + offset_grp;
+    const IndexT offset_group_block_size = static_cast<IndexT>(offset_group_block_size_i64);
+    const IndexT offset_base = ng * offset_group_block_size + spatial_idx;
+    const T* __restrict__ offset_ptr_base = offset + static_cast<int64_t>(offset_base);
 
-    // 4. Mask pointer base calculation (if used).
-    // Layout: (N, offset_groups, KH*KW, OH, OW)
-    const T* mask_ptr_base = nullptr;
-    if (use_mask) {
-      const int64_t mask_group_block_size = h_dim * w_dim * out_size;
-      mask_ptr_base = mask + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * mask_group_block_size + spatial_idx;
+    // 4. Mask: same as offset but kH*kW planes: mask_base = ng * (kH*kW*out_h*out_w) + spatial_idx.
+    const T* __restrict__ mask_ptr_base = nullptr;
+    if constexpr (UseMask) {
+      const IndexT mask_group_block_size = static_cast<IndexT>(mask_group_block_size_i64);
+      const IndexT mask_base = ng * mask_group_block_size + spatial_idx;
+      mask_ptr_base =
+          mask + static_cast<int64_t>(mask_base);
     }
 
-    // 5. Output pointer base calculation.
-    // data_col Layout: (C * KH * KW, N * OH * OW)
-    // The current thread writes to the column `c_col` = (b * OH * OW) + spatial_idx.
-    // The starting row for this channel is `in_c * KH * KW`.
-    const int64_t c_col = static_cast<int64_t>(out_b) * out_size + spatial_idx;
-    T* data_col_ptr_base = data_col + (static_cast<int64_t>(in_c) * h_dim * w_dim) * col_stride + c_col;
+    // 5. col_buffer row-major: row r = in_c * (kH*kW) + kernel_flat; column c_col = out_b * out_h*out_w + spatial_idx.
+    //    Element (r, c_col) at col_buffer[r * col_stride + c_col].
+    const IndexT c_col = out_b * out_size + spatial_idx;
+    const IndexT row_base = static_cast<IndexT>((in_c * h_dim) * w_dim);
+    T* __restrict__ data_col_ptr_base =
+        data_col + static_cast<int64_t>(row_base) * col_stride_i64 + static_cast<int64_t>(c_col);
 
-    // 6. Pre-calculate invariant coordinate parts.
-    // Use float for coordinate math when T is half or BFloat16 to avoid precision loss.
+    // 6. Undilated top-left of the kernel anchor for this output pixel: base_* = out_* * stride_* - pad_*.
+    //    Row i / col j add i*dilation_h / j*dilation_w before applying offsets (see run_deform_row).
     const CoordT base_h_im = static_cast<CoordT>(out_y * stride_h - pad_h);
     const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
-    auto process_kernel_point = [&](int64_t i, int64_t j) {
-      const int64_t kernel_idx = i * w_dim + j;
+    // Per (output location, channel): one sample from offset/mask tensors and bilinear input.
+    auto process_kernel_point = [&](const T* __restrict__ offset_h_ptr, const T* __restrict__ offset_w_ptr,
+                                    const T* __restrict__ mask_ptr, T* __restrict__ data_col_ptr, CoordT h_base,
+                                    CoordT w_base) {
       T mask_val = static_cast<T>(1);
-      if (use_mask) {
-        // Access mask using pre-calculated base and stride.
-        mask_val = DeformConvLdg(mask_ptr_base + kernel_idx * out_size);
+      if constexpr (UseMask) {
+        mask_val = DeformConvLdg(mask_ptr);
       }
 
-      // Calculate offset pointers relative to the base.
-      // The offset tensor stores (y_offset, x_offset) pairs for each kernel weight.
-      // Stride between y_offset and x_offset is `out_size`.
-      const int64_t offset_offset_idx = (2 * kernel_idx) * out_size;
+      const CoordT offset_h = static_cast<CoordT>(DeformConvLdg(offset_h_ptr));
+      const CoordT offset_w = static_cast<CoordT>(DeformConvLdg(offset_w_ptr));
 
-      const CoordT offset_h = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx));
-      const CoordT offset_w = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx + out_size));
-
-      const CoordT h_im = base_h_im + static_cast<CoordT>(i * dilation_h) + offset_h;
-      const CoordT w_im = base_w_im + static_cast<CoordT>(j * dilation_w) + offset_w;
+      const CoordT h_im = h_base + offset_h;
+      const CoordT w_im = w_base + offset_w;
 
       // height/width are validated on host (DeformConvValidateAndParse) so int is safe here.
-      T val = BilinearInterpolate(input_ptr,
-                                  static_cast<int>(height),
-                                  static_cast<int>(width),
-                                  h_im,
-                                  w_im);
+      T val = BilinearInterpolate(input_ptr, height_i, width_i, h_im, w_im);
 
       // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
-      data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
+      *data_col_ptr = val * mask_val;
+    };
+
+    // One row of kernel weights (fixed kW or runtime weight_w): compute row base once, then walk j with pointer
+    // adds only (no kernel_idx * stride rebuild each j). Shared by compile-time and dynamic kernel sizes.
+    // Along the kernel row, dy/dx planes are spaced by out_h*out_w; each (dy,dx) pair spans 2*out_size elements.
+    const IndexT offset_pair_stride = static_cast<IndexT>(2) * out_size;
+    auto run_deform_row = [&](IndexT row_kernel_base, CoordT h_base, IndexT row_width) {
+      CoordT w_base = base_w_im;
+      const IndexT offset_elem_offset = static_cast<IndexT>(2 * row_kernel_base) * out_size;
+      const T* __restrict__ offset_h_ptr = offset_ptr_base + offset_elem_offset;
+      const T* __restrict__ offset_w_ptr = offset_h_ptr + out_size;
+      const T* __restrict__ mask_ptr = nullptr;
+      if constexpr (UseMask) {
+        mask_ptr = mask_ptr_base + row_kernel_base * out_size;
+      }
+      T* __restrict__ data_col_ptr = data_col_ptr_base + row_kernel_base * col_stride;
+
+      auto step_kernel_point = [&]() {
+        process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
+        offset_h_ptr += offset_pair_stride;
+        offset_w_ptr += offset_pair_stride;
+        if constexpr (UseMask) {
+          mask_ptr += out_size;
+        }
+        data_col_ptr += col_stride;
+        w_base += static_cast<CoordT>(dilation_w);
+      };
+
+      // Small fixed kernels: unroll inner j so codegen matches the old fully-unrolled 1x1/3x3 path.
+      if constexpr (is_fixed && kH * kW <= 9) {
+#pragma unroll
+        for (IndexT j = 0; j < row_width; ++j) {
+          step_kernel_point();
+        }
+      } else {
+        for (IndexT j = 0; j < row_width; ++j) {
+          step_kernel_point();
+        }
+      }
     };
 
     if constexpr (is_fixed) {
+      if constexpr (kH * kW <= 9) {
+        // For 1x1 and 3x3, unroll the outer i loop; inner j uses run_deform_row with #pragma unroll there.
 #pragma unroll
-      for (int i = 0; i < kH; ++i) {
-#pragma unroll
-        for (int j = 0; j < kW; ++j) {
-          process_kernel_point(i, j);
+        for (int i = 0; i < kH; ++i) {
+          const IndexT i_idx = static_cast<IndexT>(i);
+          run_deform_row(i_idx * w_dim, base_h_im + static_cast<CoordT>(i_idx * dilation_h), w_dim);
+        }
+      } else {
+        // Larger fixed kernels (including 7x7): keep both outer i and inner j rolled to limit register
+        // pressure from the heavy bilinear body. 7x7 still benefits from launch-time kH/kW constants
+        // without inner #pragma unroll.
+        for (int i = 0; i < kH; ++i) {
+          const IndexT i_idx = static_cast<IndexT>(i);
+          run_deform_row(i_idx * w_dim, base_h_im + static_cast<CoordT>(i_idx * dilation_h), w_dim);
         }
       }
     } else {
-      for (int64_t i = 0; i < weight_h; ++i) {
-        for (int64_t j = 0; j < weight_w; ++j) {
-          process_kernel_point(i, j);
-        }
+      const IndexT weight_h_idx = static_cast<IndexT>(weight_h);
+      const IndexT weight_w_idx = static_cast<IndexT>(weight_w);
+      for (IndexT i = 0; i < weight_h_idx; ++i) {
+        const IndexT row_base_idx = static_cast<IndexT>(i * weight_w_idx);
+        run_deform_row(row_base_idx, base_h_im + static_cast<CoordT>(i * dilation_h), weight_w_idx);
       }
     }
   }
 }
 
-// Bias add: Y[n,m,oh,ow] += B[m]. Layout NCHW.
-template <typename T>
+// Bias add: Y[n,m,oh,ow] += B[m]. Y linear row-major NCHW: idx = n*(M*HW) + m*HW + (oh*W+ow).
+template <typename T, typename IndexT>
 __global__ void DeformConvAddBiasKernel(
-    T* Y,
-    const T* B,
-    DivMod<int64_t> spatial_div,  // For dividing by (H * W)
-    DivMod<int64_t> channel_div,  // For dividing by M (channel count)
-    int64_t total_elements) {
-  for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total_elements; idx += blockDim.x * gridDim.x) {
-    int64_t val = idx;
-    int64_t batch_channel_idx, pixel_idx;
+    T* __restrict__ Y,
+    const T* __restrict__ B,
+    DivMod<IndexT> spatial_div,  // For dividing by (H * W)
+    DivMod<IndexT> channel_div,  // For dividing by M (channel count)
+    IndexT total_elements) {
+  for (IndexT idx = static_cast<IndexT>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total_elements;
+       idx += static_cast<IndexT>(blockDim.x) * gridDim.x) {
+    IndexT val = idx;
+    IndexT batch_channel_idx, pixel_idx;
 
-    // 1. First decomposition: decompose idx into (batch_channel_idx, pixel_idx)
-    // Equivalent to: batch_channel_idx = idx / (H*W); pixel_idx = idx % (H*W);
+    // idx -> (batch_channel_idx, pixel_idx) with pixel_idx = oh*out_w+ow fastest.
     spatial_div.divmod(val, batch_channel_idx, pixel_idx);
 
-    int64_t batch_idx, channel_idx;
-
-    // 2. Second decomposition: decompose batch_channel_idx into (batch_idx, channel_idx)
-    // Equivalent to: channel_idx = batch_channel_idx % M;
-    // We only need channel_idx (i.e. m)
+    // batch_channel_idx = n*M + m  ->  bias index is m = batch_channel_idx % M.
+    IndexT batch_idx, channel_idx;
     channel_div.divmod(batch_channel_idx, batch_idx, channel_idx);
-    (void)batch_idx;  // Only channel_idx is needed
+    ORT_UNUSED_PARAMETER(batch_idx);
 
-    // channel_idx is what we need (i.e. m)
     Y[idx] += DeformConvLdg(B + channel_idx);
   }
 }
 
-// Copy GEMM output (row-major [M_per_group, cur_parallel*output_image_size]) into NCHW Y_g.
-// src(c, j) with j = b_idx*output_image_size + pos -> dst[b_idx*M*output_image_size + c*output_image_size + pos].
-template <typename T>
-__global__ void CopyGemmOutputRowMajorToNCHWKernel(
-    const T* __restrict__ src,
-    T* __restrict__ dst,
-    int64_t M,
-    int64_t M_per_group,
-    int64_t output_image_size,
-    int64_t cur_parallel) {
-  int64_t total = cur_parallel * M_per_group * output_image_size;
-  for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total; idx += blockDim.x * gridDim.x) {
-    int64_t pos = idx % output_image_size;
-    int64_t c = (idx / output_image_size) % M_per_group;
-    int64_t b_idx = idx / (output_image_size * M_per_group);
-    int64_t j = b_idx * output_image_size + pos;
-    // src index for row-major: c * (cur_parallel * output_image_size) + j
-    dst[b_idx * M * output_image_size + c * output_image_size + pos] = src[c * (cur_parallel * output_image_size) + j];
+// 2D launch: blockIdx.y -> batch_channel_idx in [0, N*M), threadIdx -> pixel_idx in [0, out_h*out_w).
+// Indexing: Y[batch_channel_idx * spatial_size + pixel_idx]. Pick IndexT from Needs64BitIndex like the 1D kernel.
+template <typename T, typename IndexT>
+__global__ void DeformConvAddBias2DKernel(T* __restrict__ Y, const T* __restrict__ B, IndexT spatial_size,
+                                          int32_t channels) {
+  // blockIdx.y maps to batch_channel_idx (N * M)
+  const IndexT batch_channel_idx = static_cast<IndexT>(blockIdx.y);
+  const IndexT channel_idx = batch_channel_idx % static_cast<IndexT>(channels);
+  T bias_val = DeformConvLdg(B + channel_idx);
+
+  const IndexT pixel_idx = static_cast<IndexT>(blockIdx.x) * static_cast<IndexT>(blockDim.x) + static_cast<IndexT>(threadIdx.x);
+  if (pixel_idx < spatial_size) {
+    Y[batch_channel_idx * spatial_size + pixel_idx] += bias_val;
   }
 }
 
 }  // namespace
 
 template <typename T>
-Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, int64_t M, int64_t out_h, int64_t out_w) {
+Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, int64_t M, int64_t out_h, int64_t out_w, int64_t max_grid_y) {
   int64_t total = N * M * out_h * out_w;
   if (total <= 0) return Status::OK();
 
   // 1. Prepare divisor
-  int64_t out_size = out_h * out_w;
+  const int64_t out_size = out_h * out_w;
+  const int64_t batch_channels = N * M;
+  // For 1D DivMod kernel only: int32 fast path vs int64. Orthogonal to 2D launch (gridDim.y limit).
+  const bool use_64bit = Needs64BitIndex(total, out_size, M);
 
-  // 2. Create FastDivMod object (note: ensure int64_t version of DivMod is used here)
-  DivMod<int64_t> spatial_div(out_size);
-  DivMod<int64_t> channel_div(M);
+  // Fast 2D launch path: map blockIdx.y to (N*M) to avoid per-thread DivMod in bias add.
+  // Use it only when the device allows enough grid rows: below ~32 blocks in y, the extra
+  // parallelism (warps scheduled across blockIdx.y) is often too small to outweigh maintaining
+  // a second launch + kernel variant; the threshold is a heuristic—revisit if future GPUs change
+  // occupancy sweet spots or typical batch×channel counts.
+  constexpr int kMinGridYForBias2DPath = 32;
+  if (max_grid_y > kMinGridYForBias2DPath && batch_channels <= static_cast<int64_t>(max_grid_y)) {
+    dim3 block(kDeformConvThreadsPerBlock);
+    dim3 grid(static_cast<unsigned int>(GetGridSize(static_cast<size_t>(out_size), block.x)),
+              static_cast<unsigned int>(batch_channels));
+    const int32_t m_i32 = static_cast<int32_t>(M);
+    if (use_64bit) {
+      DeformConvAddBias2DKernel<T, int64_t><<<grid, block, 0, stream>>>(Y, B, out_size, m_i32);
+    } else {
+      DeformConvAddBias2DKernel<T, int32_t><<<grid, block, 0, stream>>>(Y, B, static_cast<int32_t>(out_size), m_i32);
+    }
+    return CUDA_CALL(cudaGetLastError());
+  }
 
   int blocks = GetGridSize(static_cast<size_t>(total), kDeformConvThreadsPerBlock);
-
-  // 3. Pass DivMod objects
-  DeformConvAddBiasKernel<T><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
-      Y,
-      B,
-      spatial_div,
-      channel_div,
-      total);
+  if (use_64bit) {
+    // 2. Create FastDivMod object (note: ensure int64_t version of DivMod is used here)
+    // 3. Pass DivMod objects
+    DeformConvAddBiasKernel<T, int64_t><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+        Y, B,
+        DivMod<int64_t>(out_size),
+        DivMod<int64_t>(M),
+        total);
+  } else {
+    // 2. Create FastDivMod object
+    // 3. Pass DivMod objects
+    DeformConvAddBiasKernel<T, int32_t><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+        Y, B,
+        DivMod<int32_t>(static_cast<int32_t>(out_size)),
+        DivMod<int32_t>(static_cast<int32_t>(M)),
+        static_cast<int32_t>(total));
+  }
   return CUDA_CALL(cudaGetLastError());
 }
 
-template <typename T>
-Status DeformConvCopyGemmOutputRowMajorToNCHW(
-    cudaStream_t stream,
-    const T* gemm_output,
-    T* Y_g,
-    int64_t M,
-    int64_t M_per_group,
-    int64_t output_image_size,
-    int64_t cur_parallel) {
-  int64_t total = cur_parallel * M_per_group * output_image_size;
-  if (total <= 0) return Status::OK();
-  int blocks = GetGridSize(static_cast<size_t>(total), kDeformConvThreadsPerBlock);
-  CopyGemmOutputRowMajorToNCHWKernel<T><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
-      gemm_output, Y_g, M, M_per_group, output_image_size, cur_parallel);
-  return CUDA_CALL(cudaGetLastError());
+// Determine if we need to fall back to 64-bit integer arithmetic in the CUDA kernel.
+// 32-bit arithmetic is significantly faster and uses fewer registers.
+// We check if any of the intermediate index calculations could exceed INT32_MAX (~2.14 billion).
+// The most likely variable to exceed this is `col_numel`:
+// col_numel = C * kH * kW * parallel_imgs * out_h * out_w
+//
+// Examples of when 64-bit fallback is triggered (col_numel > 2,147,483,647):
+// - High Resolution (1K): C=256, kH=3, kW=3, parallel_imgs=1, out_h=1024, out_w=1024
+//   col_numel = 256 * 3 * 3 * 1 * 1024 * 1024 = 2,415,919,104 (> 2.14B)
+// - Large Kernel & Batch: C=128, kH=5, kW=5, parallel_imgs=11, out_h=256, out_w=256
+//   col_numel = 128 * 5 * 5 * 11 * 256 * 256 = 2,306,867,200 (> 2.14B)
+// - Massive Channels: C=4096, kH=3, kW=3, parallel_imgs=1, out_h=256, out_w=256
+//   col_numel = 4096 * 3 * 3 * 1 * 256 * 256 = 2,415,919,104 (> 2.14B)
+// - 3D-like Large Kernel: C=512, kH=7, kW=7, parallel_imgs=1, out_h=512, out_w=512
+//   col_numel = 512 * 7 * 7 * 1 * 512 * 512 = 6,576,668,672 (> 2.14B)
+//
+// Example of a safe 32-bit case:
+// - Typical ResNet: C=256, kH=3, kW=3, parallel_imgs=32, out_h=128, out_w=128
+//   col_numel = 256 * 3 * 3 * 32 * 128 * 128 = 1,207,959,552 (< 2.14B)
+//
+// In practice, due to the 2GB hard limit on temp memory allocation in GetDeformConvEffectiveMaxTempBytes(),
+// col_numel will almost never exceed INT32_MAX without OOMing first.
+inline bool CheckDeformConvNeeds64BitIndex(
+    int64_t num_kernels, int64_t C, int64_t H, int64_t W, int64_t kH, int64_t kW, int64_t out_h, int64_t out_w,
+    int64_t parallel_imgs, int64_t offset_group) {
+  if (Needs64BitIndex(num_kernels, C, H, W, kH, kW, out_h, out_w, parallel_imgs, offset_group)) {
+    return true;
+  }
+
+  // Check potentially large products without evaluating intermediate multiplications.
+  return ProductExceedsInt32Max({C, kH, kW, parallel_imgs, out_h, out_w}) ||                // col_numel
+         ProductExceedsInt32Max({2, kH, kW, out_h, out_w}) ||                               // offset_inner_size
+         ProductExceedsInt32Max({kH, kW, out_h, out_w}) ||                                  // mask_inner_size
+         ProductExceedsInt32Max({parallel_imgs, offset_group, 2, kH, kW, out_h, out_w}) ||  // offset_numel
+         ProductExceedsInt32Max({parallel_imgs, offset_group, kH, kW, out_h, out_w}) ||     // mask_numel
+         ProductExceedsInt32Max({H, W}) ||                                                  // channel_hw
+         ProductExceedsInt32Max({C, H, W}) ||                                               // batch_input_stride
+         ProductExceedsInt32Max({parallel_imgs, C, H, W});                                  // input_numel
 }
 
 template <typename T>
@@ -413,41 +587,51 @@ Status DeformConvIm2ColImpl(
     return Status::OK();
   }
 
-  const int64_t col_numel = static_cast<int64_t>(C) * kH * kW * parallel_imgs * out_h * out_w;
-  const bool use_64bit = (num_kernels > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
-                         (col_numel > static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
+  const bool use_64bit = CheckDeformConvNeeds64BitIndex(num_kernels, C, H, W, kH, kW, out_h, out_w, parallel_imgs, offset_group);
 
   int blocks = GetGridSize(static_cast<size_t>(num_kernels), kDeformConvThreadsPerBlock);
 
-  auto launch = [&](auto kH_tag, auto kW_tag) {
+  auto launch = [&](auto kH_tag, auto kW_tag, auto use_mask_tag) {
     constexpr int KH = decltype(kH_tag)::value;
     constexpr int KW = decltype(kW_tag)::value;
+    constexpr bool UseMask = decltype(use_mask_tag)::value;
     if (use_64bit) {
-      DeformableIm2ColKernel<T, int64_t, KH, KW><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+      DeformableIm2ColKernel<T, int64_t, KH, KW, UseMask><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
           num_kernels, input, offset, mask, H, W, kH, kW, pad_h, pad_w,
           stride_h, stride_w, dilation_h, dilation_w, C, offset_group,
           DivMod<int64_t>(out_h), DivMod<int64_t>(out_w), DivMod<int64_t>(parallel_imgs),
-          DivMod<int64_t>(C / offset_group), use_mask, col_buffer);
+          DivMod<int64_t>(C / offset_group), col_buffer);
     } else {
-      DeformableIm2ColKernel<T, int32_t, KH, KW><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+      DeformableIm2ColKernel<T, int32_t, KH, KW, UseMask><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
           static_cast<int32_t>(num_kernels), input, offset, mask, H, W, kH, kW, pad_h, pad_w,
           stride_h, stride_w, dilation_h, dilation_w, C, offset_group,
           DivMod<int32_t>(static_cast<int32_t>(out_h)),
           DivMod<int32_t>(static_cast<int32_t>(out_w)),
           DivMod<int32_t>(static_cast<int32_t>(parallel_imgs)),
           DivMod<int32_t>(static_cast<int32_t>(C / offset_group)),
-          use_mask, col_buffer);
+          col_buffer);
     }
   };
 
+  auto launch_with_mask = [&](auto k_size_tag) {
+    if (use_mask) {
+      launch(k_size_tag, k_size_tag, std::integral_constant<bool, true>{});
+    } else {
+      launch(k_size_tag, k_size_tag, std::integral_constant<bool, false>{});
+    }
+  };
+
+  // Keep template specializations for the most common kernel sizes in modern models.
+  // 5x5 is intentionally not specialized: it is less common in current architectures and is often
+  // replaced by stacked 3x3 blocks (similar receptive field with better optimization flexibility).
   if (kH == 1 && kW == 1) {
-    launch(DeformConvKSize<1>{}, DeformConvKSize<1>{});
+    launch_with_mask(DeformConvKSize<1>{});
   } else if (kH == 3 && kW == 3) {
-    launch(DeformConvKSize<3>{}, DeformConvKSize<3>{});
-  } else if (kH == 5 && kW == 5) {
-    launch(DeformConvKSize<5>{}, DeformConvKSize<5>{});
+    launch_with_mask(DeformConvKSize<3>{});
+  } else if (kH == 7 && kW == 7) {
+    launch_with_mask(DeformConvKSize<7>{});
   } else {
-    launch(DeformConvKSize<-1>{}, DeformConvKSize<-1>{});
+    launch_with_mask(DeformConvKSize<-1>{});
   }
   return CUDA_CALL(cudaGetLastError());
 }
@@ -460,15 +644,10 @@ INST_DeformConvIm2ColImpl(double);
 INST_DeformConvIm2ColImpl(half);
 INST_DeformConvIm2ColImpl(BFloat16);
 
-template Status DeformConvCopyGemmOutputRowMajorToNCHW<float>(cudaStream_t, const float*, float*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvCopyGemmOutputRowMajorToNCHW<double>(cudaStream_t, const double*, double*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvCopyGemmOutputRowMajorToNCHW<half>(cudaStream_t, const half*, half*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvCopyGemmOutputRowMajorToNCHW<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, int64_t, int64_t, int64_t, int64_t);
-
-template Status DeformConvAddBiasImpl<float>(cudaStream_t, float*, const float*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvAddBiasImpl<double>(cudaStream_t, double*, const double*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvAddBiasImpl<half>(cudaStream_t, half*, const half*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const BFloat16*, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<float>(cudaStream_t, float*, const float*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<double>(cudaStream_t, double*, const double*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<half>(cudaStream_t, half*, const half*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const BFloat16*, int64_t, int64_t, int64_t, int64_t, int64_t);
 
 // Delegate ORT type to CUDA type (e.g. MLFloat16 -> half); avoids repeating three identical specializations.
 #define DELEGATE_DEFORM_CONV_IMPL(ORT_T, CUDA_T)                                                                    \
@@ -488,20 +667,10 @@ template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const B
                                         offset_group, use_mask);                                                    \
   }                                                                                                                 \
   template <>                                                                                                       \
-  Status DeformConvCopyGemmOutputRowMajorToNCHW<ORT_T>(cudaStream_t stream,                                         \
-                                                       const ORT_T* gemm_output, ORT_T* Y_g,                        \
-                                                       int64_t M, int64_t M_per_group,                              \
-                                                       int64_t output_image_size, int64_t cur_parallel) {           \
-    return DeformConvCopyGemmOutputRowMajorToNCHW<CUDA_T>(stream,                                                   \
-                                                          reinterpret_cast<const CUDA_T*>(gemm_output),             \
-                                                          reinterpret_cast<CUDA_T*>(Y_g),                           \
-                                                          M, M_per_group, output_image_size, cur_parallel);         \
-  }                                                                                                                 \
-  template <>                                                                                                       \
   Status DeformConvAddBiasImpl<ORT_T>(cudaStream_t stream, ORT_T * Y, const ORT_T* B,                               \
-                                      int64_t N, int64_t M, int64_t out_h, int64_t out_w) {                         \
+                                      int64_t N, int64_t M, int64_t out_h, int64_t out_w, int64_t max_grid_y) {     \
     return DeformConvAddBiasImpl<CUDA_T>(stream, reinterpret_cast<CUDA_T*>(Y),                                      \
-                                         reinterpret_cast<const CUDA_T*>(B), N, M, out_h, out_w);                   \
+                                         reinterpret_cast<const CUDA_T*>(B), N, M, out_h, out_w, max_grid_y);       \
   }
 
 // BFloat16 is not delegated: ORT's BFloat16 is the same type used in device code (ToCudaType<BFloat16> in

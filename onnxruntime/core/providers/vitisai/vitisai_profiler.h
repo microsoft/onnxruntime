@@ -12,7 +12,7 @@ class VitisaiProfiler final : public EpProfiler {
   VitisaiProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VitisaiProfiler);
   ~VitisaiProfiler() {}
-  bool StartProfiling(TimePoint) override;
+  Status StartProfiling(TimePoint) override;
   void EndProfiling(TimePoint, Events&) override;
   void Start(uint64_t) override {}
   void Stop(uint64_t, const EventRecord&) override {}

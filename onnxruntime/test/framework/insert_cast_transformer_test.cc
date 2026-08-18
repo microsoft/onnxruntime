@@ -371,6 +371,145 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   EXPECT_EQ(ops["Cast"], 4);
 }
 
+// Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)
+// because the intermediate int32 truncation changes semantics (e.g. -0.1 -> 0 -> false vs -0.1 -> true).
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28089
+TEST(TransformerTest, CastFloatToIntToBoolNotFused) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float32;
+  tensor_float32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  TypeProto tensor_bool;
+  tensor_bool.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+
+  onnxruntime::NodeArg x_def("X", &tensor_float32);
+  onnxruntime::NodeArg mid_def("mid", &tensor_int32);
+  onnxruntime::NodeArg y_def("Y", &tensor_bool);
+
+  NodeAttributes cast1_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_INT32))}};
+  NodeAttributes cast2_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_BOOL))}};
+
+  graph.AddNode("Cast_1", "Cast", "float to int32",
+                ArgMap{&x_def}, ArgMap{&mid_def}, &cast1_attrs);
+  graph.AddNode("Cast_2", "Cast", "int32 to bool",
+                ArgMap{&mid_def}, ArgMap{&y_def}, &cast2_attrs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Both Cast nodes must survive — float->int32 truncation is semantically significant.
+  std::map<std::string, int> op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Cast"], 2)
+      << "Cast(float->int32)->Cast(int32->bool) must not be fused to Cast(float->bool)";
+}
+
+// Verify that Cast(float->float16)->Cast(float16->int32) can still be optimized to Cast(float->int32).
+// The first cast is lossy (float->float16) but the destination is not bool, so removal is allowed.
+TEST(TransformerTest, LossyCastChainWithNonBoolDestIsOptimized) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float32;
+  tensor_float32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float16;
+  tensor_float16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+
+  onnxruntime::NodeArg x_def("X", &tensor_float32);
+  onnxruntime::NodeArg mid_def("mid", &tensor_float16);
+  onnxruntime::NodeArg y_def("Y", &tensor_int32);
+
+  NodeAttributes cast1_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_FLOAT16))}};
+  NodeAttributes cast2_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_INT32))}};
+
+  graph.AddNode("Cast_1", "Cast", "float to float16",
+                ArgMap{&x_def}, ArgMap{&mid_def}, &cast1_attrs);
+  graph.AddNode("Cast_2", "Cast", "float16 to int32",
+                ArgMap{&mid_def}, ArgMap{&y_def}, &cast2_attrs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // The first Cast should be removed, leaving only Cast(float->int32).
+  std::map<std::string, int> op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Cast"], 1)
+      << "Cast(float->float16)->Cast(float16->int32) should be optimized to Cast(float->int32)";
+}
+
+// Verify that Cast(float->int64)->Cast(int64->int32) can still be optimized to Cast(float->int32).
+// The first cast is lossy (float->int64) but the destination is not bool, so removal is allowed.
+TEST(TransformerTest, LossyCastFloatToInt64ToInt32IsOptimized) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float32;
+  tensor_float32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_int64;
+  tensor_int64.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+
+  onnxruntime::NodeArg x_def("X", &tensor_float32);
+  onnxruntime::NodeArg mid_def("mid", &tensor_int64);
+  onnxruntime::NodeArg y_def("Y", &tensor_int32);
+
+  NodeAttributes cast1_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_INT64))}};
+  NodeAttributes cast2_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_INT32))}};
+
+  graph.AddNode("Cast_1", "Cast", "float to int64",
+                ArgMap{&x_def}, ArgMap{&mid_def}, &cast1_attrs);
+  graph.AddNode("Cast_2", "Cast", "int64 to int32",
+                ArgMap{&mid_def}, ArgMap{&y_def}, &cast2_attrs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // The first Cast should be removed, leaving only Cast(float->int32).
+  std::map<std::string, int> op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Cast"], 1)
+      << "Cast(float->int64)->Cast(int64->int32) should be optimized to Cast(float->int32)";
+}
+
 // Verify that RemoveDuplicateCastTransformer does not fuse consecutive Cast nodes
 // that are assigned to different execution providers.
 // Regression test for https://github.com/microsoft/onnxruntime/issues/27291
@@ -427,6 +566,79 @@ TEST(TransformerTest, CrossEpCastNodesNotFused) {
   ASSERT_NE(cast2_input_type, nullptr);
   EXPECT_EQ(cast2_input_type->tensor_type().elem_type(), TensorProto_DataType_FLOAT)
       << "Cast_2 input should remain float32, not be changed to int64";
+}
+
+// Verify that on_partition_assignment_fn_ is NOT called for a node whose CPU EP assignment was
+// already recorded by the partitioner, even when ForceSingleNodeCPUFloat16ToFloat32 later clears
+// that assignment to force the node through the fp32 cast-wrapping path.
+//
+// Graph: I1(fp16) -> Relu(no fp16 kernel, EP empty) -> O1(fp16)
+//                 -> Concat(fp16 kernel, EP=CPU)     -> O2(fp16)
+//                 -> Relu(no fp16 kernel, EP empty)  -> O3(fp16)
+//
+// The two Relu nodes are unassigned.  InsertCastTransformer's fallback policy wraps them with
+// fp32 casts and assigns them to CPU EP; the callback should fire once for each.
+//
+// Concat was already assigned to CPU EP by the partitioner (it has an fp16 CPU kernel).
+// ForceSingleNodeCPUFloat16ToFloat32 clears its EP so it also gets cast-wrapped (avoiding an
+// isolated fp16 island).  When the transformer then assigns Concat to CPU EP as a fallback, it
+// must NOT fire the callback — that would duplicate the partitioner's already-recorded assignment.
+TEST(TransformerTest, IsolatedFp16NodeDoesNotDuplicatePartitionCallback) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg i1_def("I1", &tensor_float_16),
+      o1_def("O1", &tensor_float_16),
+      o2_def("O2", &tensor_float_16),
+      o3_def("O3", &tensor_float_16);
+
+  // Leave the Relu nodes' EP unset so InsertCastTransformer treats them as newly assigned and wraps them.
+  auto& relu1 = graph.AddNode("relu1", "Relu", "EP unset", {&i1_def}, {&o1_def});
+  // Simulate a node that was already assigned by the partitioner.
+  NodeAttributes concat_attrs = {{"axis", utils::MakeAttribute("axis", static_cast<int64_t>(0))}};
+  auto& concat = graph.AddNode("concat", "Concat", "pre-assigned", {&o1_def}, {&o2_def}, &concat_attrs);
+  concat.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  auto& relu2 = graph.AddNode("relu2", "Relu", "EP unset", {&o2_def}, {&o3_def});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Collect the node indices reported to the partition callback.
+  std::vector<NodeIndex> callback_indices;
+  auto on_assignment = [&callback_indices](const Graph&, const ComputeCapability& capability,
+                                           const std::string&) {
+    if (capability.sub_graph) {
+      for (NodeIndex idx : capability.sub_graph->nodes) {
+        callback_indices.push_back(idx);
+      }
+    }
+  };
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get(),
+                                    on_assignment);
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_TRUE(modified);
+
+  // Only the two Relu nodes (new CPU assignments) should have fired the callback.
+  // Concat was already assigned by the partitioner — re-assigning it must not produce a duplicate.
+  ASSERT_EQ(callback_indices.size(), 2u)
+      << "on_partition_assignment_fn_ must fire exactly once per newly-assigned node; "
+         "Concat was already assigned and must not produce a duplicate record";
+
+  const NodeIndex relu1_idx = relu1.Index();
+  const NodeIndex relu2_idx = relu2.Index();
+  EXPECT_NE(std::find(callback_indices.begin(), callback_indices.end(), relu1_idx), callback_indices.end())
+      << "Relu1 should have been reported as a new CPU assignment";
+  EXPECT_NE(std::find(callback_indices.begin(), callback_indices.end(), relu2_idx), callback_indices.end())
+      << "Relu2 should have been reported as a new CPU assignment";
+  EXPECT_EQ(std::find(callback_indices.begin(), callback_indices.end(), concat.Index()), callback_indices.end())
+      << "Concat was already assigned to CPU EP — its re-assignment must not fire the callback again";
 }
 
 }  // namespace test

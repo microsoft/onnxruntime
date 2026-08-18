@@ -75,8 +75,8 @@ class FastOStringStream {
 
   // Integer types
   template <typename T>
-  std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, char>, FastOStringStream&>
-  operator<<(T value) {
+    requires(std::is_integral_v<T> && !std::is_same_v<T, char>)
+  FastOStringStream& operator<<(T value) {
     std::array<char, 32> buffer;
     auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
     str_.append(buffer.data(), ptr - buffer.data());
@@ -85,8 +85,8 @@ class FastOStringStream {
 
   // Floating point types
   template <typename T>
-  std::enable_if_t<std::is_floating_point_v<T>, FastOStringStream&>
-  operator<<(T value) {
+    requires std::is_floating_point_v<T>
+  FastOStringStream& operator<<(T value) {
     std::array<char, 64> buffer;
     auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
     str_.append(buffer.data(), ptr - buffer.data());

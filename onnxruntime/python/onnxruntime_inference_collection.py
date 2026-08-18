@@ -13,13 +13,12 @@ from collections.abc import Callable, Sequence
 from enum import IntEnum
 from typing import Any
 
+import numpy as np
+
 from onnxruntime.capi import _pybind_state as C
 
 if typing.TYPE_CHECKING:
-    import numpy as np
     import numpy.typing as npt
-
-    import onnxruntime
 
 
 def get_ort_device_type(device_type: str) -> int:
@@ -105,9 +104,15 @@ class AdapterFormat:
         return self._adapter.model_version
 
     def set_parameters(self, params: dict[str, OrtValue]) -> None:
+        """Set adapter parameters for export."""
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
+        """Get adapter parameters as a dict of name -> OrtValue.
+
+        On read instances, the returned OrtValues are zero-copy views; the
+        backing memory stays alive as long as any returned OrtValue is referenced.
+        """
         return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
@@ -204,35 +209,35 @@ class Session:
         self._sess = None
         self._enable_fallback = enable_fallback
 
-    def get_session_options(self) -> onnxruntime.SessionOptions:
+    def get_session_options(self) -> C.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
 
-    def get_inputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_inputs(self) -> Sequence[C.NodeArg]:
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._inputs_meta
 
-    def get_outputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_outputs(self) -> Sequence[C.NodeArg]:
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
 
-    def get_overridable_initializers(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_overridable_initializers(self) -> Sequence[C.NodeArg]:
         "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._overridable_initializers
 
-    def get_modelmeta(self) -> onnxruntime.ModelMetadata:
+    def get_modelmeta(self) -> C.ModelMetadata:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
 
-    def get_input_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_input_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
         "Return the memory info for the inputs."
         return self._input_meminfos
 
-    def get_output_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_output_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
         "Return the memory info for the outputs."
         return self._output_meminfos
 
-    def get_input_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
+    def get_input_epdevices(self) -> Sequence[C.OrtEpDevice]:
         "Return the execution providers for the inputs."
         return self._input_epdevices
 
@@ -244,7 +249,7 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
-    def get_provider_graph_assignment_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
+    def get_provider_graph_assignment_info(self) -> Sequence[C.OrtEpAssignedSubgraph]:
         """
         Get information about the subgraphs assigned to each execution provider and the nodes within.
 
@@ -469,7 +474,7 @@ class InferenceSession(Session):
     def __init__(
         self,
         path_or_bytes: str | bytes | os.PathLike,
-        sess_options: onnxruntime.SessionOptions | None = None,
+        sess_options: C.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
@@ -740,7 +745,7 @@ class ModelCompiler:
 
     def __init__(
         self,
-        sess_options: onnxruntime.SessionOptions,
+        sess_options: C.SessionOptions,
         input_model_path_or_bytes: str | os.PathLike | bytes,
         embed_compiled_data_into_model: bool = False,
         external_initializers_file_path: str | os.PathLike | None = None,
@@ -1082,6 +1087,7 @@ class OrtValue:
         device_type: str = "cpu",
         device_id: int = 0,
         vendor_id: int | OrtDeviceVendorId = -1,
+        memory_info: C.OrtMemoryInfo | None = None,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -1091,7 +1097,30 @@ class OrtValue:
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device type should be "gpu" or "npu".
+        :param memory_info: An OrtMemoryInfo from an OrtEpDevice (e.g. via ep_device.memory_info(OrtDeviceMemoryType.HOST_ACCESSIBLE)). When provided, the allocator matching this memory info is used directly, which allows allocating HOST_ACCESSIBLE memory for zero-copy numpy interop. The device_type, device_id, and vendor_id parameters are ignored when memory_info is provided.
         """
+
+        if memory_info is not None:
+            if device_type != "cpu" or device_id != 0 or vendor_id != -1:
+                warnings.warn(
+                    "device_type, device_id, and vendor_id are ignored when memory_info is provided.",
+                    stacklevel=2,
+                )
+            if isinstance(element_type, int):
+                return cls(
+                    C.OrtValue.ortvalue_from_shape_and_onnx_type_for_memory_info(
+                        shape,
+                        element_type,
+                        memory_info,
+                    )
+                )
+            return cls(
+                C.OrtValue.ortvalue_from_shape_and_type_for_memory_info(
+                    shape,
+                    element_type,
+                    memory_info,
+                )
+            )
 
         device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
 
@@ -1199,15 +1228,126 @@ class OrtValue:
         """
         return self._ortvalue.numpy()
 
-    def update_inplace(self, np_arr) -> None:
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
         """
-        Update the OrtValue in place with a new Numpy array. The numpy contents
-        are copied over to the device memory backing the OrtValue. It can be used
-        to update the input valuess for an InferenceSession with CUDA graph
-        enabled or other scenarios where the OrtValue needs to be updated while
-        the memory address can not be changed.
+        Supports ``numpy.asarray(ortvalue)`` and ``numpy.array(ortvalue)`` via the
+        `numpy __array__ protocol <https://numpy.org/devdocs/user/basics.interoperability.html>`_.
+
+        Valid only for OrtValues holding Tensors on CPU.
+
+        :param dtype: Optional numpy dtype to cast the result to.
+        :param copy: Optional bool (numpy >= 2.0). If ``False``, a copy will
+            only be made if necessary. If ``True``, a copy is always forced.
+            If ``None`` (default), a copy will be made only if needed.
+        :return: A numpy array with the same data as the OrtValue.
         """
-        self._ortvalue.update_inplace(np_arr)
+        arr = self.numpy()
+
+        if copy is not None:
+            # numpy >= 2.0 added the copy kwarg to np.asarray;
+            # np.array has always accepted it but with weaker semantics pre-2.0.
+            arr = np.array(arr, dtype=dtype, copy=copy)
+        elif dtype is not None:
+            # np.asarray avoids a copy when the dtype already matches,
+            # preserving memory sharing with the underlying OrtValue.
+            arr = np.asarray(arr, dtype=dtype)
+
+        return arr
+
+    def __dlpack__(self, *, stream=None):
+        """
+        Returns a DLPack capsule representing the tensor (part of the
+        `DLPack protocol <https://dmlc.github.io/dlpack/latest/>`_).
+
+        This enables interoperability with other frameworks via
+        ``from_dlpack(ortvalue)`` (e.g. ``torch.from_dlpack``,
+        ``jax.dlpack.from_dlpack``, ``numpy.from_dlpack``).
+
+        The OrtValue must hold a contiguous tensor. No data is copied;
+        the consumer shares memory with this OrtValue, which must remain
+        alive while the capsule is in use.
+
+        :param stream: Optional stream on which the tensor data is accessible.
+            Currently unused; included for protocol compliance.
+        :return: A PyCapsule holding a DLManagedTensor.
+        """
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Returns ``(device_type, device_id)`` indicating where the tensor data
+        resides (part of the `DLPack protocol
+        <https://dmlc.github.io/dlpack/latest/>`_).
+
+        :return: Tuple of ``(device_type, device_id)`` as ints following DLPack
+            ``DLDeviceType`` enum values.
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    @classmethod
+    def from_dlpack(cls, data, /) -> OrtValue:
+        """
+        Construct an OrtValue from an object that implements the DLPack protocol.
+
+        Accepts either:
+
+        * An object with ``__dlpack__`` / ``__dlpack_device__`` methods
+          (e.g. a PyTorch tensor, JAX array, or numpy array).
+        * A raw DLPack PyCapsule (legacy path).
+
+        Boolean tensors are automatically detected when the source object
+        exposes a ``dtype`` attribute (numpy, PyTorch, etc.) or is an
+        ``OrtValue``. For raw DLPack capsules where the original dtype cannot
+        be inspected, bool tensors encoded as uint8 by older DLPack versions
+        are not distinguishable from true uint8 tensors and will be imported
+        as uint8.
+
+        No data is copied; the new OrtValue shares memory with the source.
+
+        :param data: A tensor object supporting the DLPack protocol, or a raw
+            DLPack PyCapsule.
+        :return: An OrtValue wrapping the tensor data.
+        """
+        # Detect boolean dtype from the source object before consuming it,
+        # because DLPack encodes bool as uint8 and the capsule alone cannot
+        # distinguish between the two.
+        is_bool = False
+        if isinstance(data, OrtValue):
+            is_bool = data.data_type() == "tensor(bool)"
+        elif hasattr(data, "dtype"):
+            dtype_obj = data.dtype
+            # Use .name when available (numpy, cupy, tensorflow all expose it).
+            # Fall back to str() for frameworks that don't (e.g. PyTorch).
+            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
+            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
+
+        # If the input supports the __dlpack__ protocol, call it to get the capsule.
+        if hasattr(data, "__dlpack__"):
+            capsule = data.__dlpack__()
+        else:
+            capsule = data
+
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+
+    def update_inplace(self, data) -> None:
+        """
+        Update the OrtValue in place. The source data is copied over to the device
+        memory backing the OrtValue. It can be used to update the input values for
+        an InferenceSession with CUDA graph enabled or other scenarios where the
+        OrtValue needs to be updated while the memory address can not be changed.
+
+        :param data: The source data, which can be a Numpy array or another OrtValue.
+            When an OrtValue is provided, data can be copied between devices (e.g.,
+            GPU to GPU) without going through the CPU.
+        """
+        if isinstance(data, OrtValue):
+            self._ortvalue.update_inplace(data._ortvalue)
+            return
+
+        if not isinstance(data, np.ndarray):
+            raise TypeError("data must be a numpy.ndarray or an OrtValue.")
+
+        self._ortvalue.update_inplace(data)
 
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:

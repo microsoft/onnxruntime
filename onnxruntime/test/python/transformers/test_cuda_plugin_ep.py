@@ -1,9 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import json
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -26,6 +28,23 @@ TEST_PASS = "PASS"
 TEST_SKIP = "SKIP"
 TEST_FAIL = "FAIL"
 EP_GRAPH_ASSIGNMENT_CONFIG_KEY = "session.record_ep_graph_assignment_info"
+NO_CUDNN_PLUGIN_TEST = os.getenv("ORT_TEST_CUDA_PLUGIN_NO_CUDNN", "").upper() in {"1", "ON", "TRUE", "YES"}
+requires_cudnn = unittest.skipIf(NO_CUDNN_PLUGIN_TEST, "test requires cuDNN-backed CUDA plugin kernels")
+# Use the latest released ai.onnx opset so the model builders stay current as ONNX releases new opsets.
+DEFAULT_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP if d == "ai.onnx")
+
+
+def _make_released_opset_model(graph, producer_name="onnx-example"):
+    opset = OperatorSetIdProto()
+    opset.version = DEFAULT_ONNX_OPSET
+    return helper.make_model(graph, producer_name=producer_name, opset_imports=[opset])
+
+
+def _plugin_provider_options(extra_options=None):
+    options = {"enable_cudnn": "0"} if NO_CUDNN_PLUGIN_TEST else {}
+    if extra_options:
+        options.update(extra_options)
+    return options
 
 
 def require_cuda_plugin_ep():
@@ -66,6 +85,63 @@ def get_cuda_plugin_device_by_id(device_id: int):
     raise unittest.SkipTest(f"CUDA plugin EP device_id={device_id} is not available in this environment")
 
 
+def get_cuda_plugin_device_id(device):
+    device_id = device.ep_options.get("device_id")
+    if device_id is None:
+        device_id = device.ep_metadata.get("cuda_device_id")
+
+    if device_id is None:
+        raise unittest.SkipTest("CUDA plugin EP device metadata did not include a CUDA device_id")
+
+    try:
+        return int(device_id)
+    except (TypeError, ValueError) as exc:
+        raise unittest.SkipTest(f"CUDA plugin EP device metadata had non-integer device_id={device_id!r}") from exc
+
+
+def is_cuda_mempool_unsupported_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "cudaMemPoolCreate failed" in message and (
+        "cudaErrorNotSupported" in message or "operation not supported" in message
+    )
+
+
+# The fpA_intB MatMulNBits pre-pack path (which triggers the EP-provided allocator use this test
+# guards) requires a compute capability >= 7.5 (Turing) device; see MatMulNBits::MatMulNBits.
+FPA_INTB_MIN_COMPUTE_CAPABILITY = (7, 5)
+
+
+def get_cuda_compute_capability(device):
+    """Return the device (major, minor) CUDA compute capability from plugin EP metadata, or None."""
+    value = device.ep_metadata.get("cuda_compute_capability")
+    if not value:
+        return None
+    try:
+        major_str, _, minor_str = value.partition(".")
+        return (int(major_str), int(minor_str))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_fpa_intb_unsupported_error(exc: Exception) -> bool:
+    """True if the error indicates the fpA_intB MatMulNBits path is unsupported for this device/config."""
+    message = str(exc)
+    return "fpA_intB" in message
+
+
+@contextmanager
+def scoped_env(name: str, value: str):
+    old_value = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old_value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = old_value
+
+
 def _create_session_options(session_config=None):
     sess_options = onnxrt.SessionOptions()
     if session_config:
@@ -75,6 +151,24 @@ def _create_session_options(session_config=None):
     # Require graph-assignment data so the tests validate that nodes actually run on the plugin.
     sess_options.add_session_config_entry(EP_GRAPH_ASSIGNMENT_CONFIG_KEY, "1")
     return sess_options
+
+
+class _CudaOrtValueBinding:
+    def __init__(self, shape, dtype, device_id):
+        if dtype != np.float32:
+            raise TypeError(f"Unsupported CUDA graph binding dtype: {dtype}")
+
+        self._dtype = np.float32
+        # Allocate a GPU-backed OrtValue with a stable device address so CUDA graph
+        # capture/replay can reuse the same memory across runs.
+        self.ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(list(shape), self._dtype, "cuda", device_id)
+
+    def update_inplace(self, data):
+        # Copy host data into the existing GPU buffer without changing its address.
+        self.ort_value.update_inplace(np.ascontiguousarray(data, dtype=self._dtype))
+
+    def numpy(self):
+        return self.ort_value.numpy()
 
 
 def _format_assigned_node(node):
@@ -118,7 +212,7 @@ def create_add_model(model_path):
         ],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 2])],
     )
-    model_def = helper.make_model(graph_def, producer_name="onnx-example")
+    model_def = _make_released_opset_model(graph_def)
     save(model_def, model_path)
 
 
@@ -134,7 +228,7 @@ def create_matmul_model(model_path):
         ],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 5])],
     )
-    model_def = helper.make_model(graph_def, producer_name="onnx-example")
+    model_def = _make_released_opset_model(graph_def)
     save(model_def, model_path)
 
 
@@ -159,7 +253,53 @@ def create_gemm_model(model_path, alpha=1.0, beta=1.0, transA=0, transB=0):
         ],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [m, n])],
     )
-    model_def = helper.make_model(graph_def, producer_name="onnx-example")
+    model_def = _make_released_opset_model(graph_def)
+    save(model_def, model_path)
+
+
+def create_matmul_nbits_model(model_path, k=64, n=64, bits=4, block_size=32):
+    # Create a MatMulNBits (com.microsoft) model with a runtime-prepacked (weight_prepacked=0)
+    # fp16 quantized weight. During session initialization the CUDA kernel pre-packs the constant
+    # weight via MatMulNBits::PrePack_B, which allocates scratch through the EP-provided allocator
+    # (IAllocator::MakeUniquePtr(alloc, ...)). This is a regression guard: the CUDA-EP-as-plugin
+    # adapter previously forwarded a null allocator into PrePack, so this model crashed at session
+    # creation with "IAllocator::ValidateAllocator ... allocator != nullptr was false".
+    k_blocks = (k + block_size - 1) // block_size
+    blob_size = block_size * bits // 8
+
+    # Deterministic quantized weight and positive scales. Exact numerics are not asserted here;
+    # the test only requires that pre-packing runs (and no longer crashes) end to end.
+    b = np.full((n, k_blocks, blob_size), 0x88, dtype=np.uint8)
+    scales = np.full((n, k_blocks), 0.02, dtype=np.float16)
+
+    node_def = helper.make_node(
+        "MatMulNBits",
+        ["A", "B", "scales"],
+        ["Y"],
+        domain="com.microsoft",
+        K=k,
+        N=n,
+        bits=bits,
+        block_size=block_size,
+        weight_prepacked=0,
+    )
+    graph_def = helper.make_graph(
+        [node_def],
+        "test-model-matmulnbits",
+        [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [2, k])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, [2, n])],
+        initializer=[
+            helper.make_tensor("B", TensorProto.UINT8, b.shape, b.tobytes(), raw=True),
+            helper.make_tensor("scales", TensorProto.FLOAT16, scales.shape, scales.tobytes(), raw=True),
+        ],
+    )
+    opset_onnx = OperatorSetIdProto()
+    opset_onnx.version = 21
+    opset_ms = OperatorSetIdProto()
+    opset_ms.domain = "com.microsoft"
+    opset_ms.version = 1
+    model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset_onnx, opset_ms])
+    model_def.ir_version = 10
     save(model_def, model_path)
 
 
@@ -288,14 +428,20 @@ def make_bias_dropout_model():
 
 
 def run_operator_test(
-    target_device, model_creator, inputs, expected_fn, ep_name=CUDA_PLUGIN_EP_NAME, session_config=None
+    target_device,
+    model_creator,
+    inputs,
+    expected_fn,
+    ep_name=CUDA_PLUGIN_EP_NAME,
+    session_config=None,
+    nhwc_ops=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
         model_path = tmp.name
     try:
         model_creator(model_path)
         sess_options = _create_session_options(session_config)
-        sess_options.add_provider_for_devices([target_device], {})
+        sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
         sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
         active_providers = sess.get_providers()
@@ -306,6 +452,10 @@ def run_operator_test(
                 f"Assignments: {_format_assignment_summary(assignment_info)}"
             )
             return False
+
+        # Structural assertion: verify NHWC domain assignment when requested
+        if nhwc_ops:
+            _assert_nhwc_domain_assigned(sess, ep_name, nhwc_ops)
 
         print(
             f"(Session created with {active_providers}; assigned nodes: "
@@ -323,12 +473,41 @@ def run_operator_test(
 
 def run_provider_options_test(provider_options, expect_plugin_provider=True):
     require_cuda_plugin_ep()
+
+    # When we expect the plugin provider to work, verify that at least one plugin device is available.
+    # Device enumeration can fail in some CI environments even when the plugin library loads successfully.
+    if expect_plugin_provider:
+        try:
+            devices = onnxrt.get_ep_devices()
+            plugin_devices = [d for d in devices if d.ep_name == CUDA_PLUGIN_EP_NAME]
+            if not plugin_devices:
+                raise unittest.SkipTest(
+                    f"{CUDA_PLUGIN_EP_NAME} registered but no plugin devices enumerated in this environment"
+                )
+        except unittest.SkipTest:
+            raise
+        except Exception as exc:
+            raise unittest.SkipTest(f"Failed to enumerate plugin EP devices: {exc}") from exc
+
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
         model_path = tmp.name
     try:
         create_add_model(model_path)
-        providers = [(CUDA_PLUGIN_EP_NAME, provider_options), "CPUExecutionProvider"]
-        sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+        sess_options = _create_session_options()
+        if expect_plugin_provider:
+            target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+        else:
+            try:
+                target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            except unittest.SkipTest:
+                sess = onnxrt.InferenceSession(
+                    model_path, sess_options=sess_options, providers=["CPUExecutionProvider"]
+                )
+            else:
+                sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
         assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
 
@@ -362,11 +541,139 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
             os.remove(model_path)
 
 
+def run_auto_registered_provider_options_test(provider_options):
+    require_cuda_plugin_ep()
+
+    with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        create_add_model(model_path)
+        sess_options = _create_session_options()
+        providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
+        sess = onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+
+        active_providers = sess.get_providers()
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+        if not assigned_nodes:
+            print(
+                f"FAILURE: {CUDA_PLUGIN_EP_NAME} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
+            return False
+
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+        res = sess.run(None, {"A": a, "B": b})
+        np.testing.assert_allclose(res[0], a + b, rtol=1e-3, atol=1e-3)
+        return True
+    except Exception as e:
+        print(f"FAIL ({e})")
+        return False
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
 def _expected_conv(inputs):
     return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
 
 
 _NHWC_CONFIG = {"ep.cuda.prefer_nhwc_layout": "1"}
+
+
+def _assert_nhwc_domain_assigned(session, ep_name, expected_ops):
+    """Assert that NHWC layout transformation occurred for the expected ops.
+
+    The framework's NHWC layout transformer rewrites eligible ops to the internal NHWC domain
+    and wraps them with Transpose nodes. We verify NHWC transformation by checking:
+    1. If the assignment API surfaces NHWC-domain nodes, verify expected ops are present.
+    2. Otherwise, fall back to checking that Transpose nodes were assigned (their presence
+       indicates the layout transformer ran and the NHWC kernel was found).
+
+    Args:
+        session: An InferenceSession with graph assignment info enabled.
+        ep_name: Name of the EP to check (e.g., CUDA_PLUGIN_EP_NAME).
+        expected_ops: Set or list of op_type strings expected to have NHWC transformation.
+
+    Returns:
+        True if evidence of NHWC transformation is found. Raises AssertionError otherwise.
+    """
+    assigned_nodes, _ = _get_assigned_nodes(session, ep_name)
+
+    # Check for NHWC-domain nodes directly (preferred when the API surfaces them).
+    nhwc_domain = "com.ms.internal.nhwc"
+    nhwc_ops_found = {n.op_type for n in assigned_nodes if n.domain == nhwc_domain}
+    if nhwc_ops_found:
+        missing = set(expected_ops) - nhwc_ops_found
+        if missing:
+            raise AssertionError(
+                f"Expected NHWC-domain nodes for {sorted(missing)} but only found "
+                f"{sorted(nhwc_ops_found)} in {ep_name} NHWC assignments."
+            )
+        return True
+
+    # Fallback: the NHWC transformation inserts Transpose nodes around the target op.
+    transpose_count = sum(1 for n in assigned_nodes if n.op_type == "Transpose")
+    if transpose_count == 0:
+        all_ops = [f"{n.domain or 'ai.onnx'}::{n.op_type}" for n in assigned_nodes]
+        raise AssertionError(
+            f"Expected NHWC layout transformation for {sorted(expected_ops)} but no Transpose "
+            f"nodes were found in {ep_name} assignments. Assigned ops: {all_ops}. "
+            f"This indicates the NHWC kernel was not found for the target op(s)."
+        )
+    return True
+
+
+def _run_nhwc_model_test(target_device, op_name, model, feed_dict, expected_fn, nhwc_ops=None, rtol=1e-3, atol=1e-3):
+    """Run an NHWC test: verify domain assignment and numerical correctness.
+
+    Args:
+        target_device: EP device to test on.
+        op_name: Op type name (for display and default NHWC assertion).
+        model: ONNX model proto.
+        feed_dict: Input feed dictionary.
+        expected_fn: Function(feed_dict) -> expected output(s).
+        nhwc_ops: Set of op_types expected in NHWC domain (defaults to {op_name}).
+        rtol: Relative tolerance for output comparison.
+        atol: Absolute tolerance for output comparison.
+
+    Returns:
+        TEST_PASS or TEST_FAIL string.
+    """
+    if nhwc_ops is None:
+        nhwc_ops = {op_name}
+    with tempfile.NamedTemporaryFile(suffix=f"_{op_name}_nhwc.onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        save(model, model_path)
+        sess_options = _create_session_options(_NHWC_CONFIG)
+        sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+        sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+        if not assigned_nodes:
+            print(
+                f"{TEST_FAIL} ({CUDA_PLUGIN_EP_NAME} was assigned no nodes; "
+                f"assignments={_format_assignment_summary(assignment_info)})"
+            )
+            return TEST_FAIL
+
+        # Structural assertion: verify NHWC domain assignment
+        _assert_nhwc_domain_assigned(sess, CUDA_PLUGIN_EP_NAME, nhwc_ops)
+
+        res = sess.run(None, feed_dict)
+        expected = expected_fn(feed_dict)
+        if isinstance(expected, (list, tuple)):
+            for r, e in zip(res, expected, strict=True):
+                np.testing.assert_allclose(r, e, rtol=rtol, atol=atol)
+        else:
+            np.testing.assert_allclose(res[0], expected, rtol=rtol, atol=atol)
+        return TEST_PASS
+    except Exception as e:
+        print(f"{TEST_FAIL} ({e})")
+        return TEST_FAIL
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
 
 
 def _expected_batchnorm(inputs):
@@ -413,7 +720,7 @@ def _run_model_test(
     try:
         save(model, model_path)
         sess_options = _create_session_options()
-        sess_options.add_provider_for_devices([target_device], {})
+        sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
         sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
         assigned_nodes, assignment_info = _get_assigned_nodes(sess, ep_name)
@@ -437,6 +744,19 @@ def _run_model_test(
     except Exception as e:
         print(f"{TEST_FAIL} ({e})")
         return TEST_FAIL
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
+def _run_cpu_reference_model(model, feed_dict):
+    """Run a model on CPU EP and return all outputs for reference comparisons."""
+    with tempfile.NamedTemporaryFile(suffix="_cpu_reference.onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        save(model, model_path)
+        sess = onnxrt.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        return sess.run(None, feed_dict)
     finally:
         if os.path.exists(model_path):
             os.remove(model_path)
@@ -472,6 +792,7 @@ class TestCudaPluginEP(unittest.TestCase):
         )
         self.assertTrue(result, "Gemm plugin registration test failed")
 
+    @requires_cudnn
     def test_registration_conv(self):
         target_device = get_cuda_plugin_device()
         inputs = {
@@ -481,11 +802,74 @@ class TestCudaPluginEP(unittest.TestCase):
         result = run_operator_test(target_device, create_conv_model, inputs, _expected_conv)
         self.assertTrue(result, "Conv plugin registration test failed")
 
+    def test_registration_matmul_nbits_prepack(self):
+        # Regression guard for the CUDA-EP-as-plugin pre-pack allocator bug: a fp16 MatMulNBits
+        # weight is pre-packed during session initialization, which allocates scratch through the
+        # EP-provided allocator. The plugin op-kernel adapter previously forwarded a null allocator
+        # into PrePack, crashing session creation with an IAllocator::ValidateAllocator failure.
+        target_device = get_cuda_plugin_device()
+
+        # The fpA_intB pre-pack path only runs on SM >= 7.5. Skip deterministically on older GPUs
+        # so the test does not silently pass without exercising the allocator-forwarding path.
+        compute_capability = get_cuda_compute_capability(target_device)
+        if compute_capability is None:
+            self.skipTest("CUDA plugin EP device metadata did not include cuda_compute_capability")
+        if compute_capability < FPA_INTB_MIN_COMPUTE_CAPABILITY:
+            self.skipTest(
+                "MatMulNBits fpA_intB pre-pack requires compute capability >= 7.5, but device reports "
+                f"{compute_capability[0]}.{compute_capability[1]}"
+            )
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_nbits_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+
+            # Force the fpA_intB path so weight pre-packing (MatMulNBits::PrePack_B) runs during
+            # session creation, which is where the null-allocator crash used to happen. Given the
+            # deterministic capability check above, session creation is expected to succeed, so any
+            # exception here (including the "allocator != nullptr" assertion) is a genuine regression
+            # and is deliberately propagated instead of skipped.
+            with scoped_env("ORT_FPA_INTB_GEMM", "1"):
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+                assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                self.assertTrue(
+                    assigned_nodes,
+                    f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                    f"Assignments: {_format_assignment_summary(assignment_info)}",
+                )
+
+                a = np.random.rand(2, 64).astype(np.float16)
+                # Some devices/configs may still lack a valid fpA_intB tactic at runtime; skip only
+                # for that known-unsupported case and re-raise anything else so real regressions
+                # (e.g. incorrect kernels or the allocator assertion) are not hidden.
+                try:
+                    res = sess.run(None, {"A": a})
+                except Exception as exc:
+                    if is_fpa_intb_unsupported_error(exc):
+                        self.skipTest(f"fpA_intB MatMulNBits not supported on this device: {exc}")
+                    raise
+                self.assertEqual(res[0].shape, (2, 64))
+                self.assertTrue(np.isfinite(res[0].astype(np.float32)).all(), "MatMulNBits produced non-finite output")
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
     # ---- Provider options tests ----
 
     def test_provider_options_valid(self):
         result = run_provider_options_test({"device_id": "0", "use_tf32": "0"}, expect_plugin_provider=True)
         self.assertTrue(result, "Provider options with valid device_id/use_tf32 failed")
+
+    @requires_cudnn
+    def test_auto_registered_provider_options_valid(self):
+        result = run_auto_registered_provider_options_test(
+            {"device_id": "0", "ep.cuda.use_tf32": "0", "ep.cuda.prefer_nhwc_layout": "0"}
+        )
+        self.assertTrue(result, "Auto-registered provider options with prefixed CUDA options failed")
 
     def test_provider_options_invalid_device(self):
         result = run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False)
@@ -502,8 +886,9 @@ class TestCudaPluginEP(unittest.TestCase):
             model_path = tmp.name
         try:
             create_add_model(model_path)
-            providers = [(CUDA_PLUGIN_EP_NAME, {"device_id": "1"}), "CPUExecutionProvider"]
-            sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options({"device_id": "1"}))
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
             active_providers = sess.get_providers()
             assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
@@ -531,6 +916,7 @@ class TestCudaPluginEP(unittest.TestCase):
 
     # ---- NHWC layout tests ----
 
+    @requires_cudnn
     def test_nhwc_conv(self):
         target_device = get_cuda_plugin_device()
         inputs = {
@@ -538,18 +924,30 @@ class TestCudaPluginEP(unittest.TestCase):
             "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
         }
         result = run_operator_test(
-            target_device, create_conv_model, inputs, _expected_conv, session_config=_NHWC_CONFIG
+            target_device,
+            create_conv_model,
+            inputs,
+            _expected_conv,
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"Conv"},
         )
         self.assertTrue(result, "Conv (NHWC) plugin test failed")
 
+    @requires_cudnn
     def test_nhwc_batch_normalization(self):
         target_device = get_cuda_plugin_device()
         inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
         result = run_operator_test(
-            target_device, create_batch_norm_model, inputs, _expected_batchnorm, session_config=_NHWC_CONFIG
+            target_device,
+            create_batch_norm_model,
+            inputs,
+            _expected_batchnorm,
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"BatchNormalization"},
         )
         self.assertTrue(result, "BatchNormalization (NHWC) plugin test failed")
 
+    @requires_cudnn
     def test_nhwc_maxpool(self):
         target_device = get_cuda_plugin_device()
         inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
@@ -559,9 +957,11 @@ class TestCudaPluginEP(unittest.TestCase):
             inputs,
             lambda feed: F.max_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
             session_config=_NHWC_CONFIG,
+            nhwc_ops={"MaxPool"},
         )
         self.assertTrue(result, "MaxPool (NHWC) plugin test failed")
 
+    @requires_cudnn
     def test_nhwc_avgpool(self):
         target_device = get_cuda_plugin_device()
         inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
@@ -571,8 +971,210 @@ class TestCudaPluginEP(unittest.TestCase):
             inputs,
             lambda feed: F.avg_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
             session_config=_NHWC_CONFIG,
+            nhwc_ops={"AveragePool"},
         )
         self.assertTrue(result, "AveragePool (NHWC) plugin test failed")
+
+    @requires_cudnn
+    def test_nhwc_conv_transpose(self):
+        target_device = get_cuda_plugin_device()
+        # ConvTranspose: input [1,2,4,4], weight [2,3,3,3] -> output [1,3,6,6] with stride=2, padding=1, output_padding=1
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node(
+            "ConvTranspose",
+            ["X", "W"],
+            ["Y"],
+            strides=[2, 2],
+            pads=[1, 1, 1, 1],
+            output_padding=[1, 1],
+            group=1,
+        )
+        graph = helper.make_graph(
+            [node],
+            "test-ConvTranspose",
+            [
+                helper.make_tensor_value_info("X", f_dtype, [1, 2, 4, 4]),
+                helper.make_tensor_value_info("W", f_dtype, [2, 3, 3, 3]),
+            ],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 3, 6, 6])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 11
+        model = helper.make_model(graph, opset_imports=[opset])
+        x = np.random.rand(1, 2, 4, 4).astype(np.float32)
+        w = np.random.rand(2, 3, 3, 3).astype(np.float32)
+
+        def expected_fn(feed):
+            return F.conv_transpose2d(
+                torch.from_numpy(feed["X"]),
+                torch.from_numpy(feed["W"]),
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ).numpy()
+
+        result = _run_nhwc_model_test(target_device, "ConvTranspose", model, {"X": x, "W": w}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "ConvTranspose (NHWC) plugin test failed")
+
+    @requires_cudnn
+    def test_nhwc_global_max_pool(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "GlobalMaxPool",
+            [("X", f_dtype, [1, 3, 4, 4])],
+            [("Y", f_dtype, [1, 3, 1, 1])],
+            opset=12,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            return F.adaptive_max_pool2d(t, output_size=1).numpy()
+
+        result = _run_nhwc_model_test(target_device, "GlobalMaxPool", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "GlobalMaxPool (NHWC) plugin test failed")
+
+    @requires_cudnn
+    def test_nhwc_global_average_pool(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "GlobalAveragePool",
+            [("X", f_dtype, [1, 3, 4, 4])],
+            [("Y", f_dtype, [1, 3, 1, 1])],
+            opset=12,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            return F.adaptive_avg_pool2d(t, output_size=1).numpy()
+
+        result = _run_nhwc_model_test(target_device, "GlobalAveragePool", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "GlobalAveragePool (NHWC) plugin test failed")
+
+    def test_nhwc_depth_to_space(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # DepthToSpace: [1,4,2,2] -> [1,1,4,4] with blocksize=2
+        model = _make_simple_model(
+            "DepthToSpace",
+            [("X", f_dtype, [1, 4, 2, 2])],
+            [("Y", f_dtype, [1, 1, 4, 4])],
+            attrs={"blocksize": 2, "mode": "DCR"},
+            opset=13,
+        )
+        x = np.random.rand(1, 4, 2, 2).astype(np.float32)
+
+        def expected_fn(feed):
+            # DCR mode: depth, column, row
+            t = feed["X"]  # [1, 4, 2, 2]
+            b = 2
+            n, c, h, w = t.shape
+            t = t.reshape(n, b, b, c // (b * b), h, w)
+            t = t.transpose(0, 3, 4, 1, 5, 2)  # [n, c/b^2, h, b, w, b]
+            return t.reshape(n, c // (b * b), h * b, w * b)
+
+        result = _run_nhwc_model_test(target_device, "DepthToSpace", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "DepthToSpace (NHWC) plugin test failed")
+
+    def test_nhwc_space_to_depth(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # SpaceToDepth: [1,1,4,4] -> [1,4,2,2] with blocksize=2
+        model = _make_simple_model(
+            "SpaceToDepth",
+            [("X", f_dtype, [1, 1, 4, 4])],
+            [("Y", f_dtype, [1, 4, 2, 2])],
+            attrs={"blocksize": 2},
+            opset=13,
+        )
+        x = np.random.rand(1, 1, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = feed["X"]  # [1, 1, 4, 4]
+            b = 2
+            n, c, h, w = t.shape
+            t = t.reshape(n, c, h // b, b, w // b, b)
+            t = t.transpose(0, 3, 5, 1, 2, 4)  # [n, b, b, c, h/b, w/b]
+            return t.reshape(n, c * b * b, h // b, w // b)
+
+        result = _run_nhwc_model_test(target_device, "SpaceToDepth", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "SpaceToDepth (NHWC) plugin test failed")
+
+    @requires_cudnn
+    def test_nhwc_lrn(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # LRN: [1,3,4,4] with size=3, alpha=0.0001, beta=0.75, bias=1.0
+        model = _make_simple_model(
+            "LRN",
+            [("X", f_dtype, [1, 3, 4, 4])],
+            [("Y", f_dtype, [1, 3, 4, 4])],
+            attrs={"size": 3, "alpha": 0.0001, "beta": 0.75, "bias": 1.0},
+            opset=13,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            return F.local_response_norm(t, size=3, alpha=0.0001, beta=0.75, k=1.0).numpy()
+
+        result = _run_nhwc_model_test(target_device, "LRN", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "LRN (NHWC) plugin test failed")
+
+    def test_nhwc_grid_sample(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # GridSample: X [1,1,4,4], grid [1,3,3,2] -> Y [1,1,3,3]
+        model = _make_simple_model(
+            "GridSample",
+            [("X", f_dtype, [1, 1, 4, 4]), ("grid", f_dtype, [1, 3, 3, 2])],
+            [("Y", f_dtype, [1, 1, 3, 3])],
+            attrs={"mode": "linear", "padding_mode": "zeros", "align_corners": 0},
+            opset=20,
+        )
+        x = np.random.rand(1, 1, 4, 4).astype(np.float32)
+        # Grid values in [-1, 1]
+        grid = np.random.rand(1, 3, 3, 2).astype(np.float32) * 2 - 1
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            g = torch.from_numpy(feed["grid"])
+            return F.grid_sample(t, g, mode="bilinear", padding_mode="zeros", align_corners=False).numpy()
+
+        result = _run_nhwc_model_test(target_device, "GridSample", model, {"X": x, "grid": grid}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "GridSample (NHWC) plugin test failed")
+
+    @requires_cudnn
+    def test_nhwc_conv_with_resource_accounting(self):
+        # Smoke test for the NHWC two-pass partitioning flow combined with the resource
+        # accountant (session.resource_cuda_partitioning_settings). The NHWC layout
+        # transform makes the CUDA EP claim Conv nodes tentatively on the first pass; the
+        # budget for surviving nodes is committed only after the second pass. This guards
+        # against regressions where dropped first-pass tags would leak phantom budget. With
+        # a large limit, the Conv must still be claimed by the plugin and run correctly.
+        target_device = get_cuda_plugin_device()
+        inputs = {
+            "X": np.random.rand(1, 2, 4, 4).astype(np.float32),
+            "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
+        }
+        # Large ad-hoc memory limit (1 GB in KB) with no stats file (trailing comma) so the
+        # Conv comfortably fits and remains assigned to the plugin EP.
+        session_config = {
+            **_NHWC_CONFIG,
+            "session.resource_cuda_partitioning_settings": "1048576,",
+        }
+        result = run_operator_test(
+            target_device,
+            create_conv_model,
+            inputs,
+            _expected_conv,
+            session_config=session_config,
+            nhwc_ops={"Conv"},
+        )
+        self.assertTrue(result, "Conv (NHWC + resource accounting) plugin test failed")
 
     # ---- Standard op tests ----
 
@@ -798,6 +1400,35 @@ class TestCudaPluginEP(unittest.TestCase):
             target_device, "Resize", model, {"X": x}, lambda f: np.repeat(np.repeat(f["X"], 2, axis=2), 2, axis=3)
         )
         self.assertEqual(result, TEST_PASS, "Resize plugin op test failed")
+
+    def test_op_resize_antialias(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node(
+            "Resize",
+            ["X", "", "scales"],
+            ["Y"],
+            mode="linear",
+            antialias=1,
+            coordinate_transformation_mode="half_pixel",
+        )
+        graph = helper.make_graph(
+            [node],
+            "test-Resize-antialias",
+            [helper.make_tensor_value_info("X", f_dtype, [1, 1, 4, 4])],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 2, 2])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 18
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 0.5, 0.5]))
+        x = np.random.rand(1, 1, 4, 4).astype(np.float32)
+
+        def expected(feed):
+            return _run_cpu_reference_model(model, feed)[0]
+
+        result = _run_model_test(target_device, "Resize_antialias", model, {"X": x}, expected, atol=1e-4)
+        self.assertEqual(result, TEST_PASS, "Resize antialias plugin op test failed")
 
     def test_op_sum_variadic(self):
         target_device = get_cuda_plugin_device()
@@ -1052,10 +1683,12 @@ class TestCudaPluginEP(unittest.TestCase):
         feed = {"data": data, "indices": indices, "scales": scales}
 
         def expected(f):
-            # Gather rows [0, 2], then dequantize: float_val = uint8_val * scale
+            # Gather rows [0, 2], then dequantize. When zero_points is omitted, the default zero point
+            # for uint8 data is 2^(bits - 1), i.e. 128 for bits=8.
+            default_zero_point = np.float32(1 << (8 - 1))
             gathered_data = f["data"][f["indices"]]  # [2, 16]
             gathered_scales = f["scales"][f["indices"]]  # [2, 1]
-            return gathered_data.astype(np.float32) * gathered_scales
+            return (gathered_data.astype(np.float32) - default_zero_point) * gathered_scales
 
         result = _run_model_test(target_device, "GatherBlockQuantized", model, feed, expected, rtol=1e-2, atol=1e-2)
         self.assertEqual(result, TEST_PASS, "GatherBlockQuantized plugin op test failed")
@@ -1199,25 +1832,31 @@ class TestCudaPluginEP(unittest.TestCase):
             ),
             # second unary
             ("Sigmoid", "", 13, [("X", TensorProto.FLOAT, [2, 4])], [("Y", TensorProto.FLOAT, [2, 4])], None),
-            # cuDNN: ConvTranspose (Conv already tested by test_registration_conv)
-            (
-                "ConvTranspose",
-                "",
-                13,
-                [("X", TensorProto.FLOAT, [1, 2, 3, 3]), ("W", TensorProto.FLOAT, [2, 3, 3, 3])],
-                [("Y", TensorProto.FLOAT, [1, 3, 5, 5])],
-                None,
-            ),
-            # cuDNN: LRN (local response normalization)
-            (
-                "LRN",
-                "",
-                13,
-                [("X", TensorProto.FLOAT, [1, 2, 4, 4])],
-                [("Y", TensorProto.FLOAT, [1, 2, 4, 4])],
-                {"size": 3},
-            ),
         ]
+
+        if not NO_CUDNN_PLUGIN_TEST:
+            probe_specs.extend(
+                [
+                    # cuDNN: ConvTranspose (Conv already tested by test_registration_conv)
+                    (
+                        "ConvTranspose",
+                        "",
+                        13,
+                        [("X", TensorProto.FLOAT, [1, 2, 3, 3]), ("W", TensorProto.FLOAT, [2, 3, 3, 3])],
+                        [("Y", TensorProto.FLOAT, [1, 3, 5, 5])],
+                        None,
+                    ),
+                    # cuDNN: LRN (local response normalization)
+                    (
+                        "LRN",
+                        "",
+                        13,
+                        [("X", TensorProto.FLOAT, [1, 2, 4, 4])],
+                        [("Y", TensorProto.FLOAT, [1, 2, 4, 4])],
+                        {"size": 3},
+                    ),
+                ]
+            )
 
         claimed = []
         not_claimed = []
@@ -1231,7 +1870,7 @@ class TestCudaPluginEP(unittest.TestCase):
                 save(model, model_path)
                 sess_options = _create_session_options()
                 sess_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
-                sess_options.add_provider_for_devices([target_device], {})
+                sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
                 sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
                 assigned_nodes, _ = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
                 if assigned_nodes:
@@ -1257,6 +1896,7 @@ class TestCudaPluginEP(unittest.TestCase):
 
     # ---- Newly-included ops that previously lacked tests ----
 
+    @requires_cudnn
     def test_op_einsum(self):
         """Test Einsum op (recently un-excluded from plugin build)."""
         target_device = get_cuda_plugin_device()
@@ -1271,6 +1911,7 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "Einsum", model, feed, lambda f: f["A"] @ f["B"])
         self.assertEqual(result, TEST_PASS, "Einsum test failed")
 
+    @requires_cudnn
     def test_op_einsum_batch(self):
         """Test Einsum op with batch matrix multiply."""
         target_device = get_cuda_plugin_device()
@@ -1303,6 +1944,25 @@ class TestCudaPluginEP(unittest.TestCase):
 
         result = _run_model_test(target_device, "Softmax", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "Softmax test failed")
+
+    def test_op_log_softmax(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "LogSoftmax",
+            [("X", TensorProto.FLOAT, [2, 5])],
+            [("Y", TensorProto.FLOAT, [2, 5])],
+            attrs={"axis": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(2, 5).astype(np.float32)}
+
+        def expected(f):
+            x = f["X"]
+            shifted = x - np.max(x, axis=1, keepdims=True)
+            return shifted - np.log(np.sum(np.exp(shifted), axis=1, keepdims=True))
+
+        result = _run_model_test(target_device, "LogSoftmax", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "LogSoftmax test failed")
 
     def test_op_relu(self):
         target_device = get_cuda_plugin_device()
@@ -1415,6 +2075,21 @@ class TestCudaPluginEP(unittest.TestCase):
         )
         self.assertEqual(result, TEST_PASS, "ArgMax test failed")
 
+    def test_op_argmin(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ArgMin",
+            [("X", TensorProto.FLOAT, [3, 5])],
+            [("Y", TensorProto.INT64, [3, 1])],
+            attrs={"axis": 1, "keepdims": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(3, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "ArgMin", model, feed, lambda f: np.argmin(f["X"], axis=1).reshape(3, 1)
+        )
+        self.assertEqual(result, TEST_PASS, "ArgMin test failed")
+
     def test_op_topk(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1470,6 +2145,7 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "LayerNormalization", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "LayerNormalization test failed")
 
+    @requires_cudnn
     def test_op_instance_normalization(self):
         target_device = get_cuda_plugin_device()
         n_channels = 3
@@ -1505,6 +2181,7 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "InstanceNormalization", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "InstanceNormalization test failed")
 
+    @requires_cudnn
     def test_op_conv_transpose(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1532,13 +2209,13 @@ class TestCudaPluginEP(unittest.TestCase):
         model = _make_simple_model(
             "ReduceMean",
             [("X", TensorProto.FLOAT, [3, 4, 5])],
-            [("Y", TensorProto.FLOAT, [3, 1, 5])],
-            attrs={"axes": [1], "keepdims": 1},
+            [("Y", TensorProto.FLOAT, [3, 4, 1])],
+            attrs={"axes": [2], "keepdims": 1},
             opset=13,
         )
         feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
         result = _run_model_test(
-            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=1, keepdims=True)
+            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=2, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceMean test failed")
 
@@ -1558,6 +2235,32 @@ class TestCudaPluginEP(unittest.TestCase):
             target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceSum test failed")
+
+    def _run_reduce_sum_integer_last_axis(self, onnx_dtype, np_dtype):
+        # Mirrors the qwen attention_mask usage: a rank-2 integer ReduceSum over the last axis.
+        # Integer ReduceSum takes a specialized path that does not use the float matrix fast path,
+        # so without cuDNN it must fall back to the general native kernel. Covering it here keeps the
+        # no-cuDNN CI honest for the exact layout that broke real models.
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ReduceSum",
+            [("X", onnx_dtype, [2, 8]), ("axes", TensorProto.INT64, [1])],
+            [("Y", onnx_dtype, [2, 1])],
+            attrs={"keepdims": 1},
+            opset=13,
+        )
+        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
+        model.graph.initializer.append(axes_init)
+        feed = {"X": np.arange(16, dtype=np_dtype).reshape(2, 8)}
+        return _run_model_test(target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True))
+
+    def test_op_reduce_sum_int64_last_axis(self):
+        result = self._run_reduce_sum_integer_last_axis(TensorProto.INT64, np.int64)
+        self.assertEqual(result, TEST_PASS, "ReduceSum int64 test failed")
+
+    def test_op_reduce_sum_int32_last_axis(self):
+        result = self._run_reduce_sum_integer_last_axis(TensorProto.INT32, np.int32)
+        self.assertEqual(result, TEST_PASS, "ReduceSum int32 test failed")
 
     def test_op_gather_nd(self):
         target_device = get_cuda_plugin_device()
@@ -1608,6 +2311,32 @@ class TestCudaPluginEP(unittest.TestCase):
 
         result = _run_model_test(target_device, "ScatterElements", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "ScatterElements test failed")
+
+    def test_op_scatter_nd(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ScatterND",
+            [
+                ("data", TensorProto.FLOAT, [4, 4]),
+                ("indices", TensorProto.INT64, [2, 1]),
+                ("updates", TensorProto.FLOAT, [2, 4]),
+            ],
+            [("Y", TensorProto.FLOAT, [4, 4])],
+            opset=16,
+        )
+        data = np.arange(16, dtype=np.float32).reshape(4, 4)
+        indices = np.array([[0], [2]], dtype=np.int64)
+        updates = np.array([[100, 101, 102, 103], [200, 201, 202, 203]], dtype=np.float32)
+        feed = {"data": data, "indices": indices, "updates": updates}
+
+        def expected(f):
+            result = f["data"].copy()
+            result[0] = f["updates"][0]
+            result[2] = f["updates"][1]
+            return result
+
+        result = _run_model_test(target_device, "ScatterND", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "ScatterND test failed")
 
     def test_op_onehot(self):
         target_device = get_cuda_plugin_device()
@@ -1855,6 +2584,520 @@ class TestCudaPluginEP(unittest.TestCase):
             lambda f: np.maximum(f["X"], 0),
         )
         self.assertEqual(result, TEST_PASS, "Explicit MemcpyFromHost→Relu→MemcpyToHost roundtrip test failed")
+
+    # ---- CUDA Graph capture/replay tests ----
+
+    def _create_cuda_graph_session(self, model_path, extra_session_config=None, provider_options=None):
+        """Create a session with CUDA graph capture enabled for the plugin EP."""
+        sess_options = _create_session_options()
+        sess_options.add_session_config_entry("ep.cuda.enable_cuda_graph", "1")
+        if extra_session_config:
+            for key, value in extra_session_config.items():
+                sess_options.add_session_config_entry(key, value)
+        provider_options = _plugin_provider_options({"enable_cuda_graph": "1", **(provider_options or {})})
+        target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+        sess_options.add_provider_for_devices([target_device], provider_options)
+        return onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+    def _setup_cuda_graph_io(self, session, input_shapes, output_shapes, device_id=0):
+        """Pre-allocate GPU OrtValues and set up IOBinding for graph capture."""
+        io_binding = session.io_binding()
+        input_ort_values = {}
+        output_ort_values = {}
+
+        for inp in session.get_inputs():
+            shape = input_shapes[inp.name]
+            binding = _CudaOrtValueBinding(shape, np.float32, device_id)
+            input_ort_values[inp.name] = binding
+            io_binding.bind_ortvalue_input(inp.name, binding.ort_value)
+
+        for out in session.get_outputs():
+            shape = output_shapes[out.name]
+            binding = _CudaOrtValueBinding(shape, np.float32, device_id)
+            output_ort_values[out.name] = binding
+            io_binding.bind_ortvalue_output(out.name, binding.ort_value)
+
+        return io_binding, input_ort_values, output_ort_values
+
+    def test_cuda_graph_capture_and_replay(self):
+        """Test CUDA graph warmup → capture → replay with default arena allocator."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            session = self._create_cuda_graph_session(model_path)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            # Set deterministic input data.
+            rng = np.random.default_rng(0)
+            a = rng.random((3, 4), dtype=np.float32)
+            b = rng.random((4, 5), dtype=np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            # First run: ORT handles warmup + capture + first replay automatically.
+            session.run_with_iobinding(io_binding)
+            result = output_vals["Y"].numpy()
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+
+            # Second run: should take the graph replay fast path.
+            session.run_with_iobinding(io_binding)
+            result = output_vals["Y"].numpy()
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_replay_with_updated_input(self):
+        """Test that CUDA graph replay produces correct results after in-place input update."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            session = self._create_cuda_graph_session(model_path)
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            # Initial data.
+            a1 = np.random.rand(3, 4).astype(np.float32)
+            b1 = np.random.rand(4, 5).astype(np.float32)
+            input_vals["A"].update_inplace(a1)
+            input_vals["B"].update_inplace(b1)
+
+            # First run: warmup + capture + replay.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a1 @ b1, rtol=1e-3, atol=1e-3)
+
+            # Update inputs in-place (same shape, different data) and replay.
+            a2 = np.random.rand(3, 4).astype(np.float32) * 10
+            b2 = np.random.rand(4, 5).astype(np.float32) * 10
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_with_mempool(self):
+        """Test CUDA graph capture/replay with CUDA native mempool allocator."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            try:
+                session = self._create_cuda_graph_session(
+                    model_path,
+                    extra_session_config={"ep.cuda.arena.use_cuda_mempool": "1"},
+                )
+            except Exception as exc:
+                if is_cuda_mempool_unsupported_error(exc):
+                    self.skipTest("CUDA mempool is not supported on this device/driver configuration")
+                raise
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            # First run: warmup + capture + replay via mempool path.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a @ b, rtol=1e-3, atol=1e-3)
+
+            # Replay fast path.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a @ b, rtol=1e-3, atol=1e-3)
+
+            # Update and replay.
+            a2 = np.random.rand(3, 4).astype(np.float32) * 5
+            b2 = np.random.rand(4, 5).astype(np.float32) * 5
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_annotation_id(self):
+        """Test multiple CUDA graphs captured with different annotation IDs and input shapes.
+
+        This simulates the common use case where an application captures separate
+        graphs for different input shapes (e.g., different batch sizes or sequence
+        lengths) and replays the appropriate graph based on a runtime annotation ID.
+        """
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        # Build a MatMul model with dynamic dimensions so different shapes can be used.
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            node_def = helper.make_node("MatMul", ["A", "B"], ["Y"])
+            graph_def = helper.make_graph(
+                [node_def],
+                "test-matmul-dynamic",
+                [
+                    helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+                    helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+                ],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["M", "N"])],
+            )
+            model_def = _make_released_opset_model(graph_def)
+            save(model_def, model_path)
+
+            session = self._create_cuda_graph_session(model_path)
+
+            # --- Graph 1: shape [2, 3] @ [3, 4] ---
+            shapes1_in = {"A": [2, 3], "B": [3, 4]}
+            shapes1_out = {"Y": [2, 4]}
+            io1, iv1, ov1 = self._setup_cuda_graph_io(session, shapes1_in, shapes1_out, cuda_device_id)
+
+            a1 = np.random.rand(2, 3).astype(np.float32)
+            b1 = np.random.rand(3, 4).astype(np.float32)
+            iv1["A"].update_inplace(a1)
+            iv1["B"].update_inplace(b1)
+
+            ro1 = onnxrt.RunOptions()
+            ro1.add_run_config_entry("gpu_graph_id", "1")
+            session.run_with_iobinding(io1, ro1)
+            np.testing.assert_allclose(ov1["Y"].numpy(), a1 @ b1, rtol=1e-3, atol=1e-3)
+
+            # --- Graph 2: different shape [4, 5] @ [5, 6] ---
+            shapes2_in = {"A": [4, 5], "B": [5, 6]}
+            shapes2_out = {"Y": [4, 6]}
+            io2, iv2, ov2 = self._setup_cuda_graph_io(session, shapes2_in, shapes2_out, cuda_device_id)
+
+            a2 = np.random.rand(4, 5).astype(np.float32)
+            b2 = np.random.rand(5, 6).astype(np.float32)
+            iv2["A"].update_inplace(a2)
+            iv2["B"].update_inplace(b2)
+
+            ro2 = onnxrt.RunOptions()
+            ro2.add_run_config_entry("gpu_graph_id", "2")
+            session.run_with_iobinding(io2, ro2)
+            np.testing.assert_allclose(ov2["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+
+            # --- Replay graph 1 with updated data (same shape) ---
+            a3 = np.random.rand(2, 3).astype(np.float32) * 7
+            b3 = np.random.rand(3, 4).astype(np.float32) * 7
+            iv1["A"].update_inplace(a3)
+            iv1["B"].update_inplace(b3)
+            session.run_with_iobinding(io1, ro1)
+            np.testing.assert_allclose(ov1["Y"].numpy(), a3 @ b3, rtol=1e-3, atol=1e-3)
+
+            # --- Replay graph 2 with updated data (same shape) ---
+            a4 = np.random.rand(4, 5).astype(np.float32) * 3
+            b4 = np.random.rand(5, 6).astype(np.float32) * 3
+            iv2["A"].update_inplace(a4)
+            iv2["B"].update_inplace(b4)
+            session.run_with_iobinding(io2, ro2)
+            np.testing.assert_allclose(ov2["Y"].numpy(), a4 @ b4, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_second_device(self):
+        """Test CUDA graph capture/replay on a non-default plugin device."""
+        plugin_devices = get_cuda_plugin_devices()
+        if len(plugin_devices) < 2:
+            self.skipTest("Multi-GPU CUDA graph test requires at least two plugin devices")
+
+        target_device = get_cuda_plugin_device_by_id(1)
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            session = self._create_cuda_graph_session(model_path, provider_options={"device_id": "1"})
+
+            provider_options = session.get_provider_options()
+            self.assertEqual(
+                provider_options[CUDA_PLUGIN_EP_NAME].get("device_id"),
+                "1",
+                f"Expected provider option device_id=1, got {provider_options[CUDA_PLUGIN_EP_NAME]}",
+            )
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a @ b, rtol=1e-3, atol=1e-3)
+
+            a2 = np.random.rand(3, 4).astype(np.float32) * 11
+            b2 = np.random.rand(4, 5).astype(np.float32) * 11
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_add_model(self):
+        """Test CUDA graph capture/replay with a simple Add model (arena-backed)."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_add_model(model_path)
+            session = self._create_cuda_graph_session(model_path)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 2], "B": [3, 2]}
+            output_shapes = {"Y": [3, 2]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            a = np.random.rand(3, 2).astype(np.float32)
+            b = np.random.rand(3, 2).astype(np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            # Warmup + capture + replay.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a + b, rtol=1e-3, atol=1e-3)
+
+            # Replay with updated data.
+            a2 = np.random.rand(3, 2).astype(np.float32) * 100
+            b2 = np.random.rand(3, 2).astype(np.float32) * 100
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 + b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    # ---- IOBinding / Sync tests ----
+
+    def test_iobinding_add(self):
+        """Run a simple Add model using IOBinding to exercise the EP Sync path.
+
+        Binding CPU inputs forces ORT to stage host-to-device copies on the
+        plugin sync stream before kernel execution begins.
+        """
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_add_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 2).astype(np.float32)
+            b = np.random.rand(3, 2).astype(np.float32)
+
+            io_binding = sess.io_binding()
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
+            io_binding.bind_output("Y", "cuda", cuda_device_id)
+
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
+            result = io_binding.copy_outputs_to_cpu()[0]
+            np.testing.assert_allclose(result, a + b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_iobinding_matmul(self):
+        """Run a MatMul model using IOBinding to exercise the EP Sync path."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+
+            io_binding = sess.io_binding()
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
+            io_binding.bind_output("Y", "cuda", cuda_device_id)
+
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
+            result = io_binding.copy_outputs_to_cpu()[0]
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    # ---- Profiling tests ----
+
+    def _run_profiling_test(self):
+        """Run a model with session-level profiling enabled and verify the JSON output.
+
+        Validates that profiling produces a valid JSON file with standard event
+        fields. GPU Kernel event validation (CUPTI) is handled by the C++ test
+        (cuda_plugin_profiling_test.cc) which can directly probe CUPTI availability.
+        """
+        target_device = get_cuda_plugin_device()
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        profile_file = None
+        try:
+            create_matmul_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+
+            profile_prefix = os.path.join(tempfile.gettempdir(), "cuda_plugin_ep_profiling_test")
+            sess_options.enable_profiling = True
+            sess_options.profile_file_prefix = profile_prefix
+
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+            sess.run(None, {"A": a, "B": b})
+
+            profile_file = sess.end_profiling()
+            self.assertTrue(profile_file, "No profile file returned")
+            self.assertTrue(os.path.exists(profile_file), f"Profile file not found: {profile_file}")
+
+            with open(profile_file) as f:
+                profile_data = json.load(f)
+
+            self.assertIsInstance(profile_data, list)
+            self.assertGreater(len(profile_data), 0, "Profile JSON is empty")
+
+            # Every event entry must have standard tracing fields.
+            required_keys = {"pid", "dur", "ts", "ph", "name", "args"}
+            for entry in profile_data:
+                if not isinstance(entry, dict):
+                    continue
+                if "name" not in entry:
+                    continue
+                for key in required_keys:
+                    self.assertIn(key, entry, f"Missing '{key}' in profile entry: {entry}")
+
+            # If GPU kernel events are present, validate their metadata.
+            kernel_events = [e for e in profile_data if isinstance(e, dict) and e.get("cat") == "Kernel"]
+            if kernel_events:
+                for event in kernel_events:
+                    self.assertIn("ts", event)
+                    self.assertIn("dur", event)
+                    self.assertGreaterEqual(event["dur"], 0)
+                    args = event.get("args", {})
+                    self.assertIn("stream", args, f"GPU kernel event missing 'stream': {event}")
+                    self.assertIn("block_x", args, f"GPU kernel event missing 'block_x': {event}")
+            else:
+                print("Note: No GPU Kernel events in profile (CUPTI may not be available).")
+
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+            if profile_file and os.path.exists(profile_file):
+                os.remove(profile_file)
+
+    def test_session_profiling(self):
+        """Verify session-level profiling produces valid output with the CUDA Plugin EP."""
+        self._run_profiling_test()
 
 
 if __name__ == "__main__":

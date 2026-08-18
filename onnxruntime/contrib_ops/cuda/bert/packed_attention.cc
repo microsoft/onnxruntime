@@ -60,8 +60,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
   bool is_fMHA_supported = FusedMHARunnerFP16v2::IsSupported(sm,
                                                              parameters.head_size,
                                                              parameters.sequence_length,
-                                                             enable_trt_flash_attention_,
-                                                             false /*causal*/);
+                                                             enable_trt_flash_attention_);
 
   if (!is_fMHA_supported) {
     return fused_runner;
@@ -69,7 +68,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   // Assuming that num_heads and head_size do not change.
   if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm, false /*causal*/,
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm,
                                                       enable_trt_flash_attention_, parameters.scale);
   }
 
@@ -269,7 +268,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+      debug_info.SetTrtFusedKernel(this->enable_trt_flash_attention_, parameters.sequence_length);
     }
 
     debug_info.Print("PackedAttention",

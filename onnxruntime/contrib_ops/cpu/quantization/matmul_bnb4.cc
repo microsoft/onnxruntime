@@ -19,6 +19,9 @@ class MatMulBnb4 final : public OpKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("quant_type", &quant_type_));
+    ORT_ENFORCE(K_ > 0, "K must be positive, got ", K_);
+    ORT_ENFORCE(N_ > 0, "N must be positive, got ", N_);
+    ORT_ENFORCE(block_size_ > 0, "block_size must be positive, got ", block_size_);
     ORT_ENFORCE(
         quant_type_ == FP4 || quant_type_ == NF4,
         "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
@@ -49,6 +52,32 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
   const float* a_data = a->Data<float>();
   const uint8_t* b_quant_data = b_quant->Data<uint8_t>();
   const float* absmax_data = absmax->Data<float>();
+
+  // Overflow-safe computation of expected tensor sizes.
+  // K_, N_, block_size_ are validated > 0 in the constructor.
+  if (K_ > std::numeric_limits<int64_t>::max() / N_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Overflow computing K * N for K=", K_, ", N=", N_, ".");
+  }
+  const int64_t numel = K_ * N_;
+  // Overflow-safe ceiling division: rewrite (a + b - 1) / b as ((a - 1) / b) + 1.
+  // Safe because numel > 0 (K_ > 0 and N_ > 0 validated in constructor).
+  const int64_t expected_b_quant_size = ((numel - 1) / 2) + 1;
+  const int64_t expected_absmax_size = ((numel - 1) / block_size_) + 1;
+
+  if (b_quant->Shape().Size() < expected_b_quant_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "b_quant tensor size (", b_quant->Shape().Size(),
+                           ") is too small for K=", K_, " and N=", N_,
+                           ". Expected at least ", expected_b_quant_size, " elements.");
+  }
+  if (absmax->Shape().Size() < expected_absmax_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "absmax tensor size (", absmax->Shape().Size(),
+                           ") is too small for K=", K_, ", N=", N_,
+                           ", block_size=", block_size_,
+                           ". Expected at least ", expected_absmax_size, " elements.");
+  }
 
   AllocatorPtr allocator;
   auto status = ctx->GetTempSpaceAllocator(&allocator);

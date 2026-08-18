@@ -11,6 +11,7 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+#include <numbers>
 using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {
@@ -37,6 +38,12 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
   T* output_data = output->MutableData<T>();
+
+  // An empty input (and, correspondingly, an empty bias) is a legal degenerate case per the
+  // ONNX shape model; treat it as a no-op rather than let elem_count / bias_len divide by zero below.
+  if (elem_count == 0) {
+    return Status::OK();
+  }
 
   const Tensor* bias = context->Input<Tensor>(1);
   if (nullptr == bias) {
@@ -114,7 +121,7 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
   } else {  // BiasGelu
     for (int64_t i = 0; i < count; i++) {
       T value = input[i] + bias[i];
-      output[i] = value * static_cast<T>(M_SQRT1_2);
+      output[i] = value * (T{1} / std::numbers::sqrt2_v<T>);
       temp[i] = value * 0.5f;
     }
 

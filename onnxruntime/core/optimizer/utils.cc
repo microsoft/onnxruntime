@@ -339,6 +339,10 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
           const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input->Name(), true);
           if (initializer) {
             Initializer i(graph, *initializer, graph.ModelPath());
+            // Clip min/max are expected to be scalar/1-element tensors.
+            if (i.size() != 1) {
+              return false;
+            }
             switch (initializer->data_type()) {
               case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
                 value = *i.data<float>();

@@ -37,17 +37,35 @@ void LoraAdapter::Load(const std::filesystem::path& file_path) {
 }
 
 void LoraAdapter::Load(std::vector<uint8_t> buffer) {
-  adapter_ = adapters::utils::ValidateAndGetAdapterFromBytes(buffer);
+  // Build everything that can throw against locals first, so a malformed adapter
+  // leaves *this unchanged (strong exception guarantee). Only after the new
+  // parameter map has been fully constructed do we release the previous backing
+  // storage and swap in the new state. ValidateAndGetAdapterFromBytes returns a
+  // pointer that aliases `buffer`'s data; std::vector's move preserves the data
+  // pointer, so the alias remains valid after we move `buffer` into buffer_.
+  const auto* new_adapter = adapters::utils::ValidateAndGetAdapterFromBytes(buffer);
+  auto new_params_values = BuildParamsValues(new_adapter);
+
+  // Commit. None of the operations below can throw.
   buffer_.emplace<BufferHolder>(std::move(buffer));
-  InitializeParamsValues();
+  adapter_ = new_adapter;
+  params_values_ = std::move(new_params_values);
 }
 
 void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
   auto [mapped_memory, file_size] = adapters::utils::MemoryMapAdapterFile(file_path);
   auto u8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(mapped_memory.get(), file_size));
-  adapter_ = adapters::utils::ValidateAndGetAdapterFromBytes(u8_span);
+
+  // Build everything that can throw against locals first; see Load() above.
+  // Moving Env::MappedMemoryPtr preserves the underlying pointer, so OrtValues
+  // built against `mapped_memory.get()` remain valid after the move into buffer_.
+  const auto* new_adapter = adapters::utils::ValidateAndGetAdapterFromBytes(u8_span);
+  auto new_params_values = BuildParamsValues(new_adapter);
+
+  // Commit. None of the operations below can throw.
   buffer_.emplace<MemMapHolder>(std::move(mapped_memory), file_size);
-  InitializeParamsValues();
+  adapter_ = new_adapter;
+  params_values_ = std::move(new_params_values);
 }
 
 static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_info) {
@@ -82,10 +100,9 @@ static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
   return Status::OK();
 }
 
-void LoraAdapter::InitializeParamsValues() {
-  if (adapter_ == nullptr) {
-    ORT_THROW("Adapter is not loaded yet.");
-  }
+std::unordered_map<std::string, LoraAdapter::Param>
+LoraAdapter::BuildParamsValues(const adapters::Adapter* adapter) const {
+  ORT_ENFORCE(adapter != nullptr, "Adapter is not loaded yet.");
 
   std::unique_ptr<IDataTransfer> data_transfer;
   if (device_allocator_) {
@@ -95,7 +112,7 @@ void LoraAdapter::InitializeParamsValues() {
     }
   }
 
-  const auto* params = adapter_->parameters();
+  const auto* params = adapter->parameters();
   ORT_ENFORCE(params != nullptr, "Params absent");
   std::unordered_map<std::string, Param> params_values;
   params_values.reserve(params->size());
@@ -117,7 +134,7 @@ void LoraAdapter::InitializeParamsValues() {
     }
   }
 
-  params_values_.swap(params_values);
+  return params_values;
 }
 
 }  // namespace lora

@@ -8,6 +8,7 @@
 #endif
 
 #include <memory>
+#include <vector>
 
 #include "core/framework/data_types.h"
 
@@ -28,6 +29,23 @@ inline const OrtDataType* GetTensorType(ONNXTensorElementDataType elem_type) {
   return result;
 }
 
+/// <summary>
+/// Gets an OrtDataType for a tensor type. Returns nullptr if the host ORT does not support the type.
+/// </summary>
+inline const OrtDataType* TryGetTensorType(ONNXTensorElementDataType elem_type) {
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+  const OrtDataType* result = nullptr;
+
+  Ort::Status status(ep_api.GetTensorDataType(elem_type, &result));
+  if (!status.IsOK()) {
+    if (status.GetErrorCode() == ORT_INVALID_ARGUMENT || status.GetErrorCode() == ORT_NOT_IMPLEMENTED) {
+      return nullptr;
+    }
+    Ort::ThrowOnError(status);
+  }
+  return result;
+}
+
 inline const OrtDataType* MLDataTypeToOrtDataType(MLDataType ml_type) {
   auto tensor_type = ml_type->AsTensorType();
   EP_ENFORCE(tensor_type != nullptr, "EP Kernel registration only supports tensor types.");
@@ -35,6 +53,20 @@ inline const OrtDataType* MLDataTypeToOrtDataType(MLDataType ml_type) {
   auto primitive_type = static_cast<const PrimitiveDataTypeBase*>(elem_type);
   auto onnx_type = static_cast<ONNXTensorElementDataType>(primitive_type->GetDataType());
   return GetTensorType(onnx_type);
+}
+
+/// <summary>
+/// Converts an MLDataType to an OrtDataType. Returns nullptr if the host ORT does not support the type.
+/// This enables forward-compatible plugins to register kernels with type constraints that include newer
+/// data types without failing when loaded into an older host ORT.
+/// </summary>
+inline const OrtDataType* TryMLDataTypeToOrtDataType(MLDataType ml_type) {
+  auto tensor_type = ml_type->AsTensorType();
+  EP_ENFORCE(tensor_type != nullptr, "EP Kernel registration only supports tensor types.");
+  auto elem_type = tensor_type->GetElementType();
+  auto primitive_type = static_cast<const PrimitiveDataTypeBase*>(elem_type);
+  auto onnx_type = static_cast<ONNXTensorElementDataType>(primitive_type->GetDataType());
+  return TryGetTensorType(onnx_type);
 }
 
 /// <summary>
@@ -73,14 +105,26 @@ struct KernelDefBuilder {
     std::vector<const OrtDataType*> ort_types;
     ort_types.reserve(types.size());
     for (const auto& type : types) {
-      ort_types.push_back(MLDataTypeToOrtDataType(type));
+      const OrtDataType* ort_type = TryMLDataTypeToOrtDataType(type);
+      if (ort_type != nullptr) {
+        ort_types.push_back(ort_type);
+      }
     }
-    builder_.AddTypeConstraint(arg_name, ort_types);
+    if (types.empty() || !ort_types.empty()) {
+      builder_.AddTypeConstraint(arg_name, ort_types);
+    } else {
+      valid_ = false;
+    }
     return *this;
   }
 
   KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType type) {
-    builder_.AddTypeConstraint(arg_name, MLDataTypeToOrtDataType(type));
+    const OrtDataType* ort_type = TryMLDataTypeToOrtDataType(type);
+    if (ort_type != nullptr) {
+      builder_.AddTypeConstraint(arg_name, ort_type);
+    } else {
+      valid_ = false;
+    }
     return *this;
   }
 
@@ -134,10 +178,11 @@ struct KernelDefBuilder {
   // assignment externally; the queue id hint is not needed.
   KernelDefBuilder& ExecQueueId(int /*queue_id*/) { return *this; }
 
-  Ort::KernelDef Build() { return builder_.Build(); }
+  Ort::KernelDef Build() { return valid_ ? builder_.Build() : Ort::KernelDef{nullptr}; }
 
  private:
   Ort::KernelDefBuilder builder_;
+  bool valid_ = true;
 };
 
 }  // namespace adapter

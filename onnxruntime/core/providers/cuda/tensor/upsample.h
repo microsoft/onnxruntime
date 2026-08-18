@@ -19,10 +19,8 @@ class Upsample : public UpsampleBase, public CudaKernel {
   Status BaseCompute(OpKernelContext* context, gsl::span<const float> roi, gsl::span<const float> scales,
                      gsl::span<const int64_t> output_dims) const;
 
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
  private:
   IAllocatorUniquePtr<uint8_t> shared_lookup_table_ondevice_;
-#endif
 };
 
 }  // namespace cuda

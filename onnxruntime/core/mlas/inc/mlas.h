@@ -60,6 +60,9 @@ Abstract:
 #if defined(__s390x__)
 #define MLAS_TARGET_S390X
 #endif
+#if defined(__riscv) && defined(__riscv_xlen) && (__riscv_xlen == 64)
+#define MLAS_TARGET_RISCV64
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -204,6 +207,8 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
+    size_t nchwc_pointwise_conv_max_input_channel_batch = 0; /**< Optional NCHWc pointwise conv input channel batch override; 0 uses default (128) */
 };
 
 //
@@ -878,7 +883,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
     MlasConvAlgorithmDepthwiseMultiplierGreaterThan1,
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -889,6 +894,11 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    /**
+     * Existing Conv layout flag from MlasConvPrepare; for HalfConv this matches
+     * InputOutputChannelsLast.
+     */
+    bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
     size_t DilationShape[3];
@@ -903,6 +913,15 @@ struct MLAS_CONV_PARAMETERS {
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    const void* PackedFilter = nullptr;
+    size_t PackedFilterGroupStride = 0;
+    bool FilterIsPacked = false;
+    /**
+     * HalfConv-specific: true means caller-provided input and output tensors
+     * are channels-last (NHWC); false means NCHW public tensors with any NHWC
+     * staging handled internally.
+     */
+    bool InputOutputChannelsLast = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -929,8 +948,38 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
+
+bool
+MLASCALL
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
 
 void
 MLASCALL
@@ -1644,6 +1693,27 @@ MlasRotaryEmbedOneRow(
 );
 
 /**
+ * @brief Compute LayerNorm or RMSNorm (simplified) for one row of float data.
+ *        Uses platform-optimized kernel if available, otherwise returns false.
+ *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
+ *
+ * @return true if an optimized kernel was used, false if caller should fall back
+ */
+bool
+MLASCALL
+MlasLayerNormF32(
+    const float* Input,
+    const float* Scale,
+    const float* Bias,
+    float* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
+/**
  * @brief Supply matrices data information to half precision gemm functions
  */
 struct MLAS_HGEMM_DATA_PARAMS {
@@ -1876,11 +1946,26 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
     const MLAS_HALF_GEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
     bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
+    bool BIsPacked = false;           /**< matrix B is pre-packed by MlasHalfGemmPackB/MlasHalfGemmConvertPackB */
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    /**
+     * Matrix B uses a backend-specific direct-consumption packed layout.
+     * When true, B must be produced by MlasHalfGemmNativePackB, ldb must be 0,
+     * Bias must be nullptr, and OutputProcessor must be nullptr.
+     */
+    bool BIsBackendNativePacked = false;
 };
 
 /**
  * @brief Half precision Batched GEMM:  C = A * B + Bias
- *        Either A or B can be fp32 or fp16
+ *        Either A or B can be fp32 or fp16.
+ *        Backend-native packed B is a constrained direct-consumption layout
+ *        and does not support runtime Bias or OutputProcessor.
+ *
+ * Uses MLAS_THROW_EX(std::runtime_error, ...) for contract violations that
+ * cannot be safely ignored: non-empty work with null DataParams, malformed
+ * backend-native packed-B parameters on the K == 0 path, or backend-native
+ * packed B reaching the generic MLAS kernels when no backend override consumes it.
  *
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
@@ -1926,6 +2011,9 @@ MlasHalfGemmPackBSize(
  * @brief For half precision GEMM, pack the right hand
  *        side matrix B
  *
+ * @pre For non-zero N and K, B and PackedB must be non-null and ldb must be at
+ *      least N.
+ *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
  * @param[in]  B        Address of matrix B
@@ -1941,6 +2029,106 @@ MlasHalfGemmPackB(
     size_t ldb,
     void* PackedB
     );
+
+/**
+ * @brief For half precision GEMM, returns the size of a backend-native
+ *        direct-consumption packing buffer for right hand side B.
+ *
+ * The returned layout is only valid when MlasHalfGemmBatch consumes
+ * MLAS_HALF_GEMM_DATA_PARAMS with BIsBackendNativePacked set to true, ldb set
+ * to 0, Bias set to nullptr, and OutputProcessor set to nullptr. Returns 0
+ * when no backend-native format is available for the given transpose/shape/config.
+ */
+size_t
+MLASCALL
+MlasHalfGemmNativePackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+/**
+ * @brief For half precision GEMM, pack right hand side B into the
+ *        backend-native direct-consumption format.
+ *
+ * Returns false when the backend-native format is unavailable for the given
+ * transpose/shape/config. The resulting buffer must be passed to
+ * MlasHalfGemmBatch with ldb set to 0, BIsBackendNativePacked set to true,
+ * Bias set to nullptr, and OutputProcessor set to nullptr.
+ */
+bool
+MLASCALL
+MlasHalfGemmNativePackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+bool
+MLASCALL
+MlasHalfConvPrepare(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    bool InputOutputChannelsLast,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConv(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const MLAS_FP16* Input,
+    const MLAS_FP16* Filter,
+    // When true, Filter must point to a packed weights+bias buffer produced by
+    // MlasHalfConvPackWeightsAndBias and Bias must be nullptr.
+    bool FilterAndBiasArePacked,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* WorkingBuffer,
+    MLAS_FP16* Output,
+    MLAS_THREADPOOL* ThreadPool);
+
+size_t
+MLASCALL
+MlasHalfConvPackWeightsAndBiasSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConvPackWeightsAndBias(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_FP16* Filter,
+    // Optional bias to bake into the packed direct-consumption buffer.
+    const MLAS_FP16* Bias,
+    void* PackedWeightsAndBias,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
  * @brief For half precision GEMM, convert the float matrix B
@@ -2236,4 +2424,278 @@ MLASCALL
 MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
+);
+
+//
+// Flash Attention for non-quantized (FP32) GroupQueryAttention KV cache.
+//
+// Adapts the online-softmax tiled algorithm to operate on an FP32 present
+// K/V cache laid out as BNSH ([batch, kv_num_heads, seqlen_present, head_size]).
+// Supports GQA head grouping, causal masking, local window attention,
+// additive attention bias, and an optional flash-decoding split over the KV
+// sequence dimension for the single-token decode case.
+//
+struct MlasFlashAttentionGQAArgs {
+    int batch_size;
+    int num_heads;            // number of query heads
+    int kv_num_heads;         // number of key/value heads (num_heads % kv_num_heads == 0)
+    int sequence_length;      // number of new query tokens (S)
+    int total_seqlen;         // total tokens (past + new) for this invocation (T)
+    int head_size;            // per-head size (H)
+    int past_seqlen;          // causal offset (number of cached tokens before the new ones)
+    int local_window_size;    // -1 disables local window masking
+    int seqlen_present_kv;    // sequence dimension of the present K/V buffer
+    int q_block_size;         // query tile size (Br)
+    int kv_block_size;        // key/value tile size (Bc)
+    float scale;              // QK scaling factor
+    int thread_count;         // number of partitions / threads
+    float* buffer;            // per-thread scratch (+ optional flash-decoding partials)
+    size_t buffer_size_per_thread;
+
+    const float* query;       // [batch, num_heads, sequence_length, head_size] BNSH
+    size_t q_batch_stride;    // element stride between consecutive batches in `query`
+                              // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
+    const float* k_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    const float* v_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    float* output;            // [batch, sequence_length, num_heads, head_size] BSNH
+
+    const float* attention_bias;  // [batch|1, num_heads|1, S, T] additive bias, or nullptr
+    int attention_bias_seqlen_stride;
+    bool attention_bias_broadcast_batch;
+    bool attention_bias_broadcast_head;
+
+    // Flash decoding (sequence_length == 1): partition KV across threads.
+    // Set flash_decoding_partials != nullptr to enable; otherwise the standard
+    // per-(batch, head, q_block) partitioning is used.
+    float* flash_decoding_partials;
+    int kv_chunk_count;
+};
+
+/**
+ * @brief FP32 Flash Attention for GroupQueryAttention with an FP32 KV cache.
+ * @param args         Arguments
+ * @param ThreadPool   Thread pool
+ */
+void
+MLASCALL
+MlasFlashAttentionGQA(
+    MlasFlashAttentionGQAArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+//
+// Linear (recurrent) attention.
+//
+// Computes, independently for every (batch, kv head) pair, a token-sequential
+// recurrence over a state matrix S of shape [k_head_size, v_head_size]:
+//
+//   for t in [0, sequence_length):
+//     (1) decay     : S      *= exp(g_t)              (gated / gated_delta only)
+//     (2) retrieval : r       = S^T k_t               (delta / gated_delta only)
+//     (3) update    : S      += k_t (x) d_t           d_t = v_t                 (linear / gated)
+//                                                     d_t = beta_t * (v_t - r)  (delta / gated_delta)
+//     (4) readout   : o_{t,h} = scale * q_{t,h}^T S   for every query head h
+//                                                     mapped to this kv head
+//
+// All tensors are FP32, packed row-major with no padding; strides are implied
+// by the head counts and head sizes documented on each field.
+//
+// Head mapping:
+//   Key heads     - kv_num_heads % k_num_heads == 0; consecutive kv heads share
+//                   a key head, h_k = h_kv / (kv_num_heads / k_num_heads).
+//   Standard GQA  - q_num_heads >= kv_num_heads and divisible by it; each kv
+//                   head serves q_num_heads / kv_num_heads consecutive query
+//                   heads and writes the matching output heads.
+//   Inverse GQA   - q_num_heads < kv_num_heads and divides it; each kv head
+//                   reads the single shared query head
+//                   h_q = h_kv * q_num_heads / kv_num_heads and writes output
+//                   head h_kv.
+//
+
+typedef enum {
+    MlasLinearAttentionRuleLinear     = 0,  // no decay, no beta
+    MlasLinearAttentionRuleGated      = 1,  // decay,    no beta
+    MlasLinearAttentionRuleDelta      = 2,  // no decay, beta + retrieval
+    MlasLinearAttentionRuleGatedDelta = 3,  // decay,    beta + retrieval
+} MLAS_LINEAR_ATTENTION_RULE;
+
+typedef enum {
+    MlasLinearAttentionDecayNone      = 0,  // rule has no decay term
+    MlasLinearAttentionDecayPerHead   = 1,  // decay is [B, T, kv_num_heads]
+    MlasLinearAttentionDecayPerKeyDim = 2,  // decay is [B, T, kv_num_heads * k_head_size]
+} MLAS_LINEAR_ATTENTION_DECAY_LAYOUT;
+
+typedef enum {
+    MlasLinearAttentionBetaNone    = 0,     // rule has no beta term
+    MlasLinearAttentionBetaPerHead = 1,     // beta is [B, T, kv_num_heads]
+    MlasLinearAttentionBetaShared  = 2,     // beta is [B, T, 1] (broadcast over heads)
+} MLAS_LINEAR_ATTENTION_BETA_LAYOUT;
+
+struct MlasLinearAttentionArgs {
+    //
+    // Problem shape.
+    //
+    //
+    // Preconditions the caller is responsible for, in the manner of the other
+    // MLAS attention entry points: these are assumed, not validated. The CPU EP
+    // enforces them and reports a Status (see contrib_ops/cpu/bert/linear_attention.cc).
+    //
+    //   k_num_heads  >= 1, and kv_num_heads % k_num_heads == 0
+    //   q_num_heads  >= 1, kv_num_heads >= 1, and whichever of q_num_heads /
+    //                kv_num_heads is larger must be a multiple of the smaller
+    //   k_head_size  >= 1, v_head_size >= 1
+    //
+    int batch_size;        // B
+    int sequence_length;   // T
+    int q_num_heads;       // H_q
+    int kv_num_heads;      // H_kv - one independent recurrent state per (batch, kv head)
+    int k_num_heads;       // H_k  - key heads; H_kv % H_k == 0
+    int k_head_size;       // d_k
+    int v_head_size;       // d_v
+
+    //
+    // Behaviour.
+    //
+    MLAS_LINEAR_ATTENTION_RULE rule;
+
+    // Must be *None if and only if the rule carries no decay / beta term.
+    MLAS_LINEAR_ATTENTION_DECAY_LAYOUT decay_layout;
+    MLAS_LINEAR_ATTENTION_BETA_LAYOUT beta_layout;
+
+    // Query readout scale. The caller resolves any default (e.g. 1/sqrt(d_k)).
+    float scale;
+
+    //
+    // Threading and scratch.
+    //
+    int thread_count;                 // number of partitions; >= 1
+    float* buffer;                    // thread_count * buffer_size_per_thread bytes
+    size_t buffer_size_per_thread;    // BYTES; see MlasLinearAttentionBufferSizePerThread
+
+    //
+    // Tensors. All FP32, packed row-major, no padding.
+    //
+    const float* query;    // [B, T, H_q  * d_k]
+    const float* key;      // [B, T, H_k  * d_k]
+    const float* value;    // [B, T, H_kv * d_v]
+    // Must be non-null whenever the rule carries the corresponding term, i.e.
+    // decay for Gated / GatedDelta and beta for Delta / GatedDelta.
+    const float* decay;    // nullptr, or [B, T, H_kv] / [B, T, H_kv * d_k] per decay_layout
+    const float* beta;     // nullptr, or [B, T, H_kv] / [B, T, 1]          per beta_layout
+
+    // IN/OUT. [B, H_kv, d_k, d_v] row-major; the leading dimension of each
+    // d_k x d_v slice is d_v. MLAS does NOT initialize this buffer - the caller
+    // must zero it or copy the past state in beforehand. On return it holds the
+    // post-sequence state.
+    float* state;
+
+    // OUT. [B, T, MlasLinearAttentionOutputHiddenSize(...)]. Fully overwritten
+    // when sequence_length > 0; no accumulation is performed.
+    float* output;
+};
+
+/**
+ * @brief Hidden size of the LinearAttention output tensor.
+ *
+ * Standard GQA (q_num_heads >= kv_num_heads): q_num_heads * v_head_size.
+ * Inverse GQA  (q_num_heads <  kv_num_heads): kv_num_heads * v_head_size.
+ */
+size_t
+MLASCALL
+MlasLinearAttentionOutputHiddenSize(
+    int q_num_heads,
+    int kv_num_heads,
+    int v_head_size
+);
+
+/**
+ * @brief Per-thread scratch size, in bytes, for MlasLinearAttention. Multiply
+ *        by MlasLinearAttentionArgs::thread_count to size the buffer.
+ */
+size_t
+MLASCALL
+MlasLinearAttentionBufferSizePerThread(
+    int k_head_size,
+    int v_head_size
+);
+
+/**
+ * @brief FP32 linear / gated / delta / gated-delta recurrent attention.
+ * @param args         Arguments; args->state is updated in place.
+ * @param ThreadPool   Thread pool
+ */
+void
+MLASCALL
+MlasLinearAttention(
+    MlasLinearAttentionArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Enumeration of supported GELU algorithm variants.
+ *
+ * MlasGeluErf  - Exact GELU implementation using the error function (erf).
+ * MlasGeluTanh - Approximate GELU implementation using tanh-based formulation.
+ */
+typedef enum MLAS_GELU_ALGORITHM {
+    MlasGeluErf = 0,
+    MlasGeluTanh = 1
+} MLAS_GELU_ALGORITHM;
+
+/**
+ * @brief Computes element-wise FP16 error function (erf).
+ *
+ * This routine computes:
+ *     Output[i] = erf(Input[i])
+ * for N elements. Depending on platform capabilities, this may use
+ * vectorized FP16 intrinsics or fall back to a scalar FP32 conversion path.
+ *
+ * @param Input   Pointer to input buffer of N FP16 elements.
+ * @param Output  Pointer to output buffer of N FP16 elements.
+ * @param Input_tmp_fp32   Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 input conversion (used only on fallback path).
+ * @param Output_tmp_fp32  Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 output conversion (used only on fallback path).
+ * @param N       Number of elements to process.
+ */
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
+    size_t N
+);
+
+/**
+ * @brief Computes element-wise FP16 GELU activation.
+ *
+ * This routine computes:
+ *
+ *   If algo == MlasGeluTanh (approximate):
+ *     GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+ *
+ *   If algo == MlasGeluErf (exact):
+ *     GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
+ *
+ * Depending on platform capabilities, this may use vectorized FP16 kernels
+ * (SVE/NEON) or fall back to a scalar FP32 conversion path.
+ *
+ * @param input   Pointer to input buffer of FP16 elements.
+ * @param output  Pointer to output buffer of FP16 elements.
+ * @param temp    Temporary scratch buffer of at least 'count' FP16 elements.
+ *                Required by certain vectorized implementations. May be unused
+ *                in scalar fallback paths.
+ * @param count   Number of elements to process.
+ * @param algo    GELU algorithm variant (exact erf or tanh approximation).
+ */
+void
+MLASCALL 
+MlasComputeFP16Gelu(
+    const MLAS_FP16* input,
+    MLAS_FP16* output,
+    MLAS_FP16* temp,
+    size_t count,
+    MLAS_GELU_ALGORITHM algo
 );

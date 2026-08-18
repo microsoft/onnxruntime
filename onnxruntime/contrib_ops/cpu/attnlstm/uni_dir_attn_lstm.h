@@ -80,6 +80,7 @@ class UniDirectionalAttnLstm {
                         span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end,
                         span_T_iter& batched_output, span_T_iter& batched_output_end,
                         const gsl::span<const int>& seq_lengths,
+                        const int hidden_size_x4,
                         const int min_sequence_length,
                         const int step,
                         const int row,

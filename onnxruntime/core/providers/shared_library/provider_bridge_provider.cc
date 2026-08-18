@@ -169,6 +169,8 @@ template <>
 MLDataType DataTypeImpl::GetType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2(); }
 template <>
 MLDataType DataTypeImpl::GetType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E8M0>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E8M0(); }
 #endif
 template <>
 MLDataType DataTypeImpl::GetType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_Int4x2(); }
@@ -223,6 +225,8 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E8M0>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E8M0(); }
 #endif
 template <>
 MLDataType DataTypeImpl::GetTensorType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int4x2(); }
@@ -277,6 +281,8 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2(); }
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E8M0>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E8M0(); }
 #endif
 
 #endif
@@ -581,9 +587,11 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
+// Inlined rather than delegated through g_host_cpu because ValidateShapes is
+// pure shape arithmetic with no framework dependencies.
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
-                                 const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+                                 const TensorShape& update_shape) { return scatter_nd_internal::ValidateShapes(input_shape, indice_shape, update_shape); }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
   return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);

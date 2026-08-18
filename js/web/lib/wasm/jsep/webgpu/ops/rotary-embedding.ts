@@ -62,16 +62,20 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
     }
   }
 
+  if (sequenceLength > maxSequenceLength) {
+    throw new Error('Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported');
+  }
+
+  // Note: position_ids value validation is handled by shader-side bounds checks (defense-in-depth).
+  // We cannot validate position_ids values here because the tensor is GPU-resident — its data field
+  // is a GPU buffer ID, not a WASM heap pointer, so getBigInt64Array() would read garbage.
+
   if (headSize / 2 !== cosCache.dims[1] && rotaryEmbeddingDim / 2 !== cosCache.dims[1]) {
     throw new Error(
       `Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2, got ${
         cosCache.dims[1]
       }`,
     );
-  }
-
-  if (sequenceLength > maxSequenceLength) {
-    throw new Error('Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported');
   }
 };
 

@@ -87,8 +87,11 @@ class EpProfiler {
   /// Allows EP profiler to initialize profiling utilities and record the profiling start time.
   /// </summary>
   /// <param name="profiling_start_time">Timepoint denoting the start of profiling.</param>
-  /// <returns>True if profiling was started successfully.</returns>
-  virtual bool StartProfiling(TimePoint profiling_start_time) = 0;
+  /// <returns>Status::OK() if profiling was started successfully, or an error Status
+  /// describing why profiling could not start (e.g., CUPTI unavailable, tracing blocked by policy).
+  /// Callers should not treat a failed start as fatal — the session can still execute without
+  /// profiling, but the status should be surfaced for diagnostic purposes.</returns>
+  virtual Status StartProfiling(TimePoint profiling_start_time) = 0;
 
   /// <summary>
   /// Called when profiling ends to collect the EP's new profiling events since the last call to StartProfiling.

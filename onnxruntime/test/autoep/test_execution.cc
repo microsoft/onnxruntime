@@ -1,21 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 // #include <absl/base/config.h>
 #include <gsl/gsl>
 #include <gtest/gtest.h>
 
 #include "core/graph/constants.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "nlohmann/json.hpp"
 
+#include "test/autoep/ep_context_data_callbacks.h"
 #include "test/autoep/test_autoep_utils.h"
+#include "test/autoep/library/ep_context_data_utils.h"
 #include "test/autoep/library/example_plugin_ep/ep_test_hooks.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
@@ -28,8 +34,53 @@ namespace test {
 
 namespace {
 
-void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+// Invokes the experimental EPContext read setter on the public C API.
+void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamedBufferFunc read_func, void* state) {
+  auto* set_read_func =
+      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&Ort::GetApi());
+  ASSERT_ORTSTATUS_OK(set_read_func(session_options, read_func, state));
+}
+
+// Invokes the experimental EPContext write setter on the public C API.
+void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,
+                               void* state) {
+  auto* set_write_func =
+      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
+          &Ort::GetApi());
+  ASSERT_ORTSTATUS_OK(set_write_func(compile_options, write_func, state));
+}
+
+void LoadModelProtoFromFile(const ORTCHAR_T* model_file, ONNX_NAMESPACE::ModelProto& model_proto) {
+  std::ifstream model_stream{std::filesystem::path(model_file), std::ios::binary};
+  ASSERT_TRUE(model_stream.is_open());
+  ASSERT_TRUE(model_proto.ParseFromIstream(&model_stream));
+}
+
+std::vector<const ONNX_NAMESPACE::NodeProto*> GetEpContextNodes(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  std::vector<const ONNX_NAMESPACE::NodeProto*> ep_context_nodes;
+
+  for (const auto& node : model_proto.graph().node()) {
+    if (node.domain() == kMSDomain && node.op_type() == "EPContext") {
+      ep_context_nodes.push_back(&node);
+    }
+  }
+
+  return ep_context_nodes;
+}
+
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const ONNX_NAMESPACE::NodeProto& node,
+                                                       std::string_view attribute_name) {
+  for (const auto& attribute : node.attribute()) {
+    if (attribute.name() == attribute_name) {
+      return &attribute;
+    }
+  }
+
+  return nullptr;
+}
+
+void RunMulModelWithPluginEp(const ORTCHAR_T* model_path, const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, model_path, session_options);
 
   // Create input
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -52,6 +103,10 @@ void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
+void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
+  RunMulModelWithPluginEp(ORT_TSTR("testdata/mul_1.onnx"), session_options);
 }
 
 void RunCustomMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
@@ -322,6 +377,103 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
+// Builds a minimal ONNX model bytes with a single FP16 HardSigmoid node.
+// Graph: X[1,4 float16] -> HardSigmoid -> Y[1,4 float16]
+// HardSigmoid is used because it has NO MLFloat16 CPU kernel on any build config,
+// ensuring the node remains unassigned during partitioning and exercises the
+// InsertCastTransformer callback path.
+std::string BuildFp16HardSigmoidModelBytes() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(14);
+
+  ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
+  graph->set_name("fp16_hardsigmoid");
+
+  auto add_fp16_value_info = [](ONNX_NAMESPACE::GraphProto* g, bool is_input,
+                                const std::string& name) {
+    auto* v = is_input ? g->add_input() : g->add_output();
+    v->set_name(name);
+    auto* t = v->mutable_type()->mutable_tensor_type();
+    t->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    t->mutable_shape()->add_dim()->set_dim_value(1);
+    t->mutable_shape()->add_dim()->set_dim_value(4);
+  };
+
+  add_fp16_value_info(graph, /*is_input=*/true, "X");
+  add_fp16_value_info(graph, /*is_input=*/false, "Y");
+
+  auto* node = graph->add_node();
+  node->set_name("hardsigmoid_0");
+  node->set_op_type("HardSigmoid");
+  node->set_domain("");
+  node->add_input("X");
+  node->add_output("Y");
+
+  std::string bytes;
+  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize FP16 HardSigmoid ONNX model";
+  return bytes;
+}
+
+// Builds a minimal ONNX model with zero graph inputs: two float initializers fed into a single Mul node.
+// Graph: A[3,2 float] * B[3,2 float] -> Y[3,2 float]
+// Used to test EPContext generation for models with no external inputs.
+std::string BuildZeroInputMulModelBytes() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(18);
+
+  ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
+  graph->set_name("zero_input_mul");
+
+  // No graph inputs.
+
+  // Graph output: Y [3, 2] float
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  auto* out_type = output->mutable_type()->mutable_tensor_type();
+  out_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  out_type->mutable_shape()->add_dim()->set_dim_value(3);
+  out_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Initializer A: [3, 2] float, values = {1, 2, 3, 4, 5, 6}
+  auto* init_a = graph->add_initializer();
+  init_a->set_name("A");
+  init_a->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init_a->add_dims(3);
+  init_a->add_dims(2);
+  for (float v : {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}) {
+    init_a->add_float_data(v);
+  }
+
+  // Initializer B: [3, 2] float, values = {2, 3, 4, 5, 6, 7}
+  auto* init_b = graph->add_initializer();
+  init_b->set_name("B");
+  init_b->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init_b->add_dims(3);
+  init_b->add_dims(2);
+  for (float v : {2.f, 3.f, 4.f, 5.f, 6.f, 7.f}) {
+    init_b->add_float_data(v);
+  }
+
+  // Mul node: Y = A * B
+  auto* node = graph->add_node();
+  node->set_name("mul_0");
+  node->set_op_type("Mul");
+  node->set_domain("");
+  node->add_input("A");
+  node->add_input("B");
+  node->add_output("Y");
+
+  std::string bytes;
+  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize zero-input Mul ONNX model";
+  return bytes;
+}
+
 }  // namespace
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -403,6 +555,48 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   RunAddMulAddModel(session_options, check_ep_node_assignment);
 }
 
+// Verifies that GetEpGraphAssignmentInfo() correctly captures the FP16 HardSigmoid node being
+// assigned to the CPU EP by InsertCastTransformer.
+//
+// During graph partitioning (step 4 in TransformGraph), the FP16 assigned node is not claimed by
+// any EP (the example EP only supports FP32 Mul; the CPU EP has no FP16 HardSigmoid kernel), so
+// on_partition_assignment_fn is never called at that stage.
+//
+// InsertCastTransformer (step 6) then converts the FP16 HardSigmoid: it inserts Cast(FP16->FP32)
+// before the node, assigns the HardSigmoid to the CPU EP, and inserts Cast(FP32->FP16) after.
+// InsertCastTransformer now invokes on_partition_assignment_fn when it assigns the HardSigmoid to
+// CPU, so the node must appear in GetEpGraphAssignmentInfo().
+TEST(OrtEpLibrary, PluginEp_AppendV2_Fp16HardSigmoid_EpGraphAssignmentInfo) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+
+  // Enable recording of EP-graph assignment info.
+  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const std::string model_bytes = BuildFp16HardSigmoidModelBytes();
+  Ort::Session session(*ort_env, model_bytes.data(), model_bytes.size(), session_options);
+
+  // InsertCastTransformer assigns the HardSigmoid to CPU EP and fires the callback, so there must
+  // be exactly one subgraph entry: the HardSigmoid node on the CPU EP.
+  std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
+  ASSERT_EQ(ep_subgraphs.size(), 1u)
+      << "Expected exactly one EP subgraph (HardSigmoid on CPU EP), got " << ep_subgraphs.size();
+
+  std::string ep_name = ep_subgraphs[0].GetEpName();
+  ASSERT_EQ(ep_name, kCpuExecutionProvider)
+      << "Expected HardSigmoid to be assigned to CPU EP, got: " << ep_name;
+
+  const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraphs[0].GetNodes();
+  ASSERT_EQ(ep_nodes.size(), 1u) << "Expected exactly one node in the CPU EP subgraph";
+  ASSERT_EQ(ep_nodes[0].GetOperatorType(), std::string("HardSigmoid"));
+  ASSERT_EQ(ep_nodes[0].GetName(), std::string("hardsigmoid_0"));
+}
+
 // Generate an EPContext model with a plugin EP.
 // This test uses the OrtCompileApi but could also be done by setting the appropriate session option configs.
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
@@ -434,6 +628,222 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
   }
 }
 
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_mul_1_embedded_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(output_model_file); });
+
+  EpContextDataCallbackState write_callback_state;
+  EpContextDataCallbackState compile_read_callback_state;
+  {
+    Ort::SessionOptions session_options;
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &compile_read_callback_state));
+
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state));
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  }
+
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  EXPECT_FALSE(write_callback_state.write_called);
+  EXPECT_FALSE(compile_read_callback_state.read_called);
+
+  ONNX_NAMESPACE::ModelProto compiled_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+
+  auto ep_context_nodes = GetEpContextNodes(compiled_model);
+  ASSERT_EQ(ep_context_nodes.size(), 1u);
+
+  const ONNX_NAMESPACE::AttributeProto* embed_mode_attr = GetNodeAttribute(*ep_context_nodes[0], "embed_mode");
+  ASSERT_NE(embed_mode_attr, nullptr);
+  EXPECT_EQ(embed_mode_attr->type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  EXPECT_EQ(embed_mode_attr->i(), 1);
+
+  const ONNX_NAMESPACE::AttributeProto* ep_cache_context_attr = GetNodeAttribute(*ep_context_nodes[0],
+                                                                                 "ep_cache_context");
+  ASSERT_NE(ep_cache_context_attr, nullptr);
+  EXPECT_EQ(ep_cache_context_attr->type(), ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  EXPECT_EQ(ep_cache_context_attr->s(), "binary_data");
+
+  EpContextDataCallbackState load_read_callback_state;
+  {
+    Ort::SessionOptions session_options;
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &load_read_callback_state));
+
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, output_model_file, session_options);
+  }
+
+  EXPECT_FALSE(load_read_callback_state.read_called);
+}
+
+TEST(OrtEpLibrary, PluginEp_GenAndLoadEpContextModel_ExternalDataUsesFileFallback) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_mul_1_file_ctx.onnx");
+  std::vector<std::filesystem::path> files_to_cleanup{std::filesystem::path{output_model_file}};
+  for (const auto& path : files_to_cleanup) {
+    std::filesystem::remove(path);
+  }
+  auto cleanup = gsl::finally([&]() {
+    for (const auto& path : files_to_cleanup) {
+      std::filesystem::remove(path);
+    }
+  });
+
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  }
+
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+
+  ONNX_NAMESPACE::ModelProto compiled_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+
+  auto ep_context_nodes = GetEpContextNodes(compiled_model);
+  ASSERT_EQ(ep_context_nodes.size(), 1u);
+
+  const ONNX_NAMESPACE::AttributeProto* embed_mode_attr = GetNodeAttribute(*ep_context_nodes[0], "embed_mode");
+  ASSERT_NE(embed_mode_attr, nullptr);
+  EXPECT_EQ(embed_mode_attr->type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  EXPECT_EQ(embed_mode_attr->i(), 0);
+
+  const ONNX_NAMESPACE::AttributeProto* ep_cache_context_attr = GetNodeAttribute(*ep_context_nodes[0],
+                                                                                 "ep_cache_context");
+  ASSERT_NE(ep_cache_context_attr, nullptr);
+  EXPECT_EQ(ep_cache_context_attr->type(), ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  ASSERT_FALSE(ep_cache_context_attr->s().empty());
+
+  const std::filesystem::path output_model_dir = std::filesystem::path{output_model_file}.parent_path();
+  std::filesystem::path ep_cache_context_rel;
+  ASSERT_ORTSTATUS_OK(
+      ep_context_data_utils::Utf8Path(Ort::GetApi(), ep_cache_context_attr->s().c_str(), ep_cache_context_rel));
+  const std::filesystem::path context_data_path = output_model_dir / ep_cache_context_rel;
+  files_to_cleanup.push_back(context_data_path);
+  ASSERT_TRUE(std::filesystem::exists(context_data_path));
+
+  std::vector<char> context_data;
+  std::string context_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(Ort::GetApi(), context_data_path,
+                                                              context_data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(Ort::GetApi(), context_data_file_name.c_str(),
+                                                                       nullptr, context_data));
+  EXPECT_EQ(std::string(context_data.begin(), context_data.end()), "binary_data");
+
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, output_model_file, session_options);
+  }
+}
+
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_mul_1_external_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(output_model_file); });
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  EpContextDataCallbackState callback_state;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetEpContextEmbedMode(false);
+  ASSERT_NO_FATAL_FAILURE(SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &callback_state));
+
+  ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  ASSERT_TRUE(callback_state.write_called);
+  EXPECT_FALSE(callback_state.write_file_name.empty());
+  EXPECT_EQ(std::string(callback_state.payload.begin(), callback_state.payload.end()), "binary_data");
+}
+
+TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_mul_1_external_ctx_load.onnx");
+  std::filesystem::remove(compiled_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(compiled_model_file); });
+
+  EpContextDataCallbackState write_callback_state;
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state));
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+    ASSERT_TRUE(write_callback_state.write_called);
+  }
+
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = write_callback_state.payload;
+  {
+    Ort::SessionOptions session_options;
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &read_callback_state));
+
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, compiled_model_file, session_options);
+  }
+
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
+}
+
 TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -463,6 +873,107 @@ TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
     // The compiled model has an EPContext node with initializers as explicit node inputs.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
+}
+
+// Test weightless EP context model generation using the new ep.enable_weightless session option
+// and ModelCompilationOptions_SetWeightlessEnabled API.
+TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  {
+    const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+    const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_all_init_ctx.onnx");
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+
+    // Use the new unified weightless option (ep.enable_weightless) instead of the deprecated one.
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Create model compilation options and enable weightless cache via the CompileApi.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetWeightlessEnabled(true);
+
+    // Compile the model.
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+
+    // Clean up.
+    std::filesystem::remove(output_model_file);
+  }
+}
+
+// Test SessionOptionsSetWeightlessSourceModelBuffer with valid and invalid inputs.
+TEST(OrtEpLibrary, PluginEp_WeightlessSourceModelBuffer_Validation) {
+  Ort::SessionOptions session_options;
+  const auto& api = Ort::GetApi();
+
+  // Valid buffer.
+  {
+    const char dummy_data[] = "dummy model bytes";
+    OrtStatus* status = api.SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, dummy_data, sizeof(dummy_data));
+    ASSERT_EQ(status, nullptr);
+  }
+
+  // Null buffer should fail.
+  {
+    OrtStatus* status = api.SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, nullptr, 100);
+    ASSERT_NE(status, nullptr);
+    ASSERT_EQ(api.GetErrorCode(status), ORT_INVALID_ARGUMENT);
+    api.ReleaseStatus(status);
+  }
+
+  // Zero-length buffer should fail.
+  {
+    const char dummy_data[] = "data";
+    OrtStatus* status = api.SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, dummy_data, 0);
+    ASSERT_NE(status, nullptr);
+    ASSERT_EQ(api.GetErrorCode(status), ORT_INVALID_ARGUMENT);
+    api.ReleaseStatus(status);
+  }
+}
+
+// Test that weightless mode returns an error when the EP does not implement GetWeightlessSupport.
+// The virtual GPU EP is compiled with ORT_API_VERSION >= 29 but does not set GetWeightlessSupport,
+// so the validation in Compile() should return EP_FAIL.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_error_test.onnx");
+  std::filesystem::remove(output_model_file);
+
+  std::unordered_map<std::string, std::string> ep_options;
+  Ort::SessionOptions session_options;
+
+  // Request weightless mode.
+  session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetWeightlessEnabled(true);
+
+  // CompileModel should fail because the virtual GPU EP does not implement GetWeightlessSupport.
+  auto status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
 }
 
 // Test loading a compiled model without registering the required EP with the session.
@@ -605,11 +1116,11 @@ TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_WrittenToMetadata) {
     std::string compatibility_value = value.get();
     ASSERT_GT(compatibility_value.length(), 0) << "Compatibility info should not be empty";
 
-    // Validate the exact compatibility string format and values
-    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>"
+    // Validate the compatibility string format and values
+    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>;..."
     std::string expected_compatibility_info = "example_ep;version=0.1.0;ort_api_version=" +
                                               std::to_string(ORT_API_VERSION);
-    EXPECT_EQ(compatibility_value, expected_compatibility_info);
+    EXPECT_TRUE(compatibility_value.starts_with(expected_compatibility_info));
   }
 
   std::filesystem::remove(output_model_file);
@@ -826,6 +1337,125 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
   }
 
   std::filesystem::remove(expected_output_model_file);
+}
+
+// Test that EPContext generation and inference work correctly when non-ASCII Unicode characters
+// appear in both the model file path and the EPContext output path.
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_UnicodePath) {
+  namespace fs = std::filesystem;
+
+  // Set up a Unicode working directory and model path (U+4E2D U+6587, "中文").
+  const fs::path unicode_dir{fs::path(u8"\u4e2d\u6587")};
+  fs::remove_all(unicode_dir);
+  fs::create_directories(unicode_dir);
+  auto cleanup = gsl::finally([&unicode_dir] {
+    std::error_code ec;
+    fs::remove_all(unicode_dir, ec);
+  });
+
+  const fs::path input_model = unicode_dir / fs::path(u8"\u4e2d\u6587.onnx");
+  const fs::path output_model = unicode_dir / fs::path(u8"\u4e2d\u6587_ctx.onnx");
+
+  fs::copy_file(ORT_TSTR("testdata/mul_1.onnx"), input_model, fs::copy_options::overwrite_existing);
+  fs::remove(output_model);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  std::unordered_map<std::string, std::string> ep_options;
+
+  // Convert the Unicode output path to a UTF-8 string for the session config entry.
+  // ep_context_options.cc must correctly convert this back to a wide path on Windows.
+  const auto u8str = output_model.u8string();
+  const std::string utf8_output_path(u8str.begin(), u8str.end());
+
+  // Generate EPContext model.
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, utf8_output_path.c_str());
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, input_model.c_str(), session_options);
+    ASSERT_TRUE(fs::exists(output_model)) << "EPContext not created at: " << utf8_output_path;
+  }
+}
+
+// Test that a model with zero graph inputs can be compiled into an EPContext model and reloaded.
+// The compiled EPContext node will have 0 inputs, exercising the EPContext schema change
+// that allows min_input=0.
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ZeroInputModel) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_zero_input_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(output_model_file); });
+
+  // Build a model with 0 graph inputs.
+  const std::string model_bytes = BuildZeroInputMulModelBytes();
+
+  // Compile the model with the example EP.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  // Verify the compiled model has an EPContext node with 0 inputs.
+  ONNX_NAMESPACE::ModelProto compiled_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+
+  auto ep_context_nodes = GetEpContextNodes(compiled_model);
+  ASSERT_GE(ep_context_nodes.size(), 1u);
+
+  // The EPContext node replacing the Mul (whose inputs were both initializers) should have 0 inputs.
+  EXPECT_EQ(ep_context_nodes[0]->input_size(), 0)
+      << "EPContext node from a zero-input model should have 0 inputs";
+
+  // Reload the compiled model into a session to verify graph validation passes.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_THROW(Ort::Session session(*ort_env, output_model_file, session_options))
+        << "Loading a compiled model with a 0-input EPContext node should succeed";
+  }
+}
+
+// Test that inference works correctly when non-ASCII Unicode characters appear in the model file path.
+TEST(OrtEpLibrary, PluginEp_Inference_UnicodePath) {
+  namespace fs = std::filesystem;
+
+  const fs::path unicode_dir{fs::path(u8"\u4e2d\u6587")};
+  fs::remove_all(unicode_dir);
+  fs::create_directories(unicode_dir);
+  auto cleanup = gsl::finally([&unicode_dir] {
+    std::error_code ec;
+    fs::remove_all(unicode_dir, ec);
+  });
+
+  const fs::path input_model = unicode_dir / fs::path(u8"\u4e2d\u6587.onnx");
+  fs::copy_file(ORT_TSTR("testdata/mul_1.onnx"), input_model, fs::copy_options::overwrite_existing);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  std::unordered_map<std::string, std::string> ep_options;
+
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+  RunMulModelWithPluginEp(input_model.c_str(), session_options);
 }
 
 TEST(OrtEpLibrary, KernelPluginEp_Inference) {

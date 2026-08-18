@@ -11,7 +11,8 @@
 #include <variant>
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/max_shape_override.h"
 
 namespace onnxruntime {
 
@@ -25,6 +26,18 @@ struct Node;
 // Common holder for potentially different resource accounting
 // for different EPs
 using ResourceCount = std::variant<size_t>;
+
+// Type-erased arithmetic for ResourceCount values.
+// Implementations use std::visit so the compiler enforces exhaustive handling
+// of all variant members — adding a new type to ResourceCount will produce
+// build errors at each call site that must be addressed.
+//
+// NOTE: These functions are NOT available through the provider bridge (shared library EPs).
+// Budget enforcement for bridge-based EPs (e.g., in-tree CUDA EP) will be moved to the
+// graph partitioner in a follow-up PR.
+ResourceCount AddResourceCounts(const ResourceCount& a, const ResourceCount& b);
+bool ResourceCountExceeds(const ResourceCount& a, const ResourceCount& b);
+std::string FormatResourceCount(const ResourceCount& rc);
 
 /// <summary>
 /// This class is used for graph partitioning by EPs
@@ -61,9 +74,14 @@ class IResourceAccountant {
 
   bool IsStopIssued() const noexcept { return stop_assignment_; }
 
-  // Called before each GetCapability pass to discard pending weight tracking
-  // from a previous (discarded) pass. Default no-op for stats-based accountants.
-  virtual void ResetPendingWeights() {}
+  // Called before each GetCapability pass to reset per-pass state:
+  // clears the stop flag (which only applies to the pass that set it)
+  // and discards pending weight tracking from a previous (discarded) pass.
+  // Subclasses override ResetPendingWeightsImpl for EP-specific cleanup.
+  void ResetForNewPass() {
+    stop_assignment_ = false;
+    ResetPendingWeightsImpl();
+  }
 
   // Called when a node's cost is committed (AccountForNode/AccountForAllNodes).
   // Moves the node's pending weights into the committed set so they persist
@@ -72,9 +90,34 @@ class IResourceAccountant {
 
   static std::string MakeUniqueNodeName(const Node& node);
 
+  /// Set the max shape overrides for workspace estimation.
+  /// Called during graph partitioner initialization when session.max_shape_override is set.
+  void SetMaxShapeOverrides(MaxShapeOverrideMap overrides) {
+    max_shape_overrides_ = std::move(overrides);
+  }
+
+  const MaxShapeOverrideMap& GetMaxShapeOverrides() const {
+    return max_shape_overrides_;
+  }
+
+  void SetMaxShapeInferenceResult(MaxShapeInferenceResult result) {
+    max_shape_inference_result_ = std::move(result);
+  }
+
+  const MaxShapeInferenceResult& GetMaxShapeInferenceResult() const {
+    return max_shape_inference_result_;
+  }
+
+ protected:
+  // Override to discard EP-specific pending weight tracking.
+  // Default no-op for stats-based accountants.
+  virtual void ResetPendingWeightsImpl() {}
+
  private:
   bool stop_assignment_ = false;
   std::optional<ResourceCount> threshold_;
+  MaxShapeOverrideMap max_shape_overrides_;
+  MaxShapeInferenceResult max_shape_inference_result_;
 };
 
 // A map of Ep Type to a resource accountant for this EP

@@ -75,6 +75,8 @@ struct RightPaddingBatchHook {
     }
 
     if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+      // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
       p.causal_diagonal_offset = p.num_keys - p.num_queries;
     }
     if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
@@ -176,7 +178,14 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.num_keys = params.kv_sequence_length;
 
     if (params.causal) {
-      p.custom_mask_type = Attention::CausalFromBottomRight;
+      // ONNX spec: is_causal means upper-left alignment (q_i attends to kv[0..i]).
+      // When past_sequence_length > 0 (decode with KV cache), positions shift → lower-right.
+      // causal_from_top_left=true: past_seq==0, use CausalFromTopLeft (offset=0).
+      // causal_from_top_left=false: past_seq>0 or S_q==S_kv, use CausalFromBottomRight
+      //   (offset = num_keys - num_queries, which is 0 when square).
+      p.custom_mask_type = static_cast<uint8_t>(params.causal_from_top_left
+                                                    ? Attention::CausalFromTopLeft
+                                                    : Attention::CausalFromBottomRight);
     }
 
     // We use max_sequence_length to calculate KV stride
@@ -226,23 +235,36 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.window_size = params.local_window_size;
   }
 
-  auto kernel_fn = attention_kernel_batched_impl<Attention>;
-
-  if (params.has_custom_right_padding) {
-    kernel_fn = attention_kernel_batched_impl_right_padding<Attention, queries_per_block>;
-  }
-
   int smem_bytes = sizeof(typename Attention::SharedStorage);
   if (smem_bytes > 0xc000) {
     ORT_ENFORCE(params.sm >= 70, "This kernel requires too much shared memory on this machine!");
-    static bool once = [&]() {
-      cudaFuncSetAttribute(kernel_fn, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
-      return true;
-    }();
+    if (params.has_custom_right_padding) {
+      static bool right_padding_once = [&]() {
+        CUDA_CALL_THROW(cudaFuncSetAttribute(
+            attention_kernel_batched_impl_right_padding<Attention, queries_per_block>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+        return true;
+      }();
+      ORT_UNUSED_PARAMETER(right_padding_once);
+    } else {
+      static bool default_once = [&]() {
+        CUDA_CALL_THROW(cudaFuncSetAttribute(
+            attention_kernel_batched_impl<Attention>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+        return true;
+      }();
+      ORT_UNUSED_PARAMETER(default_once);
+    }
   }
 
   ORT_ENFORCE(Attention::check_supported(p));
-  kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
+  if (params.has_custom_right_padding) {
+    attention_kernel_batched_impl_right_padding<Attention, queries_per_block>
+        <<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
+  } else {
+    attention_kernel_batched_impl<Attention>
+        <<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
+  }
 }
 
 template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, int max_head_size>
