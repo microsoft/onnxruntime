@@ -687,8 +687,8 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
 // every one uses M > 8 so the decode GEMV is skipped and the dequant actually runs.
 // ---------------------------------------------------------------------------
 
-// Vectorized path: K % 8 == 0, even block_size, several K blocks with different scales, and a
-// negative weight row so the sign bit of the packed nibble is exercised.
+// Vectorized path: K % 8 == 0, even block_size, scale boundaries inside every 8-element chunk,
+// and a negative weight row so the sign bit of the packed nibble is exercised.
 TEST(MatMulBlockQuantizedFp4WeightOpTest, PrefillDequantVectorizedFp16) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
@@ -696,8 +696,9 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, PrefillDequantVectorizedFp16) {
 
   constexpr int64_t m = 16;  // > kGemvMaxM (8), so the dequant + cuBLAS path runs
   constexpr int64_t n = 3;
-  constexpr int64_t k = 32;
-  constexpr int64_t k_blocks = k / 16;
+  constexpr int64_t k = 24;
+  constexpr int64_t block_size = 6;
+  constexpr int64_t k_blocks = k / block_size;
 
   // Row 0 = +1.0 (0x22), row 1 = +2.0 (0x44), row 2 = -1.5 (sign 0x8 | 0x3 -> 0xBB).
   std::vector<uint8_t> b(n * (k / 2));
@@ -706,30 +707,36 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, PrefillDequantVectorizedFp16) {
     b[1 * (k / 2) + j] = 0x44;
     b[2 * (k / 2) + j] = 0xBB;
   }
-  // Row 0 blocks {1.0, 2.0}, row 1 {1.0, 1.0}, row 2 {2.0, 0.5}.
-  std::vector<uint8_t> weight_scale = {0x38, 0x40, 0x38, 0x38, 0x40, 0x30};
+  // E4M3 scale bytes 0.5, 1.0, 2.0, and 4.0 arranged differently in each weight row.
+  std::vector<uint8_t> weight_scale = {
+      0x38, 0x40, 0x30, 0x48,
+      0x40, 0x30, 0x48, 0x38,
+      0x30, 0x48, 0x38, 0x40};
   std::vector<float> weight_scale_2 = {1.0f};
 
   std::vector<float> a(m * k);
   for (int64_t row = 0; row < m; ++row) {
     for (int64_t col = 0; col < k; ++col) {
-      a[row * k + col] = static_cast<float>(row + 1);
+      a[row * k + col] = static_cast<float>((row + 1) * (col + 1));
     }
   }
-  // Each block contributes 16 * (row + 1) * value * block_scale:
-  //   Y[r, 0] = 16 (r+1) (1*1 + 1*2) = 48 (r+1)
-  //   Y[r, 1] = 16 (r+1) (2*1 + 2*1) = 64 (r+1)
-  //   Y[r, 2] = 16 (r+1) (-1.5*2 + -1.5*0.5) = -60 (r+1)
-  std::vector<float> expected(m * n);
+  constexpr float weight_values[] = {1.0f, 2.0f, -1.5f};
+  constexpr float scale_values[][k_blocks] = {
+      {1.0f, 2.0f, 0.5f, 4.0f},
+      {2.0f, 0.5f, 4.0f, 1.0f},
+      {0.5f, 4.0f, 1.0f, 2.0f}};
+  std::vector<float> expected(m * n, 0.0f);
   for (int64_t row = 0; row < m; ++row) {
-    const float scale = static_cast<float>(row + 1);
-    expected[row * n + 0] = 48.0f * scale;
-    expected[row * n + 1] = 64.0f * scale;
-    expected[row * n + 2] = -60.0f * scale;
+    for (int64_t col = 0; col < n; ++col) {
+      for (int64_t kk = 0; kk < k; ++kk) {
+        expected[row * n + col] +=
+            a[row * k + kk] * weight_values[col] * scale_values[col][kk / block_size];
+      }
+    }
   }
 
   OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddAttribute<int64_t>("block_size", block_size);
   test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
   test.AddInput<uint8_t>("B", {n, k / 2}, b);
   test.AddInput<uint8_t>("weight_scale", {n, k_blocks}, weight_scale);

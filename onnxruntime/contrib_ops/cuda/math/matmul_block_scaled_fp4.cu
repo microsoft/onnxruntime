@@ -276,7 +276,7 @@ __global__ void DequantizeNvFp4Vec8Kernel(T* __restrict__ out,
   const int left0 = pairs_per_block - (pair0 - blk0 * pairs_per_block);
   const float g = *weight_scale_2;
 
-  for (int row = blockIdx.y; row < n; row += gridDim.y) {
+  for (int64_t row = blockIdx.y; row < n; row += gridDim.y) {
     const uint32_t word = reinterpret_cast<const uint32_t*>(b_packed + static_cast<size_t>(row) * (k >> 1))[chunk];
     const uint8_t* srow = weight_scale + static_cast<size_t>(row) * k_blocks;
 
