@@ -510,17 +510,19 @@ TEST(SQNBitGemmKleidiAIValidation, ZeroMOrNIsNoOp) {
   }
 
   MLAS_QNBIT_GEMM_DATA_PARAMS<float> params{};
-  EXPECT_NO_THROW(MlasQNBitGemmBatch(
+  // Successful return from each call is the condition under test.
+  MlasQNBitGemmBatch(
       0, N, K, 1, BlkBitWidth, BlkLen, SQNBIT_CompInt8,
-      &params, nullptr, thread_pool, &config));
-  EXPECT_NO_THROW(MlasQNBitGemmBatch(
+      &params, nullptr, thread_pool, &config);
+  MlasQNBitGemmBatch(
       M, 0, K, 1, BlkBitWidth, BlkLen, SQNBIT_CompInt8,
-      &params, nullptr, thread_pool, &config));
+      &params, nullptr, thread_pool, &config);
 #else
   GTEST_SKIP() << "KleidiAI Q4 tests require an Arm64 KleidiAI build.";
 #endif
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST(SQNBitGemmKleidiAIValidation, MixedZeroPointBatchRejected) {
 #if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)
   constexpr size_t BlkBitWidth = 4;
@@ -583,6 +585,7 @@ TEST(SQNBitGemmKleidiAIValidation, SizeOverflowRejected) {
   GTEST_SKIP() << "KleidiAI Q4 tests require an Arm64 KleidiAI build.";
 #endif
 }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 //
 // Short Execute() test helper to register each test separately by all parameters.
