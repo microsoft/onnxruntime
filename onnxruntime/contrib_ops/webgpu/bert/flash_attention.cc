@@ -7,7 +7,6 @@
 #include "contrib_ops/webgpu/bert/turbo_quant_hadamard.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
-#include "core/platform/env_var.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 using namespace onnxruntime::webgpu;
@@ -1187,15 +1186,6 @@ bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
                                 int max_seqlen_q,
                                 int head_size,
                                 int block_size) {
-  // Dev/benchmark kill switch. Matches the env-var read at
-  // paged_attention.cc's Unpack/Repack-skip gate; do not touch without
-  // updating both.
-  const bool fused_env_disabled =
-      onnxruntime::detail::GetEnvironmentVar(
-          "ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED") == "0";
-  if (fused_env_disabled) {
-    return false;
-  }
   // v1 fused paged prefill implements the shared-memory path only. Adapters
   // that would take the subgroup-shuffle path in the dense FA shader (has
   // subgroups && !nvidia && !apple, e.g. Qualcomm / AMD / Intel) fall

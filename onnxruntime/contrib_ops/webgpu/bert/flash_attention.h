@@ -385,7 +385,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 // the shader will see a Q buffer it does not know how to index.
 //
 // Predicates checked (all must hold):
-//   * ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED != "0" (dev/benchmark kill switch)
 //   * shm-path adapter (apple || nvidia || !subgroups) — matches the shader's
 //     workgroup layout
 //   * is_fp16 — only fp16 variant is compiled today

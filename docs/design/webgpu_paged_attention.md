@@ -193,9 +193,8 @@ bool ShouldRunFusedPagedPrefill(context, is_fp16, max_seqlen_q,
                                 head_size, block_size);
 ```
 
-It rejects when: the `ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED=0` kill switch is
-set, the adapter takes the subgroup path, `!is_fp16`, `max_seqlen_q < 32`,
-the workgroup shared-memory budget can't fit a K/V tile
+It rejects when: the adapter takes the subgroup path, `!is_fp16`,
+`max_seqlen_q < 32`, the workgroup shared-memory budget can't fit a K/V tile
 (fp16: `head_size > 256`), or `block_size < max_k_step` (the tile-per-lookup
 invariant, see §8 pitfalls). Because the same predicate gates the
 "skip `RunGatherKV`", "skip `q_padded` scratch", and "select fused shader"
@@ -336,10 +335,9 @@ are the production route when `max_seqlen_q < 32`. Both paths (direct paged
 and gather-then-flash fallback) are tested end-to-end in
 `onnxruntime/test/contrib_ops/paged_attention_op_test.cc` for MHA, GQA,
 mixed batch lengths, packed QKV, rotary, and cache-aliasing configs, and are
-A/B-benchmarked in
-`onnxruntime/test/onnx/microbenchmark/paged_attention.cc` (toggle via the
-`ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED` env var). The `< 32` cutoff is the
-same threshold FA uses internally between its split-reduce decode and
+benchmarked in
+`onnxruntime/test/onnx/microbenchmark/paged_attention.cc`. The `< 32` cutoff
+is the same threshold FA uses internally between its split-reduce decode and
 single-kernel prefill tiers; no adapter-specific override has been needed.
 
 **3. Fused paged prefill.** ✅ `FlashAttentionPagedPrefillProgram` (in
@@ -459,9 +457,9 @@ reports end-to-end latency with output synchronization. It intentionally
 exposes MHA and GQA as separate cases: MHA uses one KV head per query head,
 while GQA shares fewer KV heads across groups of query heads. Both `decode`
 (one new token per request) and prefill (uniform and varlen Q lengths) modes
-use the same cache and packed-sequence layout, allowing the fallback and
-fused paged prefill paths to be compared directly (toggle via the
-`ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED` env var).
+use the same cache and packed-sequence layout. The direct paged / fused
+prefill programs are selected automatically by shape and adapter (no
+runtime toggle).
 
 ---
 
@@ -571,14 +569,12 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
   lavapipe crashes on MatMul, the numerical tests must run on
   **macOS-arm64 Metal** or on a discrete Windows/Linux WebGPU adapter as the
   source of truth (same policy as the expanded-Attention tests).
-- **Micro-benchmark A/B** (`onnxruntime/test/onnx/microbenchmark/paged_attention.cc`,
+- **Micro-benchmark** (`onnxruntime/test/onnx/microbenchmark/paged_attention.cc`,
   Google Benchmark): decode and prefill (uniform + varlen) shape matrix.
-  Toggle the fused paged-prefill path with
-  `ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED=0|1` to compare against
-  gather-then-flash on the same session. Peak scratch memory can be
-  inspected in adapter tooling since the direct path skips the
-  `k_padded`/`v_padded` and (for `skip_unpack_repack`) `q_padded`/
-  `output_padded` allocations.
+  The direct paged decode + fused paged prefill programs are the production
+  routes on shm-path adapters. Peak scratch memory can be inspected in
+  adapter tooling since the direct path skips the `k_padded`/`v_padded` and
+  (for `skip_unpack_repack`) `q_padded`/`output_padded` allocations.
 - **GenAI E2E**: run Phi-3-mini or Llama-3.2-1B through the GenAI continuous
   batching engine on WebGPU once GenAI PR #2330's `-e webgpu` gate is
   flipped.

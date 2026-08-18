@@ -3,18 +3,15 @@
 //
 // Google Benchmark harness for the contrib PagedAttention op on the WebGPU EP.
 //
-// Sweeps B x {MHA, GQA} x head_size x prefill length, and for prefill also runs
-// the fused paged-prefill kernel (env=1) against the gathered fallback
-// (env=0) so the speedup is directly readable from the benchmark output.
+// Sweeps B x {MHA, GQA} x head_size x prefill length. The direct-paged decode
+// and fused paged-prefill programs are selected internally by
+// PagedAttention::ComputeInternal / ApplyFlashAttention based on shape and
+// adapter; there is no runtime toggle to fall back to gather-then-flash on
+// shm-path adapters.
 //
 // Run:
 //   onnxruntime_benchmark.exe --benchmark_filter=PagedAttention.* \
 //                             --benchmark_min_time=0.5s
-//
-// NOTE: The ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED env-var toggle is temporary
-// scaffolding used during A/B validation of the fused kernel. When the env-var
-// gate is removed from onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc,
-// delete the fused=0 (gathered) rows below at the same time.
 
 #include <benchmark/benchmark.h>
 
@@ -78,14 +75,6 @@ struct PABenchCase {
   // prefill kernel. Sum must equal batch_size * seq_len.
   std::vector<int> q_lens;
 };
-
-void SetFusedEnv(bool fused) {
-#ifdef _WIN32
-  _putenv_s("ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED", fused ? "1" : "0");
-#else
-  setenv("ORT_WEBGPU_PAGED_ATTENTION_USE_FUSED", fused ? "1" : "0", 1);
-#endif
-}
 
 // Graph capture records the WebGPU command buffer once and replays it on each
 // Run(), collapsing per-iteration CPU dispatch cost (~150-250us x N kernels on
@@ -333,7 +322,7 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   return ctx;
 }
 
-// Prefill benchmarks (T > 1). fused == state.range(5).
+// Prefill benchmarks (T > 1).
 void BM_PagedAttentionPrefill(benchmark::State& state) {
   PABenchCase c{
       static_cast<int>(state.range(0)),
@@ -344,8 +333,6 @@ void BM_PagedAttentionPrefill(benchmark::State& state) {
       /*past_seqlen=*/0,
       /*block_size=*/256,
   };
-  const bool fused = state.range(5) != 0;
-  SetFusedEnv(fused);
 
   auto ctx = Setup(c);
   if (ctx == nullptr) {
@@ -387,8 +374,8 @@ void BM_PagedAttentionPrefill(benchmark::State& state) {
 // Variable-length prefill benchmark. Constructs a batch with per-batch Q
 // lengths distributed as {T, T/2, T/4, T/8, ...} (halving) capped at
 // batch_size entries. Exercises the varlen Q shader mode of the fused paged
-// prefill kernel (mode b) vs. Unpack + BSNH scratch (fused=0). Args:
-// {batch, num_heads, kv_num_heads, head_size, max_T, fused}
+// prefill kernel (mode b). Args:
+// {batch, num_heads, kv_num_heads, head_size, max_T}
 void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
   const int batch = static_cast<int>(state.range(0));
   const int max_T = static_cast<int>(state.range(4));
@@ -408,8 +395,6 @@ void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
       /*block_size=*/256,
       std::move(q_lens),
   };
-  const bool fused = state.range(5) != 0;
-  SetFusedEnv(fused);
 
   auto ctx = Setup(c);
   if (ctx == nullptr) {
@@ -447,9 +432,8 @@ void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
   }
 }
 
-// Decode benchmarks (T == 1). The fused paged-prefill kernel is expected to be
-// ineligible in this regime (T < 32 routes through the split-K decode path),
-// but we still A/B on the env-var toggle so the caller can confirm empirically.
+// Decode benchmarks (T == 1). Routed through the direct paged split-K decode
+// kernels (FlashAttentionPagedDecodeQKV + FlashAttentionPagedDecodeVxReduce).
 void BM_PagedAttentionDecode(benchmark::State& state) {
   PABenchCase c{
       static_cast<int>(state.range(0)),
@@ -460,8 +444,6 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
       static_cast<int>(state.range(4)),
       /*block_size=*/256,
   };
-  const bool fused = state.range(5) != 0;
-  SetFusedEnv(fused);
 
   auto ctx = Setup(c);
   if (ctx == nullptr) {
@@ -502,7 +484,7 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
 }  // namespace
 
 // -----------------------------------------------------------------------------
-// Registration: batch x head-config x seq_len x fused.
+// Registration: batch x head-config x seq_len.
 //
 // Head configs:
 //   MHA_H64      : num_heads=16, kv_num_heads=16, head_size=64
@@ -514,17 +496,14 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
 // Decode past: {512, 2048}
 // -----------------------------------------------------------------------------
 
-// Args: {batch, num_heads, kv_num_heads, head_size, seq_len, fused}
-#define REGISTER_PREFILL(BATCH, NH, NKV, H)             \
-  BENCHMARK(BM_PagedAttentionPrefill)                   \
-      ->ArgNames({"B", "nH", "nKV", "H", "T", "fused"}) \
-      ->Args({BATCH, NH, NKV, H, 128, 1})               \
-      ->Args({BATCH, NH, NKV, H, 128, 0})               \
-      ->Args({BATCH, NH, NKV, H, 512, 1})               \
-      ->Args({BATCH, NH, NKV, H, 512, 0})               \
-      ->Args({BATCH, NH, NKV, H, 1024, 1})              \
-      ->Args({BATCH, NH, NKV, H, 1024, 0})              \
-      ->Unit(benchmark::kMicrosecond)                   \
+// Args: {batch, num_heads, kv_num_heads, head_size, seq_len}
+#define REGISTER_PREFILL(BATCH, NH, NKV, H)    \
+  BENCHMARK(BM_PagedAttentionPrefill)          \
+      ->ArgNames({"B", "nH", "nKV", "H", "T"}) \
+      ->Args({BATCH, NH, NKV, H, 128})         \
+      ->Args({BATCH, NH, NKV, H, 512})         \
+      ->Args({BATCH, NH, NKV, H, 1024})        \
+      ->Unit(benchmark::kMicrosecond)          \
       ->UseManualTime()
 
 REGISTER_PREFILL(1, 16, 16, 64);
@@ -540,15 +519,13 @@ REGISTER_PREFILL(2, 32, 4, 128);
 
 // Varlen prefill: q_lens = {max_T, max_T/2, max_T/4, ...} (halving pattern).
 // Batch >= 2 required to be non-uniform. Args:
-//   {batch, num_heads, kv_num_heads, head_size, max_T, fused}
-#define REGISTER_PREFILL_VARLEN(BATCH, NH, NKV, H)         \
-  BENCHMARK(BM_PagedAttentionPrefillVarlen)                \
-      ->ArgNames({"B", "nH", "nKV", "H", "maxT", "fused"}) \
-      ->Args({BATCH, NH, NKV, H, 512, 1})                  \
-      ->Args({BATCH, NH, NKV, H, 512, 0})                  \
-      ->Args({BATCH, NH, NKV, H, 1024, 1})                 \
-      ->Args({BATCH, NH, NKV, H, 1024, 0})                 \
-      ->Unit(benchmark::kMicrosecond)                      \
+//   {batch, num_heads, kv_num_heads, head_size, max_T}
+#define REGISTER_PREFILL_VARLEN(BATCH, NH, NKV, H) \
+  BENCHMARK(BM_PagedAttentionPrefillVarlen)        \
+      ->ArgNames({"B", "nH", "nKV", "H", "maxT"})  \
+      ->Args({BATCH, NH, NKV, H, 512})             \
+      ->Args({BATCH, NH, NKV, H, 1024})            \
+      ->Unit(benchmark::kMicrosecond)              \
       ->UseManualTime()
 
 REGISTER_PREFILL_VARLEN(2, 16, 16, 128);
@@ -560,15 +537,13 @@ REGISTER_PREFILL_VARLEN(4, 32, 4, 128);
 
 #undef REGISTER_PREFILL_VARLEN
 
-// Args: {batch, num_heads, kv_num_heads, head_size, past_seqlen, fused}
-#define REGISTER_DECODE(BATCH, NH, NKV, H)                 \
-  BENCHMARK(BM_PagedAttentionDecode)                       \
-      ->ArgNames({"B", "nH", "nKV", "H", "past", "fused"}) \
-      ->Args({BATCH, NH, NKV, H, 512, 1})                  \
-      ->Args({BATCH, NH, NKV, H, 512, 0})                  \
-      ->Args({BATCH, NH, NKV, H, 2048, 1})                 \
-      ->Args({BATCH, NH, NKV, H, 2048, 0})                 \
-      ->Unit(benchmark::kMicrosecond)                      \
+// Args: {batch, num_heads, kv_num_heads, head_size, past_seqlen}
+#define REGISTER_DECODE(BATCH, NH, NKV, H)        \
+  BENCHMARK(BM_PagedAttentionDecode)              \
+      ->ArgNames({"B", "nH", "nKV", "H", "past"}) \
+      ->Args({BATCH, NH, NKV, H, 512})            \
+      ->Args({BATCH, NH, NKV, H, 2048})           \
+      ->Unit(benchmark::kMicrosecond)             \
       ->UseManualTime()
 
 REGISTER_DECODE(1, 16, 16, 64);
