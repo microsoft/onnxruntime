@@ -84,9 +84,9 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(),
                                         "Invalid argument: \"", name, "\" must be a string.");
             value = valueVar.As<Napi::String>().Utf8Value();
-          } else if (name == "enableRobustness") {
+          } else if (name == "enableRobustness" || name == "enableZeroBuffer") {
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsBoolean(), epList.Env(),
-                                        "Invalid argument: \"enableRobustness\" must be a boolean.");
+                                        "Invalid argument: \"", name, "\" must be a boolean.");
             value = valueVar.As<Napi::Boolean>().Value() ? "1" : "0";
           } else if (name == "forceCpuNodeNames") {
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsArray(), epList.Env(),

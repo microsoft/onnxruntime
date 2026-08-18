@@ -215,6 +215,18 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
     }
   }
 
+  if (std::string enable_zero_buffer_str;
+      config_options.TryGetConfigEntry(kEnableZeroBuffer, enable_zero_buffer_str)) {
+    config.enable_zero_buffer_explicitly_set = true;
+    if (enable_zero_buffer_str == kEnableZeroBuffer_ON) {
+      config.enable_zero_buffer = true;
+    } else if (enable_zero_buffer_str == kEnableZeroBuffer_OFF) {
+      config.enable_zero_buffer = false;
+    } else {
+      ORT_THROW("Invalid enableZeroBuffer value: ", enable_zero_buffer_str, ". Must be \"0\" or \"1\".");
+    }
+  }
+
   if (std::string preserve_device_str;
       config_options.TryGetConfigEntry(kPreserveDevice, preserve_device_str)) {
     if (preserve_device_str == kPreserveDevice_ON) {
@@ -272,6 +284,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable robustness: " << config.enable_robustness;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable zero buffer: " << config.enable_zero_buffer;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;

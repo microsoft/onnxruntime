@@ -200,10 +200,12 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
   // needs a device, and such a session stops before finalization and never allocates.
-  const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
+  const auto& context = WebGpuContextFactory::GetContext(context_id);
+  const bool device_free = !context.HasDevice();
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false,
+      context.EnableZeroBuffer(),
       [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
@@ -213,7 +215,8 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
           [context_id]() -> const webgpu::BufferManager& {
             return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
           },
-          true),  // initializer device allocator
+          true,
+          context.EnableZeroBuffer()),  // initializer device allocator
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
@@ -247,6 +250,7 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                                                    .BufferManager();
                                                              },
                                                              false,
+                                                             true,
                                                              []() { return true; });
                                                        });
   return nullptr;

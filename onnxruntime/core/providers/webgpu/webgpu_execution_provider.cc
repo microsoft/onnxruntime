@@ -606,7 +606,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false,
+          context.EnableZeroBuffer())} {
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -627,11 +628,13 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // allocator for initializers
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
+          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true,
+          context_.EnableZeroBuffer()),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
           [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false,
+          context_.EnableZeroBuffer(),
           [this]() { return !IsRunActive(); }),
   };
 }

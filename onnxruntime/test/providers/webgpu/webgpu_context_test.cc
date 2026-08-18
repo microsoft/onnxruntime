@@ -38,6 +38,12 @@ ConfigOptions RobustnessOptions(const char* value) {
   return options;
 }
 
+ConfigOptions ZeroBufferOptions(const char* value) {
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kEnableZeroBuffer, value));
+  return options;
+}
+
 bool DeviceToggleIsEnabled(const webgpu::WebGpuContext& context, std::string_view toggle_name) {
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
   const auto toggles = dawn::native::GetTogglesUsed(context.Device().Get());
@@ -100,6 +106,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       false,
+      true,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
   std::array<uint32_t, 16> nonzero_data;
@@ -123,6 +130,75 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   allocator.Free(allocation);
 }
 
+TEST(WebGpuContextTest, DisabledZeroBufferPreservesReusedBufferContents) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Bucket,
+                                       webgpu::BufferCacheMode::Simple,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      /*is_read_only_allocator=*/false,
+      /*initialize_to_zero=*/false,
+      []() { return true; });
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  allocator.Free(allocation);
+
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), nonzero_data);
+
+  allocator.Free(allocation);
+}
+
+TEST(WebGpuContextTest, ZeroBufferClearsReusedReadOnlyAllocatorBuffer) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Bucket,
+                                       webgpu::BufferCacheMode::Simple,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      /*is_read_only_allocator=*/true,
+      /*initialize_to_zero=*/true,
+      []() { return true; });
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  allocator.Free(allocation);
+
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), expected_data);
+
+  allocator.Free(allocation);
+}
+
 TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
@@ -137,7 +213,8 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
-      false);
+      false,
+      true);
 
   std::array<uint32_t, 16> nonzero_data;
   nonzero_data.fill(0xffffffffu);
@@ -182,6 +259,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       false,
+      true,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
   std::array<uint32_t, 16> nonzero_data;
@@ -230,8 +308,103 @@ TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
 
-  EXPECT_TRUE(DeviceToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0),
-                                    "lazy_clear_resource_on_first_use"));
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  EXPECT_TRUE(context.EnableZeroBuffer());
+  EXPECT_TRUE(DeviceToggleIsEnabled(context, "lazy_clear_resource_on_first_use"));
+#endif
+}
+
+TEST(WebGpuContextTest, EnableZeroBufferControlsDawnToggle) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
+#else
+  auto enabled_ep = WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("1"))->CreateProvider();
+  ASSERT_NE(enabled_ep, nullptr);
+  const auto& enabled_context = webgpu::WebGpuContextFactory::GetContext(0);
+  EXPECT_TRUE(enabled_context.EnableZeroBuffer());
+  EXPECT_TRUE(DeviceToggleIsEnabled(enabled_context, "lazy_clear_resource_on_first_use"));
+  enabled_ep.reset();
+
+  auto disabled_ep = WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("0"))->CreateProvider();
+  ASSERT_NE(disabled_ep, nullptr);
+  const auto& disabled_context = webgpu::WebGpuContextFactory::GetContext(0);
+  EXPECT_FALSE(disabled_context.EnableZeroBuffer());
+  EXPECT_FALSE(DeviceToggleIsEnabled(disabled_context, "lazy_clear_resource_on_first_use"));
+#endif
+}
+
+TEST(WebGpuContextTest, EnableZeroBufferRejectsInvalidValue) {
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("true")), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, EnableZeroBufferConflictWarnsAndKeepsFirstValue) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
+#else
+  auto first_ep = WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("1"))->CreateProvider();
+  ASSERT_NE(first_ep, nullptr);
+
+  testing::internal::CaptureStderr();
+  auto second_ep = WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("0"))->CreateProvider();
+  const std::string warning = testing::internal::GetCapturedStderr();
+
+  ASSERT_NE(second_ep, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  EXPECT_TRUE(context.EnableZeroBuffer());
+  EXPECT_TRUE(DeviceToggleIsEnabled(context, "lazy_clear_resource_on_first_use"));
+  EXPECT_NE(warning.find("enableZeroBuffer"), std::string::npos);
+  EXPECT_NE(warning.find("already initialized"), std::string::npos);
+  EXPECT_NE(warning.find("will be ignored"), std::string::npos);
+#endif
+}
+
+TEST(WebGpuContextTest, EnableZeroBufferExternalDeviceWarnsAboutDawnToggle) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
+#else
+  auto owned_ep = WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("1"))->CreateProvider();
+  ASSERT_NE(owned_ep, nullptr);
+  const auto& owned_context = webgpu::WebGpuContextFactory::GetContext(0);
+
+  ConfigOptions external_options;
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+      kWebGpuInstance,
+      std::to_string(reinterpret_cast<uintptr_t>(owned_context.Instance().Get())).c_str()));
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+      kWebGpuDevice,
+      std::to_string(reinterpret_cast<uintptr_t>(owned_context.Device().Get())).c_str()));
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kEnableZeroBuffer, "0"));
+
+  testing::internal::CaptureStderr();
+  auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+  const std::string warning = testing::internal::GetCapturedStderr();
+
+  ASSERT_NE(external_ep, nullptr);
+  EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(1).EnableZeroBuffer());
+  EXPECT_NE(warning.find("enableZeroBuffer"), std::string::npos);
+  EXPECT_NE(warning.find("externally supplied WebGPU device"), std::string::npos);
+  EXPECT_NE(warning.find("reused buffer"), std::string::npos);
+
+  ConfigOptions conflicting_external_options;
+  ORT_THROW_IF_ERROR(conflicting_external_options.AddConfigEntry(kDeviceId, "1"));
+  ORT_THROW_IF_ERROR(conflicting_external_options.AddConfigEntry(
+      kWebGpuInstance,
+      std::to_string(reinterpret_cast<uintptr_t>(owned_context.Instance().Get())).c_str()));
+  ORT_THROW_IF_ERROR(conflicting_external_options.AddConfigEntry(
+      kWebGpuDevice,
+      std::to_string(reinterpret_cast<uintptr_t>(owned_context.Device().Get())).c_str()));
+  ORT_THROW_IF_ERROR(conflicting_external_options.AddConfigEntry(kEnableZeroBuffer, "1"));
+
+  testing::internal::CaptureStderr();
+  auto conflicting_external_ep =
+      WebGpuProviderFactoryCreator::Create(conflicting_external_options)->CreateProvider();
+  const std::string conflict_warning = testing::internal::GetCapturedStderr();
+
+  ASSERT_NE(conflicting_external_ep, nullptr);
+  EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(1).EnableZeroBuffer());
+  EXPECT_NE(conflict_warning.find("already initialized with enableZeroBuffer=0"), std::string::npos);
+  EXPECT_NE(conflict_warning.find("Requested value 1 will be ignored"), std::string::npos);
 #endif
 }
 

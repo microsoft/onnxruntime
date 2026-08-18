@@ -35,6 +35,7 @@ constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defa
 
 constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMode";
 constexpr const char* kEnableRobustness = "ep.webgpuexecutionprovider.enableRobustness";
+constexpr const char* kEnableZeroBuffer = "ep.webgpuexecutionprovider.enableZeroBuffer";
 
 constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
 constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";
@@ -87,6 +88,9 @@ constexpr const char* kValidationMode_full = "full";
 
 constexpr const char* kEnableRobustness_ON = "1";
 constexpr const char* kEnableRobustness_OFF = "0";
+
+constexpr const char* kEnableZeroBuffer_ON = "1";
+constexpr const char* kEnableZeroBuffer_OFF = "0";
 
 }  // namespace options
 }  // namespace webgpu

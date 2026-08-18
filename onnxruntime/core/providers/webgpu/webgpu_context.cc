@@ -43,6 +43,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
+    enable_zero_buffer_ = config.enable_zero_buffer;
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -253,6 +254,20 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       LOGS_DEFAULT(WARNING)
           << "WebGPU context is already initialized with enableRobustness=" << enable_robustness_
           << ". Requested value " << config.enable_robustness << " will be ignored.";
+    }
+  }
+
+  if (config.enable_zero_buffer_explicitly_set) {
+    if (config.device != nullptr) {
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU enableZeroBuffer cannot affect the Dawn lazy-clear toggle of an externally supplied WebGPU "
+             "device. Explicit clearing of reused buffers follows enableZeroBuffer="
+          << enable_zero_buffer_ << " for this context.";
+    }
+    if (device_ != nullptr && enable_zero_buffer_ != config.enable_zero_buffer) {
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU context is already initialized with enableZeroBuffer=" << enable_zero_buffer_
+          << ". Requested value " << config.enable_zero_buffer << " will be ignored.";
     }
   }
 }
@@ -746,7 +761,9 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   if (!enable_robustness_) {
     enabled_toggles.push_back("disable_robustness");
   }
-  enabled_toggles.push_back("lazy_clear_resource_on_first_use");
+  if (enable_zero_buffer_) {
+    enabled_toggles.push_back("lazy_clear_resource_on_first_use");
+  }
   return enabled_toggles;
 }
 
@@ -754,7 +771,11 @@ std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "timestamp_quantization",
   };
-  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  std::vector<const char*> disabled_toggles(std::begin(toggles), std::end(toggles));
+  if (!enable_zero_buffer_) {
+    disabled_toggles.push_back("lazy_clear_resource_on_first_use");
+  }
+  return disabled_toggles;
 }
 
 std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const {

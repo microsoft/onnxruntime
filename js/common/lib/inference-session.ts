@@ -283,6 +283,13 @@ export declare namespace InferenceSession {
     enableRobustness?: boolean;
 
     /**
+     * Enable zero-initialization for fresh and reused WebGPU buffers.
+     *
+     * @default true
+     */
+    enableZeroBuffer?: boolean;
+
+    /**
      * Specify the cache mode for storage buffers.
      * - 'disabled': Disable buffer cache. Buffers are destroyed when no longer in use.
      * - 'lazyRelease': Buffers are released lazily, at the end of the current run.
