@@ -119,6 +119,12 @@ class WindowsEnv : public Env {
    */
   std::vector<LogicalProcessors> cores_;
 
+  /*
+   * "performance_cores_" holds the subset of "cores_" that Windows reports as
+   * belonging to the highest EfficiencyClass
+   */
+  std::vector<LogicalProcessors> performance_cores_;
+
   int l2_cache_size_;
   /*
    * "global_processor_info_map_" is a map of:

@@ -24,7 +24,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <thread>
+#include <algorithm>
 #include <climits>
+#include <cstdlib>
+#include <vector>
 #include <process.h>
 #include <fcntl.h>
 #include <io.h>
@@ -256,7 +259,38 @@ int WindowsEnv::DefaultNumCores() {
   return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
 }
 
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+
+  // Whether to confine the default intra-op thread pool to performance cores on Windows ARM64 systems
+  // to improve latency for workloads with many small operations.
+static bool Arm64ShouldUsePerformanceCoresOnly() {
+  static const bool use_performance_cores_only = []() {
+    size_t length = 0;
+    if (getenv_s(&length, nullptr, 0, "ORT_ARM64_USE_ALL_CORES") != 0 || length == 0) {
+      return true;
+    }
+    std::string value(length, '\0');
+    if (getenv_s(&length, value.data(), length, "ORT_ARM64_USE_ALL_CORES") != 0) {
+      return true;
+    }
+    // getenv_s reports the length including the terminator.
+    while (!value.empty() && value.back() == '\0') {
+      value.pop_back();
+    }
+    return value.empty() || value == "0";
+  }();
+  return use_performance_cores_only;
+}
+#endif
+
 int WindowsEnv::GetNumPhysicalCpuCores() const {
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+  // Prefer the performance cores of a heterogeneous part. See
+  // Arm64ShouldUsePerformanceCoresOnly above for why.
+  if (!performance_cores_.empty() && Arm64ShouldUsePerformanceCoresOnly()) {
+    return static_cast<int>(performance_cores_.size());
+  }
+#endif
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
 #if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID)
   // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
@@ -298,6 +332,17 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
 }
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+  // Pin workers to the performance cores on Windows ARM.
+  // See Arm64ShouldUsePerformanceCoresOnly above for the rationale.
+  if (performance_cores_.size() > 1 && Arm64ShouldUsePerformanceCoresOnly()) {
+    std::vector<LogicalProcessors> affinities;
+    affinities.reserve(performance_cores_.size());
+    affinities.emplace_back();  // caller thread, left unpinned
+    affinities.insert(affinities.end(), performance_cores_.begin(), performance_cores_.end() - 1);
+    return affinities;
+  }
+#endif
   return cores_.empty() ? std::vector<LogicalProcessors>(DefaultNumCores(), LogicalProcessors{}) : cores_;
 }
 
@@ -1026,6 +1071,10 @@ void WindowsEnv::InitializeCpuInfo() {
   const BYTE* end = iter + returnLength;
   std::stringstream log_stream;
 
+  // EfficiencyClass of each entry appended to cores_, in the same order.
+  // Windows reports a higher value for a higher performance core.
+  std::vector<BYTE> core_efficiency_classes;
+
   while (iter < end) {
     auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
     auto size = processor_info->Size;
@@ -1055,9 +1104,29 @@ void WindowsEnv::InitializeCpuInfo() {
         }
       }
       cores_.push_back(std::move(core_global_proc_ids));
+      core_efficiency_classes.push_back(processor_info->Processor.EfficiencyClass);
       core_id++;
     }
     iter += size;
+  }
+
+  // Record the cores of the highest EfficiencyClass separately.
+  if (!core_efficiency_classes.empty()) {
+    const BYTE highest_class =
+        *std::max_element(core_efficiency_classes.begin(), core_efficiency_classes.end());
+    const BYTE lowest_class =
+        *std::min_element(core_efficiency_classes.begin(), core_efficiency_classes.end());
+
+    if (highest_class != lowest_class) {
+      for (size_t i = 0; i < cores_.size(); ++i) {
+        if (core_efficiency_classes[i] == highest_class) {
+          performance_cores_.push_back(cores_[i]);
+        }
+      }
+      log_stream << std::endl
+                 << "Found " << performance_cores_.size() << " core(s) of the highest EfficiencyClass "
+                 << static_cast<int>(highest_class) << " out of " << cores_.size() << " total";
+    }
   }
 
   DWORD newLength = 0;
