@@ -1937,6 +1937,87 @@ class TestInferenceSession(unittest.TestCase):
         scalar_value = session.create_ortvalue_from_numpy(np.array(1.0, dtype=np.float32), "cpu")
         self.assertEqual(scalar_value.shape(), [])
 
+    def test_device_ortvalue_provenance_rules(self):
+        """Device OrtValues are rejected only when another session owns them.
+
+        A WebGPU OrtValue can be created either from a session-scoped allocator or from an
+        environment-registered shared allocator, and the latter belongs to no session at all
+        (``_session is None``). Requiring every WebGPU OrtValue to belong to the session would
+        make shared-allocator buffers unusable, so the ownership rules key off a *different*
+        owning session rather than off the WebGPU-ness of the buffer.
+
+        ``_is_webgpu_buffer`` mirrors the tensor's allocator name and carries no session
+        information, so setting it on CPU-backed values reproduces the exact Python-visible
+        provenance of a shared-allocator WebGPU buffer without needing a WebGPU device.
+        """
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        def make_value(owner, is_webgpu):
+            # A CPU OrtValue built from numpy aliases the source buffer, so give each value
+            # its own copy to keep in-place updates isolated.
+            value = (
+                onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy())
+                if owner is None
+                else owner.create_ortvalue_from_numpy(input_value, "cpu")
+            )
+            value._is_webgpu_buffer = is_webgpu
+            return value
+
+        unowned_plain = make_value(None, False)
+        unowned_device = make_value(None, True)
+        owned_plain = make_value(session, False)
+        owned_device = make_value(session, True)
+        foreign_plain = make_value(other_session, False)
+        foreign_device = make_value(other_session, True)
+
+        # Values owned by this session or by no session are accepted by the ownership check.
+        session._validate_ortvalue_ownership([unowned_plain, owned_plain])
+
+        # Device values are steered to IOBinding, but not because of who owns them. A buffer
+        # owned by no session must not be blamed on a session that never created it, so assert
+        # the reason and not merely the rejection.
+        for value in (unowned_device, owned_device):
+            with self.assertRaises(ValueError) as raised:
+                session._validate_ortvalue_ownership([value])
+            self.assertIn("must be used with IOBinding", str(raised.exception))
+            self.assertNotIn("session that created it", str(raised.exception))
+
+        # A buffer owned by a different session stays rejected: that is the invariant that
+        # keeps a foreign, potentially invalidated device allocator away from this session.
+        for value in (foreign_plain, foreign_device):
+            with self.assertRaises(ValueError) as raised:
+                session._validate_ortvalue_ownership([value])
+            self.assertIn("session that created it", str(raised.exception))
+            self.assertNotIn("IOBinding", str(raised.exception))
+
+        # The same rule applies when binding.
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input(input_metadata.name, unowned_device)
+        io_binding.bind_ortvalue_input(input_metadata.name, owned_device)
+        io_binding.bind_ortvalue_output(session.get_outputs()[0].name, make_value(None, True))
+        for value in (foreign_plain, foreign_device):
+            with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+                io_binding.bind_ortvalue_input(input_metadata.name, value)
+
+        # A session-less device value can still be filled, otherwise it could be bound but
+        # never given any data.
+        updated_input = input_value + 1.0
+        unowned_device.update_inplace(updated_input)
+        np.testing.assert_array_equal(unowned_device.numpy(), updated_input)
+        unowned_device.update_inplace(make_value(None, True))
+        np.testing.assert_array_equal(unowned_device.numpy(), input_value)
+
+        # Mixing device and non-device values in a copy remains an error.
+        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
+            unowned_device.update_inplace(unowned_plain)
+        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
+            unowned_plain.update_inplace(unowned_device)
+        with self.assertRaisesRegex(ValueError, "same session"):
+            owned_device.update_inplace(foreign_device)
+
     @unittest.skipIf(
         "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
         "WebGpuExecutionProvider is not available",
@@ -2008,19 +2089,36 @@ class TestInferenceSession(unittest.TestCase):
             gpu_input.update_inplace(global_cpu_input)
         with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
             global_cpu_input.update_inplace(gpu_input)
-        unowned_webgpu_input = onnxrt.OrtValue(gpu_input._get_c_value())
-        with self.assertRaisesRegex(ValueError, "same session"):
-            gpu_input.update_inplace(unowned_webgpu_input)
-        with self.assertRaisesRegex(ValueError, "retain the session"):
+        # A WebGPU OrtValue can also be created from an environment-registered shared allocator,
+        # in which case it belongs to no session. Such a value must stay usable: rejecting it
+        # would blame a session that never created it. Rejection of a buffer owned by a
+        # *different* session is covered hermetically by test_device_ortvalue_provenance_rules.
+        shared_provenance_source = session.create_ortvalue_from_numpy(input_value, "webgpu")
+        unowned_webgpu_input = onnxrt.OrtValue(shared_provenance_source._get_c_value())
+        self.assertIsNone(unowned_webgpu_input._session)
+        self.assertTrue(unowned_webgpu_input._is_webgpu_buffer)
+        scratch_webgpu_value = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
+        scratch_webgpu_value.update_inplace(unowned_webgpu_input)
+        unowned_webgpu_input.update_inplace(scratch_webgpu_value)
+        unsafe_io_binding.bind_ortvalue_input(input_metadata.name, unowned_webgpu_input)
+        unsafe_io_binding.clear_binding_inputs()
+
+        # Filling a session-less device value from host memory needs a shared allocator and a
+        # data transfer registered on the environment, which not every build provides. The
+        # Python ownership guard must no longer be what stands in the way.
+        try:
             unowned_webgpu_input.update_inplace(input_value)
+        except (ValueError, RuntimeError) as error:
+            self.assertNotIn("retain the session", str(error))
+
         with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
             onnxrt.copy_tensors([unowned_webgpu_input], [global_cpu_input])
-        with self.assertRaisesRegex(ValueError, "session that created it"):
-            unsafe_io_binding.bind_ortvalue_input(input_metadata.name, unowned_webgpu_input)
         del unowned_webgpu_input
-        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU input"):
+        del shared_provenance_source
+        del scratch_webgpu_value
+        with self.assertRaisesRegex(ValueError, "requires WebGPU input"):
             unsafe_io_binding.bind_cpu_input(input_metadata.name, input_value)
-        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU input"):
+        with self.assertRaisesRegex(ValueError, "requires WebGPU input"):
             unsafe_io_binding.bind_input(
                 input_metadata.name,
                 "cpu",
@@ -2029,11 +2127,11 @@ class TestInferenceSession(unittest.TestCase):
                 input_metadata.shape,
                 input_value.ctypes.data,
             )
-        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU input"):
+        with self.assertRaisesRegex(ValueError, "requires WebGPU input"):
             unsafe_io_binding.bind_ortvalue_input(input_metadata.name, global_cpu_input)
-        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU output"):
+        with self.assertRaisesRegex(ValueError, "requires WebGPU output"):
             unsafe_io_binding.bind_output(output_metadata.name)
-        with self.assertRaisesRegex(ValueError, "session-scoped WebGPU output"):
+        with self.assertRaisesRegex(ValueError, "requires WebGPU output"):
             unsafe_io_binding.bind_ortvalue_output(output_metadata.name, global_cpu_output)
 
         io_binding = session.io_binding()
@@ -2099,6 +2197,19 @@ class TestInferenceSession(unittest.TestCase):
             repeated_capture_expected,
         )
         session.release_captured_graph(1)
+
+        # gpu_graph_id = -1 opts a run out of capture on a capture-enabled session, so the run
+        # executes normally every time. Consecutive runs must therefore track the current input
+        # instead of replaying a pinned command list.
+        no_capture_run_options = onnxrt.RunOptions()
+        no_capture_run_options.add_run_config_entry("gpu_graph_id", "-1")
+        for offset in (40.0, 50.0):
+            uncaptured_input = input_value + offset
+            gpu_input.update_inplace(uncaptured_input)
+            np.testing.assert_allclose(
+                run_and_copy_output(session, io_binding, no_capture_run_options),
+                reference_session.run(None, {input_metadata.name: uncaptured_input})[0],
+            )
 
         io_binding.clear_binding_inputs()
         io_binding.clear_binding_outputs()

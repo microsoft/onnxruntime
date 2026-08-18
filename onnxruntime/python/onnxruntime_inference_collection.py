@@ -307,17 +307,19 @@ class Session:
                 f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names})."
             )
 
-    def _validate_ortvalue_ownership(self, values, allow_webgpu=False):
+    def _validate_ortvalue_ownership(self, values):
         for value in values:
             if not isinstance(value, OrtValue):
                 continue
-            if value._is_webgpu_buffer:
-                if value._session is not self._sess:
-                    raise ValueError("WebGPU OrtValue must be used with the session that created it.")
-                if not allow_webgpu:
-                    raise ValueError("Session-scoped WebGPU OrtValues must be used with IOBinding.")
-            elif value._session is not None and value._session is not self._sess:
+            # A device OrtValue may be owned by a session allocator or by an environment-registered
+            # shared allocator that belongs to no session. Only a buffer owned by a *different*
+            # session is unsafe: a session-scoped device allocator is invalidated when its session
+            # is destroyed, whereas a shared allocator is owned by the environment and outlives
+            # every session, so a session-less buffer needs no owner to keep it valid.
+            if value._session is not None and value._session is not self._sess:
                 raise ValueError("Session-scoped OrtValue must be used with the session that created it.")
+            if value._is_webgpu_buffer:
+                raise ValueError("WebGPU OrtValues must be used with IOBinding.")
 
     def _validate_graph_capture_run_api(self):
         if self._sess.is_webgpu_graph_capture_enabled():
@@ -467,10 +469,12 @@ class Session:
         """
         Create an OrtValue using an allocator owned by this session.
 
-        This is required for execution providers whose device allocator is session-scoped,
-        such as WebGPU. The returned OrtValue retains this session so its allocator remains valid.
-        It must only be updated or bound through the session that created it. Creation fails
-        for non-numeric types or when this session has no allocator for the requested device.
+        This is needed for execution providers whose device allocator is session-scoped,
+        such as WebGPU, unless a shared allocator for the device has been registered on the
+        environment. The returned OrtValue retains this session so its allocator remains
+        valid, and it must only be updated or bound through the session that created it.
+        Creation fails for non-numeric types or when this session has no allocator for the
+        requested device.
         """
         device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
         if isinstance(element_type, int):
@@ -523,9 +527,10 @@ class Session:
 
         WebGPU graph capture requires static shapes, disabled memory patterns, and a
         capture-compatible partition (all compute nodes on WebGPU; CPU shape-only nodes are
-        allowed). Bind fixed device OrtValues created by this session before the first run.
-        Subsequent runs replay the captured commands at those original buffer addresses:
-        rebinding does not redirect replay. Update inputs in place, use
+        allowed). Bind fixed device OrtValues before the first run: either values created by
+        this session, or values backed by an environment-registered shared allocator, which
+        belong to no session. Subsequent runs replay the captured commands at those original
+        buffer addresses: rebinding does not redirect replay. Update inputs in place, use
         :meth:`IOBinding.copy_outputs_to_cpu` for explicit readback, and call
         :meth:`release_captured_graph` before clearing or changing the bindings.
         """
@@ -1006,7 +1011,7 @@ class IOBinding:
         :param arr_on_cpu: input values as a python array on CPU
         """
         if self._is_webgpu_graph_capture_enabled:
-            raise ValueError("WebGPU graph capture requires session-scoped WebGPU input OrtValues.")
+            raise ValueError("WebGPU graph capture requires WebGPU input OrtValues.")
 
         # Hold a reference to the numpy object as the bound OrtValue is backed
         # directly by the data buffer of the numpy object and so the numpy object
@@ -1024,7 +1029,7 @@ class IOBinding:
         :param buffer_ptr: memory pointer to input data
         """
         if self._is_webgpu_graph_capture_enabled:
-            raise ValueError("WebGPU graph capture requires session-scoped WebGPU input OrtValues.")
+            raise ValueError("WebGPU graph capture requires WebGPU input OrtValues.")
         self._iobinding.bind_input(
             name,
             OrtDevice.make(device_type, device_id)._get_c_device(),
@@ -1038,14 +1043,24 @@ class IOBinding:
         :param name: input name
         :param ortvalue: OrtValue instance to bind
         """
-        if ortvalue._is_webgpu_buffer and ortvalue._session is not self._session:
-            raise ValueError("WebGPU OrtValue must be bound to the session that created it.")
         if ortvalue._session is not None and ortvalue._session is not self._session:
             raise ValueError("Session-scoped OrtValue must be bound to the session that created it.")
-        if self._is_webgpu_graph_capture_enabled and (
-            ortvalue._session is not self._session or not ortvalue._is_webgpu_buffer
-        ):
-            raise ValueError("WebGPU graph capture requires session-scoped WebGPU input OrtValues.")
+        # Capture replays recorded commands against the original buffers, so a bound value must
+        # stay alive at a fixed address for the captured graph's lifetime. That is a property of
+        # the OrtValue, not of which allocator produced it: a Tensor owns an AllocatorPtr to the
+        # allocator that will free it and only frees in its destructor, and for tensor-backed
+        # buffers the buffer manager's Release is reachable only through GpuBufferAllocator::Free
+        # (the other caller returns an internal uniform buffer, never tensor memory). So while
+        # this OrtValue is alive the WebGPU handle cannot be released, recycled into the buffer
+        # cache, or handed to another allocation. Replay also re-issues the bind groups recorded
+        # at capture time rather than re-resolving a buffer from an allocator, and the bind group
+        # holds its own reference. A session-scoped and an environment-registered shared allocator
+        # therefore satisfy this identically, and for the default device both resolve to the same
+        # context buffer manager anyway. What neither provenance protects is releasing a bound
+        # value while a captured graph still references it: `_session` pins the session, not the
+        # buffer.
+        if self._is_webgpu_graph_capture_enabled and not ortvalue._is_webgpu_buffer:
+            raise ValueError("WebGPU graph capture requires WebGPU input OrtValues.")
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
 
     def synchronize_inputs(self):
@@ -1070,7 +1085,7 @@ class IOBinding:
         """
 
         if self._is_webgpu_graph_capture_enabled:
-            raise ValueError("WebGPU graph capture requires session-scoped WebGPU output OrtValues.")
+            raise ValueError("WebGPU graph capture requires WebGPU output OrtValues.")
 
         # Follow the `if` path when the user has not provided any pre-allocated buffer but still
         # would like to bind an output to a specific device (e.g. cuda).
@@ -1099,14 +1114,11 @@ class IOBinding:
         :param name: output name
         :param ortvalue: OrtValue instance to bind
         """
-        if ortvalue._is_webgpu_buffer and ortvalue._session is not self._session:
-            raise ValueError("WebGPU OrtValue must be bound to the session that created it.")
         if ortvalue._session is not None and ortvalue._session is not self._session:
             raise ValueError("Session-scoped OrtValue must be bound to the session that created it.")
-        if self._is_webgpu_graph_capture_enabled and (
-            ortvalue._session is not self._session or not ortvalue._is_webgpu_buffer
-        ):
-            raise ValueError("WebGPU graph capture requires session-scoped WebGPU output OrtValues.")
+        # See bind_ortvalue_input: capture needs a fixed device buffer, not a session-owned one.
+        if self._is_webgpu_graph_capture_enabled and not ortvalue._is_webgpu_buffer:
+            raise ValueError("WebGPU graph capture requires WebGPU output OrtValues.")
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
 
     def synchronize_outputs(self):
@@ -1487,25 +1499,21 @@ class OrtValue:
             When an OrtValue is provided, data can be copied between devices (e.g.,
             GPU to GPU) without going through the CPU.
         """
-        if self._is_webgpu_buffer and self._session is None:
-            raise ValueError("WebGPU OrtValue must retain the session that owns its buffer.")
-
         if isinstance(data, OrtValue):
-            if self._is_webgpu_buffer or data._is_webgpu_buffer:
-                if not self._is_webgpu_buffer or not data._is_webgpu_buffer:
-                    raise ValueError(
-                        "WebGPU OrtValue copies require WebGPU source and destination values; "
-                        "use IOBinding.copy_outputs_to_cpu for readback."
-                    )
-                if self._session is None or data._session is None or data._session is not self._session:
-                    raise ValueError("WebGPU OrtValues must originate from the same session.")
-                self._session.update_ortvalue_inplace(self._ortvalue, data._ortvalue)
-                return
+            if self._is_webgpu_buffer != data._is_webgpu_buffer:
+                raise ValueError(
+                    "WebGPU OrtValue copies require WebGPU source and destination values; "
+                    "use IOBinding.copy_outputs_to_cpu for readback."
+                )
+            if self._session is not None and data._session is not None and data._session is not self._session:
+                raise ValueError("Session-scoped OrtValues must originate from the same session.")
 
-            if self._session is not None:
-                if data._session is not None and data._session is not self._session:
-                    raise ValueError("Session-scoped OrtValues must originate from the same session.")
-                self._session.update_ortvalue_inplace(self._ortvalue, data._ortvalue)
+            # Either value may be owned by a session allocator or by an environment-registered
+            # shared allocator. Route the copy through whichever session owns a side, so its
+            # data transfer manager is used; otherwise fall back to the shared-allocator path.
+            session = self._session if self._session is not None else data._session
+            if session is not None:
+                session.update_ortvalue_inplace(self._ortvalue, data._ortvalue)
             else:
                 self._ortvalue.update_inplace(data._ortvalue)
             return
@@ -1513,9 +1521,12 @@ class OrtValue:
         if not isinstance(data, np.ndarray):
             raise TypeError("data must be a numpy.ndarray or an OrtValue.")
 
+        # The copy below reads the source buffer as contiguous memory regardless of which
+        # path handles it, so normalize before dispatching.
+        if not data.flags.c_contiguous:
+            data = np.ascontiguousarray(data)
+
         if self._session is not None:
-            if not data.flags.c_contiguous:
-                data = np.ascontiguousarray(data)
             self._session.update_ortvalue_inplace(self._ortvalue, data)
         else:
             self._ortvalue.update_inplace(data)
