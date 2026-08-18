@@ -89,14 +89,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                     " and num_experts=", moe_params.num_experts);
 
   Tensor* output = context->Output(0, input->Shape());
+  auto ort_stream = GetOrtStream(context);
 
-  return RunMoe<T>(context, moe_params,
+  return RunMoe<T>(context, ort_stream.get(), moe_params,
                    onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig{},
                    mGemmProfiler, mGemmProfilerMutex, output->MutableDataRaw());
 }
 
 template <typename T>
 Status MoEBase::RunMoe(OpKernelContext* context,
+                       onnxruntime::Stream* ort_stream,
                        const MoEParameters& moe_params,
                        onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config,
                        onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler& gemm_profiler,
@@ -116,8 +118,7 @@ Status MoEBase::RunMoe(OpKernelContext* context,
 
   using CudaT = typename OrtToCudaType<T>::type;
 
-  void* stream_obj = GetComputeStream(context);
-  cudaStream_t stream = Stream(context);
+  cudaStream_t stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -248,7 +249,7 @@ Status MoEBase::RunMoe(OpKernelContext* context,
   size_t permutation_bytes = expanded_rows * sizeof(int);
   size_t total_scratch_bytes = SafeInt<size_t>(ws_size) + scales_bytes + indices_bytes + permutation_bytes;
 
-  auto work_space = IAllocator::MakeUniquePtr<void>(allocator, total_scratch_bytes, false, stream_obj);
+  auto work_space = IAllocator::MakeUniquePtr<void>(allocator, total_scratch_bytes, false, ort_stream);
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
   float* expert_scales = reinterpret_cast<float*>(workspace_ptr + ws_size);
   int* expert_indices = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes);
@@ -341,7 +342,7 @@ Status MoEBase::RunMoe(OpKernelContext* context,
     //   Each expert has 2*I*H elements = 2 * fc1_block_size
     const CudaT* fc3_input_ptr = reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->DataRaw());
     size_t fc1_total_size = E * 2 * fc1_block_size * sizeof(CudaT);
-    fc1_processed_buffer = IAllocator::MakeUniquePtr<void>(allocator, fc1_total_size, false, stream_obj);
+    fc1_processed_buffer = IAllocator::MakeUniquePtr<void>(allocator, fc1_total_size, false, ort_stream);
     CudaT* fc1_fc3_processed_ptr = reinterpret_cast<CudaT*>(fc1_processed_buffer.get());
     fc1_processed_ptr = fc1_fc3_processed_ptr;
 
@@ -370,7 +371,7 @@ Status MoEBase::RunMoe(OpKernelContext* context,
     // (linear) half is zero.
     size_t const bias_row_bytes = static_cast<size_t>(moe_params.inter_size) * sizeof(CudaT);
     size_t const total_bias_bytes = static_cast<size_t>(E) * 2 * bias_row_bytes;
-    fc1_bias_processed_buffer = IAllocator::MakeUniquePtr<void>(allocator, total_bias_bytes, false, stream_obj);
+    fc1_bias_processed_buffer = IAllocator::MakeUniquePtr<void>(allocator, total_bias_bytes, false, ort_stream);
     CudaT* padded_bias = reinterpret_cast<CudaT*>(fc1_bias_processed_buffer.get());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(padded_bias, 0, total_bias_bytes, stream));
     CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(padded_bias, 2 * bias_row_bytes, fc1_bias_ptr, bias_row_bytes,
@@ -423,15 +424,15 @@ Status MoEBase::RunMoe(OpKernelContext* context,
   return Status::OK();
 }
 
-template Status MoEBase::RunMoe<float>(OpKernelContext*, const MoEParameters&,
+template Status MoEBase::RunMoe<float>(OpKernelContext*, onnxruntime::Stream*, const MoEParameters&,
                                        onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig,
                                        onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler&,
                                        std::mutex&, void*) const;
-template Status MoEBase::RunMoe<MLFloat16>(OpKernelContext*, const MoEParameters&,
+template Status MoEBase::RunMoe<MLFloat16>(OpKernelContext*, onnxruntime::Stream*, const MoEParameters&,
                                            onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig,
                                            onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler&,
                                            std::mutex&, void*) const;
-template Status MoEBase::RunMoe<BFloat16>(OpKernelContext*, const MoEParameters&,
+template Status MoEBase::RunMoe<BFloat16>(OpKernelContext*, onnxruntime::Stream*, const MoEParameters&,
                                           onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig,
                                           onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler&,
                                           std::mutex&, void*) const;

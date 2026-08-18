@@ -91,6 +91,7 @@ class MoEBase {
   // caller has to combine the ranks with an all-reduce) is written to output_data.
   template <typename T>
   Status RunMoe(OpKernelContext* context,
+                onnxruntime::Stream* ort_stream,
                 const MoEParameters& moe_params,
                 onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config,
                 onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler& gemm_profiler,

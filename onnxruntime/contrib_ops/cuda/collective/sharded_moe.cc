@@ -96,9 +96,10 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   Tensor* output = context->Output(0, input->Shape());
+  auto ort_stream = GetOrtStream(context);
 
   if (moe_params.parallel_type == MoEParallelType::None) {
-    return RunMoe<T>(context, moe_params, parallelism_config, mGemmProfiler, mGemmProfilerMutex,
+    return RunMoe<T>(context, ort_stream.get(), moe_params, parallelism_config, mGemmProfiler, mGemmProfilerMutex,
                      output->MutableDataRaw());
   }
 
@@ -106,7 +107,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   auto partial_output = Tensor::Create(input->DataType(), input->Shape(), allocator);
-  ORT_RETURN_IF_ERROR(RunMoe<T>(context, moe_params, parallelism_config, mGemmProfiler, mGemmProfilerMutex,
+  ORT_RETURN_IF_ERROR(RunMoe<T>(context, ort_stream.get(), moe_params, parallelism_config, mGemmProfiler, mGemmProfilerMutex,
                                 partial_output->MutableDataRaw()));
 
   // Tokens that are not routed to a local expert contribute zero, and the bias of the second GEMM is
