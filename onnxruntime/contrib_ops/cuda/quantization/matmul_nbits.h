@@ -281,9 +281,9 @@ class MatMulNBits final : public CudaKernel {
 
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). Uses the same constructed runner state that
-  // ComputeInternal() uses, so it equals the real runtime request when the queried input-A shape
-  // equals the runtime input shape. Declared only for the in-tree hierarchy; the plugin build
+  // estimate, callable after CreateKernels(). Uses the same constructed runner and cached tactic state
+  // as ComputeInternal(). It omits workspace for a known GEMV tactic and remains conservative when the
+  // queried M bucket has not been profiled. Declared only for the in-tree hierarchy; the plugin build
   // inherits the adapter OpKernel's default no-op. See DeclareWorkspaceRequirements in op_kernel.h.
   Status DeclareWorkspaceRequirements(
       gsl::span<const TensorShape> input_shapes,
