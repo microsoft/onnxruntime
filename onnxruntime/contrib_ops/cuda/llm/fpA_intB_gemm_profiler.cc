@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "contrib_ops/cuda/llm/common/workspace.h"
+#include "core/common/safeint.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 
@@ -30,6 +31,42 @@ using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
 namespace onnxruntime::llm::kernels::weight_only {
+
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes) {
+  if (max_m == 0 || packed_n == 0 || k == 0 ||
+      (quant_bits != INT4_BITS && quant_bits != INT8_BITS) || group_size == 0) {
+    return std::nullopt;
+  }
+
+  try {
+    const SafeInt<size_t> original_n =
+        SafeInt<size_t>(packed_n) * (FP16_BITS / quant_bits);
+    constexpr size_t kElementBytes = sizeof(uint16_t);
+    const size_t workspaces[] = {
+        static_cast<size_t>(SafeInt<size_t>(max_m) * k * kElementBytes),
+        static_cast<size_t>(SafeInt<size_t>(k) * packed_n * kElementBytes),
+        static_cast<size_t>(SafeInt<size_t>(k) * original_n * kElementBytes / group_size),
+        static_cast<size_t>(SafeInt<size_t>(k) * original_n * kElementBytes / group_size),
+        static_cast<size_t>(original_n * kElementBytes),
+        static_cast<size_t>(SafeInt<size_t>(max_m) * original_n * kElementBytes),
+        runner_workspace_bytes};
+
+    SafeInt<size_t> total = 0;
+    for (const size_t workspace : workspaces) {
+      SafeInt<size_t> aligned_workspace = workspace;
+      const size_t remainder = workspace % kCudaMemAlign;
+      if (remainder != 0) {
+        aligned_workspace += kCudaMemAlign - remainder;
+      }
+      total += aligned_workspace;
+    }
+    return static_cast<size_t>(total);
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     int m, int n, int k,
@@ -78,18 +115,13 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 }
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
-  // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
-  int const originalN = static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
-  std::vector<size_t> workspaces = {
-      /* A */ maxM * k * sizeof(half),
-      /* B */ k * n * sizeof(half),
-      /* scales */ k * originalN * sizeof(half) / mGroupSize,
-      /* zeros */ k * originalN * sizeof(half) / mGroupSize,
-      /* biases */ originalN * sizeof(half),
-      /* C */ maxM * originalN * sizeof(half),
-      mRunner->getWorkspaceSize(static_cast<int>(maxM), originalN, static_cast<int>(k))  // workspace
-  };
-  return calculateTotalWorkspaceSize(workspaces.data(), static_cast<int>(workspaces.size()));
+  const int original_n =
+      static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
+  const auto scratch_size = ComputeWeightOnlyGemmProfilerScratchSize(
+      maxM, n, k, mQuantBits, mGroupSize,
+      mRunner->getWorkspaceSize(static_cast<int>(maxM), original_n, static_cast<int>(k)));
+  ORT_ENFORCE(scratch_size.has_value(), "Failed to compute fpA_intB tactic-profiler scratch size.");
+  return *scratch_size;
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(

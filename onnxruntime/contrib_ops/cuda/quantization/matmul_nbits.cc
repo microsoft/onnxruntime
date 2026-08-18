@@ -310,8 +310,41 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
   }
 
   try {
+    // GetCapability cannot see the per-session ep.cuda.fpa_intb_profile_m
+    // override. As with the eligibility option above, use the environment
+    // setting that is visible here, otherwise mirror the constructor default.
+    const std::vector<int> profile_m =
+        WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
+            ParseEnvironmentVariableWithDefault<std::string>(
+                onnxruntime::llm::kernels::weight_only::kEnvProfileM, ""));
+    const int requested_profile_max_m =
+        profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
+                          : profile_m.back();
+    const int profile_max_m = onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+        requested_profile_max_m, onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+
+    const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
+    const auto profiler_runner_workspace =
+        onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+            profile_max_m, SafeInt<int>(N), SafeInt<int>(K), sm,
+            device_prop.multiProcessorCount);
+    if (!profiler_runner_workspace.has_value()) {
+      return std::nullopt;
+    }
+
+    const size_t packed_n = static_cast<size_t>(
+        SafeInt<int64_t>(N) / (onnxruntime::llm::kernels::weight_only::FP16_BITS / nbits));
+    const auto profiler_scratch =
+        onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
+            profile_max_m, packed_n, SafeInt<size_t>(K), SafeInt<int>(nbits),
+            SafeInt<size_t>(block_size), *profiler_runner_workspace);
+    if (!profiler_scratch.has_value()) {
+      return std::nullopt;
+    }
+    estimate->temporary_prepack_bytes = static_cast<size_t>(
+        SafeInt<size_t>(estimate->temporary_prepack_bytes) + *profiler_scratch);
+
     if (m.has_value()) {
-      const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
       estimate->runtime_workspace_bytes =
           onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
               SafeInt<int>(*m), SafeInt<int>(N), SafeInt<int>(K), sm,

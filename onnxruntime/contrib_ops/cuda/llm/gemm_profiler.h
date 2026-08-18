@@ -38,6 +38,20 @@
 
 namespace onnxruntime::llm::kernels::weight_only {
 
+constexpr int kMaxProfileM = 8192;
+
+constexpr int RoundUpProfileM(int value, int max_profile_m) {
+  if (value <= 0 || max_profile_m <= 0) {
+    return 0;
+  }
+
+  int rounded = 1;
+  while (rounded < value && rounded < max_profile_m) {
+    rounded *= 2;
+  }
+  return std::min(rounded, max_profile_m);
+}
+
 struct GemmDims {
   int64_t minM;
   int64_t maxM;
@@ -269,7 +283,7 @@ GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginPro
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxProfileM() const {
-  return 8192;
+  return kMaxProfileM;
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -294,7 +308,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   mDims = dims;
   mHasWeightOnlyCudaKernel = hasWeightOnlyCudaKernel;
 
-  int const maxM = std::min(nextPowerOfTwo(static_cast<int>(dims.maxM)), getMaxProfileM());
+  int const maxM = RoundUpProfileM(static_cast<int>(dims.maxM), getMaxProfileM());
 
   size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
 
@@ -359,7 +373,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     return std::nullopt;
   }
 
-  int const mRounded = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
+  int const mRounded = RoundUpProfileM(std::max(1, m), getMaxProfileM());
   fflush(stdout);
 
   if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0) {
@@ -403,7 +417,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     return std::nullopt;
   }
 
-  int const target = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
+  int const target = RoundUpProfileM(std::max(1, m), getMaxProfileM());
 
   // Fast path: an already-profiled (exact or rounded) bucket under a shared read lock.
   {

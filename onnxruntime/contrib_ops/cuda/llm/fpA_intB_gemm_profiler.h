@@ -19,6 +19,7 @@
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -51,6 +52,14 @@ constexpr const char* kEnvProfileM = "ORT_FPA_INTB_PROFILE_M";
 // Default top M that bounds the initial profile sweep when no override is given. Larger runtime
 // M values are handled by lazy single-bucket profiling.
 constexpr int kDefaultProfileMaxM = 2048;
+
+// Computes the single temporary CUDA allocation used while profiling tactics.
+// `packed_n` is the number of 16-bit elements that hold one packed weight row.
+// This pure-math helper is shared by the runtime profiler and partition-time
+// memory estimation so their allocation formulas cannot drift.
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes);
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,

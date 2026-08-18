@@ -1562,7 +1562,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                            << "non-workspace memory: " << non_workspace_estimate << " bytes, "
                            << "workspace memory: " << workspace_estimate << " bytes, "
                            << "persistent prepack memory: " << persistent_prepack_estimate << " bytes, "
-                           << "temporary prepack memory: " << temporary_prepack_estimate << " bytes, "
+                           << "initialization scratch memory: " << temporary_prepack_estimate << " bytes, "
                            << "total estimated memory: " << total_estimate << " bytes, "
                            << "workspace sources: fallback=" << source_counts.fallback
                            << ", profile=" << source_counts.profile

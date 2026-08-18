@@ -555,8 +555,9 @@ The MatMulNBits pilot now returns a structured Level-1 estimate rather than coll
 different lifetimes into one workspace scalar. `runtime_workspace_bytes` is optional so dynamic shapes can
 fall back to the heuristic while still reporting shape-independent prepack memory.
 `persistent_prepack_bytes` describes kernel-owned packed destinations, and `temporary_prepack_bytes`
-describes initialization-only packing scratch. The current byte-count accountant conservatively charges
-all fields cumulatively; modeling temporary prepack memory as a session-wide peak remains future work.
+describes initialization-only scratch such as packing conversion and constructor-time tactic profiling.
+The current byte-count accountant conservatively charges all fields cumulatively; modeling initialization
+scratch as a session-wide peak remains future work.
 `DeclareWorkspaceRequirements()` remains a Level-2 runtime-workspace declaration and does not report
 already-allocated persistent prepack buffers.
 
@@ -564,7 +565,7 @@ already-allocated persistent prepack buffers.
 
 The in-tree CUDA pilot passes an optional `Level1MemoryEstimate` to
 `IResourceAccountant::ComputeResourceCount()`. The accountant selects the runtime workspace source,
-adds persistent and temporary prepack estimates, and records the pending breakdown so only accepted
+adds persistent prepack and initialization-scratch estimates, and records the pending breakdown so only accepted
 nodes commit it. Without an estimable runtime workspace, the ad-hoc path retains the 1.5x heuristic.
 
 The generic plugin host bridge currently calls `ComputeResourceCount(node)` without an
@@ -575,7 +576,7 @@ pilot, tracked in the [#29775 implementation roadmap](https://github.com/microso
 Closing that gap requires an ABI-safe plugin estimator contract, not a CUDA special case in the host
 bridge. The contract must:
 
-- carry runtime workspace, persistent prepack memory, and temporary prepack memory;
+- carry runtime workspace, persistent prepack memory, and initialization scratch;
 - use plugin-visible shape/planning inputs without exposing in-tree `Node` or graph types across the
   DLL boundary;
 - keep reusable estimator math graph-type-free, with separate in-tree and plugin parsing wrappers;

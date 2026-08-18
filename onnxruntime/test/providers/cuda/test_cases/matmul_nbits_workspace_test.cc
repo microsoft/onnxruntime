@@ -28,6 +28,7 @@
 #if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
 #include <cstring>
+#include <limits>
 
 // NOTE: do NOT include core/graph/onnx_protobuf.h here. matmul_nbits.h pulls in the CUDA-provider
 // shared-provider bridge (provider_api.h), which defines its own copies of the ONNX enums
@@ -49,6 +50,8 @@ using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm90;
 using onnxruntime::contrib::cuda::MatMulNBits;
 using onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize;
+using onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize;
+using onnxruntime::llm::kernels::weight_only::RoundUpProfileM;
 
 namespace {
 constexpr int32_t kFp16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
@@ -169,6 +172,27 @@ TEST(MatMulNBitsWorkspace, PrepackMemoryRejectsInvalidMetadata) {
                    /*n=*/256, /*k=*/1024, /*nbits=*/3, /*block_size=*/32,
                    kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false)
                    .has_value());
+}
+
+TEST(MatMulNBitsWorkspace, TacticProfilerScratchIncludesAllAlignedBuffers) {
+  // A=4096, B=131072, scales=zeros=16384 each, bias=512, C=1024,
+  // runner workspace=1000 aligned to 1024.
+  const auto scratch = ComputeWeightOnlyGemmProfilerScratchSize(
+      /*max_m=*/2, /*packed_n=*/64, /*k=*/1024, /*quant_bits=*/4,
+      /*group_size=*/32, /*runner_workspace_bytes=*/1000);
+  ASSERT_TRUE(scratch.has_value());
+  EXPECT_EQ(*scratch, size_t{170496});
+
+  EXPECT_FALSE(ComputeWeightOnlyGemmProfilerScratchSize(
+                   /*max_m=*/2, /*packed_n=*/64, /*k=*/1024, /*quant_bits=*/3,
+                   /*group_size=*/32, /*runner_workspace_bytes=*/1000)
+                   .has_value());
+}
+
+TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
+  EXPECT_EQ(RoundUpProfileM(1, 8192), 1);
+  EXPECT_EQ(RoundUpProfileM(3000, 8192), 4096);
+  EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
 }
 
 // ---------------------------------------------------------------------------

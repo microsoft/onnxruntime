@@ -369,17 +369,20 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
                  << "; MatMulNBits fpA_intB path is not eligible.";
   }
 
-  ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
+                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}}});
   const std::string model_bytes = BuildMatMulNBitsModelBytes();
 
-  // For this model the legacy 1.5x fallback is below 500 KiB, while the
+  // For this model the legacy 1.5x fallback is below 700 KiB, while the
   // structured Level-1 total (runtime workspace + persistent/temporary
-  // prepack memory) is above 500 KiB and below 600 KiB. The two budgets
+  // initialization memory, including tactic-profiler scratch) is above
+  // 700 KiB and below 720 KiB. The two budgets
   // therefore prove that CUDA GetCapability applies the estimator result.
   {
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "600,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "720,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -394,7 +397,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
   {
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "500,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "700,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -420,13 +423,16 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGp
   const std::string model_bytes =
       BuildMatMulNBitsModelBytes(nullptr, kWeightPrepackedSm80);
 
-  // The 350 KiB budget is above initializer + output + scale destination +
-  // runtime workspace, but below that value plus a duplicate packed-weight
-  // destination. CUDA must accept the node because PrePack_B reuses the
-  // already GPU-resident offline-prepacked initializer in place.
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}}});
+
+  // The 500 KiB budget is above initializer + output + scale destination +
+  // runtime workspace + tactic-profiler scratch, but below that value plus a
+  // duplicate packed-weight destination. CUDA must accept the node because
+  // PrePack_B reuses the already GPU-resident offline-prepacked initializer.
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, "350,"));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "500,"));
   InferenceSessionWrapper session(so, GetEnvironment());
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(
       std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
