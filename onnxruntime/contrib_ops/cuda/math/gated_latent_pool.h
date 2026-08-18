@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::OpKernelContext;
+using onnxruntime::cuda::CudaKernel;
 
 // Gated pooling of `ratio` consecutive tokens into one latent KV row, normalised, rotated, and
 // rounded through the simulated low-precision grids a checkpoint may have been trained against.

@@ -6899,7 +6899,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Selects which compressed cache rows each query token may attend to, by scoring every row with a lightweight multi-head scorer and keeping the best `topk` (DeepSeek-V4's Lightning Indexer is one such scorer).
   
-  `query` is this step's raw projection, `num_heads * head_dim` wide. Its trailing `rope_head_dim` channels are rotated with `cos`/`sin`, and the whole row is then Hadamard-rotated and put through a simulated FP4-E2M1 round trip in blocks of 32 when `simulate_rotated_fp4` is set -- the same treatment the cached rows already had, which is what makes the rotation matter instead of cancelling.
+  `query` is this step's raw projection, `num_heads * head_dim` wide. Its trailing `rope_head_dim` channels are rotated with `cos`/`sin`, and the whole row is then Hadamard-rotated and put through a simulated FP4-E2M1 round trip in blocks of 32 when `simulate_rotated_fp4` is set -- the same treatment the cached rows already had, which is what makes the rotation matter instead of canceling.
   
   `rows` are the candidate rows a GatedLatentPool produced this step; row `j` lands in cache slot `first_slot + j`, and slots below `first_slot` keep what `past_cache` held:
     present_cache[b, c] = rows[b, c - first_slot[b]] if first_slot[b] <= c <= last_slot[b] else past_cache[b, c],  for c <= last_slot[b]

@@ -286,6 +286,12 @@ class TestGatedLatentPool(unittest.TestCase):
     def test_ratio4_window2_fp8(self):
         self._run_case({"r": 4, "co": 2, "d": 128, "rd": 64, "L": 64, "eps": 1e-6, "quant": True, "rotate": False})
 
+    def test_odd_rope_head_dim_rejected(self):
+        cfg = {"r": 4, "co": 1, "d": 128, "rd": 63, "L": 64, "eps": 1e-6, "quant": False, "rotate": False}
+        model, _ = build_graph(cfg, TP.FLOAT)
+        with self.assertRaisesRegex(Exception, "rope_head_dim must be even"):
+            ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+
     def test_ratio8_window1_fp8(self):
         self._run_case({"r": 8, "co": 1, "d": 128, "rd": 64, "L": 64, "eps": 1e-6, "quant": True, "rotate": False})
 
