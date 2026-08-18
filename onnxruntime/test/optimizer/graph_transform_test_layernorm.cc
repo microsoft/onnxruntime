@@ -1017,6 +1017,8 @@ enum class RotaryEmbeddingDomain {
 };
 
 static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
+                                               RotaryEmbeddingDomain rotary_domain,
+                                               bool include_position_ids,
                                                int64_t q_interleaved = 0,
                                                int64_t k_interleaved = 0,
                                                int64_t rotary_embedding_dim = 0,
