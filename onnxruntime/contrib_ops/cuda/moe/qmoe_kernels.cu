@@ -476,7 +476,7 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
       SoftmaxTopKWarpMergeKernel<T, 64><<<grid, onnxruntime::cuda::topk::kWarpSize, 0, stream>>>(
           logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
-  } else if (num_shared_experts == 0 && num_experts <= 256 && k <= 8) {
+    } else if (num_shared_experts == 0 && num_experts <= 256 && k <= 8) {
       // Warp-per-row register top-k. Pick the smallest per-lane capacity that both
       // covers num_experts across the warp and can hold the requested k.
       constexpr int kRowsPerBlock = 4;

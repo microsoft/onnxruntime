@@ -825,9 +825,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool fp4_native_available = is_fp4_family && !use_fp4_dequant_fallback_ && m_fp4_dense_fallback_runner_ != nullptr;
   const int64_t avg_tokens_per_expert =
       moe_params.num_experts > 0
-        ? (static_cast<int64_t>(moe_params.num_rows) * k_total) /
+          ? (static_cast<int64_t>(moe_params.num_rows) * k_total) /
                 static_cast<int64_t>(moe_params.num_experts)
-        : static_cast<int64_t>(moe_params.num_rows) * k_total;
+          : static_cast<int64_t>(moe_params.num_rows) * k_total;
   const bool route_native_fp4 =
       fp4_native_available &&
       (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_) &&
@@ -949,7 +949,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         RunnerTileConfig tile_config{tile_rows, deterministic_config, deterministic_config, 0};
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
-          tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
+            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
             activation_type_, parallelism_config, use_awq);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
         runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
@@ -1041,7 +1041,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
-          tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
+            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
             activation_type_, parallelism_config, use_awq);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
         runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
