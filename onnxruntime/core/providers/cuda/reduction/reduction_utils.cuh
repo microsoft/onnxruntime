@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/reduction/reduction_scan_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -16,20 +17,6 @@ __forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   value_ |= value_ >> 8;
   value_ |= value_ >> 16;
   return static_cast<int>(++value_);
-}
-
-__forceinline__ __host__ __device__ bool reduction_scan_delta_is_valid(int delta, int remaining) {
-  return delta < remaining;
-}
-
-__forceinline__ __host__ __device__ bool advance_reduction_scan(int limit, int step, int& position) {
-  const int remaining = limit - position;
-  if (remaining <= step) {
-    return false;
-  }
-
-  position += step;
-  return true;
 }
 
 struct Square {
