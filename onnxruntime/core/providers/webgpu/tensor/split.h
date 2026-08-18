@@ -24,6 +24,20 @@ class SplitProgram final : public Program<SplitProgram> {
   uint32_t axis_;
 };
 
+class SplitContiguousVec4Program final : public Program<SplitContiguousVec4Program> {
+ public:
+  explicit SplitContiguousVec4Program(gsl::span<const uint32_t> segment_vector_sizes)
+      : Program{"SplitContiguousVec4"},
+        segment_vector_sizes_{segment_vector_sizes.begin(), segment_vector_sizes.end()} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  InlinedVector<uint32_t> segment_vector_sizes_;
+};
+
 class Split : public WebGpuKernel, public SplitBase {
  public:
   Split(const OpKernelInfo& info, uint32_t opset) : WebGpuKernel(info), SplitBase(info, opset) {}

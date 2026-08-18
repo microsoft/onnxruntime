@@ -72,6 +72,41 @@ Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status SplitContiguousVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+
+  std::vector<const ShaderVariableHelper*> outputs;
+  outputs.reserve(segment_vector_sizes_.size());
+  for (size_t i = 0; i < segment_vector_sizes_.size(); ++i) {
+    outputs.push_back(
+        &shader.AddOutput("output_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias));
+  }
+
+  uint32_t total_vectors = 0;
+  for (uint32_t segment_size : segment_vector_sizes_) {
+    total_vectors += segment_size;
+  }
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
+                            << "  let outer_index = global_idx / " << total_vectors << "u;\n"
+                            << "  let within_outer = global_idx % " << total_vectors << "u;\n";
+
+  uint32_t segment_start = 0;
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    const uint32_t segment_end = segment_start + segment_vector_sizes_[i];
+    const std::string output_offset =
+        "outer_index * " + std::to_string(segment_vector_sizes_[i]) +
+        "u + within_outer - " + std::to_string(segment_start) + "u";
+    shader.MainFunctionBody() << "  if (within_outer < " << segment_end << "u) {\n"
+                              << "    " << outputs[i]->SetByOffset(output_offset, input.GetByOffset("global_idx")) << "\n"
+                              << "    return;\n"
+                              << "  }\n";
+    segment_start = segment_end;
+  }
+
+  return Status::OK();
+}
+
 Status Split::ComputeInternal(ComputeContext& context) const {
   const Tensor* input = context.Input<Tensor>(0);
   auto& input_shape = input->Shape();
@@ -128,14 +163,6 @@ Status Split::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  SplitProgram program{static_cast<uint32_t>(axis)};
-  program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank});
-
-  // Only add non-empty outputs to the program
-  for (int output_idx : non_empty_output_indices) {
-    program.AddOutput({all_outputs[output_idx], ProgramTensorMetadataDependency::Rank});
-  }
-
   uint32_t previous_sum = 0;
   std::vector<uint32_t> sizes_in_split_axis;
   // sizes_in_split_axis are the cumulative sizes of the NON-EMPTY splits in the split axis.
@@ -144,6 +171,40 @@ Status Split::ComputeInternal(ComputeContext& context) const {
     sizes_in_split_axis.push_back(previous_sum);
   }
 
+  const int64_t inner_size = input_shape.SizeFromDimension(narrow<size_t>(axis) + 1);
+  InlinedVector<uint32_t> segment_vector_sizes;
+  segment_vector_sizes.reserve(non_empty_output_indices.size());
+  bool use_contiguous_vec4 = input->DataType() == DataTypeImpl::GetType<float>();
+  for (int output_idx : non_empty_output_indices) {
+    const int64_t segment_size = split_sizes[output_idx] * inner_size;
+    if (segment_size % 4 != 0) {
+      use_contiguous_vec4 = false;
+      break;
+    }
+    segment_vector_sizes.push_back(narrow<uint32_t>(segment_size / 4));
+  }
+
+  if (use_contiguous_vec4) {
+    const uint32_t input_vector_count = input_size / 4;
+    SplitContiguousVec4Program program{segment_vector_sizes};
+    program.AddInput(
+        {input, ProgramTensorMetadataDependency::Type, TensorShape({input_vector_count}), 4});
+    for (int output_idx : non_empty_output_indices) {
+      Tensor* output = all_outputs[output_idx];
+      program.AddOutput(
+          {output, ProgramTensorMetadataDependency::Type, TensorShape({output->Shape().Size() / 4}), 4});
+    }
+    program.SetDispatchGroupSize((input_vector_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .CacheHint(absl::StrJoin(segment_vector_sizes, ","))
+        .AddUniformVariable({input_vector_count});
+    return context.RunProgram(program);
+  }
+
+  SplitProgram program{static_cast<uint32_t>(axis)};
+  program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank});
+  for (int output_idx : non_empty_output_indices) {
+    program.AddOutput({all_outputs[output_idx], ProgramTensorMetadataDependency::Rank});
+  }
   program
       .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(axis))
