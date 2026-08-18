@@ -384,13 +384,13 @@ Status GemmFloat8::ComputeGemm(
     CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
   }
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
-  const void* bias = has_bias ? p_input_c : p_output_y;
+  const void* c_input = has_bias ? p_input_c : nullptr;
   cuda_status = cublasLtMatmul(
       cublasLt, operationDesc, static_cast<const void*>(&alpha_), /* alpha */
       p_input_a,                                                  /* A */
       Adesc, p_input_b,                                           /* B */
       Bdesc, static_cast<const void*>(&beta),                     /* beta */
-      bias,                                                       /* C */
+      c_input,                                                    /* C */
       Cdesc, p_output_y,                                          /* Y */
       Ddesc, &heuristicResult.algo,                               /* algo */
       workspace,                                                  /* workspace */
