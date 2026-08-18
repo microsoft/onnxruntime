@@ -5,6 +5,7 @@
 
 #include <cfloat>
 #include <limits>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
 #include "contrib_ops/cuda/math/sinkhorn_normalize_impl.cuh"
@@ -43,6 +44,13 @@ struct Conv<BFloat16> {
   static __device__ __forceinline__ float ToFloat(BFloat16 v) { return static_cast<float>(v); }
   static __device__ __forceinline__ float Round(float v) { return static_cast<float>(BFloat16(v)); }
   static __device__ __forceinline__ BFloat16 FromFloat(float v) { return BFloat16(v); }
+};
+
+template <>
+struct Conv<nv_bfloat16> {
+  static __device__ __forceinline__ float ToFloat(nv_bfloat16 v) { return __bfloat162float(v); }
+  static __device__ __forceinline__ float Round(float v) { return __bfloat162float(__float2bfloat16_rn(v)); }
+  static __device__ __forceinline__ nv_bfloat16 FromFloat(float v) { return __float2bfloat16_rn(v); }
 };
 
 __device__ __forceinline__ float WarpReduceSum(float v) {
