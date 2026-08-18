@@ -61,6 +61,10 @@ std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
     size_t group_size, size_t runner_workspace_bytes);
 
+// The dedicated fpA/intB CUDA GEMV kernel is only a candidate below this M. At and above this
+// boundary, the profiler considers CUTLASS GEMM tactics only.
+constexpr int kFpAIntBGemvMaxMExclusive = 16;
+
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
                                 GemmIdCore, GemmIdCoreHash> {

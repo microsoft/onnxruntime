@@ -157,11 +157,12 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& no
 // layout [A, B, scales, "", "", bias] to exercise positional Level-2 shape resolution.
 //
 // When `m_dim_param` is null (default), input A's leading dimension is the fully-static value
-// `kE2eM` (a concrete dim_value). When `m_dim_param` is non-null, that leading dimension is instead
+// `static_m` (a concrete dim_value). When `m_dim_param` is non-null, that leading dimension is instead
 // a *symbolic* dim (dim_param, e.g. "seq") with NO dim_value -- a genuinely dynamic shape. This is
 // used by Test D (dynamic, no override -> graceful fallback) and by Test C, where a
 // FreeDimensionOverrideByName later rewrites the symbolic dim into a concrete value at session init.
 std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
+                                       int64_t static_m = kE2eM,
                                        int64_t weight_prepacked = 0) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
@@ -181,10 +182,10 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
   // mirrors it too so the declared output shape stays consistent with shape inference.
   auto* a = graph->add_input();
   a->set_name("A");
-  SetFp16MatrixShape(a, m_dim_param, kE2eM, kE2eK);
+  SetFp16MatrixShape(a, m_dim_param, static_m, kE2eK);
   auto* y = graph->add_output();
   y->set_name("Y");
-  SetFp16MatrixShape(y, m_dim_param, kE2eM, kE2eN);
+  SetFp16MatrixShape(y, m_dim_param, static_m, kE2eN);
 
   AddMatMulNBitsNode(
       graph, "matmul_nbits", "A", "Y", kE2eK, kE2eN,
@@ -366,6 +367,13 @@ std::vector<const Node*> FindNodesByOpType(const Graph& graph, const std::string
   return nodes;
 }
 
+bool BlocksOverlap(const MemoryBlock& lhs, const MemoryBlock& rhs) {
+  if (lhs.offset_ <= rhs.offset_) {
+    return lhs.size_ > rhs.offset_ - lhs.offset_;
+  }
+  return rhs.size_ > lhs.offset_ - rhs.offset_;
+}
+
 }  // namespace
 
 TEST(MatMulNBitsWorkspace, KnownZeroPartialLeadingShapesLevel1GraphProto) {
@@ -484,7 +492,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGp
   }
 
   const std::string model_bytes =
-      BuildMatMulNBitsModelBytes(nullptr, kWeightPrepackedSm80);
+      BuildMatMulNBitsModelBytes(nullptr, kE2eM, kWeightPrepackedSm80);
 
   ScopedEnvironmentVariables scoped_env(
       EnvVarMap{{"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}}});
@@ -731,6 +739,106 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
       << "The same kernel must replace its prior positive capture with zero for an m == 0 run.";
 }
 
+TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping tactic-aware workspace test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  constexpr int64_t kSmallM = 1;
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{
+      {"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
+      {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}},
+  });
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(nullptr, kSmallM);
+
+  SessionOptions so;
+  so.session_logid = "MatMulNBitsWorkspaceSmallM";
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_NE(mm_node, nullptr);
+  ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider);
+
+  const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+  ASSERT_NE(op_kernel, nullptr);
+
+  const std::vector<TensorShape> input_shapes{TensorShape({kSmallM, kE2eK})};
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kSmallM * kE2eK), MLFloat16(0.25f));
+  OrtValue a_value;
+  CreateMLValue<MLFloat16>(
+      std::array<int64_t, 2>{kSmallM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", a_value);
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(feeds, std::vector<std::string>{"Y"}, &fetches));
+
+  const size_t runtime_workspace = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
+  if (runtime_workspace == 0) {
+    EXPECT_TRUE(requirements.empty())
+        << "A cached GEMV tactic must not declare unused CUTLASS workspace.";
+    EXPECT_FALSE(GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(op_kernel));
+  } else {
+    ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
+        << "A cached CUTLASS tactic must retain its conservative workspace declaration.";
+    EXPECT_EQ(requirements[0].size_bytes, runtime_workspace);
+  }
+}
+
+TEST(MatMulNBitsWorkspace, UnprofiledSmallMDeclaresWorkspaceConservatively) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping tactic-aware workspace test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  constexpr int64_t kUnprofiledM = 3;
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{
+      {"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
+      // M=3 rounds to bucket 4, which is intentionally absent from the initial profile.
+      {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}},
+  });
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(nullptr, kUnprofiledM);
+
+  SessionOptions so;
+  so.session_logid = "MatMulNBitsWorkspaceUnprofiledSmallM";
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_NE(mm_node, nullptr);
+  ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider);
+
+  const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+  ASSERT_NE(op_kernel, nullptr);
+
+  const std::vector<TensorShape> input_shapes{TensorShape({kUnprofiledM, kE2eK})};
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
+      << "A missing tactic must retain CUTLASS capacity because runtime profiling may select GEMM.";
+  EXPECT_GT(requirements[0].size_bytes, static_cast<size_t>(0));
+}
+
 TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
@@ -777,7 +885,7 @@ TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
         << "Each MatMulNBits node must have a distinct synthetic pattern ID.";
   }
 
-  std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.25f));
   OrtValue a_value;
   CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
   NameMLValMap feeds;
@@ -807,7 +915,8 @@ TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
       gsl::make_span(&a_value, 1), gsl::make_span(&input_index, 1), inferred_shapes);
   ASSERT_NE(pattern_group, nullptr) << "The first run did not cache a memory pattern.";
 
-  std::optional<size_t> shared_workspace_offset;
+  InlinedHashSet<size_t> workspace_offsets;
+  bool workspace_reuses_activation = false;
   for (const Node* node : matmul_nodes) {
     const auto& workspace_plan = execution_plan->workspace_allocation_plan.at(node->Index()).front();
     const MemoryPattern* pattern = pattern_group->GetPatterns(workspace_plan.location);
@@ -815,13 +924,18 @@ TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
     const MemoryBlock* block = pattern->GetBlock(workspace_plan.pattern_id);
     ASSERT_NE(block, nullptr) << "Synthetic workspace was not recorded in the cached pattern.";
     EXPECT_EQ(block->size_, workspace_plan.allocation_bytes);
-    if (shared_workspace_offset.has_value()) {
-      EXPECT_EQ(block->offset_, *shared_workspace_offset)
-          << "Sequential MatMulNBits workspaces should reuse one non-overlapping region.";
-    } else {
-      shared_workspace_offset = block->offset_;
+    workspace_offsets.insert(block->offset_);
+    for (const auto& [pattern_id, candidate] : pattern->GetPatternsMap()) {
+      if (pattern_id >= 0 && BlocksOverlap(*block, candidate)) {
+        workspace_reuses_activation = true;
+        break;
+      }
     }
   }
+  EXPECT_LT(workspace_offsets.size(), kNodeCount)
+      << "At least two sequential MatMulNBits workspaces should reuse one memory region.";
+  EXPECT_TRUE(workspace_reuses_activation)
+      << "At least one workspace should reuse memory occupied by a non-overlapping activation.";
 
   fetches.clear();
   ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));

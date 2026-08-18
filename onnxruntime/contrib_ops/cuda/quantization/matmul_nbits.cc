@@ -662,11 +662,11 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 #endif
 
 #if USE_FPA_INTB_GEMM && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the constructed runner
-// state and effective arch from ComputeInternal(). The size is exact for its CUTLASS GEMM branch.
-// Runtime may instead select the CUDA GEMV tactic, which requests no workspace; in that case this is
-// a safe upper bound. Unknown/negative dimensions and arithmetic overflow use dynamic fallback.
-// The shared formula returns zero for empty output; a zero-sized requirement is omitted.
+// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the same constructed
+// runner state, cached tactics, and effective arch that ComputeInternal() uses. A missing tactic stays
+// conservative because ComputeInternal() may lazily profile that M bucket. Returns empty when the node
+// does not take the fpA_intB path, a cached tactic definitively selects the workspace-free GEMV kernel,
+// the leading (m) dimension of input A is not statically known, or the size formula overflows.
 template <typename T>
 Status MatMulNBits<T>::DeclareWorkspaceRequirements(
     gsl::span<const WorkspaceInputShape> input_shapes,
@@ -690,12 +690,31 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   if (!m64.has_value()) {
     return Status::OK();
   }
+
+  int m = 0;
+  try {
+    m = SafeInt<int>(*m64);
+  } catch (const OnnxRuntimeException&) {
+    return Status::OK();
+  }
+
+  // Construction profiles the initial M buckets before Level-2 declaration runs. For a fixed small M,
+  // omit CUTLASS capacity only when that read-only cache definitively selected the workspace-free GEMV
+  // kernel. A missing bucket remains conservative: ComputeInternal may lazily profile it and select GEMM.
+  if (m < onnxruntime::llm::kernels::weight_only::kFpAIntBGemvMaxMExclusive &&
+      gemmProfiler_ != nullptr) {
+    const auto best_tactic = gemmProfiler_->getBestConfig(m, gemmId_);
+    if (best_tactic.has_value() && best_tactic->enableCudaKernel) {
+      return Status::OK();
+    }
+  }
+
   // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
   const int effective_sm = FpAIntBPackingSmForKernel();
   std::optional<size_t> ws;
   try {
     ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(*m64), SafeInt<int>(N_), SafeInt<int>(K_),
+        m, SafeInt<int>(N_), SafeInt<int>(K_),
         effective_sm, this->GetDeviceProp().multiProcessorCount);
   } catch (const OnnxRuntimeException&) {
     return Status::OK();
