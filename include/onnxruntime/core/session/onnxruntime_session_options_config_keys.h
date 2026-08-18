@@ -131,8 +131,8 @@ static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimiz
 //
 // Option values:
 // - A positive integer (as string): Maximum allowed output size in bytes per constant-folded node.
-//   Default is "1073741824" (1 GB).
-// - "0": Disable the size limit (not recommended for untrusted models).
+//   Recommended for untrusted models, e.g. "1073741824" (1 GB).
+// - "0": Disable the size limit. This is the default.
 static const char* const kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes =
     "optimization.constant_folding_max_output_size_in_bytes";
 
