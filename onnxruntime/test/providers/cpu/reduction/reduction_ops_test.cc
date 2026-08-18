@@ -6353,6 +6353,55 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       });
 }
 
+TEST(ReductionOpTest, EmptySetMissingOptionalAxesReducesAllDimensions) {
+  OpTester test("ReduceSum", 20);
+  test.AddInput<float>("data", {2, 0, 4}, {});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetAxesMustBeVector) {
+  const std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>> axes_cases{
+      {{}, {1}},
+      {{2, 0}, {}},
+  };
+  for (const std::string& op : {"ReduceSum", "ReduceLogSumExp"}) {
+    for (const auto& [axes_shape, axes_data] : axes_cases) {
+      OpTester test(op, 20);
+      test.AddInput<float>("data", {2, 0, 4}, {});
+      test.AddInput<int64_t>("axes", axes_shape, axes_data);
+      test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
+      test.Config(OpTester::ExpectResult::kExpectFailure, "An axes tensor must be a vector tensor.")
+          .ConfigEp(DefaultCpuExecutionProvider())
+          .RunWithConfig();
+    }
+  }
+}
+
+void TestEmptySetNoopWithEmptyAxes(const std::string& op, bool omit_axes) {
+  OpTester test(op, 20);
+  test.AddInput<float>("data", {2, 0, 4}, {});
+  if (omit_axes) {
+    test.AddOptionalInputEdge<int64_t>();
+  } else {
+    test.AddInput<int64_t>("axes", {0}, {}, true);
+  }
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 0, 4}, {});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetNoopWithMissingAxes) {
+  TestEmptySetNoopWithEmptyAxes("ReduceSum", true);
+  TestEmptySetNoopWithEmptyAxes("ReduceLogSumExp", true);
+}
+
+TEST(ReductionOpTest, EmptySetNoopWithEmptyAxes) {
+  TestEmptySetNoopWithEmptyAxes("ReduceSum", false);
+  TestEmptySetNoopWithEmptyAxes("ReduceLogSumExp", false);
+}
+
 TEST(ReductionOpTest, empty_set_ReduceL1) {
   test_empty_set("ReduceL1", 20, true, 0);
 }
