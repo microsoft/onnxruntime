@@ -3461,6 +3461,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
+    if (IsGraphCaptureEnabled() && node.OpType() == "GatherND" && node.Domain() == kOnnxDomain) {
+      continue;
+    }
+
     if (!node.GetExecutionProviderType().empty()) {
       if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
         candidates.push_back(node.Index());

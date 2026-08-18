@@ -63,6 +63,7 @@ GatherNDValidationResult ValidateIndicesAndReturnFirstInvalidIndex(
   GatherNDValidationResult host_result{-1, 0};
   CUDA_CALL_THROW(cudaMemcpyAsync(&host_result, device_result, sizeof(host_result),
                                   cudaMemcpyDeviceToHost, stream));
+  // Immediate INVALID_ARGUMENT reporting requires observing the device validation result before Compute returns.
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
 
   return host_result;

@@ -86,25 +86,21 @@ Status GatherNDBase::PrepareCompute(
       }
     }
   } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
-    cudaStreamCaptureStatus capture_status{};
-    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(cuda_stream, &capture_status));
-    if (capture_status == cudaStreamCaptureStatusNone) {
-      // Use on-device validation and copy back only the first invalid index for error reporting.
-      TArray<int64_t> input_dims(input_shape.GetDims());
-      auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
-      const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
-          cuda_stream,
-          batch_dims,
-          input_dims,
-          num_slices,
-          num_slice_dims,
-          indices_data,
-          validation_result_buffer.get());
+    // Use on-device validation and copy back only the first invalid index for error reporting.
+    TArray<int64_t> input_dims(input_shape.GetDims());
+    auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
+    const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
+        cuda_stream,
+        batch_dims,
+        input_dims,
+        num_slices,
+        num_slice_dims,
+        indices_data,
+        validation_result_buffer.get());
 
-      if (validation_result.position != -1) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "invalid index found, index = ", validation_result.value);
-      }
+    if (validation_result.position != -1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "invalid index found, index = ", validation_result.value);
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

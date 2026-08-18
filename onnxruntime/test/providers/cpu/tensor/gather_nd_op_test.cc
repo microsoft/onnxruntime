@@ -5,6 +5,11 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -435,6 +440,24 @@ TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_error) {
            {},
            nullptr,
            &cuda_only_ep);
+}
+
+TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<int64_t>("indices", {1, 1}, {0});
+  test.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  test.ConfigEp(CudaExecutionProviderWithOptions(&cuda_options));
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "CUDA graph capture does not support GatherND");
+  test.RunWithConfig();
 }
 
 #endif
