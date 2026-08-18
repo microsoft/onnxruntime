@@ -15,7 +15,7 @@ namespace cuda {
 // and the CUDA plugin EP (CudaEp wraps a CUDAExecutionProvider), so tuned tactics are persisted at
 // session end. In builds without onnxruntime_USE_FPA_INTB_GEMM there is no tactic cache and this is
 // a no-op.
-#if USE_FPA_INTB_GEMM
+#if USE_FPA_INTB_GEMM && !defined(DISABLE_CONTRIB_OPS)
 void FlushMatMulNBitsTacticCaches();
 #else
 inline void FlushMatMulNBitsTacticCaches() {}
