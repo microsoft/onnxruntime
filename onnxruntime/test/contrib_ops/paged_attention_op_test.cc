@@ -17,6 +17,7 @@
 
 #include "gtest/gtest.h"
 
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/session/IOBinding.h"
@@ -25,6 +26,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
@@ -483,6 +485,29 @@ TEST(PagedAttention, Cuda_AliasedCache_IOBinding) {
     GTEST_SKIP() << "CUDA EP not available.";
   }
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true);
+}
+
+TEST(PagedAttention, Cuda_DebugInfoIncludesDispatchBounds) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("Operator=PagedAttention"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("SdpaKernel=DECODER_ATTENTION"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("NumSplits=2"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=1"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=256"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, WebGpu_AliasedCache_IOBinding) {

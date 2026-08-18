@@ -669,8 +669,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-  active_sessions_[session_id_] = this;
+  // Scope the lock so that it is not held across WindowsTelemetry::RegisterInternalCallback below.
+  // Holding active_sessions_mutex_ while taking the telemetry callback registry lock would invert
+  // the order used by the ETW dispatch path and can deadlock the process. See the destructor.
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_[session_id_] = this;
+  }
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
   callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
@@ -928,8 +933,16 @@ InferenceSession::~InferenceSession() {
   }
 
   // Unregister the session and ETW callbacks
+  //
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  // Remove the session first so that callbacks cannot observe it during teardown. Release
+  // active_sessions_mutex_ before unregistering because the callback registries have their own
+  // locks, and ETW dispatch takes those locks before LogAllSessions takes active_sessions_mutex_.
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_.erase(session_id_);
+  }
+
   if (callback_ML_ORT_provider_ != nullptr) {
     WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
   }
@@ -937,7 +950,6 @@ InferenceSession::~InferenceSession() {
     logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
   }
 #endif
-  active_sessions_.erase(session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1546,6 +1558,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
                                check_load_cancellation_fn_, on_partition_assignment_fn);
 
+  // AOT capability discovery may copy initializer data, so reject arbitrary in-memory references first.
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ValidateInMemoryInitializers());
+
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =
           session_options_.config_options.GetConfigOrDefault(
@@ -1974,6 +1989,11 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const bool is_supported = IsOrtModelVersionSupported(model_version);
 
   OrtFormatLoadOptions load_options{};
+  const auto& config_options = session_options_.config_options;
+  if (is_supported &&
+      config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "0") == "1") {
+    load_options.ignore_saved_runtime_optimizations = false;
+  }
 
 #if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
@@ -2022,7 +2042,6 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // provided an existing buffer of bytes when creating the InferenceSession, or because we memory-mapped the file,
   // ort_format_model_bytes_data_holder_ will be empty.
   // if that is the case we also allow creating initializers that directly use those bytes.
-  const auto& config_options = session_options_.config_options;
   using_ort_model_bytes_for_initializers_ =
       load_options.can_use_flatbuffer_for_initializers =
           ort_format_model_bytes_data_holder_.empty() &&

@@ -86,6 +86,14 @@ namespace HEAD_DIM_NAMESPACE {
 #undef GRP_SIZE
 #undef M_TILESIZE
 
+#define NAMESPACE_NAME XQA_PAGED_NS(grp6_)
+#define GRP_SIZE 6
+#define M_TILESIZE 8
+#include "xqa_paged_impl_gen.cuh"
+#undef NAMESPACE_NAME
+#undef GRP_SIZE
+#undef M_TILESIZE
+
 #define NAMESPACE_NAME XQA_PAGED_NS(grp8_)
 #define GRP_SIZE 8
 #define M_TILESIZE 8
@@ -141,6 +149,8 @@ Status XQA_PAGED_LAUNCH_FN(
   switch (group_size) {
     case 4:
       XQA_PAGED_DISPATCH(grp4_);
+    case 6:
+      XQA_PAGED_DISPATCH(grp6_);
     case 8:
       XQA_PAGED_DISPATCH(grp8_);
     case 16:
@@ -149,7 +159,7 @@ Status XQA_PAGED_LAUNCH_FN(
       XQA_PAGED_DISPATCH(grp32_);
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Paged XQA only supports group_size 4, 8, 16, 32. Input has ", group_size);
+                             "Paged XQA only supports group_size 4, 6, 8, 16, 32. Input has ", group_size);
   }
 }
 
@@ -160,6 +170,8 @@ size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, SmemSize)(const int num_heads, cons
   switch (group_size) {
     case 4:
       return XQA_PAGED_NS(grp4_)::GetSmemSize();
+    case 6:
+      return XQA_PAGED_NS(grp6_)::GetSmemSize();
     case 8:
       return XQA_PAGED_NS(grp8_)::GetSmemSize();
     case 16:

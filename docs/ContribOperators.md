@@ -2688,7 +2688,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention with KV Cache Quantization Support.
   
-  This operator implements causal grouped-query attention with past state (KV cache) support.
+  This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
   
   **Cache Format:**
@@ -2717,6 +2717,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>causal</tt> : int</dt>
+<dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>k_quant_rho</tt> : float</dt>
@@ -2732,7 +2734,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>kv_quant_metadata_fp16</tt> : int</dt>
 <dd>PER_GROUP (OSCAR 2-bit) only: store the per-group scale/zero metadata as fp16 (1) instead of fp32 (0, default). fp16 shrinks the packed history row from head_size/4 + num_groups*8 to head_size/4 + num_groups*4 bytes.</dd>
 <dt><tt>local_window_size</tt> : int</dt>
-<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>

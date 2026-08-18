@@ -1,7 +1,7 @@
-# This pipeline runs tests against artifacts produced by the CUDA
+# This pipeline runs tests against artifacts produced by the CUDA 13.x
 # plugin packaging pipeline. It is resource-triggered on successful
 # packaging runs and can also be queued manually against any prior
-# packaging run.
+# CUDA 13.x packaging run.
 #
 # Split from the packaging pipeline so the test side can be iterated
 # on without rebuilding the CUDA plugin from source.
@@ -23,7 +23,7 @@ variables:
 resources:
   pipelines:
   - pipeline: build
-    source: 'CUDA Plugin EP Packaging Pipeline'
+    source: 'Plugin\CUDA 13.x Plugin EP Packaging Pipeline'
     trigger: true
   repositories:
   - repository: 1esPipelines
