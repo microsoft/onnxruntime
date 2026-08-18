@@ -5,6 +5,7 @@
 // Needed for the CUDA_VERSION check below. MatMulBlockQuantizedFp4Weight relies on the NVFP4
 // conversion intrinsics that are only available in CUDA 12.8 and newer.
 #include <cuda.h>
+#include <cuda_runtime_api.h>
 #endif
 
 #include <algorithm>
