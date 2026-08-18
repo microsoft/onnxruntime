@@ -742,8 +742,10 @@ TEST(MatMulNBits, RuntimeGIdxIsSupportedOutsideCapture_Cuda) {
   test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
 
+  auto& model = test.BuildModel();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
   std::string model_data;
-  ASSERT_TRUE(test.BuildModel().ToProto().SerializeToString(&model_data));
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
   SessionOptions session_options;
   ASSERT_STATUS_OK(
