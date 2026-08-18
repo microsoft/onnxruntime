@@ -6366,7 +6366,7 @@ TEST(ReductionOpTest, EmptySetAxesMustBeVector) {
       {{}, {1}},
       {{2, 0}, {}},
   };
-  for (const std::string& op : {"ReduceSum", "ReduceLogSumExp"}) {
+  for (const char* const op : {"ReduceSum", "ReduceLogSumExp"}) {
     for (const auto& [axes_shape, axes_data] : axes_cases) {
       OpTester test(op, 20);
       test.AddInput<float>("data", {2, 0, 4}, {});
