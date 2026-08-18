@@ -154,7 +154,9 @@ TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
       /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
       kMatMulNBitsWeightPrepackedSm80, /*has_zero_points=*/false);
   ASSERT_TRUE(offline_prepacked.has_value());
-  EXPECT_EQ(offline_prepacked->persistent_prepack_bytes, size_t{131072 + 16384});
+  // The CUDA initializer already holds the offline-prepacked weight and is
+  // reused in place. Only the transposed scale destination is newly allocated.
+  EXPECT_EQ(offline_prepacked->persistent_prepack_bytes, size_t{16384});
   EXPECT_EQ(offline_prepacked->temporary_prepack_bytes, size_t{0});
 }
 

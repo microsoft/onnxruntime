@@ -52,7 +52,9 @@ constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
 
 // Computes the prepack portion of the Level-1 estimate from model metadata only.
-// Persistent bytes describe the packed weight/scale/zero-point destinations.
+// Persistent bytes describe newly allocated packed weight/scale/zero-point
+// destinations. An offline-prepacked weight is already a CUDA initializer and
+// is reused in place, so its bytes remain in base initializer accounting.
 // Temporary bytes describe the runtime weight-layout conversion scratch.
 inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
     int64_t n, int64_t k, int64_t nbits, int64_t block_size,
@@ -69,14 +71,15 @@ inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstima
     const SafeInt<size_t> scale_bytes = safe_n * k_blocks * sizeof(uint16_t);
 
     Level1MemoryEstimate estimate;
-    estimate.persistent_prepack_bytes =
-        static_cast<size_t>(packed_weight_bytes + scale_bytes +
-                            (has_zero_points ? scale_bytes : SafeInt<size_t>(0)));
+    SafeInt<size_t> persistent_prepack_bytes =
+        scale_bytes + (has_zero_points ? scale_bytes : SafeInt<size_t>(0));
     if (weight_prepacked == kMatMulNBitsWeightNotPrepacked) {
+      persistent_prepack_bytes += packed_weight_bytes;
       constexpr size_t kPermutationMapBytes = 32 * sizeof(int32_t);
       estimate.temporary_prepack_bytes =
           static_cast<size_t>(packed_weight_bytes + kPermutationMapBytes);
     }
+    estimate.persistent_prepack_bytes = static_cast<size_t>(persistent_prepack_bytes);
 
     return estimate;
   } catch (const OnnxRuntimeException&) {

@@ -11,7 +11,11 @@ namespace onnxruntime {
 // Partition-time memory estimate for allocations whose sizes are known before
 // kernel creation. The fields remain separate because they have different
 // lifetimes even while the current byte-count accountant conservatively charges
-// all of them to the node's budget.
+// all of them to the node's budget. Prepack memory models initialization-time
+// peak usage, not steady-state usage after source initializers may be released:
+// the accountant separately charges the original weight initializer while these
+// fields describe additional destination and scratch buffers that can coexist
+// with it during prepacking.
 struct Level1MemoryEstimate {
   // Temporary workspace used while executing the kernel. nullopt means that
   // runtime workspace is not estimable and the accountant must use its fallback.

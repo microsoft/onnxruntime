@@ -77,15 +77,20 @@ constexpr int64_t kE2eK = 1024;
 constexpr int64_t kE2eM = 256;
 constexpr int64_t kE2eBlockSize = 32;
 constexpr int64_t kE2eBits = 4;
+constexpr int64_t kWeightPrepackedSm80 = 1;
 constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
 
 // Builds a minimal single-node MatMulNBits model and returns its serialized ModelProto bytes.
 // The compact fpA_intB path does not support bias. Other builds use the valid optional-input
 // layout [A, B, scales, "", "", bias] to exercise positional Level-2 shape resolution.
 //
-// When `m_dim_param` is null (default), input A's leading dimension is the fully-static `kE2eM`.
-// When it is non-null, the leading dimension is instead symbolic.
-std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr) {
+// When `m_dim_param` is null (default), input A's leading dimension is the fully-static value
+// `kE2eM` (a concrete dim_value). When `m_dim_param` is non-null, that leading dimension is instead
+// a *symbolic* dim (dim_param, e.g. "seq") with NO dim_value -- a genuinely dynamic shape. This is
+// used by Test D (dynamic, no override -> graceful fallback) and by Test C, where a
+// FreeDimensionOverrideByName later rewrites the symbolic dim into a concrete value at session init.
+std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
+                                       int64_t weight_prepacked = 0) {
   const int64_t k_blocks = (kE2eK + kE2eBlockSize - 1) / kE2eBlockSize;  // 32
   const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;          // 16
 
@@ -187,6 +192,9 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr) {
   add_int_attr("block_size", kE2eBlockSize);
   add_int_attr("bits", kE2eBits);
   add_int_attr("accuracy_level", 0);
+  if (weight_prepacked != 0) {
+    add_int_attr("weight_prepacked", weight_prepacked);
+  }
 
   std::string bytes;
   model.SerializeToString(&bytes);
@@ -397,6 +405,37 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
     ASSERT_NE(mm_node, nullptr);
     EXPECT_NE(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
   }
+}
+
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGpuWeight) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  const std::string model_bytes =
+      BuildMatMulNBitsModelBytes(nullptr, kWeightPrepackedSm80);
+
+  // The 350 KiB budget is above initializer + output + scale destination +
+  // runtime workspace, but below that value plus a duplicate packed-weight
+  // destination. CUDA must accept the node because PrePack_B reuses the
+  // already GPU-resident offline-prepacked initializer in place.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "350,"));
+  InferenceSessionWrapper session(so, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_NE(mm_node, nullptr);
+  EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
 }
 
 TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {

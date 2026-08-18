@@ -360,7 +360,7 @@ as unavailable when a required contract is missing. See the linked roadmap for t
 | Buffer | Size formula | Depends on |
 |--------|--------------|-----------|
 | `workspace_buffer` | `weightOnlyGemmRunner_->getWorkspaceSize(m, n, k)` | Dims + tactic |
-| `fpA_intB_weight_buffer_` | `N * K * bits / 8` | Weight shape + bits |
+| `fpA_intB_weight_buffer_` | `N * K * bits / 8` for runtime-prepacked weights; not allocated when an offline-prepacked CUDA initializer is reused in place | Weight shape + bits + `weight_prepacked` |
 | `fpA_intB_scale_buffer_` | `N * ceil(K / block_size) * sizeof(T)` | Weight shape + block size |
 | `fpA_intB_zero_buffer_` | Same as scale buffer, when zero points exist | Weight shape + block size |
 | `packed_transposed_weight_space` | `packed_weight_bytes` (transient) | Weight shape |
@@ -379,6 +379,8 @@ formula was extracted and verified against the runtime value for MatMulNBits; se
 The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and temporary prepack
 scratch in separate fields. The current byte-count resource accountant conservatively charges all three,
 while Level 2 continues to declare only the runtime workspace slot.
+Offline-prepacked CUDA weights remain in base initializer accounting and are not also charged as a
+persistent prepack destination because `PrePack_B()` reuses the device initializer in place.
 
 ---
 
