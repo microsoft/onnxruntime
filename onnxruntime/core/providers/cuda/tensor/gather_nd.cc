@@ -122,7 +122,7 @@ Status GatherNDBase::PrepareCompute(
   {
     auto running_product = slice_size;
     for (int64_t i = 0; i < num_slice_dims; ++i) {
-      sizes_from_slice_dims[static_cast<size_t>(num_slice_dims - 1 - i)] = running_product;
+      sizes_from_slice_dims[static_cast<int32_t>(num_slice_dims - 1 - i)] = running_product;
       running_product *= input_shape[batch_dims + num_slice_dims - 1 - i];
     }
   }
