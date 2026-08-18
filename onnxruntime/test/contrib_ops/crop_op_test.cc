@@ -55,6 +55,11 @@ TEST(CropOpTest, Crop_Invalid_Scale_Size) {
   RunInvalidCropTest({1, 1, 4, 4}, {1, 1, 1, 1}, &scale);
 }
 
+TEST(CropOpTest, Crop_Empty_Scale) {
+  const std::vector<int64_t> scale;
+  RunInvalidCropTest({1, 1, 4, 4}, {1, 1, 1, 1}, &scale);
+}
+
 TEST(CropOpTest, Crop_Negative_Border) {
   RunInvalidCropTest({1, 1, 4, 4}, {0, -1, 0, 0}, nullptr);
 }
@@ -76,6 +81,11 @@ TEST(CropOpTest, Crop_Scale_Exceeds_Input) {
 
 TEST(CropOpTest, Crop_Large_Border_Does_Not_Overflow) {
   RunInvalidCropTest({1, 1, 4, 4}, {0, std::numeric_limits<int64_t>::max(), 0, 1}, nullptr);
+}
+
+TEST(CropOpTest, Crop_Large_Scale_Does_Not_Overflow) {
+  const std::vector<int64_t> scale{std::numeric_limits<int64_t>::max(), 1};
+  RunInvalidCropTest({1, 1, 4, 4}, {0, 1, 0, 0}, &scale);
 }
 
 TEST(CropOpTest, Crop_Scale_Overrides_Right_And_Bottom_Borders) {

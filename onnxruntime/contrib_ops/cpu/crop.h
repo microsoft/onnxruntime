@@ -18,8 +18,8 @@ class CropBase {
  protected:
   template <typename KernelInfoType>
   CropBase(const KernelInfoType& info)
-      : border_(info.template GetAttrsOrDefault<int64_t>("border")),
-        scale_(info.template GetAttrsOrDefault<int64_t>("scale")) {
+      : border_(info.template GetAttrsOrDefault<int64_t>("border")) {
+    scale_specified_ = info.template GetAttrs<int64_t>("scale", scale_).IsOK();
   }
 
   Status ValidateInput(const Tensor* X) const {
@@ -32,7 +32,7 @@ class CropBase {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attribute border values must be non-negative");
     }
 
-    if (!scale_.empty()) {
+    if (scale_specified_) {
       if (scale_.size() != 2) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Attribute scale needs to be specified with two elements (height, width), got ",
@@ -94,7 +94,8 @@ class CropBase {
   }
 
   const std::vector<int64_t> border_;  // (leftBorder, topBorder, rightBorder, bottomBorder)
-  const std::vector<int64_t> scale_;   // (height, width)
+  std::vector<int64_t> scale_;         // (height, width)
+  bool scale_specified_;
 };
 
 template <typename T>
