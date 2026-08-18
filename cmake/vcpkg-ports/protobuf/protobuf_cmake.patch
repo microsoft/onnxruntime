@@ -11,6 +11,13 @@ index 65765ca29..81084b9d4 100644
        set_property(TARGET ${binary}
          PROPERTY INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
      elseif (APPLE)
+  diff --git a/cmake/libprotobuf-lite.cmake b/cmake/libprotobuf-lite.cmake
+  index 6a923f6c8..911881eb4 100644
+  --- a/cmake/libprotobuf-lite.cmake
+  +++ b/cmake/libprotobuf-lite.cmake
+  @@ -46 +46 @@ add_library(protobuf::libprotobuf-lite ALIAS libprotobuf-lite)
+  -target_link_libraries(libprotobuf-lite PRIVATE utf8_validity)
+  +target_link_libraries(libprotobuf-lite PUBLIC utf8_validity)
 diff --git a/src/google/protobuf/compiler/command_line_interface.cc b/src/google/protobuf/compiler/command_line_interface.cc
 index cd95c8b41..d4825180d 100644
 --- a/src/google/protobuf/compiler/command_line_interface.cc

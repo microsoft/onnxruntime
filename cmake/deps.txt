@@ -40,7 +40,7 @@ mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip;2b2cd58ac7a26df5371266149e0c76776330cdf1
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
-protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v33.6.zip;d8e249eb4cd67b226b6f2beb9ce614a5b5e8cad7
+protobuf;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protobuf-33.6.tar.gz;051fee744fcca04dab37eb009d49aa3e9546acda
 protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-win64.zip;9f43a76f18e37325079f772bd47673f9d2f06385
 protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-win32.zip;127b589423e076fe5f9724e61b2aa9e91eab3936
 protoc_linux_x64;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-linux-x86_64.zip;44c6aeb3f494e4f8e46d283b05e087c47cf6369d
