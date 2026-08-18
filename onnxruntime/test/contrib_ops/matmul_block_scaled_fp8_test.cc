@@ -12,6 +12,8 @@
 // CUDA_VERSION comes from cuda.h. Without this include the guard below silently
 // evaluates to false and every test in this file is compiled out.
 #include <cuda.h>
+
+#include "core/providers/cuda/cuda_provider_options.h"
 #endif
 
 namespace onnxruntime::test {
@@ -507,9 +509,11 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
 
 // The weight dequantization scratch is capped and tiled over N. ORT_FP8_DEQUANT_SCRATCH_MIB
 // shrinks the cap so that a small shape still splits into several tiles: 1 MiB / (4096 * 2 B) is
-// 128 rows, so N = 385 takes three full passes and one ragged pass. The weight pattern does not
-// repeat at a tile boundary and every N row carries a distinct scale, so a tile that picked up the
-// wrong weight or scale offset, or wrote to the wrong output column, changes Y.
+// 128 rows, so N = 769 takes six full passes and one ragged pass. The CUDA arena is capped at
+// 8 MiB: the 3 MiB FP8 weight plus an untiled 6 MiB dequant scratch cannot fit, while the 1 MiB
+// tiled scratch can. The weight pattern does not repeat at a tile boundary and every N row carries
+// a distinct scale, so a tile that picked up the wrong weight or scale offset, or wrote to the
+// wrong output column, changes Y.
 TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
@@ -517,13 +521,13 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FP8_DEQUANT_SCRATCH_MIB", "1"}}};
 
   constexpr int64_t m = 16;  // > kGemvMaxM, so the dequant + cuBLAS path runs
-  constexpr int64_t n = 385;
+  constexpr int64_t n = 769;
   constexpr int64_t k = 4096;
   constexpr int64_t block_size = 128;
   constexpr int64_t k_blocks = k / block_size;
   constexpr int64_t tile_rows = 1024 * 1024 / (k * sizeof(MLFloat16));
   static_assert(tile_rows == 128);
-  static_assert((n + tile_rows - 1) / tile_rows == 4);
+  static_assert((n + tile_rows - 1) / tile_rows == 7);
   static_assert(n % tile_rows == 1);
 
   std::vector<float> row_weights(static_cast<size_t>(n));
@@ -554,8 +558,12 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
   test.SetOutputTolerance(0.5f);
 
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.gpu_mem_limit = 8 * 1024 * 1024;
+  provider_options.arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+  provider_options.use_tf32 = false;
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(CudaExecutionProviderWithOptions(&provider_options));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
