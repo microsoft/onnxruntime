@@ -1198,7 +1198,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention with KV Cache Quantization Support.
 
-This operator implements causal grouped-query attention with past state (KV cache) support.
+This operator implements grouped-query attention with past state (KV cache) support.
 It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
 
 **Cache Format:**
@@ -1224,6 +1224,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("causal",
+              "Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
@@ -1233,7 +1237,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("local_window_size",
-              "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
+              "left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. "
+              "Default value is -1 meaning unused.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Attr("sliding_window_cache",
@@ -1429,7 +1434,9 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'k_norm_weight':                (head_size)
 // Input 'k_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
 // Input 'v_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
-// Input 'attention_metadata':           (2), CPU memory: [max_query_len_bound, max_kv_len_bound]
+// Input 'attention_metadata':           (2) or (3), CPU memory:
+//                                       [max_query_len_bound, max_kv_len_bound,
+//                                        optional max_kv_len_lower_bound]
 // Output 'output':                      (token_count, num_heads * v_head_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
 // Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size), absent for LATENT
@@ -1713,18 +1720,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(16,
                "attention_metadata",
-               "1D tensor with shape (2) holding [max_query_len_bound, max_kv_len_bound] in CPU memory. "
+               "1D tensor with shape (2) or (3) holding [max_query_len_bound, max_kv_len_bound, "
+               "optional max_kv_len_lower_bound] in CPU memory. "
                "max_query_len_bound is an upper bound on the number of new tokens any one sequence "
                "contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are "
                "replay-wide upper bounds, never exact per-step values: they must hold for every step this node "
                "-- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the "
                "backend and size launch dimensions and workspaces; they never enter a mask comparison, so "
-               "over-estimating only costs empty work. The op can otherwise obtain these only by copying "
+               "over-estimating only costs empty work. max_kv_len_lower_bound is a replay-wide lower bound "
+               "on the largest per-sequence KV length in the batch and 0 means 'unknown'. It is a "
+               "provider-neutral performance hint; omitting it preserves the shape-(2) contract and disables "
+               "optimizations that require a lower bound unless the op reads exact lengths back from the device. "
+               "The op can otherwise obtain the upper bounds only by copying "
                "'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the "
                "stream on every call, which stalls the pipeline once per node per step and makes the op "
                "impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so "
                "supplying them is normally free. When absent, the op falls back to the device readback. "
-               "The values are trusted: an under-sized bound violates the contract and may omit attention work.",
+               "The upper bounds are trusted: an under-sized bound violates the contract and may omit "
+               "attention work.",
                "S",
                OpSchema::Optional)
         .Output(0,
@@ -2759,7 +2772,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Attention output with 3D packed shape (B, T, H_q * d_v).",
+                // Kept free of angle brackets: gen_contrib_doc.py interpolates this
+                // description straight into an HTML <dd> element without escaping.
+                "Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). "
+                "Standard GQA emits one output per query head; inverse GQA, where "
+                "H_kv exceeds H_q, emits one per KV head.",
                 "T")
         .Output(1,
                 "present_state",
@@ -2789,7 +2806,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           int64_t q_num_heads = (q_num_heads_attr && q_num_heads_attr->has_i()) ? q_num_heads_attr->i() : 0;
           int64_t kv_num_heads = (kv_num_heads_attr && kv_num_heads_attr->has_i()) ? kv_num_heads_attr->i() : 0;
 
-          // Output 0: (B, T, H_q * d_v) — 3D packed
+          // Output 0: (B, T, max(H_q, H_kv) * d_v) — 3D packed
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);

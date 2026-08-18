@@ -42,6 +42,7 @@ namespace webgpu {
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+    enable_robustness_ = config.enable_robustness;
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -242,6 +243,18 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         << config.max_num_pending_dispatches
         << " will be ignored.";
   }
+
+  if (config.enable_robustness_explicitly_set) {
+    if (config.device != nullptr) {
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU enableRobustness cannot affect an externally supplied WebGPU device. "
+          << "The requested value will be ignored.";
+    } else if (device_ != nullptr && enable_robustness_ != config.enable_robustness) {
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU context is already initialized with enableRobustness=" << enable_robustness_
+          << ". Requested value " << config.enable_robustness << " will be ignored.";
+    }
+  }
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -318,6 +331,12 @@ Status WebGpuContext::EncodeDeferredDispatches() {
   if (deferred_dispatches_.empty()) {
     return Status::OK();
   }
+
+  ORT_RETURN_IF_NOT(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
+                        max_num_pending_dispatches_,
+                    "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
+                    num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
+                    ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
 
   auto reset_deferred_state = [this]() {
     deferred_dispatches_.clear();
@@ -672,7 +691,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Drain and submit a full window to bound both recorded and encoded dispatch state. Partial
   // windows are encoded and submitted by the caller at its execution boundary.
-  if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
+  if (static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() >=
+      max_num_pending_dispatches_) {
     ORT_RETURN_IF_ERROR(Flush(buffer_mgr));
   }
   return Status::OK();
@@ -699,33 +719,39 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
       "skip_validation",
-      "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
+  std::vector<const char*> enabled_toggles;
 #ifndef NDEBUG
   // validation_mode_explicitly_set_ only changes release behavior; mark it used in debug builds
   // to avoid -Wunused-private-field on toolchains that treat warnings as errors.
   ORT_UNUSED_PARAMETER(validation_mode_explicitly_set_);
-  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
-                                      ? std::begin(toggles) + 1
-                                      : std::begin(toggles),
-                                  std::end(toggles));
+  enabled_toggles = std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                                 ? std::begin(toggles) + 1
+                                                 : std::begin(toggles),
+                                             std::end(toggles));
 #else
   // In release/relwithdebinfo builds, default to skip_validation for performance,
   // but honor explicit validationMode overrides.
   if (!validation_mode_explicitly_set_) {
-    return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+    enabled_toggles = std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  } else {
+    enabled_toggles = std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                                   ? std::begin(toggles) + 1
+                                                   : std::begin(toggles),
+                                               std::end(toggles));
   }
-  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
-                                      ? std::begin(toggles) + 1
-                                      : std::begin(toggles),
-                                  std::end(toggles));
 #endif
+
+  if (!enable_robustness_) {
+    enabled_toggles.push_back("disable_robustness");
+  }
+  enabled_toggles.push_back("lazy_clear_resource_on_first_use");
+  return enabled_toggles;
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
-      "lazy_clear_resource_on_first_use",
       "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
@@ -741,6 +767,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupSizeControl,
 #if !defined(__wasm__)
       wgpu::FeatureName::BufferMapExtendedUsages,
 #endif

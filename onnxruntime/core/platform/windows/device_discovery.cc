@@ -348,8 +348,12 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12(bool have_remote_dis
       continue;
     }
 
+    // Microsoft Remote Display Adapter and Microsoft Hyper-V Video display adapters use the basic render driver
+    // but don't set the DXGI_ADAPTER_FLAG_SOFTWARE flag. Filter them out by checking the vendor and device IDs.
+    const bool is_microsoft_basic_render_driver = desc.VendorId == 0x1414 && desc.DeviceId == 0x008c;
     if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
-        (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0) {
+        (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0 ||
+        is_microsoft_basic_render_driver) {
       // software or remote. skip
       continue;
     }

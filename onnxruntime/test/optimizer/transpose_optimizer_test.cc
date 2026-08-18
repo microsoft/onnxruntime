@@ -2280,6 +2280,37 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthNoO
                     /*opset_version*/ {15, 18, 23});
 }
 
+TEST(TransposeOptimizerTests, TestSliceDefaultAxesStartsLengthExceedsRankNoOpt) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {2, 4}, 0.0f, 1.0f);
+    auto* input1_arg = MakeInput<int64_t>(builder, {{3}}, {3}, {0, 0, 0});
+    auto* input2_arg = MakeInput<int64_t>(builder, {{3}}, {3}, {1, 1, 1});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* slice_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 0});
+    builder.AddNode("Slice", {transpose_1_out_0, input1_arg, input2_arg}, {slice_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 0});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count.at("Transpose") == 2,
+                      "Slice with starts length exceeding rank should not be optimized");
+    return Status::OK();
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TransposeOptimizer>(std::move(cpu_allocator));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsInt32) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);

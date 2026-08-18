@@ -1598,6 +1598,13 @@ extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 
 //
+// Linear (recurrent) attention dispatch structure.
+//
+struct MLAS_LINEAR_ATTENTION_DISPATCH;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -1845,6 +1852,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
+    const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};
 };
 
 inline
@@ -1944,6 +1952,70 @@ MlasPartitionWork(
         *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
         *WorkRemaining = WorkPerThread;
     }
+}
+
+//
+// Map a cost boundary to a work item index for the NCHWc grouped convolution
+// algorithms.
+//
+// Work items are output rows of a filter set, indexed row-fastest as
+// ((BatchGroup * FilterSetCount) + FilterSet) * OutputHeight + Row. Cost is
+// measured in block-rows: one NCHWc output block of one output row. Items in a
+// full filter set cost FilterSetSize block-rows; items in the ragged last set
+// cost LastSetFilterCount. Returns the index of the first work item whose
+// starting cumulative cost is greater than or equal to Cost, so partitioning a
+// cost interval and converting both endpoints yields work ranges that tile
+// [0, TotalWork) with no gap and no overlap.
+//
+// Worked example, OutputChannels = 96 with BlockSize = 16 and FilterSetSize = 4:
+// TotalBlockedFilters = 96 / 16 = 6 blocked filters, so FilterSetCount = 2 and
+// LastSetFilterCount = 6 - 1 * 4 = 2. Per (batch, group) segment the two sets
+// cost 4 * OutputHeight and 2 * OutputHeight block-rows respectively — the
+// imbalance a uniform split by item index would ignore, since both sets contain
+// OutputHeight items while the first does twice the work.
+//
+
+inline
+size_t
+MlasNchwcCostToWorkIndex(
+    size_t Cost,
+    size_t OutputHeight,
+    size_t FilterSetCount,
+    size_t FilterSetSize,
+    size_t TotalBlockedFilters,
+    size_t LastSetFilterCount
+    )
+{
+    const size_t CostPerBatchGroup = TotalBlockedFilters * OutputHeight;
+
+    size_t BatchGroup = Cost / CostPerBatchGroup;
+    const size_t Remainder = Cost - BatchGroup * CostPerBatchGroup;
+
+    const size_t FullSetCost = FilterSetSize * OutputHeight;
+
+    size_t Set = Remainder / FullSetCost;
+    size_t SetFilterCount = FilterSetSize;
+
+    if (Set >= FilterSetCount - 1) {
+        Set = FilterSetCount - 1;
+        SetFilterCount = LastSetFilterCount;
+    }
+
+    const size_t SetRemainder = Remainder - Set * FullSetCost;
+
+    size_t Row = (SetRemainder + SetFilterCount - 1) / SetFilterCount;
+
+    if (Row >= OutputHeight) {
+
+        Row = 0;
+
+        if (++Set == FilterSetCount) {
+            Set = 0;
+            BatchGroup += 1;
+        }
+    }
+
+    return (BatchGroup * FilterSetCount + Set) * OutputHeight + Row;
 }
 
 //
