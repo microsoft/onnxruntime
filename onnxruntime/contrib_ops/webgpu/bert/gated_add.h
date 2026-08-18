@@ -13,16 +13,13 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-// output = X + round_to_T(Y * gate), with gate broadcast across the last dimension.
+// output = X + Y * gate, with gate broadcast across the last dimension.
 class GatedAddProgram final : public Program<GatedAddProgram> {
  public:
-  GatedAddProgram(bool is_fp16) : Program{"GatedAdd"}, is_fp16_{is_fp16} {}
+  GatedAddProgram() : Program{"GatedAdd"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool is_fp16_;
 };
 
 class GatedAdd final : public WebGpuKernel {

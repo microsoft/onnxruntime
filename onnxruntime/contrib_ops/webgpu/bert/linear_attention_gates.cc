@@ -32,15 +32,16 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status LinearAttentionGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("dt_bias", ShaderUsage::UseUniform);
-  shader.AddInput("decay_scale", ShaderUsage::UseUniform);
+  const auto& dt_bias = shader.AddInput("dt_bias", ShaderUsage::UseUniform);
+  const auto& decay_scale = shader.AddInput("decay_scale", ShaderUsage::UseUniform);
   const ShaderVariableHelper* b = nullptr;
   if (has_b_) {
     b = &shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
-  shader.AddOutput("decay", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& decay = shader.AddOutput("decay", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* beta = nullptr;
   if (has_beta_) {
-    shader.AddOutput("beta", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+    beta = &shader.AddOutput("beta", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
 
   shader.AdditionalImplementation()
@@ -60,10 +61,15 @@ Status LinearAttentionGateProgram::GenerateShaderCode(ShaderHelper& shader) cons
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let h = global_idx % uniforms.num_heads;\n"
-                            << "  let biased = f32(" << a.GetByOffset("global_idx") << ") + dt_bias[h];\n"
-                            << "  decay[global_idx] = decay_element_t(decay_scale[h] * la_softplus(biased));\n";
+                            << "  let biased = f32(" << a.GetByOffset("global_idx") << ") + f32("
+                            << dt_bias.GetByOffset("h") << ");\n"
+                            << "  " << decay.SetByOffset("global_idx", "decay_element_t(f32(" + decay_scale.GetByOffset("h") + ") * la_softplus(biased))")
+                            << "\n";
   if (has_beta_) {
-    shader.MainFunctionBody() << "  beta[global_idx] = beta_element_t(la_sigmoid(f32(" << b->GetByOffset("global_idx") << ")));\n";
+    shader.MainFunctionBody() << "  "
+                              << beta->SetByOffset("global_idx",
+                                                   "beta_element_t(la_sigmoid(f32(" + b->GetByOffset("global_idx") + ")))")
+                              << "\n";
   }
 
   return Status::OK();
@@ -118,10 +124,10 @@ Status LinearAttentionGate::ComputeInternal(ComputeContext& context) const {
 }
 
 Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("scale", ShaderUsage::UseUniform);
-  shader.AddInput("gate", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform);
+  const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation()
       << "fn stable_sigmoid(x: f32) -> f32 {\n"
@@ -138,7 +144,7 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let base = row * uniforms.norm_size;\n"
       << "  var sum_sq = 0.0;\n"
       << "  for (var i = local_idx; i < uniforms.norm_size; i += workgroup_size_x) {\n"
-      << "    let v = f32(input[base + i]);\n"
+      << "    let v = f32(" << input.GetByOffset("base + i") << ");\n"
       << "    sum_sq += v * v;\n"
       << "  }\n"
       << "  row_sum_sq[local_idx] = sum_sq;\n"
@@ -153,9 +159,10 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  }\n"
       << "  let inv_rms = inverseSqrt(row_sum_sq[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
       << "  for (var i = local_idx; i < uniforms.norm_size; i += workgroup_size_x) {\n"
-      << "    let z = f32(gate[base + i]);\n"
-      << "    let normalized = f32(input[base + i]) * inv_rms * f32(scale[i]);\n"
-      << "    output[base + i] = output_element_t(normalized * (z * stable_sigmoid(z)));\n"
+      << "    let z = f32(" << gate.GetByOffset("base + i") << ");\n"
+      << "    let normalized = f32(" << input.GetByOffset("base + i") << ") * inv_rms * f32("
+      << scale.GetByOffset("i") << ");\n"
+      << "    " << output.SetByOffset("base + i", "output_element_t(normalized * (z * stable_sigmoid(z)))") << "\n"
       << "  }\n";
 
   return Status::OK();
@@ -193,10 +200,9 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
                                                      : 256;
 
   GatedRMSNormProgram program{};
-  program.CacheHint(workgroup_size)
-      .AddInputs({{input, ProgramTensorMetadataDependency::Type},
-                  {scale, ProgramTensorMetadataDependency::Type},
-                  {gate, ProgramTensorMetadataDependency::Type}})
+  program.AddInputs({{input, ProgramTensorMetadataDependency::Type},
+                     {scale, ProgramTensorMetadataDependency::Type},
+                     {gate, ProgramTensorMetadataDependency::Type}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(num_rows))
       .SetWorkgroupSize(workgroup_size)
