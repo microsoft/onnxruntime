@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/bert/causal_conv_with_state.h"
+#include "contrib_ops/cpu/bert/causal_conv_with_state_helper.h"
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/common/safeint.h"
@@ -47,6 +48,10 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : OpKernel
   activation_ = info.GetAttrOrDefault<std::string>("activation", "none");
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
+
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
+              "CPU CausalConvWithState does not support state_window > 0 (CUDA EP only)");
+  state_window_ = 0;
 }
 
 namespace {
@@ -223,7 +228,11 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
     Tensor* output_tensor = context->Output(0, input_shape);
     float* output_data = output_tensor->MutableData<float>();
 
-    TensorShape state_shape({batch_size, channels, pad});
+    // state_window_ is always 0 on CPU, so this is the legacy (B, C, K-1) shape.
+    TensorShape state_shape;
+    ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
+        state_window_, static_cast<int>(batch_size), static_cast<int>(channels),
+        static_cast<int>(pad), past_state_tensor, state_shape));
     Tensor* present_state_tensor = context->Output(1, state_shape);
     float* present_data = present_state_tensor->MutableData<float>();
 

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -9,10 +11,22 @@
 #include "core/framework/int2.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/tensor/quantize_linear_common.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
 #ifdef USE_CUDA
+TEST(QuantizeLinearOpTest, CudaElementCountRange) {
+  EXPECT_TRUE(cuda::IsQDQElementCountSupported(0));
+  EXPECT_TRUE(cuda::IsQDQElementCountSupported(std::numeric_limits<int32_t>::max()));
+  EXPECT_FALSE(cuda::IsQDQElementCountSupported(static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1));
+  EXPECT_FALSE(cuda::IsQDQElementCountSupported(-1));
+  EXPECT_NE(cuda::QDQElementCountErrorMessage().find("INT32_MAX"), std::string::npos);
+}
+
 static void RunQDQOp25CudaOnly(OpTester& test) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (cuda_ep == nullptr) {

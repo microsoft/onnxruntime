@@ -1206,8 +1206,8 @@ fp32 default and the fp16-accumulation experiment:
 - Added CUDA provider kernel: `MatMulFloatInt4RouterKernel<T>`.
 - Dispatch: `TryMatMul4Bits` selects the specialized kernel only for the exact
   shape above. For clean A/B measurement, set
-  `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` to force the generic
-  `MatMulFloatInt4Kernel` route.
+  `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` to force the generic 4-bit
+  M=1 route.
 - Motivation: avoiding 32 router logits in global memory is small. The more
   direct win is reducing overhead in the special `N=32`, `K=2880` int4 router
   GEMV itself.
@@ -1249,7 +1249,7 @@ Kernel summary rows from the no-CUDA-graph profile:
 
 | Kernel | Total ns | Instances | Avg ns |
 |--------|---------:|----------:|-------:|
-| generic `MatMulFloatInt4Kernel<__half, 32, false>` | 3318180 | 343 | 9674.0 |
+| generic 4-bit M=1 GEMV (pre-split profile) | 3318180 | 343 | 9674.0 |
 | specialized `MatMulFloatInt4RouterKernel<__half>` | 655863 | 168 | 3903.9 |
 | `SoftmaxTopKWarpBitonicKernel<__half, 8>` | 439868 | 192 | 2291.0 |
 

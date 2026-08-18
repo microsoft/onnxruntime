@@ -8,6 +8,7 @@
 
 namespace onnxruntime {
 struct AttentionKernelDebugInfo {
+  std::optional<bool> use_latent_attention = std::nullopt;
   std::optional<bool> use_xqa = std::nullopt;
   std::optional<bool> use_flash_attention = std::nullopt;
   std::optional<bool> use_lean_attention = std::nullopt;
@@ -17,6 +18,10 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> use_trt_flash_attention = std::nullopt;
   std::optional<bool> use_trt_cross_attention = std::nullopt;
   std::optional<bool> use_decoder_attention = std::nullopt;
+  std::optional<int> num_splits = std::nullopt;
+  std::optional<int> gqa_group_size = std::nullopt;
+  std::optional<int> effective_kv_length_bound = std::nullopt;
+  std::optional<bool> xqa_page_table_expanded = std::nullopt;
   void SetTrtFusedKernel(bool enable_trt_flash_attention, int sequence_length);
   void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
 };

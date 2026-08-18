@@ -90,7 +90,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       bool is_bf16,
                       int local_window_size = -1,
                       int max_num_blocks_per_seq = 0,
-                      int page_block_size = 1);
+                      int page_block_size = 1,
+                      int num_splits = 0,
+                      void* softmax_lse_accum = nullptr,
+                      void* out_accum = nullptr);
 
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,

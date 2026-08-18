@@ -674,6 +674,58 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingCopiesAliasedTensorBuffer) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> values(64);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = static_cast<float>(i + 1);
+    }
+
+    auto* input = builder.MakeInitializer<float>({64}, values);
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{64});
+    builder.AddNode("Identity", {input}, std::vector<NodeArg*>{output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    const auto& outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(outputs.size() == 1U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 1U);
+
+    const ONNX_NAMESPACE::TensorProto* folded_tensor = nullptr;
+    TEST_RETURN_IF_NOT(graph.GetInitializedTensor(outputs[0]->Name(), folded_tensor));
+    TEST_RETURN_IF_NOT(folded_tensor != nullptr);
+
+    Initializer initializer{graph, *folded_tensor, graph.ModelPath()};
+    TEST_RETURN_IF_NOT(initializer.size() == 64U);
+    const float* data = initializer.data<float>();
+    for (size_t i = 0; i < 64; ++i) {
+      TEST_RETURN_IF_NOT(data[i] == static_cast<float>(i + 1));
+    }
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(*cpu_ep, false, empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
@@ -7853,6 +7905,95 @@ TEST_F(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedScaleMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* scale_mul = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() != "Mul" || node.InputDefs().size() != 2) {
+      continue;
+    }
+
+    for (const NodeArg* input : node.InputDefs()) {
+      if (optimizer_utils::IsInitializerWithExpectedValue(graph, *input, 0.7978845834732056f, true)) {
+        scale_mul = &node;
+        break;
+      }
+    }
+
+    if (scale_mul != nullptr) {
+      break;
+    }
+  }
+
+  ASSERT_NE(scale_mul, nullptr);
+  scale_mul->MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.FastGelu"], 0);
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedFirstFormulaIntermediateMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* coefficient_mul = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Mul" && node.InputDefs().size() == 2 &&
+        (optimizer_utils::IsInitializerWithExpectedValue(graph, *node.InputDefs()[0], 0.044715f, true) ||
+         optimizer_utils::IsInitializerWithExpectedValue(graph, *node.InputDefs()[1], 0.044715f, true))) {
+      coefficient_mul = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(coefficient_mul, nullptr);
+  ASSERT_EQ(coefficient_mul->GetOutputEdgesCount(), 1);
+  Node& intermediate_mul = *graph.GetNode(coefficient_mul->OutputNodesBegin()->Index());
+  intermediate_mul.MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  EXPECT_EQ(CountOpsInGraph(graph)["com.microsoft.FastGelu"], 0);
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedSecondFormulaIntermediateMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu2.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* pow_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Pow") {
+      pow_node = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(pow_node, nullptr);
+  ASSERT_EQ(pow_node->GetOutputEdgesCount(), 1);
+  Node& intermediate_mul = *graph.GetNode(pow_node->OutputNodesBegin()->Index());
+  intermediate_mul.MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  EXPECT_EQ(CountOpsInGraph(graph)["com.microsoft.FastGelu"], 0);
+}
+
 TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu_use_graph_input.onnx";
   std::shared_ptr<Model> p_model;
@@ -10971,6 +11112,50 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+}
+
+// The fusion reads the 'axis' attribute/input straight from the model, and needs to reject a value
+// that falls outside [0, rank) for the shared input's known rank rather than indexing its shape with it.
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_OutOfRangeAxis) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    return Status::OK();
+  };
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
+    return Status::OK();
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>({{54}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
+    auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
+    // gather_index_1 is a graph input with no static shape, so ONNX's own Gather shape inference
+    // (which requires both the data AND indices shapes to be known before range-checking 'axis')
+    // cannot validate 'axis' here and silently skips that check, matching how this can be reached
+    // in a real model without ONNX itself already rejecting it at load.
+    auto* gather_index_1 = builder.MakeInput<int64_t>(std::nullopt);
+    auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* transpose_out_1 = builder.MakeOutput();
+    auto* transpose_out_2 = builder.MakeOutput();
+
+    builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+    // 'axis' is well outside the reshape output's rank of 4; the fusion must reject this before
+    // indexing the shape with it, rather than crashing.
+    builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+        .AddAttribute("axis", static_cast<int64_t>(100));
+    builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, GatherToSliceFusion) {
