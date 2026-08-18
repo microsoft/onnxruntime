@@ -33,9 +33,8 @@ constexpr int64_t kMinScoreRows = 256;
 // used because replay would freeze it. The engine may instead provide a conservative
 // request-level maximum through ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST; without one,
 // capture keeps the full capacity exactly as before.
-Status ClampScoreCapacity(OpKernelContext* context, const Tensor& past_lens,
+Status ClampScoreCapacity(cudaStream_t stream, const Tensor& past_lens,
                           SparseRowSelectParams& params) {
-  cudaStream_t stream = static_cast<cudaStream_t>(context->GetGPUComputeStream());
   cudaStreamCaptureStatus capture = cudaStreamCaptureStatusNone;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
 
@@ -202,7 +201,7 @@ Status SparseRowSelect<T>::ComputeInternal(OpKernelContext* context) const {
   params.scale = scale_;
   params.simulate_rotated_fp4 = simulate_rotated_fp4_;
 
-  ORT_RETURN_IF_ERROR(ClampScoreCapacity(context, *past_lens, params));
+  ORT_RETURN_IF_ERROR(ClampScoreCapacity(Stream(context), *past_lens, params));
 
   auto query_scratch = GetScratchBuffer<float>(
       static_cast<size_t>(SparseRowSelectQueryElems(params)), GetComputeStream(context));
