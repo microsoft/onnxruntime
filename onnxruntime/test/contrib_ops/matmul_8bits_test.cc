@@ -592,9 +592,15 @@ TEST(MatMulNBits, InvalidGIdx_OutOfRange_Cuda) {
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value", {}, nullptr, &execution_providers);
+  test.ConfigEps(std::move(execution_providers));
+  test.Config(OpTester::ExpectResult::kExpectFailure, "group_index value");
+  test.RunWithConfig();
 }
 
 TEST(MatMulNBits, InvalidGIdx_Negative_Cuda) {
@@ -632,9 +638,15 @@ TEST(MatMulNBits, InvalidGIdx_Negative_Cuda) {
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value", {}, nullptr, &execution_providers);
+  test.ConfigEps(std::move(execution_providers));
+  test.Config(OpTester::ExpectResult::kExpectFailure, "group_index value");
+  test.RunWithConfig();
 }
 
 TEST(MatMulNBits, InvalidBlockSizeWithGIdxInitializer_Cuda) {
@@ -656,10 +668,15 @@ TEST(MatMulNBits, InvalidBlockSizeWithGIdxInitializer_Cuda) {
   test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", {M, N}, {0.0f});
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "block_size must be greater than zero",
-           {}, nullptr, &execution_providers);
+  test.ConfigEps(std::move(execution_providers));
+  test.Config(OpTester::ExpectResult::kExpectFailure, "block_size must be greater than zero");
+  test.RunWithConfig();
 }
 
 TEST(MatMulNBits, ValidGIdxWithPrepackingDisabled_Cuda) {
@@ -693,6 +710,8 @@ TEST(MatMulNBits, ValidGIdxWithPrepackingDisabled_Cuda) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(
       session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   test.Config(session_options);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -727,6 +746,8 @@ TEST(MatMulNBits, RuntimeGIdxIsSupportedOutsideCapture_Cuda) {
   ASSERT_TRUE(test.BuildModel().ToProto().SerializeToString(&model_data));
 
   SessionOptions session_options;
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSessionWrapper session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
