@@ -976,11 +976,14 @@ OrtStatus* CudaEpFactory::QuarantineAndAbandonDeviceArena(
     std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
     if (!entry->device_arena) return nullptr;
 
+    // Disable allocation/free/shrink before fallible stream-map detachment so no
+    // concurrent user can observe a partially quarantined arena.
+    entry->device_arena->Abandon();
+    entry->device_arena_abandoned = true;
+
     bool quarantined = false;
     status = entry->device_arena->QuarantineChunksUsingStream(stream_impl, quarantined);
-    entry->device_arena->Abandon();
     entry->device_arena_has_quarantine = quarantined;
-    entry->device_arena_abandoned = true;
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

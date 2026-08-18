@@ -85,6 +85,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   // Only registered streams should be unregistered in the destructor to avoid
   // unnecessarily bumping the TLS generation counter.
   bool registered_ = false;
+  bool initialized_ = false;
 
   // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
   // Pinned memory must remain valid until all async device operations that
