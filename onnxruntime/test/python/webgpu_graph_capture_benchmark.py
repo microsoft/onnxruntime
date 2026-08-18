@@ -50,7 +50,10 @@ def create_session(arguments: argparse.Namespace) -> ort.InferenceSession:
     options = ort.SessionOptions()
     options.enable_mem_pattern = False
     options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-    options.add_session_config_entry("ep.webgpuexecutionprovider.enableGraphCapture", "1")
+    options.add_session_config_entry(
+        "ep.webgpuexecutionprovider.enableGraphCapture",
+        "1" if arguments.graph_capture else "0",
+    )
     options.add_session_config_entry(
         "ep.webgpuexecutionprovider.maxNumPendingDispatches",
         str(arguments.max_pending_dispatches),
@@ -85,6 +88,20 @@ def main() -> None:
         action="store_true",
         help="Include host-to-device input updates in every timed iteration.",
     )
+    capture_group = parser.add_mutually_exclusive_group()
+    capture_group.add_argument(
+        "--graph-capture",
+        dest="graph_capture",
+        action="store_true",
+        help="Enable WebGPU graph capture (default).",
+    )
+    capture_group.add_argument(
+        "--no-graph-capture",
+        dest="graph_capture",
+        action="store_false",
+        help="Run the identical fixed-I/O workload without graph capture, for a matched baseline.",
+    )
+    parser.set_defaults(graph_capture=True)
     parser.add_argument("--output-json", type=Path)
     arguments = parser.parse_args()
     if arguments.warmups < 0 or arguments.iterations < 1:
@@ -150,6 +167,7 @@ def main() -> None:
             "provider": session.get_providers()[0],
             "backend": arguments.backend,
             "max_pending_dispatches": arguments.max_pending_dispatches,
+            "graph_capture": arguments.graph_capture,
             "warmups": arguments.warmups,
             "iterations": arguments.iterations,
             "input_boundary": ("host-to-device-per-run" if arguments.include_input_copies else "gpu-resident"),
@@ -170,7 +188,8 @@ def main() -> None:
         if arguments.output_json:
             arguments.output_json.write_text(serialized_result + "\n", encoding="utf-8")
     finally:
-        session.release_captured_graph()
+        if arguments.graph_capture:
+            session.release_captured_graph()
         io_binding.clear_binding_inputs()
         io_binding.clear_binding_outputs()
 

@@ -19,6 +19,10 @@ from helper import get_name
 
 import onnxruntime as onnxrt
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_inference_collection import (
+    _GRAPH_ANNOTATION_SKIP,
+    _graph_annotation_id,
+)
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
@@ -2018,6 +2022,29 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "same session"):
             owned_device.update_inplace(foreign_device)
 
+    def test_graph_annotation_id_run_option(self):
+        """The effective gpu_graph_id decides whether a run participates in capture.
+
+        Core reserves -1 as ``InferenceSession::kGraphAnnotationSkip`` and
+        ``AllowGraphCaptureOnRun()`` returns false for it, so a run carrying -1 is the supported
+        non-capturing path. Parsing it correctly is what keeps that escape hatch reachable from
+        Python, and this runs on CPU-only CI where the WebGPU tests skip.
+        """
+        self.assertEqual(_GRAPH_ANNOTATION_SKIP, -1)
+        # No run options, and run options without the entry, both mean the default graph.
+        self.assertEqual(_graph_annotation_id(None), 0)
+        self.assertEqual(_graph_annotation_id(onnxrt.RunOptions()), 0)
+
+        for value, expected in (("-1", -1), ("0", 0), ("1", 1), ("7", 7)):
+            run_options = onnxrt.RunOptions()
+            run_options.add_run_config_entry("gpu_graph_id", value)
+            self.assertEqual(_graph_annotation_id(run_options), expected)
+
+        invalid_options = onnxrt.RunOptions()
+        invalid_options.add_run_config_entry("gpu_graph_id", "not-an-int")
+        with self.assertRaisesRegex(ValueError, "must be an integer"):
+            _graph_annotation_id(invalid_options)
+
     @unittest.skipIf(
         "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
         "WebGpuExecutionProvider is not available",
@@ -2116,23 +2143,42 @@ class TestInferenceSession(unittest.TestCase):
         del unowned_webgpu_input
         del shared_provenance_source
         del scratch_webgpu_value
-        with self.assertRaisesRegex(ValueError, "requires WebGPU input"):
-            unsafe_io_binding.bind_cpu_input(input_metadata.name, input_value)
-        with self.assertRaisesRegex(ValueError, "requires WebGPU input"):
-            unsafe_io_binding.bind_input(
-                input_metadata.name,
-                "cpu",
-                0,
-                np.float32,
-                input_metadata.shape,
-                input_value.ctypes.data,
-            )
-        with self.assertRaisesRegex(ValueError, "requires WebGPU input"):
-            unsafe_io_binding.bind_ortvalue_input(input_metadata.name, global_cpu_input)
-        with self.assertRaisesRegex(ValueError, "requires WebGPU output"):
-            unsafe_io_binding.bind_output(output_metadata.name)
-        with self.assertRaisesRegex(ValueError, "requires WebGPU output"):
-            unsafe_io_binding.bind_ortvalue_output(output_metadata.name, global_cpu_output)
+        # Fixed-buffer validation is deferred to run time, where the effective gpu_graph_id is
+        # known, so binding host or non-WebGPU values is allowed and a *capturing* run is what
+        # rejects them. This is what keeps gpu_graph_id=-1 usable with ordinary bindings.
+        unsafe_io_binding.bind_cpu_input(input_metadata.name, input_value)
+        unsafe_io_binding.bind_output(output_metadata.name)
+        with self.assertRaisesRegex(ValueError, "requires fixed WebGPU device OrtValues"):
+            session.run_with_iobinding(unsafe_io_binding)
+        skip_capture_options = onnxrt.RunOptions()
+        skip_capture_options.add_run_config_entry("gpu_graph_id", "-1")
+        session.run_with_iobinding(unsafe_io_binding, skip_capture_options)
+        np.testing.assert_allclose(
+            unsafe_io_binding.copy_outputs_to_cpu()[0],
+            reference_session.run(None, {input_metadata.name: input_value})[0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        unsafe_io_binding.clear_binding_inputs()
+        unsafe_io_binding.clear_binding_outputs()
+        unsafe_io_binding.bind_ortvalue_input(input_metadata.name, global_cpu_input)
+        unsafe_io_binding.bind_ortvalue_output(output_metadata.name, global_cpu_output)
+        with self.assertRaisesRegex(ValueError, "requires fixed WebGPU device OrtValues"):
+            session.run_with_iobinding(unsafe_io_binding)
+        unsafe_io_binding.clear_binding_inputs()
+        unsafe_io_binding.clear_binding_outputs()
+
+        # S1: the convenience run APIs stay usable on a capture-enabled session when the run opts
+        # out with gpu_graph_id=-1. Core skips capture and replay for that ID, so transient feeds
+        # are safe; only a capturing run needs fixed device OrtValues and run_with_iobinding.
+        with self.assertRaisesRegex(ValueError, "requires fixed device OrtValues"):
+            session.run(None, {input_metadata.name: input_value})
+        np.testing.assert_allclose(
+            session.run(None, {input_metadata.name: input_value}, skip_capture_options)[0],
+            reference_session.run(None, {input_metadata.name: input_value})[0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
 
         io_binding = session.io_binding()
         io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
@@ -2167,10 +2213,24 @@ class TestInferenceSession(unittest.TestCase):
         alternate_io_binding = session.io_binding()
         alternate_io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
         alternate_io_binding.bind_ortvalue_output(output_metadata.name, alternate_gpu_output)
-        session.run_with_iobinding(alternate_io_binding)
 
-        # Captured replay keeps the original fixed output address even if a new output is bound.
-        np.testing.assert_allclose(io_binding.copy_outputs_to_cpu()[0], updated_expected)
+        # Graph 0 was captured with `io_binding`. Replay re-issues the bind groups recorded then
+        # and never consults a newly supplied binding, so accepting this run would silently write
+        # the original output buffer and leave `alternate_gpu_output` untouched. Reject instead.
+        with self.assertRaisesRegex(ValueError, "captured with a different IOBinding"):
+            session.run_with_iobinding(alternate_io_binding)
+
+        # Rebinding or clearing the captured binding is rejected for the same reason: the change
+        # cannot reach replay, and releasing those buffers could invalidate the captured graph.
+        with self.assertRaisesRegex(ValueError, "still reference this IOBinding"):
+            io_binding.bind_ortvalue_output(output_metadata.name, alternate_gpu_output)
+        with self.assertRaisesRegex(ValueError, "still reference this IOBinding"):
+            io_binding.clear_binding_inputs()
+        with self.assertRaisesRegex(ValueError, "still reference this IOBinding"):
+            io_binding.clear_binding_outputs()
+
+        # The pinned binding keeps replaying correctly.
+        np.testing.assert_allclose(run_and_copy_output(session, io_binding), updated_expected)
         np.testing.assert_array_equal(
             alternate_io_binding.copy_outputs_to_cpu()[0],
             np.zeros(output_metadata.shape, dtype=np.float32),
