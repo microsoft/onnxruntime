@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime::contrib::cuda {
@@ -29,6 +31,7 @@ class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel
   Status ComputeImpl(OpKernelContext* context) const;
 
   int64_t block_size_;
+  size_t max_dequant_scratch_bytes_;
 };
 
 // Dequantizes FP8 (E4M3) weights with per-block FP32 scales into FP16/BF16. b_fp8 is [N, K]

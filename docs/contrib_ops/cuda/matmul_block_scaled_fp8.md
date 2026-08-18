@@ -214,12 +214,12 @@ for n_offset in 0, tile_rows, 2 * tile_rows, ...:
 `ORT_FP8_DEQUANT_SCRATCH_MIB` sets the cap in MiB (default 256). The default was
 chosen by sweeping it on Qwen3.8-27B at an 8K prompt:
 
-| cap | peak memory | TTFT |
-|---|---|---|
-| untiled | 32609 MiB | baseline |
-| 1 GiB | -3100 MiB | +5.2% |
-| **256 MiB** | **28503 MiB (-4106)** | **+1.1%** |
-| 128 MiB | -4106 MiB | +13.9% |
+| cap | peak memory (MiB) | reduction vs. untiled (MiB) | TTFT change |
+|---|---:|---:|---:|
+| untiled | 32609 | baseline | baseline |
+| 1 GiB | 29509 | -3100 | +5.2% |
+| **256 MiB** | **28503** | **-4106** | **+1.1%** |
+| 128 MiB | 28503 | -4106 | +13.9% |
 
 Shapes small enough to fit the cap take a single tile and are unaffected.
 

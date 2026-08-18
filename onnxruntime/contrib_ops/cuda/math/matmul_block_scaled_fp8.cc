@@ -22,12 +22,10 @@ bool FusedFp8ActivationQdqDisabled() {
   return disabled;
 }
 
-// Upper bound on the weight dequantization scratch buffer, in MiB. 256 MiB was picked by sweeping
-// it on Qwen3.8-27B: 128 MiB costs 13.9% TTFT, 1 GiB gives up a quarter of the memory saving.
-// Read per call rather than cached in a static so a test can force the multi-tile path.
-int64_t DequantScratchLimitMiB() {
+size_t DequantScratchLimitBytes() {
   const int64_t limit = ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP8_DEQUANT_SCRATCH_MIB", 256);
-  return limit > 0 ? limit : 256;
+  ORT_ENFORCE(limit > 0, "ORT_FP8_DEQUANT_SCRATCH_MIB must be positive.");
+  return SafeInt<size_t>(limit) * 1024 * 1024;
 }
 }  // namespace
 
@@ -45,7 +43,9 @@ ONNX_OPERATOR_KERNEL_EX(
 #endif
 
 MatMulBlockQuantizedFp8Weight::MatMulBlockQuantizedFp8Weight(const OpKernelInfo& info)
-    : CudaKernel(info), block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)) {
+    : CudaKernel(info),
+      block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
+      max_dequant_scratch_bytes_(DequantScratchLimitBytes()) {
   ORT_ENFORCE(block_size_ > 0, "block_size must be positive.");
 }
 
@@ -102,6 +102,20 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   const int n_i = SafeInt<int>(helper.N());
   const int k_i = SafeInt<int>(helper.K());
 
+  if (k_i == 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(context)));
+    if (bias != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchAddBiasBlockScaledFp8(
+          Y->MutableDataRaw(),
+          bias->DataRaw(),
+          m_i,
+          n_i,
+          std::is_same<T, BFloat16>::value,
+          Stream(context)));
+    }
+    return Status::OK();
+  }
+
   // Optional W8A8 activation path: statically quantize A to FP8 E4M3 and dequantize back so the
   // GEMM sees the same activation rounding as native W8A8 execution. When a_scale is absent the
   // activation is kept at full FP16/BF16 precision (weight-only W8A16).
@@ -150,9 +164,8 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
 
   // Dequantize the FP8 weight into a scratch buffer of the activation type, then GEMM. The scratch
   // is tiled over N because a full [N, K] buffer is 2.37 GiB for a 248320 x 5120 LM head.
-  const size_t max_scratch_bytes = static_cast<size_t>(DequantScratchLimitMiB()) * 1024 * 1024;
   const int64_t rows_per_scratch =
-      static_cast<int64_t>(max_scratch_bytes / (static_cast<size_t>(k) * sizeof(CudaT)));
+      static_cast<int64_t>(max_dequant_scratch_bytes_ / (static_cast<size_t>(k) * sizeof(CudaT)));
   const int64_t tile_rows = std::clamp<int64_t>(rows_per_scratch, 1, n);
 
   IAllocatorUniquePtr<CudaT> b_dequant =

@@ -507,8 +507,9 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
 
 // The weight dequantization scratch is capped and tiled over N. ORT_FP8_DEQUANT_SCRATCH_MIB
 // shrinks the cap so that a small shape still splits into several tiles: 1 MiB / (4096 * 2 B) is
-// 128 rows, so N = 384 takes three passes. Every N row carries a distinct scale, so a tile that
-// picked up the wrong weight or scale offset, or wrote to the wrong output column, changes Y.
+// 128 rows, so N = 385 takes three full passes and one ragged pass. The weight pattern does not
+// repeat at a tile boundary and every N row carries a distinct scale, so a tile that picked up the
+// wrong weight or scale offset, or wrote to the wrong output column, changes Y.
 TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
@@ -516,27 +517,32 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FP8_DEQUANT_SCRATCH_MIB", "1"}}};
 
   constexpr int64_t m = 16;  // > kGemvMaxM, so the dequant + cuBLAS path runs
-  constexpr int64_t n = 384;
+  constexpr int64_t n = 385;
   constexpr int64_t k = 4096;
   constexpr int64_t block_size = 128;
   constexpr int64_t k_blocks = k / block_size;
+  constexpr int64_t tile_rows = 1024 * 1024 / (k * sizeof(MLFloat16));
+  static_assert(tile_rows == 128);
+  static_assert((n + tile_rows - 1) / tile_rows == 4);
+  static_assert(n % tile_rows == 1);
 
-  std::vector<Float8E4M3FN> b = MakeConstRowWeight(std::vector<float>(n, 1.0f), k);
+  std::vector<float> row_weights(static_cast<size_t>(n));
   std::vector<float> b_scale(static_cast<size_t>(n) * static_cast<size_t>(k_blocks));
   for (int64_t row = 0; row < n; ++row) {
+    row_weights[static_cast<size_t>(row)] = row % 3 == 0 ? 2.0f : 1.0f;
     const float scale = static_cast<float>(row + 1) / 256.0f;
     for (int64_t blk = 0; blk < k_blocks; ++blk) {
       b_scale[static_cast<size_t>(row * k_blocks + blk)] = scale;
     }
   }
+  std::vector<Float8E4M3FN> b = MakeConstRowWeight(row_weights, k);
 
   std::vector<float> a(static_cast<size_t>(m) * static_cast<size_t>(k), 1.0f);
-  // Y[r, c] = sum_k 1.0 * (c + 1) / 256 = 4096 * (c + 1) / 256 = 16 * (c + 1), a multiple of 16 and
-  // so exact in FP16 for every c < 384.
   std::vector<float> expected(static_cast<size_t>(m) * static_cast<size_t>(n));
   for (int64_t row = 0; row < m; ++row) {
     for (int64_t col = 0; col < n; ++col) {
-      expected[static_cast<size_t>(row * n + col)] = 16.0f * static_cast<float>(col + 1);
+      expected[static_cast<size_t>(row * n + col)] =
+          16.0f * static_cast<float>(col + 1) * row_weights[static_cast<size_t>(col)];
     }
   }
 
@@ -547,6 +553,31 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
   test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
   test.SetOutputTolerance(0.5f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, ZeroKWithBiasFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  constexpr int64_t m = 2;
+  constexpr int64_t n = 3;
+
+  const std::vector<float> bias = {1.0f, -2.0f, 0.5f};
+  const std::vector<float> expected = {1.0f, -2.0f, 0.5f, 1.0f, -2.0f, 0.5f};
+
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", 128);
+  test.AddInput<MLFloat16>("A", {m, 0}, std::vector<MLFloat16>{});
+  test.AddInput<Float8E4M3FN>("B", {n, 0}, std::vector<Float8E4M3FN>{});
+  test.AddInput<float>("b_scale", {n, 0}, std::vector<float>{});
+  test.AddOptionalInputEdge<float>();  // a_scale (skipped)
+  test.AddInput<MLFloat16>("bias", {n}, FloatsToMLFloat16s(bias));
+  test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
