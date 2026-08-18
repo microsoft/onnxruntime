@@ -45,7 +45,7 @@ Both ops share the same CUTLASS-based runner ([CutlassMoeFCRunner](onnxruntime/c
 and sort/permute infrastructure. They differ only in how the weight tensors are
 interpreted.
 
-Both ops also support **always-on shared experts** (Qwen3-style) via the
+Both ops also support **always-on shared experts** (Qwen3-style) on the CUDA EP via the
 `num_shared_experts` attribute, which fuses one or more shared experts into the
 same grouped GEMM as the routed experts. See [§17](#17-shared-expert-fusion).
 

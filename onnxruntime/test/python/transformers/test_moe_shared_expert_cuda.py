@@ -205,7 +205,10 @@ def _make_qmoe_graph(
 
 
 class TestSharedExpertFusionQMoE(unittest.TestCase):
-    @unittest.skipUnless(HAS_CUDA, "CUDA EP not available")
+    @unittest.skipUnless(
+        HAS_CUDA and torch is not None and torch.cuda.is_available() and quant_dequant_blockwise is not None,
+        "CUDA EP / torch.cuda / quant_dequant_blockwise not available",
+    )
     def test_fused_shared_expert_qmoe_parity(self):
         torch.manual_seed(0)
         hidden_size = 128
