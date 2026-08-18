@@ -29,9 +29,11 @@ class MlasErfTest : public MlasTestBase {
   // kernel (width/dispatch bugs) without being flaky on the approximation.
   static constexpr float AbsTolerance = 2e-5f;
 
+#if defined(MLAS_TARGET_AMD64)
   static bool Avx512Available() {
     return GetMlasPlatform().ErfKernelRoutine == MlasErfKernelAvx512F;
   }
+#endif  // MLAS_TARGET_AMD64
 
   static uint32_t Bits(float f) {
     uint32_t u;
@@ -51,6 +53,7 @@ class MlasErfTest : public MlasTestBase {
     return static_cast<uint32_t>(d < 0 ? -d : d);
   }
 
+#if defined(MLAS_TARGET_AMD64)
   // Level 1: AVX-512 kernel must match the base FMA3 kernel to <= 1 ULP.
   // (The two implementations share the erf polynomial coefficients but use
   // different instruction sequences -- hand-written AVX2 asm vs AVX-512
@@ -115,6 +118,7 @@ class MlasErfTest : public MlasTestBase {
       }
     }
   }
+#endif  // MLAS_TARGET_AMD64
 
   // Level 2: mathematical correctness vs std::erf, in place (matches the
   // MobileClip GELU usage where the activation updates the tensor in place).
@@ -146,10 +150,14 @@ class MlasErfTest : public MlasTestBase {
     for (size_t n : {size_t(1), size_t(3), size_t(7), size_t(15), size_t(16),
                      size_t(17), size_t(31), size_t(32), size_t(33), size_t(48),
                      size_t(63), size_t(64), size_t(255), size_t(1000)}) {
+#if defined(MLAS_TARGET_AMD64)
       TestMatchesBase(n);
+#endif
       TestMathInPlace(n);
     }
+#if defined(MLAS_TARGET_AMD64)
     TestSpecialValuesMatchBase();
+#endif
   }
 };
 
