@@ -267,6 +267,18 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
+    if (ep->config_.enable_cuda_graph &&
+        node.GetOperatorType() == "PagedAttention" &&
+        node.GetDomain() == kMSDomain) {
+      const auto inputs = node.GetInputs();
+      constexpr size_t kAttentionMetadataInputIndex = 16;
+      if (inputs.size() <= kAttentionMetadataInputIndex ||
+          inputs[kAttentionMetadataInputIndex] == nullptr ||
+          inputs[kAttentionMetadataInputIndex].GetName().empty()) {
+        continue;
+      }
+    }
+
     const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
