@@ -1151,8 +1151,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>kv_num_heads</tt> : int</dt>
-<dd>Number of attention heads for key and value. Defaults to num_heads when not specified. For grouped query attention, num_heads shall be a multiple of kv_num_heads</dd>
 <dt><tt>mask_filter_value</tt> : float</dt>
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
@@ -4083,6 +4081,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>kv_num_heads</tt> : int</dt>
+<dd>Number of attention heads for key and value. Defaults to num_heads when not specified. For grouped query attention, num_heads shall be a multiple of kv_num_heads</dd>
 <dt><tt>mask_filter_value</tt> : float</dt>
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
