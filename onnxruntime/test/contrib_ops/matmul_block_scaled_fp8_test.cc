@@ -5,6 +5,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/unittest_util/conversion.h"
 
 #if defined(USE_CUDA)
