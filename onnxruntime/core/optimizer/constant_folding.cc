@@ -144,9 +144,10 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
   return status;
 }
 
-// Default maximum output size per constant-folded node: 1 GB.
-// This prevents malicious models from causing excessive memory allocation during optimization.
-static constexpr int64_t kDefaultConstantFoldingMaxOutputSizeInBytes = 1024 * 1024 * 1024;
+// Default maximum output size per constant-folded node: 0, i.e. no limit.
+// Set kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes to a positive value to prevent
+// malicious models from causing excessive memory allocation during optimization.
+static constexpr int64_t kDefaultConstantFoldingMaxOutputSizeInBytes = 0;
 
 static size_t GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType elem_type) {
   // Complex types are excluded: ORT's tensor type system (DataTypeImpl::TensorTypeFromONNXEnum)
