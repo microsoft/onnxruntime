@@ -45,6 +45,9 @@
 #include <cuda_runtime_api.h>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/span_utils.h"
+#include "core/framework/allocator.h"
+#include "core/framework/allocator_stats.h"
 #include "core/framework/max_shape_inference.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/node_shape_resolver.h"
@@ -82,6 +85,9 @@ constexpr int64_t kE2eM = 256;
 constexpr int64_t kE2eBlockSize = 32;
 constexpr int64_t kE2eBits = 4;
 constexpr int64_t kWeightPrepackedSm80 = 1;
+constexpr int64_t kArenaM = 512;
+constexpr int64_t kArenaK = 256;
+constexpr std::array<int64_t, 3> kArenaOutputWidths{2048, 256, 1024};
 
 void SetFp16MatrixShape(ONNX_NAMESPACE::ValueInfoProto* value_info, const char* d0_param,
                         int64_t d0, int64_t d1) {
@@ -245,6 +251,54 @@ std::string BuildMatMulNBitsChainModelBytes(size_t node_count) {
   return bytes;
 }
 
+std::string BuildArenaSavingsModelBytes() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  {
+    auto* onnx_opset = model.add_opset_import();
+    onnx_opset->set_domain("");
+    onnx_opset->set_version(17);
+    auto* ms_opset = model.add_opset_import();
+    ms_opset->set_domain("com.microsoft");
+    ms_opset->set_version(1);
+  }
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("matmul_nbits_workspace_arena_savings");
+
+  auto* input = graph->add_input();
+  input->set_name("A");
+  SetFp16MatrixShape(input, nullptr, kArenaM, kArenaK);
+
+  std::string input_name = "A";
+  int64_t input_width = kArenaK;
+  for (size_t i = 0; i < kArenaOutputWidths.size(); ++i) {
+    const std::string node_name = "matmul_nbits_" + std::to_string(i);
+    const std::string output_name = "Y" + std::to_string(i);
+    const int64_t output_width = kArenaOutputWidths[i];
+    AddMatMulNBitsNode(
+        graph, node_name, input_name, output_name, input_width, output_width,
+        /*packed_weight=*/0x11, /*scale_value=*/1.0f / 256.0f);
+
+    if (i + 1 < kArenaOutputWidths.size()) {
+      auto* value_info = graph->add_value_info();
+      value_info->set_name(output_name);
+      SetFp16MatrixShape(value_info, nullptr, kArenaM, output_width);
+    }
+
+    input_name = output_name;
+    input_width = output_width;
+  }
+
+  auto* output = graph->add_output();
+  output->set_name(input_name);
+  SetFp16MatrixShape(output, nullptr, kArenaM, kArenaOutputWidths.back());
+
+  std::string bytes;
+  ORT_ENFORCE(model.SerializeToString(&bytes));
+  return bytes;
+}
+
 // Builds a trivial single-node fp32 Add model (X + Y -> Z, all [kAddM, kAddN]) and returns its
 // serialized ModelProto bytes. Used by Test E as a control: Add does NOT override
 // DeclareWorkspaceRequirements, so it must hit the OpKernel base-class no-op.
@@ -372,6 +426,87 @@ bool BlocksOverlap(const MemoryBlock& lhs, const MemoryBlock& rhs) {
     return lhs.size_ > rhs.offset_ - lhs.offset_;
   }
   return rhs.size_ > lhs.offset_ - rhs.offset_;
+}
+
+struct ArenaMeasurement {
+  int64_t second_run_cuda_allocated_bytes;
+  size_t pattern_peak_bytes;
+  size_t workspace_bytes;
+};
+
+ArenaMeasurement MeasureArenaAllocation(const std::string& model_bytes,
+                                        bool enable_workspace_preallocation) {
+  CUDAExecutionProviderInfo cuda_info{};
+  cuda_info.arena_extend_strategy = ArenaExtendStrategy::kSameAsRequested;
+
+  SessionOptions so;
+  so.session_logid =
+      enable_workspace_preallocation ? "MatMulNBitsArenaPlanned" : "MatMulNBitsArenaScratch";
+  ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableStaticWorkspacePreallocation,
+      enable_workspace_preallocation ? "1" : "0"));
+
+  InferenceSessionWrapper session(so, GetEnvironment());
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(cuda_info);
+  ORT_THROW_IF_ERROR(session.RegisterExecutionProvider(cuda_ep));
+  ORT_THROW_IF_ERROR(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ORT_THROW_IF_ERROR(session.Initialize());
+
+  const SessionState& session_state = session.GetSessionState();
+  const auto matmul_nodes = FindNodesByOpType(session.GetGraph(), "MatMulNBits");
+  ORT_ENFORCE(matmul_nodes.size() == kArenaOutputWidths.size());
+
+  std::vector<MLFloat16> input_data(static_cast<size_t>(kArenaM * kArenaK), MLFloat16(0.25f));
+  OrtValue input_value;
+  CreateMLValue<MLFloat16>(
+      std::array<int64_t, 2>{kArenaM, kArenaK}, input_data.data(), OrtMemoryInfo(), &input_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", input_value);
+  const std::vector<std::string> output_names{"Y" + std::to_string(kArenaOutputWidths.size() - 1)};
+  std::vector<OrtValue> fetches;
+
+  // The first run traces lifetimes and builds the shape-specific memory pattern.
+  ORT_THROW_IF_ERROR(session.Run(feeds, output_names, &fetches));
+  fetches.clear();
+
+  size_t workspace_bytes = 0;
+  for (const Node* node : matmul_nodes) {
+    const OpKernel* kernel = session_state.GetKernel(node->Index());
+    ORT_ENFORCE(kernel != nullptr);
+    workspace_bytes = std::max(workspace_bytes, GetMatMulNBitsLastComputeWorkspaceBytes(kernel));
+  }
+
+  int input_index = -1;
+  ORT_THROW_IF_ERROR(session_state.GetOrtValueNameIdxMap().GetIdx("A", input_index));
+  const InlinedHashMap<int, TensorShape>* inferred_shapes = nullptr;
+  const MemoryPatternGroup* pattern_group = session_state.GetMemoryPatternGroup(
+      gsl::make_span(&input_value, 1), gsl::make_span(&input_index, 1), inferred_shapes);
+  ORT_ENFORCE(pattern_group != nullptr);
+
+  const OrtDevice cuda_device(
+      OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+  const MemoryPattern* pattern = pattern_group->GetPatterns(cuda_device);
+  ORT_ENFORCE(pattern != nullptr);
+
+  AllocatorPtr cuda_allocator = session_state.GetAllocator(cuda_device);
+  ORT_ENFORCE(cuda_allocator != nullptr);
+  IArena* cuda_arena = IArena::SafeArenaCast(cuda_allocator.get());
+  ORT_ENFORCE(cuda_arena != nullptr);
+
+  // Remove free first-run regions. With kSameAsRequested, the following delta is the amount newly
+  // obtained from CUDA for the cached second run, rather than arena growth-policy headroom.
+  ORT_THROW_IF_ERROR(cuda_arena->Shrink());
+  AllocatorStats before_second_run;
+  cuda_allocator->GetStats(&before_second_run);
+
+  ORT_THROW_IF_ERROR(session.Run(feeds, output_names, &fetches));
+  AllocatorStats after_second_run;
+  cuda_allocator->GetStats(&after_second_run);
+
+  return ArenaMeasurement{
+      after_second_run.total_allocated_bytes - before_second_run.total_allocated_bytes,
+      pattern->PeakSize(),
+      workspace_bytes};
 }
 
 }  // namespace
@@ -950,6 +1085,78 @@ TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
     EXPECT_EQ(planned_output_data[i].val, expected_output[i].val)
         << "Planned workspace changed output element " << i << ".";
   }
+}
+
+TEST(MatMulNBitsWorkspace, PlannedWorkspaceReducesCudaArenaAllocation) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping CUDA arena allocation test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{
+      {"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
+      {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{std::to_string(kArenaM)}},
+  });
+  const std::string model_bytes = BuildArenaSavingsModelBytes();
+
+  const ArenaMeasurement scratch =
+      MeasureArenaAllocation(model_bytes, /*enable_workspace_preallocation=*/false);
+  const ArenaMeasurement planned =
+      MeasureArenaAllocation(model_bytes, /*enable_workspace_preallocation=*/true);
+
+  ASSERT_GT(planned.workspace_bytes, static_cast<size_t>(0));
+  ASSERT_EQ(scratch.workspace_bytes, planned.workspace_bytes);
+  ASSERT_GE(planned.pattern_peak_bytes, scratch.pattern_peak_bytes);
+  ASSERT_GE(scratch.second_run_cuda_allocated_bytes, planned.second_run_cuda_allocated_bytes);
+
+  const int64_t input_copy_bytes =
+      kArenaM * kArenaK * static_cast<int64_t>(sizeof(MLFloat16));
+  const int64_t graph_output_bytes =
+      kArenaM * kArenaOutputWidths.back() * static_cast<int64_t>(sizeof(MLFloat16));
+  const int64_t scratch_component_total =
+      input_copy_bytes +
+      static_cast<int64_t>(scratch.pattern_peak_bytes) +
+      graph_output_bytes +
+      static_cast<int64_t>(scratch.workspace_bytes);
+  const int64_t planned_component_total =
+      input_copy_bytes +
+      static_cast<int64_t>(planned.pattern_peak_bytes) +
+      graph_output_bytes;
+  const int64_t pattern_growth =
+      static_cast<int64_t>(planned.pattern_peak_bytes) -
+      static_cast<int64_t>(scratch.pattern_peak_bytes);
+  const int64_t saved_bytes =
+      scratch.second_run_cuda_allocated_bytes - planned.second_run_cuda_allocated_bytes;
+
+  EXPECT_EQ(scratch.second_run_cuda_allocated_bytes, scratch_component_total);
+  EXPECT_EQ(planned.second_run_cuda_allocated_bytes, planned_component_total);
+  EXPECT_EQ(saved_bytes, static_cast<int64_t>(planned.workspace_bytes) - pattern_growth);
+  EXPECT_GT(saved_bytes, 0)
+      << "The workspace did not reuse enough dead activation memory to reduce CUDA allocation.";
+
+  std::cout << "[ ARENA MEMORY ] shape: M=" << kArenaM << ", K=" << kArenaK
+            << ", output widths=" << kArenaOutputWidths[0] << "->" << kArenaOutputWidths[1]
+            << "->" << kArenaOutputWidths[2] << '\n'
+            << "[ ARENA MEMORY ] CUTLASS workspace: " << planned.workspace_bytes << " bytes\n"
+            << "[ ARENA MEMORY ] scratch path second-run components:\n"
+            << "  CUDA input copy:                  " << input_copy_bytes << " bytes\n"
+            << "  activation-only pattern buffer:  " << scratch.pattern_peak_bytes << " bytes\n"
+            << "  graph output buffer:             " << graph_output_bytes << " bytes\n"
+            << "  separate CUTLASS workspace:      " << scratch.workspace_bytes << " bytes\n"
+            << "  total new CUDA bytes:            " << scratch.second_run_cuda_allocated_bytes << " bytes\n"
+            << "[ ARENA MEMORY ] planned path second-run components:\n"
+            << "  CUDA input copy:                  " << input_copy_bytes << " bytes\n"
+            << "  activation+workspace buffer:     " << planned.pattern_peak_bytes << " bytes\n"
+            << "  graph output buffer:             " << graph_output_bytes << " bytes\n"
+            << "  separate CUTLASS workspace:      0 bytes\n"
+            << "  total new CUDA bytes:            " << planned.second_run_cuda_allocated_bytes << " bytes\n"
+            << "[ ARENA MEMORY ] pattern growth for workspace: " << pattern_growth << " bytes\n"
+            << "[ ARENA MEMORY ] real CUDA bytes saved:        " << saved_bytes << " bytes"
+            << std::endl;
 }
 
 // ---------------------------------------------------------------------------
