@@ -203,7 +203,8 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       device_free,
-      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false);
+      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false,
+      [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
@@ -245,7 +246,8 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                                                return WebGpuContextFactory::DefaultContext()
                                                                    .BufferManager();
                                                              },
-                                                             false);
+                                                             false,
+                                                             []() { return true; });
                                                        });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

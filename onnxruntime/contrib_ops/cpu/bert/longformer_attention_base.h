@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include <limits>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
@@ -25,11 +26,17 @@ class LongformerAttentionBase {
   template <typename KernelInfoType>
   LongformerAttentionBase(const KernelInfoType& info) {
     int64_t num_heads = 0;
-    ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
+    ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() &&
+                    num_heads > 0 &&
+                    num_heads <= std::numeric_limits<int>::max(),
+                "num_heads must be an integer in [1, INT_MAX]");
     num_heads_ = static_cast<int>(num_heads);
 
     int64_t window = 0;
-    ORT_ENFORCE(info.GetAttr("window", &window).IsOK() && window > 0);
+    ORT_ENFORCE(info.GetAttr("window", &window).IsOK() &&
+                    window > 0 &&
+                    window <= std::numeric_limits<int>::max(),
+                "window must be an integer in [1, INT_MAX]");
     window_ = static_cast<int>(window);
   }
 

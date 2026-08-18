@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
@@ -18,6 +19,10 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+
+constexpr const char* kEnableQMoEKernelDebugInfo = "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO";
+constexpr const char* kQMoERowTileSize = "ORT_QMOE_ROW_TILE_SIZE";
+constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 
 class QMoE final : public CudaKernel, public MoEBase {
  public:
@@ -96,6 +101,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
+  bool enable_kernel_debug_info_ = false;
+  int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 
@@ -140,6 +147,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // fc2 GEMV -> finalize) instead of dequantizing to dense weights. Falls back to the
   // dequant path for unsupported shapes (prefill / large batch).
   bool enable_fp4_gemv_ = false;
+  // Read once during op construction so ORT_DISABLE_FP4_GEMV_SKIP_EXPAND follows the same
+  // session-scoped configuration model as the other FP4 GEMV environment options.
+  bool fp4_gemv_skip_expand_ = true;
   bool enable_fp4_cutlass_gemm_ = false;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the

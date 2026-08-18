@@ -174,7 +174,7 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 13 | `k_norm_weight` | `T` (opt) | `(head_size,)` | **new — §7** |
 | 14 | `k_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8** |
 | 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8**; absent in `LATENT` |
-| 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` | **new — trusted bounds only, §4.7** |
+| 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` or `(3,)` | **new — trusted bounds only, §4.7** |
 | 17 | `kv_indices` | `S` (opt) | `(token_count, max_selected_kv)` | **new — §22** |
 | 18 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
 | 19 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
@@ -317,7 +317,8 @@ Three derivations satisfy the rule, none of which needs a synchronization:
 | Quantity | Source | Replay-safe because |
 |---|---|---|
 | decode vs. prefill dispatch | static shapes: `query.shape[0] == cumulative_sequence_length.shape[0] - 1` | shapes are fixed for a captured graph |
-| grid size, split count, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
+| grid size, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
+| split-KV eligibility | `max_kv_len_lower_bound` lower bound, when supplied | proves splitting is worthwhile on every replay |
 | per-sequence KV length, causal and window masking, gather trip counts | device `past_seqlens` / `cumulative_sequence_length` | re-read from device memory on every replay |
 
 The shape test is a **performance heuristic only**. `token_count <= batch_size` does not prove that
@@ -334,12 +335,14 @@ per-step sync.
 `attention_metadata` is consequently demoted to optional **replay-wide bounds**:
 
 ```text
-attention_metadata : (2,) int32, OrtMemTypeCPUInput
+attention_metadata : (2,) or (3,) int32, OrtMemTypeCPUInput
   [0] max_query_len_bound   # 0 = unknown. Replay-wide upper bound on tokens from any one sequence.
   [1] max_kv_len_bound      # 0 = unknown. Replay-wide upper bound on total KV length of any sequence.
+  [2] max_kv_len_lower_bound  # Optional; 0 = unknown. Replay-wide lower bound on the largest
+                              # per-sequence KV length in the batch.
 ```
 
-- Both entries are **upper bounds, never exact values**, and must hold for *every* step the node —
+- The first two entries are **upper bounds, never exact values**, and must hold for *every* step the node —
   or the captured graph containing it — will serve.
 - `0` means "no bound"; the implementation falls back to `token_count` for query length and to
   `block_table.shape[1] * block_size` for KV length.
@@ -350,6 +353,13 @@ attention_metadata : (2,) int32, OrtMemTypeCPUInput
 - A valid bound may only shrink launch dimensions and workspace sizes. It must not enter a mask
   comparison. Device loops use the current device lengths, additionally bounded by the trusted
   launch/workspace extent.
+- `max_kv_len_lower_bound` is a provider-neutral, performance-only lower bound on
+  `max_i(past_seqlens[i] + query_len[i])`. CUDA currently uses it for split-KV eligibility, but its
+  contract does not name or require that backend. Shape `(2,)` remains supported and defaults this
+  value to `0` (unknown), disabling split-KV unless an exact device readback is already required.
+- The upper bound or block-table capacity cannot be substituted for this lower bound. A producer may
+  pad a short live sequence to a large replay capacity, and treating that capacity as live length
+  would force split/combine overhead on every early replay.
 - Even for an invalid bound, every device read must remain memory-safe: device lengths and static
   tensor capacities guard all accesses. This safety property does not imply a correct result when
   the producer violates the upper-bound contract.
@@ -377,7 +387,8 @@ which must now be sized by `batch_size * max_kv_len_bound` so that the allocatio
 > | Host quantity | Consumer | Bound used |
 > |---|---|---|
 > | `max_query_len` | `params.seqlen_q` (Flash), `p.sequence_length` (MEA) — grid extent only | `max_query_len_bound`, else `token_count` |
-> | `max_kv_len` | quantized-Flash `max_seqlen_k`, decode split count | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
+> | `max_kv_len` | quantized-Flash `max_seqlen_k`, split workspace sizing | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
+> | split-KV eligibility | FlashAttention decode dispatch | `max_kv_len_lower_bound`, else disabled unless exact lengths were read back |
 > | `total_kv_tokens` | gather staging buffer extent | `batch_size * max_kv_len_bound` |
 >
 > Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:
@@ -749,30 +760,30 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > `PagedAttention<T, T_CACHE>` registered for `{MLFloat16, BFloat16} × {int8_t, Float8E4M3FN}` in
 > addition to the unquantized pairs. Deviations from the text above:
 >
-> - **Read path is §8.5 Phase 2 only.** `GatherAndExpandPagedKVCache` dequantizes while gathering,
->   and the Flash varlen path is routed through the same gather when the cache is quantized (using
->   `num_heads = kv_num_heads` so no GQA expansion happens, which keeps Flash's grouped layout). The
->   §8.5 Phase 3 paged decode kernel with in-kernel dequantization is **not** implemented.
+> - **Both §8.5 read paths are implemented.** Multi-token steps use `GatherAndExpandPagedKVCache`
+>   to dequantize while gathering, and the Flash varlen path uses the gathered grouped layout.
+>   Single-token decode reads and dequantizes the cache in place through XQA when eligible or
+>   `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
 > - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`, so
 >   `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type.
-> - **No SM89/SM90 gate for FP8.** `Float8E4M3FN`'s converting constructor uses
+> - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
->   onward, so the arch check in §8.7 would reject working configurations. FP8 remains gated at
->   *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
+>   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
 > - Parity tests compare the updated cache at one quantization step of slack. Rotary and RMSNorm are
 >   computed ~1 fp16 ULP differently on the host, which is enough to move a value across a rounding
 >   boundary and flip the stored code by one LSB.
 
-> **Implementation note (P5, implemented).** §8.5 Phase 3 is now in place as a purpose-built
-> flash-decoding kernel (`PagedDecodeSplitKV` + `PagedDecodeReduce` in `paged_attention_impl.cu`),
-> not by reusing the vendored XQA kernel. XQA does have paged-KV support, but its page list is
-> `[batch][beam][2][max_pages]` over a *single* K/V pool whereas PagedAttention has two pools and one
-> shared `block_table`, and it restricts `head_size ∈ {64, 128, 256}` and `group_size ∈ {4, 8, 16,
-> 32}` while multiplying instantiations across page size × group size × head size × dtype × quant
-> type. A ~250-line kernel covers the whole schema instead.
+> **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
+> one token per sequence, `head_size ∈ {64, 128}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap, and
+> a block size divisible by 128. The CUDA image selected at runtime must contain compatible XQA
+> device code generated for SM80 or newer; INT8 XQA requires an SM80-or-newer GPU and FP8 XQA
+> requires SM89 or SM90+. Setting `ORT_ENABLE_XQA=0` disables XQA. The operator also falls back when
+> the selected image has no XQA kernel or its dynamic shared-memory requirement exceeds the device
+> limit. Other supported configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
+> `paged_attention_impl.cu`.
 >
 > - **Both scale foldings are exact and granularity-agnostic.** K folds into Q at load time
 >   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so
@@ -800,8 +811,10 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
 > - Split-KV: `ComputePagedDecodeSplits` splits the KV range across up to 32 CTAs only when
 >   `token_count * num_heads` would leave the device under-occupied. `max_kv_len` may be an upper
->   bound. Empty splits publish `(max = -FLT_MAX, denom = 0)` and the reduce kernel skips them, so
->   their accumulator slice is never read.
+>   bound. FlashAttention keeps the replay-wide split count and workspaces fixed while partitioning
+>   each varlen sequence from its live device length, so loose upper bounds do not concentrate useful
+>   tiles in the first split. Empty splits publish `(max = -FLT_MAX, denom = 0)` and the reduce kernel
+>   skips them, so their accumulator slice is never read.
 > - The `FlashAttention` / `EfficientAttention` prologue (packed-QKV unpack, fused QK-Norm + rotary,
 >   `ReshapeAndCache`) was factored into a shared `PrepareQueryAndCache`, which the decode backend
 >   reuses. It lives outside the `USE_FLASH_ATTENTION` / `USE_MEMORY_EFFICIENT_ATTENTION` guards
@@ -1322,6 +1335,13 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > stricter gate — it needs `token_count == batch_size` *and* `max_query_len == 1`, the latter from
 > `attention_metadata` or, failing that, from the readback — because its output layout is one row
 > per batch index rather than per query token.
+>
+> XQA uses fixed 128-token pages. When PagedAttention's `block_size` is 128, its native
+> `block_table` is already in XQA page units and is passed directly to the kernel: no page-table
+> scratch buffer is allocated and `ExpandBlockTableToPages` is not launched. This preserves every
+> entry, including `-1`, unchanged. Larger supported block sizes remain on the expanded path; for
+> example, each 256-token block maps to two consecutive XQA pages in a per-invocation scratch table.
+> Debug output reports the selected path as `XqaPageTable=native` or `XqaPageTable=expanded`.
 
 ## 14. Shared Code with GroupQueryAttention
 
@@ -1389,10 +1409,10 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
   every logical element type this operator stores is expressible as an ONNX element type. The
   reserved sub-byte values are rejected until a `uint8` packed cache exists. FP8 availability is
   controlled by `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
-- `attention_metadata`: rank 1, `dim0 == 2`, `int32`, CPU-resident; entries `>= 0`; each non-zero
-  entry is clamped to its static limit before use and may only size launch dimensions and workspace
-  (§4.7). It must never enter a mask comparison. Each value is a trusted upper bound for every step
-  served by the node or captured graph.
+- `attention_metadata`: rank 1, `dim0 ∈ {2, 3}`, `int32`, CPU-resident; entries `>= 0`; the first
+  two entries are trusted upper bounds and the optional third is a trusted lower bound for every
+  step served by the node or captured graph (§4.7). Bounds may only select implementations or size
+  launch dimensions and workspace; they must never enter a mask comparison.
 - `query_positions`: rank 1, `dim0 == token_count`, `int32`, entries `>= 0`.
 - `attention_bias`: rank 4; `dim0 ∈ {1, batch_size}`, `dim1 ∈ {1, num_heads}`,
   `dim2 == query_length_capacity`, and `dim3 == context_length_capacity`; both capacities must cover

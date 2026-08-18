@@ -15,6 +15,8 @@ For more information about plugin EPs, see the
   of truth shared by all packages built from this directory. The packages do not declare a hard dependency on a
   specific ONNX Runtime package; instead, this version string is injected into each package's README at build/pack
   time, and the native plugin EP code validates compatibility at registration time.
+- [`paths.txt`](paths.txt) — Specifies directories and paths that are related to the WebGPU EP. These paths are used to
+  filter the commits considered when identifying changes between releases, e.g., for generating release notes.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
   [`python/README.md`](python/README.md) for build and test instructions.
 - [`csharp/`](csharp/) — Sources and packaging script for the `Microsoft.ML.OnnxRuntime.EP.WebGpu` NuGet package. See
@@ -50,9 +52,13 @@ import onnxruntime_ep_webgpu as webgpu_ep
 
 ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
 
-devices = [d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()]
+# The WebGPU EP currently accepts one EP device and selects the physical GPU independently.
+webgpu_ep_device = next((d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()), None)
+if webgpu_ep_device is None:
+    raise RuntimeError("No WebGPU EP device found.")
+
 sess_options = ort.SessionOptions()
-sess_options.add_provider_for_devices(devices, {})
+sess_options.add_provider_for_devices([webgpu_ep_device], {})
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
 
