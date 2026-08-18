@@ -45,7 +45,7 @@ class ExternalResourceImporterTest : public ::testing::Test {
     mem_desc.offset_bytes = 0;
 
     return GetInteropApi().ImportMemory(importer, &mem_desc, mem_handle);
-  };
+  }
 
   RegisteredEpDeviceUniquePtr registered_ep_;
   const OrtEpDevice* ep_device_ = nullptr;
@@ -144,7 +144,7 @@ TEST_F(ExternalResourceImporterTest, ImportMemory) {
     GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
   }
 
-  // Import host allocatione
+  // Import host allocation
   {
     // Create a dummy host pointer for testing
     const size_t buffer_size = 10 * 4096;                                                      // Ten pages
@@ -183,6 +183,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemoryD3D12Resource) {
   OrtExternalMemoryHandle* mem_handle = nullptr;
   status = ImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE, buffer_size, dummy_handle, &mem_handle);
   ASSERT_EQ(status, nullptr);
+  ASSERT_NE(mem_handle, nullptr) << "ImportMemory should return a non-null memory handle";
 
   // Create tensor from imported memory
   OrtExternalTensorDescriptor tensor_desc = {};
@@ -229,7 +230,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemoryD3D12Resource) {
   GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
-// Test: Create Tensor from D3D12 Resource Imported Memory
+// Test: Create Tensor from Host Allocation Imported Memory
 TEST_F(ExternalResourceImporterTest, CreateTensorFromMemoryHostAlloc) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
@@ -245,11 +246,12 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemoryHostAlloc) {
   const size_t buffer_size = num_elements * sizeof(float);
 
   // Import memory
-  void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));
+  void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x123456789ABCD000));  // Simulated page-aligned address
 
   OrtExternalMemoryHandle* mem_handle = nullptr;
   status = ImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION, buffer_size, dummy_handle, &mem_handle);
   ASSERT_EQ(status, nullptr);
+  ASSERT_NE(mem_handle, nullptr) << "ImportMemory should return a non-null memory handle";
 
   // Create tensor from imported memory
   OrtExternalTensorDescriptor tensor_desc = {};
