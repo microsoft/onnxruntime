@@ -13,15 +13,17 @@ gather list can depend on.
 # Tensor dimensions keep the upper-case names the schema doc gives them.
 # ruff: noqa: N806
 
+import os
 import unittest
 
 import numpy as np
-import onnx
 import torch
 from onnx import TensorProto as TP  # noqa: N817
 from onnx import helper
 
 import onnxruntime as ort
+
+os.environ["ORT_LIGHTNING_INDEXER_MMA_SCORE"] = "2"
 
 
 def has_cuda():
@@ -209,7 +211,7 @@ class TestSparseRowSelect(unittest.TestCase):
             }
 
             for tdt, odt in DTYPES:
-                tag = f"nh={NH} hd={HD} k={cfg['k']} rotate={cfg['rotate']} S={S} {onnx.TensorProto.DataType.Name(odt)}"
+                tag = f"nh={NH} hd={HD} k={cfg['k']} rotate={cfg['rotate']} S={S} {TP.DataType.Name(odt)}"
                 with self.subTest(case=tag):
                     model, present_name = build_graph(cfg, odt)
                     sess = ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
@@ -260,6 +262,17 @@ class TestSparseRowSelect(unittest.TestCase):
                 "sp": ((5, [0, 7]), (1, [40, 33])),
             }
         )
+
+    def test_invalid_attributes_rejected(self):
+        cfg = {"nh": 4, "hd": 32, "rd": 15, "ratio": 4, "L": 64, "k": 8, "C": 18, "rotate": False}
+        model, _ = build_graph(cfg, TP.FLOAT)
+        with self.assertRaisesRegex(Exception, "rope_head_dim must be even"):
+            ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+
+        cfg.update({"rd": 16, "L": np.iinfo(np.int32).max + 1})
+        model, _ = build_graph(cfg, TP.FLOAT)
+        with self.assertRaisesRegex(Exception, "row_id_offset must be in"):
+            ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
 
     def test_small_topk_exceeds_visible(self):
         self._run_case(

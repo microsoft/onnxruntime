@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <cmath>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cmath>
 
 #include "core/providers/cuda/cuda_common.h"
 
@@ -12,7 +13,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// A model trained against simulated low-precision grids carries the quantisation arithmetic
+// A model trained against simulated low-precision grids carries the quantization arithmetic
 // explicitly in its graph, and a fused kernel has to reproduce it step for step --
 // these are step functions, and one rounding difference becomes a whole-step move that the
 // indexer's top-k and the MoE router turn into a different answer. This header is shared so
@@ -46,6 +47,13 @@ struct QuantSimConv<BFloat16> {
   static __device__ __forceinline__ BFloat16 FromFloat(float v) { return BFloat16(v); }
 };
 
+template <>
+struct QuantSimConv<nv_bfloat16> {
+  static __device__ __forceinline__ float ToFloat(nv_bfloat16 v) { return __bfloat162float(v); }
+  static __device__ __forceinline__ float Round(float v) { return __bfloat162float(__float2bfloat16_rn(v)); }
+  static __device__ __forceinline__ nv_bfloat16 FromFloat(float v) { return __float2bfloat16_rn(v); }
+};
+
 // A power-of-two scale whose exponent is `ceil(log2(amax / limit))`, matching the graph's
 // Log/Div/Ceil/Pow chain including its clamp on the way into the logarithm.
 __device__ __forceinline__ float QuantSimBlockScale(float amax, float limit, float floor_value) {
@@ -69,7 +77,7 @@ __device__ __forceinline__ float QuantSimRoundE4M3(float v) {
 
 // Hadamard rotation followed by the simulated FP4-E2M1 round trip, in place over one row of
 // `d` channels held in shared memory. `s_scale` needs `d / 32` floats. Every thread of the
-// block must call this: it synchronises internally.
+// block must call this: it synchronizes internally.
 template <typename CudaT>
 __device__ __forceinline__ void QuantSimRotateFp4(float* s_row, float* s_scale, int d,
                                                   int tid, int nthreads) {

@@ -993,7 +993,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             "`rope_head_dim` channels are rotated with `cos`/`sin`, and the whole row is then "
             "Hadamard-rotated and put through a simulated FP4-E2M1 round trip in blocks of 32 "
             "when `simulate_rotated_fp4` is set -- the same treatment the cached rows already had, which "
-            "is what makes the rotation matter instead of cancelling.\n"
+            "is what makes the rotation matter instead of canceling.\n"
             "\n"
             "`rows` are the candidate rows a GatedLatentPool produced this step; row `j` lands "
             "in cache slot `first_slot + j`, and slots below `first_slot` keep what "

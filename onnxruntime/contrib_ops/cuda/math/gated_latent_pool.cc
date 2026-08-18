@@ -6,8 +6,6 @@
 #include "contrib_ops/cuda/math/gated_latent_pool_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 
-using namespace onnxruntime::cuda;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -44,8 +42,8 @@ GatedLatentPool<T>::GatedLatentPool(const OpKernelInfo& info) : CudaKernel(info)
   ORT_ENFORCE(ratio_ >= 1, "ratio must be positive, got ", ratio_);
   ORT_ENFORCE(window_multiplier_ == 1 || window_multiplier_ == 2, "window_multiplier must be 1 or 2, got ", window_multiplier_);
   ORT_ENFORCE(head_dim_ > 0, "head_dim must be positive, got ", head_dim_);
-  ORT_ENFORCE(rope_head_dim_ >= 0 && rope_head_dim_ <= head_dim_,
-              "rope_head_dim must be in [0, head_dim], got ", rope_head_dim_);
+  ORT_ENFORCE(rope_head_dim_ >= 0 && rope_head_dim_ <= head_dim_ && rope_head_dim_ % 2 == 0,
+              "rope_head_dim must be even and in [0, head_dim], got ", rope_head_dim_);
   ORT_ENFORCE(max_seq_len_ > 0, "max_seq_len must be positive, got ", max_seq_len_);
   ORT_ENFORCE(!simulate_fp8_ || (head_dim_ - rope_head_dim_) % 64 == 0,
               "simulate_fp8 needs head_dim - rope_head_dim to be a multiple of 64, got ",

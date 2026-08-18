@@ -3,11 +3,11 @@
 
 #include "contrib_ops/cuda/math/sparse_row_select_impl.h"
 
-#include <algorithm>
-#include <cmath>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <mma.h>
+#include <algorithm>
+#include <cmath>
 #include <type_traits>
 
 #include "contrib_ops/cuda/math/quant_sim_common.cuh"
@@ -31,7 +31,7 @@ __device__ __forceinline__ uint32_t FloatToKey(float v) {
 }
 
 // Exclusive rank of this thread among the flagged threads of the block, plus the block total.
-// Every thread must call it: it synchronises internally, and `s_warp` is reusable afterwards.
+// Every thread must call it: it synchronizes internally, and `s_warp` is reusable afterwards.
 __device__ __forceinline__ void BlockRank(bool flag, int lane, int warp, int* s_warp,
                                           int* rank, int* total) {
   const unsigned mask = __ballot_sync(0xffffffffu, flag);
@@ -276,14 +276,14 @@ __global__ void SparseRowSelectScoreKernel(const SparseRowSelectParams p,
 }
 
 // Rows of the cache one tensor-core block scores per pass, and the WMMA tile edge. The query
-// rows are re-read once per (tile, token), so the tile is what amortises them: at a 256K context
+// rows are re-read once per (tile, token), so the tile is what amortizes them: at a 256K context
 // 32 rows re-read 196 MB per launch and 64 rows halve that. It costs 52 KB of shared, which is
 // over the 48 KB default and needs the opt-in at the launch site.
 constexpr int kMmaScoreRows = 64;
 constexpr int kMmaTile = 16;
 // Padding on the shared row stride. Without it a `col_major` fragment load walks one bf16
 // column at a 256-byte row stride, which is an exact multiple of the 128-byte bank period, so
-// all sixteen rows land in the same bank and every load serialises sixteen ways.
+// all sixteen rows land in the same bank and every load serializes sixteen ways.
 constexpr int kMmaPad = 8;
 
 inline int SparseRowSelectMmaStride(const SparseRowSelectParams& p) {
@@ -315,7 +315,7 @@ inline int64_t SparseRowSelectScoreMmaSharedBytes(const SparseRowSelectParams& p
 //
 // One block owns a tile of cache rows for every token of the step, so the tile is read once and
 // reused across the (few) query positions a decode step has. Prefill keeps the GEMM: there `n`
-// is thousands of columns wide and amortises the same read far better.
+// is thousands of columns wide and amortizes the same read far better.
 template <typename CudaT>
 __global__ void SparseRowSelectScoreMmaKernel(const SparseRowSelectParams p,
                                               const __nv_bfloat16* __restrict__ query,
@@ -532,7 +532,7 @@ Status LaunchSparseRowSelect(cudaStream_t stream, cublasHandle_t cublas,
   using CudaT = typename ::onnxruntime::cuda::ToCudaType<T>::MappedType;
 
   // A step short enough that scoring row-by-row is not giving up meaningful GEMM efficiency.
-  // Above it -- prefill -- `n` is thousands of columns wide, the GEMM amortises its cache reads
+  // Above it -- prefill -- `n` is thousands of columns wide, the GEMM amortizes its cache reads
   // over all of them, and the host clamp on `score_capacity` is exact anyway because prefill is
   // not graph-captured.
   constexpr int kMaxFusedScoreSeq = 32;
@@ -548,9 +548,9 @@ Status LaunchSparseRowSelect(cudaStream_t stream, cublasHandle_t cublas,
   // scorer below takes its bound from `past_lens` on the device instead, so the launch stays
   // replay-invariant while the work follows the sequence, and it needs no promise from the
   // engine: 18.48 / 19.43 / 21.06 / 31.16. It is ahead everywhere except 256K, where re-reading
-  // the query rows once per row tile is what it cannot amortise away.
+  // the query rows once per row tile is what it cannot amortize away.
   //
-  // `kMmaScoreRows` is that amortisation, and it is two-sided: 32 rows measured
+  // `kMmaScoreRows` is that amortization, and it is two-sided: 32 rows measured
   // 18.17 / 19.21 / 20.75 / 31.99 and 64 rows 18.48 / 19.43 / 21.06 / 31.16, so the tile trades
   // short context against long. 64 keeps the worst case level with the previous release.
   //
@@ -562,7 +562,7 @@ Status LaunchSparseRowSelect(cudaStream_t stream, cublasHandle_t cublas,
   static const int mma_mode =
       ParseEnvironmentVariableWithDefault<int>("ORT_LIGHTNING_INDEXER_MMA_SCORE", 1);
   const size_t mma_shared = static_cast<size_t>(SparseRowSelectScoreMmaSharedBytes(p));
-  const bool mma_score = mma_mode > 0 && (mma_mode > 1 || !p.score_capacity_exact) &&
+  const bool mma_score = prop.major >= 8 && mma_mode > 0 && (mma_mode > 1 || !p.score_capacity_exact) &&
                          std::is_same<T, BFloat16>::value && p.simulate_rotated_fp4 &&
                          p.seq_len <= kMaxFusedScoreSeq && p.num_heads % kMmaTile == 0 &&
                          p.head_dim % kMmaTile == 0 &&

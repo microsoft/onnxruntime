@@ -4,13 +4,12 @@
 #include "contrib_ops/cuda/math/sparse_row_select.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "contrib_ops/cuda/math/sparse_row_select_impl.h"
 #include "core/common/inlined_containers.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
-
-using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,14 +28,14 @@ constexpr int64_t kMinScoreRows = 256;
 // loss -- and it is the single largest kernel in prefill.
 //
 // The bound has to reach the host because cuBLAS takes `m` there, and `past_lens` lives on
-// the device.  One synchronised copy per node buys back two orders of magnitude of GEMM, so
-// the trade is heavily favourable. During graph capture the live device value cannot be
+// the device. One synchronized copy per node buys back two orders of magnitude of GEMM, so
+// the trade is heavily favorable. During graph capture the live device value cannot be
 // used because replay would freeze it. The engine may instead provide a conservative
 // request-level maximum through ORT_LIGHTNING_INDEXER_CAPTURE_MAX_PAST; without one,
 // capture keeps the full capacity exactly as before.
 Status ClampScoreCapacity(OpKernelContext* context, const Tensor& past_lens,
                           SparseRowSelectParams& params) {
-  cudaStream_t stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+  cudaStream_t stream = static_cast<cudaStream_t>(context->GetGPUComputeStream());
   cudaStreamCaptureStatus capture = cudaStreamCaptureStatusNone;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
 
@@ -107,11 +106,12 @@ SparseRowSelect<T>::SparseRowSelect(const OpKernelInfo& info) : CudaKernel(info)
 
   ORT_ENFORCE(num_heads_ > 0, "num_heads must be positive, got ", num_heads_);
   ORT_ENFORCE(head_dim_ > 0, "head_dim must be positive, got ", head_dim_);
-  ORT_ENFORCE(rope_head_dim_ >= 0 && rope_head_dim_ <= head_dim_,
-              "rope_head_dim must be in [0, head_dim], got ", rope_head_dim_);
+  ORT_ENFORCE(rope_head_dim_ >= 0 && rope_head_dim_ <= head_dim_ && rope_head_dim_ % 2 == 0,
+              "rope_head_dim must be even and in [0, head_dim], got ", rope_head_dim_);
   ORT_ENFORCE(ratio_ >= 1, "ratio must be positive, got ", ratio_);
   ORT_ENFORCE(topk_ > 0, "topk must be positive, got ", topk_);
-  ORT_ENFORCE(row_id_offset_ > 0, "row_id_offset must be positive, got ", row_id_offset_);
+  ORT_ENFORCE(row_id_offset_ > 0 && row_id_offset_ <= std::numeric_limits<int>::max(),
+              "row_id_offset must be in [1, INT_MAX], got ", row_id_offset_);
   // The rotation is a Walsh-Hadamard butterfly, and the FP4 grouping is 32 wide.
   ORT_ENFORCE(!simulate_rotated_fp4_ || ((head_dim_ & (head_dim_ - 1)) == 0 && head_dim_ % 32 == 0),
               "simulate_rotated_fp4 needs head_dim to be a power of two of at least 32, got ", head_dim_);
@@ -205,15 +205,15 @@ Status SparseRowSelect<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(ClampScoreCapacity(context, *past_lens, params));
 
   auto query_scratch = GetScratchBuffer<float>(
-      static_cast<size_t>(SparseRowSelectQueryElems(params)), context->GetComputeStream());
+      static_cast<size_t>(SparseRowSelectQueryElems(params)), GetComputeStream(context));
   auto cache_scratch = GetScratchBuffer<float>(
-      static_cast<size_t>(SparseRowSelectCacheElems(params)), context->GetComputeStream());
+      static_cast<size_t>(SparseRowSelectCacheElems(params)), GetComputeStream(context));
   auto score_scratch = GetScratchBuffer<float>(
-      static_cast<size_t>(SparseRowSelectScoreElems(params)), context->GetComputeStream());
+      static_cast<size_t>(SparseRowSelectScoreElems(params)), GetComputeStream(context));
   auto key_scratch = GetScratchBuffer<uint32_t>(
-      static_cast<size_t>(SparseRowSelectKeyElems(params)), context->GetComputeStream());
+      static_cast<size_t>(SparseRowSelectKeyElems(params)), GetComputeStream(context));
   auto query_bf16_scratch = GetScratchBuffer<uint8_t>(
-      static_cast<size_t>(SparseRowSelectQueryBf16Bytes(params)), context->GetComputeStream());
+      static_cast<size_t>(SparseRowSelectQueryBf16Bytes(params)), GetComputeStream(context));
   return LaunchSparseRowSelect<T>(
       Stream(context), GetCublasHandle(context), GetDeviceProp(), UseTF32(), params,
       query->Data<T>(), cos_table->Data<float>(), sin_table->Data<float>(), rows->Data<T>(),

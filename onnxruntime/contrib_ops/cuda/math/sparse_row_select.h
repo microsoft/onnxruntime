@@ -9,7 +9,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda::CudaKernel;
+using onnxruntime::cuda::OpKernelContext;
+using onnxruntime::cuda::OpKernelInfo;
+using onnxruntime::cuda::Status;
 
 // Selects which compressed KV rows each query token is allowed to attend to (DeepSeek-V4's
 // Lightning Indexer is one such scorer). It rotates the query, folds this step's compressed
