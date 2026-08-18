@@ -657,5 +657,49 @@ TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+// Fused paged prefill across a block boundary. block_size == max_k_step (32
+// for fp16 head_size <= 128) is the tightest configuration
+// ShouldRunFusedPagedPrefill accepts. token_count = 64 spans two paged
+// blocks, and block_table = {3, 1} makes the two logical pages map to
+// non-adjacent physical blocks — any indexing bug that assumes physical
+// adjacency of consecutive logical pages will fail here (see the alignment
+// invariant note at the top of flash_attention_paged_prefill.wgsl.template).
+TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_BlockBoundaryCrossing) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 64;  // >= 32 for fused prefill; spans 2 blocks of 32
+  c.num_heads = 2;
+  c.kv_num_heads = 2;  // MHA
+  c.head_size = 128;
+  c.block_size = 32;
+  c.num_blocks = 5;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 64};
+  c.past_seqlens = {0};
+  c.block_table = {3, 1};  // logical page 0 -> phys 3, page 1 -> phys 1
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+// Direct paged decode with a KV history that crosses a block boundary. Uses
+// block_size = 32 and past = 40 so total KV = 41 spans two paged blocks;
+// block_table = {4, 1} makes the two logical pages non-contiguous, catching
+// any indexing bug in the per-slot block_table lookup inside
+// flash_attention_paged_decode_qkv.wgsl.template.
+TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 1;  // decode: one new Q token
+  c.num_heads = 1;
+  c.kv_num_heads = 1;
+  c.head_size = 8;
+  c.block_size = 32;
+  c.num_blocks = 5;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 1};
+  c.past_seqlens = {40};   // total KV = 41 slots, spans 2 blocks of 32
+  c.block_table = {4, 1};  // logical page 0 -> phys 4, page 1 -> phys 1
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

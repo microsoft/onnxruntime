@@ -71,8 +71,10 @@ struct PABenchCase {
   int past_seqlen;
   int block_size;
   // Optional per-batch Q lengths. Empty -> every batch has q_len == seq_len
-  // (uniform). Set to test the varlen Q shader mode of the fused paged
-  // prefill kernel. Sum must equal batch_size * seq_len.
+  // (uniform); Setup() then derives token_count = batch_size * seq_len.
+  // Set to test the varlen Q shader mode of the fused paged prefill kernel;
+  // in that case seq_len is the *maximum* per-batch Q length and token_count
+  // = sum(q_lens) (which can be less than batch_size * seq_len).
   std::vector<int> q_lens;
 };
 

@@ -21,11 +21,15 @@
 //     !apple, e.g. Qualcomm / AMD / Intel), the dispatch falls back to the
 //     gather + dense-FA fallback. Porting the subgroup path is v2 work.
 //
-// Alignment invariant: block_size is enforced to be a multiple of 256 in
-// PagedAttention parameter validation. max_k_step is 32 (fp16, head<=128) or
-// 16 otherwise, and k_start advances by max_k_step starting at 0, so every
-// K tile lies fully inside a single paged block — one block_table lookup per
-// tile per workgroup.
+// Alignment invariant: paged_attention_helper enforces block_size to be a
+// power of two >= 16, and ShouldRunFusedPagedPrefill additionally rejects
+// block_size < max_k_step. max_k_step is 32 (fp16, head <= 128) or 16
+// otherwise, and k_start advances by max_k_step starting at 0. Because both
+// block_size and max_k_step are powers of two and block_size >= max_k_step,
+// block_size is a multiple of max_k_step, so every K tile lies fully inside
+// a single paged block — one block_table lookup per tile per workgroup.
+// Tests: EndToEnd_Prefill_FusedPrefill_BlockBoundaryCrossing exercises the
+// transition between two non-contiguous logical pages.
 
 #param is_fp16
 #param is_unidirectional

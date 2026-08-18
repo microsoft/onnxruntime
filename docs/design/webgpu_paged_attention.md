@@ -348,8 +348,9 @@ preserving the single-kernel prefill algorithm and workgroup Q tiling of
 (`q_varlen` template variant), variable-Q-length causal masking via
 `seqlen_k` + `seqlens_q`, and no attention bias / head sink / TurboQuant.
 `ShouldRunFusedPagedPrefill` (see §4.3) is the shared selection gate.
-Measured 1.11×–1.49× fused-vs-fallback wins across the benchmarked shape
-matrix on the tested adapters.
+Measured wins on the microbench matrix vs. the #31611 gather-then-flash
+cascade: **1.01×–1.25×** on uniform prefill (geomean ~1.13×) and
+**1.14×–1.73×** on varlen prefill (geomean ~1.29×).
 
 **Skip Unpack/Repack fast paths.** ✅ New in this PR, not in the original
 Phase 2 list. When direct paged attention is active, the packed varlen Q
