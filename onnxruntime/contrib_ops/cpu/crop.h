@@ -8,6 +8,7 @@
 #include "core/framework/op_kernel.h"
 #endif
 
+#include <algorithm>
 #include <gsl/gsl>
 
 namespace onnxruntime {
@@ -27,6 +28,22 @@ class CropBase {
                              "Attribute border needs to be specified with four border elements, got ", border_.size());
     }
 
+    if (std::any_of(border_.begin(), border_.end(), [](int64_t border) { return border < 0; })) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attribute border values must be non-negative");
+    }
+
+    if (!scale_.empty()) {
+      if (scale_.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Attribute scale needs to be specified with two elements (height, width), got ",
+                               scale_.size());
+      }
+
+      if (std::any_of(scale_.begin(), scale_.end(), [](int64_t scale) { return scale < 0; })) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attribute scale values must be non-negative");
+      }
+    }
+
     const auto& dims = X->Shape().GetDims();
 
     if (dims.size() != 4) {
@@ -43,32 +60,34 @@ class CropBase {
             rightBorder = border_[2],
             bottomBorder = border_[3];
 
-    if (H < topBorder + bottomBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
-    }
+    if (scale_.empty()) {
+      if (topBorder > H || bottomBorder > H - topBorder) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input's height (", H, ") needs to be greater than or equal to the topBorder (",
+                               topBorder, ") + bottomBorder (", bottomBorder, ")");
+      }
 
-    if (W < leftBorder + rightBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
+      if (leftBorder > W || rightBorder > W - leftBorder) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input's width (", W, ") needs to be greater than or equal to the leftBorder (",
+                               leftBorder, ") + rightBorder (", rightBorder, ")");
+      }
+
+      return Status::OK();
     }
 
     // scale = (height, width)
-    if (!scale_.empty()) {
-      if (scale_.size() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Attribute scale needs to be specified with two elements (height, width), got ",
-                               scale_.size());
-      }
-      int64_t bottomLimit = topBorder + scale_[0];
-      int64_t rightLimit = leftBorder + scale_[1];
 
-      if (H < bottomLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
-      }
+    if (topBorder > H || scale_[0] > H - topBorder) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input's height (", H, ") needs to be greater than or equal to the topBorder (",
+                             topBorder, ") + scale_[0] (", scale_[0], ")");
+    }
 
-      if (W < rightLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
-      }
+    if (leftBorder > W || scale_[1] > W - leftBorder) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input's width (", W, ") needs to be greater than or equal to the leftBorder (",
+                             leftBorder, ") + scale_[1] (", scale_[1], ")");
     }
 
     return Status::OK();
