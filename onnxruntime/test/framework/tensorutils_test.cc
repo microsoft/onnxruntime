@@ -170,6 +170,7 @@ TEST(TensorProtoUtilsTest, ExternalDataInfoRejectsDuplicateLocations) {
 TEST(TensorProtoUtilsTest, HasExternalDataInMemoryChecksAllLocations) {
   auto make_tensor = [](const std::string& first_location, const std::string& second_location) {
     ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
     auto* first = tensor_proto.add_external_data();
     first->set_key("location");
