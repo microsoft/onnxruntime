@@ -18,6 +18,7 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -230,9 +231,10 @@ class GemmPluginProfiler {
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
  private:
-  std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics);
+  std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics,
+                                                 char* workspace, cudaStream_t stream);
 
-  float profileTacticForProblem(int m, int n, int k, Config const& tactic);
+  float profileTacticForProblem(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream);
 
   int nextPowerOfTwo(int v) const {
     --v;
@@ -251,10 +253,6 @@ class GemmPluginProfiler {
 
  private:
   MNKProfileMapPtr mMNKProfileMap{};
-
-  onnxruntime::IAllocatorUniquePtr<char> mWorkspaceTmp{nullptr};
-
-  cudaStream_t mStream;
 
   GemmDims mDims{};
 
@@ -345,6 +343,8 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
   bool isAllocated{false};
+  onnxruntime::IAllocatorUniquePtr<char> workspace_tmp{nullptr};
+  cudaStream_t stream;
 
   // Populate from the persistent cache (if any) so already-tuned M buckets are skipped below.
   loadPersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
@@ -352,7 +352,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   auto profileTactics = [&](int m, int n, int k) {
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
-        this->mWorkspaceTmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, workspace_bytes, true);
+        workspace_tmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, workspace_bytes, true);
 #if ORT_LLM_VERBOSE
         AllocatorStats stats;
         this->mAllocator->GetStats(&stats);
@@ -362,15 +362,15 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
         isAllocated = true;
       }
 
-      initTmpData(m, n, k, this->mWorkspaceTmp.get(), workspace_bytes, this->mStream);
+      initTmpData(m, n, k, workspace_tmp.get(), workspace_bytes, stream);
 
       auto tactics = this->getTactics(m, n, k);
       // Profile different tactics for particular m and insert best config to the map
-      mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
+      mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics, workspace_tmp.get(), stream)});
     }
   };
 
-  CUDA_CALL_THROW(cudaStreamCreate(&mStream));
+  CUDA_CALL_THROW(cudaStreamCreate(&stream));
 
   // Profile the (possibly reduced) set of M buckets. Any unprofiled runtime M is handled
   // later by lazy single-bucket profiling in getBestConfigOrProfile.
@@ -380,9 +380,9 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   if (isAllocated) {
     // Free tmp data
-    mWorkspaceTmp.reset();
+    workspace_tmp.reset();
   }
-  CUDA_CALL_THROW(cudaStreamDestroy(mStream));
+  CUDA_CALL_THROW(cudaStreamDestroy(stream));
 
   // Persist any newly profiled tactics to the disk cache (if configured).
   storePersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
@@ -459,21 +459,6 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     }
   }
 
-  writer_lock lock(mMNKProfileMap->mutex);
-
-  if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
-    mMNKProfileMap->createMProfileMap(gemmId);
-  }
-  auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
-
-  // Re-check under the writer lock: another thread may have profiled it meanwhile.
-  if (mProfileMap->count(m) > 0) {
-    return mProfileMap->at(m);
-  }
-  if (mProfileMap->count(target) > 0) {
-    return mProfileMap->at(target);
-  }
-
   // We can only profile lazily if the profiling context from construction is available.
   if (mRunner == nullptr || mAllocator == nullptr || !mDims.isInitialized()) {
     ORT_LLM_LOG_WARNING("Cannot lazily profile an unprofiled M bucket: profiler context is unavailable.");
@@ -484,29 +469,40 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   int const k = static_cast<int>(mDims.k);
   size_t const workspace_bytes = computeTmpSize(target, n, k);
 
-  CUDA_CALL_THROW(cudaStreamCreate(&mStream));
-  mWorkspaceTmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, workspace_bytes, true);
-  initTmpData(target, n, k, mWorkspaceTmp.get(), workspace_bytes, mStream);
+  cudaStream_t stream;
+  CUDA_CALL_THROW(cudaStreamCreate(&stream));
+  auto workspace_tmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, workspace_bytes, true);
+  initTmpData(target, n, k, workspace_tmp.get(), workspace_bytes, stream);
 
   auto tactics = this->getTactics(target, n, k);
-  auto best = this->profileTacticsForProblem(target, n, k, tactics);
+  auto best = this->profileTacticsForProblem(target, n, k, tactics, workspace_tmp.get(), stream);
+
+  workspace_tmp.reset();
+  CUDA_CALL_THROW(cudaStreamDestroy(stream));
+
+  writer_lock lock(mMNKProfileMap->mutex);
+  if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
+    mMNKProfileMap->createMProfileMap(gemmId);
+  }
+  auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
+
+  if (mProfileMap->count(m) > 0) {
+    return mProfileMap->at(m);
+  }
+  if (mProfileMap->count(target) > 0) {
+    return mProfileMap->at(target);
+  }
+
   mProfileMap->insert({target, best});
 
-  mWorkspaceTmp.reset();
-  CUDA_CALL_THROW(cudaStreamDestroy(mStream));
-
-  // Deliberately do NOT flush this lazily-profiled bucket to the persistent disk cache here:
-  // doing disk I/O (file lock + atomic write) on the inference compute path would stall latency.
-  // The bucket stays in the in-process map for the rest of the session; it is staged into the
-  // process-global in-memory cache by persistProfiledTactics() at kernel teardown and written to
-  // disk once when the process-global cache is torn down (plus the construction-time sweep and the
-  // offline tuning tool flush eagerly).
+  // Deliberately do not flush lazily-profiled buckets on the inference path. Kernel teardown
+  // stages them in memory, and CUDA EP teardown performs the disk write.
   return best;
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticsForProblem(
-    int m, int n, int k, std::vector<Config> const& tactics) {
+    int m, int n, int k, std::vector<Config> const& tactics, char* workspace, cudaStream_t stream) {
   ORT_LLM_LOG_ENTRY();
 
   float bestTime = std::numeric_limits<float>::max();
@@ -526,7 +522,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         continue;
       }
       // Profile particular tactic for given M, N and K
-      time = profileTacticForProblem(m, n, k, candidateConfig);
+      time = profileTacticForProblem(m, n, k, candidateConfig, workspace, stream);
 
 #if ORT_LLM_VERBOSE > 1
       if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
@@ -573,15 +569,13 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticForProblem(
-    int m, int n, int k, Config const& tactic) {
+    int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream) {
   constexpr int warmup = 5;
   constexpr int runs = 10;
 
-  cudaStream_t stream = mStream;
-
   // Warmup the execution
   for (int i = 0; i < warmup; ++i) {
-    runTactic(m, n, k, tactic, mWorkspaceTmp.get(), stream);
+    runTactic(m, n, k, tactic, workspace, stream);
   }
 
   cudaEvent_t start;
@@ -593,7 +587,7 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
 
   // Profile GEMM
   for (int i = 0; i < runs; ++i) {
-    runTactic(m, n, k, tactic, mWorkspaceTmp.get(), stream);
+    runTactic(m, n, k, tactic, workspace, stream);
   }
 
   CUDA_CALL_THROW(cudaEventRecord(stop, stream));

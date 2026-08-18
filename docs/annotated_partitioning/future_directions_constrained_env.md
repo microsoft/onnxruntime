@@ -239,7 +239,7 @@ Nearly all transformer models are *exported* with dynamic batch + sequence_lengt
 
 **Implication for pre-allocation:** The target audience of `pre_allocate_execution_buffers` — embedded, edge, single-model-per-device — typically *can* use static shapes. Models are re-exported with fixed dimensions as part of the deployment pipeline. The dynamic-shape case (LLM serving with variable seq_len) lives in a different deployment tier where VRAM budget is less critical than throughput and the arena allocator handles repeated allocations efficiently.
 
-**Implication for workspace estimation:** Even with dynamic shapes, `EstimateWorkspace` (Level 1) and `DeclareWorkspaceRequirements` (Level 2) remain valuable for *budget decisions* — they can use worst-case shapes (max batch, max seq_len from model config) to determine how many nodes fit on the device. The estimate doesn't need to match runtime exactly; it needs to be conservative enough to avoid OOM.
+**Implication for workspace estimation:** Even with dynamic shapes, `EstimateWorkspace` (Level 1) and `DeclareWorkspaceRequirements` (Level 2) remain valuable for *budget decisions* — they can use configured input-shape limits (max batch, max seq_len from model config) to estimate how many nodes fit on the device. However, ordinary shape inference does not prove that every operator's output shape is monotonic with respect to its input dimensions. For example, a `Slice` with negative indices can produce a smaller output when its input dimension increases. A shape inferred from maximum inputs is therefore an estimation hint, not a guaranteed upper bound. Pre-allocation must retain runtime bounds checks and an allocation fallback rather than relying on the hint alone to prevent OOM.
 
 ### Reference: What llama.cpp Does
 
@@ -717,11 +717,11 @@ For most LLM models (which are repetitive transformer blocks with minimal fusion
 
 **When static shapes are unavailable:**
 
-If the model has dynamic shapes, the estimation function cannot compute workspace (shapes are unknown at `GetCapability()` time). In this case:
+If the model has dynamic shapes and no usable shape hint, the estimation function cannot compute workspace. In this case:
 - The estimation function returns a failure status or a sentinel value indicating "unknown."
 - `ComputeNodeCostForBudget()` falls back to the 1.5x heuristic multiplier on base cost.
 - The user may need to **tune the memory budget by trial and error** — setting a conservative budget and adjusting based on observed OOM or under-utilization. This is analogous to llama.cpp's `-ngl` flag: the user picks a layer count and adjusts based on whether it fits.
-- A future extension could accept user-provided "typical shape hints" (e.g., `max_batch=4, max_seq=2048`) to enable estimation even for dynamic-shape models, but this is out of scope for the initial design.
+- `session.max_shape_override` can provide input-shape hints (for example, maximum batch and sequence length). ORT propagates them through a disposable shadow graph for Level 1 and Level 2 estimation without changing runtime input constraints. As noted above, propagated shapes are estimates rather than proven upper bounds.
 
 **Plugin C ABI for Level 1:**
 
@@ -969,6 +969,16 @@ The **estimation function** signature differs between in-tree and plugin paths:
 
 But both compute the same result. For shared-source kernels (compiled both in-tree and as plugin), a single static helper function (e.g., `ComputeAttentionWorkspace()`) is called from both wrappers — ensuring the estimate is identical regardless of build configuration.
 
+**Implementation-confirmed boundary (issue #29775 Phase-A pilot, PR #29811, MatMulNBits):** the split above
+is sharper than "same function, different signature" — it is two functions with different reusability.
+`ComputeFpAIntBGemmWorkspaceSize(m, n, k, sm, multiProcessorCount)` takes only plain shape/arch integers
+(no ORT graph types) and is the part that can be shared verbatim by a future plugin implementation. The
+logic that extracts `m`/`n`/`k` from `const Node&`/`NodeArg`/`TensorShape` (in-tree types only) is a
+separate, thinner wrapper that plugin code cannot reuse and must re-implement against whatever shape
+representation the C ABI exposes (`OrtNode`/`Node_GetInputShape`). Keep any future shared-source kernel's
+math core free of in-tree-only graph types for exactly this reason — see the
+`workspace-estimation-shared-header` skill for the related header-boundary pitfall this pilot hit.
+
 ---
 
 #### Phase A: Workspace Pre-declaration (`DeclareWorkspaceRequirements`)
@@ -984,6 +994,7 @@ struct WorkspaceRequirement {
   size_t size_bytes;        // Size of this workspace buffer
   int slot_id;             // Kernel-defined slot identifier (0, 1, 2, ...)
                            // Unique within a single kernel instance
+  size_t alignment_bytes;   // 0 = allocator default is sufficient. See prose below.
 };
 
 // Optional override on OpKernel (called during FinalizeSessionState):
@@ -993,6 +1004,30 @@ virtual Status DeclareWorkspaceRequirements(
   return Status::OK();  // Default: no declaration (fall back to arena)
 }
 ```
+
+**`alignment_bytes` (added in PR #29811):** reserved for a future shared-arena packer that co-locates
+multiple kernels' declared slots and needs per-slot alignment metadata. Unused by any kernel today — the
+CUDA allocator's default ≥256-byte alignment already satisfies every current kernel's needs (each gets
+its own `GetScratchBuffer` call, or — like GQA's unfused path — hand-rolls sub-offsets assuming the
+outer buffer is already ≥256-byte aligned). A plain `size_t` with a `0` sentinel is used rather than
+`std::optional<size_t>` because this struct is meant to be usable across a plugin-DLL boundary
+eventually, and `std::optional`'s layout is not guaranteed stable across compilers/STL versions the way
+a scalar with a sentinel value is.
+
+**Shape source wiring:** framework callers now resolve shapes from two sources:
+
+- Fully concrete shapes already present on the executable graph are used directly.
+- For dynamic models, `session.max_shape_override` is applied to a disposable shadow graph. Normal ORT
+  shape inference propagates those input hints to intermediate values without changing executable-graph
+  metadata or runtime input validation.
+
+Level 1 consumes the current shadow result during `GetCapability()`. It reuses that result for the second
+capability pass when layout transformation reports no modification and rebuilds it after known graph
+mutations. Level 2 creates a final result after partitioning because EP fusion and transformation can
+change NodeArgs, generated schemas, and subgraph identities. Reusing a pre-mutation result across those
+stages would be incorrect; deeper caching requires a reliable graph-mutation generation rather than
+assuming equal topology. Nodes whose inputs remain unresolved use the existing estimation/allocation
+fallback.
 
 A kernel can declare multiple workspace slots (e.g., attention needs separate Q transpose buffer, output buffer, seqlens buffer). The `slot_id` is defined by the kernel author and is stable across calls — it identifies *which* buffer within that kernel's logic.
 
@@ -1228,6 +1263,31 @@ class AttentionKernel : public OrtKernelImplBase {
 - No coordination between kernel authors
 - No registration step during plugin initialization
 - No versioning concerns (IDs never cross the plugin boundary as semantic values)
+
+##### Cost of a Real Plugin-Side Override (Deferred)
+
+The issue #29775 Phase-A pilot (PR #29811, MatMulNBits) deliberately implemented Level 1 and Level 2
+**only** for the in-tree CUDA EP, and left the plugin-side path unimplemented — the C ABI surface above
+describes the *design*, not something that pilot built or exercised. This was an explicit scope decision
+made when the pilot's design doc (issue #29810) was written, for these reasons, which remain the
+concrete cost of picking this up next:
+
+1. **DLL-boundary verification.** The shared math helper (e.g. `ComputeFpAIntBGemmWorkspaceSize`) needs
+   to actually be confirmed to link and execute correctly when called from the plugin DLL — the struct
+   crossing the ABI boundary compiling is not the same as the helper function being callable/linked
+   there.
+2. **A second build configuration's worth of test infrastructure.** The plugin EP is a separate CMake
+   build configuration from the in-tree CUDA EP; verifying Level 1/2 for a plugin kernel means building
+   and testing under that configuration too, which this pilot's test infra does not cover.
+3. **Wiring the plugin EP's own, separate memory-budget consumer.** `ep_plugin_provider_interfaces.cc`
+   (around line 356) has its own existing budget loop, independent of the in-tree `IResourceAccountant`
+   path, currently using a flat 1.5x safety multiplier. Having Level 1/2 estimates available does not by
+   itself make the plugin EP use them — that loop needs to be updated to consume the estimates, which is
+   a separate piece of work from declaring the estimates.
+
+None of the above is started. A kernel author picking up plugin-side workspace estimation should expect
+to do all three, not just implement the `DeclareWorkspaceRequirements` override on the plugin kernel
+class.
 
 #### Phase B: Eliminate Arena for Static-Shape Models
 

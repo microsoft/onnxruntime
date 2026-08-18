@@ -167,8 +167,9 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
   return CudaExecutionProviderWithOptions(&provider_options);
-#endif
+#else
   return nullptr;
+#endif
 }
 
 #ifdef ENABLE_CUDA_NHWC_OPS
@@ -179,8 +180,9 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
   provider_options.use_tf32 = false;
   provider_options.prefer_nhwc = true;
   return CudaExecutionProviderWithOptions(&provider_options);
-#endif
+#else
   return nullptr;
+#endif
 }
 #endif
 
@@ -191,11 +193,12 @@ std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCU
 #else
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
+  return nullptr;
 #endif
 #else
   ORT_UNUSED_PARAMETER(provider_options);
-#endif
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {
@@ -339,6 +342,14 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
   // Disable storage buffer cache
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
                                                    webgpu::options::kBufferCacheMode_Disabled));
+  // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU int64
+  // kernels instead of silently falling back to CPU. Kept on by default for the test harness so
+  // operator tests don't have to build a bespoke WebGPU EP just to reach the int64 path.
+  //
+  // NOTE: this enables int64 for ALL WebGPU tests, not just the binary elementwise ops.
+  // TODO: migrate the other int64-gated ops' WebGPU-only int64 tests to EP-agnostic form too.
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kEnableInt64).c_str(),
+                                                   webgpu::options::kEnableInt64_ON));
   if (!is_nhwc) {
     // Enable NCHW support
     ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),

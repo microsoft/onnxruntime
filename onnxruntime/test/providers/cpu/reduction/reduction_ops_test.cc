@@ -2863,6 +2863,31 @@ TEST(ReductionOpTest, ReduceSum_int64) {
   test.Run();
 }
 
+#if defined(USE_CUDA)
+TEST(ReductionOpTest, ReduceSum_int64_omitted_optional_axes) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3}, {1, 2, 3});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<int64_t>("reduced", {}, {6});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceSum_int64_cancellation) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  const int64_t large = int64_t{1} << 53;
+  test.AddInput<int64_t>("data", {3}, {large, 1, -large});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int64_t>("reduced", {}, {1});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -3590,6 +3615,71 @@ TEST(ReductionOpTest, ArgMax_float_first_index_random) {
   test.AddOutput<int64_t>("reduced", {1}, {min_index});
 
   // Exclude OpenVINO since it failed to handle this case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Rows that are wide enough to be reduced by several cooperating CUDA blocks,
+// with more than one row so the per row bookkeeping is exercised as well.
+static std::vector<float> MakeWideArgReductionInput(int64_t num_rows, int64_t num_cols,
+                                                    const std::vector<int64_t>& max_indices,
+                                                    const std::vector<int64_t>& min_indices) {
+  std::vector<float> data(static_cast<size_t>(num_rows * num_cols));
+  for (int64_t row = 0; row < num_rows; ++row) {
+    for (int64_t col = 0; col < num_cols; ++col) {
+      // Repeating ramp: plenty of duplicated values, no accidental extremes.
+      data[static_cast<size_t>(row * num_cols + col)] = static_cast<float>((col + row) % 97) * 0.5f;
+    }
+    // Duplicated extremes: the first occurrence has to win.
+    data[static_cast<size_t>(row * num_cols + max_indices[static_cast<size_t>(row)])] = 1000.0f;
+    data[static_cast<size_t>(row * num_cols + num_cols - 1)] = 1000.0f;
+    data[static_cast<size_t>(row * num_cols + min_indices[static_cast<size_t>(row)])] = -1000.0f;
+    data[static_cast<size_t>(row * num_cols + num_cols - 2)] = -1000.0f;
+  }
+  return data;
+}
+
+TEST(ReductionOpTest, ArgMax_float_wide_last_axis) {
+  constexpr int64_t num_rows = 3;
+  constexpr int64_t num_cols = 40000;
+  const std::vector<int64_t> max_indices{0, 12345, num_cols - 3};
+  const std::vector<int64_t> min_indices{7, 30000, 1};
+
+  OpTester test("ArgMax", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {num_rows, num_cols},
+                       MakeWideArgReductionInput(num_rows, num_cols, max_indices, min_indices));
+  test.AddOutput<int64_t>("reduced", {num_rows}, max_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMin_float_wide_last_axis) {
+  constexpr int64_t num_rows = 3;
+  constexpr int64_t num_cols = 40000;
+  const std::vector<int64_t> max_indices{0, 12345, num_cols - 3};
+  const std::vector<int64_t> min_indices{7, 30000, 1};
+
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {num_rows, num_cols},
+                       MakeWideArgReductionInput(num_rows, num_cols, max_indices, min_indices));
+  test.AddOutput<int64_t>("reduced", {num_rows}, min_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMax_float_wide_last_axis_keepdims) {
+  constexpr int64_t num_rows = 2;
+  constexpr int64_t num_cols = 202048;
+  const std::vector<int64_t> max_indices{131072, 3};
+  const std::vector<int64_t> min_indices{0, 200000};
+
+  OpTester test("ArgMax", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<float>("data", {num_rows, num_cols},
+                       MakeWideArgReductionInput(num_rows, num_cols, max_indices, min_indices));
+  test.AddOutput<int64_t>("reduced", {num_rows, 1}, max_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 

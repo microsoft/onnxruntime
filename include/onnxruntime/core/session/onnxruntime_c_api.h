@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 29
+#define ORT_API_VERSION 30
 
 #ifdef __cplusplus
 extern "C" {
@@ -5767,9 +5767,13 @@ struct OrtApi {
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
-   * that are tensors that contain strings will cause an error to be returned.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors of a
+   * type that occupies at least one byte per element, this is sizeof(element_type) *
+   * total_element_count. For packed sub-byte types (e.g. int4/uint4, which store multiple
+   * elements per byte) it is the actual packed storage size, which is smaller than
+   * sizeof(element_type) * total_element_count. Use this value (not the element count) when
+   * copying or bounds-checking the raw tensor buffer. OrtValues that are not tensors or that are
+   * tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes
@@ -7517,6 +7521,32 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
                   _Outptr_result_maybenull_ OrtSyncStream** out);
+
+  /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
+   *
+   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
+   * initializer data. This function provides the source model as an in-memory byte buffer, for scenarios
+   * where the source model is not available as a file on disk (e.g., loaded from a package or downloaded).
+   *
+   * The caller retains ownership of the buffer and must ensure it remains valid for the lifetime of the session.
+   *
+   * \note If the source model is available as a file on disk, use the session config entry
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) instead.
+   *
+   * \note If both a buffer (via this function) and a file path (via "ep.context_source_model_path") are
+   *       provided, the EP should prefer the buffer. The recommended EP precedence is:
+   *       buffer > file path > "onnx_model_filename" EPContext node attribute.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] source_model_data Pointer to the source model byte buffer.
+   * \param[in] source_model_data_length Size of the byte buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
+                  _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 };
 
 /*
@@ -8362,6 +8392,31 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+
+  /** \brief Enable or disable weightless mode for model compilation.
+   *
+   * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
+   * compiled binary. Instead, the initializer data must be provided when creating a session from the
+   * compiled model, either from the source model (via the "onnx_model_filename" EPContext node attribute
+   * or the "ep.context_source_model_path" session option) or from externalized weights.
+   *
+   * This enables smaller compiled models and allows sharing initializer data across multiple compiled
+   * model variants (e.g., multi-platform caches for different hardware generations).
+   *
+   * ORT verifies that the target EP supports weightless mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support weightless mode, CompileModel()
+   * returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] use_weightless If true, enable weightless mode. If false, disable (default behavior).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ bool use_weightless);
 };
 
 /**

@@ -16,12 +16,15 @@
  */
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
-#include "contrib_ops/cuda/llm/common/workspace.h"
-#include "core/platform/env_var_utils.h"
 
 #include <algorithm>
 #include <set>
-#include <sstream>
+#include <string>
+#include <vector>
+
+#include "contrib_ops/cuda/llm/common/workspace.h"
+#include "core/common/parse_string.h"
+#include "core/common/string_utils.h"
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
@@ -63,7 +66,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
-    size_t const wsSize = mRunner->getWorkspaceSize(m, originalN, k);
+    int const wsSize = static_cast<int>(mRunner->getWorkspaceSize(m, originalN, k));
     if (mQuantBits == 8) {
       mRunner->gemm(actPtr, reinterpret_cast<int8_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr, outputPtr,
                     m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
@@ -76,14 +79,14 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
   // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
-  int const originalN = mQuantBits == 8 ? static_cast<int>(n) * FP16_INT8_RATIO : static_cast<int>(n) * FP16_INT4_RATIO;
+  int const originalN = static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
   std::vector<size_t> workspaces = {
-      maxM * k * sizeof(half),                                                           // A
-      k * n * sizeof(half),                                                              // B
-      k * originalN * sizeof(half) / mGroupSize,                                         // scales
-      k * originalN * sizeof(half) / mGroupSize,                                         // zeros
-      originalN * sizeof(half),                                                          // biases
-      maxM * originalN * sizeof(half),                                                   // C
+      /* A */ maxM * k * sizeof(half),
+      /* B */ k * n * sizeof(half),
+      /* scales */ k * originalN * sizeof(half) / mGroupSize,
+      /* zeros */ k * originalN * sizeof(half) / mGroupSize,
+      /* biases */ originalN * sizeof(half),
+      /* C */ maxM * originalN * sizeof(half),
       mRunner->getWorkspaceSize(static_cast<int>(maxM), originalN, static_cast<int>(k))  // workspace
   };
   return calculateTotalWorkspaceSize(workspaces.data(), static_cast<int>(workspaces.size()));
@@ -102,42 +105,24 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
   return true;
 }
 
-std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMOverride() {
-  const std::string value = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>(kEnvProfileM, "");
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {
   std::vector<int> result;
   if (value.empty()) {
     return result;
   }
-  std::stringstream ss(value);
-  std::string token;
   std::set<int> unique;
-  while (std::getline(ss, token, ',')) {
-    // Trim surrounding whitespace.
-    size_t start = token.find_first_not_of(" \t");
-    size_t end = token.find_last_not_of(" \t");
-    if (start == std::string::npos) {
+  for (const auto token : onnxruntime::utils::SplitString(value, ",", true)) {
+    const std::string trimmed_token = onnxruntime::utils::TrimString(token);
+    if (trimmed_token.empty()) {
       continue;
     }
-    token = token.substr(start, end - start + 1);
-    try {
-      int m = std::stoi(token);
-      if (m > 0) {
-        unique.insert(m);
-      }
-    } catch (const std::exception&) {
-      // Ignore malformed entries.
+    int m = 0;
+    if (TryParseStringWithClassicLocale(trimmed_token, m) && m > 0) {
+      unique.insert(m);
     }
   }
   result.assign(unique.begin(), unique.end());
   return result;
-}
-
-int WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM() {
-  auto override_ms = ParseProfileMOverride();
-  if (!override_ms.empty()) {
-    return override_ms.back();  // sorted ascending
-  }
-  return kDefaultProfileMaxM;
 }
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
@@ -147,9 +132,8 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
 
   std::set<int> buckets;
 
-  auto override_ms = ParseProfileMOverride();
-  if (!override_ms.empty()) {
-    for (int m : override_ms) {
+  if (!mProfileMOverride.empty()) {
+    for (int m : mProfileMOverride) {
       buckets.insert(std::min(std::max(lo, m), hi));
     }
   } else {
@@ -269,6 +253,5 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
   // to disk a single time when the process-global cache table is destroyed (see matmul_nbits.cc).
   stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
 }
-
 }  // namespace onnxruntime::llm::kernels::weight_only
 #endif
