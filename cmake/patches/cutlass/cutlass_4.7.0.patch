@@ -57,3 +57,15 @@ index be207a49..6028e01d 100644
 +  explicit float_exmy_base(unsigned x) {
      storage = static_cast<Derived*>(this)->convert_from_float(float(x)).storage;
    }
+diff --git a/include/cutlass/subbyte_reference.h b/include/cutlass/subbyte_reference.h
+--- a/include/cutlass/subbyte_reference.h
++++ b/include/cutlass/subbyte_reference.h
+@@ -456,7 +456,7 @@ public:
+    //
+    Storage assumed;
+ #if (__CUDACC_VER_MAJOR__ > 12) || (__CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ >= 8)
+-    Storage original = __nv_atomic_load_n(ptr_, __NV_ATOMIC_RELAXED);
++    Storage original = __nv_atomic_load_n(ptr_, __NV_ATOMIC_RELAXED, __NV_THREAD_SCOPE_DEVICE);
+ #else
+    Storage original = *const_cast<Storage const volatile *>(ptr_);
+ #endif
