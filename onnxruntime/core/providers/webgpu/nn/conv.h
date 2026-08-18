@@ -12,21 +12,32 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
-#if !defined(__wasm__)
-#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
-#endif
 
 namespace onnxruntime {
 namespace webgpu {
 
 template <bool is_channels_last, bool is_fused>
-class Conv : public WebGpuKernel
-#if !defined(__wasm__)
-             ,
-             public ConvOptImplParent
-#endif
-{
+class Conv : public WebGpuKernel {
  public:
+#if !defined(__wasm__)
+  // Abstract base class for alternative optimized Conv implementations (currently the
+  // subgroup-matrix 1x1 / same-size path). Implementations hold the parent Conv and read
+  // conv_attrs/activation/... from it, mirroring MatMul::MatMulOptImpl.
+  class ConvOptImpl {
+   public:
+    explicit ConvOptImpl(const Conv& parent) : parent_(parent) {}
+    virtual ~ConvOptImpl() = default;
+
+    // Attempts the optimized path, reading the Conv operands from `context` and the Conv
+    // attributes from the parent. Sets handled=true when it ran; leaves handled=false
+    // (allocating nothing) so the caller falls back to the normal Conv path.
+    virtual Status Compute(ComputeContext& context, /*out*/ bool& handled) = 0;
+
+   protected:
+    const Conv& parent_;
+  };
+#endif
+
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
     if (is_fused) {
       ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
@@ -45,14 +56,13 @@ class Conv : public WebGpuKernel
                          AllocatorPtr alloc,
                          /*out*/ bool& is_packed) override;
 
-#if !defined(__wasm__)
-  // ConvOptImplParent: exposes state to the subgroup-matrix 1x1 Conv impl via parent_.
-  const ConvAttributes& ConvAttrs() const override { return conv_attrs_; }
-  const Activation& ConvActivation() const override { return activation_; }
-  bool IsChannelsLast() const override { return is_channels_last; }
-  bool IsWeightConstant() const override { return w_is_constant_; }
-  const Tensor* PrepackedKernel() const override { return transposed_kernel_.get(); }
-#endif
+  // State an optimized implementation (ConvOptImpl) reads from its parent Conv.
+  const ConvAttributes& ConvAttrs() const { return conv_attrs_; }
+  const Activation& ConvActivation() const { return activation_; }
+  // True when input 1 (the weight) is a constant initializer. See w_is_constant_.
+  bool IsWeightConstant() const { return w_is_constant_; }
+  // The prepacked (OIHW->HWIO transposed) weight, or null when it is not prepacked.
+  const Tensor* PrepackedKernel() const { return transposed_kernel_.get(); }
 
  protected:
   ConvAttributes conv_attrs_;

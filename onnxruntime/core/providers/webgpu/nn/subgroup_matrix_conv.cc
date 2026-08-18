@@ -16,7 +16,6 @@
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/subgroup_matrix_common.h"
 #include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
-#include "core/providers/webgpu/nn/conv.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -26,26 +25,30 @@ namespace {
 // Subgroup-matrix implementation of the 1x1 / same-size Conv matmul. Runs its own
 // Conv shape inference to decide eligibility (mirroring Conv::ComputeInternal), then
 // builds the matmul operands and dispatches the shared subgroup-matrix kernel.
-class SubgroupMatrixConvImpl final : public ConvOptImpl {
+template <bool is_channels_last, bool is_fused>
+class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::ConvOptImpl {
+  using ConvT = Conv<is_channels_last, is_fused>;
+  using Base = typename ConvT::ConvOptImpl;
+
  public:
-  SubgroupMatrixConvImpl(const ConvOptImplParent& parent, int32_t config_index,
-                            SubgroupMatrixTilingSelector tiling_selector)
-      : ConvOptImpl(parent), config_index_(config_index), tiling_selector_(std::move(tiling_selector)) {}
+  SubgroupMatrixConvImpl(const ConvT& parent, int32_t config_index,
+                         SubgroupMatrixTilingSelector tiling_selector)
+      : Base(parent), config_index_(config_index), tiling_selector_(std::move(tiling_selector)) {}
 
   Status Compute(ComputeContext& context, /*out*/ bool& handled) override {
     handled = false;
 
-    const ConvAttributes& conv_attrs = parent_.ConvAttrs();
-    const Activation& activation = parent_.ConvActivation();
-    const bool is_channels_last = parent_.IsChannelsLast();
-    const bool w_is_constant = parent_.IsWeightConstant();
-    const Tensor* prepacked_kernel = parent_.PrepackedKernel();
+    const ConvT& parent = this->parent_;
+    const ConvAttributes& conv_attrs = parent.ConvAttrs();
+    const Activation& activation = parent.ConvActivation();
+    const bool w_is_constant = parent.IsWeightConstant();
+    const Tensor* prepacked_kernel = parent.PrepackedKernel();
 
-    // Only a constant, channels-last weight is served here (constant so a runtime
-    // transpose can be cached once; a prepacked weight is already transposed). It must
-    // also be a plain, non-grouped matmul with no fused activation; anything else falls
-    // back to the normal Conv path.
-    if (!is_channels_last || !w_is_constant ||
+    // Only a constant weight is served here (so a runtime transpose can be cached once;
+    // a prepacked weight is already transposed). It must also be a plain, non-grouped
+    // matmul with no fused activation; anything else falls back to the normal Conv path.
+    // (channels-last is guaranteed by CreateSubgroupMatrixConvImpl.)
+    if (!w_is_constant ||
         activation.activation_kind_ != ActivationKind::None || conv_attrs.group != 1) {
       return Status::OK();
     }
@@ -102,8 +105,8 @@ class SubgroupMatrixConvImpl final : public ConvOptImpl {
     const auto kernel_width = kernel_shape[3];
 
     const bool same_size = input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
-    const bool is_conv1x1_matmul = same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1);
-    if (!is_conv1x1_matmul) {
+    const bool is_conv_matmul = same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1);
+    if (!is_conv_matmul) {
       return Status::OK();
     }
 
@@ -165,15 +168,39 @@ class SubgroupMatrixConvImpl final : public ConvOptImpl {
 
 }  // namespace
 
-std::unique_ptr<ConvOptImpl> CreateSubgroupMatrixConvImpl(const ConvOptImplParent& parent,
-                                                             const ComputeContextBase& context) {
-  int32_t config_index = 0;
-  SubgroupMatrixTilingSelector tiling_selector;
-  if (!TrySelectSubgroupMatrixConfig(context, config_index, tiling_selector)) {
+template <bool is_channels_last, bool is_fused>
+std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSubgroupMatrixConvImpl(
+    const Conv<is_channels_last, is_fused>& parent,
+    const ComputeContextBase& context) {
+  // Only channels-last Conv is served by the subgroup-matrix path; the caller falls back
+  // to the normal Conv path for channels-first.
+  if constexpr (!is_channels_last) {
+    ORT_UNUSED_PARAMETER(parent);
+    ORT_UNUSED_PARAMETER(context);
     return nullptr;
+  } else {
+    int32_t config_index = 0;
+    SubgroupMatrixTilingSelector tiling_selector;
+    if (!TrySelectSubgroupMatrixConfig(context, config_index, tiling_selector)) {
+      return nullptr;
+    }
+    return std::make_unique<SubgroupMatrixConvImpl<is_channels_last, is_fused>>(parent, config_index,
+                                                                                std::move(tiling_selector));
   }
-  return std::make_unique<SubgroupMatrixConvImpl>(parent, config_index, std::move(tiling_selector));
 }
+
+// Explicit instantiation for every Conv instantiation (see conv.cc).
+#define WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(CHANNELS_LAST, FUSED)              \
+  template std::unique_ptr<Conv<CHANNELS_LAST, FUSED>::ConvOptImpl>                            \
+  CreateSubgroupMatrixConvImpl<CHANNELS_LAST, FUSED>(const Conv<CHANNELS_LAST, FUSED>& parent, \
+                                                     const ComputeContextBase& context);
+
+WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(false, false)
+WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(false, true)
+WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(true, false)
+WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(true, true)
+
+#undef WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL
 
 }  // namespace webgpu
 }  // namespace onnxruntime

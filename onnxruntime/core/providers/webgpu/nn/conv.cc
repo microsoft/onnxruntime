@@ -10,6 +10,9 @@
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
+#if !defined(__wasm__)
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
+#endif
 
 namespace onnxruntime {
 namespace webgpu {
