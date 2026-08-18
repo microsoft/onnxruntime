@@ -16,6 +16,7 @@ Abstract:
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <random>
 
@@ -29,6 +30,7 @@ namespace {
 
 constexpr float kFp16Max = 65504.0f;               // largest finite fp16 magnitude
 constexpr float kFp16MinNormal = 6.103515625e-5f;  // 2^-14, smallest normal fp16 magnitude
+constexpr float kFp16QuietNaN = std::numeric_limits<float>::quiet_NaN();
 
 MLAS_FORCEINLINE
 bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
@@ -360,6 +362,7 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
     TestHGemmFixed<2, 267, 79>(kFp16MinNormal, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemmFixed<2, 1, 1>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
   }
 };
 
@@ -505,6 +508,7 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     TestHGemmFixed<2, 267, 79>(kFp16MinNormal, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemmFixed<2, 1, 1>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
   }
 };
 
@@ -670,6 +674,7 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
     TestHGemmFixed<2, 267, 79>(kFp16MinNormal, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemmFixed<2, 1, 1>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
   }
 };
 
@@ -810,6 +815,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemmFixed<129, 511, 1025, false, false>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<1, 127, 512, false, false>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<127, 513, 1023, false, false>(1.0f, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 1, 1, false, true>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
   }
 };
 
