@@ -588,7 +588,8 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
              {}, nullptr, &execution_providers);
 }
 
-TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesInvalidSeqstartValues) {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+static void RunCudaMask1DKeySeqLenStartSanitizationTest(const std::vector<int32_t>& mask_data) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA execution provider not available";
   }
@@ -596,6 +597,15 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesInvalidSeqstartVal
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 256;
   constexpr int64_t hidden_size = 32;
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
 
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
@@ -607,8 +617,7 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesInvalidSeqstartVal
   tester.AddInput<float>("value", {batch_size, sequence_length, hidden_size},
                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.3f));
   tester.AddOptionalInputEdge<float>();
-  tester.AddInput<int32_t>("key_padding_mask", {3 * batch_size + 2},
-                           {static_cast<int32_t>(sequence_length), 0, 0x40000000, 0, 0x40000000});
+  tester.AddInput<int32_t>("key_padding_mask", {3 * batch_size + 2}, mask_data);
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
@@ -627,6 +636,15 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesInvalidSeqstartVal
   execution_providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesOversizedOffsets) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest({256, 0, 0x40000000, 0, 0x40000000});
+}
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesRequiredBoundaries) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest({256, 1, 255, 1, 255});
+}
+#endif
 
 TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {
   // num_beams = 2 does not evenly divide batch_beam_size = 3.

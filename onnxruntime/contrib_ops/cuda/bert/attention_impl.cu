@@ -26,6 +26,8 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -88,6 +90,11 @@ __global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
     previous_q = q;
     previous_k = k;
   }
+
+  output_seqstart_q[0] = 0;
+  output_seqstart_q[batch_size] = static_cast<int32_t>(max_query_offset);
+  output_seqstart_k[0] = 0;
+  output_seqstart_k[batch_size] = static_cast<int32_t>(max_key_offset);
 
   for (int32_t i = 0; i < batch_size; ++i) {
     const int64_t max_seqlen = max_key_offset - output_seqstart_k[i];
@@ -545,6 +552,12 @@ Status EfficientAttention(
 
   IAllocatorUniquePtr<int32_t> sanitized_mask;
   if (data.mask_index != nullptr) {
+    const int64_t query_elements = static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length;
+    const int64_t key_elements = static_cast<int64_t>(parameters.batch_size) * parameters.total_sequence_length;
+    ORT_RETURN_IF(query_elements > std::numeric_limits<int32_t>::max() ||
+                      key_elements > std::numeric_limits<int32_t>::max(),
+                  "FMHA sequence start offsets exceed INT32_MAX");
+
     const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(parameters.batch_size) + 2;
     sanitized_mask = IAllocator::MakeUniquePtr<int32_t>(data.allocator, mask_elements, false, ort_stream);
     SanitizeMask1DKeySeqLenStartValues<<<1, 1, 0, stream>>>(
