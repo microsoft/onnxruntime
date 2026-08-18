@@ -1551,6 +1551,10 @@ void LaunchCopyCrossQKSingleDecodeStep(
     const int* cross_qk_layer_head_pairs,
     int frames,
     int max_length) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return;
+  }
+
   dim3 block(512);
   dim3 grid(cross_qk_layer_head_pair_count, batchxbeam);
   typedef typename ToCudaType<float>::MappedType CudaT;
@@ -1616,6 +1620,10 @@ void LaunchFinalizeCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     const int32_t* beam_indices) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return;
+  }
+
   int64_t br = (int64_t)batch_size * num_return_sequences;
   ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
   const int total_decoding_length = iteration_number - 1;
