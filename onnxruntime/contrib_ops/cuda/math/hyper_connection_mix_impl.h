@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <cstdlib>
 #include "core/common/status.h"
 
 namespace onnxruntime {
@@ -30,6 +29,7 @@ constexpr int kHyperConnectionBlockTarget = 2048;
 bool HyperConnectionFinishFastDisabled();
 bool HyperConnectionFinishVecDisabled();
 bool HyperConnectionPartialGroupsEnabled();
+int HyperConnectionPartialThreadsOverride();
 
 // The split below is capped at `dim / threads`, so the block width and the token count together
 // decide the grid, and the two regimes want opposite things:
@@ -45,11 +45,7 @@ bool HyperConnectionPartialGroupsEnabled();
 // The crossover is exactly where the cap stops binding, `num_tokens = 2048 * 128 / dim`.
 // ORT_HC_PARTIAL_THREADS (32, 64 or 128) pins one width for both regimes.
 inline int HyperConnectionPartialThreads(int num_tokens) {
-  const static int forced = []() -> int {
-    const char* v = std::getenv("ORT_HC_PARTIAL_THREADS");
-    const int parsed = (v != nullptr) ? std::atoi(v) : 0;
-    return (parsed == 32 || parsed == 64 || parsed == 128) ? parsed : 0;
-  }();
+  const int forced = HyperConnectionPartialThreadsOverride();
   if (forced != 0) return forced;
   return num_tokens < 64 ? kHyperConnectionPartialThreads : 64;
 }

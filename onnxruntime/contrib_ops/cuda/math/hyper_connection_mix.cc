@@ -4,8 +4,11 @@
 #include "contrib_ops/cuda/math/hyper_connection_mix.h"
 
 #include "contrib_ops/cuda/math/hyper_connection_mix_impl.h"
+#include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
+
+#include <limits>
 
 using namespace onnxruntime::cuda;
 
@@ -29,6 +32,14 @@ bool HyperConnectionPartialGroupsEnabled() {
   static const bool enabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_HC_PARTIAL_GROUPS", 0) == 1;
   return enabled;
+}
+
+int HyperConnectionPartialThreadsOverride() {
+  static const int forced = []() {
+    const int value = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_PARTIAL_THREADS", 0);
+    return value == 32 || value == 64 || value == 128 ? value : 0;
+  }();
+  return forced;
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                      \
@@ -79,26 +90,39 @@ Status HyperConnectionMix<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t dim = residual_dims[residual_dims.size() - 1];
   const int64_t hc = residual_dims[residual_dims.size() - 2];
-  const int64_t num_tokens = residual->Shape().Size() / std::max<int64_t>(hc * dim, 1);
-  const int64_t mix_dim = (2 + hc) * hc;
 
   if (hc < 1 || hc > kHyperConnectionMaxMult) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "The hyper-connection multiplicity must be in [1, ",
                            kHyperConnectionMaxMult, "], got ", hc);
   }
-  if (x->Shape().Size() != num_tokens * dim) {
+  const int64_t num_tokens = residual->Shape().SizeToDimension(residual_dims.size() - 2);
+  if (dim < 1 || dim > std::numeric_limits<int>::max() ||
+      num_tokens > std::numeric_limits<int>::max()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "x must hold ", num_tokens * dim, " elements to match residual, got ",
+                           "dim must be in [1, ", std::numeric_limits<int>::max(),
+                           "] and the token count must not exceed that limit, got dim=", dim,
+                           " and num_tokens=", num_tokens);
+  }
+
+  const int64_t mix_dim = SafeInt<int64_t>(2 + hc) * hc;
+  const int64_t x_elements = SafeInt<int64_t>(num_tokens) * dim;
+  const int64_t post_mix_elements = SafeInt<int64_t>(num_tokens) * hc;
+  const int64_t comb_mix_elements = SafeInt<int64_t>(post_mix_elements) * hc;
+  const int64_t fn_elements = SafeInt<int64_t>(hc) * dim * mix_dim;
+
+  if (x->Shape().Size() != x_elements) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "x must hold ", x_elements, " elements to match residual, got ",
                            x->Shape().Size());
   }
-  if (post_mix->Shape().Size() != num_tokens * hc || comb_mix->Shape().Size() != num_tokens * hc * hc) {
+  if (post_mix->Shape().Size() != post_mix_elements || comb_mix->Shape().Size() != comb_mix_elements) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "post_mix and comb_mix must be shaped (..., hc) and (..., hc, hc).");
   }
-  if (fn->Shape().Size() != hc * dim * mix_dim) {
+  if (fn->Shape().Size() != fn_elements) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fn must be shaped (hc * dim, ", mix_dim,
-                           "), which is ", hc * dim * mix_dim, " elements, got ",
+                           "), which is ", fn_elements, " elements, got ",
                            fn->Shape().Size());
   }
   if (scale->Shape().Size() < 3) {
@@ -131,7 +155,7 @@ Status HyperConnectionMix<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto workspace = GetScratchBuffer<float>(
       HyperConnectionMixWorkspaceFloats(params.num_tokens, params.hc, params.dim),
-      context->GetComputeStream());
+      GetComputeStream(context));
 
   return LaunchHyperConnectionMix<T>(Stream(context), params,
                                      x->Data<T>(),

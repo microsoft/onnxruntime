@@ -230,7 +230,7 @@ class TestHyperConnectionMix(unittest.TestCase):
             self.assertLessEqual(rel, lim, f"{name}: max|d|={d.max():.3e} rel={rel:.3e}")
 
     def _run_all_hc(self, np_dtype, io_elem):
-        for hc in (1, 2, 4):
+        for hc in (1, 2, 3, 4):
             with self.subTest(hc=hc):
                 self._run(np_dtype, io_elem, hc=hc)
 
@@ -242,6 +242,12 @@ class TestHyperConnectionMix(unittest.TestCase):
 
     def test_bfloat16(self):
         self._run_all_hc(None, TP.BFLOAT16)
+
+    def test_odd_dim_with_64_tokens(self):
+        self._run(np.float32, TP.FLOAT, hc=3, dim=257, B=2, S=32)
+
+    def test_token_count_beyond_grid_y_limit(self):
+        self._run(np.float32, TP.FLOAT, hc=3, dim=8, B=256, S=256)
 
 
 if __name__ == "__main__":

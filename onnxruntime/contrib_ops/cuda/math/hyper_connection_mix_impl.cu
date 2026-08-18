@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/math/hyper_connection_mix_impl.h"
 
 #include <cfloat>
+#include <limits>
 #include <cuda_fp16.h>
 
 #include "contrib_ops/cuda/math/sinkhorn_normalize_impl.cuh"
@@ -54,7 +55,7 @@ __device__ __forceinline__ float WarpReduceSum(float v) {
 
 // Post mix plus the mixing GEMV, over a slice of the hidden dimension.
 //
-// grid is (split, num_tokens, G). HC is a template parameter so every mixing accumulator is
+// grid is (split * num_tokens, 1, G). HC is a template parameter so every mixing accumulator is
 // indexed at compile time and stays in registers; a runtime bound would spill the 25-wide
 // array to local memory and the fused operator would lose to the subgraph it replaces.
 //
@@ -80,8 +81,9 @@ __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
   __shared__ float s_cin[HC * HC];
   __shared__ float s_red[kPtWarps * (kMixDim + 1)];
 
-  const int part = blockIdx.x;
-  const int token = blockIdx.y;
+  const int block = static_cast<int>(blockIdx.x);
+  const int token = block / split;
+  const int part = block - token * split;
   const int group = (G > 1) ? static_cast<int>(blockIdx.z) : 0;
   const int tid = threadIdx.x;
   const int lane = tid & 31;
@@ -543,10 +545,16 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
 
   const int split = HyperConnectionMixSplit(params.num_tokens, params.dim);
   const int groups = HyperConnectionPartialGroups(params.num_tokens, HC, params.dim);
+  const int64_t partial_blocks = static_cast<int64_t>(params.num_tokens) * split;
+  if (partial_blocks > std::numeric_limits<int>::max()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "HyperConnectionMix needs ", partial_blocks,
+                           " partial blocks, which exceeds the CUDA grid.x limit.");
+  }
 
   // Block width picks how many SMs the pass can occupy; see HyperConnectionPartialThreads().
   const int partial_threads = HyperConnectionPartialThreads(params.num_tokens);
-  const dim3 partial_grid(split, params.num_tokens, groups);
+  const dim3 partial_grid(static_cast<unsigned int>(partial_blocks), 1, groups);
 #define ORT_HC_LAUNCH_PARTIAL(pt, g)                                               \
   HyperConnectionPartialKernel<CudaT, HC, pt, g><<<partial_grid, pt, 0, stream>>>( \
       x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split)
