@@ -2589,6 +2589,21 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
     const bool loading_ort_format = !ort_format_model_bytes_.empty();
+
+    const auto validate_cuda_graph_paged_attention = [&]() -> Status {
+      for (const auto& ep : execution_providers_) {
+        if (ep->IsGraphCaptureEnabled() &&
+            ep->Type() == kCudaExecutionProvider &&
+            HasPagedAttentionWithoutMetadata(graph)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "CUDA graph capture requires PagedAttention input 'attention_metadata' "
+                                 "to avoid device-to-host synchronization");
+        }
+      }
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR_SESSIONID_(validate_cuda_graph_paged_attention());
+
     const bool saving_model = !session_options_.optimized_model_filepath.empty();
     const bool saving_ort_format = [&]() {
       if (saving_model) {
@@ -2697,15 +2712,7 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      for (const auto& ep : execution_providers_) {
-        if (ep->IsGraphCaptureEnabled() &&
-            ep->Type() == kCudaExecutionProvider &&
-            HasPagedAttentionWithoutMetadata(graph)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "CUDA graph capture requires PagedAttention input 'attention_metadata' "
-                                 "to avoid device-to-host synchronization");
-        }
-      }
+      ORT_RETURN_IF_ERROR_SESSIONID_(validate_cuda_graph_paged_attention());
 
       // Check if any EP is configured for graph capture (e.g., CUDA Graph, DML Graph).
       // If so, validate the graph and cache the EP for triggering ReplayGraph() in Run().
@@ -2825,16 +2832,8 @@ common::Status InferenceSession::Initialize() {
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
                                                   cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    }
 
-    for (const auto& ep : execution_providers_) {
-      if (ep->IsGraphCaptureEnabled() &&
-          ep->Type() == kCudaExecutionProvider &&
-          HasPagedAttentionWithoutMetadata(graph)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "CUDA graph capture requires PagedAttention input 'attention_metadata' "
-                               "to avoid device-to-host synchronization");
-      }
+      ORT_RETURN_IF_ERROR_SESSIONID_(validate_cuda_graph_paged_attention());
     }
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
