@@ -7396,7 +7396,8 @@ TEST_F(GraphTransformationTests, BiasGeluFusionWebGpu) {
 
   SessionOptions session_options;
   auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  const InlinedHashSet<std::string> gelu_transformer_names = {"GeluFusionL1", "BiasGeluFusion"};
+  const InlinedHashSet<std::string> gelu_transformer_names = {
+      "GeluFusionL1", "GeluFusionL2", "BiasGeluFusion"};
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
     for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
