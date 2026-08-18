@@ -3169,7 +3169,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MoERouter"></a><a name="com.microsoft.moerouter">**com.microsoft.MoERouter**</a>
 
   The MoE routing decision, from the gate GEMM's output to the two tensors an expert-parallel QMoE call needs.
-  
+
   `scoring` turns the gate projection into a per-expert affinity:
     sqrt_softplus: affinity = Sqrt(Softplus(scores))
     softmax:       affinity = Softmax(scores, -1)
@@ -3178,7 +3178,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     topk:     the top `topk` of `affinity`
     noaux_tc: the top `topk` of `affinity + bias`
   Ties go to the lower expert index. Supplying `expert_ids` overrides `selection` and fixes the choice per token (hash routing); `bias` is then ignored. Either way the weights are the affinities of the chosen experts, normalised to sum to one.
-  
+
   Under expert parallelism a rank holds only `local_expert_count` experts starting at `local_expert_start`, and sees only that column block. `router_probs` carries the log of the weight for a chosen local expert and a large negative value elsewhere (-1e30, or -1e4 for float16, which -1e30 does not survive), so QMoE's own softmax over the block returns w_e / W_local. `weight_scale` is `route_scale * W_local`, which multiplies that factor back out of the expert output before the all-reduce; a token with no local expert gets a zero scale, which annihilates the degenerate uniform softmax of an all-negative row.
 
 #### Version
@@ -6974,9 +6974,9 @@ This version of the operator has been available since version 1 of the 'com.micr
     L = clamp(up, min=-limit, max=limit)
     output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
   with the arithmetic done in float regardless of T. A `limit` of zero or less disables both clamps.
-  
+
   This is the same activation, with the same attribute contract, that MoE and QMoE apply internally via their `swiglu_limit` / `activation_alpha` / `activation_beta` attributes. It is exposed as an operator for the dense feed-forward and shared-expert paths, which do not run through a grouped expert GEMM -- for example a shared expert that is tensor-parallel sharded while the routed experts are expert-parallel sharded, and so cannot be folded in as one more expert.
-  
+
   `up` is optional. When it is omitted, `gate` carries both halves of one `[.., 2 * inter]` projection -- gate first, then up -- and the split is done internally, so a fused sibling GEMM needs no `Split` node.
 
 #### Version
