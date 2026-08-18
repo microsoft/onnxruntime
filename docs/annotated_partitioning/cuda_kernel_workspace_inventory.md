@@ -345,6 +345,7 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 | `fpA_intB_zero_buffer_` | Same as scale buffer, when zero points exist | Weight shape + block size |
 | `packed_transposed_weight_space` | `packed_weight_bytes` (transient) | Weight shape |
 | `permutation_map_buffer` | `32 * sizeof(int32_t)` (transient) | Constant |
+| tactic-profiler scratch | Aligned synthetic A/B/scales/zeros/bias/output plus GEMM workspace | N, K, bits, block size, profile M, SM count |
 
 **What's needed:** M, N, K dimensions, quantization bits, SM version.
 
@@ -356,9 +357,10 @@ formula was extracted and verified against the runtime value for MatMulNBits; se
 `onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateMatMulNBitsMemory` /
 `DeclareWorkspaceRequirements`).
 
-The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and temporary prepack
-scratch in separate fields. The current byte-count resource accountant conservatively charges all three,
-while Level 2 continues to declare only the runtime workspace slot.
+The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and initialization-only
+scratch (prepack conversion plus constructor-time tactic profiling) in separate fields. The current
+byte-count resource accountant conservatively charges all three, while Level 2 continues to declare only
+the runtime workspace slot.
 Offline-prepacked CUDA weights remain in base initializer accounting and are not also charged as a
 persistent prepack destination because `PrePack_B()` reuses the device initializer in place.
 
