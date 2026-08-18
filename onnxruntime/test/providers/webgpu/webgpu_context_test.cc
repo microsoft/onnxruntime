@@ -2,18 +2,25 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
+#include "core/framework/run_options.h"
+#include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/asserts.h"
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
@@ -46,6 +53,186 @@ bool DeviceToggleIsEnabled(const webgpu::WebGpuContext& context, std::string_vie
 
 bool DisableRobustnessToggleIsEnabled(const webgpu::WebGpuContext& context) {
   return DeviceToggleIsEnabled(context, "disable_robustness");
+}
+
+std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuContext& context,
+                                                              WGPUBuffer buffer) {
+  constexpr size_t kBufferSize = sizeof(std::array<uint32_t, 16>);
+  wgpu::BufferDescriptor readback_desc{};
+  readback_desc.size = kBufferSize;
+  readback_desc.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+  auto readback_buffer = context.Device().CreateBuffer(&readback_desc);
+
+  auto external_encoder = context.Device().CreateCommandEncoder();
+  external_encoder.CopyBufferToBuffer(buffer, 0, readback_buffer, 0, kBufferSize);
+  auto external_commands = external_encoder.Finish();
+  context.Device().GetQueue().Submit(1, &external_commands);
+
+  wgpu::MapAsyncStatus map_status{};
+  ORT_THROW_IF_ERROR(context.Wait(readback_buffer.MapAsync(
+      wgpu::MapMode::Read, 0, kBufferSize, wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::MapAsyncStatus status, wgpu::StringView /*message*/, wgpu::MapAsyncStatus* result) noexcept {
+        *result = status;
+      },
+      &map_status)));
+  ORT_ENFORCE(map_status == wgpu::MapAsyncStatus::Success);
+
+  std::array<uint32_t, 16> result;
+  const auto* mapped_data = static_cast<const uint32_t*>(readback_buffer.GetConstMappedRange());
+  ORT_ENFORCE(mapped_data != nullptr);
+  std::copy_n(mapped_data, result.size(), result.begin());
+  readback_buffer.Unmap();
+  return result;
+}
+
+TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Bucket,
+                                       webgpu::BufferCacheMode::Simple,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      false,
+      [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  allocator.Free(allocation);
+
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
+
+  const auto downloaded_data = ReadBufferWithExternalCommandEncoder(context, reused_buffer);
+  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(downloaded_data, expected_data);
+
+  allocator.Free(allocation);
+}
+
+TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Graph,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      false);
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  allocator.Free(allocation);
+
+  context.CaptureBegin(&captured_commands, buffer_manager);
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  if (allocation == nullptr) {
+    context.CaptureEnd();
+    FAIL() << "Failed to reacquire a device allocation during graph capture.";
+  }
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
+  const Status flush_status = context.Flush(buffer_manager);
+  context.CaptureEnd();
+  if (!flush_status.IsOK()) {
+    allocator.Free(allocation);
+    FAIL() << flush_status.ErrorMessage();
+  }
+
+  EXPECT_TRUE(captured_commands.empty());
+
+  allocator.Free(allocation);
+}
+
+TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Bucket,
+                                       webgpu::BufferCacheMode::Simple,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  webgpu::GpuBufferAllocator allocator(
+      [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      false,
+      [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
+
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(0xffffffffu);
+  void* allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
+  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  allocator.Free(allocation);
+
+  RunOptions run_options;
+  ASSERT_STATUS_OK(webgpu_ep->OnRunStart(run_options));
+  allocation = allocator.Alloc(sizeof(nonzero_data));
+  ASSERT_NE(allocation, nullptr);
+  WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
+  EXPECT_EQ(reused_buffer, dirty_buffer);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), nonzero_data);
+
+  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), expected_data);
+
+  allocator.Free(allocation);
+}
+
+TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
+  RunOptions run_options;
+
+  EXPECT_FALSE(webgpu_ep->IsRunActive());
+  ASSERT_STATUS_OK(webgpu_ep->OnRunStart(run_options));
+  EXPECT_TRUE(webgpu_ep->IsRunActive());
+  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
+  EXPECT_FALSE(webgpu_ep->IsRunActive());
+}
+
+TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
+#else
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  EXPECT_TRUE(DeviceToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0),
+                                    "lazy_clear_resource_on_first_use"));
+#endif
 }
 
 TEST(WebGpuContextTest, EnableRobustnessControlsDawnToggle) {
