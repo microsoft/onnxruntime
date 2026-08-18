@@ -353,16 +353,12 @@ void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* this_ptr,
 
 OrtStatus* ExampleEpFactory::ResetArenaChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
   OrtStatus* status = nullptr;
-  ORT_TRY {
+  try {
     std::lock_guard<std::mutex> lock{mutex_};
     status = arena_allocator_ ? arena_allocator_->ResetChunksUsingStream(stream_impl) : nullptr;
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
-    });
-  }
-  ORT_CATCH(...) {
+  } catch (const std::exception& ex) {
+    status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+  } catch (...) {
     status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, "ResetArenaChunksUsingStream failed.");
   }
   return status;
