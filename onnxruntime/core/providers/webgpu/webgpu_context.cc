@@ -214,7 +214,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     // cache device queue
     device_queue_ = device_.GetQueue();
     // cache device limits
-    ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -233,7 +233,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
 #endif
-    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -791,7 +791,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
   wgpu::Limits required_limits{};
   wgpu::Limits adapter_limits;
-  ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
+  ORT_ENFORCE(adapter.GetLimits(&adapter_limits) == wgpu::Status::Success);
 
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
