@@ -95,8 +95,6 @@ inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstima
 // same kernel. Each key overrides its ORT_* environment-variable equivalent (config wins).
 //   ep.cuda.fpa_intb_gemm       <-> ORT_FPA_INTB_GEMM       (0/off, 1/on)
 //   ep.cuda.fpa_intb_profile_m  <-> ORT_FPA_INTB_PROFILE_M  (initial profile M buckets)
-constexpr const char* kConfigFpAIntBGemm = kOrtSessionOptionsCudaFpAIntBGemm;
-constexpr const char* kConfigFpAIntBProfileM = kOrtSessionOptionsCudaFpAIntBProfileM;
 
 // Resolves a setting from the session config first (per-session, EP-agnostic), then the environment
 // variable, else empty. Session config wins so a model/session can override a process-wide env var.
@@ -215,7 +213,10 @@ class MatMulNBits final : public CudaKernel {
       // chooses the path for weights that are NOT prepacked. A prepacked weight is already stored in
       // the fpA_intB layout, so the choice was made at export time and cannot be turned off here.
       const int fpa_intb_option =
-          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption)) ? 1 : 0;
+          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(
+              info, kOrtSessionOptionsCudaFpAIntBGemm, kFpAIntBGemmOption))
+              ? 1
+              : 0;
       // Route the fpA_intB path decision through the single shared eligibility function so the
       // constructor and the Level-1 EstimateMatMulNBitsMemory estimate can never disagree.
       const bool fpa_intb_eligible = CheckFpAIntBEligibility(
@@ -243,7 +244,7 @@ class MatMulNBits final : public CudaKernel {
         // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
         // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
         std::vector<int> profile_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
-            ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBProfileM,
+            ResolveFpAIntBConfigOrEnv(info, kOrtSessionOptionsCudaFpAIntBProfileM,
                                       onnxruntime::llm::kernels::weight_only::kEnvProfileM));
         gemmProfiler_->setProfileMOverride(profile_m);
 
