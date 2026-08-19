@@ -332,6 +332,12 @@ Status WebGpuContext::EncodeDeferredDispatches() {
     return Status::OK();
   }
 
+  ORT_RETURN_IF_NOT(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
+                        max_num_pending_dispatches_,
+                    "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
+                    num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
+                    ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
+
   auto reset_deferred_state = [this]() {
     deferred_dispatches_.clear();
   };
@@ -685,7 +691,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Drain and submit a full window to bound both recorded and encoded dispatch state. Partial
   // windows are encoded and submitted by the caller at its execution boundary.
-  if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
+  if (static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() >=
+      max_num_pending_dispatches_) {
     ORT_RETURN_IF_ERROR(Flush(buffer_mgr));
   }
   return Status::OK();
@@ -739,12 +746,12 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   if (!enable_robustness_) {
     enabled_toggles.push_back("disable_robustness");
   }
+  enabled_toggles.push_back("lazy_clear_resource_on_first_use");
   return enabled_toggles;
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
-      "lazy_clear_resource_on_first_use",
       "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
@@ -760,6 +767,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupSizeControl,
 #if !defined(__wasm__)
       wgpu::FeatureName::BufferMapExtendedUsages,
 #endif

@@ -167,6 +167,8 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
 
   // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+  ORT_RETURN_IF(logits_shape == nullptr,
+                "subgraph logits output shape cannot be nullptr");
   ORT_RETURN_IF(logits_shape->dim_size() != 3,
                 "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
 

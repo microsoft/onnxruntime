@@ -93,8 +93,13 @@ class GQAAttentionBase {
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
+    const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
+    ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
+    is_unidirectional_ = causal == 1;
 
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
+    ORT_ENFORCE(is_unidirectional_ || local_window_size_ == -1,
+                "GroupQueryAttention (CPU): local_window_size must be -1 when causal is 0.");
 
     qk_output_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)));
 
@@ -118,6 +123,7 @@ class GQAAttentionBase {
   int qk_output_;
 
   bool use_smooth_softmax_;
+  bool is_unidirectional_;
 
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
@@ -442,19 +448,21 @@ class GQAAttentionBase {
           for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
             size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
-            // Cap effective causal length at total_seqlen so the softmax window stays within
+            // Cap the visible length at total_seqlen so the softmax window stays within
             // the region filled by the QK GEMM. For right-padded batched prompts, padding
             // positions have seq_causal_length > total_seqlen; without this cap the softmax
-            // would read uninitialized memory and produce NaN.
-            const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+            // would read uninitialized memory and produce NaN. Bidirectional attention sees
+            // the entire filled region.
+            const size_t visible_length =
+                is_unidirectional_ ? std::min(seq_causal_length, total_seqlen) : total_seqlen;
 
             const bool apply_local = local_window_size_ >= 0 &&
-                                     effective_causal_length > static_cast<size_t>(local_window_size_);
-            const size_t start_off = apply_local ? effective_causal_length - local_window_size_ : 0;
-            const size_t win_size = apply_local ? local_window_size_ : effective_causal_length;
+                                     visible_length > static_cast<size_t>(local_window_size_);
+            const size_t start_off = apply_local ? visible_length - local_window_size_ : 0;
+            const size_t win_size = apply_local ? local_window_size_ : visible_length;
 
             if (apply_local) {
-              for (size_t t = 0; t < effective_causal_length - local_window_size_; t++) {
+              for (size_t t = 0; t < visible_length - local_window_size_; t++) {
                 sm[t] = 0.f;
               }
             }
@@ -473,7 +481,7 @@ class GQAAttentionBase {
               }
             }
 
-            for (size_t t = effective_causal_length; t < total_seqlen; t++) {
+            for (size_t t = visible_length; t < total_seqlen; t++) {
               sm[t] = 0.f;
             }
 
@@ -1474,17 +1482,18 @@ class GQAAttentionBase {
           // The GEMM only fills columns [0, total_seqlen); beyond that the buffer is uninitialized.
           // Cap the effective causal length so the softmax window stays within the filled region,
           // preventing NaN from uninitialized memory propagating into the output.
-          const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+          const size_t visible_length =
+              is_unidirectional_ ? std::min(seq_causal_length, total_seqlen) : total_seqlen;
 
           const bool should_apply_local_window = local_window_size_ >= 0 &&
-                                                 effective_causal_length > static_cast<size_t>(local_window_size_);
+                                                 visible_length > static_cast<size_t>(local_window_size_);
 
-          const size_t start_offset = should_apply_local_window ? effective_causal_length - local_window_size_ : 0;
-          const size_t window_size = should_apply_local_window ? local_window_size_ : effective_causal_length;
+          const size_t start_offset = should_apply_local_window ? visible_length - local_window_size_ : 0;
+          const size_t window_size = should_apply_local_window ? local_window_size_ : visible_length;
 
           // Mask everything before local window, if local window should be applied
           if (should_apply_local_window) {
-            for (size_t total_seq_id = 0; total_seq_id < effective_causal_length - local_window_size_; total_seq_id++) {
+            for (size_t total_seq_id = 0; total_seq_id < visible_length - local_window_size_; total_seq_id++) {
               if constexpr (std::is_same<U, float>::value) {
                 output_softmax[total_seq_id] = 0.f;
               } else {
@@ -1512,8 +1521,8 @@ class GQAAttentionBase {
             }
           }
 
-          // set causal [effective_causal_length, total_seqlen) to 0.f
-          for (size_t total_seq_id = effective_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
+          // Mask the region after the visible keys.
+          for (size_t total_seq_id = visible_length; total_seq_id < total_seqlen; total_seq_id++) {
             if constexpr (std::is_same<U, float>::value) {
               output_softmax[total_seq_id] = 0.f;
             } else {

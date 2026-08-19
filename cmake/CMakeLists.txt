@@ -127,7 +127,7 @@ cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory 
 # encoder models. Turning this OFF drops ~14MB of embedded cubin data; attention falls back to
 # flash / memory efficient / cuDNN / unfused kernels.
 cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
-option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
+cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
@@ -1530,12 +1530,6 @@ if (onnxruntime_USE_CUDA)
     add_definitions("-DENABLE_FP4")
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
     if(onnxruntime_USE_FP4_QMOE)
-      if(MSVC AND ("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR
-                   "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG))
-        message(FATAL_ERROR
-          "onnxruntime_USE_FP4_QMOE with SM120/SM121 is not supported on MSVC: native sm_120a "
-          "compilation fails in CUDA/CCCL tcgen05 headers. Use a non-MSVC build for native FP4 QMoE.")
-      endif()
       add_definitions("-DUSE_FP4_QMOE")
       message(STATUS "CUDA FP4 QMoE kernels enabled")
     endif()
