@@ -863,6 +863,133 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoERouter, 1,
+    OpSchema()
+        .SetDoc(
+            "The MoE routing decision, from the gate GEMM's output to the two tensors an "
+            "expert-parallel QMoE call needs.\n"
+            "\n"
+            "`scoring` turns the gate projection into a per-expert affinity:\n"
+            "  sqrt_softplus: affinity = Sqrt(Softplus(scores))\n"
+            "  softmax:       affinity = Softmax(scores, -1)\n"
+            "  sigmoid:       affinity = Sigmoid(scores)\n"
+            "`selection` then chooses the experts:\n"
+            "  topk:     the top `topk` of `affinity`\n"
+            "  noaux_tc: the top `topk` of `affinity + bias`\n"
+            "Ties go to the lower expert index. Supplying `expert_ids` overrides `selection` "
+            "and fixes the choice per token (hash routing); `bias` is then ignored. Either way "
+            "the weights are the affinities of the chosen experts, normalised to sum to one.\n"
+            "\n"
+            "Under expert parallelism a rank holds only `local_expert_count` experts starting "
+            "at `local_expert_start`, and sees only that column block. `router_probs` carries "
+            "the log of the weight for a chosen local expert and a large negative value "
+            "elsewhere (-1e30, or -1e4 for float16, which -1e30 does not survive), so QMoE's "
+            "own softmax over the block returns w_e / W_local. "
+            "`weight_scale` is `route_scale * W_local`, which multiplies that factor back out "
+            "of the expert output before the all-reduce; a token with no local expert gets a "
+            "zero scale, which annihilates the degenerate uniform softmax of an all-negative "
+            "row.")
+        .Attr("topk", "Experts activated per token.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("scoring",
+              "How the gate projection becomes an affinity: sqrt_softplus, softmax or sigmoid. "
+              "The CUDA implementation currently accepts sqrt_softplus only.",
+              AttributeProto::STRING, std::string("sqrt_softplus"))
+        .Attr("selection",
+              "How the experts are chosen: topk, or noaux_tc to add `bias` before the top-k.",
+              AttributeProto::STRING, std::string("noaux_tc"))
+        .Attr("local_expert_start", "First expert held by this rank.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("local_expert_count", "Experts held by this rank.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("route_scale", "Factor folded into `weight_scale`.", AttributeProto::FLOAT, 1.0f)
+        .Attr("dtype",
+              "Element type of `router_probs`. T appears on no input, so it cannot be "
+              "inferred.",
+              AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
+        .Input(0, "scores", "Gate projection, shape (tokens, num_experts).", "M")
+        .Input(1, "bias", "Selection bias, shape (num_experts). Absent for hash routing.", "M",
+               OpSchema::Optional)
+        .Input(2, "expert_ids",
+               "Experts chosen per token, shape (tokens, topk). Present only for hash routing.",
+               "I", OpSchema::Optional)
+        .Output(0, "router_probs",
+                "Log-domain router row for this rank, shape (tokens, local_expert_count).", "T")
+        .Output(1, "weight_scale",
+                "route_scale times this rank's share of the weight, shape (tokens, 1).", "M")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the router row to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"},
+                        "Constrain the scores, bias and weight scale to float tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain the expert ids to int64 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t dtype = getAttribute(
+              ctx, "dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+          updateOutputElemType(ctx, 0, static_cast<int32_t>(dtype));
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          if (!hasInputShape(ctx, 0)) return;
+
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() != 2) fail_shape_inference("scores must have rank 2.");
+          auto* probs = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          *probs->add_dim() = in.dim(0);
+          probs->add_dim()->set_dim_value(
+              getAttribute(ctx, "local_expert_count", static_cast<int64_t>(0)));
+          auto* scale = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          *scale->add_dim() = in.dim(0);
+          scale->add_dim()->set_dim_value(1);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SwiGLU, 1,
+    OpSchema()
+        .SetDoc(
+            "Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:\n"
+            "  G = clamp(gate, max=limit)\n"
+            "  L = clamp(up, min=-limit, max=limit)\n"
+            "  output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)\n"
+            "with the arithmetic done in float regardless of T. A `limit` of zero or less "
+            "disables both clamps.\n"
+            "\n"
+            "This is the same activation, with the same attribute contract, that MoE and QMoE "
+            "apply internally via their `swiglu_limit` / `activation_alpha` / `activation_beta` "
+            "attributes. It is exposed as an operator for the dense feed-forward and "
+            "shared-expert paths, which do not run through a grouped expert GEMM -- for "
+            "example a shared expert that is tensor-parallel sharded while the routed experts "
+            "are expert-parallel sharded, and so cannot be folded in as one more expert.\n"
+            "\n"
+            "`up` is optional. When it is omitted, `gate` carries both halves of one "
+            "`[.., 2 * inter]` projection -- gate first, then up -- and the split is done "
+            "internally, so a fused sibling GEMM needs no `Split` node.")
+        .Attr("limit", "Clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "Multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta", "Value added to the linear half.", AttributeProto::FLOAT, 0.0f)
+        .Input(0, "gate", "Gate half of the projection, or both halves concatenated.", "T")
+        .Input(1, "up", "Up half of the projection, same shape as gate.", "T", OpSchema::Optional)
+        .Output(0, "output", "Activated tensor, shaped like one half of the projection.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          if (ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+            return;
+          }
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() == 0) fail_shape_inference("gate must not be a scalar.");
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < in.dim_size(); ++i) *out->add_dim() = in.dim(i);
+          const auto& last = in.dim(in.dim_size() - 1);
+          auto* d = out->add_dim();
+          if (last.has_dim_value()) {
+            if (last.dim_value() % 2 != 0) fail_shape_inference("gate's last dim must be even.");
+            d->set_dim_value(last.dim_value() / 2);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     GatedLatentPool, 1,
     OpSchema()
         .SetDoc(

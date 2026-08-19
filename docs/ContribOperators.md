@@ -56,6 +56,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MoERouter">com.microsoft.MoERouter</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
@@ -118,6 +119,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SparseAttention">com.microsoft.SparseAttention</a>
   * <a href="#com.microsoft.SparseRowSelect">com.microsoft.SparseRowSelect</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
+  * <a href="#com.microsoft.SwiGLU">com.microsoft.SwiGLU</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -3161,6 +3163,76 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoERouter"></a><a name="com.microsoft.moerouter">**com.microsoft.MoERouter**</a>
+
+  The MoE routing decision, from the gate GEMM's output to the two tensors an expert-parallel QMoE call needs.
+
+  `scoring` turns the gate projection into a per-expert affinity:
+    sqrt_softplus: affinity = Sqrt(Softplus(scores))
+    softmax:       affinity = Softmax(scores, -1)
+    sigmoid:       affinity = Sigmoid(scores)
+  `selection` then chooses the experts:
+    topk:     the top `topk` of `affinity`
+    noaux_tc: the top `topk` of `affinity + bias`
+  Ties go to the lower expert index. Supplying `expert_ids` overrides `selection` and fixes the choice per token (hash routing); `bias` is then ignored. Either way the weights are the affinities of the chosen experts, normalised to sum to one.
+
+  Under expert parallelism a rank holds only `local_expert_count` experts starting at `local_expert_start`, and sees only that column block. `router_probs` carries the log of the weight for a chosen local expert and a large negative value elsewhere (-1e30, or -1e4 for float16, which -1e30 does not survive), so QMoE's own softmax over the block returns w_e / W_local. `weight_scale` is `route_scale * W_local`, which multiplies that factor back out of the expert output before the all-reduce; a token with no local expert gets a zero scale, which annihilates the degenerate uniform softmax of an all-negative row.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>dtype</tt> : int</dt>
+<dd>Element type of `router_probs`. T appears on no input, so it cannot be inferred.</dd>
+<dt><tt>local_expert_count</tt> : int</dt>
+<dd>Experts held by this rank.</dd>
+<dt><tt>local_expert_start</tt> : int</dt>
+<dd>First expert held by this rank.</dd>
+<dt><tt>route_scale</tt> : float</dt>
+<dd>Factor folded into `weight_scale`.</dd>
+<dt><tt>scoring</tt> : string</dt>
+<dd>How the gate projection becomes an affinity: sqrt_softplus, softmax or sigmoid. The CUDA implementation currently accepts sqrt_softplus only.</dd>
+<dt><tt>selection</tt> : string</dt>
+<dd>How the experts are chosen: topk, or noaux_tc to add `bias` before the top-k.</dd>
+<dt><tt>topk</tt> : int</dt>
+<dd>Experts activated per token.</dd>
+</dl>
+
+#### Inputs (1 - 3)
+
+<dl>
+<dt><tt>scores</tt> : M</dt>
+<dd>Gate projection, shape (tokens, num_experts).</dd>
+<dt><tt>bias</tt> (optional) : M</dt>
+<dd>Selection bias, shape (num_experts). Absent for hash routing.</dd>
+<dt><tt>expert_ids</tt> (optional) : I</dt>
+<dd>Experts chosen per token, shape (tokens, topk). Present only for hash routing.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>Log-domain router row for this rank, shape (tokens, local_expert_count).</dd>
+<dt><tt>weight_scale</tt> : M</dt>
+<dd>route_scale times this rank's share of the weight, shape (tokens, 1).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the router row to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain the scores, bias and weight scale to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Constrain the expert ids to int64 tensors.</dd>
 </dl>
 
 
@@ -6892,6 +6964,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(float), tensor(double), tensor(int64), tensor(int32), tensor(uint64), tensor(uint32)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SwiGLU"></a><a name="com.microsoft.swiglu">**com.microsoft.SwiGLU**</a>
+
+  Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:
+    G = clamp(gate, max=limit)
+    L = clamp(up, min=-limit, max=limit)
+    output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
+  with the arithmetic done in float regardless of T. A `limit` of zero or less disables both clamps.
+
+  This is the same activation, with the same attribute contract, that MoE and QMoE apply internally via their `swiglu_limit` / `activation_alpha` / `activation_beta` attributes. It is exposed as an operator for the dense feed-forward and shared-expert paths, which do not run through a grouped expert GEMM -- for example a shared expert that is tensor-parallel sharded while the routed experts are expert-parallel sharded, and so cannot be folded in as one more expert.
+
+  `up` is optional. When it is omitted, `gate` carries both halves of one `[.., 2 * inter]` projection -- gate first, then up -- and the split is done internally, so a fused sibling GEMM needs no `Split` node.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>Multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>Value added to the linear half.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>Clamp applied to both halves; zero or less disables it.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>gate</tt> : T</dt>
+<dd>Gate half of the projection, or both halves concatenated.</dd>
+<dt><tt>up</tt> (optional) : T</dt>
+<dd>Up half of the projection, same shape as gate.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Activated tensor, shaped like one half of the projection.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
 </dl>
 
 
