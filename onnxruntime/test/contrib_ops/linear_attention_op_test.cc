@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/onnx_protobuf.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -1807,6 +1808,638 @@ TEST(ContribOpLinearAttentionTest, BFloat16_Cuda) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
+
+// ===========================================================================
+// VarlenLinearAttention: packed, token-major, variable-length batches (CUDA only)
+// ===========================================================================
+
+// Schema resolution needs no execution provider: Microsoft-domain schemas are registered once,
+// process-wide, before any TEST body runs (see onnxruntime/test/unittest_main/test_main.cc, which
+// constructs an Ort::Env -> Environment ahead of RUN_ALL_TESTS()).
+TEST(ContribOpVarlenLinearAttentionTest, SchemaResolution) {
+  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenLinearAttention", 1, kMSDomain);
+  ASSERT_NE(schema, nullptr);
+  EXPECT_EQ(schema->inputs().size(), 7u);
+  EXPECT_EQ(schema->outputs().size(), 2u);
+  EXPECT_GT(schema->attributes().count("update_rule"), 0u);
+  EXPECT_GT(schema->attributes().count("q_num_heads"), 0u);
+  EXPECT_GT(schema->attributes().count("kv_num_heads"), 0u);
+  EXPECT_GT(schema->attributes().count("chunk_size"), 0u);
+  EXPECT_GT(schema->attributes().count("state_window"), 0u);
+}
+
+#ifdef USE_CUDA
+namespace {
+
+// Returns a CUDA EP with the VarlenLinearAttention kernel registered, or nullptr. Unlike the
+// dense op (also servable from WebGPU/CPU via TryGetEpWithLinearAttention), Varlen* ops are
+// CUDA-only, so tests skip outright instead of falling back to another EP.
+std::unique_ptr<IExecutionProvider> TryGetCudaEpWithVarlenLinearAttention() {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    return nullptr;
+  }
+  auto kernel_registry = ep->GetKernelRegistry();
+  if (kernel_registry) {
+    const KernelCreateInfo* info = nullptr;
+    KernelRegistry::TypeConstraintMap type_constraints;
+    auto status = kernel_registry->TryFindKernel(
+        ep->Type(), "VarlenLinearAttention", kMSDomain, 1,
+        type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
+    if (!status.IsOK()) {
+      return nullptr;
+    }
+  }
+  return ep;
+}
+
+// A packed/ragged test case. Every request's query/key/value/decay/beta/past_state is generated
+// and run through the existing per-sequence GQA reference independently, with batch_size=1, and
+// only then are the per-request packed rows and state blocks concatenated into one token-major
+// batch. No request's reference computation ever sees another request's data, so packing cannot
+// hide a cross-request leak that the op itself might introduce.
+struct VarlenLinearAttentionCase {
+  std::vector<int> seq_lens;
+  std::string update_rule = "gated_delta";
+  int q_num_heads = 2;
+  int kv_num_heads = 2;
+  int n_k_heads = 2;
+  int dk = 8;
+  int dv = 8;
+  bool with_past_state = false;
+  bool decay_broadcast_dk = true;
+  bool beta_shared_across_heads = false;
+  int state_window = 0;
+  bool use_fp16 = false;
+};
+
+// Slice the first `prefix` positions out of a (h, l, d) row-major tensor (batch dimension is
+// always 1 here, since every request is generated and referenced independently).
+std::vector<float> SliceVarlenPrefix(const std::vector<float>& src, int h, int l, int d, int prefix) {
+  std::vector<float> dst(static_cast<size_t>(h) * prefix * d);
+  for (int hh = 0; hh < h; hh++) {
+    for (int t = 0; t < prefix; t++) {
+      for (int dd = 0; dd < d; dd++) {
+        dst[(static_cast<size_t>(hh) * prefix + t) * d + dd] = src[(static_cast<size_t>(hh) * l + t) * d + dd];
+      }
+    }
+  }
+  return dst;
+}
+
+void RunVarlenLinearAttentionCase(const VarlenLinearAttentionCase& c) {
+  auto ep = TryGetCudaEpWithVarlenLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "VarlenLinearAttention kernel not registered";
+    return;
+  }
+
+  const int B = static_cast<int>(c.seq_lens.size());
+  const int qH = c.q_num_heads;
+  const int kvH = c.kv_num_heads;
+  const int nk = c.n_k_heads;
+  const int dk = c.dk;
+  const int dv = c.dv;
+  const int out_heads = std::max(qH, kvH);
+  const bool needs_decay = (c.update_rule == "gated" || c.update_rule == "gated_delta");
+  const bool needs_beta = (c.update_rule == "delta" || c.update_rule == "gated_delta");
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const int W = c.state_window;
+  const size_t slot_elems = static_cast<size_t>(kvH) * dk * dv;
+
+  std::vector<int32_t> cu_seqlens(static_cast<size_t>(B) + 1, 0);
+  for (int i = 0; i < B; i++) {
+    cu_seqlens[i + 1] = cu_seqlens[i] + c.seq_lens[i];
+  }
+  const int total_tokens = cu_seqlens[B];
+
+  std::vector<float> packed_query, packed_key, packed_value, packed_decay, packed_beta, packed_output;
+  std::vector<float> packed_past_state(static_cast<size_t>(B) * slot_elems, 0.0f);
+  std::vector<float> packed_present_state(static_cast<size_t>(B) * slot_elems, 0.0f);
+  const size_t window_slots = static_cast<size_t>(std::max(W, 1));
+  std::vector<float> packed_past_state_window(window_slots * B * slot_elems, -1e4f);
+  std::vector<float> packed_present_state_window(window_slots * B * slot_elems, 0.0f);
+
+  int seed = 0;
+  for (int i = 0; i < B; i++) {
+    const int L = c.seq_lens[i];
+    std::vector<float> q(static_cast<size_t>(qH) * L * dk);
+    std::vector<float> k(static_cast<size_t>(nk) * L * dk);
+    std::vector<float> v(static_cast<size_t>(kvH) * L * dv);
+    std::vector<float> decay(c.decay_broadcast_dk ? static_cast<size_t>(kvH) * L
+                                                  : static_cast<size_t>(kvH) * L * dk,
+                             0.0f);
+    std::vector<float> beta(static_cast<size_t>(kvH) * L, 0.0f);
+    for (size_t idx = 0; idx < q.size(); idx++) q[idx] = 0.5f * std::sin(static_cast<float>(idx + seed) * 0.13f);
+    for (size_t idx = 0; idx < k.size(); idx++) k[idx] = 0.5f * std::cos(static_cast<float>(idx + seed) * 0.17f);
+    for (size_t idx = 0; idx < v.size(); idx++) {
+      v[idx] = 0.5f * std::sin(static_cast<float>(idx + seed) * 0.23f + 0.5f);
+    }
+    if (needs_decay) {
+      for (size_t idx = 0; idx < decay.size(); idx++) {
+        decay[idx] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(idx + seed) * 0.3f));
+      }
+    }
+    if (needs_beta) {
+      if (c.beta_shared_across_heads) {
+        // Every kv head gets the same beta value per token, so the reference (which always reads
+        // one beta per (kv_head, token)) computes the same thing the op will after it broadcasts
+        // the packed (total_tokens, 1) test input across heads.
+        for (int t = 0; t < L; t++) {
+          const float value = 0.5f + 0.3f * std::sin(static_cast<float>(t + seed) * 0.31f);
+          for (int h = 0; h < kvH; h++) beta[h * L + t] = value;
+        }
+      } else {
+        for (size_t idx = 0; idx < beta.size(); idx++) {
+          beta[idx] = 0.5f + 0.3f * std::sin(static_cast<float>(idx + seed) * 0.31f);
+        }
+      }
+    }
+    seed += 97;
+
+    std::vector<float> initial_state(slot_elems, 0.0f);
+    if (c.with_past_state) {
+      for (size_t idx = 0; idx < initial_state.size(); idx++) {
+        initial_state[idx] = 0.1f * std::cos(static_cast<float>(idx + i * 13) * 0.07f);
+      }
+    }
+    const std::vector<float>* past = c.with_past_state ? &initial_state : nullptr;
+    const std::vector<float>* decay_ptr = needs_decay ? &decay : nullptr;
+    const std::vector<float>* beta_ptr = needs_beta ? &beta : nullptr;
+
+    std::vector<float> output_i, final_state_i;
+    LinearAttentionGQAReference(c.update_rule, 1, qH, kvH, nk, L, dk, dv, scale,
+                                q, k, v, past, decay_ptr, beta_ptr, output_i, final_state_i);
+
+    auto append = [](std::vector<float>& dst, const std::vector<float>& src) {
+      dst.insert(dst.end(), src.begin(), src.end());
+    };
+    // PackBHTD_to_BTHD with B=1 already produces the (L, H*D) token-major rows that a packed
+    // batch concatenates along axis 0, so each request's own reference output packs directly.
+    append(packed_query, PackBHTD_to_BTHD(q, 1, qH, L, dk));
+    append(packed_key, PackBHTD_to_BTHD(k, 1, nk, L, dk));
+    append(packed_value, PackBHTD_to_BTHD(v, 1, kvH, L, dv));
+    append(packed_output, PackBHTD_to_BTHD(output_i, 1, out_heads, L, dv));
+    if (needs_decay) {
+      if (c.decay_broadcast_dk) {
+        append(packed_decay, TransposeBHT_to_BTH(decay, 1, kvH, L));
+      } else {
+        append(packed_decay, PackBHTD_to_BTHD(decay, 1, kvH, L, dk));
+      }
+    }
+    if (needs_beta) {
+      if (c.beta_shared_across_heads) {
+        for (int t = 0; t < L; t++) packed_beta.push_back(beta[t]);  // head 0 == every head here
+      } else {
+        append(packed_beta, TransposeBHT_to_BTH(beta, 1, kvH, L));
+      }
+    }
+
+    std::copy(initial_state.begin(), initial_state.end(),
+              packed_past_state.begin() + static_cast<size_t>(i) * slot_elems);
+    std::copy(final_state_i.begin(), final_state_i.end(),
+              packed_present_state.begin() + static_cast<size_t>(i) * slot_elems);
+
+    if (W > 0) {
+      // past_state is windowed too, and only slot W-1 is read: poison the earlier slots so a
+      // stray read of them would fail the comparison below.
+      std::copy(initial_state.begin(), initial_state.end(),
+                packed_past_state_window.begin() + (static_cast<size_t>(W - 1) * B + i) * slot_elems);
+      // Slot j holds the state after this request's own first (L - W + j + 1) tokens; slots for
+      // non-positive prefixes are never computed by the kernel and stay zero. Each request's own
+      // L decides which slots are non-empty, so unequal lengths in one call produce different
+      // non-zero slot ranges per request -- this is the "state_window unequal per sequence" case.
+      for (int j = 0; j < W; j++) {
+        const int prefix = L - W + j + 1;
+        if (prefix <= 0) continue;
+        std::vector<float> slot_state;
+        if (prefix == L) {
+          slot_state = final_state_i;
+        } else {
+          std::vector<float> q_prefix = SliceVarlenPrefix(q, qH, L, dk, prefix);
+          std::vector<float> k_prefix = SliceVarlenPrefix(k, nk, L, dk, prefix);
+          std::vector<float> v_prefix = SliceVarlenPrefix(v, kvH, L, dv, prefix);
+          std::vector<float> decay_prefix, beta_prefix;
+          const std::vector<float>* decay_prefix_ptr = nullptr;
+          const std::vector<float>* beta_prefix_ptr = nullptr;
+          if (needs_decay) {
+            decay_prefix = SliceVarlenPrefix(decay, kvH, L, c.decay_broadcast_dk ? 1 : dk, prefix);
+            decay_prefix_ptr = &decay_prefix;
+          }
+          if (needs_beta) {
+            beta_prefix = SliceVarlenPrefix(beta, kvH, L, 1, prefix);
+            beta_prefix_ptr = &beta_prefix;
+          }
+          std::vector<float> slot_output;
+          LinearAttentionGQAReference(c.update_rule, 1, qH, kvH, nk, prefix, dk, dv, scale,
+                                      q_prefix, k_prefix, v_prefix, past, decay_prefix_ptr, beta_prefix_ptr,
+                                      slot_output, slot_state);
+        }
+        std::copy(slot_state.begin(), slot_state.end(),
+                  packed_present_state_window.begin() + (static_cast<size_t>(j) * B + i) * slot_elems);
+      }
+    }
+  }
+
+  OpTester tester("VarlenLinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", c.update_rule);
+  tester.AddAttribute<float>("scale", scale);
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(qH));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kvH));
+  if (W > 0) {
+    tester.AddAttribute<int64_t>("state_window", static_cast<int64_t>(W));
+  }
+
+  const std::vector<int64_t> cu_seqlens_dims = {B + 1};
+  const std::vector<int64_t> q_dims = {total_tokens, qH * dk};
+  const std::vector<int64_t> k_dims = {total_tokens, nk * dk};
+  const std::vector<int64_t> v_dims = {total_tokens, kvH * dv};
+  const std::vector<int64_t> out_dims = {total_tokens, out_heads * dv};
+  const std::vector<int64_t> decay_dims = {total_tokens, c.decay_broadcast_dk ? kvH : kvH * dk};
+  const std::vector<int64_t> beta_dims = {total_tokens, c.beta_shared_across_heads ? 1 : kvH};
+  std::vector<int64_t> state_dims;
+  if (W > 0) {
+    state_dims = {W, B, kvH, dk, dv};
+  } else {
+    state_dims = {B, kvH, dk, dv};
+  }
+
+  const std::vector<float>& past_state_flat = W > 0 ? packed_past_state_window : packed_past_state;
+  const std::vector<float>& present_state_flat = W > 0 ? packed_present_state_window : packed_present_state;
+
+  // OpTester::AddOutput takes (sort_output, rel_error, abs_error). FP16 inputs are quantized
+  // independently from the FP32 reference inputs, and that error accumulates through the
+  // recurrence; 0.02 covers that expected drift without relaxing the FP32 tolerance.
+  const float tol = c.use_fp16 ? 0.02f : 0.005f;
+
+  if (!c.use_fp16) {
+    tester.AddInput<float>("query", q_dims, packed_query);
+    tester.AddInput<float>("key", k_dims, packed_key);
+    tester.AddInput<float>("value", v_dims, packed_value);
+    tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens);
+    if (c.with_past_state) {
+      tester.AddInput<float>("past_state", state_dims, past_state_flat);
+    } else {
+      tester.AddOptionalInputEdge<float>();
+    }
+    if (needs_decay) {
+      tester.AddInput<float>("decay", decay_dims, packed_decay);
+    } else {
+      tester.AddOptionalInputEdge<float>();
+    }
+    if (needs_beta) {
+      tester.AddInput<float>("beta", beta_dims, packed_beta);
+    } else {
+      tester.AddOptionalInputEdge<float>();
+    }
+    tester.AddOutput<float>("output", out_dims, packed_output, false, tol, tol);
+    tester.AddOutput<float>("present_state", state_dims, present_state_flat, false, tol, tol);
+  } else {
+    tester.AddInput<MLFloat16>("query", q_dims, ToFloat16(packed_query));
+    tester.AddInput<MLFloat16>("key", k_dims, ToFloat16(packed_key));
+    tester.AddInput<MLFloat16>("value", v_dims, ToFloat16(packed_value));
+    tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens);
+    if (c.with_past_state) {
+      tester.AddInput<MLFloat16>("past_state", state_dims, ToFloat16(past_state_flat));
+    } else {
+      tester.AddOptionalInputEdge<MLFloat16>();
+    }
+    if (needs_decay) {
+      tester.AddInput<MLFloat16>("decay", decay_dims, ToFloat16(packed_decay));
+    } else {
+      tester.AddOptionalInputEdge<MLFloat16>();
+    }
+    if (needs_beta) {
+      tester.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(packed_beta));
+    } else {
+      tester.AddOptionalInputEdge<MLFloat16>();
+    }
+    tester.AddOutput<MLFloat16>("output", out_dims, ToFloat16(packed_output), false, tol, tol);
+    tester.AddOutput<MLFloat16>("present_state", state_dims, ToFloat16(present_state_flat), false, tol, tol);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
+
+TEST(ContribOpVarlenLinearAttentionTest, LinearRule_UnequalLengths) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "linear";
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedRule_UnequalLengths) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated";
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, DeltaRule_UnequalLengths) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "delta";
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_UnequalLengths) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_GenericMultiWarp) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.dk = 48;
+  c.dv = 48;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// Every request contributes exactly one token and the head dimensions are column-kernel eligible,
+// selecting the all-ones decode fast path (cu_seqlens is never read on device). A windowed past
+// state also verifies that decode writes only slot W-1 and leaves earlier slots zeroed.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_AllOnesDecode) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {1, 1, 1, 1};
+  c.update_rule = "gated_delta";
+  c.dk = 64;
+  c.dv = 64;
+  c.with_past_state = true;
+  c.state_window = 3;
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_SingleRequestPrefill) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {6};
+  c.update_rule = "gated_delta";
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_WithPastState) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.with_past_state = true;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// decay_broadcast_dk = false: decay carries one value per (kv_head, key-dim, token) instead of
+// one scalar per (kv_head, token).
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_DecayPerKeyDim) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.decay_broadcast_dk = false;
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedRule_DecayPerKeyDim) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {2, 3};
+  c.update_rule = "gated";
+  c.decay_broadcast_dk = false;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// beta packed as (total_tokens, 1): one value shared across every kv head instead of one value
+// per (kv_head, token).
+TEST(ContribOpVarlenLinearAttentionTest, DeltaRule_BetaSharedAcrossHeads) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "delta";
+  c.beta_shared_across_heads = true;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// Standard GQA: q_num_heads > kv_num_heads, one output per query head.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_StandardGQA) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.q_num_heads = 4;
+  c.kv_num_heads = 2;
+  c.n_k_heads = 2;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// K-to-KV sharing: n_k_heads < kv_num_heads, one K head feeds multiple KV heads.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_KeySharedAcrossKvHeads) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.q_num_heads = 4;
+  c.kv_num_heads = 4;
+  c.n_k_heads = 1;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// Inverse GQA: kv_num_heads > q_num_heads, one output per KV head with Q broadcast.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_InverseGQA) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.q_num_heads = 2;
+  c.kv_num_heads = 4;
+  c.n_k_heads = 4;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// d_k == 64 with d_v a multiple of 32 selects the column-per-thread prefill kernel instead of the
+// generic recurrent fallback.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_ColumnKernelDims) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {5, 2, 3};
+  c.update_rule = "gated_delta";
+  c.dk = 64;
+  c.dv = 64;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// Qwen3.5-like heads and dimensions with a long ragged batch. This exercises the d_k=128
+// column kernel over enough recurrent steps to expose indexing, accumulation, or request-boundary
+// errors that short shape-routing tests would miss.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_Qwen35LongRagged) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {129, 65, 17, 1};
+  c.update_rule = "gated_delta";
+  c.q_num_heads = 32;
+  c.kv_num_heads = 32;
+  c.n_k_heads = 16;
+  c.dk = 128;
+  c.dv = 128;
+  c.with_past_state = true;
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_StateWindow_UnequalLengths) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.state_window = 3;
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_StateWindow_WithPastState) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.state_window = 4;
+  c.with_past_state = true;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// W wider than every packed request's own length: the leading slots for every request come back
+// zeroed rather than as uninitialized device memory.
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanEverySequence) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {2, 1, 2};
+  c.update_rule = "gated_delta";
+  c.state_window = 5;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// scale omitted (defaults to 0.0) must derive 1/sqrt(d_k), exactly like the dense op.
+TEST(ContribOpVarlenLinearAttentionTest, LinearRule_DefaultScale) {
+  auto ep = TryGetCudaEpWithVarlenLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "VarlenLinearAttention kernel not registered";
+    return;
+  }
+
+  const int dk = 4, dv = 4;
+  std::vector<float> query = {1.0f, 0.0f, 0.5f, -0.5f};
+  std::vector<float> key = {0.5f, 0.5f, 0.0f, 1.0f};
+  std::vector<float> value = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  const float actual_scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  std::vector<float> expected_output, expected_state;
+  LinearAttentionReference("linear", 1, 1, 1, dk, dv, actual_scale,
+                           query, key, value, nullptr, nullptr, nullptr,
+                           expected_output, expected_state);
+
+  OpTester tester("VarlenLinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", std::string("linear"));
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(1));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(1));
+  // scale intentionally left unset: 0.0 must trigger the op's own 1/sqrt(d_k) derivation.
+
+  tester.AddInput<float>("query", {1, dk}, query);
+  tester.AddInput<float>("key", {1, dk}, key);
+  tester.AddInput<float>("value", {1, dv}, value);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddOptionalInputEdge<float>();  // past_state
+  tester.AddOptionalInputEdge<float>();  // decay
+  tester.AddOptionalInputEdge<float>();  // beta
+
+  tester.AddOutput<float>("output", {1, dv}, expected_output, false, 0.005f, 0.005f);
+  tester.AddOutput<float>("present_state", {1, 1, dk, dv}, expected_state, false, 0.005f, 0.005f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, GatedDeltaRule_Float16) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {3, 1, 2};
+  c.update_rule = "gated_delta";
+  c.use_fp16 = true;
+  RunVarlenLinearAttentionCase(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, LinearRule_Float16_WithPastState) {
+  VarlenLinearAttentionCase c;
+  c.seq_lens = {2, 4};
+  c.update_rule = "linear";
+  c.with_past_state = true;
+  c.use_fp16 = true;
+  RunVarlenLinearAttentionCase(c);
+}
+
+// Host-verifiable shape errors: these check rank/divisibility relationships computed purely from
+// tensor shape metadata. Device offset contents (including the final cumulative_sequence_length
+// entry) are never inspected on the host and so are not exercised here.
+static void RunVarlenLinearAttentionShapeFailure(
+    const std::vector<int64_t>& query_dims,
+    const std::vector<int64_t>& key_dims,
+    const std::vector<int64_t>& value_dims,
+    const std::vector<int64_t>& cu_seqlens_dims,
+    const std::vector<int32_t>& cu_seqlens_data,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<int64_t>& state_dims,
+    const std::string& expected_error,
+    int q_num_heads = 2,
+    int kv_num_heads = 2,
+    const std::vector<int64_t>& decay_dims = {}) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  auto element_count = [](const std::vector<int64_t>& dims) {
+    size_t count = 1;
+    for (int64_t dim : dims) count *= static_cast<size_t>(dim);
+    return count;
+  };
+
+  OpTester tester("VarlenLinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(q_num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddInput<float>("query", query_dims, std::vector<float>(element_count(query_dims), 0.1f));
+  tester.AddInput<float>("key", key_dims, std::vector<float>(element_count(key_dims), 0.1f));
+  tester.AddInput<float>("value", value_dims, std::vector<float>(element_count(value_dims), 0.1f));
+  tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens_data);
+  tester.AddOptionalInputEdge<float>();  // past_state
+  if (decay_dims.empty()) {
+    tester.AddOptionalInputEdge<float>();
+  } else {
+    tester.AddInput<float>("decay", decay_dims, std::vector<float>(element_count(decay_dims), 0.1f));
+  }
+  tester.AddOptionalInputEdge<float>();  // beta
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(element_count(output_dims), 0.0f));
+  tester.AddOutput<float>("present_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, CudaRejectsNonDivisibleQueryHidden) {
+  RunVarlenLinearAttentionShapeFailure({3, 3}, {3, 4}, {3, 4}, {2}, {0, 3},
+                                       {3, 4}, {1, 2, 2, 2}, "query hidden dimension");
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, CudaRejectsNonDivisibleValueHidden) {
+  RunVarlenLinearAttentionShapeFailure({3, 4}, {3, 4}, {3, 3}, {2}, {0, 3},
+                                       {3, 2}, {1, 2, 2, 1}, "value hidden dimension");
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, CudaRejectsCuSeqlensRank2) {
+  RunVarlenLinearAttentionShapeFailure({3, 4}, {3, 4}, {3, 4}, {1, 2}, {0, 3},
+                                       {3, 4}, {1, 2, 2, 2}, "cumulative_sequence_length must have rank 1");
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, CudaRejectsCuSeqlensTooFewElements) {
+  RunVarlenLinearAttentionShapeFailure({3, 4}, {3, 4}, {3, 4}, {1}, {0},
+                                       {3, 4}, {1, 2, 2, 2}, "at least 2 elements");
+}
+
+TEST(ContribOpVarlenLinearAttentionTest, CudaRejectsInvalidDecayRank) {
+  RunVarlenLinearAttentionShapeFailure({3, 4}, {3, 4}, {3, 4}, {2}, {0, 3},
+                                       {3, 4}, {1, 2, 2, 2}, "decay must be rank 2",
+                                       2, 2, {3, 2, 2});
 }
 #endif  // USE_CUDA
 }  // namespace test

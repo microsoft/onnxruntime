@@ -122,6 +122,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.VarlenLinearAttention">com.microsoft.VarlenLinearAttention</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
@@ -7003,6 +7004,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
 <dd>Input can be of any tensor type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.VarlenLinearAttention"></a><a name="com.microsoft.varlenlinearattention">**com.microsoft.VarlenLinearAttention**</a>
+
+  Linear attention recurrence over a packed, token-major batch of variable-length sequences
+  (CUDA only).
+  
+  query, key, value, decay, and beta hold every sequence's tokens back to back along axis 0.
+  cumulative_sequence_length is a device tensor of shape (batch_size + 1); sequence i occupies
+  the half-open token range [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]).
+  Every sequence contributes at least one token, so offsets are strictly increasing and
+  offsets[0] == 0. Each sequence's recurrence runs independently: state never crosses a sequence
+  boundary within the packed batch.
+  
+  The update_rule attribute selects the recurrence type, applied independently per sequence:
+  - "linear": S_t = S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
+  - "gated": S_t = exp(g_t) * S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
+  - "delta": S_t = S_{t-1} + β_t * k_t ⊗ (v_t - S_{t-1}^T k_t); o_t = scale * q_t^T S_t
+  - "gated_delta": S_t = exp(g_t) * S_{t-1} + β_t * k_t ⊗ (v_t - exp(g_t) * S_{t-1}^T k_t); o_t = scale * q_t^T S_t
+  
+  where g_t is the decay (in log-space), β_t is the update rate, and ⊗ denotes outer product.
+  
+  past_state / present_state hold one recurrent state per sequence, with shape
+  (batch_size, kv_num_heads, d_k, d_v), or (state_window, batch_size, kv_num_heads, d_k, d_v)
+  when state_window = W > 0. The window axis is right-aligned per sequence: for a sequence of
+  length L, local token t writes slot t + W - L when that index is non-negative, so slot W - 1
+  always holds the state after the sequence's last token and is the only slot past_state is read
+  from. batch_size is cumulative_sequence_length's length minus one, not the packed token count.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>chunk_size</tt> : int</dt>
+<dd>Chunk size for the chunk-parallel WY decomposition during prefill. Tuning hint; does not affect output correctness.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of key/value heads. Always required.</dd>
+<dt><tt>q_num_heads</tt> : int (required)</dt>
+<dd>Number of query heads. Always required.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads and uses 1/sqrt(d_k). Set explicitly to override.</dd>
+<dt><tt>state_window</tt> : int</dt>
+<dd>Number of trailing per-token recurrent states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after each sequence's last token, i.e. (batch_size, kv_num_heads, d_k, d_v). When W > 0 both gain a LEADING axis of extent W, right-aligned per sequence as described in the operator summary. Valid range is [0, 8].</dd>
+<dt><tt>update_rule</tt> : string</dt>
+<dd>The update rule for the linear attention recurrence. One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
+</dl>
+
+#### Inputs (4 - 7)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query vectors with packed token-major shape (total_tokens, q_num_heads * d_k).</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key vectors with packed token-major shape (total_tokens, n_k_heads * d_k), where kv_num_heads is divisible by n_k_heads. Should be L2-normalized for delta/gated_delta modes.</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value vectors with packed token-major shape (total_tokens, kv_num_heads * d_v).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
+<dt><tt>past_state</tt> (optional) : S</dt>
+<dd>Recurrent state from the previous call with shape (batch_size, kv_num_heads, d_k, d_v), or (state_window, batch_size, kv_num_heads, d_k, d_v) when state_window > 0, in which case only slot state_window - 1 is read. If not provided, defaults to zeros.</dd>
+<dt><tt>decay</tt> (optional) : T</dt>
+<dd>Exponential decay gate in log-space. Packed token-major shape: (total_tokens, kv_num_heads * d_k) for per-key-dimension decay, or (total_tokens, kv_num_heads) for per-head scalar decay. Required for 'gated' and 'gated_delta' modes.</dd>
+<dt><tt>beta</tt> (optional) : T</dt>
+<dd>Update rate (sigmoid output). Packed token-major shape: (total_tokens, kv_num_heads) or (total_tokens, 1). Required for 'delta' and 'gated_delta' modes.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Attention output with packed token-major shape (total_tokens, max(q_num_heads, kv_num_heads) * d_v). Standard GQA emits one output per query head; inverse GQA, where kv_num_heads exceeds q_num_heads, emits one per KV head.</dd>
+<dt><tt>present_state</tt> : S</dt>
+<dd>Updated recurrent state, one per sequence, with the same shape as past_state would have.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>S</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain state types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
 </dl>
 
 

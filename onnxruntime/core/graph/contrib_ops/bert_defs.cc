@@ -2865,6 +2865,245 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* VarlenLinearAttention_ver1_doc = R"DOC(
+Linear attention recurrence over a packed, token-major batch of variable-length sequences
+(CUDA only).
+
+query, key, value, decay, and beta hold every sequence's tokens back to back along axis 0.
+cumulative_sequence_length is a device tensor of shape (batch_size + 1); sequence i occupies
+the half-open token range [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]).
+Every sequence contributes at least one token, so offsets are strictly increasing and
+offsets[0] == 0. Each sequence's recurrence runs independently: state never crosses a sequence
+boundary within the packed batch.
+
+The update_rule attribute selects the recurrence type, applied independently per sequence:
+- "linear": S_t = S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
+- "gated": S_t = exp(g_t) * S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
+- "delta": S_t = S_{t-1} + β_t * k_t ⊗ (v_t - S_{t-1}^T k_t); o_t = scale * q_t^T S_t
+- "gated_delta": S_t = exp(g_t) * S_{t-1} + β_t * k_t ⊗ (v_t - exp(g_t) * S_{t-1}^T k_t); o_t = scale * q_t^T S_t
+
+where g_t is the decay (in log-space), β_t is the update rate, and ⊗ denotes outer product.
+
+past_state / present_state hold one recurrent state per sequence, with shape
+(batch_size, kv_num_heads, d_k, d_v), or (state_window, batch_size, kv_num_heads, d_k, d_v)
+when state_window = W > 0. The window axis is right-aligned per sequence: for a sequence of
+length L, local token t writes slot t + W - L when that index is non-negative, so slot W - 1
+always holds the state after the sequence's last token and is the only slot past_state is read
+from. batch_size is cumulative_sequence_length's length minus one, not the packed token count.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenLinearAttention, 1,
+    OpSchema()
+        .SetDoc(VarlenLinearAttention_ver1_doc)
+        .Attr("update_rule",
+              "The update rule for the linear attention recurrence. "
+              "One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.",
+              AttributeProto::STRING,
+              std::string("gated_delta"))
+        .Attr("scale",
+              "Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads "
+              "and uses 1/sqrt(d_k). Set explicitly to override.",
+              AttributeProto::FLOAT,
+              0.0f)
+        .Attr("q_num_heads",
+              "Number of query heads. Always required.",
+              AttributeProto::INT)
+        .Attr("kv_num_heads",
+              "Number of key/value heads. Always required.",
+              AttributeProto::INT)
+        .Attr("chunk_size",
+              "Chunk size for the chunk-parallel WY decomposition during prefill. "
+              "Tuning hint; does not affect output correctness.",
+              AttributeProto::INT,
+              static_cast<int64_t>(64))
+        .Attr("state_window",
+              "Number of trailing per-token recurrent states held by past_state and "
+              "present_state. When 0 (default) the state tensors have no window axis and hold "
+              "only the state after each sequence's last token, i.e. "
+              "(batch_size, kv_num_heads, d_k, d_v). When W > 0 both gain a LEADING axis of "
+              "extent W, right-aligned per sequence as described in the operator summary. "
+              "Valid range is [0, 8].",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Input(0,
+               "query",
+               "Query vectors with packed token-major shape (total_tokens, q_num_heads * d_k).",
+               "T")
+        .Input(1,
+               "key",
+               "Key vectors with packed token-major shape (total_tokens, n_k_heads * d_k), "
+               "where kv_num_heads is divisible by n_k_heads. Should be L2-normalized for "
+               "delta/gated_delta modes.",
+               "T")
+        .Input(2,
+               "value",
+               "Value vectors with packed token-major shape (total_tokens, kv_num_heads * d_v).",
+               "T")
+        .Input(3,
+               "cumulative_sequence_length",
+               "Device tensor with shape (batch_size + 1) giving the half-open packed token "
+               "range of each sequence.",
+               "M")
+        .Input(4,
+               "past_state",
+               "Recurrent state from the previous call with shape "
+               "(batch_size, kv_num_heads, d_k, d_v), or (state_window, batch_size, "
+               "kv_num_heads, d_k, d_v) when state_window > 0, in which case only slot "
+               "state_window - 1 is read. If not provided, defaults to zeros.",
+               "S",
+               OpSchema::Optional)
+        .Input(5,
+               "decay",
+               "Exponential decay gate in log-space. Packed token-major shape: "
+               "(total_tokens, kv_num_heads * d_k) for per-key-dimension decay, or "
+               "(total_tokens, kv_num_heads) for per-head scalar decay. Required for "
+               "'gated' and 'gated_delta' modes.",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "beta",
+               "Update rate (sigmoid output). Packed token-major shape: "
+               "(total_tokens, kv_num_heads) or (total_tokens, 1). Required for 'delta' and "
+               "'gated_delta' modes.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Attention output with packed token-major shape "
+                "(total_tokens, max(q_num_heads, kv_num_heads) * d_v). Standard GQA emits one "
+                "output per query head; inverse GQA, where kv_num_heads exceeds q_num_heads, "
+                "emits one per KV head.",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated recurrent state, one per sequence, with the same shape as past_state "
+                "would have.",
+                "S")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("S",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain state types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+          const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          if (state_window < 0 || state_window > kMaxStateWindow) {
+            fail_shape_inference("VarlenLinearAttention: state_window must be in [0, ",
+                                 kMaxStateWindow, "], got ", state_window);
+          }
+
+          // Read required attributes
+          auto* q_num_heads_attr = ctx.getAttribute("q_num_heads");
+          auto* kv_num_heads_attr = ctx.getAttribute("kv_num_heads");
+          int64_t q_num_heads = (q_num_heads_attr && q_num_heads_attr->has_i()) ? q_num_heads_attr->i() : 0;
+          int64_t kv_num_heads = (kv_num_heads_attr && kv_num_heads_attr->has_i()) ? kv_num_heads_attr->i() : 0;
+
+          // Output 0: (total_tokens, max(q_num_heads, kv_num_heads) * d_v) — packed token-major
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
+            auto& query_shape = getInputShape(ctx, 0);
+            auto& value_shape = getInputShape(ctx, 2);
+            if (query_shape.dim_size() != 2) {
+              fail_shape_inference(
+                  "VarlenLinearAttention: query must have rank 2 "
+                  "(total_tokens, q_num_heads * d_k)");
+            }
+            if (value_shape.dim_size() != 2) {
+              fail_shape_inference(
+                  "VarlenLinearAttention: value must have rank 2 "
+                  "(total_tokens, kv_num_heads * d_v)");
+            }
+            if (query_shape.dim(1).has_dim_value()) {
+              const int64_t query_hidden = query_shape.dim(1).dim_value();
+              if (query_hidden <= 0 || query_hidden % q_num_heads != 0) {
+                fail_shape_inference(
+                    "VarlenLinearAttention: query hidden dimension must be positive and divisible by q_num_heads");
+              }
+            }
+            if (value_shape.dim(1).has_dim_value()) {
+              const int64_t value_hidden = value_shape.dim(1).dim_value();
+              if (value_hidden <= 0 || value_hidden % kv_num_heads != 0) {
+                fail_shape_inference(
+                    "VarlenLinearAttention: value hidden dimension must be positive and divisible by kv_num_heads");
+              }
+            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = query_shape.dim(0);  // total_tokens
+            // Output hidden = max(H_q, H_kv) * d_v, matching Compute: standard GQA (H_q >= H_kv)
+            // emits one output per query head; inverse GQA (H_q < H_kv) one per KV head.
+            // d_v = value.dim(1) / kv_num_heads.
+            if (value_shape.dim(1).has_dim_value()) {
+              int64_t d_v = value_shape.dim(1).dim_value() / kv_num_heads;
+              int64_t out_heads = q_num_heads > kv_num_heads ? q_num_heads : kv_num_heads;
+              output_shape.add_dim()->set_dim_value(out_heads * d_v);
+            } else {
+              output_shape.add_dim();  // unknown
+            }
+            updateOutputShape(ctx, 0, output_shape);
+          }
+
+          // Output 1: present_state shape (batch_size, kv_num_heads, d_k, d_v), or
+          // (state_window, batch_size, kv_num_heads, d_k, d_v) when state_window = W > 0.
+          // batch_size always comes from cumulative_sequence_length, never from total_tokens.
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && hasInputShape(ctx, 3) &&
+              q_num_heads > 0 && kv_num_heads > 0) {
+            auto& query_shape = getInputShape(ctx, 0);
+            auto& value_shape = getInputShape(ctx, 2);
+            auto& cu_seqlen_shape = getInputShape(ctx, 3);
+            if (query_shape.dim_size() != 2 || value_shape.dim_size() != 2) {
+              // Already validated in Output 0 block above; skip if shapes are invalid.
+              return;
+            }
+            if (cu_seqlen_shape.dim_size() != 1) {
+              fail_shape_inference(
+                  "VarlenLinearAttention: cumulative_sequence_length must have "
+                  "rank 1");
+            }
+            auto& cu_dim = cu_seqlen_shape.dim(0);
+            if (cu_dim.has_dim_value() && cu_dim.dim_value() < 2) {
+              fail_shape_inference(
+                  "VarlenLinearAttention: cumulative_sequence_length must have at least 2 elements");
+            }
+            if (query_shape.dim(0).has_dim_value() && cu_dim.has_dim_value() &&
+                query_shape.dim(0).dim_value() < cu_dim.dim_value() - 1) {
+              fail_shape_inference(
+                  "VarlenLinearAttention: total_tokens must be at least batch_size");
+            }
+            TensorShapeProto state_shape;
+            if (state_window > 0) {
+              state_shape.add_dim()->set_dim_value(state_window);  // W
+            }
+            // batch_size = cumulative_sequence_length.dim(0) - 1
+            if (cu_dim.has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
+            } else {
+              state_shape.add_dim();  // unknown batch size
+            }
+            state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv
+            // d_k = query.dim(1) / q_num_heads
+            if (query_shape.dim(1).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(query_shape.dim(1).dim_value() / q_num_heads);
+            } else {
+              state_shape.add_dim();
+            }
+            // d_v = value.dim(1) / kv_num_heads
+            if (value_shape.dim(1).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(value_shape.dim(1).dim_value() / kv_num_heads);
+            } else {
+              state_shape.add_dim();
+            }
+            updateOutputShape(ctx, 1, state_shape);
+          } else if (hasInputShape(ctx, 4)) {
+            propagateShapeFromInputToOutput(ctx, 4, 1);
+          }
+        }));
+
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
 Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
 

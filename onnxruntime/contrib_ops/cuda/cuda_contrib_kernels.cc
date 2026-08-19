@@ -162,6 +162,8 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, VarlenLinearAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, VarlenLinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm);
@@ -447,6 +449,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, VarlenLinearAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, VarlenLinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm)>,
