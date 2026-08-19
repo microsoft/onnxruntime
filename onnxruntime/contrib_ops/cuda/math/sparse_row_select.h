@@ -9,7 +9,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using onnxruntime::OpKernelContext;
 using onnxruntime::cuda::CudaKernel;
 
 // Selects which compressed KV rows each query token is allowed to attend to (DeepSeek-V4's

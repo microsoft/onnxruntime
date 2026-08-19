@@ -9,7 +9,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using onnxruntime::OpKernelContext;
 using onnxruntime::cuda::CudaKernel;
 
 // Gated pooling of `ratio` consecutive tokens into one latent KV row, normalised, rotated, and
