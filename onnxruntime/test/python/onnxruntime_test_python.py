@@ -12,6 +12,7 @@ import platform
 import queue
 import sys
 import threading
+import time
 import unittest
 import weakref
 
@@ -686,6 +687,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_run_async(self):
         event = threading.Event()
+        allow_callback = threading.Event()
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         input_ref = None
 
@@ -699,6 +701,7 @@ class TestInferenceSession(unittest.TestCase):
         my_data = MyData(123456)
 
         def callback(res: np.ndarray, data: MyData, err: str) -> None:
+            self.assertTrue(allow_callback.wait(10))
             self.assertIsNotNone(input_ref())
             self.assertEqual(len(err), 0)
             self.assertEqual(len(res), 1)
@@ -719,9 +722,15 @@ class TestInferenceSession(unittest.TestCase):
         del run_options
         del sess
         gc.collect()
+        allow_callback.set()
 
         event.wait(10)  # timeout in 10 sec
         self.assertTrue(event.is_set())
+        deadline = time.monotonic() + 10
+        while input_ref() is not None and time.monotonic() < deadline:
+            gc.collect()
+            time.sleep(0.01)
+        self.assertIsNone(input_ref())
 
     def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:

@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <mutex>
+#include <thread>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_model_compiler.h"
@@ -139,6 +140,117 @@ AdaptedProviderOptions AdaptProviderOptionsForRegisteredPluginEp(const std::stri
 
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
+struct PendingPythonReleases {
+  std::mutex mutex;
+  std::vector<PyObject*> objects;
+  std::vector<PyObject*> cleanup_thread_objects;
+  bool callback_scheduled = false;
+  bool cleanup_thread_running = false;
+};
+
+PendingPythonReleases& GetPendingPythonReleases() {
+  static auto* pending_releases = new PendingPythonReleases();
+  return *pending_releases;
+}
+
+int DrainPendingPythonReleases(void*) {
+  std::vector<PyObject*> objects;
+  auto& pending_releases = GetPendingPythonReleases();
+  {
+    std::lock_guard<std::mutex> lock{pending_releases.mutex};
+    objects.swap(pending_releases.objects);
+    pending_releases.callback_scheduled = false;
+  }
+
+  for (PyObject* object : objects) {
+    Py_DECREF(object);
+  }
+
+  return 0;
+}
+
+void DrainCleanupThreadPythonReleases() {
+  for (;;) {
+    std::vector<PyObject*> objects;
+    auto& pending_releases = GetPendingPythonReleases();
+    {
+      std::lock_guard<std::mutex> lock{pending_releases.mutex};
+      if (pending_releases.cleanup_thread_objects.empty()) {
+        pending_releases.cleanup_thread_running = false;
+        return;
+      }
+      objects.swap(pending_releases.cleanup_thread_objects);
+    }
+
+    {
+      py::gil_scoped_acquire acquire;
+      for (PyObject* object : objects) {
+        Py_DECREF(object);
+      }
+    }
+  }
+}
+
+void ReleasePythonObjectOnCleanupThread(PyObject* object) noexcept {
+  auto& pending_releases = GetPendingPythonReleases();
+  std::lock_guard<std::mutex> lock{pending_releases.mutex};
+  ORT_TRY {
+    pending_releases.cleanup_thread_objects.push_back(object);
+  }
+  ORT_CATCH(...) {
+    // Retaining the reference is safer than releasing it on the ORT worker.
+    return;
+  }
+
+  if (!pending_releases.cleanup_thread_running) {
+    pending_releases.cleanup_thread_running = true;
+    std::thread* cleanup_thread = nullptr;
+    ORT_TRY {
+      cleanup_thread = new std::thread(DrainCleanupThreadPythonReleases);
+    }
+    ORT_CATCH(...) {
+      pending_releases.cleanup_thread_running = false;
+      return;
+    }
+
+    ORT_TRY {
+      cleanup_thread->detach();
+      delete cleanup_thread;
+    }
+    ORT_CATCH(...) {
+      // The valid thread remains joinable and will drain the queue. Leak its
+      // handle rather than destroying it and terminating the process.
+    }
+  }
+}
+
+void DeferPythonRelease(PyObject* object) noexcept {
+  if (object == nullptr) {
+    return;
+  }
+
+  bool release_on_cleanup_thread = false;
+  ORT_TRY {
+    auto& pending_releases = GetPendingPythonReleases();
+    std::lock_guard<std::mutex> lock{pending_releases.mutex};
+    pending_releases.objects.push_back(object);
+    if (!pending_releases.callback_scheduled &&
+        Py_AddPendingCall(DrainPendingPythonReleases, nullptr) != 0) {
+      pending_releases.objects.pop_back();
+      release_on_cleanup_thread = true;
+    } else {
+      pending_releases.callback_scheduled = true;
+    }
+  }
+  ORT_CATCH(...) {
+    release_on_cleanup_thread = true;
+  }
+
+  if (release_on_cleanup_thread) {
+    ReleasePythonObjectOnCleanupThread(object);
+  }
+}
+
 struct AsyncResource {
   std::vector<py::object> feed_objects;
   py::object session;
@@ -188,33 +300,44 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
 
   auto invoke_callback = [&]() {
     std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
-    Ort::Status status(ort_status);
+    PyObject* session = async_resource->session.release().ptr();
 
-    // return on error
-    if (!status.IsOK()) {
-      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
-      return;
-    }
-
-    std::vector<py::object> rfetch;
-    rfetch.reserve(num_outputs);
-    size_t pos = 0;
-    for (size_t ith = 0; ith < num_outputs; ++ith) {
-      const auto& fet = *outputs[ith];
-      if (fet.IsAllocated()) {
-        if (fet.IsTensor()) {
-          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
-        } else if (fet.IsSparseTensor()) {
-          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-        } else {
-          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
-        }
+    try {
+      Ort::Status status(ort_status);
+      if (!status.IsOK()) {
+        async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
       } else {
-        rfetch.push_back(py::none());
+        std::vector<py::object> rfetch;
+        rfetch.reserve(num_outputs);
+        size_t pos = 0;
+        for (size_t ith = 0; ith < num_outputs; ++ith) {
+          const auto& fet = *outputs[ith];
+          if (fet.IsAllocated()) {
+            if (fet.IsTensor()) {
+              rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+            } else if (fet.IsSparseTensor()) {
+              rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+            } else {
+              rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+            }
+          } else {
+            rfetch.push_back(py::none());
+          }
+          ++pos;
+        }
+        async_resource->callback(rfetch, async_resource->user_data, "");
       }
-      ++pos;
+    } catch (py::error_already_set& ex) {
+      ex.discard_as_unraisable("onnxruntime.InferenceSession.run_async callback");
+    } catch (const std::exception& ex) {
+      PyErr_SetString(PyExc_RuntimeError, ex.what());
+      PyErr_WriteUnraisable(Py_None);
+    } catch (...) {
+      PyErr_SetString(PyExc_RuntimeError, "Unknown exception in run_async callback");
+      PyErr_WriteUnraisable(Py_None);
     }
-    async_resource->callback(rfetch, async_resource->user_data, "");
+
+    DeferPythonRelease(session);
   };
 
   if (PyGILState_Check()) {
