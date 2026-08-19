@@ -71,11 +71,32 @@ The current `NodeStatsRecorder` CSV field `total_temp_allocations` records cumul
 requested through the accounting allocator during a node's execution. It does not record
 allocation/free intervals, peak simultaneously-live bytes, alignment, or workspace slots.
 
-### Level-1 workspace estimate
+### Level-1 memory estimate
 
 A kernel-independent function callable during partitioning, before a kernel instance
 exists. It uses the node, inferred planning shapes, execution-provider state, and device
-properties to produce a conservative workspace size.
+properties to estimate memory whose size is known before kernel creation:
+
+```cpp
+struct Level1MemoryEstimate {
+  std::optional<size_t> runtime_workspace_bytes;
+  size_t persistent_prepack_bytes;
+  size_t temporary_prepack_bytes;
+};
+```
+
+The fields remain separate because they have different lifetimes:
+
+- `runtime_workspace_bytes` is temporary workspace used while executing the kernel.
+- `persistent_prepack_bytes` is additional kernel-owned storage created during
+  initialization and retained for the session.
+- `temporary_prepack_bytes` is initialization-only scratch, including prepack conversion
+  and tactic-profiling scratch.
+
+An estimate must report only allocations additional to initializer storage already charged
+by the resource accountant. If a kernel reuses an initializer directly instead of
+allocating a destination, that storage must not be reported again as persistent prepack
+memory.
 
 Level 1 is used for memory-budget decisions in `GetCapability`.
 
@@ -105,26 +126,78 @@ better workspace source is available.
 
 ### Partitioning-time workspace resolution
 
-For each candidate node, ORT resolves one workspace value:
+For each candidate node, ORT resolves one runtime workspace value:
 
 | Available information | Workspace used for partitioning |
 |---|---|
-| Compatible Level-1 estimate only | Level-1 estimate |
+| Compatible Level-1 runtime workspace only | Level-1 runtime workspace |
 | Compatible profile only | Profiled value plus the configured profile margin |
-| Compatible profile and Level-1 estimate | Maximum of the two values |
+| Compatible profile and Level-1 runtime workspace | Maximum of the two values |
 | Neither | Existing fallback workspace |
 
 Profile and estimation values are **not added together**. They describe the same resource.
+Persistent prepack memory and initialization scratch describe different resources and are
+added separately when Level 1 can estimate them, even if runtime workspace falls back.
 
 The partitioning cost is:
 
 ```text
-node cost = initializer memory + output memory + resolved workspace
+node cost =
+    initializer memory
+  + output memory
+  + resolved runtime workspace
+  + additional persistent prepack memory
+  + initialization-only scratch
 ```
 
-The 1.5x fallback applies per node only when no compatible profile or Level-1 estimate is
-available for that node. Once all relevant kernels provide conservative estimates, the
-fallback is unnecessary for those kernels.
+The 1.5x fallback applies to runtime workspace per node only when no compatible profile or
+Level-1 runtime workspace estimate is available for that node. Known Level-1 prepack
+components remain additional charges. Once all relevant kernels provide conservative
+runtime workspace estimates, the fallback is unnecessary for those kernels.
+
+### Prepack memory accounting
+
+For CUDA initializers, session initialization proceeds in this order:
+
+```text
+plan each initializer at its consumer's device location
+-> SaveInitializedTensors() allocates/copies it to that location
+-> CreateKernels() constructs kernels and may profile tactics
+-> PrepackConstantInitializedTensors() calls PrePack() node by node
+```
+
+Consequently, an initializer planned for CUDA already consumes device memory before
+`PrePack()` begins, even when its model data originated in a host memory-mapped file. The
+base initializer charge accounts for that CUDA storage.
+
+For runtime prepacking, the source CUDA initializer and a newly allocated packed
+destination can coexist. The destination is reported in `persistent_prepack_bytes`; the
+source remains in base initializer accounting. ORT releases a source initializer after its
+final successful prepack consumer, but the current partition-time accountant does not
+subtract that source from the cumulative accepted-node cost.
+
+Offline-prepacked `MatMulNBits` weights are different. `PrePack_B()` reuses an
+already-GPU-resident offline-prepacked B initializer in place, so there is no second B
+destination to report. The base accountant still charges B once. Scale and zero-point
+inputs may still produce additional persistent destinations and must be reported when they
+do.
+
+`MatMulNBits` tactic profiling runs synchronously while each kernel is constructed.
+`PrePack()` calls then run sequentially after kernel creation. The associated scratch
+buffers are therefore created and released one at a time. The current byte-count accountant
+conservatively sums per-node initialization scratch instead of computing the maximum
+simultaneously-live amount.
+
+The current result is a conservative initialization-time bound, not exact lifetime-aware
+or steady-state accounting. Exact accounting requires explicit tracking of:
+
+```text
+initializer storage class and planned device
+source initializer final-prepack-consumer release
+persistent destination allocation
+tactic-profiling and prepack scratch allocation/release order
+peak simultaneously-live initialization memory
+```
 
 ### Why use the maximum when both sources exist?
 
@@ -644,7 +717,9 @@ User-visible resource reporting should separate:
 ```text
 initializer/weight memory
 activation/output memory
-workspace memory
+persistent prepack memory
+initialization-only scratch
+runtime workspace memory
 total planned device memory
 workspace source coverage
 ```
@@ -664,7 +739,8 @@ individual execution provider's `GetCapability` implementation.
 
 ### Phase 1: Partitioning integration
 
-- Define a framework-owned workspace estimate/result type with source metadata.
+- Define a framework-owned Level-1 memory estimate with separate runtime workspace,
+  persistent prepack, and initialization-scratch fields.
 - Register Level-1 estimators for pilot kernels.
 - Load compatible profile values through the same resolver.
 - Replace the 1.5x fallback per node when a better source is available.
@@ -730,3 +806,6 @@ parallel/multi-stream, and Plugin EP support remain future work.
 | 2026-08-12 | Own planned workspace in each execution frame, removing workspace-specific concurrent-run serialization | Pilot implemented |
 | 2026-08-13 | Validate shared offsets and output correctness with three sequential `MatMulNBits` nodes | Pilot implemented |
 | 2026-08-13 | Expose planned workspace access through the bundled CUDA provider-wrapper bridge | Pilot implemented |
+| 2026-08-19 | Keep Level-1 runtime workspace, persistent prepack memory, and initialization scratch as separate lifetime classes | Pilot implemented |
+| 2026-08-19 | Charge initializer storage separately and report only additional prepack destinations; do not duplicate in-place offline-prepacked weights | Pilot implemented |
+| 2026-08-19 | Treat cumulative initialization accounting as a conservative bound pending explicit source-release and scratch-peak lifetime tracking | Pilot limitation |
