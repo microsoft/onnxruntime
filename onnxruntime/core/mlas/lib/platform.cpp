@@ -667,6 +667,7 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
+    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchNeon;
     this->KVQuantGemmFp16Supported_ = true;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
