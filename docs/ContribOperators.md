@@ -122,6 +122,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
@@ -7003,6 +7004,79 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
 <dd>Input can be of any tensor type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
+
+  Stateful causal depthwise convolution over a packed, token-major batch of variable-length
+  sequences (CUDA only).
+  
+  input holds every sequence's tokens back to back along axis 0, with shape
+  (total_tokens, channels). cumulative_sequence_length is a device tensor of shape
+  (batch_size + 1); sequence i occupies the half-open token range
+  [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
+  at least one token, so offsets are strictly increasing and offsets[0] == 0. The convolution
+  never reads across a sequence boundary: for a kernel tap that lands before a sequence's first
+  token, the value comes from that sequence's past_state (or zero when past_state is absent).
+  
+  Weight layout: (channels, 1, kernel_size) for depthwise convolution. ndim must be 1.
+  The optional activation attribute supports fused SiLU/Swish.
+  
+  past_state / present_state hold the trailing (kernel_size - 1) carry values per sequence, with
+  shape (batch_size, channels, kernel_size - 1), or (state_window, batch_size, channels,
+  kernel_size - 1) when state_window = W > 0. The window axis is right-aligned per sequence: for
+  a sequence of length L, local token t writes slot t + W - L when that index is non-negative,
+  so slot W - 1 always holds the state after the sequence's last token and is the only slot
+  past_state is read from. batch_size is cumulative_sequence_length's length minus one, not the
+  packed token count.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>ndim</tt> : int</dt>
+<dd>Spatial dimensionality. Must be 1: the packed token axis is the causal axis.</dd>
+<dt><tt>state_window</tt> : int</dt>
+<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after each sequence's last position, i.e. (batch_size, channels, kernel_size - 1). When W > 0 both gain a LEADING axis of extent W, right-aligned per sequence as described in the operator summary. Valid range is [0, 8].</dd>
+</dl>
+
+#### Inputs (3 - 5)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Token-major packed input with shape (total_tokens, channels).</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>Depthwise convolution kernel with shape (channels, 1, kernel_size).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional per-channel bias with shape (channels).</dd>
+<dt><tt>past_state</tt> (optional) : T</dt>
+<dd>Carry state from the previous call. Shape (batch_size, channels, kernel_size - 1), or (state_window, batch_size, channels, kernel_size - 1) when state_window > 0, in which case only slot state_window - 1 is read. If not provided, padding is zero for every sequence.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Token-major convolution output with the same shape as input.</dd>
+<dt><tt>present_state</tt> : T</dt>
+<dd>Updated carry state, one per sequence, with the same shape as past_state would have.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
 </dl>
 
 

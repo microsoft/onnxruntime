@@ -2678,6 +2678,163 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* VarlenCausalConvWithState_ver1_doc = R"DOC(
+Stateful causal depthwise convolution over a packed, token-major batch of variable-length
+sequences (CUDA only).
+
+input holds every sequence's tokens back to back along axis 0, with shape
+(total_tokens, channels). cumulative_sequence_length is a device tensor of shape
+(batch_size + 1); sequence i occupies the half-open token range
+[cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
+at least one token, so offsets are strictly increasing and offsets[0] == 0. The convolution
+never reads across a sequence boundary: for a kernel tap that lands before a sequence's first
+token, the value comes from that sequence's past_state (or zero when past_state is absent).
+
+Weight layout: (channels, 1, kernel_size) for depthwise convolution. ndim must be 1.
+The optional activation attribute supports fused SiLU/Swish.
+
+past_state / present_state hold the trailing (kernel_size - 1) carry values per sequence, with
+shape (batch_size, channels, kernel_size - 1), or (state_window, batch_size, channels,
+kernel_size - 1) when state_window = W > 0. The window axis is right-aligned per sequence: for
+a sequence of length L, local token t writes slot t + W - L when that index is non-negative,
+so slot W - 1 always holds the state after the sequence's last token and is the only slot
+past_state is read from. batch_size is cumulative_sequence_length's length minus one, not the
+packed token count.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenCausalConvWithState, 1,
+    OpSchema()
+        .SetDoc(VarlenCausalConvWithState_ver1_doc)
+        .Attr("activation",
+              "Fused activation function. One of: 'silu', 'swish', 'none'. "
+              "Default is 'none'.",
+              AttributeProto::STRING,
+              std::string("none"))
+        .Attr("ndim",
+              "Spatial dimensionality. Must be 1: the packed token axis is the causal axis.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("state_window",
+              "Number of trailing per-position carry states held by past_state and "
+              "present_state. When 0 (default) the state tensors have no window axis and hold "
+              "only the state after each sequence's last position, i.e. "
+              "(batch_size, channels, kernel_size - 1). When W > 0 both gain a LEADING axis of "
+              "extent W, right-aligned per sequence as described in the operator summary. "
+              "Valid range is [0, 8].",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Input(0,
+               "input",
+               "Token-major packed input with shape (total_tokens, channels).",
+               "T")
+        .Input(1,
+               "weight",
+               "Depthwise convolution kernel with shape (channels, 1, kernel_size).",
+               "T")
+        .Input(2,
+               "cumulative_sequence_length",
+               "Device tensor with shape (batch_size + 1) giving the half-open packed token "
+               "range of each sequence.",
+               "M")
+        .Input(3,
+               "bias",
+               "Optional per-channel bias with shape (channels).",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "past_state",
+               "Carry state from the previous call. Shape (batch_size, channels, "
+               "kernel_size - 1), or (state_window, batch_size, channels, kernel_size - 1) when "
+               "state_window > 0, in which case only slot state_window - 1 is read. If not "
+               "provided, padding is zero for every sequence.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Token-major convolution output with the same shape as input.",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated carry state, one per sequence, with the same shape as past_state "
+                "would have.",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+          const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          if (state_window < 0 || state_window > kMaxStateWindow) {
+            fail_shape_inference("VarlenCausalConvWithState: state_window must be in [0, ",
+                                 kMaxStateWindow, "], got ", state_window);
+          }
+          const int64_t ndim = getAttribute(ctx, "ndim", 1);
+          if (ndim != 1) {
+            fail_shape_inference("VarlenCausalConvWithState: ndim must be 1, got ", ndim);
+          }
+
+          // Output 0: same shape as input (total_tokens, channels)
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          // Output 1: present_state shape (batch_size, channels, kernel_size - 1), or
+          // (state_window, batch_size, channels, kernel_size - 1). batch_size always comes from
+          // cumulative_sequence_length, never from the packed token dimension.
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            auto& input_shape = getInputShape(ctx, 0);
+            auto& weight_shape = getInputShape(ctx, 1);
+            auto& cu_seqlen_shape = getInputShape(ctx, 2);
+            if (input_shape.dim_size() != 2) {
+              fail_shape_inference(
+                  "VarlenCausalConvWithState: input must have rank 2 "
+                  "(total_tokens, channels)");
+            }
+            if (weight_shape.dim_size() != 3) {
+              fail_shape_inference(
+                  "VarlenCausalConvWithState: weight must have rank 3 "
+                  "(channels, 1, kernel_size)");
+            }
+            if (cu_seqlen_shape.dim_size() != 1) {
+              fail_shape_inference(
+                  "VarlenCausalConvWithState: cumulative_sequence_length must "
+                  "have rank 1");
+            }
+            auto& cu_dim = cu_seqlen_shape.dim(0);
+            if (cu_dim.has_dim_value() && cu_dim.dim_value() < 2) {
+              fail_shape_inference(
+                  "VarlenCausalConvWithState: cumulative_sequence_length must have at least 2 elements");
+            }
+            if (input_shape.dim(0).has_dim_value() && cu_dim.has_dim_value() &&
+                input_shape.dim(0).dim_value() < cu_dim.dim_value() - 1) {
+              fail_shape_inference(
+                  "VarlenCausalConvWithState: total_tokens must be at least batch_size");
+            }
+
+            TensorShapeProto state_shape;
+            if (state_window > 0) {
+              state_shape.add_dim()->set_dim_value(state_window);
+            }
+            // batch_size = cumulative_sequence_length.dim(0) - 1
+            if (cu_dim.has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
+            } else {
+              state_shape.add_dim();  // unknown batch size
+            }
+            *state_shape.add_dim() = input_shape.dim(1);  // channels
+            if (weight_shape.dim(2).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);
+            } else {
+              state_shape.add_dim();  // unknown kernel_size - 1
+            }
+            updateOutputShape(ctx, 1, state_shape);
+          }
+        }));
+
 constexpr const char* LinearAttention_ver1_doc = R"DOC(
 Unified linear attention operator for autoregressive decoding (T=1) and prefill (T>1).
 
