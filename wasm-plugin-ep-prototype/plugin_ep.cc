@@ -35,7 +35,7 @@ namespace {
 //
 // The side module emits it as an ordinary `env` import. The question the prototype answers is
 // whether such an import can be satisfied at RUNTIME by JS shipped alongside the EP, rather
-// than having to be baked into the host at link time. See REPORT.md 3.6.
+// than having to be baked into the host at link time. See REPORT.md 3.5.
 //
 // Opt-in (-DPROTOTYPE_EP_JS_GLUE=1) because it constrains HOW the EP may be loaded: the glue
 // must be registered before the side module is instantiated, which rules out Emscripten's

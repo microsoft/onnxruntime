@@ -163,7 +163,7 @@ if ($MainModule -eq '2') {
 $runtimeMethods = "ccall,cwrap,FS,UTF8ToString,stringToUTF8"
 # ortRegisterEpJsGlue is a host-side hook (host_ep_glue_hook.js) that lets a plugin EP install
 # its own JS glue into wasmImports before dlopen, so the host does not have to link the EP's
-# glue. See REPORT.md 3.6.
+# glue. See REPORT.md 3.5.
 if ($MainModule -ne '0') {
     $runtimeMethods += ",loadDynamicLibrary,ortRegisterEpJsGlue"
     $mainExtra += '--js-library'
