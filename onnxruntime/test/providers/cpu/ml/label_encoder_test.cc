@@ -824,7 +824,7 @@ TEST(LabelEncoder, ExternalDataInKeysTensorOpset4) {
 
   // external data has to be little endian, even on big endian systems.
   // byteswap it if needed.
-  if constexpr (endian::native == endian::big) {
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::big) {
     onnxruntime::utils::SwapByteOrderInplace(sizeof(int64_t), gsl::make_span(reinterpret_cast<std::byte*>(key_data.data()), key_data.size() * sizeof(int64_t)));
   }
 
