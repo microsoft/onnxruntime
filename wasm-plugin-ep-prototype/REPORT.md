@@ -43,9 +43,6 @@ Both compile against the **real** ORT public headers (`onnxruntime_c_api.h` /
   (`typeid` correctly reports `St13runtime_error` across the boundary)
 - an `OrtStatus` allocated by the main module, returned through the side module, freed by the
   main module
-- a buffer `malloc`'d by the **side** module, then read and `free`'d by the **main** module —
-  this is the direction that matters for a real EP, and it proves both modules share one heap
-  and one allocator (the side module imports `malloc`/`free` rather than linking its own)
 - `EM_ASM` from inside the side module (i.e. a side module *can* reach JS)
 
 ### Results
@@ -54,13 +51,13 @@ Measured on Emscripten 4.0.23, Node 22.16, Chromium 151 (`crossOriginIsolated=tr
 
 | Config | host .wasm | EP .wasm | Node | Chromium |
 |---|---|---|---|---|
-| baseline, no dynamic linking | 27.8 KB | – | – | – |
-| `MAIN_MODULE=1`, legacy EH | **1624.1 KB** | 2.8 KB | PASS | PASS |
-| `MAIN_MODULE=1`, legacy EH, ASYNCIFY | **2352.0 KB** | 5.4 KB | PASS | PASS |
-| `MAIN_MODULE=2`, legacy EH | 32.2 KB | 2.8 KB | **FAIL** | – |
-| `MAIN_MODULE=2`, wasm EH | 33.9 KB | 2.6 KB | PASS | PASS |
-| `MAIN_MODULE=2`, wasm EH, pthreads | 47.3 KB | 2.9 KB | PASS | PASS |
-| `MAIN_MODULE=2`, wasm EH, pthreads, JSPI | 47.3 KB | 76.1 KB | – | PASS |
+| baseline, no dynamic linking | 27.5 KB | – | – | – |
+| `MAIN_MODULE=1`, legacy EH | **1623.6 KB** | 2.7 KB | PASS | PASS |
+| `MAIN_MODULE=1`, legacy EH, ASYNCIFY | **2351.1 KB** | 5.2 KB | PASS | PASS |
+| `MAIN_MODULE=2`, legacy EH | 31.7 KB | 2.7 KB | **FAIL** | – |
+| `MAIN_MODULE=2`, wasm EH | 33.3 KB | 2.5 KB | PASS | PASS |
+| `MAIN_MODULE=2`, wasm EH, pthreads | 46.8 KB | 2.7 KB | PASS | PASS |
+| `MAIN_MODULE=2`, wasm EH, pthreads, JSPI | 46.8 KB | 75.9 KB | – | PASS |
 
 ---
 
@@ -69,13 +66,13 @@ Measured on Emscripten 4.0.23, Node 22.16, Chromium 151 (`crossOriginIsolated=tr
 ### 3.1 `MAIN_MODULE=1` is not an option — it costs ~60x
 
 `-sMAIN_MODULE=1` disables dead-code elimination and exports everything, so the host grew from
-27.8 KB to 1.6 MB (2.3 MB once ASYNCIFY instruments all of it). Applied to the real
+27.5 KB to 1.6 MB (2.3 MB once ASYNCIFY instruments all of it). Applied to the real
 `onnxruntime.wasm` this would be a very large regression for every ORT-web user, including
 those who never touch WebGPU.
 
 ### 3.2 `MAIN_MODULE=2` works, but only with **native Wasm exceptions**
 
-`-sMAIN_MODULE=2` keeps DCE (33.9 KB vs 27.8 KB baseline — about a 6 KB / 22% overhead), but
+`-sMAIN_MODULE=2` keeps DCE (33.3 KB vs 27.5 KB baseline — about a 6 KB / 21% overhead), but
 every symbol the EP imports must be exported by name from the host. With the default
 `-fexceptions` (legacy JS-based EH), the side module imports `__THREW__` and `invoke_*`
 trampolines which only exist if the *main* module happened to generate them — a side module

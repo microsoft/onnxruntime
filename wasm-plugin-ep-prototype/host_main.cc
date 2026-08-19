@@ -39,8 +39,8 @@ struct MiniStatus {
 };
 
 OrtStatus* ORT_API_CALL MiniCreateStatus(OrtErrorCode code, const char* msg) noexcept {
-  // Allocated in the MAIN module, freed in the MAIN module, but the pointer travels
-  // through the side module. Exercises a shared heap.
+  // Allocated and freed by the MAIN module; the pointer only travels through the side module.
+  // This mirrors how OrtStatus works in the real ABI -- ORT owns it end to end.
   auto* s = new MiniStatus{code, msg ? msg : ""};
   return reinterpret_cast<OrtStatus*>(s);
 }
@@ -154,30 +154,6 @@ EMSCRIPTEN_KEEPALIVE int OrtRegisterExecutionProviderLibrary(const char* registr
       return 4;
     }
   }
-
-  // Shared-heap probe: the SIDE module allocates, the MAIN module reads and frees.
-  auto alloc_fn = reinterpret_cast<void* (*)(size_t)>(dlsym(handle, "PrototypeAllocForHost"));
-  if (alloc_fn == nullptr) {
-    printf("[host] ERROR dlsym PrototypeAllocForHost failed: %s\n", dlerror());
-    return 5;
-  }
-  constexpr size_t kProbeSize = 64;
-  auto* probe = static_cast<unsigned char*>(alloc_fn(kProbeSize));
-  if (probe == nullptr) {
-    printf("[host] ERROR side module allocation returned null\n");
-    return 6;
-  }
-  for (size_t i = 0; i < kProbeSize; ++i) {
-    if (probe[i] != 0xAB) {
-      printf("[host] ERROR side-module buffer corrupt at byte %zu: 0x%02X\n", i, probe[i]);
-      return 7;
-    }
-  }
-  printf("[host] read %zu bytes allocated by the side module at %p; freeing in main module\n",
-         kProbeSize, static_cast<void*>(probe));
-  std::free(probe);  // side module malloc'd it, main module frees it -> one shared allocator
-  printf("[host] free() of side-module allocation OK\n");
-
   return 0;
 }
 

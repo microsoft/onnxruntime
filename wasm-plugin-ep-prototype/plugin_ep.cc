@@ -13,7 +13,6 @@
 // dynamic-linking build:
 //   - C++ exceptions thrown and caught inside the side module
 //   - RTTI / typeid across the module boundary
-//   - malloc in the side module / free in the main module (shared heap)
 //   - EM_ASM, i.e. can a side module reach JS glue (this is how emdawnwebgpu works)
 
 #include <emscripten.h>
@@ -131,29 +130,15 @@ OrtStatus* CreateEpFactories(const char* registration_name,
     return g_ort->CreateStatus(ORT_INVALID_ARGUMENT, "need at least one factory slot");
   }
 
-  // Allocated in the SIDE module, will be destroyed in the SIDE module, but the pointer is
-  // owned/held by the MAIN module in between.
+  // Allocated in the SIDE module and destroyed in the SIDE module (in ReleaseEpFactory), but
+  // held by the MAIN module in between. This is the ownership pattern the EP ABI uses
+  // throughout -- no heap ownership crosses the module boundary.
   auto factory = std::make_unique<PrototypeFactory>();
   factories[0] = factory.release();
   *num_factories = 1;
 
   printf("[plugin] CreateEpFactories OK\n");
   return nullptr;
-}
-
-// Shared-heap probe. Allocates in the SIDE module and hands the pointer to the MAIN module,
-// which reads it and calls free() on it. This is the direction that matters for a real plugin
-// EP (the EP allocates buffers that ORT later releases), and it only works if both modules
-// share one heap and one allocator -- which is what Emscripten dynamic linking gives you, since
-// the side module imports malloc/free from the main module rather than linking its own dlmalloc.
-__attribute__((visibility("default")))
-void* PrototypeAllocForHost(size_t n) noexcept {
-  void* p = std::malloc(n);
-  if (p != nullptr) {
-    std::memset(p, 0xAB, n);
-  }
-  printf("[plugin] side-module malloc(%zu) = %p (main module will read and free it)\n", n, p);
-  return p;
 }
 
 __attribute__((visibility("default")))
