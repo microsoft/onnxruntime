@@ -26,7 +26,11 @@ esac
 done
 
 # Update parallel to the minimum of the number of processors and 8 for aarch64 to avoid OOM errors during build.
-PARALLEL=$([ "$arch" = "aarch64" ] && echo "$(( $(nproc) < 8 ? $(nproc) : 8 ))")
+if [ "$arch" = "aarch64" ]; then
+    PARALLEL=$(( $(nproc) < 8 ? $(nproc) : 8 ))
+else
+    PARALLEL=""
+fi
 
 PYTHON_BIN_DIR=$(dirname "${PYTHON_EXE}")
 
