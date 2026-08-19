@@ -37,12 +37,7 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
 }
 
 bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  // WebGPU allocations always carry VendorIds::NONE. Any other vendor ID on a GPU device belongs
-  // to a different provider (CUDA, DML, CANN, ...), and DataTransferManager::CopyTensor selects
-  // the first registered transfer whose CanCopy accepts the pair. Without this check a session
-  // registered as [WebGpuExecutionProvider, CUDAExecutionProvider] would route a CUDA copy here,
-  // and CopyTensor would reinterpret the CUDA allocation as a WGPUBuffer and hand that foreign
-  // handle to Dawn. The plugin data transfer already guards on vendor ID for the same reason.
+  // WebGPU allocations use VendorIds::NONE; reject foreign GPU handles from this transfer.
   if (src_device.Type() == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::NONE) {
     return false;
   }
