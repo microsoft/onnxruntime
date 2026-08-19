@@ -285,7 +285,7 @@ TEST(MathOpTest, MatMulFloatTypeInitializer_FastMath) {
   RunMatMulTest<float>(7, false, true, false);
 }
 
-TEST(MathOpTest, FusedMatMulScale_FastMath) {
+TEST(MathOpTest, FusedMatMulNonUnitAlpha_FastMathEnabled) {
   constexpr int64_t batch_size = 2;
   constexpr int64_t m = 32;
   constexpr int64_t n = 32;
@@ -305,6 +305,8 @@ TEST(MathOpTest, FusedMatMulScale_FastMath) {
   test.AddOutput<float>("Y", {1, batch_size, m, n},
                         std::vector<float>(batch_size * m * n, alpha * k));
 
+  // SBGEMM does not implement general alpha scaling. Enabling fastmath must
+  // preserve non-unit alpha by selecting the accurate FP32 path.
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16, "1"));
