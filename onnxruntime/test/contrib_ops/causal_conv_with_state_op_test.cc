@@ -840,6 +840,68 @@ TEST(CausalConvWithStateTest, StateWindow_DecodeGenericKWithPastState) {
   RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
                                /*kernel_size=*/7, /*window=*/3, /*with_past_state=*/true);
 }
+
+// BFloat16 is CUDA-only for this op (CPU/WebGPU only register float/float16).
+TEST(CausalConvWithStateTest, BFloat16_Cuda) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+    return;
+  }
+
+  const int batch_size = 2;
+  const int channels = 4;
+  const int input_length = 6;
+  const int kernel_size = 3;
+  const int state_length = kernel_size - 1;
+  const std::string activation = "silu";
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = 0.3f * std::sin(static_cast<float>(i) * 0.41f);
+  }
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = 0.2f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  std::vector<float> bias_data(channels);
+  for (int i = 0; i < channels; ++i) {
+    bias_data[i] = 0.01f * static_cast<float>(i);
+  }
+  std::vector<float> conv_state_data(static_cast<size_t>(batch_size) * channels * state_length);
+  for (size_t i = 0; i < conv_state_data.size(); ++i) {
+    conv_state_data[i] = 0.25f * std::sin(static_cast<float>(i) * 0.29f);
+  }
+
+  std::vector<float> expected_output, expected_state;
+  CausalConvWithStateReference(
+      input_data, weight_data, &bias_data, &conv_state_data,
+      expected_output, expected_state,
+      batch_size, channels, input_length, kernel_size, activation);
+
+  std::vector<int64_t> input_shape = {batch_size, channels, input_length};
+  std::vector<int64_t> weight_shape = {channels, 1, kernel_size};
+  std::vector<int64_t> bias_shape = {channels};
+  std::vector<int64_t> state_shape = {batch_size, channels, state_length};
+  std::vector<int64_t> output_shape = {batch_size, channels, input_length};
+
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", activation);
+  test.AddInput<BFloat16>("input", input_shape, ToBFloat16(input_data));
+  test.AddInput<BFloat16>("weight", weight_shape, ToBFloat16(weight_data));
+  test.AddInput<BFloat16>("bias", bias_shape, ToBFloat16(bias_data));
+  test.AddInput<BFloat16>("past_state", state_shape, ToBFloat16(conv_state_data));
+  test.AddOutput<BFloat16>("output", output_shape, ToBFloat16(expected_output), false, 0.02f, 0.0f);
+  test.AddOutput<BFloat16>("present_state", state_shape, ToBFloat16(expected_state), false, 0.02f, 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
 #endif  // USE_CUDA
 
 }  // namespace test

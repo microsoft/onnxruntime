@@ -7382,6 +7382,106 @@ TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
                                         ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// Regression test for the WebGPU entry added to the Level-2 GeluFusion allowlist
+// (cpu_acl_cuda_dml_webgpu_eps in graph_transformer_utils.cc).
+TEST_F(GraphTransformationTests, GeluFusionWebGpu) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+#if defined(USE_WEBGPU)
+  const std::string expected_ep = kWebGpuExecutionProvider;
+#else
+  const std::string expected_ep = kCpuExecutionProvider;
+#endif
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(expected_ep);
+  }
+
+  SessionOptions session_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const InlinedHashSet<std::string> gelu_transformer_names = {"GeluFusionL1", "GeluFusionL2"};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+    for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
+      if (gelu_transformer_names.count(transformer->Name()) != 0) {
+        ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+      }
+    }
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.Gelu"], 1);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Erf"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+
+  const Node* gelu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gelu" && node.Domain() == kMSDomain) {
+      gelu_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(gelu_node, nullptr);
+  EXPECT_EQ(gelu_node->GetExecutionProviderType(), expected_ep);
+}
+
+// Regression test for the WebGPU entry added to the BiasGeluFusion allowlist.
+TEST_F(GraphTransformationTests, BiasGeluFusionWebGpu) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+#if defined(USE_WEBGPU)
+  const std::string expected_ep = kWebGpuExecutionProvider;
+#else
+  const std::string expected_ep = kCpuExecutionProvider;
+#endif
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(expected_ep);
+  }
+
+  SessionOptions session_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const InlinedHashSet<std::string> gelu_transformer_names = {
+      "GeluFusionL1", "GeluFusionL2", "BiasGeluFusion"};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+    for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
+      if (gelu_transformer_names.count(transformer->Name()) != 0) {
+        ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+      }
+    }
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasGelu"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.Gelu"], 0);
+  ASSERT_EQ(op_to_count["Gelu"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Erf"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+
+  const Node* bias_gelu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "BiasGelu" && node.Domain() == kMSDomain) {
+      bias_gelu_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(bias_gelu_node, nullptr);
+  EXPECT_EQ(bias_gelu_node->GetExecutionProviderType(), expected_ep);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
 TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
   // MatMul + Add -> Gemm fusion
   int current_opset = GetCurrentOnnxOpset();
