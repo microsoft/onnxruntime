@@ -452,11 +452,11 @@ TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
   test.AddInput<int64_t>("indices", {1, 1}, {0});
   test.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
 
-  OrtCUDAProviderOptionsV2 cuda_options;
+  OrtCUDAProviderOptionsV2 cuda_options{};
   cuda_options.enable_cuda_graph = 1;
   test.ConfigEp(CudaExecutionProviderWithOptions(&cuda_options));
   test.Config(OpTester::ExpectResult::kExpectFailure,
-              "CUDA graph capture does not support GatherND");
+              "all compute graph nodes have not been partitioned to the CUDAExecutionProvider");
   test.RunWithConfig();
 }
 
