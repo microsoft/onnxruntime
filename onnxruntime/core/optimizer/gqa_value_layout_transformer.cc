@@ -96,8 +96,8 @@ bool AlreadyTransformed(const Graph& graph, const Node& node, const logging::Log
   // the node as transformed so we do not compound the inconsistency. A node with only one of the
   // two operands legitimately has only that side converted, hence the two guards.
   if (has_past_value && has_present_value && past_value_transformed != present_value_transformed) {
-    LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has the BNHS Value layout "
-                          << "applied to only one of past_value / present_value. Leaving the node unchanged.";
+    LOGS(logger, ERROR) << "GroupQueryAttention node '" << DescribeNode(node) << "' has the BNHS Value layout "
+                        << "applied to only one of past_value / present_value. Leaving the node unchanged.";
   }
 
   return past_value_transformed || present_value_transformed;
@@ -217,7 +217,7 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
       const NodeArg* boundary_arg = node.InputDefs()[kPastValueInputIndex];
       const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
       if (consumers.size() != 1 || consumers[0] != &node) {
-        LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' shares its past_value graph "
+        LOGS(logger, ERROR) << "GroupQueryAttention node '" << DescribeNode(node) << "' shares its past_value graph "
                               << "input ('" << boundary_arg->Name() << "') with " << (consumers.size() - 1)
                               << " other node(s). The BNHS Value layout will not be applied to this node.";
         continue;
@@ -228,7 +228,7 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
       const NodeArg* boundary_arg = node.OutputDefs()[kPresentValueOutputIndex];
       const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
       if (!consumers.empty()) {
-        LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a present_value graph "
+        LOGS(logger, ERROR) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a present_value graph "
                               << "output ('" << boundary_arg->Name() << "') that is also consumed by " << consumers.size()
                               << " node(s) inside the graph. The BNHS Value layout will not be applied to this node.";
         continue;
