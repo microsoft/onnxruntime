@@ -163,6 +163,7 @@ class GQAConfig:
     kv_cache_type: str = ""
     share_buffer: bool = True
     share_kv_scale: bool = False
+    causal: bool = True
 
     has_position_ids: bool = False
     has_attention_bias: bool = False
@@ -392,6 +393,7 @@ def create_gqa_node_and_io(
         do_rotary=config.rotary,
         rotary_interleaved=config.rotary_interleaved,
         softcap=config.softcap,
+        causal=1 if config.causal else 0,
         smooth_softmax=1 if config.use_smooth_softmax else 0,
         qk_output=output_qk,
         **quantization_attributes,
@@ -1041,6 +1043,7 @@ def parity_check_gqa_prompt(
     atol,
     std=0.2,
 ):
+    config.causal = causal
     torch.manual_seed(0)
     q = (
         torch.randn(
@@ -1199,7 +1202,7 @@ def parity_check_gqa_prompt(
         v=new_v,
         key_padding_mask=None,
         attention_bias=attention_bias,
-        causal=True,
+        causal=causal,
         window_size=window_size,
         softcap=config.softcap,
         use_smooth_softmax=config.use_smooth_softmax,
@@ -1364,6 +1367,7 @@ def parity_check_gqa_past(
     atol,
     std=0.2,
 ):
+    config.causal = causal
     if ort_type == TensorProto.FLOAT16:
         torch_type = torch.float16
     elif ort_type == TensorProto.BFLOAT16:
@@ -1536,7 +1540,7 @@ def parity_check_gqa_past(
         v=v_cache_ref,
         key_padding_mask=key_padding_mask,
         attention_bias=attention_bias,
-        causal=True,
+        causal=causal,
         window_size=window_size,
         softcap=config.softcap,
         use_smooth_softmax=config.use_smooth_softmax,
@@ -2274,6 +2278,149 @@ class TestFlashGQA(unittest.TestCase):
                 atol=atol["fp16"],
             )
 
+    def test_gqa_prompt_feature_interactions(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            buffer_sequence_length=12,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            rotary=True,
+            rotary_interleaved=True,
+            softcap=2.0,
+            has_attention_bias=True,
+            attention_bias_per_head=True,
+            has_qk_norm=True,
+            share_buffer=True,
+        )
+
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_gqa_prompt_bidirectional_attention_bias_broadcast(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            buffer_sequence_length=12,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            rotary=True,
+            has_attention_bias=True,
+            attention_bias_broadcast_dim_0=True,
+            attention_bias_per_head=False,
+            share_buffer=True,
+        )
+
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=False,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_gqa_decode_rotary_head_sink_softcap_qk_norm_batch(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=63,
+            buffer_sequence_length=72,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            rotary=True,
+            softcap=2.0,
+            has_head_sink=True,
+            has_qk_norm=True,
+            share_buffer=True,
+        )
+
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_gqa_decode_bidirectional(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=2,
+            kv_sequence_length=2,
+            past_kv_sequence_length=4,
+            buffer_sequence_length=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            share_buffer=True,
+        )
+
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=False,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    @unittest.skipUnless(has_quantized_kv_cache(), "Quantized KV cache is not available")
+    def test_gqa_decode_rotary_quantized_head_sink_batch(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=63,
+            buffer_sequence_length=72,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            rotary=True,
+            has_head_sink=True,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_CHANNEL",
+            kv_cache_type="int8",
+            kv_cache_bit_width=8,
+            share_buffer=True,
+        )
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["int8_fp16"],
+            atol=atol["int8_fp16"],
+        )
+
     @parameterized.expand(gqa_cuda_past_test_cases())
     def test_gqa_past_flash_attention(self, name, config):
         if enable_debug_print:
@@ -2290,6 +2437,58 @@ class TestFlashGQA(unittest.TestCase):
                 causal=True,
                 rtol=rtol["fp16"],
                 atol=atol["fp16"],
+            )
+
+
+@unittest.skipIf(not has_cuda_device(53), "Quantized bidirectional GQA requires a CUDA GPU, skipping tests.")
+@unittest.skipUnless(has_quantized_kv_cache(), "Quantized KV cache is not available")
+class TestQuantizedBidirectionalGQA(unittest.TestCase):
+    @staticmethod
+    def _config():
+        return GQAConfig(
+            batch_size=1,
+            q_sequence_length=2,
+            kv_sequence_length=2,
+            past_kv_sequence_length=4,
+            buffer_sequence_length=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            kv_cache_type="int8",
+            kv_cache_bit_width=8,
+            share_buffer=True,
+        )
+
+    @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available")
+    def test_gqa_past_flash_attention(self):
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=self._config(),
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=False,
+                rtol=rtol["int8_fp16"],
+                atol=atol["int8_fp16"],
+            )
+
+    def test_gqa_past_without_supported_backend(self):
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"),
+            self.assertRaisesRegex(Exception, "No available GroupQueryAttention kernel supports"),
+        ):
+            parity_check_gqa_past(
+                config=self._config(),
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=False,
+                rtol=rtol["int8_fp16"],
+                atol=atol["int8_fp16"],
             )
 
 

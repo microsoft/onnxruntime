@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - rel-*
+      - plugin-ep-webgpu/rel-*
   pull_request:
     branches:
       - main
       - rel-*
+      - plugin-ep-webgpu/rel-*
   workflow_dispatch:
 
 concurrency:

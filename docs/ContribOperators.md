@@ -2688,7 +2688,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention with KV Cache Quantization Support.
   
-  This operator implements causal grouped-query attention with past state (KV cache) support.
+  This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
   
   **Cache Format:**
@@ -2714,6 +2714,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>causal</tt> : int</dt>
+<dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
@@ -2723,7 +2725,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
-<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>
@@ -2937,7 +2939,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Attention output with 3D packed shape (B, T, H_q * d_v).</dd>
+<dd>Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). Standard GQA emits one output per query head; inverse GQA, where H_kv exceeds H_q, emits one per KV head.</dd>
 <dt><tt>present_state</tt> : S</dt>
 <dd>Updated recurrent state with shape (B, H_kv, d_k, d_v), or (W, B, H_kv, d_k, d_v) when state_window = W > 0. Slot W-1 is the state after the last token; slot j is the state after token (T - W + j).</dd>
 </dl>
@@ -4530,7 +4532,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
 <dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
 <dt><tt>attention_metadata</tt> (optional) : S</dt>
-<dd>1D tensor with shape (2) holding [max_query_len_bound, max_kv_len_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. The op can otherwise obtain these only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The values are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
+<dd>1D tensor with shape (2) or (3) holding [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. max_kv_len_lower_bound is a replay-wide lower bound on the largest per-sequence KV length in the batch and 0 means 'unknown'. It is a provider-neutral performance hint; omitting it preserves the shape-(2) contract and disables optimizations that require a lower bound unless the op reads exact lengths back from the device. The op can otherwise obtain the upper bounds only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The upper bounds are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -7284,5 +7286,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-

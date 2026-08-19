@@ -214,6 +214,13 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
   mul_program.SetWorkgroupSize(work_group_size);
+
+  // On Intel, use a fixed subgroup size of 32 for better performance.
+  if (context.AdapterInfo().vendor == std::string_view{"intel"} &&
+      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    mul_program.SetSubgroupSize(32);
+  }
+
   uint32_t dispatch_x = (N + tile_size_b - 1) / tile_size_b;
   uint32_t num_m_tiles = (M + tile_size_a - 1) / tile_size_a;
   uint32_t dispatch_y = num_m_tiles;

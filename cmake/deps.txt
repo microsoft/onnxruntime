@@ -54,10 +54,10 @@ pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/4628dc060ce4e82345dc1
 re2;https://github.com/google/re2/archive/refs/tags/2024-07-02.zip;646e1728269cde7fcef990bf4a8e87b047882e88
 safeint;https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip;23f252040ff6cb9f1fd18575b32fa8fb5928daac
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
-cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v4.4.2.zip;4b0bae4428b84370407c0a71778b13dc2eee5be1
+cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v4.7.0.zip;51d4f1ba4b9977b94606e23bbc307463a6741383
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0c12f53da76d0c31b03b9f0f8ec8f3b4.zip;239063aee4946a9af147b473a4c3da78ba7413b4
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
-cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.24.0.zip;a55a1980bf5c57692d66ae7bc3b39798f5535e1f
+cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.27.0.zip;1e4c9a464d3437e388ab0163f3be068dba783c08
 dawn;https://github.com/google/dawn/archive/refs/tags/v20260817.213942.zip;a89b0c394bd078f559e2737b80a1fe49fde4ccc1
 kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.gz;6895e72b3d5cf1173358164cb3d64c9d7d33cc84
 # kleidiai-qmx is pinned to a specific commit as there are no tagged releases. When an appropriate tagged release becomes available,

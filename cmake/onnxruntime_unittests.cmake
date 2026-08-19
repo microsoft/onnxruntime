@@ -1023,6 +1023,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
   if(TARGET onnxruntime_providers_cuda_llm)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm)
   endif()
+  if(TARGET onnxruntime_providers_cuda_llm_fp4)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm_fp4)
+  endif()
   if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1063,6 +1066,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_common.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cufft_loader.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/fpgeneric.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cu"
       "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc"
