@@ -456,7 +456,8 @@ TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
   cuda_options.enable_cuda_graph = 1;
   test.ConfigEp(CudaExecutionProviderWithOptions(&cuda_options));
   test.Config(OpTester::ExpectResult::kExpectFailure,
-              "all compute graph nodes have not been partitioned to the CUDAExecutionProvider");
+              "CUDA graph capture does not support GatherND because runtime index validation "
+              "requires host-visible error reporting");
   test.RunWithConfig();
 }
 
