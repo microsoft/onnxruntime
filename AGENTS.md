@@ -11,7 +11,7 @@ otherwise, matching instructions apply to both implementation and review.
 
 ## Agent Skills
 
-Repository skills are available in [`.agents/skills/`](.agents/skills/). Load each skill whose description matches the
+Repository skills are available in [`.github/skills`](.github/skills/). Load each skill whose description matches the
 requested task, subsystem, or behavior.
 
 For code reviews, follow the `/code-review` skill in addition to relevant domain skills and matching path-scoped
