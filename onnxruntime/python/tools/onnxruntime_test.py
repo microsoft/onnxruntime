@@ -37,7 +37,7 @@ def generate_feeds(sess, symbolic_dims: dict | None = None):
         # replace any symbolic dimensions
         shape = []
         for dim in input_meta.shape:
-            if not dim:
+            if dim is None:
                 # unknown dim
                 shape.append(1)
             elif isinstance(dim, str):
@@ -100,7 +100,7 @@ def run_model(
         # and can be overridden (available in IR4). For IR < 4 models
         # the list would be empty
         for initializer in sess.get_overridable_initializers():
-            shape = [dim if dim else 1 for dim in initializer.shape]
+            shape = [dim if dim is not None else 1 for dim in initializer.shape]
             if initializer.type in float_dict:
                 feeds[initializer.name] = np.random.rand(*shape).astype(float_dict[initializer.type])
             elif initializer.type in integer_dict:
