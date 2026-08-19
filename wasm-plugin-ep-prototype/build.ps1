@@ -14,6 +14,7 @@ param(
     [switch]$Jspi,
     [switch]$WasmEH,
     [switch]$Pad,
+    [switch]$Assertions,
     [string]$OutDir = ''
 )
 
@@ -30,6 +31,9 @@ if (-not $OutDir) {
     if ($Pad) { $OutDir += '-pad' }
 }
 $out = Join-Path $root $OutDir
+# Always start from a clean directory. Reusing it risks measuring or running a stale host/side
+# module pair from a previous invocation, which can make a failed build look like a pass.
+if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
 # NOTE: the exception model must match in BOTH modules. Emscripten links a different
@@ -61,6 +65,9 @@ if ($Jspi) {
 }
 
 if ($Pad) { $sideExtra += '-DPROTOTYPE_PAD_SIDE_MODULE=1' }
+# ASSERTIONS makes libdylink.js name the symbol in "undefined symbol '<name>'", which is how you
+# find the next missing dependency when MAIN_MODULE=2 fails to resolve something.
+if ($Assertions) { $mainExtra += '-sASSERTIONS=1' }
 
 Write-Host "=== building side module (plugin EP) ===" -ForegroundColor Cyan
 $sideArgs = $common + $sideExtra + @(
@@ -89,20 +96,63 @@ if ($MainModule -eq '2') {
         ForEach-Object { if ($_ -match '"(?:env|GOT\.func|GOT\.mem)"\s+"([^"]+)"') { $matches[1] } } |
         Sort-Object -Unique
 
-    # These are provided by the main module's JS glue (library_*.js), not by wasm exports:
-    # invoke_* trampolines, the Emscripten EH helpers, EM_ASM support, and the linker-managed
-    # dylink globals. They must not be listed in EXPORTED_FUNCTIONS.
-    # NOTE: __cpp_exception is a WebAssembly *tag* (native Wasm EH). It is NOT JS-provided --
-    # the main module must export it or the side module fails to link with
-    # "tag import requires a WebAssembly.Tag".
+    # Symbols that must NOT go in EXPORTED_FUNCTIONS because they are not wasm exports of the
+    # main module:
+    #   - linker/dylink-managed globals (__memory_base, __stack_pointer, memory, ...)
+    #   - JS-library functions supplied through wasmImports (llvm_eh_typeid_for,
+    #     __resumeException, emscripten_asm_const*, getTempRet0/setTempRet0)
+    #   - symbols libdylink.js synthesises ON DEMAND in $resolveGlobalSymbol: invoke_* wrappers
+    #     (via $createInvokeFunction) and __cxa_find_matching_catch_* variants. These genuinely
+    #     do not need to pre-exist in the main module.
+    #   - the side module's own EM_ASM sig-builder data
+    #   - __asyncify_data / __asyncify_state: these globals are created by the ASYNCIFY Binaryen
+    #     pass, which runs AFTER wasm-ld. Listing them in EXPORTED_FUNCTIONS fails at link time
+    #     with "undefined exported symbol"; the pass exports them itself.
+    #
+    # Everything else -- including wasm DATA symbols such as __THREW__ (legacy EH), C++ RTTI
+    # typeinfo, and the __cpp_exception WebAssembly *tag* (native Wasm EH) -- IS a main-module
+    # wasm export and must be listed.
     $jsProvided = '^(__indirect_function_table|__memory_base|__table_base|__stack_pointer|memory|' +
                   'invoke_.*|getTempRet0|setTempRet0|emscripten_asm_const.*|__cxa_find_matching_catch.*|' +
-                  'llvm_eh_typeid_for|__resumeException|__THREW__|__asyncify_data|__asyncify_state|' +
+                  'llvm_eh_typeid_for|__resumeException|__asyncify_data|__asyncify_state|' +
                   '_ZN20__em_asm_sig_builder.*)$'
 
     $needed = $imports | Where-Object { $_ -notmatch $jsProvided } | ForEach-Object { "_$_" }
     Write-Host "auto-derived side-module imports: $($needed -join ',')" -ForegroundColor Yellow
     $exported += "," + ($needed -join ',')
+
+    # JS-library elements used ONLY by the dynamically loaded side module are dead-code-eliminated
+    # out of the main module unless requested explicitly. Per the Emscripten dynamic linking docs
+    # these must be pulled in with DEFAULT_LIBRARY_FUNCS_TO_INCLUDE.
+    #
+    # Use the plain (non-$) names. libcore.js defines the implementations as JS-only `$getTempRet0`
+    # / `$setTempRet0` but also declares C-callable aliases `getTempRet0: '$getTempRet0'`. Only the
+    # aliases land in `wasmImports`, and `wasmImports` is what libdylink.js resolves side-module
+    # `env` imports against -- requesting the `$` form alone leaves the symbol undefined.
+    $jsLibNeeded = $imports | Where-Object {
+        $_ -in @('llvm_eh_typeid_for', '__resumeException')
+    } | Sort-Object -Unique
+
+    # getTempRet0/setTempRet0 cannot be satisfied by the stock library because libcore.js defines
+    # them as JS-only ($-prefixed) symbols; the plain names are `__deps` aliases that never reach
+    # `wasmImports`, which is the only table libdylink.js resolves side-module `env` imports
+    # against. Supply them from a small custom JS library that redefines the plain names as
+    # ordinary (C-callable) library functions -- and force their inclusion, since nothing in the
+    # main module itself references them.
+    $tempRet = $imports | Where-Object { $_ -in @('getTempRet0', 'setTempRet0') } | Sort-Object -Unique
+    if ($tempRet) {
+        Write-Host "side module needs $($tempRet -join ',') -> adding legacy-EH dylink shim" -ForegroundColor Yellow
+        $mainExtra += '--js-library'
+        $mainExtra += (Join-Path $root 'legacy_eh_dylink_shim.js')
+        # Force emission: nothing in the main module references these, so they are otherwise
+        # dead-stripped even when the shim redefines them.
+        $exported += "," + (($tempRet | ForEach-Object { "_$_" }) -join ',')
+    }
+
+    if ($jsLibNeeded) {
+        Write-Host "auto-derived JS-library deps: $($jsLibNeeded -join ',')" -ForegroundColor Yellow
+        $mainExtra += "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$($jsLibNeeded -join ',')"
+    }
 }
 
 $runtimeMethods = "ccall,cwrap,FS,UTF8ToString,stringToUTF8"

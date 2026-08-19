@@ -39,9 +39,6 @@ const server = http.createServer((req, res) => {
   const browser = await chromium.launch({
     args: [
       '--no-sandbox',
-      '--enable-features=SharedArrayBuffer',
-      '--enable-experimental-webassembly-features',
-      '--js-flags=--experimental-wasm-jspi',
       '--enable-unsafe-swiftshader',
     ],
   });
