@@ -72,24 +72,35 @@ bool IsValueLayoutTranspose(const Node& node) {
 // Running twice would insert a second pair of Transposes and swap the boundary shapes back to BNSH
 // while the application still supplies BNHS, so this check is required for correctness rather than
 // being a mere optimization.
-bool AlreadyTransformed(const Graph& graph, const Node& node) {
-  if (HasInput(node, kPastValueInputIndex)) {
+bool AlreadyTransformed(const Graph& graph, const Node& node, const logging::Logger& logger) {
+  const bool has_past_value = HasInput(node, kPastValueInputIndex);
+  const bool has_present_value = HasOutput(node, kPresentValueOutputIndex);
+
+  bool past_value_transformed = false;
+  if (has_past_value) {
     const Node* producer = graph.GetProducerNode(node.InputDefs()[kPastValueInputIndex]->Name());
-    if (producer != nullptr && IsValueLayoutTranspose(*producer) &&
-        graph.IsInputsIncludingInitializers(producer->InputDefs()[0])) {
-      return true;
-    }
+    past_value_transformed = producer != nullptr && IsValueLayoutTranspose(*producer) &&
+                             graph.IsInputsIncludingInitializers(producer->InputDefs()[0]);
   }
 
-  if (HasOutput(node, kPresentValueOutputIndex)) {
+  bool present_value_transformed = false;
+  if (has_present_value) {
     const auto consumers = graph.GetConsumerNodes(node.OutputDefs()[kPresentValueOutputIndex]->Name());
-    if (consumers.size() == 1 && consumers[0] != nullptr && IsValueLayoutTranspose(*consumers[0]) &&
-        graph.IsOutput(consumers[0]->OutputDefs()[0])) {
-      return true;
-    }
+    present_value_transformed = consumers.size() == 1 && consumers[0] != nullptr &&
+                                IsValueLayoutTranspose(*consumers[0]) &&
+                                graph.IsOutput(consumers[0]->OutputDefs()[0]);
   }
 
-  return false;
+  // When a node has both operands, this transformer always converts them together, so a mismatch
+  // means the graph was hand-edited or a previous run stopped part way. Report it, and still treat
+  // the node as transformed so we do not compound the inconsistency. A node with only one of the
+  // two operands legitimately has only that side converted, hence the two guards.
+  if (has_past_value && has_present_value && past_value_transformed != present_value_transformed) {
+    LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has the BNHS Value layout "
+                          << "applied to only one of past_value / present_value. Leaving the node unchanged.";
+  }
+
+  return past_value_transformed || present_value_transformed;
 }
 
 Node& AddValueLayoutTranspose(Graph& graph,
@@ -166,7 +177,7 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
       continue;
     }
 
-    if (AlreadyTransformed(graph, node)) {
+    if (AlreadyTransformed(graph, node, logger)) {
       LOGS(logger, INFO) << "GroupQueryAttention node '" << DescribeNode(node)
                          << "' already uses the BNHS Value layout. Skipping.";
       continue;
@@ -195,6 +206,33 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
                             << node.OutputDefs()[kPresentValueOutputIndex]->Name() << "') that is not a graph output. "
                             << "The BNHS Value layout will not be applied to this node.";
       continue;
+    }
+
+    // Each boundary NodeArg is shared: swapping its declared shape is visible to every other node
+    // that reads or writes it, but only this node gets rewired through a Transpose. If a boundary
+    // has any other user, transforming it would leave that user interpreting the tensor in the wrong
+    // layout (and, for a shared past_value, would swap the declared shape a second time and undo
+    // it). Until this transformer can rewire every BNSH user of a boundary, require sole ownership.
+    if (has_past_value) {
+      const NodeArg* boundary_arg = node.InputDefs()[kPastValueInputIndex];
+      const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
+      if (consumers.size() != 1 || consumers[0] != &node) {
+        LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' shares its past_value graph "
+                              << "input ('" << boundary_arg->Name() << "') with " << (consumers.size() - 1)
+                              << " other node(s). The BNHS Value layout will not be applied to this node.";
+        continue;
+      }
+    }
+
+    if (has_present_value) {
+      const NodeArg* boundary_arg = node.OutputDefs()[kPresentValueOutputIndex];
+      const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
+      if (!consumers.empty()) {
+        LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a present_value graph "
+                              << "output ('" << boundary_arg->Name() << "') that is also consumed by " << consumers.size()
+                              << " node(s) inside the graph. The BNHS Value layout will not be applied to this node.";
+        continue;
+      }
     }
 
     if (has_past_value) {

@@ -37,7 +37,7 @@ correct, but slow (see [Fallback cost](#fallback-cost)).
 | Consumer | The EP compiler fuses the sequence into one op that reads BNHS V and aliases past/present to one buffer. |
 | Fallback | A non-fusing EP executes the transposes: correct, slow. Diagnosed by a warning, not an error. |
 | Scope of application | **Main graph only** (`graph_level == 0`). Subgraphs (BeamSearch decoder body, Loop) are out of scope — the boundary there is not the application's. |
-| Precondition | `past_value` must be a graph input and `present_value` a graph output. Otherwise warn and skip the node. |
+| Precondition | `past_value` must be a graph input and `present_value` a graph output, and this node must be the boundary's only user. Otherwise warn and skip the node. |
 
 GQA operand indices, from [`docs/ContribOperators.md`](../ContribOperators.md#commicrosoftgroupqueryattention):
 `past_value` = input **4**, `present_value` = output **2**.
@@ -213,6 +213,24 @@ ORT-format round trip reliably.
 `present_value` is not a graph output. The session key describes an application boundary; if the
 tensor is produced or consumed inside the graph, that premise does not hold.
 
+### 3.6 Sole ownership of the boundary
+
+A boundary NodeArg is shared state: swapping its declared shape is visible to every node that reads
+or writes it, but only the node being processed gets rewired through a Transpose. Two failure modes
+follow, so the transformer additionally requires that this node be the boundary's only user:
+
+- **A `past_value` graph input feeding two GQA nodes.** Transforming the first rewires only that node
+  and flips the graph input to BNHS, leaving the second node reading a BNHS tensor as BNSH. Then
+  processing the second node swaps the declared shape a second time, back to BNSH, undoing the first.
+  Guard: the `past_value` graph input must have exactly one consumer, and it must be this node.
+- **A `present_value` graph output that is also consumed inside the graph.** Retargeting GQA's output
+  through a Transpose leaves those internal consumers silently receiving BNHS where they expect BNSH.
+  Guard: the `present_value` graph output must have no consumer nodes.
+
+Both are conservative: they decline to transform rather than produce wrong results. Lifting them
+means transforming each boundary once and rewiring every BNSH user of it, which is a larger change
+than this design needs for the single-cache-per-layer models it targets.
+
 ## 4. Wiring into the session
 
 **4.1** In `InferenceSession::TransformGraph` (`onnxruntime/core/session/inference_session.cc`),
@@ -260,6 +278,19 @@ they differ, log at **WARNING**:
 
 This is the difference between a diagnosable perf cliff and an invisible one.
 
+### 4.3 Minimal builds
+
+`gqa_value_layout_transformer.cc` is not in the minimal or extended-minimal source lists in
+`cmake/onnxruntime_optimizer.cmake`, so it is not compiled there. That is safe because every
+reference to `GqaValueLayoutTransformer` and `LogUnfusedGqaValueLayoutTransposes` sits inside
+`TransformGraph`, which is itself inside a `#if !defined(ORT_MINIMAL_BUILD)` block, and
+`adjust_global_compile_flags.cmake` defines `ORT_MINIMAL_BUILD` for extended minimal builds as well.
+A minimal build reaches the ORT format path instead, which is handled in section 5.
+
+The value constants `kGqaValueLayoutBNSH` / `kGqaValueLayoutBNHS` live in the transformer header and
+are header-only `constexpr`, so `PartitionOrtFormatModel` can use them in a minimal build without
+pulling in the translation unit.
+
 ### Fallback cost
 
 When the transposes are not fused, each generated token costs two full transposing copies of the
@@ -271,15 +302,16 @@ configuration anyone should ship; hence the warning in 4.2.
 ## 5. ORT-format path
 
 `PartitionOrtFormatModel` does not go through `TransformGraph`, so `.ort` models receive no
-insertion. Two options:
+insertion. Silently ignoring the option there is not safe: with dynamic or coincidentally square
+cache dimensions the application's BNHS buffers pass input validation and the model computes on
+transposed data, producing wrong results with no error.
 
-- **(a)** Add the same guarded call there. Requires the transformer to be available in minimal
-  builds.
-- **(b)** Document that BNHS requires the transform to have been applied at ORT-format conversion
-  time, and rely on the idempotency in 3.4 to make re-loading with the key set a no-op.
+`PartitionOrtFormatModel` therefore **rejects** the option outright. An ORT format model that had the
+transform applied at conversion time already carries the BNHS boundary shapes in the model itself and
+must be loaded without setting the option.
 
-Recommendation: **(b)** for the first drop — zero code and correct — with (a) as a follow-up if a
-minimal-build consumer needs it.
+Adding real support — running the transformer on the ORT format path — would require the transformer
+in minimal builds (see 4.3) and is deferred until a consumer needs it.
 
 ## 6. Tests
 
@@ -296,6 +328,8 @@ minimal-build consumer needs it.
 - `past_value` produced by a node, or `present_value` consumed by one: warn and skip, graph
   unchanged.
 - 4-bit quantized Value cache returns an error.
+- A `past_value` graph input shared by two GQA nodes, and a `present_value` graph output that is also
+  consumed inside the graph: both warn and skip (section 3.6).
 
 Three session-level tests cover the plumbing that a graph-level test cannot reach, by loading a
 serialized model into an `InferenceSessionWrapper`:
@@ -304,15 +338,31 @@ serialized model into an `InferenceSessionWrapper`:
   decision in 4.1; a registered level 1 optimizer would be skipped entirely at that level.
 - No transposes are inserted for the default `"BNSH"` value.
 - An invalid value fails session initialization.
+- An ORT format model fails session initialization when the option is set, and loads normally when it
+  is not.
 
 Subgraphs are not covered by a test. `ApplyImpl` returns immediately for `graph_level != 0` and never
 calls `Recurse`, so a subgraph node is unreachable by construction; a test would exercise the
 transformer base class rather than this transformer.
 
-**6.2** `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc` — end-to-end numerical
-parity on the CPU EP. The same model run with a BNSH boundary and with a BNHS boundary fed a
-pre-transposed cache must produce bit-identical `output`, and identical `present_value` after
-transposing back. Cover fp32, fp16, and the 8-bit quantized cache.
+**6.2** End-to-end numerical parity on the CPU EP, in the same test file:
+
+- `BnhsMatchesBnshOnCpu` — the same model run with a BNSH boundary and with a BNHS boundary fed a
+  pre-transposed cache produces bit-identical `output`, and identical `present_value` after
+  transposing back. The past caches carry a pattern that varies along both swapped dimensions and the
+  sequence lengths are set so the kernel reads them, otherwise the comparison would pass with a
+  broken transpose. Explicit guards assert the compared tensors are neither constant nor
+  transpose-invariant.
+- `BnhsWithAliasedCacheBufferMatchesSeparateBuffersOnCpu` — one buffer bound to both `past_value` and
+  `present_value` via `IOBinding`, as a decode loop would. The reference is the same BNHS model with
+  separate buffers, not the BNSH session: aliasing under BNSH hands the CPU kernel an aliased past and
+  present so it takes its shared-buffer path, while under BNHS the operands are the transpose
+  intermediates, so comparing the two would compare two different kernel implementations. Chained
+  with `BnhsMatchesBnshOnCpu`, this still covers the full claim.
+
+Note the CPU kernel's shared-buffer path was observed to produce different `present_value` contents
+than its non-shared path for the same inputs (a zero where the caller's buffer held data). That is
+pre-existing behavior on the BNSH path, unrelated to this change, and was not investigated here.
 
 **6.3** `onnxruntime/test/autoep/` — the new metadata key round-trips from the example plugin EP
 through `EpDevice_EpMetadata`.
@@ -338,9 +388,9 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
 | PR | Contents | Status |
 |---|---|---|
 | 1-3 | Both public keys, validation, example-EP metadata, autoep test, transformer, `TransformGraph` wiring, fusion diagnostic, 6.1 unit tests, docs | Implemented |
-| 3b | CPU-fallback numerical parity tests (6.2) | Not started |
+| 3b | CPU-fallback numerical parity tests (6.2), sole-ownership guards (3.6), ORT format rejection (5) | Implemented |
 | 4 | Compiling EP advertises the key, implements the fusion, 6.4 tests | Not started (EP-side) |
-| 5 | Optional: ORT-format path (5a) | Not started |
+| 5 | Real ORT format support (running the transformer on that path) | Deferred |
 
 ## Open items
 
@@ -351,7 +401,10 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
 2. **Heterogeneous sessions.** The session key is session-wide. If one EP fuses and another does
    not, the non-fusing EP's layers hit the 4.2 warning path with no per-node escape. Acceptable
    initially; a per-EP override key would be the escape hatch if this becomes real.
-3. **Fusion pattern contract.** The EP compiler's match criteria should be written down explicitly —
+3. **Shared boundaries.** The guards in 3.6 decline to transform a boundary with more than one user.
+   Supporting them means transforming each boundary once and rewiring every BNSH user, which matters
+   only for models that share one Value cache across GQA nodes.
+4. **Fusion pattern contract.** The EP compiler's match criteria should be written down explicitly —
    in particular whether it tolerates non-adjacent Transposes, and whether it requires `perm` to be
    literally `[0,1,3,2]` versus any last-two-dimension swap. The 4.1 placement guarantees adjacency
    today, but pinning the contract protects against future transformer churn.
