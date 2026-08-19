@@ -59,7 +59,13 @@ using namespace cute;
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
           cutlass::WeightOnlyQuantOp QuantOp, typename EpilogueTag, typename CTAShape, typename ClusterShape,
           typename MainloopScheduleType, typename EpilogueScheduleType>
-#if defined(COMPILE_HOPPER_TMA_GEMMS) && defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 900) && defined(__NV_SASS_VERSION__)
+// Gate the real launcher on the COMPILE_HOPPER_TMA_GEMMS preprocessor macro only (matching the MoE
+// TMA launcher in moe_gemm_tma_ws_launcher.inl). The host-callable launcher symbol is emitted from
+// the host compilation pass, so it must NOT be gated on __CUDA_ARCH__/__NV_SASS_VERSION__ (which are
+// only set during device passes) — otherwise the host links the stub below and every SM90 tactic
+// fails at runtime with "recompile ... 90a". The device kernel body is guarded internally by the
+// collective (CUTE_ARCH_MMA_SM90A_ENABLED); these files are compiled at sm_90a-real.
+#if defined(COMPILE_HOPPER_TMA_GEMMS)
 void sm90_generic_mixed_gemm_kernelLauncher(
     ActivationType const* A, WeightType const* B,
     ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,
@@ -274,7 +280,17 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const*, WeightType co
                                             float const, OutputType*, int, int, int, int const, tkc::CutlassGemmConfig,
                                             char*, size_t, cudaStream_t, int*) {
   ORT_LLM_LOG_ENTRY();
+#if defined(_MSC_VER)
+  // On Windows/MSVC the native SM90 (Hopper) TMA/WGMMA fpA_intB kernels are intentionally not
+  // compiled: CUDA 13 NVCC host stubs hit MSVC C2719 with over-aligned (128-byte) by-value TMA
+  // parameters, so COMPILE_HOPPER_TMA_GEMMS is left undefined on MSVC (see
+  // docs/contrib_ops/cuda/moe_qmoe.md section 14.1). Recompiling with 90a-real does not help here.
+  ORT_THROW(
+      "[fpA_intB_gemm] The native SM90 (Hopper) fpA_intB kernel is not available on Windows/MSVC "
+      "builds. Use the SM80-compatible weight layout (weight_prepacked=0 or 1) instead.");
+#else
   ORT_THROW("[fpA_intB_gemm] Please recompile with support for hopper by passing 90a-real as an arch.");
+#endif
 }
 #endif  // COMPILE_HOPPER_TMA_GEMMS
 

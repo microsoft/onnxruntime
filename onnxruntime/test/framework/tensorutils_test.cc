@@ -12,6 +12,7 @@
 #include "test/util/include/asserts.h"
 #include "file_util.h"
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <fstream>
@@ -30,6 +31,49 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+constexpr bool TensorProtoElementSizesAreConstexpr() {
+  constexpr std::array<size_t, TensorProto_DataType_DataType_ARRAYSIZE> expected_sizes{
+      0,                 // UNDEFINED
+      sizeof(float),     // FLOAT
+      sizeof(uint8_t),   // UINT8
+      sizeof(int8_t),    // INT8
+      sizeof(uint16_t),  // UINT16
+      sizeof(int16_t),   // INT16
+      sizeof(int32_t),   // INT32
+      sizeof(int64_t),   // INT64
+      0,                 // STRING
+      sizeof(uint8_t),   // BOOL
+      sizeof(uint16_t),  // FLOAT16
+      sizeof(double),    // DOUBLE
+      sizeof(uint32_t),  // UINT32
+      sizeof(uint64_t),  // UINT64
+      sizeof(float),     // COMPLEX64
+      sizeof(double),    // COMPLEX128
+      sizeof(uint16_t),  // BFLOAT16
+      sizeof(uint8_t),   // FLOAT8E4M3FN
+      sizeof(uint8_t),   // FLOAT8E4M3FNUZ
+      sizeof(uint8_t),   // FLOAT8E5M2
+      sizeof(uint8_t),   // FLOAT8E5M2FNUZ
+      sizeof(uint8_t),   // UINT4
+      sizeof(uint8_t),   // INT4
+      sizeof(uint8_t),   // FLOAT4E2M1
+      sizeof(uint8_t),   // FLOAT8E8M0
+      sizeof(uint8_t),   // UINT2
+      sizeof(uint8_t),   // INT2
+  };
+
+  for (size_t index = 0; index < expected_sizes.size(); ++index) {
+    if (GetElementSizeOfTensor(static_cast<TensorProto_DataType>(index)) != expected_sizes[index]) {
+      return false;
+    }
+  }
+
+  return GetElementSizeOfTensor(static_cast<TensorProto_DataType>(-1)) == 0 &&
+         GetElementSizeOfTensor(static_cast<TensorProto_DataType>(expected_sizes.size())) == 0;
+}
+
+static_assert(TensorProtoElementSizesAreConstexpr());
 
 // if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
@@ -167,6 +211,55 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
     ASSERT_EQ(checksum, "0");
   }
   ASSERT_EQ(final_offset, external_offset);
+}
+
+TEST(PrepackedWeightsForGraphTest, DiscardReferencesProvidedWeightWhenSaving) {
+  constexpr const char* weight_name = "weight";
+  constexpr const char* key = "key";
+  std::array<uint8_t, 1> discarded_data{1};
+  std::array<uint8_t, 1> shared_data{2};
+
+  PrePackedWeights discarded_weights;
+  discarded_weights.buffers_.emplace_back(discarded_data.data(), BufferDeleter(nullptr));
+  discarded_weights.buffer_sizes_.push_back(discarded_data.size());
+
+  PrePackedWeights shared_weights;
+  shared_weights.buffers_.emplace_back(shared_data.data(), BufferDeleter(nullptr));
+  shared_weights.buffer_sizes_.push_back(shared_data.size());
+
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, true);
+  prepacked_for_graph.InsertPrepackedWeights(key, std::move(discarded_weights));
+
+  prepacked_for_graph.DiscardAndReplaceWithReferenceIfSaving(weight_name, key, shared_weights);
+
+  const auto* retained_weights = prepacked_for_graph.GetPrepackedWeights(key);
+  ASSERT_NE(retained_weights, nullptr);
+  ASSERT_EQ(retained_weights->buffers_.size(), 1U);
+  EXPECT_EQ(retained_weights->buffers_[0].get(), shared_data.data());
+  const auto* keys_for_weight = prepacked_for_graph.GetKeysForWeightForSaving(weight_name);
+  ASSERT_NE(keys_for_weight, nullptr);
+  EXPECT_EQ(keys_for_weight->count(key), 1U);
+}
+
+TEST(PrepackedWeightsForGraphTest, DiscardRemovesWeightWhenNotSaving) {
+  constexpr const char* key = "key";
+  std::array<uint8_t, 1> discarded_data{1};
+  std::array<uint8_t, 1> shared_data{2};
+
+  PrePackedWeights discarded_weights;
+  discarded_weights.buffers_.emplace_back(discarded_data.data(), BufferDeleter(nullptr));
+
+  PrePackedWeights shared_weights;
+  shared_weights.buffers_.emplace_back(shared_data.data(), BufferDeleter(nullptr));
+
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, false);
+  prepacked_for_graph.InsertPrepackedWeights(key, std::move(discarded_weights));
+
+  prepacked_for_graph.DiscardAndReplaceWithReferenceIfSaving("weight", key, shared_weights);
+
+  EXPECT_EQ(prepacked_for_graph.GetPrepackedWeights(key), nullptr);
 }
 
 // T must be float for double, and it must match with the 'type' argument
@@ -1473,6 +1566,46 @@ TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnIndic
 }
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Defense-in-depth: ConstantNodeProtoToTensorProto must reject ORT's in-memory address marker
+// on a Constant node's dense tensor attribute. This isolates the guard added in
+// ConstantNodeProtoToTensorProto from the pre-existing dense-initializer guard in the Graph
+// constructor: callers such as Graph::AddConstantProtoAsInitializer and the ORT-format build
+// path emplace directly into name_to_initial_tensor_ and bypass that constructor-side check,
+// so this test exercises the new chokepoint directly.
+TEST(ConstantNodeProtoToTensorProtoMarkerTest, RejectsInMemoryMarkerOnDenseTensorAttribute) {
+  ONNX_NAMESPACE::NodeProto node;
+  node.set_op_type("Constant");
+  node.set_name("malicious_constant");
+  node.add_output("c");
+
+  auto* attr = node.add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* t = attr->mutable_t();
+  t->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  t->add_dims(4);
+  t->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // Backing buffer is irrelevant — the guard must reject before any dereference.
+  static std::vector<uint8_t> backing(16, 0);
+
+  auto* loc = t->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = t->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = t->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  ONNX_NAMESPACE::TensorProto tensor_out;
+  Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+  ASSERT_FALSE(status.IsOK())
+      << "Constant node tensor attribute with an in-memory address marker must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
 
 // Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
 // called with an empty model_path (e.g. from training checkpoint or custom-op init paths).

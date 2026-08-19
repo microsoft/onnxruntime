@@ -140,6 +140,8 @@ endif ()
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_graph.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_graph.cc"
   )

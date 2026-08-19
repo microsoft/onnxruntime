@@ -29,7 +29,21 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
       docker_image_repo: onnxruntimecuda13manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      extra_build_flags: >-
+        --use_binskim_compliant_compile_flags
+        --build_wheel
+        --parallel
+        --build_java
+        --nvcc_threads 4
+        --flash_nvcc_threads 4
+        --cuda_version=13.0
+        --cuda_home=/usr/local/cuda-13.0
+        --cudnn_home=/usr/local/cuda-13.0
+        --enable_cuda_profiling
+        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+        --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
@@ -46,6 +60,7 @@ jobs:
       - "1ES.Pool=onnxruntime-github-linux-a10"
       - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=test-linux-cuda-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 210
     permissions:
       contents: read
       packages: read
@@ -111,5 +126,15 @@ jobs:
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+          extra_build_flags: >-
+            --use_binskim_compliant_compile_flags
+            --cuda_version=13.0
+            --cuda_home=/usr/local/cuda-13.0
+            --cudnn_home=/usr/local/cuda-13.0
+            --enable_cuda_profiling
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+            --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
+            --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+            --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
           python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
