@@ -34,6 +34,7 @@
 #include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/session/IOBinding.h"
+#include "core/session/environment.h"
 #include "core/session/ort_env.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1319,7 +1320,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #endif
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU)
-    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
+    auto ort_env = OrtEnv::TryGetInstance();
+    ORT_ENFORCE(ort_env != nullptr,
+                "The OrtEnv must exist before creating the built-in WebGPU execution provider.");
+    const auto device_config =
+        ParseWebGpuDeviceConfig(ort_env->GetEnvironment().GetConfigEntries());
+    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options, device_config);
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN

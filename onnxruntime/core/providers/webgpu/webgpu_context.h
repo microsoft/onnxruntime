@@ -16,6 +16,7 @@
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -196,7 +197,7 @@ class WebGpuContextFactory {
   /// <summary>
   /// Return the default context. Create if not present.
   /// </summary>
-  static WebGpuContext& DefaultContext();
+  static WebGpuContext& DefaultContext(const WebGpuDeviceConfig& device_config);
 
  private:
   WebGpuContextFactory() {}
@@ -287,6 +288,7 @@ class WebGpuContext final {
   }
 
   bool EnableZeroBuffer() const { return enable_zero_buffer_; }
+  bool EnableRobustness() const { return enable_robustness_; }
 
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.

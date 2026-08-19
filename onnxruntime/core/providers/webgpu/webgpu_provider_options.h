@@ -5,9 +5,27 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+struct WebGpuDeviceConfig {
+  bool enable_robustness{
+#ifndef NDEBUG
+      true
+#else
+      false
+#endif
+  };
+  bool enable_robustness_explicitly_set{false};
+  bool enable_zero_buffer{true};
+  bool enable_zero_buffer_explicitly_set{false};
+};
+
 namespace options {
 
-// The following are the options that can be set in the WebGPU provider options.
+// Environment-level options that configure the default WebGPU device before a session is created.
+constexpr const char* kEnableRobustness = "ep_factory.WebGpuExecutionProvider.enableRobustness";
+constexpr const char* kEnableZeroBuffer = "ep_factory.WebGpuExecutionProvider.enableZeroBuffer";
+
+// The following are the options that can be set in the WebGPU session provider options.
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
@@ -34,8 +52,6 @@ constexpr const char* kQueryResolveBufferCacheMode = "ep.webgpuexecutionprovider
 constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defaultBufferCacheMode";
 
 constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMode";
-constexpr const char* kEnableRobustness = "ep.webgpuexecutionprovider.enableRobustness";
-constexpr const char* kEnableZeroBuffer = "ep.webgpuexecutionprovider.enableZeroBuffer";
 
 constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
 constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";

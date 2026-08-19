@@ -13,7 +13,9 @@
 #include "core/graph/constants.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_env.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
@@ -265,7 +267,19 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::WebGPU: {
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-      options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
+      auto ort_env = OrtEnv::TryGetInstance();
+      if (ort_env == nullptr) {
+        status = OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            "The OrtEnv must be created before appending the built-in WebGPU execution provider so that "
+            "environment-level WebGPU device options can be applied.");
+        break;
+      }
+
+      const auto device_config =
+          ParseWebGpuDeviceConfig(ort_env->GetEnvironment().GetConfigEntries());
+      options->provider_factories.push_back(
+          WebGpuProviderFactoryCreator::Create(options->value.config_options, device_config));
 #else
       status = create_not_supported_status();
 #endif

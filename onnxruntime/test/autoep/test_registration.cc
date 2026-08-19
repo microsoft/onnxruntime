@@ -2,16 +2,19 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <string_view>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" void ortenv_setup();
@@ -220,5 +223,35 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
 }
+
+#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
+TEST(OrtEpLibrary, WebGpuPluginReadsDeviceOptionsFromEnvironment) {
+  ortenv_teardown();
+
+  auto run_test = [&]() -> void {
+    Ort::KeyValuePairs env_configs;
+    env_configs.Add(webgpu::options::kEnableZeroBuffer, "invalid");
+
+    OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
+    env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    env_options.log_id = "WebGpuPluginReadsDeviceOptionsFromEnvironment";
+    env_options.config_entries = env_configs.GetConst();
+
+    Ort::Env tmp_env(&env_options);
+    const auto library_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"));
+
+    try {
+      tmp_env.RegisterExecutionProviderLibrary("webgpu_device_config_test", library_path.c_str());
+      FAIL() << "Expected WebGPU plugin registration to reject an invalid enableZeroBuffer value.";
+    } catch (const Ort::Exception& ex) {
+      EXPECT_NE(std::string_view{ex.what()}.find("Invalid enableZeroBuffer value"), std::string_view::npos);
+    }
+  };
+
+  EXPECT_NO_FATAL_FAILURE(run_test());
+  ortenv_setup();
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

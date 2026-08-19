@@ -120,11 +120,6 @@ const setExecutionProviders = async (
               appendEpOption(epOptions, 'enableGraphCapture', '1', allocs);
             }
 
-            // set zero-buffer option
-            if (typeof webgpuOptions.enableZeroBuffer === 'boolean') {
-              appendEpOption(epOptions, 'enableZeroBuffer', webgpuOptions.enableZeroBuffer ? '1' : '0', allocs);
-            }
-
             // set layout option
             if (typeof webgpuOptions.preferredLayout === 'string') {
               appendEpOption(epOptions, 'preferredLayout', webgpuOptions.preferredLayout, allocs);

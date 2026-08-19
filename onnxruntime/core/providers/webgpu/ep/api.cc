@@ -10,6 +10,8 @@
 #include <memory>
 
 #include "core/providers/webgpu/ep/factory.h"
+#include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 // To make symbols visible on macOS/iOS
 #ifdef __APPLE__
@@ -82,8 +84,14 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   // Initialize the global default logger
   ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
 
+  auto env_config = Ort::GetEnvConfigEntries();
+  const auto device_config = onnxruntime::ParseWebGpuDeviceConfig(
+      env_config.GetValue(onnxruntime::webgpu::options::kEnableRobustness),
+      env_config.GetValue(onnxruntime::webgpu::options::kEnableZeroBuffer));
+
   // Factory could use registration_name or define its own EP name.
-  std::unique_ptr<OrtEpFactory> factory = std::make_unique<onnxruntime::webgpu::ep::Factory>();
+  std::unique_ptr<OrtEpFactory> factory =
+      std::make_unique<onnxruntime::webgpu::ep::Factory>(device_config);
 
   factories[0] = factory.release();
   *num_factories = 1;

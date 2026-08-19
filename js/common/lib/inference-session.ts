@@ -273,25 +273,6 @@ export declare namespace InferenceSession {
     validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
 
     /**
-     * Enable robust buffer access for an ORT-created Dawn device. This is a global, first-device-wins option. Later
-     * conflicting values and values supplied with an external device are ignored with a warning.
-     *
-     * This setting is available only in ONNX Runtime (Node.js binding).
-     *
-     * @default `true` in Debug builds; `false` in Release and RelWithDebInfo builds
-     */
-    enableRobustness?: boolean;
-
-    /**
-     * Enable zero-initialization for fresh and reused WebGPU buffers.
-     * When an external device is supplied, this option cannot change how that device initializes fresh buffers and
-     * only controls explicit clearing of reused buffers.
-     *
-     * @default true
-     */
-    enableZeroBuffer?: boolean;
-
-    /**
      * Specify the cache mode for storage buffers.
      * - 'disabled': Disable buffer cache. Buffers are destroyed when no longer in use.
      * - 'lazyRelease': Buffers are released lazily, at the end of the current run.

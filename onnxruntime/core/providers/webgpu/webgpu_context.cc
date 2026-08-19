@@ -1301,8 +1301,12 @@ void WebGpuContextFactory::Cleanup() {
   }
 }
 
-WebGpuContext& WebGpuContextFactory::DefaultContext() {
+WebGpuContext& WebGpuContextFactory::DefaultContext(const WebGpuDeviceConfig& device_config) {
   WebGpuContextConfig config{};
+  config.enable_robustness = device_config.enable_robustness;
+  config.enable_robustness_explicitly_set = device_config.enable_robustness_explicitly_set;
+  config.enable_zero_buffer = device_config.enable_zero_buffer;
+  config.enable_zero_buffer_explicitly_set = device_config.enable_zero_buffer_explicitly_set;
   return WebGpuContextFactory::CreateContext(config);
 }
 
