@@ -284,6 +284,8 @@ export declare namespace InferenceSession {
 
     /**
      * Enable zero-initialization for fresh and reused WebGPU buffers.
+     * When an external device is supplied, this option cannot change how that device initializes fresh buffers and
+     * only controls explicit clearing of reused buffers.
      *
      * @default true
      */

@@ -761,9 +761,6 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   if (!enable_robustness_) {
     enabled_toggles.push_back("disable_robustness");
   }
-  if (enable_zero_buffer_) {
-    enabled_toggles.push_back("lazy_clear_resource_on_first_use");
-  }
   return enabled_toggles;
 }
 

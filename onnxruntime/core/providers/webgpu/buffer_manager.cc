@@ -547,8 +547,17 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero,
-                                 bool submit_zero_initialize) const {
+WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
+  return CreateImpl(size, usage, false, false);
+}
+
+WGPUBuffer BufferManager::CreateAllocatorBuffer(size_t size, wgpu::BufferUsage usage,
+                                                bool submit_zero_initialize) const {
+  return CreateImpl(size, usage, context_.EnableZeroBuffer(), submit_zero_initialize);
+}
+
+WGPUBuffer BufferManager::CreateImpl(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero,
+                                     bool submit_zero_initialize) const {
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 

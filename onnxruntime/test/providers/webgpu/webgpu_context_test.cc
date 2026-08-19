@@ -106,7 +106,6 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       false,
-      true,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
   std::array<uint32_t, 16> nonzero_data;
@@ -131,8 +130,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
 }
 
 TEST(WebGpuContextTest, DisabledZeroBufferPreservesReusedBufferContents) {
-  ConfigOptions options;
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto ep = WebGpuProviderFactoryCreator::Create(ZeroBufferOptions("0"))->CreateProvider();
   ASSERT_NE(ep, nullptr);
 
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
@@ -144,7 +142,6 @@ TEST(WebGpuContextTest, DisabledZeroBufferPreservesReusedBufferContents) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       /*is_read_only_allocator=*/false,
-      /*initialize_to_zero=*/false,
       []() { return true; });
 
   std::array<uint32_t, 16> nonzero_data;
@@ -178,7 +175,6 @@ TEST(WebGpuContextTest, ZeroBufferClearsReusedReadOnlyAllocatorBuffer) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       /*is_read_only_allocator=*/true,
-      /*initialize_to_zero=*/true,
       []() { return true; });
 
   std::array<uint32_t, 16> nonzero_data;
@@ -213,8 +209,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
-      false,
-      true);
+      false);
 
   std::array<uint32_t, 16> nonzero_data;
   nonzero_data.fill(0xffffffffu);
@@ -259,7 +254,6 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       false,
-      true,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
   std::array<uint32_t, 16> nonzero_data;
