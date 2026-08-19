@@ -10,18 +10,18 @@ duplicating subsystem knowledge. This document explains how maintainers should e
 | [`AGENTS.md`](../AGENTS.md) | Repository-wide guidance. |
 | [`.github/copilot-instructions.md`](../.github/copilot-instructions.md) | Thin GitHub Copilot adapter that points to canonical guidance. |
 | [`.github/instructions/`](../.github/instructions/) | Guidance for agents working with specific paths. |
-| [`.github/skills/code-review/SKILL.md`](../.github/skills/code-review/SKILL.md) | Generic diff-driven review workflow and finding format. |
+| [`.github/skills/code-review/SKILL.md`](../.github/skills/code-review/SKILL.md) | Generic code review workflow and finding format. |
 | [`.github/skills/`](../.github/skills/) | Deeper workflows and knowledge for particular tasks or subsystems. |
 
 Keep each piece of guidance in one canonical location. Other layers should point to it rather than restating it.
 
 ## Choosing a Location
 
-Add guidance to:
+Add or modify guidance in:
 
 - `AGENTS.md` when it applies across the repository, languages, or subsystems;
 - `.github/instructions/<area>.instructions.md` when it applies to changes under specific paths;
-- `.github/skills/code-review/SKILL.md` when it changes the generic process for reviewing any diff;
+- `.github/skills/code-review/SKILL.md` when it applies to the generic process for reviewing code changes;
 - a domain skill when it requires a specialized workflow or substantial subsystem knowledge.
 
 Keep `.github/copilot-instructions.md` concise. It should route GitHub Copilot to canonical guidance rather than contain

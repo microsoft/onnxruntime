@@ -35,8 +35,9 @@ Do not bump `ORT_API_VERSION`, rename the current `OrtApi` version table, or add
 
 ## C++ Wrappers
 
-Add an idiomatic C++ API wrapper for each new public C API, as appropriate. For example, a C++ wrapper is appropriate
-if it removes the need for manual resource management, or allows use of conventional C++ types.
+Add a C++ API wrapper consistent with existing C++ API conventions for each new public C API, as appropriate. For
+example, a C++ wrapper is appropriate if it removes the need for manual resource management, or allows use of
+conventional C++ types.
 
 Add C++ API declarations to
 [`onnxruntime_cxx_api.h`](../../include/onnxruntime/core/session/onnxruntime_cxx_api.h) and implementation to

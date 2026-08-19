@@ -5,7 +5,7 @@ description: "Review ONNX Runtime pull requests, branches, commits, patches, and
 
 # Reviewing ONNX Runtime Code Changes
 
-Use this workflow for diff-driven code review.
+Use this workflow for code review.
 
 ## 1. Establish the review scope
 
