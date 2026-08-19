@@ -14,6 +14,7 @@ from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, ensure_cuda_plugin_ep_reg
 from onnx import OperatorSetIdProto, TensorProto, helper, save
 
 import onnxruntime as onnxrt
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
 try:
     import faulthandler
@@ -770,6 +771,30 @@ class TestCudaPluginEP(unittest.TestCase):
         inputs = {"A": np.random.rand(3, 2).astype(np.float32), "B": np.random.rand(3, 2).astype(np.float32)}
         result = run_operator_test(target_device, create_add_model, inputs, lambda feed: feed["A"] + feed["B"])
         self.assertTrue(result, "Add plugin registration test failed")
+
+    def test_missing_required_input(self):
+        target_device = get_cuda_plugin_device()
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+
+        try:
+            create_add_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            with self.assertRaisesRegex(InvalidArgument, "Missing Input: B"):
+                sess.run(None, {"A": np.random.rand(3, 2).astype(np.float32)})
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
 
     def test_registration_matmul(self):
         target_device = get_cuda_plugin_device()
