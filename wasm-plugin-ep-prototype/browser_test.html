@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>ORT wasm plugin-EP prototype</title>
+</head>
+
+<body>
+  <pre id="log"></pre>
+  <script src="ort_host.js"></script>
+  <script>
+    const lines = [];
+    const logEl = document.getElementById('log');
+    function log(s) {
+      lines.push(String(s));
+      logEl.textContent += s + '\n';
+    }
+
+    const params = new URLSearchParams(location.search);
+    // preload | dlopen (synchronous) | ondemand (async, needs ASYNCIFY/JSPI)
+    const mode = params.get('mode') || 'preload';
+
+    // How large a module can dlopen() compile *synchronously* on the browser main thread?
+    // Emscripten's dlopen() (without ASYNCIFY/JSPI) uses `new WebAssembly.Module(bytes)`, and
+    // browsers cap synchronous compilation on the main thread. A real WebGPU plugin EP would be
+    // several MB, so this bound decides whether synchronous dlopen is usable at all.
+    async function syncCompileLimitProbe() {
+      function leb(n) {
+        const out = [];
+        do { let b = n & 0x7f; n >>>= 7; if (n) b |= 0x80; out.push(b); } while (n);
+        return out;
+      }
+      // Append an inert custom section of the requested size to a valid module.
+      function inflate(base, targetBytes) {
+        const name = [4, 0x70, 0x61, 0x64, 0x30];  // vec("pad0")
+        const payloadLen = targetBytes;
+        const header = [0].concat(leb(name.length + payloadLen));
+        const out = new Uint8Array(base.length + header.length + name.length + payloadLen);
+        out.set(base, 0);
+        out.set(header, base.length);
+        out.set(name, base.length + header.length);
+        return out;
+      }
+
+      const base = new Uint8Array(await (await fetch('plugin_ep.wasm')).arrayBuffer());
+      log(`--- synchronous main-thread compile limit probe (base=${base.length}B) ---`);
+      for (const mb of [1, 2, 4, 8, 16, 32]) {
+        const bytes = inflate(base, mb * 1024 * 1024);
+        const t0 = performance.now();
+        try {
+          new WebAssembly.Module(bytes);
+          log(`  sync compile ${mb}MB: OK (${Math.round(performance.now() - t0)}ms)`);
+        } catch (e) {
+          log(`  sync compile ${mb}MB: REJECTED -> ${e.constructor.name}: ${e.message}`);
+          break;
+        }
+      }
+      log('--- end probe ---');
+    }
+
+    async function report(status) {
+      window.__result = status;
+      try {
+        await fetch('/result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: `STATUS=${status}\n` + lines.join('\n'),
+        });
+      } catch (e) { /* ignore */ }
+    }
+
+    async function main() {
+      log(`crossOriginIsolated=${self.crossOriginIsolated}`);
+      log(`WebAssembly.Suspending=${typeof WebAssembly.Suspending}`);
+      log(`navigator.gpu=${typeof navigator.gpu}`);
+
+      if (params.get('synclimit') === '1') {
+        await syncCompileLimitProbe();
+      }
+
+      const moduleArgs = {
+        print: log,
+        printErr: log,
+      };
+      if (mode === 'preload') {
+        moduleArgs.dynamicLibraries = ['plugin_ep.wasm'];
+      }
+
+      const Module = await self.Module(moduleArgs);
+
+      if (mode === 'dlopen') {
+        // Emulate: fetch the EP, put it in the virtual FS, then dlopen() it synchronously.
+        const bytes = new Uint8Array(await (await fetch('plugin_ep.wasm')).arrayBuffer());
+        log(`fetched plugin_ep.wasm: ${bytes.length} bytes`);
+        Module.FS.writeFile('/plugin_ep.wasm', bytes);
+      }
+
+      const libPath = mode === 'dlopen' ? '/plugin_ep.wasm' : 'plugin_ep.wasm';
+
+      // Only the dlopen()-ing entry point can suspend (ASYNCIFY unwinds / JSPI suspends there).
+      // The others are ordinary synchronous exports.
+      const callAsync = async (fn, argTypes, args) => {
+        const r = Module.ccall(fn, 'number', argTypes, args, { async: true });
+        return (r && typeof r.then === 'function') ? await r : r;
+      };
+      const call = (fn, argTypes, args) => Module.ccall(fn, 'number', argTypes, args);
+
+      log(`=== register (mode=${mode}) ===`);
+      let rc = await callAsync('OrtRegisterExecutionProviderLibrary', ['string', 'string'],
+        ['WebGpuPrototype', libPath]);
+      if (rc !== 0) throw new Error(`register rc=${rc}`);
+
+      log('=== error path ===');
+      rc = call('OrtTestErrorPath', [], []);
+      if (rc !== 0) throw new Error(`error path rc=${rc}`);
+
+      log('=== unregister ===');
+      rc = call('OrtUnregisterExecutionProviderLibrary', [], []);
+      if (rc !== 0) throw new Error(`unregister rc=${rc}`);
+
+      log('PROTOTYPE PASSED');
+    }
+
+    main().then(() => report('PASS')).catch((e) => {
+      log('PROTOTYPE FAILED: ' + (e && e.stack ? e.stack : e));
+      report('FAIL');
+    });
+  </script>
+</body>
+
+</html>
