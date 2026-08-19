@@ -852,6 +852,17 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
+    const auto& x_shape = *x_input->Shape();
+    const int64_t first_normalized_dim = x_shape.dim_size() + axes_values.front();
+    bool has_zero_normalized_dim = first_normalized_dim < 0;
+    for (int64_t i = first_normalized_dim; !has_zero_normalized_dim && i < x_shape.dim_size(); ++i) {
+      const auto& dim = x_shape.dim(static_cast<int>(i));
+      has_zero_normalized_dim = dim.has_dim_value() && dim.dim_value() == 0;
+    }
+    if (has_zero_normalized_dim) {
+      continue;
+    }
+
     // CPU doesn't support fp16
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
         x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
