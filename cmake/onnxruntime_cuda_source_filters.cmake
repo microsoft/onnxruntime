@@ -167,7 +167,8 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   foreach(_src IN LISTS _list)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
-      if(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
+      if(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$" OR
+         _src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
       elseif(onnxruntime_USE_FP4_QMOE AND
              _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
