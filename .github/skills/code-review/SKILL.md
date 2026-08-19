@@ -18,7 +18,8 @@ review."
 Read every `.github/instructions/**/*.instructions.md` file whose `applyTo` scope matches a changed path. Also load each
 domain skill whose description matches the changed subsystem or behavior.
 
-If no instructions file or domain skill matches a changed path, proceed using general C++ and ONNX Runtime conventions.
+If no instructions file or domain skill matches a changed path, proceed using general ONNX Runtime and
+language-specific conventions.
 
 ## 2. Analyze changed behavior
 
