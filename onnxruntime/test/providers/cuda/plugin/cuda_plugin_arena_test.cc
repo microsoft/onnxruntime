@@ -205,9 +205,16 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ArenaReusesMemory) {
 }
 
 TEST_F(CudaPluginArenaTest, DeviceAllocator_ActiveCaptureReleaseQuarantinesChunk) {
-  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
-  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  auto allocator = ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
   ASSERT_NE(allocator, nullptr);
+  auto restore_default = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        ort_env->CreateSharedAllocator(
+            cuda_device_, OrtDeviceMemoryType_DEFAULT,
+            OrtDeviceAllocator, {});
+      });
 
   Ort::SyncStream stream = cuda_device_.CreateSyncStream();
   auto* raw_allocator = static_cast<OrtAllocator*>(allocator);
