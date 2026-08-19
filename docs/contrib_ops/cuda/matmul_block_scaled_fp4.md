@@ -28,6 +28,7 @@ Source files:
 3. [Dispatch Chain](#3-dispatch-chain)
 4. [Decode Path - Fused GEMV](#4-decode-path---fused-gemv)
 5. [Default Path - Dequantize + cuBLAS](#5-default-path---dequantize--cublas)
+   - [5.1 Vectorized dequantization](#51-vectorized-dequantization)
 6. [Native SM120 FP4 x FP4 Path](#6-native-sm120-fp4-x-fp4-path)
 7. [PrePack](#7-prepack)
 8. [Environment Variables](#8-environment-variables)
@@ -220,6 +221,31 @@ This path keeps full-precision activations and runs on CUDA devices with NVFP4
 conversion intrinsic support in the configured CUDA toolkit. It is the default
 prefill path when the SM120 native environment variable is not enabled.
 
+### 5.1 Vectorized dequantization
+
+When `K % 8 == 0` and `block_size` is even - the layout every real NVFP4 model
+uses - `LaunchDequantizeNvFp4` picks `DequantizeNvFp4Vec8Kernel` instead of the
+scalar kernel. Each thread owns exactly one 8-element K chunk of one row, so a
+warp issues one contiguous 128-byte packed load and one contiguous 512-byte
+store. Widening the per-thread chunk beyond one `uint4` store was measured to be
+about 2x slower because each store instruction then strides across lanes
+(1.9 vs 3.9 TB/s on H200). The row index comes from `blockIdx.y`, which removes
+the 64-bit division of the scalar kernel, `weight_scale_2` is hoisted into a
+register, and codes are decoded with the same branch-free `Fp4Cvt` `prmt`
+lookup the decode GEMV uses rather than the software-emulated
+`__nv_cvt_fp4x2_to_halfraw2()`.
+
+The output is bitwise identical to the scalar kernel. Measured on H200 for
+`M = 1024`, BF16, `block_size = 16` (median dequant kernel time):
+
+| N | K | scalar | vectorized | speedup |
+|---:|---:|---:|---:|---:|
+| 4096 | 4096 | 60.7 us | 15.5 us | 3.93x |
+| 6144 | 2048 | 46.1 us | 12.1 us | 3.81x |
+| 2048 | 6144 | 46.2 us | 11.9 us | 3.88x |
+
+The scalar kernel remains for odd `block_size` or `K % 8 != 0`.
+
 ---
 
 ## 6. Native SM120 FP4 x FP4 Path
@@ -303,6 +329,11 @@ Focused C++ tests:
 CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
   --gtest_filter='MatMulBlockQuantizedFp4WeightOpTest.*'
 ```
+
+The `Gemv*` cases cover the decode path and the `PrefillDequant*` cases cover the
+dequantize + cuBLAS path, with `M > 8` so the GEMV is skipped: `*Vectorized*` for
+`DequantizeNvFp4Vec8Kernel` and `OddBlockSize` / `KNotMultipleOf8` for the scalar
+fallback, each in both FP16 and BF16.
 
 Python harness examples:
 
