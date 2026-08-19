@@ -13,15 +13,22 @@ skills rather than duplicating them here.
 Determine the review base before analyzing the change. Identify the exact commits or working-tree state being reviewed,
 then enumerate all changed files.
 
+If no changed files are found, respond with: "No changes detected. Please specify a commit range, branch, or patch to
+review."
+
 Read every `.github/instructions/**/*.instructions.md` file whose `applyTo` scope matches a changed path. Also load each
 domain skill whose description matches the changed subsystem or behavior.
+
+If no instructions file or domain skill matches a changed path, proceed using general C++ and ONNX Runtime conventions.
 
 ## 2. Analyze changed behavior
 
 Review the diff in context, including controlling code, relevant callers, and affected tests. Trace inputs through the
 changed behavior to externally visible results or failure modes.
 
-Distinguish defects introduced by the change from pre-existing issues. Prioritize:
+Distinguish defects introduced by the change from pre-existing issues.
+
+Ensure coverage of all the following:
 
 - correctness and security;
 - ABI and API compatibility;
@@ -42,4 +49,4 @@ Report each actionable finding separately, using an inline comment when supporte
 - the resulting impact;
 - an actionable correction.
 
-If no actionable findings are found, say so explicitly. Include an overall summary only when useful.
+If no actionable findings are found, say so explicitly.

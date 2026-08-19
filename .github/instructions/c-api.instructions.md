@@ -22,8 +22,10 @@ or `plugin_ep/ep_api.cc`.
 ## API Documentation
 
 Fully document every new public C API member with Doxygen comments that explain its behavior, parameters, return value,
-and any ownership or lifetime requirements. Include a `\since Version X.Y.` tag identifying the first ONNX Runtime
-release that provides the API.
+and any ownership or lifetime requirements.
+
+Include a `\since Version X.Y.` tag identifying the first ONNX Runtime release that provides the API. `X.Y` should be
+`1.<current value of ORT_API_VERSION>`.
 
 ## Release Versioning
 
@@ -33,7 +35,11 @@ Do not bump `ORT_API_VERSION`, rename the current `OrtApi` version table, or add
 
 ## C++ Wrappers
 
-Add an idiomatic C++ API wrapper for each new public C API, as appropriate. Add the declaration to
-[`onnxruntime_cxx_api.h`](../../include/onnxruntime/core/session/onnxruntime_cxx_api.h) and the implementation to
-[`onnxruntime_cxx_inline.h`](../../include/onnxruntime/core/session/onnxruntime_cxx_inline.h). If a C++ wrapper is not
-appropriate, document the reason in the pull request.
+Add an idiomatic C++ API wrapper for each new public C API, as appropriate. For example, a C++ wrapper is appropriate
+if it removes the need for manual resource management, or allows use of conventional C++ types.
+
+Add C++ API declarations to
+[`onnxruntime_cxx_api.h`](../../include/onnxruntime/core/session/onnxruntime_cxx_api.h) and implementation to
+[`onnxruntime_cxx_inline.h`](../../include/onnxruntime/core/session/onnxruntime_cxx_inline.h).
+
+If a C++ wrapper is not appropriate, document the reason in the pull request.
