@@ -805,6 +805,7 @@ The **OpSet Version** column uses the following notation:
 |||[1, 10]|**B** = tensor(bool)<br/> **V** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |ImageScaler|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |InstanceNormalization|*in* input:**T**<br> *in* scale:**T**<br> *in* B:**T**<br> *out* output:**T**|6+|**T** = tensor(double), tensor(float), tensor(float16)|
+|InverseRotaryRegroup|*in* input:**T**<br> *in* cos:**M**<br> *in* sin:**M**<br> *out* output:**T**|1+|**M** = tensor(float)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |IsInf|*in* X:**T1**<br> *out* Y:**T2**|20+|**T1** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz)<br/> **T2** = tensor(bool)|
 |||[10, 19]|**T1** = tensor(double), tensor(float)<br/> **T2** = tensor(bool)|
 |IsNaN|*in* X:**T1**<br> *out* Y:**T2**|20+|**T1** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz)<br/> **T2** = tensor(bool)|
@@ -884,6 +885,7 @@ The **OpSet Version** column uses the following notation:
 |||[13, 14]|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||[7, 11]|**T** = tensor(double), tensor(float), tensor(float16)|
+|QKNormRotaryEmbedding|*in* query:**T**<br> *in* kv:**T**<br> *in* kv_norm_weight:**M**<br> *in* cos:**M**<br> *in* sin:**M**<br> *out* query_out:**T**<br> *out* kv_out:**T**|1+|**M** = tensor(float)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |QuantizeLinear|*in* x:**T1**<br> *in* y_scale:**T1**<br> *in* y_zero_point:**T2**<br> *out* y:**T2**<br><br>or<br><br>*in* x:**T1**<br> *in* y_scale:**T2**<br> *in* y_zero_point:**T3**<br> *out* y:**T3**<br><br>or<br><br>*in* x:**T1**<br> *in* y_scale:**tensor(float)**<br> *in* y_zero_point:**T2**<br> *out* y:**T2**|25+|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float), tensor(float16)<br/> **T3** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)|
 |||[23, 24]|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float), tensor(float16)<br/> **T3** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)|
 |||[21, 22]|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)|

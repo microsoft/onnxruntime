@@ -152,6 +152,12 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ParametricSoftplus);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QKNormRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QKNormRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QKNormRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, InverseRotaryRegroup);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, InverseRotaryRegroup);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, InverseRotaryRegroup);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedLatentPool);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedLatentPool);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedLatentPool);
@@ -441,6 +447,12 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QKNormRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QKNormRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QKNormRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, InverseRotaryRegroup)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, InverseRotaryRegroup)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, InverseRotaryRegroup)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedLatentPool)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedLatentPool)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedLatentPool)>,
