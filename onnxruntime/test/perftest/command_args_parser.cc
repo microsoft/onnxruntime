@@ -198,7 +198,7 @@ ABSL_FLAG(std::string, plugin_ep_libs, "",
           "[Usage]: --plugin_ep_libs \"plugin_ep_name_1|plugin_ep_1.dll plugin_ep_name_2|plugin_ep_2.dll ... \"");
 ABSL_FLAG(std::string, plugin_eps, "",
           "Specifies a semicolon-separated list of plugin execution providers (EPs) to use.\n"
-          "  [VitisAI only] [enable_npu_shared_memory_allocator]: pass via --plugin_ep_options for the \"VitisAI\" entry\n"
+          "  [VitisAIExecutionProvider only] [enable_npu_shared_memory_allocator]: pass via --plugin_ep_options for the \"VitisAIExecutionProvider\" entry\n"
           "  to allocate I/O tensors from the VitisAI plugin EP's shared NPU allocator instead of the default CPU\n"
           "  allocator. Defaults to '0' (disabled), i.e. VitisAI EP runs with the default CPU allocator unless this\n"
           "  is set. Combine with '--plugin_ep_options \"enable_npu_shared_memory_allocator|1 try_use_zero_copy|1\"'\n"
