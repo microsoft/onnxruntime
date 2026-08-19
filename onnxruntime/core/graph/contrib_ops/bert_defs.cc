@@ -2760,7 +2760,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "would have.",
                 "T")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},

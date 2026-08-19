@@ -917,6 +917,11 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   EXPECT_GT(schema->attributes().count("activation"), 0u);
   EXPECT_GT(schema->attributes().count("ndim"), 0u);
   EXPECT_GT(schema->attributes().count("state_window"), 0u);
+
+  const auto bfloat16_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)");
+  EXPECT_EQ(schema->inputs()[0].GetTypes().count(bfloat16_type), 0u);
+  EXPECT_EQ(schema->inputs()[4].GetTypes().count(bfloat16_type), 0u);
+  EXPECT_EQ(schema->outputs()[1].GetTypes().count(bfloat16_type), 0u);
 }
 
 #ifdef USE_CUDA
@@ -1257,7 +1262,7 @@ TEST(ContribOpVarlenCausalConvWithStateTest, StateWindowWiderThanEverySequence) 
 
 TEST(ContribOpVarlenCausalConvWithStateTest, Float16) {
   VarlenCausalConvCase c;
-  c.seq_lens = {3, 1, 2};
+  c.seq_lens = {1, 1, 1, 1};
   c.use_fp16 = true;
   RunVarlenCausalConvCase(c);
 }
@@ -1387,7 +1392,8 @@ static void RunVarlenCausalConvShapeFailure(
     const std::vector<int32_t>& cu_seqlens_data,
     const std::vector<int64_t>& output_dims,
     const std::vector<int64_t>& state_dims,
-    const std::string& expected_error) {
+    const std::string& expected_error,
+    const std::vector<int64_t>& past_state_dims = {}) {
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "CUDA execution provider not available";
@@ -1406,7 +1412,12 @@ static void RunVarlenCausalConvShapeFailure(
   tester.AddInput<float>("weight", weight_dims, std::vector<float>(element_count(weight_dims), 0.1f));
   tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens_data);
   tester.AddOptionalInputEdge<float>();  // bias
-  tester.AddOptionalInputEdge<float>();  // past_state
+  if (past_state_dims.empty()) {
+    tester.AddOptionalInputEdge<float>();
+  } else {
+    tester.AddInput<float>("past_state", past_state_dims,
+                           std::vector<float>(element_count(past_state_dims), 0.0f));
+  }
   tester.AddOutput<float>("output", output_dims, std::vector<float>(element_count(output_dims), 0.0f));
   tester.AddOutput<float>("present_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
 
@@ -1443,6 +1454,11 @@ TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsWeightChannelMismatch) {
 TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsWeightMidDimNotOne) {
   RunVarlenCausalConvShapeFailure({3, 4}, {4, 2, 2}, {2}, {0, 3}, {3, 4}, {1, 4, 1},
                                   "must be 1 for depthwise convolution");
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsPastStateShapeWithVarlenDiagnostic) {
+  RunVarlenCausalConvShapeFailure({3, 4}, {4, 1, 2}, {2}, {0, 3}, {3, 4}, {1, 4, 1},
+                                  "VarlenCausalConvWithState uses", {2, 4, 1});
 }
 #endif  // USE_CUDA
 
