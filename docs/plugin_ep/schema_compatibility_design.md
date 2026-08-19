@@ -19,23 +19,27 @@ against a different schema.
 
 The proposed solution has four parts:
 
-1. Version `com.microsoft` schemas. Freeze opset 1 and introduce opset 2 for the
-   first post-v1 contract change. Every later contract change receives a new schema
-   version.
-2. Add a factory-level plugin ABI callback that returns the operator-set schema
-   catalogs against which the plugin was built. A catalog is identified by domain,
-   opset version, and a generated ABI digest. ORT and the plugin use only exact
-   catalog matches.
-3. Require bounded version ranges for plugin kernels in ORT-owned mutable domains.
-   Kernel lookup must match the node's resolved schema `since_version`, not merely
-   the domain or operator name.
-4. Gate every EP-specific contrib-op fusion on both the negotiated schema catalog
+1. Version `com.microsoft` schemas. Freeze the published opset-1 contracts and
+   introduce opset 2 for the first post-v1 contract change. Every later contract
+   change receives a new schema version.
+2. Add a factory-level plugin ABI callback that returns **per-operator** schema
+   digests for the contracts the plugin was built against. An entry is identified by
+   domain, operator name, opset version, and a generated ABI digest. ORT and the
+   plugin agree on an operator only when that entry matches exactly.
+3. Require bounded version ranges for kernels in `com.microsoft`. Kernel lookup must
+   match the node's resolved schema `since_version`, not merely the domain or
+   operator name.
+4. Gate every EP-specific contrib-op fusion on both the negotiated operator digest
    and an exact target-kernel lookup. If support is unknown, the fusion does not run.
 
-The negotiated opset answers "do core and plugin agree on this operator contract?"
-It does **not** mean that the EP implements every operator in the opset. The kernel
-registry (or a future compile-EP support query) remains the source of truth for
-implementation support.
+A matching digest answers "do core and plugin agree on this operator contract?" It
+does **not** mean that the EP implements the operator. The kernel registry (or a
+future compile-EP support query) remains the source of truth for implementation
+support.
+
+Negotiation is per operator, not per domain. A single disagreeing operator quarantines
+only that operator, so routine operator additions and unrelated contract changes do
+not disable an otherwise compatible plugin.
 
 ## Goals
 
@@ -47,6 +51,10 @@ implementation support.
   that plugin.
 - Preserve normal fallback: an unsupported version is left for another EP instead of
   being invoked with an incompatible kernel.
+- Keep the compatible matrix wide: routine operator additions and unrelated contract
+  changes must not disable an otherwise compatible plugin.
+- Keep existing models and existing producers working. A graph that does not need a
+  new contract must not gain an import that older cores reject.
 - Make schema-version mistakes visible in code review and CI.
 
 ## Non-goals
@@ -93,15 +101,18 @@ The process has a valid C ABI but an invalid operator ABI.
 The implementation must maintain these invariants:
 
 1. A published `(domain, op_type, since_version)` contract is immutable.
-2. A plugin kernel is eligible only when core and plugin have an exact schema-catalog
-   match covering the node's resolved schema version.
-3. A plugin kernel for an ORT-owned mutable domain has an explicit inclusive end
-   version. An earlier kernel must never match a later schema accidentally.
+2. A plugin kernel is eligible only when core and plugin have an exact digest match
+   for that operator at the node's resolved schema version.
+3. A kernel for `com.microsoft` has an explicit inclusive end version. An earlier
+   kernel must never match a later schema accidentally. This applies to in-tree EP
+   kernels as well as plugin kernels.
 4. A graph rewrite that introduces or upgrades an EP-specific operator is allowed
    only when the assigned EP has the exact target schema and kernel support.
 5. Unknown compatibility is treated as unsupported, not as compatible.
 6. The plugin independently validates the actual node in `GetCapability()`; core's
    negotiation is an additional guard, not a substitute for validation.
+7. Quarantine granularity matches negotiation granularity. A digest mismatch on one
+   operator must not disable unrelated operators or the whole plugin.
 
 ## Contrib operator versioning
 
@@ -109,6 +120,29 @@ The implementation must maintain these invariants:
 
 Change the registered range for `com.microsoft` from `[1, 1]` to `[1, 2]` and add
 `OpSet_Microsoft_ver2`. Opset 1 remains registered and unchanged.
+
+The existing registration in `environment.cc` is guarded so that it is skipped
+entirely when another component already added the domain:
+
+```cpp
+if (map.find(kMSDomain) == map.end()) {
+  // External shared providers may have already added kMSDomain
+  domain_to_version_range.AddDomainToVersion(kMSDomain, 1, 1);
+}
+```
+
+Editing the literal to `2` inside this guard would silently do nothing when a shared
+provider registered `[1, 1]` first, and core would then reject every opset-2 import
+with a generic unresolved-schema error. The bump must instead raise the recorded
+maximum unconditionally to at least the built-in value. If an existing registration
+declares a lower maximum than ORT's own schemas require, that is a configuration error
+and must be logged, not ignored.
+
+The same check should reject an `OrtCustomOpDomain` or a shared provider that
+registers an ORT-owned domain name such as `com.microsoft` with its own range. Custom
+op registration currently uses `AddDomainToVersion(domain, 1, 1000)` for an arbitrary
+domain string, which would otherwise let a custom op silently redefine the negotiated
+domain.
 
 An operator that has not changed does not need a duplicate v2 schema. As with ONNX
 opsets, its latest schema with `since_version <= 2` remains active. An operator whose
@@ -131,6 +165,17 @@ The following changes require a new schema version:
 Documentation-only corrections and shape-inference fixes that do not change the
 accepted contract may remain in the same version. When uncertain, create a new
 version.
+
+### Adding a new operator
+
+Adding a brand-new contrib operator is not a contract change to any existing operator.
+It does not require a domain version bump, and new operators may continue to be
+introduced at `since_version 1` as they are today.
+
+This remains safe only because negotiation is per operator. A whole-domain catalog
+digest would change every time an operator is added to `OpSet_Microsoft_ver1`, which
+happens on most releases, and would quarantine every contrib kernel of a plugin built
+one commit earlier. See [Digest granularity](#digest-granularity).
 
 ### Opset imports created by optimizers
 
@@ -157,101 +202,219 @@ New schema versions should preserve the behavior of an old serialized node whene
 practical (for example, by adding trailing optional inputs with defaults). A truly
 breaking change requires an explicit version converter or a new operator name.
 
+### Serialized model compatibility
+
+Raising the domain maximum changes what ORT can emit, not only what it can accept.
+Three rules keep existing artifacts and existing producers working:
+
+- A model serialized with a `com.microsoft` opset-2 import cannot be loaded by any
+  previously released ORT. Core must reject such a load with an explicit message that
+  names the domain, the requested version, and the maximum this build supports,
+  instead of a generic unresolved-schema error.
+- ORT must not raise a graph's `com.microsoft` import above the minimum version the
+  graph actually needs. If no node in the saved graph resolves to a schema newer
+  than 1, the serialized import stays at 1 and the artifact remains loadable by older
+  cores. This is the difference between "ORT supports opset 2" and "this graph
+  requires opset 2".
+- First-party producers emit `com.microsoft` opset 1 today: the ONNX Runtime GenAI
+  model builder, Olive, and `onnxruntime/python/tools/transformers`. Under the rules
+  above they keep working unchanged, but they will not receive any opset-2 fusion
+  until they are updated. Each must be updated in the same release train as the first
+  version bump, and each must write the emitted version explicitly rather than
+  inheriting a default that shifts with the ORT version.
+
 ## Plugin ABI addition
 
-### Schema catalog descriptor
+### Operator compatibility descriptor
 
 Append a descriptor type to `onnxruntime_ep_c_api.h`:
 
 ```c
-typedef struct OrtEpOperatorSetCompatibilityInfo {
-  uint32_t struct_version;
+typedef struct OrtEpOperatorCompatibilityInfo {
   const char* domain;
-  int32_t opset_version;
+  const char* op_type;
+  int32_t since_version;
   uint8_t schema_abi_digest[32];
-} OrtEpOperatorSetCompatibilityInfo;
+} OrtEpOperatorCompatibilityInfo;
 ```
 
-`struct_version` is initially 1. `domain` is UTF-8 and owned by the plugin. The digest
-is SHA-256 over a canonical representation of the schema catalog at that opset.
+`domain` and `op_type` are UTF-8 and owned by the plugin. `since_version` is the
+schema version of the contract, not the domain import version; the two differ for any
+operator that has not changed since an earlier opset. The digest is SHA-256 over the
+canonical representation of that single operator schema.
 
-Append this optional callback to `OrtEpFactory` in the next plugin ABI version:
+This struct is deliberately fixed-size and must never grow. ORT receives a contiguous
+array whose stride is fixed by the plugin's compiled `sizeof(...)`, so a struct that
+grows in a later ABI version would be unindexable by an older core, and a per-element
+`struct_version` field could not be read safely enough to discover that. A future
+extension adds a new descriptor type and a new callback rather than extending this
+one. (The alternative, an explicit `entry_size` out-parameter, was rejected because it
+has no precedent in this header.)
+
+Append this optional callback to `OrtEpFactory` in the next plugin ABI version,
+following the header's existing doxygen conventions:
 
 ```c
-ORT_API2_STATUS(
-    GetOperatorSetCompatibilityInfo,
-    _In_ const OrtEpFactory* this_ptr,
-    _Outptr_ const OrtEpOperatorSetCompatibilityInfo** entries,
-    _Out_ size_t* num_entries);
+  /** \brief Get the operator schema contracts this factory was built against.
+   *
+   * ...
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(GetOperatorCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
+                  _Out_ size_t* num_entries);
 ```
 
 The returned array and strings are owned by the factory and remain valid until
 `ReleaseEpFactory()`. ORT copies the entries during factory registration. On failure,
-the callback leaves both outputs unchanged, following the C API convention.
+the callback leaves both outputs unchanged, following the C API convention. Duplicate
+`(domain, op_type, since_version)` entries with conflicting digests are a plugin bug;
+ORT treats the operator as incompatible and logs once.
 
 ORT calls the appended field only when `ort_version_supported` reaches the ABI version
-that introduced it and the function pointer is non-null, following the existing
-plugin-EP struct-extension rules.
+that introduced it and the function pointer is non-null, matching the existing
+plugin-EP struct-extension rules used elsewhere in `OrtEpFactory` and `OrtEp`.
 
-This callback belongs on `OrtEpFactory`, rather than `OrtEp`, because the schema
-catalog is a build property and ORT needs it before constructing the optimizer set.
+This callback belongs on `OrtEpFactory`, rather than `OrtEp`, because the schema set
+is a build property and ORT needs it before constructing the optimizer set.
 Per-session options may affect whether a kernel is enabled, but not the schema against
 which that kernel was compiled.
 
-The callback reports catalogs understood by the plugin, not implemented ops. A CUDA
-plugin built with contrib opsets 1 and 2 normally reports two entries:
+The callback reports contracts understood by the plugin, not implemented ops. A CUDA
+plugin built after the first version bump reports one entry per contrib operator it
+was compiled against, for example:
 
 ```text
-com.microsoft, 1, sha256:<v1 canonical catalog>
-com.microsoft, 2, sha256:<v2 canonical catalog>
+com.microsoft, GroupQueryAttention, 1, sha256:<...>
+com.microsoft, GroupQueryAttention, 2, sha256:<...>
+com.microsoft, SkipLayerNormalization, 1, sha256:<...>
+...
 ```
+
+A plugin that only cares about a handful of contrib operators may report only those.
+An operator absent from the list is simply not negotiated, and its kernels are
+filtered out.
 
 ### Why a digest is needed
 
 An integer protects compatibility only if published schemas are never edited in
 place. The digest provides a fail-closed guard against accidental edits, release
-branch cherry-picks, or private builds that reuse an opset number for a different
+branch cherry-picks, or private builds that reuse a version number for a different
 contract.
 
-The canonical digest includes only execution-relevant schema data:
+### Digest granularity
+
+The digest covers **one operator schema**, not the whole operator set at an opset.
+
+A whole-catalog digest was the first design and does not work in practice. The
+catalog at opset N is the resolved schema set for every operator with
+`since_version <= N`, so it changes whenever *any* contrib operator is added or
+changed. New contrib operators are added at `since_version 1` on most releases, which
+would change the frozen opset-1 catalog digest on most releases and quarantine every
+contrib kernel of a plugin built one commit earlier. The compatibility matrix would
+collapse to "core and plugin must be the same commit", defeating the goal of running a
+new plugin on an older core.
+
+With per-operator digests, adding `NewOp@1` does not affect the digest of
+`GroupQueryAttention@1`, and a disagreement on one operator quarantines only that
+operator's kernels. A rolled-up hash over all matched entries may still be logged as a
+convenience identifier, but it must never be the unit of comparison.
+
+### Canonical form
+
+The digest is SHA-256 over a canonical byte encoding of a single schema. The encoding
+must be specified precisely enough that two independent implementations agree. It
+includes only execution-relevant schema data:
 
 - domain, operator name, and `since_version`;
-- ordered formal inputs and outputs, including option and arity;
-- type-parameter bindings and sorted allowed type sets;
-- attributes, required/optional state, type, and canonical default value;
+- ordered formal inputs and outputs, including option (single/optional/variadic),
+  homogeneity, and the declared type-parameter name;
+- type-parameter bindings, with allowed type strings sorted by byte value;
+- attributes sorted by name, with required/optional state, attribute type, and the
+  canonical serialization of the default value;
 - schema-visible differentiators such as deprecation state.
 
-Documentation, source location, and function pointer addresses are excluded. Shape
-inference code cannot be hashed directly; changes to its execution contract are
-handled by the versioning policy.
+The encoding must define field order, a non-ambiguous separator or length prefix for
+every string, fixed-width little-endian integers, and a normalized rendering of
+attribute defaults (including float formatting). Sorting is by raw byte value, never
+locale-sensitive.
 
-The digest generator must produce checked-in historical manifests. CI regenerates
-them and fails if an existing `(domain, opset_version)` digest changes. A new digest
-may only be added under a new opset version.
+Allowed type strings must be normalized by the generator rather than emitted verbatim
+from `OpSchema`, so that a cosmetic formatting change in the ONNX submodule does not
+flip every digest. Documentation, source location, and function pointer addresses are
+excluded. Shape inference code cannot be hashed directly; changes to its execution
+contract are handled by the versioning policy.
 
-The first checked-in v1 digest is the freeze-point baseline. It does not retroactively
-certify older ORT releases, because those releases already shipped different schemas
-under the same v1 label. This is why the first manifest-aware CUDA plugin must set its
-minimum ORT version to the release that introduced negotiation.
+### Where each side's digest comes from
+
+This must be stated explicitly, because the plausible options have opposite failure
+modes. A checked-in constant on both sides would only detect "different manifest file
+revision" and would give no protection against the in-place-edit case the digest
+exists to catch. A naive runtime hash of the entire live registry would differ for
+any build that registers a different set of schemas, and would fail closed on builds
+that are in fact compatible.
+
+The rule is:
+
+- The **plugin** embeds the digests generated at its build commit, taken from the
+  checked-in manifest.
+- **Core** computes its digests at runtime from its live schema registry, restricted
+  to the operators the plugin actually reported. Core never hashes operators nobody
+  asked about, so an operator that a reduced build did not register simply has no core
+  entry and is reported as unavailable rather than as a mismatch.
+- CI asserts that the runtime-computed digests of a full build equal the checked-in
+  manifest, so an in-place schema edit fails the build unless the manifest is
+  regenerated, and regenerating an existing entry fails the historical-digest check.
+
+Consequences for non-default builds:
+
+- `DISABLE_CONTRIB_OPS` and reduced/selective-op builds: absent operators produce no
+  core entry, so the plugin's contrib kernels for those operators are filtered out.
+  This is correct and matches what the build actually supports.
+- `ORT_MINIMAL_BUILD`: there is no schema registry and no plugin kernel registry path,
+  so negotiation does not apply.
+- SHA-256 is required in core only where negotiation runs, that is, non-minimal builds
+  that support plugin EPs.
+
+The digest generator must produce checked-in historical manifests. CI regenerates them
+and fails if an existing `(domain, op_type, since_version)` digest changes. A new
+digest may only be added under a new `since_version` or a new operator name.
+
+The first checked-in v1 digests are the freeze-point baseline. They do not
+retroactively certify older ORT releases, because those releases already shipped
+different schemas under the same v1 label. This is why the first manifest-aware CUDA
+plugin must set its minimum ORT version to the release that introduced negotiation.
 
 ### Negotiation
 
-For every plugin factory, ORT computes the exact intersection of its built-in catalog
-entries and the plugin entries. A domain/opset pair is compatible only when both the
-version and digest match. ORT stores the result on the internal plugin EP factory and
-copies it to each `PluginExecutionProvider` instance.
+For every plugin factory, ORT resolves each reported entry independently. An entry is
+compatible only when core has a schema for `(domain, op_type, since_version)` and the
+digests are equal. ORT stores the resulting set of accepted
+`(domain, op_type, since_version)` triples on the internal plugin EP factory and copies
+it to each `PluginExecutionProvider` instance.
 
-Negotiation is not simply `min(core_max, plugin_max)`. The maximum common exact match
-is convenient for logging, but every accepted catalog entry must match independently.
+Negotiation is not `min(core_max, plugin_max)` and is not a per-domain decision. Every
+accepted entry matches independently.
 
-Example:
+Example, for a single operator `Foo`:
 
-| Core catalogs | Plugin catalogs | Negotiated result |
+| Core schemas | Plugin entries | Negotiated result |
 |---|---|---|
-| ms/1=A, ms/2=B | ms/1=A, ms/2=B | 1 and 2 |
-| ms/1=A | ms/1=A, ms/2=B | 1 |
-| ms/1=A, ms/2=B | ms/1=A | 1 |
-| ms/1=A | ms/1=X | none; digest mismatch |
+| Foo@1=A, Foo@2=B | Foo@1=A, Foo@2=B | Foo@1 and Foo@2 |
+| Foo@1=A | Foo@1=A, Foo@2=B | Foo@1 only |
+| Foo@1=A, Foo@2=B | Foo@1=A | Foo@1 only |
+| Foo@1=A | Foo@1=X | none for `Foo`; other operators are unaffected |
+
+The last row quarantines only `Foo`'s kernels. Kernels for other `com.microsoft`
+operators whose digests matched, and all standard ONNX-domain kernels, remain
+available.
+
+Negotiation is snapshotted when the factory is registered. The ONNX schema registry is
+process-global and can still be mutated afterwards by custom-op registration or by a
+late-loaded shared provider. To keep the snapshot honest, ORT rejects any later
+attempt to register schemas into an ORT-owned domain (see
+[Domain version](#domain-version)); mutation of unrelated custom domains does not
+affect negotiation.
 
 The existing graph APIs already give the plugin the model's imports and resolved node
 version (`Graph_GetOperatorSets` and `Node_GetSinceVersion`). No second core-to-plugin
@@ -262,9 +425,9 @@ opset setter is required. A plugin must use those values when doing its own
 
 ### Explicit ranges
 
-For ORT-owned mutable domains such as `com.microsoft`, plugin registration must reject
-an open-ended kernel range. The CUDA plugin adapter should make non-versioned contrib
-kernel macros exact by default:
+For ORT-owned private domains, specifically `com.microsoft`, kernel registration must
+reject an open-ended kernel range. The CUDA plugin adapter should make non-versioned
+contrib kernel macros exact by default:
 
 ```cpp
 // Plugin build for kMSDomain only:
@@ -286,59 +449,93 @@ The second registration must also be bounded to `[2, 2]` by the plugin adapter. 
 kernel class safely handles both contracts, it may be registered twice or explicitly
 for `[1, 2]`; the declaration is intentional either way.
 
-This rule does not change normal ONNX-domain kernel conventions. Standard ONNX kernel
-ranges already follow published ONNX schema versions and often deliberately span
-multiple opsets.
+### Scope of the bounded-range rule
 
-The initial implementation should cover `com.microsoft` and
-`com.ms.internal.nhwc`. Other ORT-owned domains can opt in as soon as independently
-released plugins consume them.
+The rule applies to `com.microsoft` only. It does not change normal ONNX-domain kernel
+conventions, where ranges already follow published ONNX schema versions and often
+deliberately span multiple opsets.
+
+`com.ms.internal.nhwc` is explicitly **out of scope**, despite being ORT-owned. It is
+registered as `AddDomainToVersion(kMSInternalNHWCDomain, 1, onnx_version)` precisely
+because it mirrors ONNX operators, and its kernels intentionally span opsets the same
+way their ONNX counterparts do. Its schemas track ONNX's published versions rather
+than a frozen ORT-private contract, so the freeze-and-digest argument does not apply
+and forcing exact ends there would break the layout transformer. Other ORT-owned
+domains can opt in individually once independently released plugins consume them and
+only if their schemas are ORT-private.
+
+### In-tree EP kernels
+
+The same hazard exists inside a single static build and must be fixed at the same
+time. An in-tree contrib kernel registered as open-ended `SinceVersion(1)` will match
+a node that core resolved as `since_version == 2` as soon as the first operator is
+versioned. There is no ABI boundary involved; the kernel simply claims a contract it
+was not written for.
+
+Therefore:
+
+- Versioning an operator requires bounding every existing in-tree kernel for that
+  operator to the versions it actually implements, across CPU, CUDA, ROCm, DML,
+  WebGPU, JS, and QNN.
+- CI must reject a new open-ended `kMSDomain` kernel registration for any operator
+  that has more than one registered schema version.
+
+Because an audit of every existing `kMSDomain` registration is large, the practical
+rule is per-operator: an operator may keep its open-ended registrations until it gains
+a second schema version, at which point bounding all of its kernels is part of the
+versioning change. The [decision checklist](#decision-checklist-for-future-contrib-changes)
+enforces this at review time.
 
 ### Core validation
 
-When importing a plugin kernel registry, ORT validates each kernel in an ORT-owned
-mutable domain:
+When importing a plugin kernel registry, ORT validates each kernel in `com.microsoft`:
 
 1. `start_version <= end_version` and the end is not the open-ended sentinel.
 2. A core schema exists for `(domain, op_type, start_version)`.
-3. Every distinct schema `since_version` covered by the range is present in an exactly
-   negotiated catalog.
+3. Every distinct schema `since_version` covered by the range was negotiated exactly
+   for that operator.
 
 An incompatible kernel is excluded from the effective registry and logged once with
 the EP name, operator, requested range, and negotiation result. Other compatible
-kernels from the plugin remain usable. A malformed range is a plugin registration
-error and should fail session initialization.
+kernels from the plugin remain usable, including other operators in the same domain. A
+malformed range is a plugin registration error and should fail session initialization.
 
 `EpGraphSupportInfo_LookUpKernel()` then remains the authoritative path used by the
-CUDA plugin's `GetCapability()`: it can only return a kernel that passed catalog and
+CUDA plugin's `GetCapability()`: it can only return a kernel that passed digest and
 version validation.
 
 ## Fusion safety
 
 ### Required query
 
-Add an internal helper to `KernelRegistryManager` (name illustrative):
+`KernelRegistry` already exposes the right entry point, added for exactly this
+"is the node I am about to generate supported" case:
 
 ```cpp
-Status HasImplementationForSchema(
-    ProviderType provider,
-    std::string_view domain,
-    std::string_view op_type,
-    int schema_since_version,
-    const KernelRegistry::TypeConstraintMap& type_constraints,
-    bool& supported) const;
+Status TryFindKernel(ProviderType exec_provider,
+                     std::string_view op_type,
+                     std::string_view domain,
+                     int version,
+                     const KernelRegistry::TypeConstraintMap& type_constraints,
+                     const logging::Logger& logger,
+                     const KernelCreateInfo** out) const;
 ```
 
-For a plugin EP, the helper first checks the negotiated catalog and then performs an
-exact kernel lookup. For an in-tree EP, it performs the existing exact kernel lookup.
-Unknown or ambiguous support returns `supported = false`.
+Rather than introducing a parallel notion of "supported", `KernelRegistryManager`
+gains a thin wrapper over this overload that additionally consults the negotiated
+operator digests when the provider is a plugin EP. For an in-tree EP the wrapper is
+just the existing lookup. Unknown or ambiguous support is reported as unsupported.
+
+Keeping a single lookup path matters: two subtly different definitions of "supported"
+between the fusion gate and `EpGraphSupportInfo_LookUpKernel()` would reintroduce the
+case where a fusion is authorized but the resulting node cannot be assigned.
 
 Each EP-specific transformer declares the exact operator it will produce. A match is
 rewritten only if:
 
 1. the graph's domain import selects the intended schema;
 2. the node's assigned/target EP is one of the transformer's allowed EPs;
-3. that EP negotiated the target schema catalog; and
+3. that EP negotiated the target operator schema; and
 4. its effective kernel registry contains a kernel for the target schema and types.
 
 Checking only the EP name (for example, `CUDAExecutionProvider`) is no longer
@@ -356,9 +553,9 @@ core fusion through a domain-wide opset claim. Initially, ORT must not run such 
 EP-specific contrib fusion unless another exact support mechanism already exists.
 
 A later ABI can add a query over a fully described candidate node. That query must
-include inputs, outputs, attributes, and resolved schema; a `(domain, op_type,
-version)` callback alone would overstate configuration support. This is separate from
-the schema-catalog negotiation proposed here.
+include inputs, outputs, attributes, and resolved schema; an
+`(domain, op_type, version)` callback alone would overstate configuration support.
+This is separate from the operator digest negotiation proposed here.
 
 ## `GroupQueryAttention` example
 
@@ -382,10 +579,10 @@ Expected behavior:
 
 | Core | CUDA plugin | Result |
 |---|---|---|
-| v1 catalog | v1 + v2 catalogs/kernels | v1 kernel may run; v2 is invisible |
-| v1 + v2 catalogs | v1-only plugin | v2 fusion is skipped; v1 nodes may run |
-| v1 + v2 catalogs | v2-only plugin | v1 nodes fall back; v2 nodes may run |
-| v1 digest A | plugin v1 digest X | contrib kernels are quarantined |
+| GQA v1 schema only | GQA v1 + v2 entries/kernels | v1 kernel may run; v2 is invisible |
+| GQA v1 + v2 schemas | v1-only plugin | v2 fusion is skipped; v1 nodes may run |
+| GQA v1 + v2 schemas | v2-only plugin | v1 nodes fall back; v2 nodes may run |
+| GQA v1 digest A | plugin GQA v1 digest X | GQA kernels are quarantined; other contrib operators are unaffected |
 
 At no point does the v2 kernel execute a node that core resolved as the incompatible
 v1 contract.
@@ -397,11 +594,13 @@ This must be handled explicitly.
 
 ### Immediate containment before the ABI ships
 
-Until catalog negotiation is available, a CUDA plugin containing a changed contrib
-contract must raise `MIN_ONNXRUNTIME_VERSION` to the first core release with the same
-schema, bound the affected kernel to the exact schema version, and disable the related
-fusion against older imports. This temporarily reduces the compatibility matrix but
-closes the unsafe execution path immediately.
+Until digest negotiation is available, a CUDA plugin containing a changed contrib
+contract must raise `plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION` to the first core release
+with the same schema, bound the affected kernel to the exact schema version, and
+disable the related fusion against older imports. That file is already the single
+source of truth consumed by the packaging and CI scripts, so this is actionable today
+and does not depend on any of the work below. It temporarily reduces the compatibility
+matrix but closes the unsafe execution path immediately.
 
 ### New plugin on an old core
 
@@ -418,71 +617,114 @@ fail closed.
 
 ### Old plugin on a new core
 
-If the callback is absent, a new core treats compatibility for ORT-owned mutable
-domains as unknown:
+If the callback is absent, a new core cannot know which contracts the plugin was built
+against. The eventual strict behavior for `com.microsoft` is:
 
 - do not expose that plugin's contrib kernels in the effective registry;
 - do not run EP-specific contrib fusions for it;
 - continue allowing compatible standard ONNX-domain kernels.
 
-During one transition window, ORT may provide an explicitly named opt-in session
-configuration that restores legacy behavior, with a warning that schema safety is not
-guaranteed. It must not be the default and should have a removal release.
+This cannot be the behavior on day one. Contrib operators are most of what the shipped
+CUDA and WebGPU plugins provide, so switching to strict immediately would turn every
+already-released plugin into an ONNX-only plugin against a new core. During the
+transition window the permissive behavior stays the default, accompanied by a warning
+naming the plugin and the risk, and an explicitly named session configuration opts in
+to strict early.
+
+The default flips to strict only when all of the following hold:
+
+1. every first-party plugin (CUDA, WebGPU, and the example plugin) publishes operator
+   digests;
+2. at least one full ORT release has shipped in which both a digest-publishing plugin
+   and a permissive core were available, so users have an upgrade path that never
+   requires running strict core against a pre-digest plugin;
+3. the release notes for that window state the flip date and the opt-out.
+
+After the flip, the opt-out configuration that restores legacy behavior survives one
+further release and then is removed. Both configurations carry an explicit removal
+release from the day they are introduced.
 
 ### Suggested rollout phases
 
-1. **Infrastructure:** add catalog generation, the factory callback, negotiation,
-   diagnostics, and strict kernel-registry filtering. Keep contrib opset 1 unchanged.
-2. **Plugin adoption:** make the example plugin and CUDA plugin publish the v1 catalog;
-   add old/new core-plugin matrix tests.
+1. **Infrastructure:** add digest generation, the factory callback, negotiation,
+   diagnostics, and kernel-registry filtering. Keep contrib opset 1 unchanged and keep
+   missing-callback handling permissive.
+2. **Plugin adoption:** make the example plugin and CUDA plugin publish digests; add
+   old/new core-plugin matrix tests.
 3. **Kernel hardening:** make CUDA plugin contrib registrations bounded and add CI that
-   rejects open-ended ranges in mutable ORT domains.
-4. **First version bump:** add `com.microsoft` opset 2 and migrate
-   `GroupQueryAttention` plus its kernels and transformers.
-5. **Fusion hardening:** convert all EP-specific contrib fusions from provider-name
+   rejects open-ended ranges for any `com.microsoft` operator with more than one
+   schema version, for in-tree EPs as well as plugins.
+4. **Version-bump plumbing:** raise the `com.microsoft` domain maximum safely (see
+   [Domain version](#domain-version)), add the load-time error for an unsupported
+   import, and update the GenAI model builder, Olive, and the transformer optimizer to
+   write the contrib opset explicitly.
+5. **First version bump:** add `GroupQueryAttention-2` and migrate its kernels and
+   transformers across every EP that registers it.
+6. **Fusion hardening:** convert all EP-specific contrib fusions from provider-name
    checks to exact target-schema/kernel checks.
-6. **Enforcement:** switch missing-manifest handling to strict-by-default after the
-   transition window and remove the temporary opt-in later.
+7. **Enforcement:** flip missing-digest handling to strict once the gates in
+   [Old plugin on a new core](#old-plugin-on-a-new-core) are met, then remove the
+   temporary configuration one release later.
 
 ## Diagnostics
 
 At INFO level, log one summary per plugin factory:
 
 ```text
-CUDAExecutionProvider schema negotiation: com.microsoft common={1,2}, highest=2
+CUDAExecutionProvider schema negotiation: com.microsoft 184/186 operators matched,
+2 quarantined (GroupQueryAttention@2, SparseAttention@1)
 ```
 
 At WARNING level, log actionable incompatibilities:
 
 ```text
 Ignoring CUDAExecutionProvider kernel com.microsoft::GroupQueryAttention [2,2]:
-plugin catalog digest does not match ORT for com.microsoft opset 2.
+plugin schema digest does not match ORT for GroupQueryAttention since_version 2.
 ```
 
 When a fusion is skipped for this reason, VERBOSE logging should identify the
-transformer, target operator version, assigned EP, and missing catalog or kernel.
+transformer, target operator version, assigned EP, and missing digest or kernel.
 No per-node warning should be emitted during normal fallback to avoid log spam.
+
+Because field failures are reported by users running at default severity, the
+negotiation result must also be retrievable without re-running at INFO. Expose the
+matched/quarantined counts and the quarantined operator list through EP metadata on
+the session, and include the counts in telemetry so a regression is visible in
+aggregate before it is reported.
 
 ## Test plan
 
 ### Schema tests
 
 - Assert the registered `com.microsoft` range and lookup of GQA v1/v2.
+- Assert the domain maximum is still raised when another component pre-registered
+  `com.microsoft`, and that a lower pre-existing maximum is reported as an error.
+- Assert that registering an `OrtCustomOpDomain` named `com.microsoft` is rejected.
 - Load explicit opset-1 and opset-2 GQA models and verify their resolved
   `Node::SinceVersion()` and formal input counts.
-- Regenerate catalog manifests in CI and fail if a historical digest changes.
-- Verify optimized-model serialization retains the correct contrib opset import.
+- Load an opset-2 model on a build registering only `[1, 1]` and assert the error
+  message names the domain, requested version, and supported maximum.
+- Regenerate digest manifests in CI and fail if a historical digest changes.
+- Assert digests are unchanged by adding a new operator at `since_version 1`.
+- Assert digests are unchanged across an ONNX submodule bump that only reformats type
+  strings.
+- Verify optimized-model serialization retains the correct contrib opset import, and
+  that a graph needing only v1 schemas is not written with a v2 import.
 
 ### ABI negotiation tests
 
-Extend the example plugin with selectable manifests and kernels:
+Extend the example plugin with selectable digest sets and kernels:
 
-- core v1 / plugin v1;
-- core v2 / plugin v1;
-- core v1 / plugin v1+v2;
-- matching version with mismatched digest;
-- missing callback;
-- duplicate, malformed, and unsupported catalog entries.
+- core and plugin agree on every operator;
+- core has only v1 of an operator, plugin reports v1 and v2;
+- core has v1 and v2, plugin reports only v1;
+- matching version with mismatched digest on one operator, asserting other operators
+  stay available;
+- missing callback, under both permissive and strict settings;
+- duplicate `(domain, op_type, since_version)` entries with conflicting digests;
+- malformed and unknown-domain entries;
+- a `DISABLE_CONTRIB_OPS` core, asserting contrib kernels are filtered without a
+  spurious digest-mismatch warning.
 
 Verify compatible standard ONNX kernels remain available when contrib kernels are
 quarantined.
@@ -492,9 +734,11 @@ quarantined.
 - Reject or filter an open-ended plugin kernel in `com.microsoft`.
 - Verify a `[1,1]` kernel does not match a GQA-2 node.
 - Verify a `[2,2]` kernel does not match a GQA-1 node.
+- Verify the same holds for in-tree CPU and CUDA GQA kernels in a static build.
 - Verify explicitly registered compatible v1 and v2 kernels execute the correct
   implementation.
-- Verify kernel type constraints still filter nodes after catalog negotiation.
+- Verify kernel type constraints still filter nodes after digest negotiation.
+- Verify `com.ms.internal.nhwc` multi-opset kernel ranges are unaffected.
 
 ### Fusion tests
 
@@ -513,7 +757,8 @@ For every plugin release, CI should run at least:
 - newest plugin against its minimum supported ORT core;
 - newest plugin against current ORT core;
 - previous supported plugin against current ORT core;
-- a deliberately mismatched schema-catalog build that must fail closed.
+- a deliberately mismatched-digest build that must fail closed for the affected
+  operator only.
 
 ## Implementation map
 
@@ -522,16 +767,25 @@ The main expected code areas are:
 - `onnxruntime/core/graph/contrib_ops/bert_defs.cc`: immutable GQA v1 and new v2
   schema;
 - `onnxruntime/core/graph/contrib_ops/ms_opset.h` and
-  `onnxruntime/core/session/environment.cc`: opset registration and domain range;
+  `onnxruntime/core/session/environment.cc`: opset registration and domain range,
+  including the unconditional maximum raise;
+- `onnxruntime/core/graph/schema_registry.cc`: domain-version resolution and the
+  load-time error for an unsupported contrib import;
+- `onnxruntime/core/session/custom_ops.cc` and
+  `onnxruntime/core/session/provider_bridge_ort.cc`: reject registration of ORT-owned
+  domain names;
 - `include/onnxruntime/core/session/onnxruntime_ep_c_api.h`: factory ABI descriptor
   and callback;
-- `onnxruntime/core/session/plugin_ep/`: callback validation, catalog negotiation,
+- `onnxruntime/core/session/plugin_ep/`: callback validation, digest negotiation,
   and effective kernel filtering;
 - `onnxruntime/core/providers/cuda/plugin/cuda_kernel_adapter.h`: bounded contrib
   kernel registrations;
-- `onnxruntime/core/framework/kernel_registry*` and optimizer utilities: exact target
-  support query;
+- `onnxruntime/core/framework/kernel_registry*` and optimizer utilities: wrapper over
+  the existing `TryFindKernel` overload;
 - GQA CUDA/CPU/WebGPU/JS registrations and GQA transformers: explicit version use;
+- `docs/ContribOperators.md` and its generator: regenerate for the v2 schema;
+- `plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`: immediate containment and the first
+  digest-aware release;
 - `onnxruntime/test/autoep/`: ABI and cross-version matrix coverage.
 
 ## Alternatives considered
@@ -545,7 +799,17 @@ attributes, defaults, or semantics.
 
 Insufficient by itself. It cannot detect two builds that assign different contracts
 to the same opset number, and it does not say which operators or configurations the EP
-implements. The proposed catalog digest and exact kernel lookup address both gaps.
+implements. The proposed operator digest and exact kernel lookup address both gaps.
+
+### Hash the whole operator set at each opset
+
+Rejected. The catalog at an opset changes whenever any operator is added, and new
+contrib operators are added at `since_version 1` on most releases. A whole-catalog
+digest would therefore change on most releases and quarantine every contrib kernel of
+a plugin built one commit earlier, reducing the supported matrix to "same commit".
+Requiring new operators to enter at the current maximum opset would avoid that, but at
+the cost of bumping the domain version on nearly every release and making the
+resulting models unloadable by older cores. Per-operator digests avoid both.
 
 ### Let `GetCapability()` handle everything
 
@@ -564,11 +828,17 @@ definitions in one process would make those stages inconsistent.
 Before merging a contrib-op contract change:
 
 1. Does the change affect inputs, outputs, attributes, types, shape rules, aliasing, or
-   semantics? If yes, create a new schema version.
-2. Is the old schema definition still present and byte-for-byte catalog compatible?
-3. Are every EP's old and new kernel ranges explicit and truthful?
+   semantics? If yes, create a new schema version. Adding a new operator is not such a
+   change and stays at `since_version 1`.
+2. Is the old schema definition still present and digest-identical to the checked-in
+   manifest entry?
+3. Are every EP's old and new kernel ranges explicit and truthful, for in-tree EPs as
+   well as plugins? Once an operator has two schema versions, no kernel for it may be
+   open-ended.
 4. Does every optimizer that creates the op request the exact new version and verify
    target-EP support?
 5. Can a graph with an explicit older domain import remain unchanged, or is a version
    converter required?
-6. Do the old-core/new-plugin and new-core/old-plugin tests fail closed?
+6. Does the serialized import stay at the lowest version the graph actually needs, so
+   artifacts remain loadable by older cores when possible?
+7. Do the old-core/new-plugin and new-core/old-plugin tests fail closed?
