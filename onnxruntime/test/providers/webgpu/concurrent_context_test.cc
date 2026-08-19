@@ -23,12 +23,8 @@
 //       shared context onto the EP, i.e. one per session. Dawn's ImplicitDeviceSynchronization
 //       explicitly does not cover command encoding, and InferenceSession already serializes a
 //       single session's Run via session_mutex_, so per-session ownership needs no lock at all.
-//     - Each session keeps its released-but-not-yet-submitted buffers in a private list. They
-//       become visible to other sessions only after that session submits, which is what makes
-//       recycling safe; a lock could not have provided this.
-//     - Only the free-buffer pool stays shared (SharedBufferPool), behind one small mutex that
-//       covers nothing but hash-map lookups - no GPU calls, no command encoding, and above all
-//       no shader compilation, so a session warming up cannot stall inference in other sessions.
+//     - Each session owns its BufferManager and buffer caches, so allocation and release never
+//       mutate another session's cache state.
 //
 // The tests cover several distinct multithreaded shapes:
 //   A. one session, run() concurrently from many threads
@@ -329,8 +325,7 @@ TEST_F(WebGpuConcurrentContextTest, MixedCreateAndRun) {
 }
 
 // Case D: churn. Many threads each repeatedly create + run + destroy their own session,
-// exercising concurrent allocation and release against the shared buffer pool, including the
-// path where a destroyed session hands its buffers back while others are still allocating.
+// exercising concurrent allocation and release against independent per-session buffer managers.
 TEST_F(WebGpuConcurrentContextTest, ChurnCreateRunDestroy) {
   constexpr int kThreads = 4;
   constexpr int kIters = 15;

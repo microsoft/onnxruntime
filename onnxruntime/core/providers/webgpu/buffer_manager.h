@@ -10,7 +10,6 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/framework/execution_provider.h"
-#include "core/providers/webgpu/shared_buffer_pool.h"
 
 namespace onnxruntime {
 namespace webgpu {

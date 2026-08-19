@@ -196,6 +196,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
   auto factory = static_cast<Factory*>(this_ptr);
+  const int context_id = webgpu_ep->GetDeviceId();
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
   // needs a device, and such a session stops before finalization and never allocates.

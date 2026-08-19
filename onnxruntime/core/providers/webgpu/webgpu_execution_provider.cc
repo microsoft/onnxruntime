@@ -599,25 +599,23 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
+      recording_{std::make_unique<webgpu::CommandRecordingState>()},
+      session_buffer_mgr_{webgpu::BufferManagerFactory::Create(context_,
+                                                               *recording_,
+                                                               context_.BufferCacheConfig().storage.mode,
+                                                               context_.BufferCacheConfig().uniform.mode,
+                                                               context_.BufferCacheConfig().query_resolve.mode,
+                                                               context_.BufferCacheConfig().default_entry.mode)},
+      session_initializer_buffer_mgr_{webgpu::BufferManagerFactory::Create(
+          context_,
+          *recording_,
+          webgpu::BufferCacheMode::LazyRelease,
+          webgpu::BufferCacheMode::LazyRelease,
+          webgpu::BufferCacheMode::Disabled,
+          webgpu::BufferCacheMode::Disabled)},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); }, false)} {
-  recording_ = std::make_unique<webgpu::CommandRecordingState>();
-  // Give this session its own buffer caches and command recording state instead of sharing the
-  // context's. See the comments on recording_ / session_buffer_mgr_ in the header.
-  const auto& cache_config = context_.BufferCacheConfig();
-  session_buffer_mgr_ = webgpu::BufferManagerFactory::Create(context_,
-                                                             *recording_,
-                                                             cache_config.storage.mode,
-                                                             cache_config.uniform.mode,
-                                                             cache_config.query_resolve.mode,
-                                                             cache_config.default_entry.mode);
-  session_initializer_buffer_mgr_ = webgpu::BufferManagerFactory::Create(context_,
-                                                                         *recording_,
-                                                                         webgpu::BufferCacheMode::LazyRelease,
-                                                                         webgpu::BufferCacheMode::LazyRelease,
-                                                                         webgpu::BufferCacheMode::Disabled,
-                                                                         webgpu::BufferCacheMode::Disabled);
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);

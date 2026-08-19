@@ -212,8 +212,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 
     // create buffer manager
     buffer_cache_config_ = config.buffer_cache_config;
-    shared_storage_pool_ = CreateDefaultStorageBufferPool();
-    shared_uniform_pool_ = CreateDefaultUniformBufferPool();
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                default_recording_,
                                                config.buffer_cache_config.storage.mode,

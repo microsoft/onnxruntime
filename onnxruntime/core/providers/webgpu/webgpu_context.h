@@ -278,8 +278,9 @@ class WebGpuContext final {
    * Get the context-level buffer manager.
    *
    * This is NOT the manager sessions use - each WebGpuExecutionProvider owns its own (see
-   * WebGpuExecutionProvider::BufferManager). It exists solely for the session-less shared
-   * data transfer created by OrtWebGpuCreateDataTransfer, which has no EP to borrow one from.
+   * WebGpuExecutionProvider::BufferManager). It exists for session-less plugin EP facilities
+   * such as the shared allocator and OrtWebGpuCreateDataTransfer, which have no EP to borrow one
+   * from.
    */
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
@@ -289,15 +290,6 @@ class WebGpuContext final {
    * context's caches across threads.
    */
   const WebGpuBufferCacheConfig& BufferCacheConfig() const { return buffer_cache_config_; }
-
-  /**
-   * Free-buffer pools shared by all sessions on this context. Sessions keep their own
-   * BufferManager (and their own "released but not yet submitted" lists), but hand freed buffers
-   * back here so that steady-state GPU memory stays at one session's high-water mark instead of
-   * scaling with the number of live sessions.
-   */
-  webgpu::SharedBufferPool& SharedStorageBufferPool() const { return *shared_storage_pool_; }
-  webgpu::SharedBufferPool& SharedUniformBufferPool() const { return *shared_uniform_pool_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -426,14 +418,10 @@ class WebGpuContext final {
   wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
 #endif
 
-  // Declared before every BufferManager so that the pools outlive the cache managers holding
-  // references to them (members are destroyed in reverse declaration order).
-  std::unique_ptr<webgpu::SharedBufferPool> shared_storage_pool_;
-  std::unique_ptr<webgpu::SharedBufferPool> shared_uniform_pool_;
-
   // Recording state for buffer_mgr_ below. Sessions never touch it: each
   // WebGpuExecutionProvider owns its own CommandRecordingState. This one exists only for the
-  // session-less shared data transfer, whose copies are not covered by any session_mutex_.
+  // session-less plugin EP allocator and data transfer, whose operations are not covered by any
+  // session_mutex_.
   CommandRecordingState default_recording_;
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;

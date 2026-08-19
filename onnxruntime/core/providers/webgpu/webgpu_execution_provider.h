@@ -149,11 +149,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
-  // Per-graph buffer managers keyed by annotation ID.
-  // Each captured graph gets its own buffer manager so that buffer caches
-  // are isolated between different generators.
-  std::unordered_map<int, std::unique_ptr<webgpu::BufferManager>> per_graph_buffer_mgrs_;
-
   // Command recording state for this session. The WebGpuContext is shared across sessions but
   // command encoding is not thread-safe (Dawn's ImplicitDeviceSynchronization explicitly does
   // not cover it), so the encoder / compute pass / pending-dispatch counter live here instead.
@@ -161,6 +156,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   // reports ConcurrentRunSupported() == false), so a single writer is guaranteed without locks.
   // Declared before the buffer managers below, which hold a reference to it.
   std::unique_ptr<webgpu::CommandRecordingState> recording_;
+
+  // Per-graph buffer managers keyed by annotation ID.
+  // Each captured graph gets its own buffer manager so that buffer caches
+  // are isolated between different generators.
+  std::unordered_map<int, std::unique_ptr<webgpu::BufferManager>> per_graph_buffer_mgrs_;
 
   // Per-session buffer managers. The context's caches are plain STL containers, so sharing them
   // across sessions running on different threads is a data race. Sessions only need to share the
