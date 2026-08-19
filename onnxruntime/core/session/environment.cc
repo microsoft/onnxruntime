@@ -844,6 +844,13 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                            "any arena options via the allocator options.");
   }
 
+  // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which
+  // one will be used for an inference session. ignore the name so that is the case.
+  auto existing_allocator = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
+  if (existing_allocator != shared_allocators_.end() && !replace_existing) {
+    return Status::OK();
+  }
+
   // we need to remove from shared_ort_allocators_ first in case the entry in shared_allocators_ owns the pointer in
   // shared_ort_allocators_.
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
@@ -851,15 +858,8 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     shared_ort_allocators_.erase(it);
   }
 
-  // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which
-  // one will be used for an inference session. ignore the name so that is the case.
-  if (auto it = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
-      it != shared_allocators_.end()) {
-    if (!replace_existing) {
-      return Status::OK();
-    }
-
-    shared_allocators_.erase(it);
+  if (existing_allocator != shared_allocators_.end()) {
+    shared_allocators_.erase(existing_allocator);
   }
 
   OrtAllocator* allocator = nullptr;
