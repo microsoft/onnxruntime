@@ -137,14 +137,23 @@ OrtStatus* CreateEpFactories(const char* registration_name,
   factories[0] = factory.release();
   *num_factories = 1;
 
-  // Shared-heap probe: malloc here, free in the main module.
-  void* p = std::malloc(64);
-  std::memset(p, 0xAB, 64);
-  printf("[plugin] side-module malloc(64) = %p (main module will free it)\n", p);
-  std::free(p);
-
   printf("[plugin] CreateEpFactories OK\n");
   return nullptr;
+}
+
+// Shared-heap probe. Allocates in the SIDE module and hands the pointer to the MAIN module,
+// which reads it and calls free() on it. This is the direction that matters for a real plugin
+// EP (the EP allocates buffers that ORT later releases), and it only works if both modules
+// share one heap and one allocator -- which is what Emscripten dynamic linking gives you, since
+// the side module imports malloc/free from the main module rather than linking its own dlmalloc.
+__attribute__((visibility("default")))
+void* PrototypeAllocForHost(size_t n) noexcept {
+  void* p = std::malloc(n);
+  if (p != nullptr) {
+    std::memset(p, 0xAB, n);
+  }
+  printf("[plugin] side-module malloc(%zu) = %p (main module will read and free it)\n", n, p);
+  return p;
 }
 
 __attribute__((visibility("default")))
