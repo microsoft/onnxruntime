@@ -128,7 +128,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     // cannot be obtained by constructing an Ort::MemoryInfo from a string name
     // -- it must come from the OrtEpDevice via CreateSharedAllocator().
     auto& plugin_ep_list = performance_test_config.machine_config.plugin_provider_type_list;
-    auto vitisai_ep_it = std::find(plugin_ep_list.begin(), plugin_ep_list.end(), "VitisAI");
+    auto vitisai_ep_it = std::find(plugin_ep_list.begin(), plugin_ep_list.end(), "VitisAIExecutionProvider");
     if (device_memory_name_.empty() && vitisai_ep_it != plugin_ep_list.end()) {
       std::vector<std::unordered_map<std::string, std::string>> plugin_ep_options_list;
       ParseEpOptions(ToUTF8String(performance_test_config.run_config.ep_runtime_config_string),
