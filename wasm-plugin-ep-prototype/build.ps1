@@ -14,6 +14,7 @@ param(
     [switch]$Jspi,
     [switch]$WasmEH,
     [switch]$Pad,
+    [switch]$EpJsGlue,
     [switch]$Assertions,
     [string]$OutDir = ''
 )
@@ -29,6 +30,7 @@ if (-not $OutDir) {
     if ($Asyncify) { $OutDir += '-asyncify' }
     if ($Jspi) { $OutDir += '-jspi' }
     if ($Pad) { $OutDir += '-pad' }
+    if ($EpJsGlue) { $OutDir += '-epglue' }
 }
 $out = Join-Path $root $OutDir
 # Always start from a clean directory. Reusing it risks measuring or running a stale host/side
@@ -65,6 +67,7 @@ if ($Jspi) {
 }
 
 if ($Pad) { $sideExtra += '-DPROTOTYPE_PAD_SIDE_MODULE=1' }
+if ($EpJsGlue) { $sideExtra += '-DPROTOTYPE_EP_JS_GLUE=1' }
 # ASSERTIONS makes libdylink.js name the symbol in "undefined symbol '<name>'", which is how you
 # find the next missing dependency when MAIN_MODULE=2 fails to resolve something.
 if ($Assertions) { $mainExtra += '-sASSERTIONS=1' }
@@ -108,6 +111,8 @@ if ($MainModule -eq '2') {
     #   - __asyncify_data / __asyncify_state: these globals are created by the ASYNCIFY Binaryen
     #     pass, which runs AFTER wasm-ld. Listing them in EXPORTED_FUNCTIONS fails at link time
     #     with "undefined exported symbol"; the pass exports them itself.
+    #   - PrototypeEpJsGlue: EP-owned JS glue injected into `wasmImports` at runtime (models
+    #     emdawnwebgpu's library_webgpu.js). The host has no such symbol to export.
     #
     # Everything else -- including wasm DATA symbols such as __THREW__ (legacy EH), C++ RTTI
     # typeinfo, and the __cpp_exception WebAssembly *tag* (native Wasm EH) -- IS a main-module
@@ -115,7 +120,7 @@ if ($MainModule -eq '2') {
     $jsProvided = '^(__indirect_function_table|__memory_base|__table_base|__stack_pointer|memory|' +
                   'invoke_.*|getTempRet0|setTempRet0|emscripten_asm_const.*|__cxa_find_matching_catch.*|' +
                   'llvm_eh_typeid_for|__resumeException|__asyncify_data|__asyncify_state|' +
-                  '_ZN20__em_asm_sig_builder.*)$'
+                  'PrototypeEpJsGlue|_ZN20__em_asm_sig_builder.*)$'
 
     $needed = $imports | Where-Object { $_ -notmatch $jsProvided } | ForEach-Object { "_$_" }
     Write-Host "auto-derived side-module imports: $($needed -join ',')" -ForegroundColor Yellow
@@ -156,7 +161,17 @@ if ($MainModule -eq '2') {
 }
 
 $runtimeMethods = "ccall,cwrap,FS,UTF8ToString,stringToUTF8"
-if ($MainModule -ne '0') { $runtimeMethods += ",loadDynamicLibrary" }
+# ortRegisterEpJsGlue is a host-side hook (host_ep_glue_hook.js) that lets a plugin EP install
+# its own JS glue into wasmImports before dlopen, so the host does not have to link the EP's
+# glue. See REPORT.md 3.6.
+if ($MainModule -ne '0') {
+    $runtimeMethods += ",loadDynamicLibrary,ortRegisterEpJsGlue"
+    $mainExtra += '--js-library'
+    $mainExtra += (Join-Path $root 'host_ep_glue_hook.js')
+    # Required so addFunction() can materialise a function pointer for EP-provided JS glue that
+    # the side module address-takes (see ep_js_glue.js).
+    $mainExtra += '-sALLOW_TABLE_GROWTH=1'
+}
 
 $mainArgs = $common + $mainExtra + @(
     "-sMAIN_MODULE=$MainModule",

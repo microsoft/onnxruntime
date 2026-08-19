@@ -1,11 +1,11 @@
 # Can onnxruntime-web load the WebGPU EP as a plugin EP dynamic library?
 
 **Short answer: yes, the loading mechanism works — I have it running end to end in Chromium,
-under both exception models and both async mechanisms, so it would not constrain ORT-web's
-existing build configurations. Whether it is *worth* doing for the WebGPU EP is a separate
-question, and it hinges on one quantity this prototype does not measure: how much of ORT core
-a real WebGPU side module would duplicate. The Dawn JS glue also has to stay in the main module
-regardless.**
+under both exception models, both async mechanisms, with threads, and with the EP supplying its
+own JS glue. It would not constrain ORT-web's existing build configurations. Whether it is
+*worth* doing for the WebGPU EP hinges on one quantity this prototype does not measure: how much
+ORT core a real WebGPU side module would duplicate — and if the planned EP-isolation work lands,
+most of that cost is attributable to isolation rather than to this decision.**
 
 Everything below is backed by a working prototype in this directory, except where explicitly
 marked as a projection (see [4.1](#41-what-the-size-cost-actually-is--measured-vs-projected)).
@@ -21,9 +21,10 @@ See [Reproducing](#reproducing).
 | 2 | The wasm C API surface has no EP-library registration at all | `onnxruntime/wasm/api.cc` has no `RegisterExecutionProviderLibrary`; `js/web` only knows `OrtAppendExecutionProvider` |
 | 3 | The wasm link line is incompatible with dynamic linking | `cmake/onnxruntime_webassembly.cmake`: `-sFILESYSTEM=0`, `-sEXPORT_ALL=0`, no `-sMAIN_MODULE`, nothing built `-fPIC` |
 | 4 | The plugin EP statically links a second copy of ORT core | `onnxruntime_providers_webgpu` links `onnxruntime_optimizer`, `onnxruntime_providers`, `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_lora`, `onnxruntime_util`, MLAS, `onnx`, protobuf, flatbuffers, abseil. How much survives section GC in a side-module link is **unmeasured** — see 4.1 |
-| 5 | Dawn's JS glue is a *main-module* artifact | `emdawnwebgpu_cpp` is linked `PUBLIC` so its `--js-library library_webgpu.js` and `-sASYNCIFY`/`-sJSPI` flags propagate to the final executable. A side module cannot contribute `--js-library` glue to the main module. |
+| 5 | Dawn's JS glue is a *main-module* artifact | `emdawnwebgpu_cpp` is linked `PUBLIC` so its `--js-library library_webgpu.js` and `-sASYNCIFY`/`-sJSPI` flags propagate to the final executable. A side module cannot contribute `--js-library` glue at link time — but see 3.6: it *can* be supplied at runtime |
 
-(1)–(3) are mechanical. (4) and (5) are the real problems.
+(1)–(3) are mechanical. (4) is the real problem, and 4.1/4.2 argue it is largely not attributable
+to the plugin-EP decision. (5) turns out to be surmountable — see 3.6.
 
 ---
 
@@ -64,6 +65,8 @@ Measured on Emscripten 4.0.23, Node 22.16, Chromium 151 (`crossOriginIsolated=tr
 | `MAIN_MODULE=2`, wasm EH | 33.3 KB | 2.5 KB | PASS | PASS |
 | `MAIN_MODULE=2`, wasm EH, pthreads | 46.8 KB | 2.7 KB | PASS | PASS |
 | `MAIN_MODULE=2`, wasm EH, pthreads, JSPI | 46.8 KB | 75.9 KB | – | PASS |
+| `MAIN_MODULE=2`, wasm EH, EP-provided JS glue | 33.3 KB | 2.7 KB | PASS | PASS |
+| `MAIN_MODULE=2`, legacy EH, EP-provided JS glue | 31.7 KB | 2.9 KB | PASS | PASS |
 
 Every configuration passes end to end, including the deliberate throw path. `MAIN_MODULE=2`
 works with **both** exception models and with **both** ASYNCIFY and JSPI.
@@ -180,6 +183,48 @@ ORT-web could keep ASYNCIFY as its default and would not be pinned to JSPI-capab
 `dynamic linking + pthreads is experimental [-Wexperimental]` is emitted by emcc, but every
 threaded configuration passed in both Node and Chromium.
 
+### 3.6 An EP *can* ship its own JS glue — blocker #5 is surmountable
+
+The strongest WebGPU-specific objection was that `library_webgpu.js` is linked into the final
+executable (`emdawnwebgpu_cpp` is `PUBLIC`), and an Emscripten side module cannot contribute
+`--js-library` glue at link time. That is true at *link* time, but not at *run* time.
+
+`libdylink.js` resolves a side module's `env` imports against `wasmImports` when the module is
+instantiated. Anything already in `wasmImports` at that point resolves — regardless of whether
+the host linked it. So the host needs a **hook, not the glue**:
+
+```js
+// host_ep_glue_hook.js -- the whole host-side addition
+addToLibrary({
+  $ortRegisterEpJsGlue: (name, fn) => { wasmImports[name] = fn; },
+});
+```
+
+`wasmImports` is module-scope and cannot be exposed through `EXPORTED_RUNTIME_METHODS`, but a
+JS-library function shares that scope, so exporting this one function is sufficient. The EP then
+ships `ep_js_glue.js` next to its `.wasm` and registers before loading. Verified in Node and
+Chromium under both exception models: the side module calls a function the host never linked.
+
+Two constraints came out of it:
+
+1. **On-demand loading only.** The glue must be registered before the side module is
+   instantiated. `Module.dynamicLibraries` preloading instantiates it inside `createWasm()` —
+   after `preInit` (where the exported hook does not exist yet) and before `preRun`. There is no
+   usable window, so startup preloading cannot be combined with EP-provided glue. This is not a
+   practical problem: ORT registers EPs explicitly via `RegisterExecutionProviderLibrary`, which
+   is on-demand by construction.
+2. **Glue functions need a signature, and the host needs `-sALLOW_TABLE_GROWTH=1`.** Under legacy
+   EH the call is routed through an `invoke_*` trampoline, so the import is *address-taken* and
+   becomes a `GOT.func` entry resolved eagerly at load time via `addFunction()`. That requires
+   an Emscripten signature annotation (`glue.sig = 'ii'`) and a growable table. Under Wasm EH the
+   call is direct and resolves lazily, so it works without either — a difference worth knowing
+   about, and not one to rely on.
+
+This does not make the WebGPU EP's Dawn dependency free — the glue still has to be built,
+versioned and shipped with the EP, and kept in sync with the Dawn C++ side in the side module.
+But it does mean onnxruntime-web would **not** be forced to carry WebGPU JS glue for users who
+never load the EP, which was the substance of blocker #5.
+
 ---
 
 ## 4. Tradeoffs
@@ -191,9 +236,10 @@ threaded configuration passed in both Node and Chromium.
   protobuf, flatbuffers and abseil (blocker #4), and `ep/factory.cc` / `ep/ep.cc` still
   `#include "core/framework/..."` and `"core/graph/..."`. Today onnxruntime-web ships *one*
   copy; a plugin split would ship two. See 4.1 for what is and is not known here.
-- **Dawn glue can't move.** `library_webgpu.js` is a `--js-library` linked into the final
-  executable. onnxruntime-web would still have to ship the WebGPU JS glue in the main module
-  even when the EP is "optional" — so it never becomes truly WebGPU-agnostic.
+- **Dawn glue.** `library_webgpu.js` is a `--js-library` linked into the final executable today.
+  This is **surmountable** (3.6): the EP can ship its own glue and register it at runtime through
+  a one-line host hook, so onnxruntime-web need not carry WebGPU JS for users who never load the
+  EP. It still has to be built, versioned and shipped with the EP.
 - **Runtime cost.** PIC + cross-module calls go through the indirect function table and GOT,
   and nothing inlines across the boundary. The WebGPU EP's hot path is GPU-bound so this is
   probably minor, but it is not free. Not measured.
@@ -248,17 +294,56 @@ Settling it requires removing the Emscripten `FATAL_ERROR` and doing a real side
 with a `--emit-symbol-map` / link-map size breakdown — which is most of the project, not a
 quick measurement. That measurement should be step 0 of any serious attempt.
 
+### 4.2 …but most of that cost is *not* attributable to the plugin-EP decision
+
+There is a separate, already-planned effort to isolate the WebGPU EP source from ORT internals
+(the `ep/adapter/` bridge exists precisely for this). That changes the accounting materially,
+and cuts in a direction worth being explicit about: **isolation and de-duplication pull in
+opposite directions.**
+
+Today the EP calls ORT internals directly and shares one copy inside `onnxruntime.wasm`. An
+isolated EP talks only to the EP ABI through the adapter layer, so it carries its own
+implementations of facilities ORT core also has. **That hit lands whether the isolated EP is
+statically linked or dynamically loaded.** It is a cost of isolation, not of dynamic linking.
+
+So the comparison in 4.1 — today's coupled-static build vs a plugin build — charges the wrong
+baseline. The decision-relevant comparison is three-way:
+
+| Build | Status |
+|---|---|
+| (1) coupled + static | today's shipping build; going away if isolation lands |
+| (2) isolated + static | the baseline the plugin decision should be judged against |
+| (3) isolated + plugin (dynamic) | what this prototype is about |
+
+**(1) → (2) is the cost of isolation, paid regardless. (2) → (3) is the true cost of the wasm
+plugin-EP decision**, and it is much smaller than 4.1's framing implies, because under Emscripten
+dynamic linking the side module *imports* libc, libc++ and the allocator from the host rather
+than duplicating them (3.3 shows exactly this — `malloc`, `free`, `_Znwm`, the `__cxa_*` family
+and RTTI typeinfo all resolve to host exports). What genuinely duplicates in (3) is only what the
+EP still links statically that the host also contains — and isolation is precisely the work that
+shrinks that set.
+
+Two consequences:
+
+- The prerequisite framing in §5 step 1 ("cut the duplicated core before considering this") is
+  better read as "isolation is the enabler". Once the EP no longer links `framework`, `graph`,
+  `optimizer`, protobuf and ONNX, the plugin-EP path gets *cheaper*, not more expensive.
+- The measurement to run is (2) vs (3), not (1) vs (3). Measuring (1) vs (3) would charge the
+  plugin decision for the isolation effort's cost and make it look worse than it is.
+
 ---
 
 ## 5. What it would take
 
 Roughly in order:
 
-0. **Measure the duplication.** Everything below is only worth doing if a real WebGPU
-   side-module link is not multi-MB larger than today's marginal cost (4.1).
-1. **Cut the duplicated core.** Until `onnxruntime_providers_webgpu` stops statically linking
-   ORT internals, a wasm plugin EP is likely worse on size. Not web-specific — it also shrinks
-   the native plugin EP DLL.
+0. **Measure (2) vs (3), not (1) vs (3)** — the isolated-static build against the isolated-plugin
+   build (4.2). Charging the plugin decision for the isolation effort's cost makes it look worse
+   than it is.
+1. **Land the isolation work.** It is the enabler, not merely a prerequisite: once
+   `onnxruntime_providers_webgpu` no longer links `framework`, `graph`, `optimizer`, protobuf and
+   ONNX, the side module shrinks to EP code + adapter + Dawn, with libc/libc++/allocator imported
+   from the host. It is also not web-specific — it shrinks the native plugin EP DLL too.
 2. Remove the Emscripten `FATAL_ERROR` and add a `-sSIDE_MODULE=1` + `-fPIC` link path for the
    EP target, with the exception model matched to the host.
 3. Build `onnxruntime_webassembly` with `-sMAIN_MODULE=2 -fPIC`, drop `-sFILESYSTEM=0`, and add
@@ -268,14 +353,24 @@ Roughly in order:
    does not satisfy.
 4. Expose `RegisterExecutionProviderLibrary` / `UnregisterExecutionProviderLibrary` in
    `onnxruntime/wasm/api.cc` and a JS binding in `js/web`, as **async** APIs.
-5. Decide where the emdawnwebgpu JS glue lives, since it cannot move into the side module.
+5. Add the `ortRegisterEpJsGlue`-style hook plus `-sALLOW_TABLE_GROWTH=1` to the host, and move
+   emdawnwebgpu's glue to ship with the EP (3.6).
 
-**Recommendation:** don't chase this for the WebGPU EP right now — it is the worst candidate,
-because it is the EP most entangled with the main module's JS glue and it is the one everyone
-downloads anyway. Do (1) regardless, since it helps the native plugin EP too. If the goal is
-third-party web EPs, a small pure-compute EP is a far better first customer, and this prototype
-shows the loading mechanism is ready for one — under either exception model and either async
-mechanism, so it does not constrain ORT-web's existing build configurations.
+**Recommendation.** This is more attractive than the first revision of this report concluded,
+and the two objections that drove that conclusion have both weakened:
+
+- The Dawn JS glue is **not** immovable (3.6).
+- The duplicated-core cost is **mostly not attributable** to this decision if isolation is
+  happening anyway (4.2), and isolation actively makes the plugin path cheaper.
+
+The loading mechanism is ready: it works under both exception models, both async mechanisms,
+with threads, and with EP-provided JS glue — so it does not constrain ORT-web's existing build
+configurations. What is still missing is the one number in 4.1, measured as (2) vs (3).
+
+Sequencing still matters more than the verdict: do the isolation work first because it is
+justified on its own merits, then measure. If (2)→(3) is small, WebGPU is a perfectly reasonable
+first customer after all. A small pure-compute EP remains the lower-risk way to shake out the
+build-system and CI plumbing in parallel, since it needs neither Dawn nor the glue hook.
 
 ---
 
@@ -300,6 +395,7 @@ Then:
 .\run_all.ps1                                   # full matrix, Node + Chromium, prints summary
 .\build.ps1 -MainModule 2 -WasmEH               # one config
 .\build.ps1 -MainModule 2 -Assertions           # names the next unresolved symbol on failure
+.\build.ps1 -MainModule 2 -WasmEH -EpJsGlue     # EP calls its own runtime-registered JS glue (3.6)
 node run.js build-mm2-wasmeh preload            # Node
 node browser_run.js build-mm2-wasmeh preload    # headless Chromium
 ```
@@ -310,6 +406,7 @@ stale artifacts.
 
 `run.js` / `browser_test.html` modes: `preload` (`Module.dynamicLibraries`), `dlopen`
 (synchronous, from the virtual FS), `ondemand` (async `dlopen`, needs ASYNCIFY or JSPI).
+`-EpJsGlue` builds require an on-demand mode (`dlopen` / `ondemand`) — see 3.6.
 
 The published-package sizes in 4.1 come from `..\size-probe`:
 
@@ -326,6 +423,8 @@ Get-ChildItem -Recurse -Filter *.wasm
 |---|---|
 | `host_main.cc` | mini `onnxruntime.wasm` — `dlopen` + `OrtApi` implementation |
 | `plugin_ep.cc` | mini plugin EP side module — `CreateEpFactories` / `OrtEpFactory` |
+| `host_ep_glue_hook.js` | the one-line host hook that lets an EP register its own JS glue (3.6) |
+| `ep_js_glue.js` | EP-owned JS glue, shipped with the EP rather than linked into the host (3.6) |
 | `legacy_eh_dylink_shim.js` | supplies `getTempRet0`/`setTempRet0` to the side module under legacy EH (3.2) |
 | `build.ps1` | build matrix; auto-derives the `MAIN_MODULE=2` dependency list |
 | `run.js` | Node driver |

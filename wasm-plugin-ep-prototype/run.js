@@ -19,12 +19,18 @@ const hostPath = path.join(buildDir, 'ort_host.js');
 const pluginWasm = path.join(buildDir, 'plugin_ep.wasm');
 
 const createHost = require(path.resolve(hostPath));
+const { registerEpJsGlue } = require('./ep_js_glue.js');
 
 (async () => {
   const moduleArgs = {
     print: (t) => console.log(t),
     printErr: (t) => console.error(t),
     locateFile: (f) => path.join(path.resolve(buildDir), f),
+    // Emscripten's MODULARIZE output uses the object passed to the factory AS `Module`, so this
+    // closure sees the fully initialised module. preRun runs before dynamicLibraries are loaded,
+    // which is what makes `preload` mode work -- the EP's glue must already be in wasmImports by
+    // the time the side module is instantiated.
+    preRun: [() => registerEpJsGlue(moduleArgs)],
   };
 
   if (mode === 'preload') {

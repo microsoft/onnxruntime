@@ -20,7 +20,9 @@ $matrix = @(
     @{ Name = 'MAIN_MODULE=2, legacy EH, ASYNCIFY, pthreads'; Args = @('-MainModule', '2', '-Asyncify', '-Pthreads'); Node = @('preload'); Browser = @('ondemand') },
     @{ Name = 'MAIN_MODULE=2, wasm EH'; Args = @('-MainModule', '2', '-WasmEH'); Node = @('preload', 'dlopen'); Browser = @('preload', 'dlopen') },
     @{ Name = 'MAIN_MODULE=2, wasm EH, pthreads'; Args = @('-MainModule', '2', '-WasmEH', '-Pthreads'); Node = @('preload'); Browser = @('preload') },
-    @{ Name = 'MAIN_MODULE=2, wasm EH, pthreads, JSPI, >4KB EP'; Args = @('-MainModule', '2', '-WasmEH', '-Pthreads', '-Jspi', '-Pad'); Node = @(); Browser = @('preload', 'ondemand') }
+    @{ Name = 'MAIN_MODULE=2, wasm EH, pthreads, JSPI, >4KB EP'; Args = @('-MainModule', '2', '-WasmEH', '-Pthreads', '-Jspi', '-Pad'); Node = @(); Browser = @('preload', 'ondemand') },
+    @{ Name = 'MAIN_MODULE=2, wasm EH, EP-provided JS glue'; Args = @('-MainModule', '2', '-WasmEH', '-EpJsGlue'); Node = @('dlopen'); Browser = @('dlopen') },
+    @{ Name = 'MAIN_MODULE=2, legacy EH, EP-provided JS glue'; Args = @('-MainModule', '2', '-EpJsGlue'); Node = @('dlopen'); Browser = @('dlopen') }
 )
 
 $results = @()
@@ -42,6 +44,7 @@ foreach ($cfg in $matrix) {
     if ($cfg.Args -contains '-Asyncify') { $dir += '-asyncify' }
     if ($cfg.Args -contains '-Jspi') { $dir += '-jspi' }
     if ($cfg.Args -contains '-Pad') { $dir += '-pad' }
+    if ($cfg.Args -contains '-EpJsGlue') { $dir += '-epglue' }
 
     $hostWasm = Join-Path $root "$dir\ort_host.wasm"
     $epWasm = Join-Path $root "$dir\plugin_ep.wasm"

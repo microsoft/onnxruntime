@@ -8,6 +8,7 @@
 
 <body>
   <pre id="log"></pre>
+  <script src="ep_js_glue.js"></script>
   <script src="ort_host.js"></script>
   <script>
     const lines = [];
@@ -82,6 +83,9 @@
       const moduleArgs = {
         print: log,
         printErr: log,
+        // The EP ships its own JS glue; the host only provides the ortRegisterEpJsGlue hook.
+        // This must run before the side module is instantiated, hence preRun.
+        preRun: [() => registerEpJsGlue(moduleArgs)],
       };
       if (mode === 'preload') {
         moduleArgs.dynamicLibraries = ['plugin_ep.wasm'];

@@ -22,12 +22,15 @@ const server = http.createServer((req, res) => {
   const file = (url === '/' || url === '/index.html')
     ? harness
     : path.join(buildDir, path.normalize(url).replace(/^[\\/]+/, ''));
-  fs.readFile(file, (err, data) => {
+  // The EP's JS glue ships with the EP, not the build output, so fall back to the source dir.
+  const resolved = fs.existsSync(file) ? file
+    : path.join(__dirname, path.normalize(url).replace(/^[\\/]+/, ''));
+  fs.readFile(resolved, (err, data) => {
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     if (err) { res.writeHead(404).end('not found'); return; }
-    res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Type': types[path.extname(resolved)] || 'application/octet-stream' });
     res.end(data);
   });
 });

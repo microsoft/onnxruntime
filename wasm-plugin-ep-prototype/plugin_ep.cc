@@ -29,6 +29,21 @@
 
 namespace {
 
+// Declared here, defined NOWHERE in C++ -- neither in this side module nor in the host.
+// It models emdawnwebgpu's `library_webgpu.js`: JS glue that logically belongs to the EP but
+// which a side module cannot contribute via --js-library at link time.
+//
+// The side module emits it as an ordinary `env` import. The question the prototype answers is
+// whether such an import can be satisfied at RUNTIME by JS shipped alongside the EP, rather
+// than having to be baked into the host at link time. See REPORT.md 3.6.
+//
+// Opt-in (-DPROTOTYPE_EP_JS_GLUE=1) because it constrains HOW the EP may be loaded: the glue
+// must be registered before the side module is instantiated, which rules out Emscripten's
+// startup `Module.dynamicLibraries` preloading.
+#ifdef PROTOTYPE_EP_JS_GLUE
+extern "C" int PrototypeEpJsGlue(int value);
+#endif
+
 const OrtApi* g_ort = nullptr;
 
 // Mirrors onnxruntime::ep::ApiInit()
@@ -125,6 +140,15 @@ OrtStatus* CreateEpFactories(const char* registration_name,
     return 0;
   });
   printf("[plugin] EM_ASM from side module works; navigator.gpu present = %d\n", has_webgpu);
+
+  // Call into EP-owned JS glue that the host knows nothing about at link time.
+#ifdef PROTOTYPE_EP_JS_GLUE
+  int glued = PrototypeEpJsGlue(20);
+  printf("[plugin] EP-provided JS glue returned %d (expected 42)\n", glued);
+  if (glued != 42) {
+    return g_ort->CreateStatus(ORT_EP_FAIL, "EP-provided JS glue did not run correctly");
+  }
+#endif
 
   if (max_factories < 1) {
     return g_ort->CreateStatus(ORT_INVALID_ARGUMENT, "need at least one factory slot");
