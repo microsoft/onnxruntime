@@ -57,7 +57,7 @@
 
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE
         onnxruntime_optimizer
-        onnxruntime_providers
+        ${onnxruntime_providers_target}
         onnxruntime_lora
         onnxruntime_framework
         onnxruntime_graph
