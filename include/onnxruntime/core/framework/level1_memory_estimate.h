@@ -13,10 +13,13 @@ namespace onnxruntime {
 // lifetimes even while the current byte-count accountant conservatively charges
 // all of them to the node's budget. Prepack memory contributes to a conservative
 // initialization-time upper bound, not exact lifetime-aware or steady-state
-// accounting. The accountant separately charges the original weight initializer
-// while these fields describe additional destination and scratch buffers that
-// can coexist with it during prepacking; it does not subtract the source after
-// its final prepack consumer releases it.
+// accounting. The accountant separately charges original initializers at their
+// planned device locations before PrePack() runs. These fields must therefore
+// describe only additional destination and scratch allocations that can coexist
+// with those initializers; a destination reused directly from an initializer
+// (for example, an offline-prepacked weight) must not be reported again. The
+// accountant does not subtract a source initializer after its final prepack
+// consumer releases it.
 struct Level1MemoryEstimate {
   // Temporary workspace used while executing the kernel. nullopt means that
   // runtime workspace is not estimable and the accountant must use its fallback.

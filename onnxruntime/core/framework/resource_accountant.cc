@@ -62,12 +62,16 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // also provided, uses the maximum of the profiled and estimated workspace.
   // Without profiling, computes known initializer/output bytes and uses the
   // Level-1 runtime workspace or, when unavailable, fallback workspace.
-  // Persistent prepack and initialization-scratch estimates are additional
-  // conservative charges in both paths. Constructor profiling and prepack
-  // scratch buffers are created and released sequentially, so their true
-  // session-wide requirement is a peak rather than the sum charged here. Exact
-  // peak modeling requires tracking persistent memory and initialization
-  // scratch headroom separately.
+  // Initializer bytes are charged separately, so persistent prepack estimates
+  // must include only additional allocations, not storage reused directly from
+  // an initializer (for example, an offline-prepacked weight). Persistent
+  // prepack and initialization-scratch estimates are additional conservative
+  // charges in both paths. MatMulNBits tactic profiling runs synchronously while
+  // each kernel is constructed, and PrePack() calls run sequentially after
+  // kernel creation; their scratch buffers are therefore created and released
+  // one at a time. Their true session-wide requirement is a peak rather than the
+  // sum charged here. Exact peak modeling requires tracking persistent memory
+  // and initialization scratch headroom separately.
   //
   // GetCapability may probe nodes that are not ultimately assigned to this EP,
   // so per-node weights and workspace remain pending. CommitResourcesForNode()
