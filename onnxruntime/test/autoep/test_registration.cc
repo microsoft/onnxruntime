@@ -11,6 +11,12 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/graph/constants.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -223,6 +229,52 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
 }
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+TEST(OrtEpLibrary, BuiltInWebGpuReadsDeviceOptionsFromEnvironment) {
+  ortenv_teardown();
+
+  auto run_test = [&]() -> void {
+    Ort::KeyValuePairs env_configs;
+    env_configs.Add(kOrtEnvAllowVirtualDevices, "1");
+    env_configs.Add(webgpu::options::kEnableZeroBuffer, "0");
+
+    OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
+    env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    env_options.log_id = "BuiltInWebGpuReadsDeviceOptionsFromEnvironment";
+    env_options.config_entries = env_configs.GetConst();
+
+    Ort::Env tmp_env(&env_options);
+
+    std::vector<Ort::ConstEpDevice> selected;
+    for (const auto& ep_device : tmp_env.GetEpDevices()) {
+      if (std::string_view{ep_device.EpName()} != kWebGpuExecutionProvider) {
+        continue;
+      }
+
+      const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+      const auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+      if (is_virtual != metadata.end() && is_virtual->second == "1") {
+        selected.push_back(ep_device);
+        break;
+      }
+    }
+    ASSERT_EQ(selected.size(), 1u);
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1");
+    Ort::KeyValuePairs ep_options;
+    session_options.AppendExecutionProvider_V2(tmp_env, selected, ep_options);
+
+    Ort::Session session(tmp_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+    EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(0).EnableZeroBuffer());
+  };
+
+  EXPECT_NO_FATAL_FAILURE(run_test());
+  ortenv_setup();
+}
+#endif
 
 #if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
 TEST(OrtEpLibrary, WebGpuPluginReadsDeviceOptionsFromEnvironment) {
