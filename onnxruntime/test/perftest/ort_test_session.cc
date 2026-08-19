@@ -113,7 +113,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     // VitisAI NPU shared allocator: opt-in only, via
     // --plugin_ep_options "enable_npu_shared_memory_allocator|1" for the
-    // "VitisAI" entry in --plugin_eps (mirrors QNN's
+    // "VitisAIExecutionProvider" entry in --plugin_eps (mirrors QNN's
     // enable_htp_shared_memory_allocator naming below). Without this option,
     // the VitisAI plugin EP still runs inference normally, but I/O tensors
     // stay on the default CPU allocator -- useful as a CPU-allocator baseline
@@ -142,7 +142,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
       if (enable_npu_allocator) {
         for (auto& device : env.GetEpDevices()) {
-          if (std::string(device.EpName()) != "VitisAI") continue;
+          if (std::string(device.EpName()) != "VitisAIExecutionProvider") continue;
 
           try {
             Ort::UnownedAllocator vitisai_allocator = env.CreateSharedAllocator(
