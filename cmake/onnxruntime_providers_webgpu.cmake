@@ -201,6 +201,12 @@
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
     endif()
 
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
+      # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
+    endif()
+
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
 
@@ -230,9 +236,6 @@
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
         target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_native)
-        # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
-        # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
-        target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
       endif()
       target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_proc)
     endif()
