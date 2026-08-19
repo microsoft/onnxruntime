@@ -191,20 +191,6 @@
 
     set(onnxruntime_providers_webgpu_dll_deps)
 
-    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
-      # Dawn disables RTTI on non-MSVC builds, so compile the source that derives from
-      # dawn::platform::Platform consistently to avoid referencing its unavailable typeinfo.
-      if (NOT MSVC)
-        set_property(
-          SOURCE "${ONNXRUNTIME_ROOT}/core/providers/webgpu/webgpu_context.cc"
-          APPEND PROPERTY COMPILE_OPTIONS "-fno-rtti")
-      endif()
-
-      # Propagate dawn_platform because onnxruntime_providers_webgpu is a static library in
-      # non-plugin builds and its consumers must resolve the custom Platform implementation.
-      target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::dawn_platform)
-    endif()
-
     # Delay-load user32.dll which is pulled in by the WebGPU EP build.
     # This allows onnxruntime.dll to load in processes with
     # MITIGATION_WIN32K_DISABLE (e.g., a sandboxed process under Win32k lockdown).
@@ -244,6 +230,9 @@
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
         target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_native)
+        # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
+        # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
+        target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
       endif()
       target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_proc)
     endif()
