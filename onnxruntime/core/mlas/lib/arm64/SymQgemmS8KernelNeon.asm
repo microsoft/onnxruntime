@@ -140,6 +140,8 @@ M4_ProcessNextColumnLoop
         add     x11,x10,x7                  // A3
 
 M4_ComputeBlockLoop
+        // Reduce each 8-lane int8 product group into int32 before the next multiply.
+        // Two -128 * -128 products can overflow an int16 accumulator; see #31573.
         smull   v12.8h,v0.8b,v4.8b
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
