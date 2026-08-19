@@ -2913,8 +2913,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Number of key/value heads. Always required.",
               AttributeProto::INT)
         .Attr("chunk_size",
-              "Chunk size for the chunk-parallel WY decomposition during prefill. "
-              "Tuning hint; does not affect output correctness.",
+              "Reserved for compatibility with LinearAttention. Currently ignored.",
               AttributeProto::INT,
               static_cast<int64_t>(64))
         .Attr("state_window",
@@ -2981,10 +2980,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "would have.",
                 "S")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("S",
-                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        {"tensor(float)", "tensor(float16)"},
                         "Constrain state types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},

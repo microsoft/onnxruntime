@@ -1828,6 +1828,17 @@ TEST(ContribOpVarlenLinearAttentionTest, SchemaResolution) {
   EXPECT_GT(schema->attributes().count("kv_num_heads"), 0u);
   EXPECT_GT(schema->attributes().count("chunk_size"), 0u);
   EXPECT_GT(schema->attributes().count("state_window"), 0u);
+
+  const auto& type_constraints = schema->typeConstraintParams();
+  for (const std::string type_param : {"T", "S"}) {
+    const auto constraint = std::find_if(
+        type_constraints.begin(), type_constraints.end(),
+        [&type_param](const auto& value) { return value.type_param_str == type_param; });
+    ASSERT_NE(constraint, type_constraints.end());
+    EXPECT_EQ(std::find(constraint->allowed_type_strs.begin(), constraint->allowed_type_strs.end(),
+                        "tensor(bfloat16)"),
+              constraint->allowed_type_strs.end());
+  }
 }
 
 #ifdef USE_CUDA

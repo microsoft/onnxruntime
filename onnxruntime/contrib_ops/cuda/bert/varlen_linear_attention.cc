@@ -50,10 +50,6 @@ VarlenLinearAttention<T>::VarlenLinearAttention(const OpKernelInfo& info) : Cuda
               "update_rule must be one of: linear, gated, delta, gated_delta");
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-  int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
-  // chunk_size_ reserved for a future chunk-parallel prefill algorithm; not yet used.
-  chunk_size_ = static_cast<int>(chunk_size);
-
   ORT_THROW_IF_ERROR(linear_attention_helper::ParseStateWindow(info, state_window_));
 }
 

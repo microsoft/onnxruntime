@@ -7042,7 +7042,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>chunk_size</tt> : int</dt>
-<dd>Chunk size for the chunk-parallel WY decomposition during prefill. Tuning hint; does not affect output correctness.</dd>
+<dd>Reserved for compatibility with LinearAttention. Currently ignored.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of key/value heads. Always required.</dd>
 <dt><tt>q_num_heads</tt> : int (required)</dt>
@@ -7086,9 +7086,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
-<dt><tt>S</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dt><tt>S</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain state types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
