@@ -68,6 +68,7 @@ def get_vendor_id_for_device_type(device_type: str) -> OrtDeviceVendorId | None:
 
 
 _GPU_GRAPH_ID_RUN_CONFIG_KEY = "gpu_graph_id"
+# Mirrors InferenceSession::kGraphAnnotationSkip; core skips capture and replay for this ID.
 _GRAPH_ANNOTATION_SKIP = -1
 
 
