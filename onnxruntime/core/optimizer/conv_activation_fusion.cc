@@ -104,8 +104,10 @@ class ConvActivationSelector : public NodeSelector {
         return false;
       }
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "FastGelu", {1}, kMSDomain)) {
-        // The optional bias input makes FastGelu non-elementwise.
-        return activation_node.InputDefs().size() == 1;
+        // A bias makes FastGelu non-elementwise. An absent optional input is either omitted from
+        // the node or serialized with an empty name, so test the NodeArg rather than the count.
+        const auto& activation_inputs = activation_node.InputDefs();
+        return activation_inputs.size() < 2 || !activation_inputs[1]->Exists();
       }
       return graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Gelu", {1}, kMSDomain) ||
