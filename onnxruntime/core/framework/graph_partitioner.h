@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
@@ -71,7 +72,8 @@ class GraphPartitioner {
                    LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
-                   const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+                   const layout_transformation::DebugGraphFn& debug_graph_fn = {},
+                   WorkspaceReservationMap* workspace_reservations = nullptr) const;
 
 #ifndef ORT_MINIMAL_BUILD
   // Returns true if any execution provider produced EPContext (compiled) nodes during partitioning.

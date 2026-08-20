@@ -489,7 +489,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           params.resource_accountant->AddConsumedAmount(cost_it->second);
           auto workspace_it = pass1_workspace_estimates.find(node_index);
           if (workspace_it != pass1_workspace_estimates.end()) {
-            params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
+            params.resource_accountant->AddCommittedWorkspaceEstimate(
+                node->GetContainingGraph(), node_index, workspace_it->second);
           }
         }
       }
@@ -1465,7 +1466,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                   WorkspaceReservationMap* workspace_reservations) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1476,6 +1478,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   //    preference.
   if (providers_.Empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
+  }
+  if (workspace_reservations != nullptr) {
+    workspace_reservations->clear();
   }
 
   CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
@@ -1577,6 +1582,15 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                              << ", profiled workspace=" << comparison.profiled_bytes << " bytes"
                              << ", Level-1 estimated workspace="
                              << comparison.level1_estimated_bytes << " bytes";
+        }
+        if (workspace_reservations != nullptr) {
+          auto reservations = accountant->GetCommittedWorkspaceReservations();
+          for (auto& [graph_identity, node_reservations] : reservations) {
+            auto& destination = (*workspace_reservations)[graph_identity];
+            for (auto& [node_index, selection] : node_reservations) {
+              destination.insert_or_assign(node_index, selection);
+            }
+          }
         }
       }
     }

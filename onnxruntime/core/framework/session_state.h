@@ -26,6 +26,7 @@
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
@@ -376,6 +377,10 @@ class SessionState {
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
+  void SetWorkspaceReservations(WorkspaceReservationMap workspace_reservations) {
+    workspace_reservations_ = std::move(workspace_reservations);
+  }
+
   /// <summary>
   /// Deduce the flag whether we need to enable or disable
   /// saving for pre-packed weights serialization.
@@ -464,6 +469,7 @@ class SessionState {
 
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
+  WorkspaceReservationMap workspace_reservations_;
   Graph& graph_;
   std::optional<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
 
