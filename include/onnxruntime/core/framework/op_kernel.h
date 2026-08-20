@@ -121,6 +121,9 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Returns true when the kernel can consume workspace supplied by the execution frame.
+  virtual bool SupportsPreallocatedWorkspace() const noexcept { return false; }
+
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
   //                                 gsl::span<const size_t> prepacked_buffer_sizes,

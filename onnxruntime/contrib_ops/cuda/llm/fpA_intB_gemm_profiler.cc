@@ -130,9 +130,9 @@ std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupw
 }
 
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
-  // stop to profile Cuda kernel for m >= 16
+  // Stop profiling the CUDA GEMV kernel once M reaches the GEMM-only range.
   if (tactic.enableCudaKernel) {
-    return m < 16;
+    return m < kFpAIntBGemvMaxMExclusive;
   }
   return true;
 }

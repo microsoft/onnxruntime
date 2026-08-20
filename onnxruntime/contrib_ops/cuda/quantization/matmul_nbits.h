@@ -281,13 +281,15 @@ class MatMulNBits final : public CudaKernel {
 
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). Uses the same constructed runner state that
-  // ComputeInternal() uses, so it equals the real runtime request when the queried input-A shape
-  // equals the runtime input shape. Declared only for the in-tree hierarchy; the plugin build
+  // estimate, callable after CreateKernels(). Uses the same constructed runner and cached tactic state
+  // as ComputeInternal(). It omits workspace for a known GEMV tactic and remains conservative when the
+  // queried M bucket has not been profiled. Declared only for the in-tree hierarchy; the plugin build
   // inherits the adapter OpKernel's default no-op. See DeclareWorkspaceRequirements in op_kernel.h.
   Status DeclareWorkspaceRequirements(
       gsl::span<const TensorShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+
+  bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
 #endif
 
   // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size the CUTLASS runner
@@ -301,6 +303,9 @@ class MatMulNBits final : public CudaKernel {
   // call that takes the GEMV (cuda-kernel) path or the non-fpA_intB path leaves it holding the old
   // value from the previous GEMM call. It is NOT reset between calls.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
+  bool LastComputeUsedPreallocatedWorkspace() const {
+    return last_compute_used_preallocated_workspace_.load(std::memory_order_relaxed);
+  }
 #endif
 
  private:
@@ -349,6 +354,7 @@ class MatMulNBits final : public CudaKernel {
 
   // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
   mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
+  mutable std::atomic<bool> last_compute_used_preallocated_workspace_{false};
 #endif
 };
 

@@ -2501,6 +2501,12 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
+    const bool enable_static_workspace_preallocation =
+        session_options_.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
+    ORT_RETURN_IF(enable_static_workspace_preallocation &&
+                      session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL,
+                  "Static workspace preallocation requires sequential execution mode.");
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
@@ -3318,6 +3324,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
+  const bool synchronize_execution_providers =
+      run_options.config_options.GetConfigOrDefault(
+          kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+
   // Check if this Run() can skip normal execution and replay a previously captured graph.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
@@ -3326,10 +3336,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  << " with graph annotation id: " << graph_annotation_id;
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart(session_id_);
-    bool sync_graph_replay = run_options.config_options.GetConfigOrDefault(
-                                 kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id,
-                                                                                           sync_graph_replay));
+                                                                                           synchronize_execution_providers));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -3438,7 +3446,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
       // info all execution providers InferenceSession:Run ended
       for (auto* xp : exec_providers_to_stop) {
-        bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
@@ -3455,8 +3462,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
       if (device_stream_collection) {
-        bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
-        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
+        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(synchronize_execution_providers));
       }
 #endif
     }
