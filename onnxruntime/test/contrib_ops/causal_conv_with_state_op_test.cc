@@ -3,17 +3,26 @@
 
 #include <cassert>
 #include <cmath>
+#include <numeric>
+#include <sstream>
+#include <type_traits>
+#include <unordered_map>
 #include <vector>
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/session/IOBinding.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
-
+#include "test/util/include/test_environment.h"
 namespace onnxruntime {
 namespace test {
 
@@ -913,15 +922,16 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenCausalConvWithState", 1, kMSDomain);
   ASSERT_NE(schema, nullptr);
   EXPECT_EQ(schema->inputs().size(), 5u);
-  EXPECT_EQ(schema->outputs().size(), 2u);
+  EXPECT_EQ(schema->outputs().size(), 3u);
   EXPECT_GT(schema->attributes().count("activation"), 0u);
-  EXPECT_GT(schema->attributes().count("ndim"), 0u);
-  EXPECT_GT(schema->attributes().count("state_window"), 0u);
+  EXPECT_EQ(schema->attributes().count("ndim"), 0u);
+  EXPECT_EQ(schema->attributes().count("state_window"), 0u);
+  EXPECT_GT(schema->attributes().count("max_checkpoints"), 0u);
 
   const auto bfloat16_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)");
-  EXPECT_EQ(schema->inputs()[0].GetTypes().count(bfloat16_type), 0u);
-  EXPECT_EQ(schema->inputs()[4].GetTypes().count(bfloat16_type), 0u);
-  EXPECT_EQ(schema->outputs()[1].GetTypes().count(bfloat16_type), 0u);
+  EXPECT_EQ(schema->inputs()[0].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->inputs()[4].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->outputs()[1].GetTypes().count(bfloat16_type), 1u);
 }
 
 #ifdef USE_CUDA
@@ -972,7 +982,7 @@ std::vector<float> SliceCausalConvPrefix(const std::vector<float>& src, int D, i
   return dst;
 }
 
-// A packed/ragged test case. Every request's input/past_state is generated and run through the
+// A packed/ragged test case. Every request's input/initial_state is generated and run through the
 // existing dense reference independently, with batch_size=1, and only then are the per-request
 // packed rows and state blocks concatenated into one token-major batch. No request's reference
 // computation ever sees another request's data, so packing cannot hide a cross-request leak that
@@ -983,9 +993,10 @@ struct VarlenCausalConvCase {
   int kernel_size = 3;
   std::string activation = "silu";
   bool with_bias = true;
-  bool with_past_state = false;
-  int state_window = 0;
+  bool with_initial_state = false;
+  int max_checkpoints = 0;
   bool use_fp16 = false;
+  bool use_bf16 = false;
   // When true, every request is filled with one large constant value of alternating sign instead
   // of a smooth per-request waveform, so any accidental cross-request boundary read produces an
   // unmistakably large mismatch instead of a subtle one.
@@ -1003,7 +1014,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   const int D = c.channels;
   const int K = c.kernel_size;
   const int pad = K - 1;
-  const int W = c.state_window;
+  const int W = c.max_checkpoints;
   const size_t slot_elems = static_cast<size_t>(D) * pad;
 
   std::vector<int32_t> cu_seqlens(static_cast<size_t>(B) + 1, 0);
@@ -1023,11 +1034,9 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   const std::vector<float>* bias_ptr = c.with_bias ? &bias : nullptr;
 
   std::vector<float> packed_input, packed_output;
-  std::vector<float> packed_past_state(static_cast<size_t>(B) * slot_elems, 0.0f);
-  std::vector<float> packed_present_state(static_cast<size_t>(B) * slot_elems, 0.0f);
-  const size_t window_slots = static_cast<size_t>(std::max(W, 1));
-  std::vector<float> packed_past_state_window(window_slots * B * slot_elems, -1e4f);
-  std::vector<float> packed_present_state_window(window_slots * B * slot_elems, 0.0f);
+  std::vector<float> packed_initial_state(static_cast<size_t>(B) * slot_elems, 0.0f);
+  std::vector<float> packed_final_state(static_cast<size_t>(B) * slot_elems, 0.0f);
+  std::vector<float> packed_checkpoints(static_cast<size_t>(W) * B * slot_elems, 0.0f);
 
   int seed = 0;
   for (int i = 0; i < B; i++) {
@@ -1044,12 +1053,12 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     seed += 53;
 
     std::vector<float> initial_state(slot_elems, 0.0f);
-    if (c.with_past_state) {
+    if (c.with_initial_state) {
       for (size_t idx = 0; idx < initial_state.size(); idx++) {
         initial_state[idx] = 0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f);
       }
     }
-    const std::vector<float>* past = c.with_past_state ? &initial_state : nullptr;
+    const std::vector<float>* past = &initial_state;
 
     std::vector<float> output_i, final_state_i;
     CausalConvWithStateReference(input, weight, bias_ptr, past, output_i, final_state_i,
@@ -1061,22 +1070,14 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     packed_output.insert(packed_output.end(), output_td.begin(), output_td.end());
 
     std::copy(initial_state.begin(), initial_state.end(),
-              packed_past_state.begin() + static_cast<size_t>(i) * slot_elems);
+              packed_initial_state.begin() + static_cast<size_t>(i) * slot_elems);
     std::copy(final_state_i.begin(), final_state_i.end(),
-              packed_present_state.begin() + static_cast<size_t>(i) * slot_elems);
+              packed_final_state.begin() + static_cast<size_t>(i) * slot_elems);
 
     if (W > 0) {
-      // past_state is windowed too, and only slot W-1 is read: poison the earlier slots so a
-      // stray read of them would fail the comparison below.
-      std::copy(initial_state.begin(), initial_state.end(),
-                packed_past_state_window.begin() + (static_cast<size_t>(W - 1) * B + i) * slot_elems);
-      // Slot j holds the state after this request's own first (L - W + j + 1) positions; slots
-      // for non-positive prefixes are never computed by the kernel and stay zero. Each request's
-      // own L decides which slots are non-empty, so unequal lengths in one call produce different
-      // non-zero slot ranges per request -- this is the "state_window unequal per sequence" case.
-      for (int j = 0; j < W; j++) {
-        const int prefix = L - W + j + 1;
-        if (prefix <= 0) continue;
+      ORT_ENFORCE(W <= L, "generic checkpoint comparison requires every slot to be written");
+      for (int j = 0; j < W; ++j) {
+        const int prefix = j + 1;
         std::vector<float> slot_state;
         if (prefix == L) {
           slot_state = final_state_i;
@@ -1087,7 +1088,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
                                        1, D, prefix, K, c.activation);
         }
         std::copy(slot_state.begin(), slot_state.end(),
-                  packed_present_state_window.begin() + (static_cast<size_t>(j) * B + i) * slot_elems);
+                  packed_checkpoints.begin() + (static_cast<size_t>(j) * B + i) * slot_elems);
       }
     }
   }
@@ -1095,28 +1096,21 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<std::string>("activation", c.activation);
   if (W > 0) {
-    tester.AddAttribute<int64_t>("state_window", static_cast<int64_t>(W));
+    tester.AddAttribute<int64_t>("max_checkpoints", static_cast<int64_t>(W));
   }
 
   const std::vector<int64_t> cu_seqlens_dims = {B + 1};
   const std::vector<int64_t> input_dims = {total_tokens, D};
   const std::vector<int64_t> weight_dims = {D, 1, K};
   const std::vector<int64_t> bias_dims = {D};
-  std::vector<int64_t> state_dims;
-  if (W > 0) {
-    state_dims = {W, B, D, pad};
-  } else {
-    state_dims = {B, D, pad};
-  }
-
-  const std::vector<float>& past_state_flat = W > 0 ? packed_past_state_window : packed_past_state;
-  const std::vector<float>& present_state_flat = W > 0 ? packed_present_state_window : packed_present_state;
+  const std::vector<int64_t> state_dims = {B, D, pad};
+  const std::vector<int64_t> checkpoint_dims = {W, B, D, pad};
 
   // OpTester::AddOutput takes (sort_output, rel_error, abs_error); a single shared tolerance
   // plays both roles here since ragged packing/unpacking is exact and float error is small.
   const float tol = c.use_fp16 ? 0.02f : 0.01f;
 
-  if (!c.use_fp16) {
+  if (!c.use_fp16 && !c.use_bf16) {
     tester.AddInput<float>("input", input_dims, packed_input);
     tester.AddInput<float>("weight", weight_dims, weight);
     tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens);
@@ -1125,14 +1119,15 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     } else {
       tester.AddOptionalInputEdge<float>();
     }
-    if (c.with_past_state) {
-      tester.AddInput<float>("past_state", state_dims, past_state_flat);
-    } else {
-      tester.AddOptionalInputEdge<float>();
-    }
+    tester.AddInput<float>("initial_state", state_dims, packed_initial_state);
     tester.AddOutput<float>("output", input_dims, packed_output, false, tol, tol);
-    tester.AddOutput<float>("present_state", state_dims, present_state_flat, false, tol, tol);
-  } else {
+    tester.AddOutput<float>("final_state", state_dims, packed_final_state, false, tol, tol);
+    if (W > 0) {
+      tester.AddOutput<float>("prefix_states", checkpoint_dims, packed_checkpoints, false, tol, tol);
+    } else {
+      tester.AddOptionalOutputEdge<float>();
+    }
+  } else if (c.use_fp16) {
     tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(packed_input));
     tester.AddInput<MLFloat16>("weight", weight_dims, ToFloat16(weight));
     tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens);
@@ -1141,13 +1136,27 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     } else {
       tester.AddOptionalInputEdge<MLFloat16>();
     }
-    if (c.with_past_state) {
-      tester.AddInput<MLFloat16>("past_state", state_dims, ToFloat16(past_state_flat));
-    } else {
-      tester.AddOptionalInputEdge<MLFloat16>();
-    }
+    tester.AddInput<MLFloat16>("initial_state", state_dims, ToFloat16(packed_initial_state));
     tester.AddOutput<MLFloat16>("output", input_dims, ToFloat16(packed_output), false, tol, tol);
-    tester.AddOutput<MLFloat16>("present_state", state_dims, ToFloat16(present_state_flat), false, tol, tol);
+    tester.AddOutput<MLFloat16>("final_state", state_dims, ToFloat16(packed_final_state), false, tol, tol);
+    if (W > 0) {
+      tester.AddOutput<MLFloat16>("prefix_states", checkpoint_dims, ToFloat16(packed_checkpoints), false, tol, tol);
+    } else {
+      tester.AddOptionalOutputEdge<MLFloat16>();
+    }
+  } else {
+    tester.AddInput<BFloat16>("input", input_dims, ToBFloat16(packed_input));
+    tester.AddInput<BFloat16>("weight", weight_dims, ToBFloat16(weight));
+    tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens);
+    if (c.with_bias) {
+      tester.AddInput<BFloat16>("bias", bias_dims, ToBFloat16(bias));
+    } else {
+      tester.AddOptionalInputEdge<BFloat16>();
+    }
+    tester.AddInput<BFloat16>("initial_state", state_dims, ToBFloat16(packed_initial_state));
+    tester.AddOutput<BFloat16>("output", input_dims, ToBFloat16(packed_output), false, 0.02f, 0.02f);
+    tester.AddOutput<BFloat16>("final_state", state_dims, ToBFloat16(packed_final_state), false, 0.02f, 0.02f);
+    tester.AddOptionalOutputEdge<BFloat16>();
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -1163,14 +1172,13 @@ TEST(ContribOpVarlenCausalConvWithStateTest, UnequalLengths) {
   RunVarlenCausalConvCase(c);
 }
 
-// Every request contributes exactly one token, selecting the all-ones decode fast path
-// (cu_seqlens is never read on device). A windowed past state also verifies that decode writes
-// only slot W-1 and leaves earlier slots zeroed.
+// Every request contributes exactly one token, selecting the all-ones decode fast path. The
+// path must still read and validate each exact [b, b + 1] interval.
 TEST(ContribOpVarlenCausalConvWithStateTest, AllOnesDecode) {
   VarlenCausalConvCase c;
   c.seq_lens = {1, 1, 1, 1};
-  c.with_past_state = true;
-  c.state_window = 3;
+  c.with_initial_state = true;
+  c.max_checkpoints = 1;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1180,10 +1188,10 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SingleRequestPrefill) {
   RunVarlenCausalConvCase(c);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, WithPastState) {
+TEST(ContribOpVarlenCausalConvWithStateTest, WithInitialState) {
   VarlenCausalConvCase c;
   c.seq_lens = {3, 1, 2};
-  c.with_past_state = true;
+  c.with_initial_state = true;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1232,31 +1240,54 @@ TEST(ContribOpVarlenCausalConvWithStateTest, KernelSize5) {
 TEST(ContribOpVarlenCausalConvWithStateTest, ManyChannels) {
   VarlenCausalConvCase c;
   c.seq_lens = {5, 2, 4};
-  c.channels = 16;
+  // Exceeds the general kernel's 256-channel tile so the final partial tile,
+  // block-to-request mapping, and contiguous channel accesses are exercised.
+  c.channels = 513;
   RunVarlenCausalConvCase(c);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, StateWindowUnequalLengths) {
+TEST(ContribOpVarlenCausalConvWithStateTest, SharedStateShrinksToPartialWarpAlignedTiles) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {2, 1};
+  // For float, K=50 supports at most 250 channels by shared-memory budget.
+  // C=225 is rounded down to a 224-thread tile, leaving one partial tile.
+  c.channels = 225;
+  c.kernel_size = 50;
+  c.with_initial_state = true;
+  c.max_checkpoints = 1;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, SharedStateShrinksBelowOneWarp) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {2, 1};
+  // For float, K=386 permits only 31 channels in the 48-KiB budget.
+  c.channels = 33;
+  c.kernel_size = 386;
+  c.with_initial_state = true;
+  c.max_checkpoints = 1;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, RaggedPrefixCheckpoints) {
   VarlenCausalConvCase c;
   c.seq_lens = {3, 1, 2};
-  c.state_window = 3;
+  c.max_checkpoints = 1;
   RunVarlenCausalConvCase(c);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, StateWindowWithPastState) {
+TEST(ContribOpVarlenCausalConvWithStateTest, EveryCheckpointMatchesRepeatedPrefixes) {
   VarlenCausalConvCase c;
-  c.seq_lens = {3, 1, 2};
-  c.state_window = 4;
-  c.with_past_state = true;
+  c.seq_lens = {4, 3, 5};
+  c.max_checkpoints = 3;
+  c.with_initial_state = true;
   RunVarlenCausalConvCase(c);
 }
 
-// W wider than every packed request's own length: the leading slots for every request come back
-// zeroed rather than as uninitialized device memory.
-TEST(ContribOpVarlenCausalConvWithStateTest, StateWindowWiderThanEverySequence) {
+TEST(ContribOpVarlenCausalConvWithStateTest, CheckpointOutputOmitted) {
   VarlenCausalConvCase c;
   c.seq_lens = {2, 1, 2};
-  c.state_window = 5;
+  c.max_checkpoints = 0;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1267,11 +1298,19 @@ TEST(ContribOpVarlenCausalConvWithStateTest, Float16) {
   RunVarlenCausalConvCase(c);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, Float16WithPastState) {
+TEST(ContribOpVarlenCausalConvWithStateTest, Float16WithInitialState) {
   VarlenCausalConvCase c;
   c.seq_lens = {2, 4};
-  c.with_past_state = true;
+  c.with_initial_state = true;
   c.use_fp16 = true;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, BFloat16) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {2, 3};
+  c.with_initial_state = true;
+  c.use_bf16 = true;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1285,25 +1324,25 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AdjacentDistinctRequestsNoState) {
   c.seq_lens = {4, 4, 4};
   c.kernel_size = 3;
   c.with_bias = false;
-  c.with_past_state = false;
+  c.with_initial_state = false;
   c.adversarial_constants = true;
   RunVarlenCausalConvCase(c);
 }
 
-// Same adversarial values, but with a state_window so both the convolution sum and every window
-// slot write are checked for boundary leaks at once.
-TEST(ContribOpVarlenCausalConvWithStateTest, AdjacentDistinctRequestsNoStateWithWindow) {
+// Same adversarial values, with prefix checkpoints so convolution, final-state, and checkpoint
+// writes are all checked for request-boundary leaks.
+TEST(ContribOpVarlenCausalConvWithStateTest, AdjacentDistinctRequestsWithCheckpoints) {
   VarlenCausalConvCase c;
   c.seq_lens = {4, 4, 4};
   c.kernel_size = 3;
   c.with_bias = false;
-  c.with_past_state = false;
+  c.with_initial_state = false;
   c.adversarial_constants = true;
-  c.state_window = 3;
+  c.max_checkpoints = 3;
   RunVarlenCausalConvCase(c);
 }
 
-// present_state from one packed call feeds past_state for the next, with the same request
+// final_state from one packed call feeds initial_state for the next, with the same request
 // lengths each call (the shape a continuous-batching decode step actually reuses), and two
 // requests carried simultaneously so a slot mix-up between them would be caught. Mirrors the
 // dense StateContinuity test's technique of chaining through the reference's own carried state.
@@ -1368,18 +1407,188 @@ TEST(ContribOpVarlenCausalConvWithStateTest, MultiCallStateCarry) {
     tester.AddInput<float>("weight", weight_dims, weight);
     tester.AddInput<int32_t>("cumulative_sequence_length", {B + 1}, cu_seqlens);
     tester.AddInput<float>("bias", bias_dims, bias);
-    if (call == 0) {
-      tester.AddOptionalInputEdge<float>();
-    } else {
-      tester.AddInput<float>("past_state", state_dims, packed_past_state);
-    }
+    tester.AddInput<float>("initial_state", state_dims, packed_past_state);
     tester.AddOutput<float>("output", input_dims, packed_output, false, 0.01f, 0.01f);
-    tester.AddOutput<float>("present_state", state_dims, packed_present_state, false, 0.01f, 0.01f);
+    tester.AddOutput<float>("final_state", state_dims, packed_present_state, false, 0.01f, 0.01f);
+    tester.AddOptionalOutputEdge<float>();
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(std::move(ep));
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
+}
+
+static void RunAliasedStateTwoCallContinuationIOBinding(
+    int total_tokens,
+    int kernel_size,
+    const std::vector<float>& expected_output,
+    const std::vector<float>& expected_state) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  const int pad = kernel_size - 1;
+
+  std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+  std::vector<ONNX_NAMESPACE::FunctionProto> functions;
+  auto model = std::make_unique<Model>(
+      "varlen_causal_conv_alias", true, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, functions,
+      DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model->MainGraph();
+  std::vector<ONNX_NAMESPACE::TypeProto> types;
+  types.reserve(7);
+  auto tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
+    types.emplace_back();
+    auto* type = &types.back();
+    type->mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t dim : dims) {
+      type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+    return type;
+  };
+  auto& input_arg = graph.GetOrCreateNodeArg(
+      "input", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+  auto& weight_arg = graph.GetOrCreateNodeArg(
+      "weight", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, kernel_size}));
+  auto& offsets_arg = graph.GetOrCreateNodeArg(
+      "cumulative_sequence_length",
+      tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto& state_arg = graph.GetOrCreateNodeArg(
+      "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, pad}));
+  auto& output_arg = graph.GetOrCreateNodeArg(
+      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+  auto& final_arg = graph.GetOrCreateNodeArg(
+      "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, pad}));
+  std::vector<NodeArg*> inputs = {&input_arg, &weight_arg, &offsets_arg, &empty, &state_arg};
+  std::vector<NodeArg*> outputs = {&output_arg, &final_arg};
+  auto& node = graph.AddNode("varlen", "VarlenCausalConvWithState", "alias continuation",
+                             inputs, outputs, nullptr, kMSDomain);
+  node.SetExecutionProviderType(kCudaExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model->ToProto().SerializeToString(&serialized));
+  std::stringstream stream(serialized);
+  SessionOptions options;
+  InferenceSession session(options, GetEnvironment());
+  IExecutionProvider* ep_ptr = ep.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+  auto allocators = ep_ptr->CreatePreferredAllocators();
+  const OrtMemoryInfo* gpu_info = nullptr;
+  for (const auto& allocator : allocators) {
+    if (allocator->Info().device.Type() == OrtDevice::GPU &&
+        allocator->Info().mem_type == OrtMemTypeDefault) {
+      gpu_info = &allocator->Info();
+    }
+  }
+  ASSERT_NE(gpu_info, nullptr);
+  const OrtMemoryInfo copied_gpu_info = *gpu_info;
+  ASSERT_STATUS_OK(session.Load(stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto gpu_alloc = session.GetAllocator(copied_gpu_info);
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  auto make_gpu = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
+    using Elem = typename std::decay_t<decltype(data)>::value_type;
+    Tensor cpu(data_type, shape, const_cast<Elem*>(data.data()), cpu_alloc->Info());
+    Tensor gpu(data_type, shape, gpu_alloc);
+    ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, gpu));
+    OrtValue result;
+    Tensor::InitOrtValue(std::move(gpu), result);
+    return result;
+  };
+  std::vector<float> input(static_cast<size_t>(total_tokens));
+  std::iota(input.begin(), input.end(), 1.0f);
+  auto input_value = make_gpu(input, DataTypeImpl::GetType<float>(),
+                              TensorShape({total_tokens, 1}));
+  auto weight_value = make_gpu(std::vector<float>(static_cast<size_t>(kernel_size), 1.0f),
+                               DataTypeImpl::GetType<float>(), TensorShape({1, 1, kernel_size}));
+  auto offsets_value = make_gpu(std::vector<int32_t>{0, total_tokens}, DataTypeImpl::GetType<int32_t>(),
+                                TensorShape({2}));
+  auto state_value = make_gpu(std::vector<float>(static_cast<size_t>(pad)),
+                              DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}));
+  auto output_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens)),
+                               DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
+
+  std::unique_ptr<IOBinding> binding;
+  ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+  ASSERT_STATUS_OK(binding->BindInput("input", input_value));
+  ASSERT_STATUS_OK(binding->BindInput("weight", weight_value));
+  ASSERT_STATUS_OK(binding->BindInput("cumulative_sequence_length", offsets_value));
+  ASSERT_STATUS_OK(binding->BindInput("initial_state", state_value));
+  ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
+  ASSERT_STATUS_OK(binding->BindOutput("final_state", state_value));
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  ASSERT_EQ(binding->GetOutputs().size(), 2u);
+  EXPECT_EQ(binding->GetOutputs()[1].Get<Tensor>().Data<float>(),
+            state_value.Get<Tensor>().Data<float>());
+
+  std::vector<float> actual_state(static_cast<size_t>(pad));
+  Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}),
+                    actual_state.data(), cpu_alloc->Info());
+  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
+  EXPECT_EQ(actual_state, expected_state);
+
+  std::vector<float> actual_output(static_cast<size_t>(total_tokens));
+  Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}),
+                    actual_output.data(), cpu_alloc->Info());
+  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+  EXPECT_EQ(actual_output, expected_output);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedGeneralKernelTwoCallContinuation) {
+  RunAliasedStateTwoCallContinuationIOBinding(
+      3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize1TwoCallContinuation) {
+  RunAliasedStateTwoCallContinuationIOBinding(1, 1, {1.0f}, {});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize2TwoCallContinuation) {
+  RunAliasedStateTwoCallContinuationIOBinding(1, 2, {2.0f}, {1.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize3TwoCallContinuation) {
+  RunAliasedStateTwoCallContinuationIOBinding(1, 3, {2.0f}, {1.0f, 1.0f});
+}
+
+static void RunMalformedCuSeqlens(const std::vector<int32_t>& cu_seqlens, int total_tokens) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  const int batch_size = static_cast<int>(cu_seqlens.size()) - 1;
+  OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
+  tester.AddInput<float>("input", {total_tokens, 1}, std::vector<float>(total_tokens, 1.0f));
+  tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("initial_state", {batch_size, 1, 1},
+                         std::vector<float>(batch_size, 7.0f));
+  tester.AddOutput<float>("output", {total_tokens, 1}, std::vector<float>(total_tokens));
+  tester.AddOutput<float>("final_state", {batch_size, 1, 1},
+                          std::vector<float>(batch_size));
+  tester.AddOptionalOutputEdge<float>();
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, MalformedOffsetsAreContained) {
+  RunMalformedCuSeqlens({0, -1, 3}, 3);
+  RunMalformedCuSeqlens({0, 2, 1, 3}, 3);
+  RunMalformedCuSeqlens({0, 1, 4}, 3);
+  RunMalformedCuSeqlens({1, 2, 3}, 3);
+  RunMalformedCuSeqlens({0, 1, 2}, 3);
+  RunMalformedCuSeqlens({0, 2, 1, 4}, 4);
 }
 
 // Host-verifiable shape errors: these check rank/shape relationships computed purely from tensor
@@ -1393,7 +1602,7 @@ static void RunVarlenCausalConvShapeFailure(
     const std::vector<int64_t>& output_dims,
     const std::vector<int64_t>& state_dims,
     const std::string& expected_error,
-    const std::vector<int64_t>& past_state_dims = {}) {
+    const std::vector<int64_t>& initial_state_dims = {}) {
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "CUDA execution provider not available";
@@ -1412,14 +1621,12 @@ static void RunVarlenCausalConvShapeFailure(
   tester.AddInput<float>("weight", weight_dims, std::vector<float>(element_count(weight_dims), 0.1f));
   tester.AddInput<int32_t>("cumulative_sequence_length", cu_seqlens_dims, cu_seqlens_data);
   tester.AddOptionalInputEdge<float>();  // bias
-  if (past_state_dims.empty()) {
-    tester.AddOptionalInputEdge<float>();
-  } else {
-    tester.AddInput<float>("past_state", past_state_dims,
-                           std::vector<float>(element_count(past_state_dims), 0.0f));
-  }
+  const auto& actual_state_dims = initial_state_dims.empty() ? state_dims : initial_state_dims;
+  tester.AddInput<float>("initial_state", actual_state_dims,
+                         std::vector<float>(element_count(actual_state_dims), 0.0f));
   tester.AddOutput<float>("output", output_dims, std::vector<float>(element_count(output_dims), 0.0f));
-  tester.AddOutput<float>("present_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
+  tester.AddOutput<float>("final_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
+  tester.AddOptionalOutputEdge<float>();
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
@@ -1456,9 +1663,41 @@ TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsWeightMidDimNotOne) {
                                   "must be 1 for depthwise convolution");
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsPastStateShapeWithVarlenDiagnostic) {
+TEST(ContribOpVarlenCausalConvWithStateTest, CudaRejectsInitialStateShape) {
   RunVarlenCausalConvShapeFailure({3, 4}, {4, 1, 2}, {2}, {0, 3}, {3, 4}, {1, 4, 1},
-                                  "VarlenCausalConvWithState uses", {2, 4, 1});
+                                  "initial_state must have shape", {2, 4, 1});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, InitialStateIsRequired) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+  OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("input", {1, 1}, {1.0f});
+  tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1}, {1.0f});
+  tester.AddOutput<float>("final_state", {1, 1, 1}, {1.0f});
+  tester.AddOptionalOutputEdge<float>();
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, MaxCheckpointsIsBounded) {
+  OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("max_checkpoints", 9);
+  tester.AddInput<float>("input", {1, 1}, {1.0f});
+  tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("initial_state", {1, 1, 1}, {0.0f});
+  tester.AddOutput<float>("output", {1, 1}, {1.0f});
+  tester.AddOutput<float>("final_state", {1, 1, 1}, {1.0f});
+  tester.AddOptionalOutputEdge<float>();
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "max_checkpoints must be in [0, 8]");
 }
 #endif  // USE_CUDA
 

@@ -7012,24 +7012,35 @@ This version of the operator has been available since version 1 of the 'com.micr
   Stateful causal depthwise convolution over a packed, token-major batch of variable-length
   sequences (CUDA only).
   
-  input holds every sequence's tokens back to back along axis 0, with shape
-  (total_tokens, channels). cumulative_sequence_length is a device tensor of shape
-  (batch_size + 1); sequence i occupies the half-open token range
+  input and output have shape (total_tokens, channels). cumulative_sequence_length is a
+  device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
   [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
-  at least one token, so offsets are strictly increasing and offsets[0] == 0. The convolution
-  never reads across a sequence boundary: for a kernel tap that lands before a sequence's first
-  token, the value comes from that sequence's past_state (or zero when past_state is absent).
+  at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
+  (channels). The convolution never reads across a sequence boundary.
   
-  Weight layout: (channels, 1, kernel_size) for depthwise convolution. ndim must be 1.
-  The optional activation attribute supports fused SiLU/Swish.
+  initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+  the committed raw activation samples immediately preceding this call. final_state has the same
+  shape and type and is fully written with the state after each sequence's final token. State
+  uses the activation type because it stores raw samples, not accumulated convolution values.
+  initial_state and final_state may use the same allocation. Such in-place execution is
+  transaction-safe only when the whole operator call is unconditionally committed; a caller that
+  may select a prefix or roll back must preserve initial_state and commit one of the separately
+  produced states instead.
   
-  past_state / present_state hold the trailing (kernel_size - 1) carry values per sequence, with
-  shape (batch_size, channels, kernel_size - 1), or (state_window, batch_size, channels,
-  kernel_size - 1) when state_window = W > 0. The window axis is right-aligned per sequence: for
-  a sequence of length L, local token t writes slot t + W - L when that index is non-negative,
-  so slot W - 1 always holds the state after the sequence's last token and is the only slot
-  past_state is read from. batch_size is cumulative_sequence_length's length minus one, not the
-  packed token count.
+  When requested, prefix_states has shape
+  (max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
+  after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
+  unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
+  This output lets a transactional caller commit any produced prefix without rerunning the
+  convolution.
+  
+  For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
+  cumulative_sequence_length[batch_size] == total_tokens, and its local range
+  0 <= start < end <= total_tokens before accessing input, state, output, or checkpoints.
+  Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
+  This device-side containment is not a synchronous validation or rejection mechanism.
+  
+  The optional activation attribute supports none, SiLU, and Swish.
 
 #### Version
 
@@ -7040,13 +7051,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
-<dt><tt>ndim</tt> : int</dt>
-<dd>Spatial dimensionality. Must be 1: the packed token axis is the causal axis.</dd>
-<dt><tt>state_window</tt> : int</dt>
-<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after each sequence's last position, i.e. (batch_size, channels, kernel_size - 1). When W > 0 both gain a LEADING axis of extent W, right-aligned per sequence as described in the operator summary. Valid range is [0, 8].</dd>
+<dt><tt>max_checkpoints</tt> : int</dt>
+<dd>Static number of per-request prefix states to expose. Checkpoint j is the state after local token j when that token exists. Unwritten slots are unspecified. Valid range is [0, 8].</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (5 - 5)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -7056,24 +7065,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
 <dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
-<dd>Optional per-channel bias with shape (channels).</dd>
-<dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Carry state from the previous call. Shape (batch_size, channels, kernel_size - 1), or (state_window, batch_size, channels, kernel_size - 1) when state_window > 0, in which case only slot state_window - 1 is read. If not provided, padding is zero for every sequence.</dd>
+<dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
+<dt><tt>initial_state</tt> : T</dt>
+<dd>Required committed carry state with shape (batch_size, channels, kernel_size - 1).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Token-major convolution output with the same shape as input.</dd>
-<dt><tt>present_state</tt> : T</dt>
-<dd>Updated carry state, one per sequence, with the same shape as past_state would have.</dd>
+<dt><tt>final_state</tt> : T</dt>
+<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, kernel_size - 1).</dd>
+<dt><tt>prefix_states</tt> (optional) : T</dt>
+<dd>Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, kernel_size - 1). Unwritten slots are unspecified.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>

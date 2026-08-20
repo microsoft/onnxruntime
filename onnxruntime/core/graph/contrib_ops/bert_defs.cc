@@ -2682,24 +2682,35 @@ constexpr const char* VarlenCausalConvWithState_ver1_doc = R"DOC(
 Stateful causal depthwise convolution over a packed, token-major batch of variable-length
 sequences (CUDA only).
 
-input holds every sequence's tokens back to back along axis 0, with shape
-(total_tokens, channels). cumulative_sequence_length is a device tensor of shape
-(batch_size + 1); sequence i occupies the half-open token range
+input and output have shape (total_tokens, channels). cumulative_sequence_length is a
+device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
 [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
-at least one token, so offsets are strictly increasing and offsets[0] == 0. The convolution
-never reads across a sequence boundary: for a kernel tap that lands before a sequence's first
-token, the value comes from that sequence's past_state (or zero when past_state is absent).
+at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
+(channels). The convolution never reads across a sequence boundary.
 
-Weight layout: (channels, 1, kernel_size) for depthwise convolution. ndim must be 1.
-The optional activation attribute supports fused SiLU/Swish.
+initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+the committed raw activation samples immediately preceding this call. final_state has the same
+shape and type and is fully written with the state after each sequence's final token. State
+uses the activation type because it stores raw samples, not accumulated convolution values.
+initial_state and final_state may use the same allocation. Such in-place execution is
+transaction-safe only when the whole operator call is unconditionally committed; a caller that
+may select a prefix or roll back must preserve initial_state and commit one of the separately
+produced states instead.
 
-past_state / present_state hold the trailing (kernel_size - 1) carry values per sequence, with
-shape (batch_size, channels, kernel_size - 1), or (state_window, batch_size, channels,
-kernel_size - 1) when state_window = W > 0. The window axis is right-aligned per sequence: for
-a sequence of length L, local token t writes slot t + W - L when that index is non-negative,
-so slot W - 1 always holds the state after the sequence's last token and is the only slot
-past_state is read from. batch_size is cumulative_sequence_length's length minus one, not the
-packed token count.
+When requested, prefix_states has shape
+(max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
+after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
+unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
+This output lets a transactional caller commit any produced prefix without rerunning the
+convolution.
+
+For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
+cumulative_sequence_length[batch_size] == total_tokens, and its local range
+0 <= start < end <= total_tokens before accessing input, state, output, or checkpoints.
+Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
+This device-side containment is not a synchronous validation or rejection mechanism.
+
+The optional activation attribute supports none, SiLU, and Swish.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2711,16 +2722,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default is 'none'.",
               AttributeProto::STRING,
               std::string("none"))
-        .Attr("ndim",
-              "Spatial dimensionality. Must be 1: the packed token axis is the causal axis.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("state_window",
-              "Number of trailing per-position carry states held by past_state and "
-              "present_state. When 0 (default) the state tensors have no window axis and hold "
-              "only the state after each sequence's last position, i.e. "
-              "(batch_size, channels, kernel_size - 1). When W > 0 both gain a LEADING axis of "
-              "extent W, right-aligned per sequence as described in the operator summary. "
+        .Attr("max_checkpoints",
+              "Static number of per-request prefix states to expose. Checkpoint j is the state "
+              "after local token j when that token exists. Unwritten slots are unspecified. "
               "Valid range is [0, 8].",
               AttributeProto::INT,
               static_cast<int64_t>(0))
@@ -2739,28 +2743,33 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(3,
                "bias",
-               "Optional per-channel bias with shape (channels).",
+               "Optional per-channel bias with shape (channels). Because the following "
+               "initial_state input is required, an omitted bias must still occupy this "
+               "position as an empty input name so initial_state stays at input index 4.",
                "T",
                OpSchema::Optional)
         .Input(4,
-               "past_state",
-               "Carry state from the previous call. Shape (batch_size, channels, "
-               "kernel_size - 1), or (state_window, batch_size, channels, kernel_size - 1) when "
-               "state_window > 0, in which case only slot state_window - 1 is read. If not "
-               "provided, padding is zero for every sequence.",
-               "T",
-               OpSchema::Optional)
+               "initial_state",
+               "Required committed carry state with shape "
+               "(batch_size, channels, kernel_size - 1).",
+               "T")
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
                 "T")
         .Output(1,
-                "present_state",
-                "Updated carry state, one per sequence, with the same shape as past_state "
-                "would have.",
+                "final_state",
+                "Fully written state after each sequence's final token, with shape "
+                "(batch_size, channels, kernel_size - 1).",
                 "T")
+        .Output(2,
+                "prefix_states",
+                "Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, "
+                "kernel_size - 1). Unwritten slots are unspecified.",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},
@@ -2768,23 +2777,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
-
-          const int64_t state_window = getAttribute(ctx, "state_window", 0);
-          if (state_window < 0 || state_window > kMaxStateWindow) {
-            fail_shape_inference("VarlenCausalConvWithState: state_window must be in [0, ",
-                                 kMaxStateWindow, "], got ", state_window);
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 2);
           }
-          const int64_t ndim = getAttribute(ctx, "ndim", 1);
-          if (ndim != 1) {
-            fail_shape_inference("VarlenCausalConvWithState: ndim must be 1, got ", ndim);
+
+          const int64_t max_checkpoints = getAttribute(ctx, "max_checkpoints", 0);
+          if (max_checkpoints < 0 || max_checkpoints > kMaxStateWindow) {
+            fail_shape_inference("VarlenCausalConvWithState: max_checkpoints must be in [0, ",
+                                 kMaxStateWindow, "], got ", max_checkpoints);
           }
 
           // Output 0: same shape as input (total_tokens, channels)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
-          // Output 1: present_state shape (batch_size, channels, kernel_size - 1), or
-          // (state_window, batch_size, channels, kernel_size - 1). batch_size always comes from
-          // cumulative_sequence_length, never from the packed token dimension.
+          // State shapes use batch_size from cumulative_sequence_length, never total_tokens.
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
@@ -2816,9 +2822,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
 
             TensorShapeProto state_shape;
-            if (state_window > 0) {
-              state_shape.add_dim()->set_dim_value(state_window);
-            }
             // batch_size = cumulative_sequence_length.dim(0) - 1
             if (cu_dim.has_dim_value()) {
               state_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
@@ -2832,6 +2835,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               state_shape.add_dim();  // unknown kernel_size - 1
             }
             updateOutputShape(ctx, 1, state_shape);
+
+            if (ctx.getNumOutputs() > 2) {
+              TensorShapeProto checkpoint_shape;
+              checkpoint_shape.add_dim()->set_dim_value(max_checkpoints);
+              for (const auto& dim : state_shape.dim()) {
+                *checkpoint_shape.add_dim() = dim;
+              }
+              updateOutputShape(ctx, 2, checkpoint_shape);
+            }
           }
         }));
 
