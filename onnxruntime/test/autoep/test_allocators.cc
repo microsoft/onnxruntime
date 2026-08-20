@@ -121,6 +121,11 @@ TEST(SharedAllocators, EpRegistrationPreservesEquivalentCustomAllocator) {
 
   allocator = ort_env->GetSharedAllocator(custom_memory_info);
   ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &dummy_allocator);
+
+  example_ep.reset();
+
+  allocator = ort_env->GetSharedAllocator(custom_memory_info);
+  ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &dummy_allocator);
 }
 
 TEST(SharedAllocators, GetSharedAllocator) {

@@ -147,6 +147,7 @@ Status Environment::RegisterAllocator(OrtAllocator* allocator) {
   if (status.IsOK()) {
     if (auto it = FindExistingAllocator(shared_ort_allocators_, *allocator->Info(allocator), /*match_name*/ true);
         it != shared_ort_allocators_.end()) {
+      ep_allocator_owners_.erase(*it);
       shared_ort_allocators_.erase(it);
     }
 
@@ -188,6 +189,7 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
 
   // shared_ort_allocators_ are internal only so never an error if there's no match
   if (auto it2 = FindExistingAllocator(shared_ort_allocators_, mem_info); it2 != shared_ort_allocators_.end()) {
+    ep_allocator_owners_.erase(*it2);
     shared_ort_allocators_.erase(it2);
   }
 
@@ -475,6 +477,7 @@ Environment::~Environment() {
   // and as any OrtAllocator instances in shared_ort_allocators_ were owned by values in shared_allocators_ and have
   // now been released we need to clear that too before calling UnregisterExecutionProviderLibrary().
   shared_ort_allocators_.clear();
+  ep_allocator_owners_.clear();
 
 #if !defined(ORT_MINIMAL_BUILD)
   // unregister any remaining EP libraries so they're cleaned up in a determistic way.
@@ -713,15 +716,26 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
         execution_devices_.erase(it);
       }
 
-      // unregister any shared allocators.
-      // match only the OrtEpDevice allocator in case the user registered a custom allocator with matching info.
-      const bool error_if_not_found = false;
+      // Only unregister allocators created by this EP. An equivalent allocator may instead have been registered by
+      // the user or created by another EP.
+      const auto unregister_ep_allocator = [&](const OrtMemoryInfo& memory_info) -> Status {
+        auto allocator = FindExistingAllocator(shared_ort_allocators_, memory_info);
+        if (allocator != shared_ort_allocators_.end()) {
+          auto owner = ep_allocator_owners_.find(*allocator);
+          if (owner != ep_allocator_owners_.end() && owner->second == ed->ep_factory) {
+            return UnregisterAllocatorImpl(memory_info, /*error_if_not_found*/ false);
+          }
+        }
+
+        return Status::OK();
+      };
+
       if (ed->device_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(*ed->device_memory_info, error_if_not_found));
+        ORT_RETURN_IF_ERROR(unregister_ep_allocator(*ed->device_memory_info));
       }
 
       if (ed->host_accessible_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(*ed->host_accessible_memory_info, error_if_not_found));
+        ORT_RETURN_IF_ERROR(unregister_ep_allocator(*ed->host_accessible_memory_info));
       }
     }
 
@@ -855,6 +869,7 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   // shared_ort_allocators_.
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
+    ep_allocator_owners_.erase(*it);
     shared_ort_allocators_.erase(it);
   }
 
@@ -883,6 +898,7 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                                              });
 
   shared_ort_allocators_.insert(allocator);
+  ep_allocator_owners_[allocator] = ep_factory;
 
   // Wrap as IArena when the plugin allocator implements Shrink(), making it
   // discoverable by session-level arena management (e.g. ShrinkMemoryArenas).
