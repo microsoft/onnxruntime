@@ -56,7 +56,6 @@ namespace gated_delta_net {
 
 namespace {
 
-constexpr int kBT = 64;   // chunk length
 constexpr int kDVB = 64;  // v columns owned by one CTA in the chunked engine
 constexpr int kChunkedThreads = 512;
 constexpr int kChunkedWarps = kChunkedThreads / 32;
@@ -64,12 +63,12 @@ constexpr int kChunkedWarps = kChunkedThreads / 32;
 // Padded leading dimensions. A row stride of DK halves (256 B) makes every mma fragment
 // load hit the same shared-memory bank across the 8 rows a warp reads, costing an 8-way
 // conflict per load; +8 halves (+4 floats) staggers them.
-template <int DK>
+template <int DK, int BT>
 struct Ld {
   static constexpr int kKh = DK + 8;
   static constexpr int kVh = kDVB + 8;
-  static constexpr int kMh = kBT + 8;
-  static constexpr int kVf = (kDVB > kBT ? kDVB : kBT) + 4;
+  static constexpr int kMh = BT + 8;
+  static constexpr int kVf = (kDVB > BT ? kDVB : BT) + 4;
 };
 
 __device__ __forceinline__ float SoftPlus(float x) {
@@ -212,8 +211,20 @@ __device__ __forceinline__ void SmemGemm(float* C, int ldc, const __half* A, int
   }
 }
 
-__device__ __forceinline__ void InclusiveScan64(float* x, int tid) {
+template <int BT>
+__device__ __forceinline__ void InclusiveScanBT(float* x, int tid) {
+  static_assert(BT == 32 || BT == 64, "chunk length must be 32 or 64");
   if (tid >= 32) return;
+  if (BT == 32) {
+    float a = x[tid];
+#pragma unroll
+    for (int off = 1; off < 32; off <<= 1) {
+      float ta = __shfl_up_sync(0xffffffff, a, off);
+      if (tid >= off) a += ta;
+    }
+    x[tid] = a;
+    return;
+  }
   float a = x[tid], b = x[tid + 32];
 #pragma unroll
   for (int off = 1; off < 32; off <<= 1) {
@@ -229,7 +240,7 @@ __device__ __forceinline__ void InclusiveScan64(float* x, int tid) {
   x[tid + 32] = b + total;
 }
 
-template <int DK>
+template <int DK, int BT>
 struct ChunkedSmem {
   __half* k_h;   // [BT][LdKh]  k, scaled in place to Kd late in the chunk
   __half* q_h;   // [BT][LdKh]  q, scaled in place to Qg late in the chunk
@@ -246,41 +257,41 @@ struct ChunkedSmem {
   float* beta;   // [BT]
 };
 
-template <int DK>
-__device__ __forceinline__ ChunkedSmem<DK> CarveChunked(char* raw) {
-  using L = Ld<DK>;
-  ChunkedSmem<DK> s;
+template <int DK, int BT>
+__device__ __forceinline__ ChunkedSmem<DK, BT> CarveChunked(char* raw) {
+  using L = Ld<DK, BT>;
+  ChunkedSmem<DK, BT> s;
   float* f = reinterpret_cast<float*>(raw);
   s.s_f = f;  f += DK * L::kVf;
-  s.t_f = f;  f += kBT * L::kVf;
-  s.gc = f;   f += kBT;
-  s.beta = f; f += kBT;
+  s.t_f = f;  f += BT * L::kVf;
+  s.gc = f;   f += BT;
+  s.beta = f; f += BT;
   __half* h = reinterpret_cast<__half*>(f);
-  s.k_h = h;  h += kBT * L::kKh;
-  s.q_h = h;  h += kBT * L::kKh;
-  s.v_h = h;  h += kBT * L::kVh;
-  s.u_h = h;  h += kBT * L::kVh;
-  s.m_h = h;  h += kBT * L::kMh;
+  s.k_h = h;  h += BT * L::kKh;
+  s.q_h = h;  h += BT * L::kKh;
+  s.v_h = h;  h += BT * L::kVh;
+  s.u_h = h;  h += BT * L::kVh;
+  s.m_h = h;  h += BT * L::kMh;
   s.s_h = h;  h += DK * L::kVh;
-  s.db_h = h; h += kBT * L::kMh;
-  s.nb_h = h; h += kBT * L::kMh;
-  s.ti_h = h; h += kBT * L::kMh;
+  s.db_h = h; h += BT * L::kMh;
+  s.nb_h = h; h += BT * L::kMh;
+  s.ti_h = h; h += BT * L::kMh;
   return s;
 }
 
 // Tinv = (I + M)^-1 for the strictly lower BT x BT M in s.m_h, left in s.ti_h. Exact.
-template <int DK>
-__device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK>& s, int warp_id, int lane,
-                                                int tid) {
-  using L = Ld<DK>;
-  for (int idx = tid; idx < kBT * kBT; idx += kChunkedThreads) {
-    s.db_h[(idx / kBT) * L::kMh + idx % kBT] = __float2half(0.0f);
+template <int DK, int BT>
+__device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK, BT>& s, int warp_id,
+                                                int lane, int tid) {
+  using L = Ld<DK, BT>;
+  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+    s.db_h[(idx / BT) * L::kMh + idx % BT] = __float2half(0.0f);
   }
   __syncthreads();
 
   // Column `lane` of the inverse of diagonal block `warp_id`, by forward substitution.
   // Lane-local, so no synchronisation inside.
-  if (warp_id < kBT / 16 && lane < 16) {
+  if (warp_id < BT / 16 && lane < 16) {
     const int base = warp_id * 16;
     float col[16];
 #pragma unroll
@@ -300,11 +311,11 @@ __device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK>& s, int wa
   }
   __syncthreads();
 
-  SmemGemm<kBT, kBT, kBT, false, false, false>(s.t_f, L::kVf, s.db_h, L::kMh, s.m_h, L::kMh,
+  SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.db_h, L::kMh, s.m_h, L::kMh,
                                                warp_id, lane);
   __syncthreads();
-  for (int idx = tid; idx < kBT * kBT; idx += kChunkedThreads) {
-    const int r = idx / kBT, c = idx % kBT;
+  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+    const int r = idx / BT, c = idx % BT;
     const bool same_block = (r >> 4) == (c >> 4);
     const float n = same_block ? 0.0f : s.t_f[r * L::kVf + c];
     s.nb_h[r * L::kMh + c] = __float2half(n);
@@ -312,23 +323,25 @@ __device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK>& s, int wa
   }
   __syncthreads();
 
+  // N is strictly block lower over BT/16 levels, so N^(BT/16) = 0 and the alternating
+  // series terminates exactly; Horner needs BT/16 - 2 steps after Z1 = I - N.
 #pragma unroll
-  for (int it = 0; it < 2; ++it) {
-    SmemGemm<kBT, kBT, kBT, false, false, false>(s.t_f, L::kVf, s.nb_h, L::kMh, s.ti_h, L::kMh,
+  for (int it = 0; it < BT / 16 - 2; ++it) {
+    SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.nb_h, L::kMh, s.ti_h, L::kMh,
                                                  warp_id, lane);
     __syncthreads();
-    for (int idx = tid; idx < kBT * kBT; idx += kChunkedThreads) {
-      const int r = idx / kBT, c = idx % kBT;
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      const int r = idx / BT, c = idx % BT;
       s.ti_h[r * L::kMh + c] = __float2half((r == c ? 1.0f : 0.0f) - s.t_f[r * L::kVf + c]);
     }
     __syncthreads();
   }
 
-  SmemGemm<kBT, kBT, kBT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.db_h, L::kMh,
+  SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.db_h, L::kMh,
                                                warp_id, lane);
   __syncthreads();
-  for (int idx = tid; idx < kBT * kBT; idx += kChunkedThreads) {
-    const int r = idx / kBT, c = idx % kBT;
+  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+    const int r = idx / BT, c = idx % BT;
     s.ti_h[r * L::kMh + c] = __float2half(s.t_f[r * L::kVf + c]);
   }
   __syncthreads();
@@ -368,12 +381,12 @@ struct KernelParams {
 // ---------------------------------------------------------------------------
 // Chunked engine
 // ---------------------------------------------------------------------------
-template <typename T, int DK, int DV>
+template <typename T, int DK, int DV, int BT>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     VariantPack<T> pack, KernelParams p) {
-  using L = Ld<DK>;
+  using L = Ld<DK, BT>;
   extern __shared__ char smem_raw[];
-  const ChunkedSmem<DK> s = CarveChunked<DK>(smem_raw);
+  const ChunkedSmem<DK, BT> s = CarveChunked<DK, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * kDVB;
   const int tid = threadIdx.x, warp_id = tid >> 5, lane = tid & 31;
@@ -404,14 +417,14 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   }
   __syncthreads();
 
-  for (int chunk0 = 0; chunk0 < seq_len; chunk0 += kBT) {
-    const int len = min(kBT, seq_len - chunk0);
+  for (int chunk0 = 0; chunk0 < seq_len; chunk0 += BT) {
+    const int len = min(BT, seq_len - chunk0);
 
     for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
       const int r = idx / kDVB, c = idx % kDVB;
       s.s_h[r * L::kVh + c] = __float2half(s.s_f[r * L::kVf + c]);
     }
-    for (int idx = tid; idx < kBT * DK; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       const int64_t tok = tok_base + chunk0 + t;
       s.k_h[t * L::kKh + d] =
@@ -419,14 +432,14 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       s.q_h[t * L::kKh + d] =
           (t < len) ? __float2half((float)pack.query[tok * q_stride + hq * DK + d]) : __float2half(0.f);
     }
-    for (int idx = tid; idx < kBT * kDVB; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, d = idx % kDVB;
       const int64_t tok = tok_base + chunk0 + t;
       s.v_h[t * L::kVh + d] =
           (t < len) ? __float2half((float)pack.value[tok * v_stride + hv * DV + v0 + d])
                     : __float2half(0.f);
     }
-    if (tid < kBT) {
+    if (tid < BT) {
       const int64_t tok = tok_base + chunk0 + tid;
       const int64_t gi = tok * p.num_heads_v + hv;
       float g = 0.0f, be = 0.0f;
@@ -444,7 +457,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
 
     if (p.qk_l2_norm) {
       // One warp per token row; DK=128 so each lane holds four elements.
-      for (int t = warp_id; t < kBT; t += kChunkedWarps) {
+      for (int t = warp_id; t < BT; t += kChunkedWarps) {
         float sq = 0.0f, sk = 0.0f;
         for (int d = lane; d < DK; d += 32) {
           const float qv = __half2float(s.q_h[t * L::kKh + d]);
@@ -466,15 +479,15 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       __syncthreads();
     }
 
-    InclusiveScan64(s.gc, tid);
+    InclusiveScanBT<BT>(s.gc, tid);
     __syncthreads();
-    const float g_total = s.gc[kBT - 1];
+    const float g_total = s.gc[BT - 1];
 
-    SmemGemm<kBT, kBT, DK, false, true, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.k_h, L::kKh, warp_id,
+    SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.k_h, L::kKh, warp_id,
                                                lane);
     __syncthreads();
-    for (int idx = tid; idx < kBT * kBT; idx += kChunkedThreads) {
-      const int t = idx / kBT, sc = idx % kBT;
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      const int t = idx / BT, sc = idx % BT;
       const float m = (sc < t && needs_retrieval)
                           ? s.beta[t] * s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc])
                           : 0.0f;
@@ -482,36 +495,36 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     }
     __syncthreads();
 
-    BuildTriInverse<DK>(s, warp_id, lane, tid);
+    BuildTriInverse<DK, BT>(s, warp_id, lane, tid);
 
-    SmemGemm<kBT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
+    SmemGemm<BT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
                                                  warp_id, lane);
     __syncthreads();
-    for (int idx = tid; idx < kBT * kDVB; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
       const float vv = __half2float(s.v_h[t * L::kVh + c]);
       const float r = needs_retrieval ? vv - __expf(s.gc[t]) * s.t_f[t * L::kVf + c] : vv;
       s.u_h[t * L::kVh + c] = __float2half(s.beta[t] * r);
     }
     __syncthreads();
-    SmemGemm<kBT, kDVB, kBT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.u_h, L::kVh,
+    SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.u_h, L::kVh,
                                                   warp_id, lane);
     __syncthreads();
-    for (int idx = tid; idx < kBT * kDVB; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
       s.u_h[t * L::kVh + c] = __float2half(s.t_f[t * L::kVf + c]);
     }
     __syncthreads();
 
-    SmemGemm<kBT, kBT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
+    SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
                                                lane);
     __syncthreads();
-    for (int idx = tid; idx < kBT * kBT; idx += kChunkedThreads) {
-      const int t = idx / kBT, sc = idx % kBT;
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      const int t = idx / BT, sc = idx % BT;
       s.m_h[t * L::kMh + sc] = __float2half(
           (sc <= t && t < len) ? s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
     }
-    for (int idx = tid; idx < kBT * DK; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       s.k_h[t * L::kKh + d] =
           __hmul(s.k_h[t * L::kKh + d], __float2half(__expf(g_total - s.gc[t])));
@@ -519,13 +532,13 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     }
     __syncthreads();
 
-    SmemGemm<kBT, kDVB, kBT, false, false, false>(s.t_f, L::kVf, s.m_h, L::kMh, s.u_h, L::kVh,
+    SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.m_h, L::kMh, s.u_h, L::kVh,
                                                   warp_id, lane);
     __syncthreads();
-    SmemGemm<kBT, kDVB, DK, false, false, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_h, L::kVh,
+    SmemGemm<BT, kDVB, DK, false, false, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_h, L::kVh,
                                                 warp_id, lane);
     __syncthreads();
-    for (int idx = tid; idx < kBT * kDVB; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
       if (t < len) {
         const int64_t tok = tok_base + chunk0 + t;
@@ -539,7 +552,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       s.s_f[(idx / kDVB) * L::kVf + idx % kDVB] *= decay_all;
     }
     __syncthreads();
-    SmemGemm<DK, kDVB, kBT, true, false, true>(s.s_f, L::kVf, s.k_h, L::kKh, s.u_h, L::kVh, warp_id,
+    SmemGemm<DK, kDVB, BT, true, false, true>(s.s_f, L::kVf, s.k_h, L::kKh, s.u_h, L::kVh, warp_id,
                                                lane);
     __syncthreads();
   }
@@ -730,12 +743,22 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
   p.decay_per_key_dim_flag = desc.decay_per_key_dim ? 1 : 0;
 
   if (plan.engine == Engine::kChunked) {
-    static std::once_flag once;
-    ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128>,
-                                              plan.smem_bytes, once));
     const dim3 grid(desc.batch, desc.num_heads_v, desc.head_size_v / kDVB);
-    GatedDeltaNetChunkedKernel<T, 128, 128>
-        <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+    // BT=32 halves the [BT x BT] and per-token tiles, which is what lets the chunked
+    // engine fit devices with a 99 KB opt-in limit (SM120) instead of SM90's 227 KB.
+    if (plan.chunk_size == 32) {
+      static std::once_flag once32;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128, 32>,
+                                                plan.smem_bytes, once32));
+      GatedDeltaNetChunkedKernel<T, 128, 128, 32>
+          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+    } else {
+      static std::once_flag once64;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128, 64>,
+                                                plan.smem_bytes, once64));
+      GatedDeltaNetChunkedKernel<T, 128, 128, 64>
+          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+    }
     return CUDA_CALL(cudaGetLastError());
   }
 

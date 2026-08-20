@@ -98,7 +98,7 @@ Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_block_opti
   const bool long_enough = desc.total_tokens >= kChunkedMinTokens * std::max(desc.batch, 1);
 
   const bool shape_ok = desc.head_size_qk == 128 && desc.head_size_v == 128 &&
-                        plan.chunk_size == 64 && desc.num_heads_q == desc.num_heads_k &&
+                        desc.num_heads_q == desc.num_heads_k &&
                         desc.num_heads_v % desc.num_heads_q == 0;
 
   // The chunked engine folds the decay into [BT x BT] gram matrices, which assumes one
@@ -112,12 +112,22 @@ Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_block_opti
   if (!needs_checkpoints && long_enough && shape_ok && rule_ok && type_ok && desc.sm_major >= 8) {
     plan.v_block = 64;
     plan.threads = 512;
-    plan.smem_bytes = ChunkedSmemBytes(plan.chunk_size, desc.head_size_qk, plan.v_block);
-    if (plan.smem_bytes <= smem_per_block_optin) {
-      plan.engine = Engine::kChunked;
-      plan.workspace_bytes = 0;  // the state never leaves shared memory
-      plan.supported = true;
-      return plan;
+    // BT=64 is the fastest configuration measured on SM90, but needs 157 KB of shared
+    // memory. Consumer Blackwell (SM120) allows only 99 KB per block, where BT=32 fits at
+    // 96 KB for about a 10% cost. Take the widest chunk the device can actually hold; an
+    // explicit chunk_size of 32 pins the narrow one so the SM120 path is reachable on SM90.
+    const bool pin_narrow = desc.chunk_size == 32;
+    for (int bt : {64, 32}) {
+      if (pin_narrow && bt != 32) continue;
+      const size_t bytes = ChunkedSmemBytes(bt, desc.head_size_qk, plan.v_block);
+      if (bytes <= smem_per_block_optin) {
+        plan.chunk_size = bt;
+        plan.smem_bytes = bytes;
+        plan.engine = Engine::kChunked;
+        plan.workspace_bytes = 0;  // the state never leaves shared memory
+        plan.supported = true;
+        return plan;
+      }
     }
     plan.reject_reason = "chunked engine exceeds the device shared-memory opt-in limit";
   }

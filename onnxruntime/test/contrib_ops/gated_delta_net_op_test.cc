@@ -33,6 +33,7 @@ struct Options {
   std::string beta_activation = "none";
   int qk_l2_norm = 0;
   int state_checkpoints = 0;
+  int chunk_size = 0;
   float scale = 0.0f;
 };
 
@@ -204,6 +205,7 @@ void AddCommonAttrs(OpTester& t, const Options& o) {
   if (o.state_checkpoints > 0) {
     t.AddAttribute("state_checkpoints", static_cast<int64_t>(o.state_checkpoints));
   }
+  if (o.chunk_size > 0) t.AddAttribute("chunk_size", static_cast<int64_t>(o.chunk_size));
   if (o.scale != 0.0f) t.AddAttribute("scale", o.scale);
 }
 
@@ -315,6 +317,18 @@ TEST(GatedDeltaNetTest, Chunked_UniformBatch) {
   if (NeedSkipIfCudaArchLowerThan(800)) return;
   Geometry g{256, 2, 1, 2, kDim, kDim};  // no cu_seqlens: batch comes from initial_state
   RunCase(g, Options{}, MakeInputs(g, 19), 3e-2f, 3e-2f);
+}
+
+// chunk_size=32 pins the narrow shared-memory configuration (96 KB) that consumer
+// Blackwell needs, since SM120 allows only 99 KB per block against SM90's 227 KB.
+TEST(GatedDeltaNetTest, Chunked_NarrowChunkForSmallSharedMemory) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  for (int total : {128, 65, 200}) {
+    Geometry g{total, 1, 2, 6, kDim, kDim};
+    Options o;
+    o.chunk_size = 32;
+    RunCase(g, o, MakeInputs(g, static_cast<uint32_t>(total) + 1), 3e-2f, 3e-2f);
+  }
 }
 
 // ---------------------------------------------------------------------------
