@@ -566,7 +566,157 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
 }
 
 // ---------------------------------------------------------------------------
-// Recurrent engine: decode / MTP verify, and the only path that emits checkpoints.
+// Warp-specialised decode engine.
+//
+// One warp owns one (sequence, v-head, v-column); its lanes span the K axis, so each lane
+// keeps DK/32 state elements in registers. Three things fall out of that mapping:
+//
+//  * The state is V-major [.., V, K], so lanes reading consecutive k are fully coalesced.
+//    The generic kernel below walks the same buffer with consecutive threads on v, which
+//    strides every access by DK.
+//  * Both reductions (S^T k and S^T q) are over K, so they are warp shuffles. The token
+//    loop needs no __syncthreads() and no shared memory at all.
+//  * The grid is (sequences, v-heads, V/warps) instead of (sequences, v-heads), which at
+//    the Qwen3.8 geometry is 768 CTAs against 48.
+// ---------------------------------------------------------------------------
+template <int DK>
+__device__ __forceinline__ float WarpReduceK(float v) {
+#pragma unroll
+  for (int off = 16; off > 0; off >>= 1) v += __shfl_xor_sync(0xffffffff, v, off);
+  return v;
+}
+
+template <typename T, int DK, int kWarps>
+__global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
+    VariantPack<T> pack, KernelParams p, int d_v) {
+  constexpr int kRegs = DK / 32;  // state elements per lane
+  const int lane = threadIdx.x;
+  const int warp = threadIdx.y;
+  const int b = blockIdx.x, hv = blockIdx.y;
+  const int col = blockIdx.z * kWarps + warp;
+  if (col >= d_v) return;
+
+  const int hq = hv * p.num_heads_q / p.num_heads_v;
+  const int hk = hv * p.num_heads_k / p.num_heads_v;
+
+  int64_t tok_base, seq_len64;
+  SequenceRange(pack.cu_seqlens, b, p.total_tokens, p.uniform_len, &tok_base, &seq_len64);
+  const int seq_len = static_cast<int>(seq_len64);
+
+  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * d_v;
+  const int64_t st_off =
+      (static_cast<int64_t>(b) * p.num_heads_v + hv) * static_cast<int64_t>(d_v) * DK +
+      static_cast<int64_t>(col) * DK;
+  const int64_t slot_stride =
+      static_cast<int64_t>(p.batch) * p.num_heads_v * static_cast<int64_t>(d_v) * DK;
+
+  const bool needs_decay = pack.decay != nullptr && (p.update_rule == UpdateRule::kGated ||
+                                                     p.update_rule == UpdateRule::kGatedDelta);
+  const bool needs_retrieval =
+      p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
+  const bool decay_per_key_dim = p.decay_per_key_dim_flag != 0;
+
+  // Read the whole incoming row before writing anything: initial_state and final_state are
+  // permitted to be the same allocation. Lane l takes k = l, l+32, ... rather than a
+  // contiguous run: each of the kRegs accesses is then its own fully coalesced warp
+  // transaction, and the extra requests in flight beat the single wide float4 a contiguous
+  // run would allow (measured 5.86 us against 6.37 us at the Qwen3.8 decode shape).
+  float s[kRegs];
+#pragma unroll
+  for (int i = 0; i < kRegs; ++i) {
+    const int k = lane + i * 32;
+    s[i] = pack.initial_state != nullptr ? pack.initial_state[st_off + k] : 0.0f;
+  }
+
+  for (int t = 0; t < seq_len; ++t) {
+    const int64_t tok = tok_base + t;
+    const int64_t gi = tok * p.num_heads_v + hv;
+
+    float kv[kRegs], qv[kRegs];
+#pragma unroll
+    for (int i = 0; i < kRegs; ++i) {
+      const int k = lane + i * 32;
+      kv[i] = static_cast<float>(pack.key[tok * k_stride + hk * DK + k]);
+      qv[i] = static_cast<float>(pack.query[tok * q_stride + hq * DK + k]);
+    }
+
+    if (p.qk_l2_norm) {
+      float nq = 0.0f, nk = 0.0f;
+#pragma unroll
+      for (int i = 0; i < kRegs; ++i) {
+        nq += qv[i] * qv[i];
+        nk += kv[i] * kv[i];
+      }
+      const float rq = rsqrtf(WarpReduceK<DK>(nq) + 1e-12f);
+      const float rk = rsqrtf(WarpReduceK<DK>(nk) + 1e-12f);
+#pragma unroll
+      for (int i = 0; i < kRegs; ++i) {
+        qv[i] *= rq;
+        kv[i] *= rk;
+      }
+    }
+
+    float decay_scalar = 1.0f;
+    if (needs_decay && !decay_per_key_dim) {
+      decay_scalar = __expf(
+          EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv, p.gate_activation));
+    }
+#pragma unroll
+    for (int i = 0; i < kRegs; ++i) {
+      if (needs_decay && decay_per_key_dim) {
+        const int k = lane + i * 32;
+        const float raw = pack.decay[(tok * p.num_heads_v + hv) * DK + k];
+        s[i] *= __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
+      } else {
+        s[i] *= decay_scalar;
+      }
+    }
+
+    float r = 0.0f;
+    if (needs_retrieval) {
+#pragma unroll
+      for (int i = 0; i < kRegs; ++i) r += s[i] * kv[i];
+      r = WarpReduceK<DK>(r);
+    }
+
+    const float beta_t =
+        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+    const float vv = static_cast<float>(pack.value[tok * v_stride + hv * d_v + col]);
+    const float delta = beta_t * (vv - r);
+
+    float o = 0.0f;
+#pragma unroll
+    for (int i = 0; i < kRegs; ++i) {
+      s[i] += kv[i] * delta;
+      o += s[i] * qv[i];
+    }
+    o = WarpReduceK<DK>(o);
+    if (lane == 0) {
+      pack.output[tok * v_stride + hv * d_v + col] = static_cast<T>(p.scale * o);
+    }
+
+    // Checkpoint j is the state after local token j; slots this call does not write are
+    // left unspecified because the buffer may alias live state.
+    if (pack.checkpoints != nullptr && t < p.state_checkpoints) {
+#pragma unroll
+      for (int i = 0; i < kRegs; ++i) {
+        pack.checkpoints[static_cast<int64_t>(t) * slot_stride + st_off + lane + i * 32] = s[i];
+      }
+    }
+  }
+
+  if (pack.final_state != nullptr) {
+#pragma unroll
+    for (int i = 0; i < kRegs; ++i) {
+      pack.final_state[st_off + lane + i * 32] = s[i];
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generic recurrent engine: any head geometry the warp kernel cannot take.
 // One CTA per (sequence, v-head); the [DK x DV] state lives in shared memory.
 // ---------------------------------------------------------------------------
 template <typename T, int kThreads>
@@ -763,6 +913,29 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
   }
 
   constexpr int kRecurrentThreads = 256;
+  constexpr int kDecodeWarps = kRecurrentThreads / 32;
+
+  if (plan.warp_specialized) {
+    const dim3 grid(desc.batch, desc.num_heads_v,
+                    (desc.head_size_v + kDecodeWarps - 1) / kDecodeWarps);
+    const dim3 block(32, kDecodeWarps, 1);
+    switch (desc.head_size_qk) {
+      case 64:
+        GatedDeltaNetDecodeWarpKernel<T, 64, kDecodeWarps>
+            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+        break;
+      case 128:
+        GatedDeltaNetDecodeWarpKernel<T, 128, kDecodeWarps>
+            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+        break;
+      default:
+        GatedDeltaNetDecodeWarpKernel<T, 256, kDecodeWarps>
+            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+        break;
+    }
+    return CUDA_CALL(cudaGetLastError());
+  }
+
   const size_t smem =
       sizeof(float) * (static_cast<size_t>(desc.head_size_qk) * desc.head_size_v +
                        2 * desc.head_size_qk + desc.head_size_v + desc.head_size_qk);

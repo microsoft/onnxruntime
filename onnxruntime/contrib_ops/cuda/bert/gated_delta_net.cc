@@ -221,7 +221,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(plan.engine != gdn::Engine::kCudnn,
                     "GatedDeltaNet: the cuDNN engine is reserved and not implemented");
 
-  if (plan.engine == gdn::Engine::kRecurrent) {
+  if (plan.engine == gdn::Engine::kRecurrent && !plan.warp_specialized) {
     const size_t smem = sizeof(float) * (static_cast<size_t>(head_size_qk) * head_size_v +
                                          2 * head_size_qk + head_size_v + head_size_qk);
     ORT_RETURN_IF_NOT(smem <= prop.sharedMemPerBlockOptin,

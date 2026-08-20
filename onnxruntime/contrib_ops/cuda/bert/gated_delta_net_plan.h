@@ -78,6 +78,9 @@ struct Plan {
   int v_block = 64;      // dv columns owned by one CTA (chunked engine)
   int threads = 512;     // CTA size
   int cols_per_block = 32;  // dv columns per CTA (recurrent engine)
+  // Recurrent engine only: one warp per v-column with lanes spanning K, instead of one CTA
+  // per v-head with the state in shared memory.
+  bool warp_specialized = false;
   size_t smem_bytes = 0;
   size_t workspace_bytes = 0;
   bool supported = false;
@@ -154,6 +157,10 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
   plan.smem_bytes = 0;
   plan.workspace_bytes = 0;
   plan.supported = true;
+  // The warp kernel keeps its slice of the state in registers, so it only needs a head size
+  // that divides evenly into 32-lane strips.
+  plan.warp_specialized =
+      desc.head_size_qk == 64 || desc.head_size_qk == 128 || desc.head_size_qk == 256;
   if (plan.reject_reason == nullptr) {
     if (needs_checkpoints) {
       plan.reject_reason = "token checkpoints requested";
