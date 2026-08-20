@@ -828,6 +828,9 @@ struct ProviderHostImpl : ProviderHost {
     return ONNX_NAMESPACE::shape_inference::InferShapes(m);
   }
   void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
+    ORT_ENFORCE(!IsOrtOwnedOperatorDomain(domain),
+                "Custom operators may not be registered in ORT-owned domain '",
+                domain, "'. Use a unique custom domain instead.");
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
     const auto& domain_to_version_map = domain_instance.Map();
     if (domain_to_version_map.find(domain) == domain_to_version_map.end()) {

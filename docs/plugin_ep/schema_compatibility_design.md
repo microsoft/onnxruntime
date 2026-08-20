@@ -9,8 +9,8 @@ factory callback, canonical per-schema digest computation, negotiation during pl
 EP creation, effective kernel-registry filtering, post-`GetCapability()` validation,
 the API-30 `com.microsoft` freeze-point manifest, CUDA manifest publication, and
 central current/last-released contrib opset constants. Optimizer gates,
-ORT-owned-domain collision rejection, automatic manifest generation, and strict
-handling of plugins without the callback remain follow-up work.
+automatic manifest generation, and strict handling of plugins without the callback
+remain follow-up work.
 
 This document describes how ONNX Runtime (ORT) core and a separately built plugin
 Execution Provider (EP) negotiate operator-schema compatibility. The immediate
