@@ -72,7 +72,7 @@ Source:
 | 5 | `beta` | `(total_tokens, num_heads_v)` | float | no |
 | 6 | `initial_state` | `(batch_size, num_heads_v, head_size_v, head_size_qk)` | float | no |
 | 7 | `a_log` | `(num_heads_v)` | float | no |
-| 8 | `dt_bias` | `(num_heads_v)` or `(num_heads_v, head_size_qk)` | float | no |
+| 8 | `dt_bias` | `(num_heads_v)` | float | no |
 
 ### Outputs
 
@@ -337,7 +337,7 @@ should be gated on a task-level quality evaluation rather than on output hashes.
 
 | Variable | Values | Description |
 |---|---|---|
-| `ORT_GDN_PLAN` | `chunked`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic. The analogue of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
+| `ORT_GDN_PLAN` | `chunked`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic. `chunked` reports an error when the descriptor cannot use that engine. The analogue of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
 
 ## 10. Testing
 
