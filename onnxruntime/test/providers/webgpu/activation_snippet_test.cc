@@ -93,17 +93,14 @@ const std::vector<ActivationKind>& AllActivationKinds() {
 
 }  // namespace
 
-// Check the emitted text: a few lost digits stay well inside inference tolerances, so a
-// comparison of inference outputs would not catch it.
+// Check the emitted text: lost precision here stays below inference tolerances.
 TEST(WebGpuActivationSnippetTest, ConstantsUseShortestRoundTripForm) {
   for (ActivationKind kind : AllActivationKinds()) {
     const Activation activation = MakeActivation(kind, 0.125f, 0.375f);
     for (const std::string& wgsl : {GetActivationSnippet(activation, "vec4<f32>", "f32"),
                                     GetActivationDeclaration(activation, "vec4<f32>", "f32")}) {
       for (const std::string& literal : ExtractNumericLiterals(wgsl)) {
-        // Re-rendering the parsed value must reproduce the literal exactly: fewer digits would
-        // drop precision, more would be noise, and a locale decimal comma would cut the parse
-        // short. The values themselves are pinned by KnownConstantsAreNotTruncated.
+        // Each literal must be the canonical shortest form of the f32 it parses to.
         const float parsed = std::strtof(literal.c_str(), nullptr);
         EXPECT_EQ(RenderShortestRoundTrip(parsed), literal)
             << "literal '" << literal << "' is not the shortest round-trippable form of the f32 it"
@@ -113,9 +110,7 @@ TEST(WebGpuActivationSnippetTest, ConstantsUseShortestRoundTripForm) {
   }
 }
 
-// FloatLiteral must not consult the global locale. An embedding application is free to call
-// std::locale::global() with a comma-decimal locale, which would emit f32(0,3275911); WGSL parses
-// that as a two-argument constructor call and fails to compile the shader.
+// A comma-decimal global locale would emit f32(0,3275911), which is not valid WGSL.
 TEST(WebGpuActivationSnippetTest, ConstantsAreLocaleIndependent) {
   std::vector<std::pair<std::string, std::string>> classic;
   for (ActivationKind kind : AllActivationKinds()) {

@@ -3716,9 +3716,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvEluDefaultsAlphaForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// com.microsoft.QuickGelu computes x * Sigmoid(alpha * x) and defaults alpha to 1.702 (the GELU
-// approximation). Alpha 1.0 is a different function entirely (SiLU/Swish), so pin the value that
-// actually reaches the shader for a QuickGelu authored without an explicit alpha.
+// QuickGelu authored without an explicit alpha must reach the shader as 1.702, not 1.0 (SiLU).
 TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluDefaultsAlphaForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "QuickGelu", kMSDomain, kWebGpuExecutionProvider);
@@ -3728,9 +3726,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluDefaultsAlphaForWebGpuEp) 
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-// The test above passes even with a wrong fallback constant, because Graph::Resolve() materializes
-// alpha from the schema before any transformer runs. Stripping the attribute afterwards is what
-// actually exercises the fusion's own fallback and catches it drifting away from 1.702.
+// Resolve() materializes alpha from the schema, so stripping it is what exercises the fallback.
 TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluFallbackAlphaMatchesSchemaDefault) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "QuickGelu", kMSDomain, kWebGpuExecutionProvider);
@@ -3799,17 +3795,13 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvFastGeluWithBiasForWebGpuEp) {
       RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("FastGelu"), 17));
 }
 
-// An absent optional input may be serialized with an empty name instead of being omitted, which
-// still leaves two entries in InputDefs(). That FastGelu is bias-free and must fuse exactly like
-// the omitted form: a transpose handler that pushes Transposes through the empty-name form would
-// otherwise pay the layout churn only to have the fusion refused here.
+// An empty-name optional bias is bias-free, so this FastGelu must fuse like the omitted form.
 TEST_F(GraphTransformationTests, FuseNhwcConvFastGeluWithEmptyBiasForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "FastGelu", kMSDomain, kWebGpuExecutionProvider, nullptr,
                              OptionalActivationInput::kEmptyName);
   };
 
-  // Without this the test would silently degrade into a duplicate of the no-bias case above.
   auto verify_fusion_sees_the_empty_bias = [](Graph& graph) -> Status {
     bool checked = false;
     for (const Node& node : graph.Nodes()) {
