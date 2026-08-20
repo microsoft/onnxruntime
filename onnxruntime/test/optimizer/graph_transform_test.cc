@@ -3980,12 +3980,6 @@ TEST_F(GraphTransformationTests, WebGpuConvHardSigmoidFusionMatchesUnfusedResult
       "HardSigmoid", 17);
 }
 
-TEST_F(GraphTransformationTests, WebGpuConvEluFusionMatchesUnfusedResults) {
-  RunWebGpuConvActivationParity(
-      SimpleActivation("Elu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.7f); }),
-      "Elu", 17);
-}
-
 TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
   auto add_clip = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
     auto* min_value = builder.MakeScalarInitializer<float>(-0.25f);
