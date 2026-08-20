@@ -92,11 +92,18 @@ by `num_heads_v / num_heads_q` value heads, which is the Qwen3.8 arrangement
 
 ## 3. Layout and State Contract
 
+**Rank 3 or rank 4.** Query, key and value are token-major. The leading token axis may be
+packed (`[total_tokens, H, D]`) or spelled out as `[batch_size, sequence_length, H, D]`, in
+which case decay and beta gain the same extra axis and so does the output. The two forms have
+identical memory layouts. The rank-4 form exists so an exporter can go from a `(B, S, H*D)`
+activation and back with static `Reshape` targets (`[0, 0, H, D]` and `[0, 0, H*D]`) instead
+of Shape-derived ones, which would be placed on CPU and prevent CUDA graph capture. Ragged
+packing needs the rank-3 form because `cu_seqlens` cannot describe a rectangular batch.
+
 **Sequence packing.** With `cu_seqlens` present, it holds the exclusive prefix sums of the
 per-request token counts and requests may have different lengths. With it absent the packing
-is uniform and the batch size is taken from `initial_state`, which is then required. The
-absent case is what a padded `(B, T, H*D)` producer reshapes to for free, so an existing
-graph needs no new input to adopt the operator.
+is uniform and the batch size is taken from the rank-4 shape, or from `initial_state` when
+the inputs are rank 3.
 
 **`cu_seqlens` is device data.** Offsets are clamped to `[0, total_tokens]` inside the
 kernels (`SequenceRange`), so a malformed producer cannot steer an out-of-bounds access.
@@ -293,6 +300,20 @@ count gives a fixed cost of about 4.46 us and a per-token cost of about 1.36 us
 grid-size heuristic and it falls back to a slower recurrent kernel; `VarlenLinearAttention`
 removed that guard and is 3.7x faster there. `GatedDeltaNet` is a further 2.0x-2.5x faster
 than `VarlenLinearAttention` across these shapes.
+
+### End to end: Qwen3.5-27B-A3B (Qwen3.8) NVFP4, H200, batch 1
+
+Two 64-layer models built from the same checkpoint with the same options, differing only in
+which operator the 48 linear-attention layers use (`onnxruntime-genai` model builder,
+`--extra_options linear_attn_op=gated_delta_net`). Prefill chunk 1024, 128 generated tokens.
+
+| context | TTFT LinearAttention | TTFT GatedDeltaNet | prefill tok/s | decode ms/token |
+|---:|---:|---:|---|---|
+| 1024 | 234.3 ms | **183.9 ms** (-21.5%) | 4370 -> 5568 (+27%) | 12.38 -> 12.22 |
+| 8192 | 1672.9 ms | **1239.2 ms** (-25.9%) | 4897 -> 6611 (+35%) | 13.29 -> 13.08 |
+
+Greedy decoding agrees token for token (64/64) between the two models, with
+`max|delta logits| = 0.075` on the 248320-wide fp16 logit vector at the first decode step.
 
 ### Reproducing
 
