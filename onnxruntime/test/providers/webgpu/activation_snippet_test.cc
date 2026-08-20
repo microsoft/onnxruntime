@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
