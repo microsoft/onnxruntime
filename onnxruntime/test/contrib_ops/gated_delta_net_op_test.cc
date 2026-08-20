@@ -600,5 +600,48 @@ TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
   EXPECT_EQ(tiny.engine, gdn::Engine::kRecurrent);
 }
 
+// The split engine's whole point is that its scan can be narrow: the state-independent work
+// has been hoisted into the prepare launch, so every one of the scan's GEMMs scales with the
+// v-block. Two CTAs of it must therefore fit an SM, and the workspace must stay bounded no
+// matter how long the sequence is.
+TEST(GatedDeltaNetPlanTest, SplitEngineIsTwoCtasPerSmAndBoundedWorkspace) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor d{};
+  d.total_tokens = 1024;
+  d.batch = 1;
+  d.num_heads_q = 16;
+  d.num_heads_k = 16;
+  d.num_heads_v = 48;
+  d.head_size_qk = 128;
+  d.head_size_v = 128;
+  d.chunk_size = 64;
+  d.io_type = gdn::IoType::kFloat16;
+  d.sm_major = 9;
+  d.preferred_engine = gdn::Engine::kChunkedSplit;
+
+  const gdn::Plan hopper = gdn::SelectPlan(d, 132, 232448);
+  EXPECT_TRUE(hopper.supported);
+  EXPECT_EQ(hopper.engine, gdn::Engine::kChunkedSplit);
+  EXPECT_EQ(hopper.v_block, 32);
+  EXPECT_LE(2 * hopper.smem_bytes, 232448u);
+  EXPECT_LE(hopper.smem_bytes_prepare, 232448u);
+  EXPECT_GT(hopper.workspace_bytes, 0u);
+
+  // Sixteen times the tokens must not mean sixteen times the workspace.
+  const size_t short_ws = hopper.workspace_bytes;
+  d.total_tokens = 16384;
+  const gdn::Plan lng = gdn::SelectPlan(d, 132, 232448);
+  EXPECT_EQ(lng.engine, gdn::Engine::kChunkedSplit);
+  EXPECT_LE(lng.workspace_bytes, 64u << 20);
+  EXPECT_LT(lng.workspace_bytes, 16 * short_ws);
+
+  // Where the scan does not fit, the request degrades to the fused engine rather than failing.
+  d.total_tokens = 1024;
+  d.sm_major = 12;
+  const gdn::Plan blackwell = gdn::SelectPlan(d, 128, 101376);
+  EXPECT_TRUE(blackwell.supported);
+  EXPECT_EQ(blackwell.engine, gdn::Engine::kChunked);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

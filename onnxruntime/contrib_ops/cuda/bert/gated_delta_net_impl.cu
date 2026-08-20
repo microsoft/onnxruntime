@@ -44,6 +44,7 @@
 #include <mutex>
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
+#include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -57,8 +58,6 @@ namespace gated_delta_net {
 namespace {
 
 constexpr int kDVB = 64;  // v columns owned by one CTA in the chunked engine
-constexpr int kChunkedThreads = 512;
-constexpr int kChunkedWarps = kChunkedThreads / 32;
 
 // Padded leading dimensions. A row stride of DK halves (256 B) makes every mma fragment
 // load hit the same shared-memory bank across the 8 rows a warp reads, costing an 8-way
@@ -70,175 +69,6 @@ struct Ld {
   static constexpr int kMh = BT + 8;
   static constexpr int kVf = (kDVB > BT ? kDVB : BT) + 4;
 };
-
-__device__ __forceinline__ float SoftPlus(float x) {
-  // log1p(exp(x)) without overflow.
-  return x > 20.0f ? x : __logf(1.0f + __expf(x));
-}
-
-__device__ __forceinline__ float Sigmoid(float x) { return 1.0f / (1.0f + __expf(-x)); }
-
-// Resolve the [start, start+len) token range of sequence `b`, guarding malformed device
-// offsets so a bad producer cannot steer an out-of-bounds access.
-__device__ __forceinline__ void SequenceRange(const int32_t* cu_seqlens, int b, int64_t total,
-                                              int64_t uniform_len, int64_t* start, int64_t* len) {
-  if (cu_seqlens == nullptr) {
-    *start = static_cast<int64_t>(b) * uniform_len;
-    *len = uniform_len;
-  } else {
-    int64_t s = static_cast<int64_t>(cu_seqlens[b]);
-    int64_t e = static_cast<int64_t>(cu_seqlens[b + 1]);
-    s = s < 0 ? 0 : (s > total ? total : s);
-    e = e < 0 ? 0 : (e > total ? total : e);
-    *start = s;
-    *len = e > s ? e - s : 0;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// mma.sync.m16n8k16 helpers
-// ---------------------------------------------------------------------------
-__device__ __forceinline__ uint32_t PackHalf2(__half lo, __half hi) {
-  return static_cast<uint32_t>(__half_as_ushort(lo)) |
-         (static_cast<uint32_t>(__half_as_ushort(hi)) << 16);
-}
-
-__device__ __forceinline__ void MmaM16N8K16(float (&d)[4], const uint32_t (&a)[4],
-                                            const uint32_t (&b)[2]) {
-  asm volatile(
-      "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
-      "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
-      : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
-      : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
-}
-
-// A-fragment for m16n8k16: lane l holds rows (l>>2, l>>2 + 8) and k-pairs at (l&3)*2.
-template <bool Transposed>
-__device__ __forceinline__ void LoadFragA(uint32_t (&a)[4], const __half* A, int lda, int m0,
-                                          int k0, int lane) {
-  const int gid = lane >> 2, tig = lane & 3;
-  const int r0 = m0 + gid, r1 = m0 + gid + 8;
-  const int c0 = k0 + tig * 2, c1 = k0 + tig * 2 + 8;
-  if (Transposed) {
-    a[0] = PackHalf2(A[c0 * lda + r0], A[(c0 + 1) * lda + r0]);
-    a[1] = PackHalf2(A[c0 * lda + r1], A[(c0 + 1) * lda + r1]);
-    a[2] = PackHalf2(A[c1 * lda + r0], A[(c1 + 1) * lda + r0]);
-    a[3] = PackHalf2(A[c1 * lda + r1], A[(c1 + 1) * lda + r1]);
-  } else {
-    a[0] = *reinterpret_cast<const uint32_t*>(A + r0 * lda + c0);
-    a[1] = *reinterpret_cast<const uint32_t*>(A + r1 * lda + c0);
-    a[2] = *reinterpret_cast<const uint32_t*>(A + r0 * lda + c1);
-    a[3] = *reinterpret_cast<const uint32_t*>(A + r1 * lda + c1);
-  }
-}
-
-// B-fragment for m16n8k16 (col layout): lane l holds column (l>>2) and k-pairs at (l&3)*2.
-template <bool Transposed>
-__device__ __forceinline__ void LoadFragB(uint32_t (&b)[2], const __half* B, int ldb, int k0,
-                                          int n0, int lane) {
-  const int gid = lane >> 2, tig = lane & 3;
-  const int col = n0 + gid;
-  const int r0 = k0 + tig * 2, r1 = k0 + tig * 2 + 8;
-  if (Transposed) {
-    b[0] = *reinterpret_cast<const uint32_t*>(B + col * ldb + r0);
-    b[1] = *reinterpret_cast<const uint32_t*>(B + col * ldb + r1);
-  } else {
-    b[0] = PackHalf2(B[r0 * ldb + col], B[(r0 + 1) * ldb + col]);
-    b[1] = PackHalf2(B[r1 * ldb + col], B[(r1 + 1) * ldb + col]);
-  }
-}
-
-// C[M][N] (float, ldc) = A[M][K] @ B[K][N] (+ C if Accumulate).
-//
-// Each warp owns one m-tile (16 rows) and a strided subset of the n-tiles, so the A
-// fragment is loaded once per k-step and reused across every n-tile the warp owns.
-template <int M, int N, int K, bool TA, bool TB, bool Accumulate>
-__device__ __forceinline__ void SmemGemm(float* C, int ldc, const __half* A, int lda,
-                                         const __half* B, int ldb, int warp_id, int lane) {
-  constexpr int kMTiles = M / 16;
-  constexpr int kNTiles = N / 8;
-  constexpr int kWarpsPerM = kChunkedWarps > kMTiles ? kChunkedWarps / kMTiles : 1;
-  constexpr int kMGroups = kChunkedWarps / kWarpsPerM;
-  constexpr int kNPerWarp = (kNTiles + kWarpsPerM - 1) / kWarpsPerM;
-
-  const int m_group = warp_id / kWarpsPerM;
-  const int n_group = warp_id % kWarpsPerM;
-  const int gid = lane >> 2, tig = lane & 3;
-
-#pragma unroll 1
-  for (int mt = m_group; mt < kMTiles; mt += kMGroups) {
-    const int m0 = mt * 16;
-    const int r0 = m0 + gid, r1 = m0 + gid + 8;
-    float acc[kNPerWarp][4];
-
-#pragma unroll
-    for (int i = 0; i < kNPerWarp; ++i) {
-      const int nt = n_group + i * kWarpsPerM;
-      if (nt < kNTiles) {
-        const int c0 = nt * 8 + tig * 2;
-        acc[i][0] = Accumulate ? C[r0 * ldc + c0] : 0.0f;
-        acc[i][1] = Accumulate ? C[r0 * ldc + c0 + 1] : 0.0f;
-        acc[i][2] = Accumulate ? C[r1 * ldc + c0] : 0.0f;
-        acc[i][3] = Accumulate ? C[r1 * ldc + c0 + 1] : 0.0f;
-      }
-    }
-
-    for (int k0 = 0; k0 < K; k0 += 16) {
-      uint32_t a[4];
-      LoadFragA<TA>(a, A, lda, m0, k0, lane);
-#pragma unroll
-      for (int i = 0; i < kNPerWarp; ++i) {
-        const int nt = n_group + i * kWarpsPerM;
-        if (nt < kNTiles) {
-          uint32_t b[2];
-          LoadFragB<TB>(b, B, ldb, k0, nt * 8, lane);
-          MmaM16N8K16(acc[i], a, b);
-        }
-      }
-    }
-
-#pragma unroll
-    for (int i = 0; i < kNPerWarp; ++i) {
-      const int nt = n_group + i * kWarpsPerM;
-      if (nt < kNTiles) {
-        const int c0 = nt * 8 + tig * 2;
-        C[r0 * ldc + c0] = acc[i][0];
-        C[r0 * ldc + c0 + 1] = acc[i][1];
-        C[r1 * ldc + c0] = acc[i][2];
-        C[r1 * ldc + c0 + 1] = acc[i][3];
-      }
-    }
-  }
-}
-
-template <int BT>
-__device__ __forceinline__ void InclusiveScanBT(float* x, int tid) {
-  static_assert(BT == 32 || BT == 64, "chunk length must be 32 or 64");
-  if (tid >= 32) return;
-  if (BT == 32) {
-    float a = x[tid];
-#pragma unroll
-    for (int off = 1; off < 32; off <<= 1) {
-      float ta = __shfl_up_sync(0xffffffff, a, off);
-      if (tid >= off) a += ta;
-    }
-    x[tid] = a;
-    return;
-  }
-  float a = x[tid], b = x[tid + 32];
-#pragma unroll
-  for (int off = 1; off < 32; off <<= 1) {
-    float ta = __shfl_up_sync(0xffffffff, a, off);
-    float tb = __shfl_up_sync(0xffffffff, b, off);
-    if (tid >= off) {
-      a += ta;
-      b += tb;
-    }
-  }
-  const float total = __shfl_sync(0xffffffff, a, 31);
-  x[tid] = a;
-  x[tid + 32] = b + total;
-}
 
 template <int DK, int BT>
 struct ChunkedSmem {
@@ -291,105 +121,6 @@ __device__ __forceinline__ ChunkedSmem<DK, BT> CarveChunked(char* raw) {
   h += BT * L::kMh;
   return s;
 }
-
-// Tinv = (I + M)^-1 for the strictly lower BT x BT M in s.m_h, left in s.ti_h. Exact.
-template <int DK, int BT>
-__device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK, BT>& s, int warp_id,
-                                                int lane, int tid) {
-  using L = Ld<DK, BT>;
-  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-    s.db_h[(idx / BT) * L::kMh + idx % BT] = __float2half(0.0f);
-  }
-  __syncthreads();
-
-  // Column `lane` of the inverse of diagonal block `warp_id`, by forward substitution.
-  // Lane-local, so no synchronisation inside.
-  if (warp_id < BT / 16 && lane < 16) {
-    const int base = warp_id * 16;
-    float col[16];
-#pragma unroll
-    for (int i = 0; i < 16; ++i) col[i] = 0.0f;
-    col[lane] = 1.0f;
-    for (int i = lane + 1; i < 16; ++i) {
-      float acc = 0.0f;
-      for (int j = lane; j < i; ++j) {
-        acc += __half2float(s.m_h[(base + i) * L::kMh + base + j]) * col[j];
-      }
-      col[i] = -acc;
-    }
-#pragma unroll
-    for (int i = 0; i < 16; ++i) {
-      s.db_h[(base + i) * L::kMh + base + lane] = __float2half(col[i]);
-    }
-  }
-  __syncthreads();
-
-  SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.db_h, L::kMh, s.m_h, L::kMh,
-                                            warp_id, lane);
-  __syncthreads();
-  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-    const int r = idx / BT, c = idx % BT;
-    const bool same_block = (r >> 4) == (c >> 4);
-    const float n = same_block ? 0.0f : s.t_f[r * L::kVf + c];
-    s.nb_h[r * L::kMh + c] = __float2half(n);
-    s.ti_h[r * L::kMh + c] = __float2half((r == c ? 1.0f : 0.0f) - n);  // Z1 = I - N
-  }
-  __syncthreads();
-
-  // N is strictly block lower over BT/16 levels, so N^(BT/16) = 0 and the alternating
-  // series terminates exactly; Horner needs BT/16 - 2 steps after Z1 = I - N.
-#pragma unroll
-  for (int it = 0; it < BT / 16 - 2; ++it) {
-    SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.nb_h, L::kMh, s.ti_h, L::kMh,
-                                              warp_id, lane);
-    __syncthreads();
-    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-      const int r = idx / BT, c = idx % BT;
-      s.ti_h[r * L::kMh + c] = __float2half((r == c ? 1.0f : 0.0f) - s.t_f[r * L::kVf + c]);
-    }
-    __syncthreads();
-  }
-
-  SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.db_h, L::kMh,
-                                            warp_id, lane);
-  __syncthreads();
-  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-    const int r = idx / BT, c = idx % BT;
-    s.ti_h[r * L::kMh + c] = __float2half(s.t_f[r * L::kVf + c]);
-  }
-  __syncthreads();
-}
-
-// Effective per-token decay and beta, after the optional fused activations.
-__device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
-                                                int h, GateActivation act) {
-  if (act == GateActivation::kQwen) {
-    const float bias = dt_bias != nullptr ? dt_bias[h] : 0.0f;
-    const float scale = a_log != nullptr ? -__expf(a_log[h]) : -1.0f;
-    return scale * SoftPlus(raw + bias);
-  }
-  return raw;
-}
-
-__device__ __forceinline__ float EffectiveBeta(float raw, BetaActivation act) {
-  return act == BetaActivation::kSigmoid ? Sigmoid(raw) : raw;
-}
-
-struct KernelParams {
-  int64_t total_tokens;
-  int64_t uniform_len;
-  int num_heads_q;
-  int num_heads_k;
-  int num_heads_v;
-  float scale;
-  GateActivation gate_activation;
-  BetaActivation beta_activation;
-  UpdateRule update_rule;
-  bool qk_l2_norm;
-  int state_checkpoints;
-  int batch;
-  int decay_per_key_dim_flag;
-};
 
 // ---------------------------------------------------------------------------
 // Chunked engine
@@ -508,7 +239,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     }
     __syncthreads();
 
-    BuildTriInverse<DK, BT>(s, warp_id, lane, tid);
+    BuildTriInverse<BT>(s.m_h, L::kMh, s.db_h, s.nb_h, s.ti_h, L::kMh, s.t_f, L::kVf, warp_id,
+                        lane, tid);
 
     SmemGemm<BT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
                                                 warp_id, lane);
@@ -872,23 +604,6 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   }
 }
 
-// Raise the opt-in shared-memory maximum once per (device, kernel) to the device limit.
-// Setting it per call to the current request lets a concurrent smaller launch lower the
-// bound underneath a larger one.
-template <typename KernelT>
-Status SetMaxDynamicSmemOnce(KernelT kernel, size_t device_max, std::once_flag& flag) {
-  Status status = Status::OK();
-  std::call_once(flag, [&]() {
-    cudaError_t err = cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                           static_cast<int>(device_max));
-    if (err != cudaSuccess) {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatedDeltaNet: cudaFuncSetAttribute failed: ",
-                               cudaGetErrorString(err));
-    }
-  });
-  return status;
-}
-
 }  // namespace
 
 template <typename T>
@@ -908,6 +623,10 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
   p.state_checkpoints = desc.state_checkpoints;
   p.batch = desc.batch;
   p.decay_per_key_dim_flag = desc.decay_per_key_dim ? 1 : 0;
+
+  if (plan.engine == Engine::kChunkedSplit) {
+    return LaunchGatedDeltaNetSplit<T>(desc, plan, pack, scale, stream);
+  }
 
   if (plan.engine == Engine::kChunked) {
     const dim3 grid(desc.batch, desc.num_heads_v, desc.head_size_v / kDVB);

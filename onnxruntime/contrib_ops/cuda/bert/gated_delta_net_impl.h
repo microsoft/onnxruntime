@@ -36,6 +36,11 @@ template <typename T>
 Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
                            float scale, int max_threads_per_block, cudaStream_t stream);
 
+// Engine::kChunkedSplit. Defined in gated_delta_net_split_impl.cu; float16 only.
+template <typename T>
+Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
+                                const VariantPack<T>& pack, float scale, cudaStream_t stream);
+
 }  // namespace gated_delta_net
 }  // namespace cuda
 }  // namespace contrib

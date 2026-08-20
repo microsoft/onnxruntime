@@ -14,6 +14,8 @@ const char* EngineName(Engine e) {
   switch (e) {
     case Engine::kChunked:
       return "chunked";
+    case Engine::kChunkedSplit:
+      return "chunked_split";
     case Engine::kRecurrent:
       return "recurrent";
     case Engine::kCudnn:
@@ -25,6 +27,7 @@ const char* EngineName(Engine e) {
 
 Engine EngineFromName(const std::string& name) {
   if (name == "chunked") return Engine::kChunked;
+  if (name == "chunked_split") return Engine::kChunkedSplit;
   if (name == "recurrent") return Engine::kRecurrent;
   if (name == "cudnn") return Engine::kCudnn;
   return Engine::kAuto;
@@ -40,7 +43,8 @@ bool Descriptor::operator==(const Descriptor& o) const noexcept {
          qk_l2_norm == o.qk_l2_norm && decay_per_key_dim == o.decay_per_key_dim &&
          has_decay == o.has_decay && has_beta == o.has_beta &&
          has_initial_state == o.has_initial_state && ragged == o.ragged &&
-         sm_major == o.sm_major && sm_minor == o.sm_minor;
+         sm_major == o.sm_major && sm_minor == o.sm_minor &&
+         preferred_engine == o.preferred_engine;
 }
 
 size_t DescriptorHash::operator()(const Descriptor& d) const noexcept {
@@ -61,6 +65,7 @@ size_t DescriptorHash::operator()(const Descriptor& d) const noexcept {
   mix(static_cast<uint64_t>(d.gate_activation));
   mix(static_cast<uint64_t>(d.beta_activation));
   mix(static_cast<uint64_t>(d.io_type));
+  mix(static_cast<uint64_t>(d.preferred_engine));
   mix(static_cast<uint64_t>(d.sm_major) << 8 | static_cast<uint64_t>(d.sm_minor));
   mix((d.qk_l2_norm ? 1ULL : 0ULL) | (d.decay_per_key_dim ? 2ULL : 0ULL) |
       (d.has_decay ? 4ULL : 0ULL) | (d.has_beta ? 8ULL : 0ULL) |

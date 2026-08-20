@@ -236,6 +236,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.has_beta = beta != nullptr;
   desc.has_initial_state = initial_state != nullptr;
   desc.ragged = cu_seqlens != nullptr;
+  desc.preferred_engine = forced_engine_;
 
   const cudaDeviceProp& prop = GetDeviceProp();
   desc.sm_major = prop.major;
@@ -243,13 +244,10 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   gdn::Plan plan = gdn::PlanCache::Instance().GetOrCreate(desc, prop.multiProcessorCount,
                                                           prop.sharedMemPerBlockOptin);
-  if (forced_engine_ != gdn::Engine::kAuto) {
-    // Benchmarking override, the analogue of cudnn's select_plan(name).
-    gdn::Descriptor forced = desc;
-    plan = gdn::SelectPlan(forced, prop.multiProcessorCount, prop.sharedMemPerBlockOptin);
-    if (forced_engine_ == gdn::Engine::kRecurrent) {
-      plan.engine = gdn::Engine::kRecurrent;
-    }
+  if (forced_engine_ == gdn::Engine::kRecurrent) {
+    // Benchmarking override, the analogue of cudnn's select_plan(name). The chunked engines
+    // are reachable through the descriptor; forcing the sequential one only needs the swap.
+    plan.engine = gdn::Engine::kRecurrent;
   }
   ORT_RETURN_IF_NOT(plan.supported, "GatedDeltaNet: no supported plan (",
                     plan.reject_reason ? plan.reject_reason : "unknown", ")");
@@ -289,6 +287,12 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
+
+  IAllocatorUniquePtr<uint8_t> workspace;
+  if (plan.workspace_bytes > 0) {
+    workspace = GetScratchBuffer<uint8_t>(plan.workspace_bytes, context->GetComputeStream());
+    pack.workspace = workspace.get();
+  }
 
   return gdn::LaunchGatedDeltaNet<CudaT>(desc, plan, pack, scale, prop.maxThreadsPerBlock,
                                          Stream(context));

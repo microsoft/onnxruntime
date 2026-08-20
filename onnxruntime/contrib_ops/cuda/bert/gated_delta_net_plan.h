@@ -39,9 +39,10 @@ enum class IoType : int { kFloat = 0,
 
 enum class Engine : int {
   kAuto = 0,
-  kChunked = 1,    // tensor-core chunked scan; prefill
-  kRecurrent = 2,  // sequential per-token recurrence; decode / MTP verify, emits checkpoints
-  kCudnn = 3,      // reserved: SM100-only and C++-inaccessible today
+  kChunked = 1,       // fused tensor-core chunked scan; prefill
+  kRecurrent = 2,     // sequential per-token recurrence; decode / MTP verify, emits checkpoints
+  kCudnn = 3,         // reserved: SM100-only and C++-inaccessible today
+  kChunkedSplit = 4,  // chunked scan split into a token-parallel prepare and a state-only scan
 };
 
 const char* EngineName(Engine e);
@@ -69,6 +70,8 @@ struct Descriptor {
   bool has_beta = false;
   bool has_initial_state = false;
   bool ragged = false;  // cu_seqlens supplied
+  // Benchmarking override. kAuto lets the heuristic choose.
+  Engine preferred_engine = Engine::kAuto;
   int sm_major = 0;
   int sm_minor = 0;
 
@@ -85,10 +88,14 @@ struct Plan {
   int v_block = 64;         // dv columns owned by one CTA (chunked engine)
   int threads = 512;        // CTA size
   int cols_per_block = 32;  // dv columns per CTA (recurrent engine)
+  // Split engine only: chunks whose prepare output is live in the workspace at once. The
+  // sequence is walked in passes of this many chunks so the workspace stays bounded.
+  int chunks_per_pass = 0;
   // Recurrent engine only: one warp per v-column with lanes spanning K, instead of one CTA
   // per v-head with the state in shared memory.
   bool warp_specialized = false;
-  size_t smem_bytes = 0;
+  size_t smem_bytes = 0;          // chunked / split-scan kernel
+  size_t smem_bytes_prepare = 0;  // split-prepare kernel
   size_t workspace_bytes = 0;
   bool supported = false;
   const char* reject_reason = nullptr;
@@ -107,6 +114,38 @@ inline size_t ChunkedSmemBytes(int bt, int dk, int dvb) {
   const size_t h = sizeof(uint16_t) * static_cast<size_t>(2 * bt * ld_kh + 2 * bt * ld_vh +
                                                           4 * bt * ld_mh + dk * ld_vh);
   return f + h;
+}
+
+// Split engine. K1 holds q, k, the full-width v, and the [BT x BT] matrices of the inverse;
+// it never sees the state. The Neumann iterate shares M's tile, so three, not four.
+inline size_t SplitPrepareSmemBytes(int bt, int dk, int dv) {
+  const int ld_kh = dk + 8;
+  const int ld_vh = dv + 8;
+  const int ld_mh = bt + 8;
+  const int ld_f1 = (dv > bt ? dv : bt) + 4;
+  const size_t f = sizeof(float) * static_cast<size_t>(bt * ld_f1 + 2 * bt);
+  const size_t h =
+      sizeof(uint16_t) * static_cast<size_t>(2 * bt * ld_kh + bt * ld_vh + 3 * bt * ld_mh);
+  return f + h;
+}
+
+// K2 holds the fp16 state, W/Qg/Kd, its own v-block of U, P, and one fp32 scratch that must
+// be wide enough for the [DK x DVB] state update.
+inline size_t SplitScanSmemBytes(int bt, int dk, int dvb) {
+  const int ld_kh = dk + 8;
+  const int ld_bh = dvb + 8;
+  const int ld_mh = bt + 8;
+  const int ld_f2 = (dvb > bt ? dvb : bt) + 4;
+  const size_t f = sizeof(float) * static_cast<size_t>(dk) * ld_f2;
+  const size_t h = sizeof(uint16_t) * static_cast<size_t>(dk * ld_bh + 3 * bt * ld_kh +
+                                                          bt * ld_bh + bt * ld_mh);
+  return f + h;
+}
+
+// Workspace one (head, chunk) needs to hand K1's output to K2: W, Qg, Kd [BT x DK],
+// Uv [BT x DV] and P [BT x BT] in fp16, plus the chunk's scalar decay.
+inline size_t SplitTileBytes(int bt, int dk, int dv) {
+  return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + dv + bt) + sizeof(float);
 }
 
 inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_block_optin) {
@@ -143,6 +182,51 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
   if (!needs_checkpoints && long_enough && shape_ok && rule_ok && type_ok && desc.sm_major >= 8) {
     plan.v_block = 64;
     plan.threads = 512;
+
+    // Split engine: a token-parallel prepare launch followed by a scan that only carries
+    // the state. Opt-in for now -- it changes the state to fp16, so it does not silently
+    // take over a numerically validated deployment.
+    if (desc.preferred_engine == Engine::kChunkedSplit) {
+      const int bt = 64;
+      const size_t prep = SplitPrepareSmemBytes(bt, desc.head_size_qk, desc.head_size_v);
+      // Narrow v-blocks only pay off once the state-independent work has been hoisted out
+      // of the scan, which is what this engine does: all four of the scan's GEMMs then
+      // scale with the block width. Take the narrow block when two CTAs of it fit on an
+      // SM, since the wide one leaves the grid under a single wave at batch 1.
+      const int narrow = 32;
+      const size_t scan_narrow = SplitScanSmemBytes(bt, desc.head_size_qk, narrow);
+      const int dvb = (2 * scan_narrow <= smem_per_block_optin) ? narrow : 64;
+      const size_t scan = SplitScanSmemBytes(bt, desc.head_size_qk, dvb);
+      if (prep <= smem_per_block_optin && scan <= smem_per_block_optin) {
+        plan.engine = Engine::kChunkedSplit;
+        plan.chunk_size = bt;
+        plan.v_block = dvb;
+        plan.smem_bytes = scan;
+        plan.smem_bytes_prepare = prep;
+        // Cap the live prepare output so a long sequence walks in passes instead of asking
+        // for a workspace proportional to its length.
+        const size_t tile = SplitTileBytes(bt, desc.head_size_qk, desc.head_size_v);
+        const size_t per_chunk = tile * static_cast<size_t>(batch) * desc.num_heads_v;
+        const int64_t longest = (desc.total_tokens + batch - 1) / batch;
+        const int total_chunks = static_cast<int>((longest + bt - 1) / bt);
+        const size_t kWorkspaceCap = 64u << 20;
+        int per_pass = static_cast<int>(kWorkspaceCap / (per_chunk > 0 ? per_chunk : 1));
+        per_pass = per_pass < 1 ? 1 : per_pass;
+        per_pass = per_pass > total_chunks ? total_chunks : per_pass;
+        plan.chunks_per_pass = per_pass;
+        plan.workspace_bytes = per_chunk * static_cast<size_t>(per_pass);
+        if (per_pass < total_chunks) {
+          // A multi-pass walk carries the state between launches through the workspace,
+          // because the caller is not obliged to have asked for final_state.
+          plan.workspace_bytes += sizeof(float) * static_cast<size_t>(batch) *
+                                  desc.num_heads_v * desc.head_size_v * desc.head_size_qk;
+        }
+        plan.supported = true;
+        return plan;
+      }
+      plan.v_block = 64;  // fall through to the fused engine
+    }
+
     // BT=64 is the fastest configuration measured on SM90 but needs 157 KB of shared
     // memory. Consumer Blackwell (SM120) allows only 99 KB per block, where BT=32 fits in
     // 96 KB for about a 10% cost. Take the widest chunk the device can actually hold; an

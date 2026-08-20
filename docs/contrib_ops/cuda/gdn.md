@@ -421,7 +421,73 @@ shared-memory chunk configuration. Three cases are worth calling out:
 - **Decode is bounded by the float32 state round-trip.** A float16 state would halve decode
   state traffic. The type constraint already keeps the state dtype independent of `T`, so
   this is a contract decision rather than a kernel rewrite — but float32 was chosen
-  deliberately for recurrence stability at chunk and request boundaries.
+  deliberately for recurrence stability at chunk and request boundaries. Note that the
+  windowed MTP contract multiplies this by the window: at the Qwen3.8 shape one state slot
+  is 3.0 MiB per layer, so `state_checkpoints=4` across 48 layers is **576 MiB** of float32
+  state, and `num_speculative_tokens` is capped at `state_checkpoints - 1`, so every extra
+  draft token costs another 144 MiB. The companion `conv_state` is already float16.
+  Profiling the MTP loop (8192 context, 64 generated tokens, N=3) shows the machinery is
+  **not** a throughput cost — the checkpoint-writing decode kernel is 0.3% of GPU time and
+  the runtime's window-crop kernel 0.1%, against 34% spent in weight dequantization — so
+  the argument for a float16 state here is memory and draft-length headroom, not speed.
+- **The chunked engine is bound by its own serial chain, not by grid size.** Measured on
+  H200 at `T=8192`, batch 1 (`ncu`): grid 96 CTAs, **0.73 waves per SM**, 25.0% warp
+  occupancy, **7.1%** tensor-pipe utilisation, **1.8%** DRAM throughput. It is tempting to
+  read that as "too few CTAs", but widening the grid measurably loses: with a `v_block` of
+  32 (192 CTAs) the same work takes 657.6 us instead of 404.8 us at `T=1024`, and
+  `BT=32, v_block=32` (the configuration that maximises CTA residency) takes 793.0 us.
+  The reason is that 157 KB of shared memory pins the kernel to one CTA per SM, so extra
+  CTAs only add waves. Batch scaling confirms it: batch 4 at `T=1024` costs 1217.2 us,
+  which is exactly `ceil(384/132) = 3` waves times the 405 us single-wave time, so
+  per-CTA time is fixed and co-residency contributes nothing.
+  Consequently the only way to speed this engine up is to **shorten the per-CTA critical
+  path**. That is what `Engine::kChunkedSplit` does; see below.
+- **The split engine (`Engine::kChunkedSplit`) is 20% faster and is opt-in.** Pushing
+  `(I+M)^-1` through the subtraction gives `U = Uv - W S0` with `Uv = (I+M)^-1 (beta v)` and
+  `W = (I+M)^-1 diag(beta e^gc) k`, so every state-independent term factorises out. A
+  prepare kernel owns one `(sequence, v-head, chunk)` — 768 CTAs instead of 96 at `T=1024` —
+  and emits `W`, `Qg`, `Uv`, `P`, `Kd`; the scan kernel is then left with `U = Uv - W S`,
+  `o = scale (P U + Qg S)`, `S = decay S + Kd^T U`. Measured on H200 at batch 1: `T=1024`
+  406 us to **325 us**, `T=8192` 3069 us to **2579 us**. By `nsys` the scan is 200 us and
+  the prepare 110 us, so the scan **alone** is 2.0x faster than the whole fused kernel —
+  close to the 2.3x cut in serial FLOPs the split predicts. Three things fall out that the
+  fused engine could not have:
+  - Every one of the scan's GEMMs scales with `v_block`, so narrowing it now divides the
+    work instead of duplicating it. `v_block=32` measures 325 us against 341 us for 64, the
+    reverse of the fused engine's 1.6x loss.
+  - `W` and `Qg` are stored adjacently, so `W S` and `Qg S` are one `[2 BT x DVB]` GEMM
+    whose `Qg S` half stays live while `P U` overwrites the other, and the state update
+    accumulates straight into the float16 state instead of staging through float32 scratch.
+    Together those take the chunk body from seven barriers to four.
+  - The state is float16 rather than float32, which is what brings the scan under the
+    113 KB that lets two CTAs share an SM. The prepare kernel reaches the same limit by
+    aliasing the Neumann iterate onto `M`, worth 143 us to 110 us on its own.
+  Both kernels remain latency-bound (`ncu`: tensor 7.0% / 5.1%, DRAM 10.4% / 7.0%). What is
+  left in the prepare kernel is **not** worth chasing: short-circuiting the whole `(I+M)^-1`
+  construction saves only 28 us of its 110 us, and the 16x16 forward substitution inside it
+  — the part that occupies just 64 of 512 threads, and so looks like the obvious target —
+  accounts for 4.7 us, about 1.5% of the operator.
+- **float16, not bfloat16, for the on-chip state.** The operator's q/k/v/output are already
+  float16, `qk_l2_norm` bounds `|k| <= 1` and `beta = sigmoid(.) < 1`, so the state stays
+  around `O(10)` against float16's 65504 ceiling; entries that underflow are ones the decay
+  has already made irrelevant. float16 then carries three more mantissa bits than bfloat16
+  on what is an accumulator running the length of the sequence. The reference
+  implementations use bfloat16 only because their surrounding stacks are bfloat16-native.
+  Scored against a float64 reference at the Qwen3.8 geometry, the float16 state costs
+  **1.09x** the output relative RMS of the float32 state (5.5e-4 against 5.1e-4) and 1.22x
+  on the returned state, and the ratio does not move between `T=1024` and `T=4096`, so the
+  per-chunk rounding is not accumulating. Both figures sit at float16's own machine epsilon
+  of 4.9e-4, which is the floor imposed by storing the output as float16 at all. At model
+  level, running the same Qwen3.8-27B MTP model under both engines and pairing per question:
+
+  | task | n | float32 state | float16 state | delta | discordant | McNemar p |
+  |---|---:|---:|---:|---:|---|---:|
+  | GPQA | 198 | 81.31% | 82.32% | +1.01pp | 18 (8/10) | 0.81 |
+  | MMLU-Pro | 800 | 83.38% | 84.38% | +1.00pp | 46 (19/27) | 0.30 |
+
+  Long chain-of-thought is the sensitive probe for a prefill-only numerics change, so GPQA is
+  the one that matters here; neither moves. The engine nevertheless stays opt-in until it has
+  run in a release candidate.
 - **cuDNN backend.** `Engine::kCudnn` is reserved and unimplemented. As of cudnn-frontend
   v1.27.0 — the version this build pins, and the release that introduced GDN — the operation
   exists **only** in the Python package (`python/cudnn/linear_attention/`); there are no GDN
