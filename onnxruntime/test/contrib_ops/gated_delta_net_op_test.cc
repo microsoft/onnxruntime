@@ -211,8 +211,10 @@ void AddCommonAttrs(OpTester& t, const Options& o) {
 }
 
 // Runs the operator with float16 q/k/v and compares against the float64 reference.
+// With rank4 the leading token axis is spelled [batch, sequence] instead of [total_tokens];
+// the buffers are byte-identical, only the declared shapes differ.
 void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_tol,
-             float state_tol) {
+             float state_tol, bool rank4 = false) {
   std::vector<float> ref_out, ref_state, ref_ckpt;
   Reference(g, o, in, &ref_out, &ref_state, &ref_ckpt);
 
@@ -220,17 +222,26 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
   AddCommonAttrs(test, o);
 
   const int out_heads = std::max(g.hq, g.hv);
-  test.AddInput<MLFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.q));
-  test.AddInput<MLFloat16>("key", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.k));
-  test.AddInput<MLFloat16>("value", {g.total_tokens, g.hv, g.dv}, ToFloat16(in.v));
+  // Leading token axes shared by q/k/v, decay, beta and the output.
+  std::vector<int64_t> lead{g.total_tokens};
+  if (rank4) lead = {g.batch, g.total_tokens / g.batch};
+  auto shaped = [&lead](std::initializer_list<int64_t> tail) {
+    std::vector<int64_t> s(lead);
+    s.insert(s.end(), tail);
+    return s;
+  };
+
+  test.AddInput<MLFloat16>("query", shaped({g.hq, g.dk}), ToFloat16(in.q));
+  test.AddInput<MLFloat16>("key", shaped({g.hq, g.dk}), ToFloat16(in.k));
+  test.AddInput<MLFloat16>("value", shaped({g.hv, g.dv}), ToFloat16(in.v));
   if (in.cu_seqlens.empty()) {
     test.AddOptionalInputEdge<int32_t>();
   } else {
     test.AddInput<int32_t>("cu_seqlens", {static_cast<int64_t>(in.cu_seqlens.size())},
                            in.cu_seqlens);
   }
-  test.AddInput<float>("decay", {g.total_tokens, g.hv}, in.decay);
-  test.AddInput<float>("beta", {g.total_tokens, g.hv}, in.beta);
+  test.AddInput<float>("decay", shaped({g.hv}), in.decay);
+  test.AddInput<float>("beta", shaped({g.hv}), in.beta);
   if (in.state0.empty()) {
     test.AddOptionalInputEdge<float>();
   } else {
@@ -241,7 +252,7 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
   }
 
-  test.AddOutput<MLFloat16>("output", {g.total_tokens, out_heads, g.dv}, ToFloat16(ref_out),
+  test.AddOutput<MLFloat16>("output", shaped({out_heads, g.dv}), ToFloat16(ref_out),
                             false, out_tol, out_tol);
   test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
                         state_tol);
@@ -318,6 +329,15 @@ TEST(GatedDeltaNetTest, Chunked_UniformBatch) {
   if (NeedSkipIfCudaArchLowerThan(800)) return;
   Geometry g{256, 2, 1, 2, kDim, kDim};  // no cu_seqlens: batch comes from initial_state
   RunCase(g, Options{}, MakeInputs(g, 19), 3e-2f, 3e-2f);
+}
+
+// The rank-4 [batch, sequence, heads, head_size] spelling must match the packed one exactly.
+TEST(GatedDeltaNetTest, Rank4BatchSequenceMatchesPacked) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  Geometry prefill{256, 2, 2, 6, kDim, kDim};
+  RunCase(prefill, Options{}, MakeInputs(prefill, 23), 3e-2f, 3e-2f, /*rank4=*/true);
+  Geometry decode{3, 3, 1, 2, kDim, kDim};  // one token per request
+  RunCase(decode, Options{}, MakeInputs(decode, 29), 3e-2f, 3e-2f, /*rank4=*/true);
 }
 
 // chunk_size=32 pins the narrow shared-memory configuration (96 KB) that consumer

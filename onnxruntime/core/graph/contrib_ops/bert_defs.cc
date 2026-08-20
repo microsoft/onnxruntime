@@ -2868,12 +2868,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
 
-Layout. Query, key and value are rank-3 and token-major, so head counts are derived from the
-shapes rather than from attributes:
+Layout. Query, key and value are token-major, so head counts are derived from the shapes
+rather than from attributes:
 
   query [total_tokens, num_heads_q, head_size_qk]
   key   [total_tokens, num_heads_k, head_size_qk]
   value [total_tokens, num_heads_v, head_size_v]
+
+The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
+pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
+is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
+activation with static Reshape targets instead of Shape-derived ones. Ragged packing
+(`cu_seqlens`) requires the rank-3 spelling.
 
 `num_heads_q` must equal `num_heads_k`, and `num_heads_v` must be a positive multiple of
 `num_heads_q` (inverse grouped-query attention: each query/key head is shared by
@@ -3002,19 +3008,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           const auto& query_shape = getInputShape(ctx, 0);
           const auto& value_shape = getInputShape(ctx, 2);
-          if (query_shape.dim_size() != 3 || value_shape.dim_size() != 3) {
-            fail_shape_inference("GatedDeltaNet: query and value must have rank 3");
+          const int rank = query_shape.dim_size();
+          if ((rank != 3 && rank != 4) || value_shape.dim_size() != rank) {
+            fail_shape_inference(
+                "GatedDeltaNet: query and value must both have rank 3 or both have rank 4");
           }
+          const int token_dims = rank - 2;
 
           ONNX_NAMESPACE::TensorShapeProto out_shape;
-          *out_shape.add_dim() = query_shape.dim(0);
-          if (query_shape.dim(1).has_dim_value() && value_shape.dim(1).has_dim_value()) {
-            out_shape.add_dim()->set_dim_value(
-                std::max(query_shape.dim(1).dim_value(), value_shape.dim(1).dim_value()));
+          for (int i = 0; i < token_dims; ++i) {
+            *out_shape.add_dim() = query_shape.dim(i);
+          }
+          if (query_shape.dim(token_dims).has_dim_value() &&
+              value_shape.dim(token_dims).has_dim_value()) {
+            out_shape.add_dim()->set_dim_value(std::max(query_shape.dim(token_dims).dim_value(),
+                                                        value_shape.dim(token_dims).dim_value()));
           } else {
             out_shape.add_dim();
           }
-          *out_shape.add_dim() = value_shape.dim(2);
+          *out_shape.add_dim() = value_shape.dim(token_dims + 1);
           updateOutputShape(ctx, 0, out_shape);
 
           if (ctx.getNumOutputs() > 1 && hasInputShape(ctx, 6)) {

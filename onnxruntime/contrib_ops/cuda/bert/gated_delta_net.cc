@@ -96,23 +96,31 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const auto& q_shape = query->Shape();
   const auto& k_shape = key->Shape();
   const auto& v_shape = value->Shape();
-  ORT_RETURN_IF_NOT(q_shape.NumDimensions() == 3 && k_shape.NumDimensions() == 3 &&
-                        v_shape.NumDimensions() == 3,
-                    "query, key and value must be rank 3: [total_tokens, num_heads, head_size]");
+  const size_t qkv_rank = q_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(qkv_rank == 3 || qkv_rank == 4,
+                    "query, key and value must be rank 3 [total_tokens, num_heads, head_size] or "
+                    "rank 4 [batch, sequence, num_heads, head_size]");
+  ORT_RETURN_IF_NOT(k_shape.NumDimensions() == qkv_rank && v_shape.NumDimensions() == qkv_rank,
+                    "query, key and value must have the same rank");
 
-  const int64_t total_tokens = q_shape[0];
-  ORT_RETURN_IF_NOT(k_shape[0] == total_tokens && v_shape[0] == total_tokens,
+  // Leading token axes: one when packed, two when the batch and sequence axes are explicit.
+  // Both spellings have the identical token-major memory layout, so only the shapes differ.
+  const size_t token_dims = qkv_rank - 2;
+  const int64_t total_tokens = q_shape.SizeToDimension(token_dims);
+  ORT_RETURN_IF_NOT(k_shape.SizeToDimension(token_dims) == total_tokens &&
+                        v_shape.SizeToDimension(token_dims) == total_tokens,
                     "query, key and value must agree on total_tokens");
   ORT_RETURN_IF_NOT(total_tokens > 0, "total_tokens must be positive");
 
-  // Head counts are derived from the rank-3 shapes; there are no head-count attributes.
-  const int num_heads_q = static_cast<int>(q_shape[1]);
-  const int num_heads_k = static_cast<int>(k_shape[1]);
-  const int num_heads_v = static_cast<int>(v_shape[1]);
-  const int head_size_qk = static_cast<int>(q_shape[2]);
-  const int head_size_v = static_cast<int>(v_shape[2]);
+  // Head counts are derived from the shapes; there are no head-count attributes.
+  const int num_heads_q = static_cast<int>(q_shape[token_dims]);
+  const int num_heads_k = static_cast<int>(k_shape[token_dims]);
+  const int num_heads_v = static_cast<int>(v_shape[token_dims]);
+  const int head_size_qk = static_cast<int>(q_shape[token_dims + 1]);
+  const int head_size_v = static_cast<int>(v_shape[token_dims + 1]);
 
-  ORT_RETURN_IF_NOT(k_shape[2] == head_size_qk, "key head_size must equal query head_size");
+  ORT_RETURN_IF_NOT(k_shape[token_dims + 1] == head_size_qk,
+                    "key head_size must equal query head_size");
   ORT_RETURN_IF_NOT(num_heads_q == num_heads_k,
                     "num_heads_q (", num_heads_q, ") must equal num_heads_k (", num_heads_k, ")");
   ORT_RETURN_IF_NOT(num_heads_v > 0 && num_heads_q > 0 && num_heads_v % num_heads_q == 0,
@@ -121,9 +129,13 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   int batch = 1;
   if (cu_seqlens != nullptr) {
+    ORT_RETURN_IF_NOT(qkv_rank == 3,
+                      "cu_seqlens describes ragged packing, so query/key/value must be rank 3");
     ORT_RETURN_IF_NOT(cu_seqlens->Shape().NumDimensions() == 1 && cu_seqlens->Shape()[0] >= 2,
                       "cu_seqlens must be rank 1 with at least 2 elements");
     batch = static_cast<int>(cu_seqlens->Shape()[0] - 1);
+  } else if (qkv_rank == 4) {
+    batch = static_cast<int>(q_shape[0]);
   } else {
     // Uniform packing. The batch size comes from the state, which GenAI always binds.
     ORT_RETURN_IF_NOT(initial_state != nullptr,
@@ -143,20 +155,29 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                       "(V-major)");
   }
 
-  const bool decay_per_key_dim = decay != nullptr && decay->Shape().NumDimensions() == 3;
+  // decay and beta carry the same leading token axes as query/key/value; a trailing
+  // head_size_qk axis makes the decay per key dimension.
+  const bool decay_per_key_dim =
+      decay != nullptr && decay->Shape().NumDimensions() == token_dims + 2;
   if (decay != nullptr) {
     const auto& d = decay->Shape();
-    ORT_RETURN_IF_NOT(d[0] == total_tokens && d[1] == num_heads_v,
-                      "decay must be [total_tokens, num_heads_v] or "
-                      "[total_tokens, num_heads_v, head_size_qk]");
+    ORT_RETURN_IF_NOT(d.NumDimensions() == token_dims + 1 || decay_per_key_dim,
+                      "decay must be [...tokens, num_heads_v] or "
+                      "[...tokens, num_heads_v, head_size_qk]");
+    ORT_RETURN_IF_NOT(d.SizeToDimension(token_dims) == total_tokens && d[token_dims] == num_heads_v,
+                      "decay must be [...tokens, num_heads_v] or "
+                      "[...tokens, num_heads_v, head_size_qk]");
     if (decay_per_key_dim) {
-      ORT_RETURN_IF_NOT(d[2] == head_size_qk, "per-key-dim decay last axis must be head_size_qk");
+      ORT_RETURN_IF_NOT(d[token_dims + 1] == head_size_qk,
+                        "per-key-dim decay last axis must be head_size_qk");
     }
   }
   if (beta != nullptr) {
     const auto& b = beta->Shape();
-    ORT_RETURN_IF_NOT(b.NumDimensions() == 2 && b[0] == total_tokens && b[1] == num_heads_v,
-                      "beta must be [total_tokens, num_heads_v]");
+    ORT_RETURN_IF_NOT(b.NumDimensions() == token_dims + 1 &&
+                          b.SizeToDimension(token_dims) == total_tokens &&
+                          b[token_dims] == num_heads_v,
+                      "beta must be [...tokens, num_heads_v]");
   }
   if (gate_activation_ == gdn::GateActivation::kQwen) {
     ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr,
@@ -169,8 +190,10 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   const int out_heads = std::max(num_heads_q, num_heads_v);
-  TensorShape out_shape{total_tokens, out_heads, head_size_v};
-  Tensor* output = context->Output(0, out_shape);
+  TensorShapeVector out_dims(q_shape.GetDims().begin(), q_shape.GetDims().begin() + token_dims);
+  out_dims.push_back(out_heads);
+  out_dims.push_back(head_size_v);
+  Tensor* output = context->Output(0, TensorShape(out_dims));
 
   TensorShape state_shape{batch, num_heads_v, head_size_v, head_size_qk};
   Tensor* final_state = context->Output(1, state_shape);
