@@ -118,7 +118,9 @@ The implementation must maintain these invariants:
    schema accidentally. This applies to in-tree EP kernels as well as plugin kernels.
 4. A graph rewrite that introduces or upgrades an EP-specific operator is allowed
    only when the assigned EP has the exact target schema and kernel support.
-5. Unknown compatibility is treated as unsupported, not as compatible.
+5. Once strict enforcement is enabled, unknown compatibility is treated as
+   unsupported, not as compatible. During the API-30 transition, a plugin that
+   predates the callback remains enabled with a warning as described below.
 6. The plugin independently validates the actual node in `GetCapability()`; core's
    negotiation is an additional guard, not a substitute for validation.
 7. Quarantine granularity matches negotiation granularity. A digest mismatch on one
@@ -167,9 +169,9 @@ if (map.find(kMSDomain) == map.end()) {
 Editing the literal to `2` inside this guard would silently do nothing when a shared
 provider registered `[1, 1]` first, and core would then reject every opset-2 import
 with a generic unresolved-schema error. The bump must instead raise the recorded
-maximum unconditionally to at least the built-in value. If an existing registration
-declares a lower maximum than ORT's own schemas require, that is a configuration error
-and must be logged, not ignored.
+maximum and normalize the last-released value unconditionally to the built-in values.
+An older maximum is accepted and upgraded; a different minimum or a maximum newer
+than the core understands is a configuration error.
 
 The same check should reject an `OrtCustomOpDomain` or a shared provider that
 registers an ORT-owned domain name such as `com.microsoft` with its own range. Custom
@@ -409,6 +411,12 @@ The rule is:
   manifest, so an in-place schema edit fails the build unless the manifest is
   regenerated, and regenerating an existing entry fails the historical-digest check.
 
+Manifest generation and validation must use the finalized schemas from the live
+registry. Hashing the raw objects returned by an opset's `ForEachSchema()` is not
+equivalent: ONNX schema registration finalizes those objects before runtime lookup.
+The manifest must also cover `com.microsoft` schemas registered outside the central
+`OpSet_Microsoft_ver*` classes.
+
 Consequences for non-default builds:
 
 - `DISABLE_CONTRIB_OPS` and reduced/selective-op builds: absent operators produce no
@@ -538,9 +546,12 @@ When importing a plugin kernel registry, ORT validates each kernel in `com.micro
 
 1. `start_version <= end_version`. An open-ended range is invalid once the operator
    has more than one registered schema version.
-2. A core schema exists for `(domain, op_type, start_version)`.
-3. Every distinct schema `since_version` covered by the range was negotiated exactly
-   for that operator.
+2. A range wholly newer than the core's domain maximum is ignored, not treated as a
+   plugin error. For a range that overlaps the core's supported versions, only that
+   core-visible intersection is validated.
+3. A core schema exists for `(domain, op_type, start_version)` in that intersection,
+   and every distinct schema `since_version` it covers was negotiated exactly for
+   that operator.
 
 An incompatible kernel is excluded from the effective registry and logged once with
 the EP name, operator, requested range, and negotiation result. Other compatible

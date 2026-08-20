@@ -24,6 +24,9 @@ Status PluginEpSchemaCompatibility::Create(
   // Missing metadata remains permissive during the transition. API 30 is the
   // first ABI version containing GetOperatorCompatibilityInfo.
   if (factory.ort_version_supported < 30 || factory.GetOperatorCompatibilityInfo == nullptr) {
+    LOGS(logger, WARNING) << "Plugin EP factory '" << factory.GetName(&factory)
+                          << "' does not publish operator schema compatibility information. "
+                             "com.microsoft kernels remain enabled under the temporary legacy policy.";
     result = std::move(compatibility);
     return Status::OK();
   }

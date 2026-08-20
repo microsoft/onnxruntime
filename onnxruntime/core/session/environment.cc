@@ -302,13 +302,14 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
                         existing_ms_domain->second.second <= onnxruntime::kMSDomainOpsetVersion,
                     "An external provider registered an incompatible ", onnxruntime::kMSDomain,
                     " opset range [", existing_ms_domain->second.first, ", ",
-                    existing_ms_domain->second.second, "]; this core requires [1, ",
+                    existing_ms_domain->second.second, "]; this core supports [1, ",
                     onnxruntime::kMSDomainOpsetVersion, "].");
-        if (existing_ms_domain->second.second < onnxruntime::kMSDomainOpsetVersion) {
-          domainToVersionRangeInstance.UpdateDomainToVersion(
-              onnxruntime::kMSDomain, 1, onnxruntime::kMSDomainOpsetVersion,
-              onnxruntime::kMSDomainOpsetVersionLastReleased);
-        }
+        // Core owns both the current and last-released values. Always normalize
+        // both maps, including when an external provider already registered the
+        // current maximum with the default last-release value.
+        domainToVersionRangeInstance.UpdateDomainToVersion(
+            onnxruntime::kMSDomain, 1, onnxruntime::kMSDomainOpsetVersion,
+            onnxruntime::kMSDomainOpsetVersionLastReleased);
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);

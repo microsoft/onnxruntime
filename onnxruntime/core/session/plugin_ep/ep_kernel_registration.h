@@ -78,6 +78,8 @@ KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
 /// Gets the kernel registry for a plugin EP.
 /// </summary>
 /// <param name="ort_ep">The OrtEp instance.</param>
+/// <param name="schema_compatibility">The factory's negotiated schema compatibility snapshot.</param>
+/// <param name="logger">The logger used to report quarantined kernel registrations.</param>
 /// <param name="kernel_registry">Output parameter set to the EP's registry.</param>
 /// <returns>A status indicating success or an error</returns>
 Status GetPluginEpKernelRegistry(OrtEp& ort_ep,

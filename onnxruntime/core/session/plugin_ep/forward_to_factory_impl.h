@@ -117,13 +117,6 @@ struct ForwardToFactoryImpl {
         device, candidates, num_candidates, session_options, selected_index);
   }
 
-  static OrtStatus* ORT_API_CALL GetOperatorCompatibilityInfo(
-      OrtEpFactory* this_ptr,
-      _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
-      _Out_ size_t* num_entries) noexcept {
-    return static_cast<TFactory*>(this_ptr)->GetOperatorCompatibilityInfo(entries, num_entries);
-  }
-
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }

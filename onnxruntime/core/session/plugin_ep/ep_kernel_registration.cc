@@ -299,12 +299,24 @@ static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
       const auto& domain_versions = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
       const auto domain_version = domain_versions.find(kernel_def.Domain());
       ORT_RETURN_IF(start_version <= 0 || end_version < start_version ||
-                        domain_version == domain_versions.end() ||
-                        (end_version != INT_MAX && end_version > domain_version->second.second),
+                        domain_version == domain_versions.end(),
                     "Plugin EP has an invalid com.microsoft kernel range for ",
                     kernel_def.OpName(), ": [", start_version, ", ", end_version, "].");
 
-      int compatibility_end_version = end_version;
+      const int core_max_version = domain_version->second.second;
+      if (start_version > core_max_version) {
+        // A newer plugin may contain kernels for schemas that do not exist in
+        // this core. They are invisible here and must not disable older kernels
+        // from the same plugin.
+        LOGS(logger, INFO) << "Excluding plugin EP kernel " << kernel_def.Domain() << ":"
+                           << kernel_def.OpName() << " with future version range [" << start_version << ", "
+                           << end_version << "]; this core supports through version " << core_max_version << ".";
+        continue;
+      }
+
+      // Validate only versions visible to this core. A bounded range may extend
+      // into schemas supplied by a newer plugin build.
+      int compatibility_end_version = std::min(end_version, core_max_version);
       if (end_version == INT_MAX) {
         // KernelRegistry intentionally treats an open-ended registration as an
         // exact start-version match. Preserve existing contrib registrations

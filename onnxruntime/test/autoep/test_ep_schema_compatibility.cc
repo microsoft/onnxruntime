@@ -8,9 +8,12 @@
 #include <memory>
 #include <vector>
 
+#include "core/framework/kernel_def_builder.h"
+#include "core/framework/kernel_registry.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/ms_schema_abi_manifest.h"
 #include "core/graph/schema_abi_digest.h"
+#include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "gtest/gtest.h"
 #include "onnx/defs/schema.h"
 #include "test/test_environment.h"
@@ -41,6 +44,22 @@ struct TestFactory {
   // Keep OrtEpFactory first so the callback can recover the enclosing test object.
   OrtEpFactory api{};
   std::vector<OrtEpOperatorCompatibilityInfo> entries;
+};
+
+struct TestEp : OrtEp {
+  explicit TestEp(const KernelRegistry& kernel_registry) : OrtEp{}, kernel_registry_{kernel_registry} {
+    ort_version_supported = 30;
+    GetKernelRegistry = GetKernelRegistryImpl;
+  }
+
+  static OrtStatus* ORT_API_CALL GetKernelRegistryImpl(
+      OrtEp* this_ptr, const OrtKernelRegistry** kernel_registry) noexcept {
+    const auto& ep = *static_cast<const TestEp*>(this_ptr);
+    *kernel_registry = reinterpret_cast<const OrtKernelRegistry*>(&ep.kernel_registry_);
+    return nullptr;
+  }
+
+  const KernelRegistry& kernel_registry_;
 };
 
 OrtEpOperatorCompatibilityInfo MakeGqaEntry() {
@@ -85,6 +104,19 @@ TEST(PluginEpSchemaCompatibilityTest, AcceptsMatchingEntryAndQuarantinesMismatch
   EXPECT_FALSE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
 }
 
+TEST(PluginEpSchemaCompatibilityTest, QuarantinesDuplicateEntry) {
+  TestFactory factory;
+  factory.entries.push_back(MakeGqaEntry());
+  factory.entries.push_back(factory.entries.front());
+
+  std::shared_ptr<const PluginEpSchemaCompatibility> compatibility;
+  ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
+      factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
+
+  ASSERT_TRUE(compatibility->IsNegotiated());
+  EXPECT_FALSE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
+}
+
 TEST(PluginEpSchemaCompatibilityTest, MissingEntryDoesNotAffectStandardOnnxDomain) {
   TestFactory factory;
 
@@ -118,6 +150,49 @@ TEST(PluginEpSchemaCompatibilityTest, AcceptsPublishedMSDomainManifest) {
     EXPECT_TRUE(compatibility->IsCompatible(entry.domain, entry.op_type, entry.since_version))
         << entry.op_type << "@" << entry.since_version;
   }
+}
+
+TEST(PluginEpSchemaCompatibilityTest, KeepsCoreVisiblePartOfNewerKernelRanges) {
+  TestFactory factory;
+  factory.entries.assign(std::begin(contrib::kMSDomainSchemaAbiManifest),
+                         std::end(contrib::kMSDomainSchemaAbiManifest));
+
+  std::shared_ptr<const PluginEpSchemaCompatibility> compatibility;
+  ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
+      factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
+
+  KernelRegistry source_registry;
+  auto visible_and_future = KernelDefBuilder()
+                                .SetName("GroupQueryAttention")
+                                .SetDomain(kMSDomain)
+                                .SinceVersion(1, kMSDomainOpsetVersion + 1)
+                                .Provider("SchemaCompatibilityTestEP")
+                                .Build();
+  ASSERT_STATUS_OK(source_registry.Register(
+      KernelCreateInfo(std::move(visible_and_future), KernelCreateFn{})));
+
+  TestEp ep{source_registry};
+  std::shared_ptr<KernelRegistry> effective_registry;
+  ASSERT_STATUS_OK(GetPluginEpKernelRegistry(
+      ep, *compatibility, DefaultLoggingManager().DefaultLogger(), effective_registry));
+  ASSERT_NE(effective_registry, nullptr);
+  EXPECT_EQ(effective_registry->GetKernelCreateMap().size(), 1u);
+
+  KernelRegistry future_registry;
+  auto future_only = KernelDefBuilder()
+                         .SetName("GroupQueryAttention")
+                         .SetDomain(kMSDomain)
+                         .SinceVersion(kMSDomainOpsetVersion + 1, kMSDomainOpsetVersion + 1)
+                         .Provider("SchemaCompatibilityTestEP")
+                         .Build();
+  ASSERT_STATUS_OK(future_registry.Register(
+      KernelCreateInfo(std::move(future_only), KernelCreateFn{})));
+
+  TestEp future_ep{future_registry};
+  ASSERT_STATUS_OK(GetPluginEpKernelRegistry(
+      future_ep, *compatibility, DefaultLoggingManager().DefaultLogger(), effective_registry));
+  ASSERT_NE(effective_registry, nullptr);
+  EXPECT_TRUE(effective_registry->GetKernelCreateMap().empty());
 }
 
 }  // namespace

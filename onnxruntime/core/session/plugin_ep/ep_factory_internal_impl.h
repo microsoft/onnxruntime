@@ -140,14 +140,6 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
-  virtual OrtStatus* GetOperatorCompatibilityInfo(
-      _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
-      _Out_ size_t* num_entries) noexcept {
-    *entries = nullptr;
-    *num_entries = 0;
-    return nullptr;
-  }
-
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 
