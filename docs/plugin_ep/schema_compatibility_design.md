@@ -2,7 +2,14 @@
 
 ## Status
 
-Proposed design.
+Implementation in progress.
+
+The initial API-30 implementation adds the fixed operator descriptor, the optional
+factory callback, canonical per-schema digest computation, negotiation during plugin
+EP creation, effective kernel-registry filtering, and post-`GetCapability()`
+validation. CUDA manifest publication, contrib schema version 2, optimizer gates,
+ORT-owned-domain collision rejection, and strict handling of plugins without the
+callback remain follow-up work.
 
 This document describes how ONNX Runtime (ORT) core and a separately built plugin
 Execution Provider (EP) negotiate operator-schema compatibility. The immediate
@@ -258,7 +265,7 @@ following the header's existing doxygen conventions:
   /** \brief Get the operator schema contracts this factory was built against.
    *
    * ...
-   * \since Version 1.28.
+   * \since Version 1.30.
    */
   ORT_API2_STATUS(GetOperatorCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
                   _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
@@ -266,10 +273,10 @@ following the header's existing doxygen conventions:
 ```
 
 The returned array and strings are owned by the factory and remain valid until
-`ReleaseEpFactory()`. ORT copies the entries during factory registration. On failure,
-the callback leaves both outputs unchanged, following the C API convention. Duplicate
-`(domain, op_type, since_version)` entries with conflicting digests are a plugin bug;
-ORT treats the operator as incompatible and logs once.
+`ReleaseEpFactory()`. ORT copies the entries during plugin provider creation. On
+failure, the callback leaves both outputs unchanged, following the C API convention.
+Duplicate `(domain, op_type, since_version)` entries are a plugin bug; ORT treats the
+operator as incompatible and logs once.
 
 ORT calls the appended field only when `ort_version_supported` reaches the ABI version
 that introduced it and the function pointer is non-null, matching the existing
@@ -327,21 +334,27 @@ must be specified precisely enough that two independent implementations agree. I
 includes only execution-relevant schema data:
 
 - domain, operator name, and `since_version`;
-- ordered formal inputs and outputs, including option (single/optional/variadic),
-  homogeneity, and the declared type-parameter name;
+- ordered formal inputs and outputs, including formal parameter name, option
+  (single/optional/variadic), homogeneity, variadic minimum arity, differentiation
+  category, and the declared type-parameter name;
+- the schema's global minimum and maximum input and output arity;
 - type-parameter bindings, with allowed type strings sorted by byte value;
 - attributes sorted by name, with required/optional state, attribute type, and the
   canonical serialization of the default value;
 - schema-visible differentiators such as deprecation state.
 
-The encoding must define field order, a non-ambiguous separator or length prefix for
-every string, fixed-width little-endian integers, and a normalized rendering of
-attribute defaults (including float formatting). Sorting is by raw byte value, never
+Canonical encoding version 1 starts with the length-prefixed byte string
+`ort.schema_abi.v1`. Every following string is encoded as an unsigned 64-bit
+little-endian byte length followed by its bytes. Integers and booleans are unsigned
+64-bit little-endian values. Lists start with their element count and then encode
+elements in the order stated above. Attribute defaults are deterministic protobuf
+wire serializations of `AttributeProto` after clearing `doc_string`; their byte string
+is length-prefixed like every other string. Sorting is by raw byte value, never
 locale-sensitive.
 
-Allowed type strings must be normalized by the generator rather than emitted verbatim
-from `OpSchema`, so that a cosmetic formatting change in the ONNX submodule does not
-flip every digest. Documentation, source location, and function pointer addresses are
+Formal and allowed type strings are normalized by removing ASCII whitespace before
+encoding, so that a cosmetic formatting change in the ONNX submodule does not flip
+every digest. Documentation, source location, and function pointer addresses are
 excluded. Shape inference code cannot be hashed directly; changes to its execution
 contract are handled by the versioning policy.
 
@@ -389,9 +402,9 @@ plugin must set its minimum ORT version to the release that introduced negotiati
 
 For every plugin factory, ORT resolves each reported entry independently. An entry is
 compatible only when core has a schema for `(domain, op_type, since_version)` and the
-digests are equal. ORT stores the resulting set of accepted
-`(domain, op_type, since_version)` triples on the internal plugin EP factory and copies
-it to each `PluginExecutionProvider` instance.
+digests are equal. During `PluginExecutionProvider` creation, ORT snapshots the
+resulting set of accepted `(domain, op_type, since_version)` triples and shares that
+immutable snapshot with the provider and its effective kernel registry.
 
 Negotiation is not `min(core_max, plugin_max)` and is not a per-domain decision. Every
 accepted entry matches independently.
@@ -409,9 +422,9 @@ The last row quarantines only `Foo`'s kernels. Kernels for other `com.microsoft`
 operators whose digests matched, and all standard ONNX-domain kernels, remain
 available.
 
-Negotiation is snapshotted when the factory is registered. The ONNX schema registry is
+Negotiation is snapshotted when a provider is created. The ONNX schema registry is
 process-global and can still be mutated afterwards by custom-op registration or by a
-late-loaded shared provider. To keep the snapshot honest, ORT rejects any later
+late-loaded shared provider. To keep each snapshot honest, ORT rejects any later
 attempt to register schemas into an ORT-owned domain (see
 [Domain version](#domain-version)); mutation of unrelated custom domains does not
 affect negotiation.
@@ -776,6 +789,8 @@ The main expected code areas are:
   domain names;
 - `include/onnxruntime/core/session/onnxruntime_ep_c_api.h`: factory ABI descriptor
   and callback;
+- `onnxruntime/core/graph/schema_abi_digest.*`: canonical encoding and runtime digest
+  computation;
 - `onnxruntime/core/session/plugin_ep/`: callback validation, digest negotiation,
   and effective kernel filtering;
 - `onnxruntime/core/providers/cuda/plugin/cuda_kernel_adapter.h`: bounded contrib

@@ -23,6 +23,7 @@ struct EpNode;
 struct EpValueInfo;
 class NodeArg;
 class PluginExecutionProvider;
+class PluginEpSchemaCompatibility;
 
 /// <summary>
 /// IExecutionProviderFactory that wraps a OrtEpFactory. Required for SessionOptionsAppendExecutionProvider_V2.
@@ -90,6 +91,7 @@ class PluginExecutionProvider : public IExecutionProvider {
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
                                    gsl::span<const OrtEpDevice* const> ep_devices,
+                                   std::shared_ptr<const PluginEpSchemaCompatibility> schema_compatibility,
                                    std::shared_ptr<KernelRegistry> kernel_registry,
                                    const logging::Logger& logger);
   ~PluginExecutionProvider();
@@ -205,6 +207,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<Node>> ep_context_nodes_;
   std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_;
 
+  std::shared_ptr<const PluginEpSchemaCompatibility> schema_compatibility_;
   std::shared_ptr<KernelRegistry> kernel_registry_;
 };
 }  // namespace onnxruntime

@@ -115,6 +115,12 @@ class EpFactoryInternal : public OrtEpFactory {
                                            session_options, selected_index);
   }
 
+  OrtStatus* GetOperatorCompatibilityInfo(
+      _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
+      _Out_ size_t* num_entries) noexcept {
+    return impl_->GetOperatorCompatibilityInfo(entries, num_entries);
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* /*ep*/) noexcept {
     // we never create an OrtEp so we should never be trying to release one
