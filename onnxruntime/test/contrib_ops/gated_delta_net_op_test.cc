@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -482,6 +483,40 @@ TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {
   eps.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "must be a positive multiple", {}, nullptr,
            &eps);
+}
+
+// The plan decision is pure host code, so the consumer-Blackwell shared-memory budget can
+// be checked without an SM120 device. CUTLASS records sm120_smem_capacity_bytes = 101376
+// against SM90/SM100's 232448.
+TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor d{};
+  d.total_tokens = 1024;
+  d.batch = 1;
+  d.num_heads_q = 16;
+  d.num_heads_k = 16;
+  d.num_heads_v = 48;
+  d.head_size_qk = 128;
+  d.head_size_v = 128;
+  d.chunk_size = 64;
+  d.io_type = gdn::IoType::kFloat16;
+  d.sm_major = 12;
+
+  const gdn::Plan blackwell = gdn::SelectPlan(d, 128, 101376);
+  EXPECT_TRUE(blackwell.supported);
+  EXPECT_EQ(blackwell.engine, gdn::Engine::kChunked) << "must not fall back to the scalar engine";
+  EXPECT_EQ(blackwell.chunk_size, 32);
+  EXPECT_LE(blackwell.smem_bytes, 101376u);
+
+  d.sm_major = 9;
+  const gdn::Plan hopper = gdn::SelectPlan(d, 132, 232448);
+  EXPECT_EQ(hopper.engine, gdn::Engine::kChunked);
+  EXPECT_EQ(hopper.chunk_size, 64) << "the wider chunk is faster where it fits";
+
+  // A device too small for either chunk must degrade to the sequential engine, not fail.
+  const gdn::Plan tiny = gdn::SelectPlan(d, 132, 48 * 1024);
+  EXPECT_TRUE(tiny.supported);
+  EXPECT_EQ(tiny.engine, gdn::Engine::kRecurrent);
 }
 
 }  // namespace test
