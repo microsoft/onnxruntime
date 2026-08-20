@@ -290,16 +290,13 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  // TODO: convert q / key_cache / value_cache / output to getByOffset /
+  // q / key_cache / value_cache / output are addressed via getByOffset /
   // setByOffset so tensors larger than maxStorageBufferBindingSize (128 MiB
   // on most adapters) transparently work when the framework splits them
-  // across bindings. Attempted in this branch — the emitted code is
-  // byte-identical to raw indexing but triggers an SEH access violation at
-  // Program::Build time on Windows/NVIDIA. Tracked as a follow-up.
-  // block_table uses .getByIndices (2-D lookup).
-  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("key_cache", ShaderUsage::UseUniform);
-  shader.AddInput("value_cache", ShaderUsage::UseUniform);
+  // across bindings. block_table uses .getByIndices (2-D lookup).
+  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& key_cache = shader.AddInput("key_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& value_cache = shader.AddInput("value_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& block_table = shader.AddInput("block_table", ShaderUsage::UseUniform);
   shader.AddInput("seqlens_k", ShaderUsage::None);
   shader.AddInput("seqlens_q", ShaderUsage::None);
@@ -309,7 +306,7 @@ Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shade
     // when Q arrives already-packed (no BSNH padding).
     shader.AddInput("cumulative_seqlens_q", ShaderUsage::None);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_paged_prefill.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
@@ -318,7 +315,11 @@ Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shade
                              WGSL_TEMPLATE_PARAMETER(q_varlen, q_varlen_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
-                             WGSL_TEMPLATE_VARIABLE(block_table, block_table));
+                             WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                             WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(q, q),
+                             WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
 
 Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,

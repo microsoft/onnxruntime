@@ -40,7 +40,7 @@
 #param max_k_step_param
 #param q_varlen
 
-#use .getByIndices
+#use .getByIndices .getByOffset .setByOffset
 
 const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
@@ -84,7 +84,7 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
                head_idx * head_size_vec;
 #endif
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-    q_tile[idx] = q[idx + offset] * alpha;
+    q_tile[idx] = q.getByOffset(idx + offset) * alpha;
   }
 }
 
@@ -103,7 +103,7 @@ fn loadk(k_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_
     let slot = idx / head_size_vec;
     let vec_idx = idx % head_size_vec;
     let offset = base_offset + slot * block_row_stride + vec_idx;
-    k_tile[slot][vec_idx] = select(q_value_t(0), key_cache[offset], k_start + slot < total_seq);
+    k_tile[slot][vec_idx] = select(q_value_t(0), key_cache.getByOffset(offset), k_start + slot < total_seq);
   }
 }
 
@@ -119,7 +119,7 @@ fn loadv(v_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_
     let slot = idx / head_size_vec;
     let vec_idx = idx % head_size_vec;
     let offset = base_offset + slot * block_row_stride + vec_idx;
-    v_tile[slot][vec_idx] = select(q_value_t(0), value_cache[offset], v_start + slot < total_seq);
+    v_tile[slot][vec_idx] = select(q_value_t(0), value_cache.getByOffset(offset), v_start + slot < total_seq);
   }
 }
 
@@ -134,7 +134,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
 #endif
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-    output[offset + idx] = o_tile[idx];
+    output.setByOffset(offset + idx, o_tile[idx]);
   }
 }
 
