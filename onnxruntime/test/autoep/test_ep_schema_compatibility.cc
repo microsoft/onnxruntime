@@ -4,10 +4,12 @@
 #include "core/session/plugin_ep/ep_schema_compatibility.h"
 
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <vector>
 
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/ms_schema_abi_manifest.h"
 #include "core/graph/schema_abi_digest.h"
 #include "gtest/gtest.h"
 #include "onnx/defs/schema.h"
@@ -92,6 +94,30 @@ TEST(PluginEpSchemaCompatibilityTest, MissingEntryDoesNotAffectStandardOnnxDomai
 
   EXPECT_FALSE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
   EXPECT_TRUE(compatibility->IsCompatible(kOnnxDomain, "Add", 14));
+}
+
+TEST(PluginEpSchemaCompatibilityTest, AcceptsPublishedMSDomainManifest) {
+  const auto& domain_versions = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+  const auto ms_domain_range = domain_versions.Map().find(kMSDomain);
+  const auto ms_domain_last_release = domain_versions.LastReleaseVersionMap().find(kMSDomain);
+  ASSERT_NE(ms_domain_range, domain_versions.Map().end());
+  ASSERT_NE(ms_domain_last_release, domain_versions.LastReleaseVersionMap().end());
+  EXPECT_EQ(ms_domain_range->second.second, kMSDomainOpsetVersion);
+  EXPECT_EQ(ms_domain_last_release->second, kMSDomainOpsetVersionLastReleased);
+
+  TestFactory factory;
+  factory.entries.assign(std::begin(contrib::kMSDomainSchemaAbiManifest),
+                         std::end(contrib::kMSDomainSchemaAbiManifest));
+
+  std::shared_ptr<const PluginEpSchemaCompatibility> compatibility;
+  ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
+      factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
+  ASSERT_TRUE(compatibility->IsNegotiated());
+
+  for (const auto& entry : contrib::kMSDomainSchemaAbiManifest) {
+    EXPECT_TRUE(compatibility->IsCompatible(entry.domain, entry.op_type, entry.since_version))
+        << entry.op_type << "@" << entry.since_version;
+  }
 }
 
 }  // namespace

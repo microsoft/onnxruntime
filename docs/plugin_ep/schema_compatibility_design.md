@@ -4,12 +4,13 @@
 
 Implementation in progress.
 
-The initial API-30 implementation adds the fixed operator descriptor, the optional
+The API-30 implementation now includes the fixed operator descriptor, the optional
 factory callback, canonical per-schema digest computation, negotiation during plugin
-EP creation, effective kernel-registry filtering, and post-`GetCapability()`
-validation. CUDA manifest publication, contrib schema version 2, optimizer gates,
-ORT-owned-domain collision rejection, and strict handling of plugins without the
-callback remain follow-up work.
+EP creation, effective kernel-registry filtering, post-`GetCapability()` validation,
+the API-30 `com.microsoft` freeze-point manifest, CUDA manifest publication, and
+central current/last-released contrib opset constants. Optimizer gates,
+ORT-owned-domain collision rejection, automatic manifest generation, and strict
+handling of plugins without the callback remain follow-up work.
 
 This document describes how ONNX Runtime (ORT) core and a separately built plugin
 Execution Provider (EP) negotiate operator-schema compatibility. The immediate
@@ -26,16 +27,16 @@ against a different schema.
 
 The proposed solution has four parts:
 
-1. Version `com.microsoft` schemas. Freeze the published opset-1 contracts and
-   introduce opset 2 for the first post-v1 contract change. Every later contract
-   change receives a new schema version.
+1. Version `com.microsoft` schemas. API 30 establishes the current opset-1 contracts
+   as the first immutable baseline. The first contract change after that release
+   opens opset 2; later changes in the same release train share that open opset.
 2. Add a factory-level plugin ABI callback that returns **per-operator** schema
    digests for the contracts the plugin was built against. An entry is identified by
    domain, operator name, opset version, and a generated ABI digest. ORT and the
    plugin agree on an operator only when that entry matches exactly.
-3. Require bounded version ranges for kernels in `com.microsoft`. Kernel lookup must
-   match the node's resolved schema `since_version`, not merely the domain or
-   operator name.
+3. Require bounded version ranges once a `com.microsoft` operator has more than one
+   schema. Kernel lookup must match the node's resolved schema `since_version`, not
+   merely the domain or operator name.
 4. Gate every EP-specific contrib-op fusion on both the negotiated operator digest
    and an exact target-kernel lookup. If support is unknown, the fusion does not run.
 
@@ -110,9 +111,9 @@ The implementation must maintain these invariants:
 1. A published `(domain, op_type, since_version)` contract is immutable.
 2. A plugin kernel is eligible only when core and plugin have an exact digest match
    for that operator at the node's resolved schema version.
-3. A kernel for `com.microsoft` has an explicit inclusive end version. An earlier
-   kernel must never match a later schema accidentally. This applies to in-tree EP
-   kernels as well as plugin kernels.
+3. Once a `com.microsoft` operator has more than one schema, every kernel for it has
+   an explicit inclusive end version. An earlier kernel must never match a later
+   schema accidentally. This applies to in-tree EP kernels as well as plugin kernels.
 4. A graph rewrite that introduces or upgrades an EP-specific operator is allowed
    only when the assigned EP has the exact target schema and kernel support.
 5. Unknown compatibility is treated as unsupported, not as compatible.
@@ -125,8 +126,31 @@ The implementation must maintain these invariants:
 
 ### Domain version
 
-Change the registered range for `com.microsoft` from `[1, 1]` to `[1, 2]` and add
-`OpSet_Microsoft_ver2`. Opset 1 remains registered and unchanged.
+Maintain two central constants for `com.microsoft`: the highest opset used in the
+source tree and the highest opset published in a stable release. Immediately after a
+release they are equal. The first model-visible contract change in the next release
+train increments the current version and opens that opset; subsequent contrib-op
+changes in the same train reuse it. At release time the open version becomes the new
+last-released version.
+
+```cpp
+constexpr int kMSDomainOpsetVersion = 1;
+constexpr int kMSDomainOpsetVersionLastReleased = 1;
+```
+
+Only one development opset may be open:
+
+```cpp
+static_assert(kMSDomainOpsetVersion == kMSDomainOpsetVersionLastReleased ||
+              kMSDomainOpsetVersion == kMSDomainOpsetVersionLastReleased + 1);
+```
+
+The lock advances for every stable ONNX Runtime release that promises serialized-model
+compatibility, not only for a major-number release. Schemas at or below the
+last-released version are immutable. Models produced by an early nightly with an open
+opset are not guaranteed to remain compatible with later nightlies; the per-operator
+digest still guarantees that mismatched core and plugin binaries fail closed for the
+affected operator.
 
 The existing registration in `environment.cc` is guarded so that it is skipped
 entirely when another component already added the domain:
@@ -151,14 +175,18 @@ op registration currently uses `AddDomainToVersion(domain, 1, 1000)` for an arbi
 domain string, which would otherwise let a custom op silently redefine the negotiated
 domain.
 
-An operator that has not changed does not need a duplicate v2 schema. As with ONNX
-opsets, its latest schema with `since_version <= 2` remains active. An operator whose
-contract changes has both its historical schema and a new schema, for example:
+An operator that has not changed does not need a schema in the open opset. As with
+ONNX opsets, its latest schema with `since_version <=` the model's import remains
+active. An operator whose contract changes after the API-30 baseline keeps its
+historical schema and adds a schema in the open opset, for example:
 
 ```cpp
-ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 1, LegacyGqaSchema());
-ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 2, GqaWithQkNormInputsSchema());
+ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 1, FrozenApi30GqaSchema());
+ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 2, GqaWithNextContractChange());
 ```
+
+Q/K normalization, `causal`, and sliding-cache support are already part of the API-30
+GQA v1 freeze-point contract. They are not retroactively moved to v2.
 
 The following changes require a new schema version:
 
@@ -390,8 +418,11 @@ Consequences for non-default builds:
   that support plugin EPs.
 
 The digest generator must produce checked-in historical manifests. CI regenerates them
-and fails if an existing `(domain, op_type, since_version)` digest changes. A new
-digest may only be added under a new `since_version` or a new operator name.
+and fails if an entry at or below `kMSDomainOpsetVersionLastReleased` changes. A new
+contract for an existing operator may only be added in the currently open opset (or
+under a new operator name). During development, entries in the one open opset may be
+regenerated; cross-nightly core/plugin mismatches remain safe because negotiation is
+based on the exact per-operator digest.
 
 The first checked-in v1 digests are the freeze-point baseline. They do not
 retroactively certify older ORT releases, because those releases already shipped
@@ -439,8 +470,8 @@ opset setter is required. A plugin must use those values when doing its own
 ### Explicit ranges
 
 For ORT-owned private domains, specifically `com.microsoft`, kernel registration must
-reject an open-ended kernel range. The CUDA plugin adapter should make non-versioned
-contrib kernel macros exact by default:
+reject an open-ended kernel range once the operator has more than one schema. New
+CUDA plugin contrib registrations should be exact by default:
 
 ```cpp
 // Plugin build for kMSDomain only:
@@ -503,7 +534,8 @@ enforces this at review time.
 
 When importing a plugin kernel registry, ORT validates each kernel in `com.microsoft`:
 
-1. `start_version <= end_version` and the end is not the open-ended sentinel.
+1. `start_version <= end_version`. An open-ended range is invalid once the operator
+   has more than one registered schema version.
 2. A core schema exists for `(domain, op_type, start_version)`.
 3. Every distinct schema `since_version` covered by the range was negotiated exactly
    for that operator.
@@ -667,12 +699,14 @@ release from the day they are introduced.
 3. **Kernel hardening:** make CUDA plugin contrib registrations bounded and add CI that
    rejects open-ended ranges for any `com.microsoft` operator with more than one
    schema version, for in-tree EPs as well as plugins.
-4. **Version-bump plumbing:** raise the `com.microsoft` domain maximum safely (see
-   [Domain version](#domain-version)), add the load-time error for an unsupported
-   import, and update the GenAI model builder, Olive, and the transformer optimizer to
+4. **Version-bump plumbing:** centralize the current and last-released
+   `com.microsoft` versions (see [Domain version](#domain-version)), raise the domain
+   maximum safely when the first post-release contract change opens a new opset, add
+   the load-time error for an unsupported import, and update first-party producers to
    write the contrib opset explicitly.
-5. **First version bump:** add `GroupQueryAttention-2` and migrate its kernels and
-   transformers across every EP that registers it.
+5. **First version bump:** when the first post-API-30 contrib contract change lands,
+   add its new schema in opset 2 and migrate its kernels and transformers across every
+   EP that registers it.
 6. **Fusion hardening:** convert all EP-specific contrib fusions from provider-name
    checks to exact target-schema/kernel checks.
 7. **Enforcement:** flip missing-digest handling to strict once the gates in
@@ -709,12 +743,13 @@ aggregate before it is reported.
 
 ### Schema tests
 
-- Assert the registered `com.microsoft` range and lookup of GQA v1/v2.
+- Assert the registered `com.microsoft` current and last-released versions.
+- When an opset is open, assert lookup of both the frozen and new schema contracts.
 - Assert the domain maximum is still raised when another component pre-registered
   `com.microsoft`, and that a lower pre-existing maximum is reported as an error.
 - Assert that registering an `OrtCustomOpDomain` named `com.microsoft` is rejected.
-- Load explicit opset-1 and opset-2 GQA models and verify their resolved
-  `Node::SinceVersion()` and formal input counts.
+- After the first versioned contract is added, load models importing the frozen and
+  open opsets and verify their resolved `Node::SinceVersion()` and formal contracts.
 - Load an opset-2 model on a build registering only `[1, 1]` and assert the error
   message names the domain, requested version, and supported maximum.
 - Regenerate digest manifests in CI and fail if a historical digest changes.
@@ -744,7 +779,8 @@ quarantined.
 
 ### Kernel tests
 
-- Reject or filter an open-ended plugin kernel in `com.microsoft`.
+- Reject or filter an open-ended plugin kernel for a `com.microsoft` operator with
+  more than one schema.
 - Verify a `[1,1]` kernel does not match a GQA-2 node.
 - Verify a `[2,2]` kernel does not match a GQA-1 node.
 - Verify the same holds for in-tree CPU and CUDA GQA kernels in a static build.
@@ -755,7 +791,7 @@ quarantined.
 
 ### Fusion tests
 
-- New core + old plugin: GQA v2 fusion is not applied.
+- New core + old plugin: a fusion targeting a schema from the open opset is not applied.
 - Old-compatible graph + new plugin: only the v1 fusion/kernel path is used.
 - Mismatched digest: the original unfused graph is preserved.
 - Multiple EPs: fusion follows the support of the node's actual target EP, not another
@@ -777,8 +813,8 @@ For every plugin release, CI should run at least:
 
 The main expected code areas are:
 
-- `onnxruntime/core/graph/contrib_ops/bert_defs.cc`: immutable GQA v1 and new v2
-  schema;
+- the applicable contrib schema definition: preserve every last-released schema and
+  add the changed contract in the open opset;
 - `onnxruntime/core/graph/contrib_ops/ms_opset.h` and
   `onnxruntime/core/session/environment.cc`: opset registration and domain range,
   including the unconditional maximum raise;
@@ -843,8 +879,9 @@ definitions in one process would make those stages inconsistent.
 Before merging a contrib-op contract change:
 
 1. Does the change affect inputs, outputs, attributes, types, shape rules, aliasing, or
-   semantics? If yes, create a new schema version. Adding a new operator is not such a
-   change and stays at `since_version 1`.
+   semantics? If yes, open the next `com.microsoft` opset if current equals
+   last-released, then create the new schema in the open opset. Adding a new operator
+   is not a change to an existing contract and does not by itself require a bump.
 2. Is the old schema definition still present and digest-identical to the checked-in
    manifest entry?
 3. Are every EP's old and new kernel ranges explicit and truthful, for in-tree EPs as

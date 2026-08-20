@@ -298,16 +298,42 @@ static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
       kernel_def.SinceVersion(&start_version, &end_version);
       const auto& domain_versions = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
       const auto domain_version = domain_versions.find(kernel_def.Domain());
-      ORT_RETURN_IF(start_version <= 0 || end_version < start_version || end_version == INT_MAX ||
-                        domain_version == domain_versions.end() || end_version > domain_version->second.second,
-                    "Plugin EP has an invalid or open-ended com.microsoft kernel range for ",
+      ORT_RETURN_IF(start_version <= 0 || end_version < start_version ||
+                        domain_version == domain_versions.end() ||
+                        (end_version != INT_MAX && end_version > domain_version->second.second),
+                    "Plugin EP has an invalid com.microsoft kernel range for ",
                     kernel_def.OpName(), ": [", start_version, ", ", end_version, "].");
 
+      int compatibility_end_version = end_version;
+      if (end_version == INT_MAX) {
+        // KernelRegistry intentionally treats an open-ended registration as an
+        // exact start-version match. Preserve existing contrib registrations
+        // while an operator has one schema, but require an explicit range as
+        // soon as that operator gains another contract.
+        int distinct_schema_version = 0;
+        for (int version = domain_version->second.first; version <= domain_version->second.second; ++version) {
+          const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(
+              kernel_def.OpName(), version, kernel_def.Domain());
+          if (schema == nullptr) {
+            continue;
+          }
+
+          if (distinct_schema_version == 0) {
+            distinct_schema_version = schema->since_version();
+          } else {
+            ORT_RETURN_IF(distinct_schema_version != schema->since_version(),
+                          "Plugin EP has an open-ended com.microsoft kernel range for versioned operator ",
+                          kernel_def.OpName(), ": [", start_version, ", INT_MAX].");
+          }
+        }
+        compatibility_end_version = start_version;
+      }
+
       bool is_compatible = true;
-      for (int version = start_version; version <= end_version; ++version) {
+      for (int version = start_version; version <= compatibility_end_version; ++version) {
         const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(
             kernel_def.OpName(), version, kernel_def.Domain());
-        if (schema == nullptr ||
+        if (schema == nullptr || (version == start_version && schema->since_version() != start_version) ||
             !schema_compatibility.IsCompatible(kernel_def.Domain(), kernel_def.OpName(), schema->since_version())) {
           is_compatible = false;
           break;

@@ -16,6 +16,14 @@ constexpr const char* kOnnxDomain = "";
 constexpr const char* kOnnxDomainAlias = "ai.onnx";
 constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSDomain = "com.microsoft";
+// Highest com.microsoft opset used by schemas in this source tree.
+constexpr int kMSDomainOpsetVersion = 1;
+// Highest com.microsoft opset published in a stable ONNX Runtime release.
+// Schemas at or below this version are immutable. During development, at most
+// one new opset may be open for the next release.
+constexpr int kMSDomainOpsetVersionLastReleased = 1;
+static_assert(kMSDomainOpsetVersion == kMSDomainOpsetVersionLastReleased ||
+              kMSDomainOpsetVersion == kMSDomainOpsetVersionLastReleased + 1);
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kMSExperimentalDomain = "com.microsoft.experimental";
 constexpr const char* kMSNchwcDomain = "com.microsoft.nchwc";
