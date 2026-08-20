@@ -36,6 +36,9 @@ struct Options {
   int state_checkpoints = 0;
   int chunk_size = 0;
   float scale = 0.0f;
+  // When set, initial_state carries this leading window and final_state is left unbound, so
+  // the committed state has to travel through the last checkpoint slot.
+  int state_window = 0;
 };
 
 struct Inputs {
@@ -176,12 +179,13 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
           (*out)[(static_cast<size_t>(t) * out_heads + hv) * g.dv + c] =
               static_cast<float>(scale * acc);
         }
-        const int local = t - cu[b];
-        if (o.state_checkpoints > 0 && local < o.state_checkpoints) {
+        // Checkpoints are right-aligned: the last slot is the state after the final token.
+        const int slot = (t - cu[b]) + o.state_checkpoints - (cu[b + 1] - cu[b]);
+        if (o.state_checkpoints > 0 && slot >= 0) {
           for (int r = 0; r < g.dk; ++r) {
             for (int c = 0; c < g.dv; ++c) {
               const size_t ci =
-                  ((static_cast<size_t>(local) * g.batch + b) * g.hv + hv) * g.dv * g.dk +
+                  ((static_cast<size_t>(slot) * g.batch + b) * g.hv + hv) * g.dv * g.dk +
                   static_cast<size_t>(c) * g.dk + r;
               (*checkpoints)[ci] = static_cast<float>(S[static_cast<size_t>(r) * g.dv + c]);
             }
@@ -244,6 +248,12 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
   test.AddInput<float>("beta", shaped({g.hv}), in.beta);
   if (in.state0.empty()) {
     test.AddOptionalInputEdge<float>();
+  } else if (o.state_window > 0) {
+    // Everything but the last slot is poison: reading any of it would wreck the result.
+    std::vector<float> windowed(static_cast<size_t>(o.state_window) * in.state0.size(), 1e3f);
+    std::copy(in.state0.begin(), in.state0.end(),
+              windowed.end() - static_cast<ptrdiff_t>(in.state0.size()));
+    test.AddInput<float>("initial_state", {o.state_window, g.batch, g.hv, g.dv, g.dk}, windowed);
   } else {
     test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   }
@@ -254,8 +264,12 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
 
   test.AddOutput<MLFloat16>("output", shaped({out_heads, g.dv}), ToFloat16(ref_out),
                             false, out_tol, out_tol);
-  test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
-                        state_tol);
+  if (o.state_window > 0) {
+    test.AddOptionalOutputEdge<float>();
+  } else {
+    test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
+                          state_tol);
+  }
   if (o.state_checkpoints > 0) {
     test.AddOutput<float>("checkpoints",
                           {o.state_checkpoints, g.batch, g.hv, g.dv, g.dk}, ref_ckpt, false,
@@ -386,7 +400,8 @@ TEST(GatedDeltaNetTest, Recurrent_CheckpointsMatchRepeatedSingleTokenDecode) {
   std::vector<float> ref_out, ref_state, ref_ckpt;
   Reference(g, o, in, &ref_out, &ref_state, &ref_ckpt);
 
-  // Checkpoint j must equal the final_state of a run over exactly the first j+1 tokens.
+  // With W == the request length the slots line up with the prefixes: slot j must equal the
+  // final_state of a run over exactly the first j+1 tokens.
   const size_t slot = static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk;
   for (int j = 0; j < kTokens; ++j) {
     Geometry gj = g;
@@ -406,6 +421,52 @@ TEST(GatedDeltaNetTest, Recurrent_CheckpointsMatchRepeatedSingleTokenDecode) {
   }
 
   RunCase(g, o, in, 2e-2f, 2e-2f);
+}
+
+// A request shorter than the window must land in the trailing slots, so that the last slot is
+// still the committed state. This is what a speculative decoder relies on when it drafts
+// fewer tokens than the window it exported.
+TEST(GatedDeltaNetTest, Recurrent_CheckpointsAreRightAligned) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  Geometry g{2, 1, 1, 2, kDim, kDim};
+  Options o;
+  o.state_checkpoints = 4;
+  Inputs in = MakeInputs(g, 43);
+
+  std::vector<float> ref_out, ref_state, ref_ckpt;
+  Reference(g, o, in, &ref_out, &ref_state, &ref_ckpt);
+
+  // Slot 3 (== W-1) is the state after the last of the 2 tokens, i.e. final_state.
+  const size_t slot = static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk;
+  for (size_t i = 0; i < slot; ++i) {
+    ASSERT_NEAR(ref_ckpt[3 * slot + i], ref_state[i], 1e-6f) << "element " << i;
+  }
+  RunCase(g, o, in, 2e-2f, 2e-2f);
+}
+
+// A speculative decoder binds one windowed buffer as both past and present state: the operator
+// reads the last slot and writes the whole window back, with no separate final_state.
+TEST(GatedDeltaNetTest, WindowedStateRoundTrip) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  for (int tokens : {1, 2, 4}) {  // an MTP verify drafts at most window-1 tokens
+    SCOPED_TRACE(tokens);
+    Geometry g{tokens, 1, 2, 6, kDim, kDim};
+    Options o;
+    o.state_window = 4;
+    o.state_checkpoints = 4;
+    RunCase(g, o, MakeInputs(g, static_cast<uint32_t>(47 + tokens)), 2e-2f, 2e-2f);
+  }
+}
+
+// A prefill is longer than the window, so it must still take the chunked engine and commit
+// through the last slot. Window 1 keeps every slot specified so the whole output is checkable.
+TEST(GatedDeltaNetTest, WindowedStateChunkedPrefillCommitsLastSlot) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  Geometry g{256, 2, 2, 6, kDim, kDim};
+  Options o;
+  o.state_window = 1;
+  o.state_checkpoints = 1;
+  RunCase(g, o, MakeInputs(g, 53), 3e-2f, 3e-2f);
 }
 
 // initial_state and final_state may be the same allocation. Feeding a run's state output

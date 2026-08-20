@@ -710,12 +710,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
       pack.output[tok * v_stride + hv * d_v + col] = static_cast<T>(p.scale * o);
     }
 
-    // Checkpoint j is the state after local token j; slots this call does not write are
-    // left unspecified because the buffer may alias live state.
-    if (pack.checkpoints != nullptr && t < p.state_checkpoints) {
+    // Checkpoints are right-aligned: the last slot holds the state after the final token, so
+    // slot W-1-k is the state after the k-th token from the end. Slots this call does not
+    // write are left unspecified because the buffer may alias live state.
+    const int slot = t + p.state_checkpoints - seq_len;
+    if (pack.checkpoints != nullptr && slot >= 0) {
 #pragma unroll
       for (int i = 0; i < kRegs; ++i) {
-        pack.checkpoints[static_cast<int64_t>(t) * slot_stride + st_off + lane + i * 32] = s[i];
+        pack.checkpoints[static_cast<int64_t>(slot) * slot_stride + st_off + lane + i * 32] = s[i];
       }
     }
   }
@@ -848,12 +850,14 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
       pack.output[tok * v_stride + hv * d_v + c] = (T)(p.scale * acc);
     }
 
-    // Checkpoint j is the state after local token j. Slots this call does not write are
-    // left unspecified on purpose: the buffer may alias live state.
-    if (pack.checkpoints != nullptr && t < p.state_checkpoints) {
+    // Checkpoints are right-aligned: the last slot holds the state after the final token.
+    // Slots this call does not write are left unspecified on purpose: the buffer may alias
+    // live state.
+    const int slot = t + p.state_checkpoints - seq_len;
+    if (pack.checkpoints != nullptr && slot >= 0) {
       for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
         const int r = idx / d_v, c = idx % d_v;
-        pack.checkpoints[static_cast<int64_t>(t) * slot_stride + st_off +
+        pack.checkpoints[static_cast<int64_t>(slot) * slot_stride + st_off +
                          static_cast<int64_t>(c) * d_k + r] = S[idx];
       }
     }

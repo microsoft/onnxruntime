@@ -127,6 +127,19 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                     "num_heads_v (", num_heads_v, ") must be a positive multiple of num_heads_q (",
                     num_heads_q, ")");
 
+  // A rank-5 state carries a leading checkpoint window; the committed state is its last slot.
+  int state_window = 1;
+  if (initial_state != nullptr) {
+    const size_t r = initial_state->Shape().NumDimensions();
+    ORT_RETURN_IF_NOT(r == 4 || r == 5,
+                      "initial_state must be rank 4 [batch, num_heads_v, head_size_v, "
+                      "head_size_qk] or rank 5 with a leading checkpoint window");
+    if (r == 5) state_window = static_cast<int>(initial_state->Shape()[0]);
+    ORT_RETURN_IF_NOT(state_window == 1 || state_window == state_checkpoints_,
+                      "a windowed initial_state must have the same window as state_checkpoints (",
+                      state_checkpoints_, "), got ", state_window);
+  }
+
   int batch = 1;
   if (cu_seqlens != nullptr) {
     ORT_RETURN_IF_NOT(qkv_rank == 3,
@@ -140,19 +153,18 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
     // Uniform packing. The batch size comes from the state, which GenAI always binds.
     ORT_RETURN_IF_NOT(initial_state != nullptr,
                       "cu_seqlens is absent, so initial_state is required to determine batch size");
-    ORT_RETURN_IF_NOT(initial_state->Shape().NumDimensions() == 4,
-                      "initial_state must be rank 4: [batch, num_heads_v, head_size_v, head_size_qk]");
-    batch = static_cast<int>(initial_state->Shape()[0]);
+    batch = static_cast<int>(initial_state->Shape()[initial_state->Shape().NumDimensions() - 4]);
     ORT_RETURN_IF_NOT(batch > 0 && total_tokens % batch == 0,
                       "total_tokens (", total_tokens, ") must be divisible by batch (", batch, ")");
   }
 
   if (initial_state != nullptr) {
     const auto& s = initial_state->Shape();
-    ORT_RETURN_IF_NOT(s.NumDimensions() == 4 && s[0] == batch && s[1] == num_heads_v &&
-                          s[2] == head_size_v && s[3] == head_size_qk,
+    const size_t o = s.NumDimensions() - 4;
+    ORT_RETURN_IF_NOT(s[o] == batch && s[o + 1] == num_heads_v && s[o + 2] == head_size_v &&
+                          s[o + 3] == head_size_qk,
                       "initial_state must be [batch, num_heads_v, head_size_v, head_size_qk] "
-                      "(V-major)");
+                      "(V-major), optionally with a leading checkpoint window");
   }
 
   // decay and beta carry the same leading token axes as query/key/value; a trailing
@@ -260,12 +272,21 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
   pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
   pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
-  pack.initial_state = initial_state != nullptr ? initial_state->Data<float>() : nullptr;
+  const int64_t state_elems =
+      static_cast<int64_t>(batch) * num_heads_v * head_size_v * head_size_qk;
+  pack.initial_state = initial_state != nullptr
+                           ? initial_state->Data<float>() + (state_window - 1) * state_elems
+                           : nullptr;
   pack.a_log = a_log != nullptr ? a_log->Data<float>() : nullptr;
   pack.dt_bias = dt_bias != nullptr ? dt_bias->Data<float>() : nullptr;
   pack.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
   pack.checkpoints = checkpoints != nullptr ? checkpoints->MutableData<float>() : nullptr;
+  if (pack.final_state == nullptr && pack.checkpoints != nullptr) {
+    // The last checkpoint slot is the committed state, so every engine reaches it through
+    // final_state even when the caller only asked for the window.
+    pack.final_state = pack.checkpoints + (state_checkpoints_ - 1) * state_elems;
+  }
 
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
 

@@ -113,14 +113,19 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
   Plan plan;
   plan.chunk_size = desc.chunk_size > 0 ? desc.chunk_size : 64;
 
-  // Token checkpoints are a per-token series; only the sequential engine can produce them.
-  const bool needs_checkpoints = desc.state_checkpoints > 0;
+  const int64_t batch = desc.batch > 1 ? desc.batch : 1;
+
+  // Token checkpoints are a per-token series, and only the sequential engine can produce one.
+  // A request longer than the window cannot be rolled back into it anyway, so it takes the
+  // normal plan and only the committed last slot is written.
+  const bool needs_checkpoints =
+      desc.state_checkpoints > 0 &&
+      desc.total_tokens <= static_cast<int64_t>(desc.state_checkpoints) * batch;
 
   // Below the crossover the chunked engine still pays for a full chunk, so a handful of
   // tokens costs the same as 64. Measured crossover on H200 at the Qwen3.8 geometry is
   // ~30 tokens (chunked 46.5 us at T=1 against 17.9 us for a sequential recurrence).
   const int64_t kChunkedMinTokens = 32;
-  const int64_t batch = desc.batch > 1 ? desc.batch : 1;
   const bool long_enough = desc.total_tokens >= kChunkedMinTokens * batch;
 
   const bool shape_ok = desc.head_size_qk == 128 && desc.head_size_v == 128 &&

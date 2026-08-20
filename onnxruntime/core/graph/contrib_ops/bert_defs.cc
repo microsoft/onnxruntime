@@ -2898,11 +2898,18 @@ GDN/KDA and by FLA with `state_v_first=true`. The two may be the same allocation
 implementation reads the whole incoming state before writing any of it.
 
 Checkpoints. When the `state_checkpoints` attribute W is greater than zero, the optional
-`checkpoints` output is `[W, batch_size, num_heads_v, head_size_v, head_size_qk]` and slot j
-receives the state after local token j of each request. This is the series a speculative
-decoder needs to roll back to a partially accepted draft; `final_state` still holds the state
-after the last token. Slots this call does not write are left unspecified rather than cleared,
-because the buffer may alias live state.
+`checkpoints` output is `[W, batch_size, num_heads_v, head_size_v, head_size_qk]` and holds
+the state after each of the last W tokens, **right-aligned**: slot W-1 is the state after the
+final token (the same value as `final_state`) and slot W-1-k is the state after the k-th token
+from the end. This is the series a speculative decoder needs to roll back to a partially
+accepted draft. Slots this call does not write are left unspecified rather than cleared,
+because the buffer may alias live state; in particular a request longer than W tokens fills
+only the last slot, since such a request is a prefill with nothing to roll back.
+
+Because slot W-1 is the committed state, `initial_state` may also be given with that leading
+window, `[W, batch_size, num_heads_v, head_size_v, head_size_qk]`, in which case the operator
+reads the last slot and `final_state` may be omitted. One buffer then serves as both the past
+and the present state of a speculative decoding loop.
 
 Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
 
@@ -2953,7 +2960,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Tuning hint for the chunk-parallel prefill algorithm. Default 64.",
               AttributeProto::INT, static_cast<int64_t>(64))
         .Attr("state_checkpoints",
-              "Number of leading per-token state checkpoint slots W, in [0, 8]. 0 (default) "
+              "Number of trailing per-token state checkpoint slots W, in [0, 8]. 0 (default) "
               "disables the `checkpoints` output.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "query", "Query, shape (total_tokens, num_heads_q, head_size_qk)", "T")
@@ -2971,7 +2978,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
-               "V-major. May alias final_state.",
+               "V-major, optionally with a leading checkpoint window of state_checkpoints "
+               "slots whose last slot is the committed state. May alias final_state or "
+               "checkpoints.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log", "Per-head gate scale, shape (num_heads_v). Requires gate_activation=qwen.",
                "TS", OpSchema::Optional)
@@ -2986,7 +2995,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, num_heads_v, head_size_v, head_size_qk)",
                 "TS", OpSchema::Optional)
         .Output(2, "checkpoints",
-                "Per-token state checkpoints, shape "
+                "State after each of the last state_checkpoints tokens, right-aligned, shape "
                 "(state_checkpoints, batch_size, num_heads_v, head_size_v, head_size_qk)",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -3029,8 +3038,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           *out_shape.add_dim() = value_shape.dim(token_dims + 1);
           updateOutputShape(ctx, 0, out_shape);
 
-          if (ctx.getNumOutputs() > 1 && hasInputShape(ctx, 6)) {
-            propagateShapeFromInputToOutput(ctx, 6, 1);
+          if (hasInputShape(ctx, 6)) {
+            // A rank-5 initial_state carries the checkpoint window; the committed state that
+            // final_state and each checkpoint slot hold is its trailing rank-4 part.
+            const auto& in_state = getInputShape(ctx, 6);
+            const int first = in_state.dim_size() - 4;
+            if (first < 0) {
+              fail_shape_inference("GatedDeltaNet: initial_state must have rank 4 or 5");
+            }
+            ONNX_NAMESPACE::TensorShapeProto committed;
+            for (int i = first; i < in_state.dim_size(); ++i) {
+              *committed.add_dim() = in_state.dim(i);
+            }
+            if (ctx.getNumOutputs() > 1) {
+              updateOutputShape(ctx, 1, committed);
+            }
+            if (ctx.getNumOutputs() > 2) {
+              ONNX_NAMESPACE::TensorShapeProto ckpt;
+              ckpt.add_dim()->set_dim_value(
+                  getAttribute(ctx, "state_checkpoints", static_cast<int64_t>(0)));
+              for (int i = 0; i < committed.dim_size(); ++i) {
+                *ckpt.add_dim() = committed.dim(i);
+              }
+              updateOutputShape(ctx, 2, ckpt);
+            }
           }
         }));
 

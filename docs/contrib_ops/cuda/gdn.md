@@ -58,7 +58,7 @@ Source:
 | `beta_activation` | string | `none` | `none` treats `beta` as the effective update rate; `sigmoid` applies a sigmoid. |
 | `qk_l2_norm` | int | `0` | When `1`, L2-normalizes each query and key head vector in-kernel. |
 | `chunk_size` | int | `64` | Chunk length for the chunked engine. `32` pins the reduced shared-memory configuration (see §6). |
-| `state_checkpoints` | int | `0` | Number of leading per-token state checkpoint slots `W`, in `[0, 8]`. `0` disables the `checkpoints` output. |
+| `state_checkpoints` | int | `0` | Number of trailing per-token state checkpoint slots `W`, in `[0, 8]`. `0` disables the `checkpoints` output. |
 
 ### Inputs
 
@@ -70,7 +70,7 @@ Source:
 | 3 | `cu_seqlens` | `(batch_size + 1)` | int32 | no |
 | 4 | `decay` | `(total_tokens, num_heads_v)` or `(total_tokens, num_heads_v, head_size_qk)` | float | no |
 | 5 | `beta` | `(total_tokens, num_heads_v)` | float | no |
-| 6 | `initial_state` | `(batch_size, num_heads_v, head_size_v, head_size_qk)` | float | no |
+| 6 | `initial_state` | `(batch_size, num_heads_v, head_size_v, head_size_qk)`, optionally with a leading `state_checkpoints` window | float | no |
 | 7 | `a_log` | `(num_heads_v)` | float | no |
 | 8 | `dt_bias` | `(num_heads_v)` or `(num_heads_v, head_size_qk)` | float | no |
 
@@ -115,10 +115,20 @@ the entire incoming state into registers or shared memory before writing any of 
 is ever cleared: slots the call does not write — in particular unused `checkpoints` slots —
 are left **unspecified**, never zeroed, because the buffer may alias live state.
 
-**Checkpoints.** Slot `j` receives the state after local token `j` of each request. This is
-the series a speculative decoder needs to roll back to a partially accepted draft, while
-`final_state` still holds the state after the last token. Only the sequential engine can
-produce it, so requesting checkpoints forces that engine.
+**Checkpoints are right-aligned.** Slot `W-1` holds the state after the *final* token, the same
+value as `final_state`, and slot `W-1-k` holds the state after the k-th token from the end.
+This is the series a speculative decoder rolls back to after a partially accepted draft, and
+right-alignment is what lets a draft shorter than `W` still land with its committed state in
+the last slot. Only the sequential engine produces the full series, so a request of at most
+`W` tokens takes that engine; a longer request is a prefill with nothing to roll back, so it
+keeps the chunked engine and fills only slot `W-1`.
+
+**Windowed state.** Because slot `W-1` is the committed state, `initial_state` may be given
+with the same leading window, `[W, batch_size, num_heads_v, head_size_v, head_size_qk]`: the
+operator reads the last slot and `final_state` can then be omitted entirely. One buffer is
+then both the past and the present state of a speculative decoding loop, and committing an
+accepted prefix is a single slot-to-slot copy in the serving runtime rather than a rollback
+forward. This is how the ONNX Runtime GenAI MTP loop drives the operator.
 
 ## 4. Recurrence and the Chunked Form
 
@@ -314,6 +324,22 @@ which operator the 48 linear-attention layers use (`onnxruntime-genai` model bui
 
 Greedy decoding agrees token for token (64/64) between the two models, with
 `max|delta logits| = 0.075` on the 248320-wide fp16 logit vector at the first decode step.
+
+### End to end with MTP speculative decoding (N=3, window 4)
+
+The same two models rebuilt with `recurrent_state_window=4`, so the operator's checkpoint
+window is the buffer the MTP loop crops on a partial accept. 128 generated tokens, prefill
+chunk 1024.
+
+| context | TTFT LinearAttention | TTFT GatedDeltaNet | MTP decode ms/token | acceptance |
+|---:|---:|---:|---|---|
+| 1024 | 2420.0 ms | 2389.4 ms | 52.23 -> 53.82 | 0.673 / 0.649 |
+| 8192 | 4406.0 ms | **4032.2 ms** (-8.5%) | 53.02 -> **47.56** (-10.3%) | 0.586 / 0.586 |
+
+At 8192 the two runs accept exactly the same drafts, so the decode figure is a like-for-like
+comparison; at 1024 the trajectories diverged on a near-tie, which moves acceptance and hence
+decode time. A 64-token greedy MTP run against the released model reproduces its output
+exactly, including the per-round accept/bonus/correction counts.
 
 ### Reproducing
 
