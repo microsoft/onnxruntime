@@ -1,0 +1,255 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "contrib_ops/cuda/bert/gated_delta_net.h"
+#include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/platform/env_var_utils.h"
+
+#include <limits>
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+using namespace onnxruntime::cuda;
+namespace gdn = gated_delta_net;
+
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      GatedDeltaNet,                                              \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()), \
+      GatedDeltaNet<T>);
+
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
+
+template <typename T>
+GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
+  const std::string rule = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
+  if (rule == "linear") {
+    update_rule_ = gdn::UpdateRule::kLinear;
+  } else if (rule == "gated") {
+    update_rule_ = gdn::UpdateRule::kGated;
+  } else if (rule == "delta") {
+    update_rule_ = gdn::UpdateRule::kDelta;
+  } else if (rule == "gated_delta") {
+    update_rule_ = gdn::UpdateRule::kGatedDelta;
+  } else {
+    ORT_THROW("update_rule must be one of: linear, gated, delta, gated_delta");
+  }
+
+  const std::string gate = info.GetAttrOrDefault<std::string>("gate_activation", "none");
+  if (gate == "none") {
+    gate_activation_ = gdn::GateActivation::kNone;
+  } else if (gate == "qwen") {
+    gate_activation_ = gdn::GateActivation::kQwen;
+  } else {
+    ORT_THROW("gate_activation must be one of: none, qwen");
+  }
+
+  const std::string beta = info.GetAttrOrDefault<std::string>("beta_activation", "none");
+  if (beta == "none") {
+    beta_activation_ = gdn::BetaActivation::kNone;
+  } else if (beta == "sigmoid") {
+    beta_activation_ = gdn::BetaActivation::kSigmoid;
+  } else {
+    ORT_THROW("beta_activation must be one of: none, sigmoid");
+  }
+
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  chunk_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("chunk_size", 64));
+  state_checkpoints_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("state_checkpoints", 0));
+  ORT_ENFORCE(state_checkpoints_ >= 0 && state_checkpoints_ <= 8,
+              "state_checkpoints must be in [0, 8], got ", state_checkpoints_);
+  qk_l2_norm_ = info.GetAttrOrDefault<int64_t>("qk_l2_norm", 0) != 0;
+
+  forced_engine_ = gdn::EngineFromName(
+      ParseEnvironmentVariableWithDefault<std::string>("ORT_GDN_PLAN", ""));
+}
+
+template <typename T>
+Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key = context->Input<Tensor>(1);
+  const Tensor* value = context->Input<Tensor>(2);
+  const Tensor* cu_seqlens = context->Input<Tensor>(3);
+  const Tensor* decay = context->Input<Tensor>(4);
+  const Tensor* beta = context->Input<Tensor>(5);
+  const Tensor* initial_state = context->Input<Tensor>(6);
+  const Tensor* a_log = context->Input<Tensor>(7);
+  const Tensor* dt_bias = context->Input<Tensor>(8);
+
+  ORT_RETURN_IF_NOT(query != nullptr && key != nullptr && value != nullptr,
+                    "query, key and value are required");
+
+  const auto& q_shape = query->Shape();
+  const auto& k_shape = key->Shape();
+  const auto& v_shape = value->Shape();
+  ORT_RETURN_IF_NOT(q_shape.NumDimensions() == 3 && k_shape.NumDimensions() == 3 &&
+                        v_shape.NumDimensions() == 3,
+                    "query, key and value must be rank 3: [total_tokens, num_heads, head_size]");
+
+  const int64_t total_tokens = q_shape[0];
+  ORT_RETURN_IF_NOT(k_shape[0] == total_tokens && v_shape[0] == total_tokens,
+                    "query, key and value must agree on total_tokens");
+  ORT_RETURN_IF_NOT(total_tokens > 0, "total_tokens must be positive");
+
+  // Head counts are derived from the rank-3 shapes; there are no head-count attributes.
+  const int num_heads_q = static_cast<int>(q_shape[1]);
+  const int num_heads_k = static_cast<int>(k_shape[1]);
+  const int num_heads_v = static_cast<int>(v_shape[1]);
+  const int head_size_qk = static_cast<int>(q_shape[2]);
+  const int head_size_v = static_cast<int>(v_shape[2]);
+
+  ORT_RETURN_IF_NOT(k_shape[2] == head_size_qk, "key head_size must equal query head_size");
+  ORT_RETURN_IF_NOT(num_heads_q == num_heads_k,
+                    "num_heads_q (", num_heads_q, ") must equal num_heads_k (", num_heads_k, ")");
+  ORT_RETURN_IF_NOT(num_heads_v > 0 && num_heads_q > 0 && num_heads_v % num_heads_q == 0,
+                    "num_heads_v (", num_heads_v, ") must be a positive multiple of num_heads_q (",
+                    num_heads_q, ")");
+
+  int batch = 1;
+  if (cu_seqlens != nullptr) {
+    ORT_RETURN_IF_NOT(cu_seqlens->Shape().NumDimensions() == 1 && cu_seqlens->Shape()[0] >= 2,
+                      "cu_seqlens must be rank 1 with at least 2 elements");
+    batch = static_cast<int>(cu_seqlens->Shape()[0] - 1);
+  } else {
+    // Uniform packing. The batch size comes from the state, which GenAI always binds.
+    ORT_RETURN_IF_NOT(initial_state != nullptr,
+                      "cu_seqlens is absent, so initial_state is required to determine batch size");
+    ORT_RETURN_IF_NOT(initial_state->Shape().NumDimensions() == 4,
+                      "initial_state must be rank 4: [batch, num_heads_v, head_size_v, head_size_qk]");
+    batch = static_cast<int>(initial_state->Shape()[0]);
+    ORT_RETURN_IF_NOT(batch > 0 && total_tokens % batch == 0,
+                      "total_tokens (", total_tokens, ") must be divisible by batch (", batch, ")");
+  }
+
+  if (initial_state != nullptr) {
+    const auto& s = initial_state->Shape();
+    ORT_RETURN_IF_NOT(s.NumDimensions() == 4 && s[0] == batch && s[1] == num_heads_v &&
+                          s[2] == head_size_v && s[3] == head_size_qk,
+                      "initial_state must be [batch, num_heads_v, head_size_v, head_size_qk] "
+                      "(V-major)");
+  }
+
+  const bool decay_per_key_dim = decay != nullptr && decay->Shape().NumDimensions() == 3;
+  if (decay != nullptr) {
+    const auto& d = decay->Shape();
+    ORT_RETURN_IF_NOT(d[0] == total_tokens && d[1] == num_heads_v,
+                      "decay must be [total_tokens, num_heads_v] or "
+                      "[total_tokens, num_heads_v, head_size_qk]");
+    if (decay_per_key_dim) {
+      ORT_RETURN_IF_NOT(d[2] == head_size_qk, "per-key-dim decay last axis must be head_size_qk");
+    }
+  }
+  if (beta != nullptr) {
+    const auto& b = beta->Shape();
+    ORT_RETURN_IF_NOT(b.NumDimensions() == 2 && b[0] == total_tokens && b[1] == num_heads_v,
+                      "beta must be [total_tokens, num_heads_v]");
+  }
+  if (gate_activation_ == gdn::GateActivation::kQwen) {
+    ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr,
+                      "gate_activation=qwen requires a_log and dt_bias");
+    ORT_RETURN_IF_NOT(a_log->Shape().NumDimensions() == 1 && a_log->Shape()[0] == num_heads_v,
+                      "a_log must be [num_heads_v]");
+  } else {
+    ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr,
+                      "a_log and dt_bias require gate_activation=qwen");
+  }
+
+  const int out_heads = std::max(num_heads_q, num_heads_v);
+  TensorShape out_shape{total_tokens, out_heads, head_size_v};
+  Tensor* output = context->Output(0, out_shape);
+
+  TensorShape state_shape{batch, num_heads_v, head_size_v, head_size_qk};
+  Tensor* final_state = context->Output(1, state_shape);
+
+  Tensor* checkpoints = nullptr;
+  if (state_checkpoints_ > 0) {
+    TensorShape ckpt_shape{state_checkpoints_, batch, num_heads_v, head_size_v, head_size_qk};
+    checkpoints = context->Output(2, ckpt_shape);
+  }
+
+  gdn::Descriptor desc{};
+  desc.total_tokens = total_tokens;
+  desc.batch = batch;
+  desc.num_heads_q = num_heads_q;
+  desc.num_heads_k = num_heads_k;
+  desc.num_heads_v = num_heads_v;
+  desc.head_size_qk = head_size_qk;
+  desc.head_size_v = head_size_v;
+  desc.chunk_size = chunk_size_;
+  desc.state_checkpoints = state_checkpoints_;
+  desc.update_rule = update_rule_;
+  desc.gate_activation = gate_activation_;
+  desc.beta_activation = beta_activation_;
+  desc.io_type = std::is_same<T, MLFloat16>::value ? gdn::IoType::kFloat16 : gdn::IoType::kFloat;
+  desc.qk_l2_norm = qk_l2_norm_;
+  desc.decay_per_key_dim = decay_per_key_dim;
+  desc.has_decay = decay != nullptr;
+  desc.has_beta = beta != nullptr;
+  desc.has_initial_state = initial_state != nullptr;
+  desc.ragged = cu_seqlens != nullptr;
+
+  const cudaDeviceProp& prop = GetDeviceProp();
+  desc.sm_major = prop.major;
+  desc.sm_minor = prop.minor;
+
+  gdn::Plan plan = gdn::PlanCache::Instance().GetOrCreate(desc, prop.multiProcessorCount,
+                                                          prop.sharedMemPerBlockOptin);
+  if (forced_engine_ != gdn::Engine::kAuto) {
+    // Benchmarking override, the analogue of cudnn's select_plan(name).
+    gdn::Descriptor forced = desc;
+    plan = gdn::SelectPlan(forced, prop.multiProcessorCount, prop.sharedMemPerBlockOptin);
+    if (forced_engine_ == gdn::Engine::kRecurrent) {
+      plan.engine = gdn::Engine::kRecurrent;
+    }
+  }
+  ORT_RETURN_IF_NOT(plan.supported, "GatedDeltaNet: no supported plan (",
+                    plan.reject_reason ? plan.reject_reason : "unknown", ")");
+  ORT_RETURN_IF_NOT(plan.engine != gdn::Engine::kCudnn,
+                    "GatedDeltaNet: the cuDNN engine is reserved and not implemented");
+
+  if (plan.engine == gdn::Engine::kRecurrent && !plan.warp_specialized) {
+    const size_t smem = sizeof(float) * (static_cast<size_t>(head_size_qk) * head_size_v +
+                                         2 * head_size_qk + head_size_v + head_size_qk);
+    ORT_RETURN_IF_NOT(smem <= prop.sharedMemPerBlockOptin,
+                      "GatedDeltaNet: the recurrent engine needs ", smem,
+                      " bytes of shared memory but the device allows ",
+                      prop.sharedMemPerBlockOptin);
+  }
+
+  gdn::VariantPack<CudaT> pack{};
+  pack.query = reinterpret_cast<const CudaT*>(query->Data<T>());
+  pack.key = reinterpret_cast<const CudaT*>(key->Data<T>());
+  pack.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
+  pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
+  pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
+  pack.initial_state = initial_state != nullptr ? initial_state->Data<float>() : nullptr;
+  pack.a_log = a_log != nullptr ? a_log->Data<float>() : nullptr;
+  pack.dt_bias = dt_bias != nullptr ? dt_bias->Data<float>() : nullptr;
+  pack.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
+  pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
+  pack.checkpoints = checkpoints != nullptr ? checkpoints->MutableData<float>() : nullptr;
+
+  const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
+
+  return gdn::LaunchGatedDeltaNet<CudaT>(desc, plan, pack, scale, prop.maxThreadsPerBlock,
+                                         Stream(context));
+}
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
