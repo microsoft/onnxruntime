@@ -57,6 +57,16 @@ test('homepage carousel renders one semantic customer-link set', () => {
 	assert.equal(tabbableLinks.length, expectedCustomerNames.length);
 });
 
+test('customer focus rings render inside their clipped border boxes', () => {
+	assert.ok(carousel, 'customer carousel should be present in the rendered homepage');
+
+	const originals = [...carousel.matchAll(/<li[^>]*data-carousel-original[^>]*>([\s\S]*?)<\/li>/g)];
+
+	for (const [, item] of originals) {
+		assert.match(item, /focus-visible:ring-inset/);
+	}
+});
+
 test('visual carousel copies are hidden and excluded from sequential focus', () => {
 	assert.ok(carousel, 'customer carousel should be present in the rendered homepage');
 

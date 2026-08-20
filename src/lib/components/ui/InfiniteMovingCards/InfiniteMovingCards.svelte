@@ -105,7 +105,7 @@
 			>
 				<a
 					href={item.href}
-					class="block h-full w-full rounded-md focus:outline-none focus-visible:ring-4 focus-visible:ring-primary focus-visible:ring-offset-2"
+					class="block h-full w-full rounded-md focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-primary focus-visible:ring-offset-2"
 					on:focus={handleLinkFocus}
 					on:blur={handleLinkBlur}
 				>
