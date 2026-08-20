@@ -4373,9 +4373,12 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
       add_inputs_outputs(graph.GetInputs(), input_defs);
     }
 
+    const auto& graph_outputs = graph.GetOutputs();
     for (const auto* input : graph.GetInputs()) {
       const auto* type_proto = input->TypeAsProto();
-      if (type_proto == nullptr || !type_proto->has_optional_type()) {
+      const bool is_graph_output = std::find(graph_outputs.begin(), graph_outputs.end(), input) != graph_outputs.end();
+      if ((type_proto == nullptr || !type_proto->has_optional_type()) &&
+          (!graph.GetConsumerNodes(input->Name()).empty() || is_graph_output)) {
         required_input_names.push_back(input->Name());
       }
     }
