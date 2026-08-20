@@ -3,11 +3,11 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <cuda_runtime.h>
 
 #include "core/framework/tensor_shape.h"
 #include "contrib_ops/cpu/bert/paged_attention_helper.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
-#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace test {
@@ -266,20 +266,22 @@ TEST(PagedAttentionHelperTest, SanitizeBlockTablePreservesSentinelAndBoundsInval
   const std::vector<int32_t> expected{0, -1, 0, 3, 0};
   int32_t* input_device = nullptr;
   int32_t* output_device = nullptr;
-  CUDA_CALL_THROW(cudaMalloc(&input_device, input.size() * sizeof(int32_t)));
-  CUDA_CALL_THROW(cudaMalloc(&output_device, input.size() * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, input.size() * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, input.size() * sizeof(int32_t)));
   auto cleanup = gsl::finally([&]() {
     cudaFree(input_device);
     cudaFree(output_device);
   });
 
-  CUDA_CALL_THROW(cudaMemcpy(input_device, input.data(), input.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(input_device, input.data(), input.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
       input_device, output_device, static_cast<int>(input.size()), 4, nullptr);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   std::vector<int32_t> actual(input.size());
-  CUDA_CALL_THROW(cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
   EXPECT_EQ(actual, expected);
 }
 
