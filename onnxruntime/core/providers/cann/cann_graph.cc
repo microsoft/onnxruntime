@@ -7,6 +7,7 @@
 #include <exception>
 #include <memory>
 #include <shared_mutex>
+#include <string>
 #include <thread>
 
 #include "core/providers/cann/cann_graph.h"
