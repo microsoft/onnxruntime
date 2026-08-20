@@ -3535,7 +3535,8 @@ static Status ExpectUnfusedConvActivationPair(Graph& graph) {
 static Status RunConvActivationFusion(const std::function<void(ModelTestBuilder&)>& build_test_case,
                                       const logging::Logger& logger,
                                       const std::function<Status(Graph&)>& post_graph_checker,
-                                      int opset_version = 13) {
+                                      int opset_version = 13,
+                                      const std::function<Status(Graph&)>& post_resolve_mutator = nullptr) {
   const std::unordered_map<std::string, int> domain_to_version{
       {kOnnxDomain, opset_version}, {kMSDomain, 1}, {kMSInternalNHWCDomain, opset_version}};
 
@@ -3547,6 +3548,12 @@ static Status RunConvActivationFusion(const std::function<void(ModelTestBuilder&
   builder.SetGraphOutputs();
   ORT_RETURN_IF_ERROR(graph.Resolve());
   ORT_RETURN_IF_ERROR(ExpectUnfusedConvActivationPair(graph));
+
+  // Graph::Resolve() materializes schema attribute defaults onto every node, so a mutator is the
+  // only way to hand the fusion a node whose optional attribute is genuinely absent.
+  if (post_resolve_mutator) {
+    ORT_RETURN_IF_ERROR(post_resolve_mutator(graph));
+  }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
@@ -3695,6 +3702,40 @@ TEST_F(GraphTransformationTests, FuseNhwcConvEluDefaultsAlphaForWebGpuEp) {
   auto check = [](Graph& graph) { return ExpectFusedInto(graph, "Elu", {1.0f}); };
 
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// com.microsoft.QuickGelu computes x * Sigmoid(alpha * x) and defaults alpha to 1.702 (the GELU
+// approximation). Alpha 1.0 is a different function entirely (SiLU/Swish), so pin the value that
+// actually reaches the shader for a QuickGelu authored without an explicit alpha.
+TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluDefaultsAlphaForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "QuickGelu", kMSDomain, kWebGpuExecutionProvider);
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "QuickGelu", {1.702f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+}
+
+// The test above passes even with a wrong fallback constant, because Graph::Resolve() materializes
+// alpha from the schema before any transformer runs. Stripping the attribute afterwards is what
+// actually exercises the fusion's own fallback and catches it drifting away from 1.702.
+TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluFallbackAlphaMatchesSchemaDefault) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "QuickGelu", kMSDomain, kWebGpuExecutionProvider);
+  };
+  auto strip_alpha = [](Graph& graph) -> Status {
+    bool cleared = false;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "QuickGelu" && node.Domain() == kMSDomain) {
+        cleared = node.ClearAttribute("alpha");
+      }
+    }
+    ORT_RETURN_IF_NOT(cleared, "expected Graph::Resolve() to have materialized QuickGelu's alpha");
+    return Status::OK();
+  };
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "QuickGelu", {1.702f}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17, strip_alpha));
 }
 
 // activation_params encodes Gelu approximation as 0 (erf) or 1 (tanh).
