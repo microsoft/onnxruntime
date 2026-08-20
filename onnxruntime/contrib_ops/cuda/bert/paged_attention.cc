@@ -149,6 +149,7 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
 template <typename T, typename TCACHE>
 Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) const {
   auto ort_stream = GetOrtStream(context);
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
 
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
@@ -277,6 +278,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return Status::OK();
   }
 
+  const int block_table_element_count = parameters.batch_size * parameters.max_num_blocks_per_seq;
+  auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
+      reinterpret_cast<const int*>(block_table->Data<int>()),
+      sanitized_block_table.get(), block_table_element_count, parameters.num_blocks, cuda_stream));
+
   // Kernel backend selection. The choice depends only on static shapes and on the optional
   // 'attention_metadata' bounds, never on a device-to-host readback, so it is identical on every
   // replay of a captured CUDA Graph (docs/contrib_ops/cuda/paged_attention.md section 4.7).
@@ -364,7 +371,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   // Populate cumulative_seqlens_kv for all backends. Every kernel that needs a per-sequence KV
   // length reads it from here on device; the host only ever uses upper bounds.
-  cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
@@ -763,7 +769,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
   data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
-  data.block_table = reinterpret_cast<const int*>(block_table->Data<int>());
+  data.block_table = sanitized_block_table.get();
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());

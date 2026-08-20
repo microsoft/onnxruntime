@@ -456,19 +456,11 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
       }
     }
 
-    const int64_t live_tokens = static_cast<int64_t>(past_length) + q_len;
-    const int64_t required_blocks = (live_tokens + block_size - 1) / block_size;
     for (int block_index = 0; block_index < max_num_blocks_per_seq; ++block_index) {
       const int32_t block_id = block_table[static_cast<int64_t>(b) * max_num_blocks_per_seq + block_index];
-      if (block_index < required_blocks) {
-        if (block_id < 0 || block_id >= num_blocks) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "live block_table values must be in [0, num_blocks). Invalid value: ",
-                                 block_id);
-        }
-      } else if (block_id < -1 || block_id >= num_blocks) {
+      if (block_id < -1 || block_id >= num_blocks) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "padding block_table values must be in [-1, num_blocks). Invalid value: ",
+                               "block_table values must be in [-1, num_blocks). Invalid value: ",
                                block_id);
       }
     }
