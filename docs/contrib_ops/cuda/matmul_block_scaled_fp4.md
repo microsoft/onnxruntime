@@ -187,9 +187,9 @@ waves for four-column blocks when the reduction is long (`K / 128 >= 64`):
 | Grid condition | Reduction | Configuration |
 |---|---|---|
 | four-column grid covers four waves | ordinary or wide enough long reduction | `ColTiles = 4, KSplit = min(2, K / 128)` |
-| one-column grid covers four waves | `K / 128 < 64` | `ColTiles = 1, KSplit = min(2, K / 128)` |
-| one-column grid covers four waves | `K / 128 >= 64` | `ColTiles = 1, KSplit = 8` |
-| column-starved | any | `ColTiles = 1`, up to 16 K-split warps |
+| four-column grid does not cover four waves, but one-column grid does | `K / 128 < 64` | `ColTiles = 1, KSplit = min(2, K / 128)` |
+| four-column grid does not cover eight waves, but one-column grid covers four waves | `K / 128 >= 64` | `ColTiles = 1, KSplit = 8` |
+| one-column grid does not cover four waves | any | `ColTiles = 1`, up to 16 K-split warps |
 
 The extra grid-wave requirement avoids collapsing a medium-wide GEMV into too
 few blocks. On H200, this keeps the Qwen3.8 MTP `N=17408,K=5120` shape at

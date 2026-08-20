@@ -658,11 +658,6 @@ bool Fp4GemvMmaEnabled() {
   return enabled;
 }
 
-struct Fp4MmaConfig {
-  int k_split;
-  int col_tiles;
-};
-
 Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
   static int const k_split =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_KSPLIT", 0);
@@ -702,14 +697,15 @@ Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
 // alone covers several waves of SMs; below that the block count collapses and the device
 // idles, so columns are traded back before adding more K-split warps. Long reductions retain
 // KSplit 8 until wide column blocks cover eight waves. Measured on H200
-// (132 SMs, M = 4, half), previous default -> selected tensor-core config:
+// (132 SMs, M = 4, half). Rows marked "tuned" compare this selector against the previous
+// selector; the other rows record the selected tensor-core configuration and latency:
 //
-//   N = 248320, K = 2048 (lm_head)      538.5 -> 107.7 us (5.00x)  KSplit 2,  ColTiles 4
-//   N =  17408, K = 5120 (gate/up)       50.7 ->  46.6 us (1.09x)  KSplit 2,  ColTiles 1
-//   N =  17408, K = 8192                  61.4 ->  55.0 us (1.12x)  KSplit 8,  ColTiles 1
-//   N =    512, K = 2048 (gate/up)        3.90 ->  3.34 us (1.11x) KSplit 16, ColTiles 1
-//   N =   2048, K =  512 (down)           4.16 ->  2.97 us (1.40x) KSplit 4,  ColTiles 1
-Fp4MmaConfig PickFp4MmaConfig(int n, int k, int sm_count) {
+//   N = 248320, K = 2048 (lm_head)                 107.7 us        KSplit 2,  ColTiles 4
+//   N =  17408, K = 5120 (gate/up, tuned) 50.7 ->  46.6 us (1.09x) KSplit 2,  ColTiles 1
+//   N =  17408, K = 8192 (tuned)         61.4 ->  55.0 us (1.12x) KSplit 8,  ColTiles 1
+//   N =    512, K = 2048 (gate/up)                  3.34 us        KSplit 16, ColTiles 1
+//   N =   2048, K =  512 (down)                     2.97 us        KSplit 4,  ColTiles 1
+Fp4MmaConfig PickFp4MmaConfigImpl(int n, int k, int sm_count) {
   constexpr int kTargetGridWaves = 4;
   constexpr int kLongReductionGridWaves = 8;
   constexpr int kLongReductionWindows = 64;
@@ -737,6 +733,17 @@ Fp4MmaConfig PickFp4MmaConfig(int n, int k, int sm_count) {
 }  // namespace
 
 #endif  // CUDA_VERSION >= 12080
+
+Fp4MmaConfig PickFp4MmaConfig(int n, int k, int sm_count) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
+  return PickFp4MmaConfigImpl(n, k, sm_count);
+#else
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(sm_count);
+  return {1, 1};
+#endif
+}
 
 Status LaunchDequantizeNvFp4(void* b_dequant,
                              const void* b_packed,
@@ -844,7 +851,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns 16 * tile + g and
   // + 8, and stores output rows 2t and 2t + 1 of those two columns.
   if (device_prop.major >= 8 && k % 128 == 0 && m <= 8 && Fp4GemvMmaEnabled()) {
-    const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k, device_prop.multiProcessorCount);
+    const Fp4MmaConfig cfg = PickFp4MmaConfigImpl(n, k, device_prop.multiProcessorCount);
     const int cols_per_block = 16 * cfg.col_tiles;
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};
     const dim3 mma_blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block)};

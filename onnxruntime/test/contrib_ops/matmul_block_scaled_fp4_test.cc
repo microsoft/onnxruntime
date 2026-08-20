@@ -6,6 +6,8 @@
 // conversion intrinsics that are only available in CUDA 12.8 and newer.
 #include <cuda.h>
 #include <cuda_runtime_api.h>
+
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp4_tiling.h"
 #endif
 
 #include <algorithm>
@@ -606,73 +608,27 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
   }
 }
 
-// Covers the shape thresholds added for Qwen3.8 MTP: a medium-wide grid keeps ColTiles == 1 and
-// selects KSplit == 2, the same grid with a long reduction selects KSplit == 8, and a wide grid
-// selects ColTiles == 4. The N values are derived from the device's SM count so each case lands on
-// the intended grid-wave boundary on H200 and on smaller SM80+ devices.
-TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundariesFp16) {
-  if (!HasCudaEnvironment(800)) {
-    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
-  }
-
-  int device = 0;
-  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
-  cudaDeviceProp prop{};
-  ASSERT_EQ(cudaGetDeviceProperties(&prop, device), cudaSuccess);
-
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundaries) {
   struct Case {
     int64_t n;
     int64_t k;
+    int k_split;
+    int col_tiles;
   };
-  const int64_t sm_count = prop.multiProcessorCount;
+  constexpr int sm_count = 132;
   const Case cases[] = {
-      {64 * sm_count, 5120},  // 4 waves of single-column blocks, ordinary reduction
-      {64 * sm_count, 8192},  // same grid, long reduction retains KSplit 8
-      {512 * sm_count, 512},  // 8 waves of four-column blocks, wide-column configuration
+      {64 * sm_count, 5120, 2, 1},        // 4 waves of single-column blocks, ordinary reduction
+      {64 * sm_count, 8192, 8, 1},        // same grid, long reduction retains KSplit 8
+      {512 * sm_count, 512, 2, 4},        // 8 waves of four-column blocks
+      {64 * sm_count - 16, 2048, 16, 1},  // just below 4 single-column waves
   };
 
-  constexpr int64_t m = 4;
   for (const Case& shape : cases) {
-    const int64_t n = shape.n;
-    const int64_t k = shape.k;
-    const int64_t k_blocks = k / 16;
-    SCOPED_TRACE("N = " + std::to_string(n) + ", K = " + std::to_string(k));
-
-    static const uint8_t kWeightBytes[] = {0x22, 0x44, 0xAA, 0x11};
-    static const float kWeightValues[] = {1.0f, 2.0f, -1.0f, 0.5f};
-    std::vector<uint8_t> b(static_cast<size_t>(n * (k / 2)));
-    std::vector<uint8_t> weight_scale(static_cast<size_t>(n * k_blocks), 0x38);
-    for (int64_t col = 0; col < n; ++col) {
-      const int pattern = static_cast<int>(col & 3);
-      std::fill(b.begin() + static_cast<size_t>(col * (k / 2)),
-                b.begin() + static_cast<size_t>((col + 1) * (k / 2)), kWeightBytes[pattern]);
-    }
-
-    std::vector<float> a(static_cast<size_t>(m * k));
-    for (int64_t row = 0; row < m; ++row) {
-      std::fill(a.begin() + static_cast<size_t>(row * k),
-                a.begin() + static_cast<size_t>((row + 1) * k), static_cast<float>(row + 1));
-    }
-    std::vector<float> expected(static_cast<size_t>(m * n));
-    for (int64_t row = 0; row < m; ++row) {
-      for (int64_t col = 0; col < n; ++col) {
-        expected[static_cast<size_t>(row * n + col)] =
-            static_cast<float>(k) * static_cast<float>(row + 1) * kWeightValues[col & 3];
-      }
-    }
-
-    OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
-    test.AddAttribute<int64_t>("block_size", 16);
-    test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
-    test.AddInput<uint8_t>("B", {n, k / 2}, b);
-    test.AddInput<uint8_t>("weight_scale", {n, k_blocks}, weight_scale);
-    test.AddInput<float>("weight_scale_2", {1}, {1.0f});
-    test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
-    test.SetOutputTolerance(0.5f);
-
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    SCOPED_TRACE("N = " + std::to_string(shape.n) + ", K = " + std::to_string(shape.k));
+    const auto config = onnxruntime::contrib::cuda::PickFp4MmaConfig(
+        static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count);
+    EXPECT_EQ(config.k_split, shape.k_split);
+    EXPECT_EQ(config.col_tiles, shape.col_tiles);
   }
 }
 
