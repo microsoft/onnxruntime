@@ -608,7 +608,8 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 
 template <typename T>
 Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
-                           float scale, int max_threads_per_block, cudaStream_t stream) {
+                           float scale, int max_threads_per_block,
+                           size_t max_shared_memory_per_block, cudaStream_t stream) {
   KernelParams p{};
   p.total_tokens = desc.total_tokens;
   p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
@@ -676,8 +677,9 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
       sizeof(float) * (static_cast<size_t>(desc.head_size_qk) * desc.head_size_v +
                        2 * desc.head_size_qk + desc.head_size_v + desc.head_size_qk);
   static std::once_flag once_rec;
-  ORT_RETURN_IF_ERROR(
-      SetMaxDynamicSmemOnce(GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>, smem, once_rec));
+  ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(
+      GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>,
+      max_shared_memory_per_block, once_rec));
   const dim3 grid(desc.batch, desc.num_heads_v, 1);
   GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>
       <<<grid, kRecurrentThreads, smem, stream>>>(pack, p, desc.head_size_qk, desc.head_size_v);
@@ -686,9 +688,9 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
 }
 
 template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const VariantPack<float>&,
-                                           float, int, cudaStream_t);
+                                          float, int, size_t, cudaStream_t);
 template Status LaunchGatedDeltaNet<half>(const Descriptor&, const Plan&, const VariantPack<half>&,
-                                          float, int, cudaStream_t);
+                                          float, int, size_t, cudaStream_t);
 
 }  // namespace gated_delta_net
 }  // namespace cuda

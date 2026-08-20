@@ -566,6 +566,34 @@ TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {
            &eps);
 }
 
+TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  Geometry g{4, 1, 1, 1, 64, 64};
+  Inputs in = MakeInputs(g, 53);
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  Options o;
+  o.gate_activation = "qwen";
+  AddCommonAttrs(test, o);
+  test.AddInput<MLFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.q));
+  test.AddInput<MLFloat16>("key", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.k));
+  test.AddInput<MLFloat16>("value", {g.total_tokens, g.hv, g.dv}, ToFloat16(in.v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", {g.total_tokens, g.hv}, in.decay);
+  test.AddInput<float>("beta", {g.total_tokens, g.hv}, in.beta);
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
+  test.AddInput<float>("a_log", {g.hv}, in.a_log);
+  test.AddInput<float>("dt_bias", {g.hv, g.dk},
+                       std::vector<float>(static_cast<size_t>(g.hv) * g.dk, 0.0f));
+  test.AddOutput<MLFloat16>(
+      "output", {g.total_tokens, g.hv, g.dv},
+      ToFloat16(std::vector<float>(
+          static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "dt_bias must be [num_heads_v]",
+           {}, nullptr, &eps);
+}
+
 // The plan decision is pure host code, so the consumer-Blackwell shared-memory budget can
 // be checked without an SM120 device. CUTLASS records sm120_smem_capacity_bytes = 101376
 // against SM90/SM100's 232448.

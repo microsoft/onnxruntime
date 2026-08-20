@@ -2985,7 +2985,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7, "a_log", "Per-head gate scale, shape (num_heads_v). Requires gate_activation=qwen.",
                "TS", OpSchema::Optional)
         .Input(8, "dt_bias",
-               "Per-head gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk). "
+               "Per-head gate bias, shape (num_heads_v). "
                "Requires gate_activation=qwen.",
                "TS", OpSchema::Optional)
         .Output(0, "output",

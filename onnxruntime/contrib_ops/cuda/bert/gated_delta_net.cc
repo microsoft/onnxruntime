@@ -196,6 +196,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                       "gate_activation=qwen requires a_log and dt_bias");
     ORT_RETURN_IF_NOT(a_log->Shape().NumDimensions() == 1 && a_log->Shape()[0] == num_heads_v,
                       "a_log must be [num_heads_v]");
+    ORT_RETURN_IF_NOT(dt_bias->Shape().NumDimensions() == 1 &&
+                          dt_bias->Shape()[0] == num_heads_v,
+                      "dt_bias must be [num_heads_v]");
   } else {
     ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr,
                       "a_log and dt_bias require gate_activation=qwen");
@@ -244,10 +247,16 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   gdn::Plan plan = gdn::PlanCache::Instance().GetOrCreate(desc, prop.multiProcessorCount,
                                                           prop.sharedMemPerBlockOptin);
-  if (forced_engine_ == gdn::Engine::kRecurrent) {
-    // Benchmarking override, the analogue of cudnn's select_plan(name). The chunked engines
-    // are reachable through the descriptor; forcing the sequential one only needs the swap.
+  if (forced_engine_ == gdn::Engine::kChunked ||
+      forced_engine_ == gdn::Engine::kChunkedSplit) {
+    ORT_RETURN_IF_NOT(
+        plan.engine == forced_engine_,
+        "GatedDeltaNet: the ", gdn::EngineName(forced_engine_),
+        " engine cannot serve this descriptor");
+  } else if (forced_engine_ == gdn::Engine::kRecurrent) {
     plan.engine = gdn::Engine::kRecurrent;
+  } else if (forced_engine_ == gdn::Engine::kCudnn) {
+    plan.engine = gdn::Engine::kCudnn;
   }
   ORT_RETURN_IF_NOT(plan.supported, "GatedDeltaNet: no supported plan (",
                     plan.reject_reason ? plan.reject_reason : "unknown", ")");
@@ -294,8 +303,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
     pack.workspace = workspace.get();
   }
 
-  return gdn::LaunchGatedDeltaNet<CudaT>(desc, plan, pack, scale, prop.maxThreadsPerBlock,
-                                         Stream(context));
+  return gdn::LaunchGatedDeltaNet<CudaT>(
+      desc, plan, pack, scale, prop.maxThreadsPerBlock,
+      static_cast<size_t>(prop.sharedMemPerBlockOptin), Stream(context));
 }
 
 }  // namespace cuda
