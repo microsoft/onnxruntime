@@ -179,11 +179,12 @@ split-reduce threshold):
   paged cache. No adapter gating — the split-reduce path already sizes its
   workgroup budget for every WebGPU adapter class.
 - **Fused paged prefill** (`max_seqlen_q >= 32`): dispatch
-  `FlashAttentionPagedPrefillProgram`. This is a straight port of the dense
-  FA prefill shader's shared-memory path, so it is gated to the shm-path
-  adapters (Apple / NVIDIA / any adapter without subgroups). On other
-  adapters (Qualcomm / AMD / Intel with subgroups) the caller falls back to
-  gather-then-flash.
+  `FlashAttentionPagedPrefillProgram`. Straight port of the dense FA
+  prefill shader's shared-memory algorithm. The shader uses no subgroup
+  intrinsics, so it runs on every WebGPU adapter that satisfies the
+  dtype / shm-budget / block-alignment gates — no adapter-class fallback.
+  (A paged subgroup-shuffle variant could be added later if benchmarks on
+  subgroup adapters justify it.)
 
 **Selection helper.** All fast-path decisions in `PagedAttention` and
 `ApplyFlashAttention` consult one shared predicate:
@@ -193,7 +194,7 @@ bool ShouldRunFusedPagedPrefill(context, is_fp16, max_seqlen_q,
                                 head_size, block_size);
 ```
 
-It rejects when: the adapter takes the subgroup path, `!is_fp16`,
+It rejects when: `!is_fp16`,
 `max_seqlen_q < 32`, the workgroup shared-memory budget can't fit a K/V tile
 (fp16: `head_size > 256`), or `block_size < max_k_step` (the tile-per-lookup
 invariant, see §8 pitfalls). Because the same predicate gates the
@@ -240,9 +241,10 @@ dispatch cost per Run on D3D12) plus the padded scratch allocation
 Two full paged K/V reads plus two contiguous K/V writes per layer per step
 (gather), Q/output shuffles proportional to `token_count`, and a scratch
 allocation of `2 * B * kv_num_heads * max_kv_len * head_size + B *
-max_seqlen_q * hidden_size` bytes. Fallback is exercised on adapters or
-configurations that `ShouldRunFusedPagedPrefill` rejects; direct paged
-paths cover the common case.
+max_seqlen_q * hidden_size` bytes. Fallback is exercised on configurations
+that `ShouldRunFusedPagedPrefill` rejects (fp32, `head_size > 256`, or
+`block_size < max_k_step`); direct paged paths cover the common case on
+every WebGPU adapter.
 
 ### 4.5 Host-visible values and graph capture (deferred to Phase 2)
 
@@ -526,7 +528,8 @@ ComputeInternal:
       ApplyFlashAttention() on paged cache directly (no gather)
       RunRepackOutput()
 
-  # (b) Fallback (rejected by ShouldRunFusedPagedPrefill, e.g. subgroup adapter):
+  # (b) Fallback (rejected by ShouldRunFusedPagedPrefill, e.g. fp32,
+  #     head_size > 256, or block_size < max_k_step):
   else:
     RunGatherKV()          # -> [B, kv_num_heads, max_kv_len, head_size]
     RunUnpackQuery()       # -> [B, max_seqlen_q, num_heads, head_size]
@@ -590,9 +593,10 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 - **Micro-benchmark** (`onnxruntime/test/onnx/microbenchmark/paged_attention.cc`,
   Google Benchmark): decode and prefill (uniform + varlen) shape matrix.
   The direct paged decode + fused paged prefill programs are the production
-  routes on shm-path adapters. Peak scratch memory can be inspected in
-  adapter tooling since the direct path skips the `k_padded`/`v_padded` and
-  (for `skip_unpack_repack`) `q_padded`/`output_padded` allocations.
+  routes on every fp16 adapter that meets the shm-budget and block-alignment
+  gates. Peak scratch memory can be inspected in adapter tooling since the
+  direct path skips the `k_padded`/`v_padded` and (for `skip_unpack_repack`)
+  `q_padded`/`output_padded` allocations.
 - **GenAI E2E**: run Phi-3-mini or Llama-3.2-1B through the GenAI continuous
   batching engine on WebGPU once GenAI PR #2330's `-e webgpu` gate is
   flipped.

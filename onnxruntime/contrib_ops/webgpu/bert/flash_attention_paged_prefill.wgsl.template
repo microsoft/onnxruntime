@@ -16,10 +16,12 @@
 //     the fused paged prefill path off when either is present).
 //   * Q is always BSNH (dispatch requires Q_K_V_BSNH).
 //   * seqlens_k and seqlens_q are always present (per-batch KV/Q lengths).
-//   * Only the shared-memory path is implemented. On adapters that would
-//     otherwise take the subgroup-shuffle path (has_subgroups && !nvidia &&
-//     !apple, e.g. Qualcomm / AMD / Intel), the dispatch falls back to the
-//     gather + dense-FA fallback. Porting the subgroup path is v2 work.
+//   * This shader implements only the shared-memory algorithm. It uses no
+//     subgroup intrinsics, so it runs correctly on every WebGPU adapter
+//     (subgroup adapters are welcome to take it too rather than falling
+//     back to gather + dense-FA + subgroup). A paged subgroup-shuffle
+//     variant may be added later if benchmarks on subgroup adapters show
+//     it is preferable.
 //
 // Alignment invariant: paged_attention_helper enforces block_size to be a
 // power of two >= 16, and ShouldRunFusedPagedPrefill additionally rejects
@@ -87,9 +89,9 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
 }
 
 fn loadk(k_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_seq : u32) {
-  // Paged K cache layout: [num_blocks, block_size, kv_num_heads, head_size]
-  // Because block_size is a multiple of 256 and max_k_step divides block_size,
-  // the whole tile lives in one paged block (see alignment note at file top).
+  // Paged K cache layout: [num_blocks, block_size, kv_num_heads, head_size].
+  // block_size is a multiple of max_k_step (see alignment note at file top),
+  // so the whole tile lives in one paged block — one block_table lookup.
   let kv_head_idx = head_idx / uniforms.n_reps;
   let block_slot_in_batch = k_start / uniforms.block_size;
   let base_slot = k_start % uniforms.block_size;

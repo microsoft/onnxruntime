@@ -179,19 +179,20 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
                                     int qkv_head_size,
                                     int qkv_num_heads,
                                     bool is_unidirectional,
-                                    bool use_shm_path,
                                     bool q_varlen)
       : Program{"FlashAttentionPagedPrefill"},
         is_fp16_(is_fp16),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
-        use_shm_path_(use_shm_path),
         q_varlen_(q_varlen) {
+    // The shader is shared-memory only (no subgroup intrinsics). max_k_step
+    // falls out of the workgroup shm budget: k_tile + v_tile = 2 *
+    // element_size * head_size * max_k_step bytes.
     const int element_size = is_fp16 ? 2 : 4;
     constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
     const int max_k_from_shm = kMinWorkgroupStorageBudgetBytes / (2 * element_size * qkv_head_size);
-    max_k_step_ = use_shm_path_ && max_k_from_shm >= 32 ? 32 : 16;
+    max_k_step_ = max_k_from_shm >= 32 ? 32 : 16;
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -212,7 +213,6 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
   int qkv_head_size_;
   int qkv_num_heads_;
   bool is_unidirectional_;
-  bool use_shm_path_;
   int max_k_step_;
   bool q_varlen_;
 };
@@ -385,8 +385,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 // the shader will see a Q buffer it does not know how to index.
 //
 // Predicates checked (all must hold):
-//   * shm-path adapter (apple || nvidia || !subgroups) — matches the shader's
-//     workgroup layout
 //   * is_fp16 — only fp16 variant is compiled today
 //   * max_seqlen_q >= 32 — below that ApplyFlashAttention routes to
 //     split-reduce decode instead
@@ -398,6 +396,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 //     (power-of-two); configs with block_size < max_k_step (e.g. block_size 16
 //     and fp16 head_size <= 128 → max_k_step 32) would splice into a
 //     physically-adjacent block that is not the next entry in block_table.
+//
+// The shader uses only shared-memory algorithms (no subgroup intrinsics), so
+// it runs correctly on every WebGPU adapter — no adapter-class gate.
 bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
                                 bool is_fp16,
                                 int max_seqlen_q,

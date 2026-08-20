@@ -290,8 +290,13 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  // q / key_cache / value_cache / output use plain array indexing in the shader body
-  // (mirroring the dense FA template). block_table uses .getByIndices (2-D lookup).
+  // TODO: convert q / key_cache / value_cache / output to getByOffset /
+  // setByOffset so tensors larger than maxStorageBufferBindingSize (128 MiB
+  // on most adapters) transparently work when the framework splits them
+  // across bindings. Attempted in this branch — the emitted code is
+  // byte-identical to raw indexing but triggers an SEH access violation at
+  // Program::Build time on Windows/NVIDIA. Tracked as a follow-up.
+  // block_table uses .getByIndices (2-D lookup).
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("key_cache", ShaderUsage::UseUniform);
   shader.AddInput("value_cache", ShaderUsage::UseUniform);
@@ -335,19 +340,13 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
   ORT_RETURN_IF(parameters.qkv_format_ != Q_K_V_BSNH,
                 "Paged prefill supports BSNH Q layout only.");
 
-  const bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
   const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
-  const bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
   const bool is_fp16 = q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   const bool q_varlen = cumulative_seqlens_q != nullptr;
-  // shm-path adapters mirror ShouldRunFusedPagedPrefill; the caller already
-  // gated on this before dispatching us, so it must be true here.
-  const bool use_shm_path = is_apple || is_nvidia || !has_subgroups;
   FlashAttentionPagedPrefillProgram program{is_fp16,
                                             parameters.head_size_,
                                             parameters.num_heads_,
                                             parameters.is_unidirectional_,
-                                            use_shm_path,
                                             q_varlen};
 
   // Dispatch shape mirrors the dense FA shm_path: one workgroup per (batch, head,
@@ -1231,17 +1230,11 @@ bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
                                 int max_seqlen_q,
                                 int head_size,
                                 int block_size) {
-  // v1 fused paged prefill implements the shared-memory path only. Adapters
-  // that would take the subgroup-shuffle path in the dense FA shader (has
-  // subgroups && !nvidia && !apple, e.g. Qualcomm / AMD / Intel) fall
-  // through to the gather + dense-FA fallback.
-  const bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
-  const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
-  const bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
-  const bool shm_path = is_apple || is_nvidia || !has_subgroups;
-  if (!shm_path) {
-    return false;
-  }
+  // The paged prefill shader uses only shared-memory algorithms (no subgroup
+  // intrinsics), so it runs correctly on every WebGPU adapter. No adapter
+  // gate here — the only gates are dtype, shape, shm-budget, and
+  // block/tile alignment.
+  (void)context;
   if (!is_fp16) {
     return false;
   }
