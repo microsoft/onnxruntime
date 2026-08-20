@@ -3,9 +3,8 @@
 
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/framework/op_kernel_info.h"
-#include <iomanip>
-#include <limits>
-#include <sstream>
+#include "core/providers/webgpu/string_macros.h"
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,11 +13,16 @@ namespace webgpu {
 
 namespace {
 
-// Emit enough digits to round-trip each f32 exactly.
+// Holds the longest shortest-round-trip f32 rendering, e.g. "-1.23456792e-38".
+constexpr size_t kFloatLiteralReserveSize = 32;
+
+// OStringStream formats with std::to_chars, which ignores the global locale, so a comma decimal
+// separator cannot corrupt the emitted shader source. It emits the fewest digits that round-trip
+// each f32 exactly.
 std::string FloatLiteral(float value) {
-  std::ostringstream oss;
-  oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
-  return oss.str();
+  SS(oss, kFloatLiteralReserveSize);
+  oss << value;
+  return SS_GET(oss);
 }
 
 // Parameters occupy uniform slots in activation_params_.values_ order.
