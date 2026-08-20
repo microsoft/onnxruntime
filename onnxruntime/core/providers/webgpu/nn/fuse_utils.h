@@ -14,7 +14,6 @@ class OpKernelInfo;
 
 namespace webgpu {
 
-// Values are mirrored by im2col_matmul.wgsl.template; append without reordering.
 enum class ActivationKind {
   None,
   Relu,
