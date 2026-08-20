@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include <cmath>
+
 #include <gsl/gsl>
 
 #include "test/providers/provider_test_utils.h"
@@ -147,6 +149,92 @@ TEST(WhereOpTest, BroadcastWithScalar) {
   test.AddInput<int64_t>("Y", {}, {1});
 
   test.AddOutput<int64_t>("output", {1, 3}, {1, 1, 3});
+
+  test.Run();
+}
+
+namespace {
+// Where is selection, so a selected -0.0 must come back as -0.0. OpTester compares floating
+// point outputs numerically and -0.0f == 0.0f, so a lost sign is invisible to it; check the
+// sign bit directly instead.
+void ExpectSignBits(const std::vector<OrtValue>& fetches, const std::vector<float>& expected) {
+  ASSERT_EQ(fetches.size(), 1u);
+  ASSERT_TRUE(fetches[0].IsTensor());
+
+  const Tensor& tensor = fetches[0].Get<Tensor>();
+  ASSERT_EQ(static_cast<size_t>(tensor.Shape().Size()), expected.size());
+
+  const float* output = tensor.Data<float>();
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(std::signbit(output[i]), std::signbit(expected[i]))
+        << "element " << i << " has the wrong sign";
+  }
+}
+}  // namespace
+
+// Equal shapes, selected from X. The merge tests X_selection against the default, and -0.0
+// compares equal to it.
+TEST(WhereOpTest, SignedZeroSelectedFromX) {
+  OpTester test{kOpName, kOpVersion};
+
+  test.AddInput<bool>("condition", {1}, {true});
+  test.AddInput<float>("X", {1}, {-0.0f});
+  test.AddInput<float>("Y", {1}, {0.0f});
+
+  test.AddOutput<float>("output", {1}, {-0.0f});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    ExpectSignBits(fetches, {-0.0f});
+  });
+
+  test.Run();
+}
+
+// Equal shapes, selected from Y. Y_selection is the fall-through of that same merge, so this
+// case was already correct and guards against a fix that breaks it.
+TEST(WhereOpTest, SignedZeroSelectedFromY) {
+  OpTester test{kOpName, kOpVersion};
+
+  test.AddInput<bool>("condition", {1}, {false});
+  test.AddInput<float>("X", {1}, {1.0f});
+  test.AddInput<float>("Y", {1}, {-0.0f});
+
+  test.AddOutput<float>("output", {1}, {-0.0f});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    ExpectSignBits(fetches, {-0.0f});
+  });
+
+  test.Run();
+}
+
+// Y broadcast against a wider X, so Y_selection becomes the scalar operand of
+// MergeScalarAndVector and is the value tested.
+TEST(WhereOpTest, SignedZeroSelectedFromBroadcastY) {
+  OpTester test{kOpName, kOpVersion};
+
+  test.AddInput<bool>("condition", {1}, {false});
+  test.AddInput<float>("X", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("Y", {1}, {-0.0f});
+
+  test.AddOutput<float>("output", {4}, {-0.0f, -0.0f, -0.0f, -0.0f});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    ExpectSignBits(fetches, {-0.0f, -0.0f, -0.0f, -0.0f});
+  });
+
+  test.Run();
+}
+
+// The mirror of the above, with X as the scalar operand.
+TEST(WhereOpTest, SignedZeroSelectedFromBroadcastX) {
+  OpTester test{kOpName, kOpVersion};
+
+  test.AddInput<bool>("condition", {1}, {true});
+  test.AddInput<float>("X", {1}, {-0.0f});
+  test.AddInput<float>("Y", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
+
+  test.AddOutput<float>("output", {4}, {-0.0f, -0.0f, -0.0f, -0.0f});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    ExpectSignBits(fetches, {-0.0f, -0.0f, -0.0f, -0.0f});
+  });
 
   test.Run();
 }
