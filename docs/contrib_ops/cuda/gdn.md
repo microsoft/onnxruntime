@@ -82,7 +82,7 @@ Source:
 | 1 | `final_state` | `(batch_size, num_heads_v, head_size_v, head_size_qk)` | float | no |
 | 2 | `checkpoints` | `(state_checkpoints, batch_size, num_heads_v, head_size_v, head_size_qk)` | float | no |
 
-Type constraints: `T` is `float`, `float16` or `bfloat16`; state, decay and beta are always
+Type constraints: `T` is `float` or `float16`; state, decay and beta are always
 `float`, independent of `T`.
 
 Head-count rules: `num_heads_q == num_heads_k`, and `num_heads_v` must be a positive multiple

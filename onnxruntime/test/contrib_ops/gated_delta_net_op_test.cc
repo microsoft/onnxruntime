@@ -148,7 +148,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
           decay = std::exp(static_cast<double>(raw));
         }
         double beta = 1.0;
-        if (!in.beta.empty()) {
+        if (delta && !in.beta.empty()) {
           float raw = in.beta[gi];
           if (o.beta_activation == "sigmoid") raw = Sigmoid(raw);
           beta = raw;
@@ -240,8 +240,20 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
     test.AddInput<int32_t>("cu_seqlens", {static_cast<int64_t>(in.cu_seqlens.size())},
                            in.cu_seqlens);
   }
-  test.AddInput<float>("decay", shaped({g.hv}), in.decay);
-  test.AddInput<float>("beta", shaped({g.hv}), in.beta);
+  const bool needs_decay =
+      o.update_rule == "gated" || o.update_rule == "gated_delta";
+  const bool needs_beta =
+      o.update_rule == "delta" || o.update_rule == "gated_delta";
+  if (needs_decay) {
+    test.AddInput<float>("decay", shaped({g.hv}), in.decay);
+  } else {
+    test.AddOptionalInputEdge<float>();
+  }
+  if (needs_beta) {
+    test.AddInput<float>("beta", shaped({g.hv}), in.beta);
+  } else {
+    test.AddOptionalInputEdge<float>();
+  }
   if (in.state0.empty()) {
     test.AddOptionalInputEdge<float>();
   } else {
@@ -503,6 +515,30 @@ TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {
   eps.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "must be a positive multiple", {}, nullptr,
            &eps);
+}
+
+TEST(GatedDeltaNetTest, RejectsMissingRequiredGateInput) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  Geometry g{4, 1, 1, 1, 64, 64};
+  Inputs in = MakeInputs(g, 51);
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  Options o;
+  AddCommonAttrs(test, o);
+  test.AddInput<MLFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.q));
+  test.AddInput<MLFloat16>("key", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.k));
+  test.AddInput<MLFloat16>("value", {g.total_tokens, g.hv, g.dv}, ToFloat16(in.v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", {g.total_tokens, g.hv}, in.decay);
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
+  test.AddOutput<MLFloat16>(
+      "output", {g.total_tokens, g.hv, g.dv},
+      ToFloat16(std::vector<float>(
+          static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "beta input presence must match update_rule", {}, nullptr, &eps);
 }
 
 TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
