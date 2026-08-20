@@ -24,12 +24,14 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
                       uint32_t tile_m,
                       uint32_t tile_n,
                       uint32_t vec_size,
-                      bool use_subgroup) : Program("Im2ColMatMul"),
-                                           has_bias_(has_bias),
-                                           tile_m_(tile_m),
-                                           tile_n_(tile_n),
-                                           vec_size_(vec_size),
-                                           use_subgroup_(use_subgroup) {}
+                      bool use_subgroup,
+                      ActivationKind activation_kind) : Program("Im2ColMatMul"),
+                                                        has_bias_(has_bias),
+                                                        tile_m_(tile_m),
+                                                        tile_n_(tile_n),
+                                                        vec_size_(vec_size),
+                                                        use_subgroup_(use_subgroup),
+                                                        activation_kind_(activation_kind) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -50,7 +52,8 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
       {"K_tiles", ProgramUniformVariableDataType::Uint32},
       {"dilations", ProgramUniformVariableDataType::Uint32},
       {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32});
+      {"strides", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
   bool has_bias_;
@@ -59,17 +62,19 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
   uint32_t tile_n_;
   uint32_t vec_size_;
   bool use_subgroup_;
+  ActivationKind activation_kind_;
 };
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const bool is_fused,
+                                 const Activation& activation,
                                  const TensorShape kernel_shape,
                                  const uint32_t group,
                                  const MLDataType data_type);
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const bool is_channels_last,
+                                const Activation& activation,
                                 const std::vector<uint32_t>& dilations,
                                 const std::vector<uint32_t>& pads,
                                 const std::vector<uint32_t>& strides,

@@ -70,6 +70,7 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 template <>
 struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
   using type = struct {
+    int param_activation_kind;
     int param_has_bias;
     int param_tile_m;
     int param_tile_n;
