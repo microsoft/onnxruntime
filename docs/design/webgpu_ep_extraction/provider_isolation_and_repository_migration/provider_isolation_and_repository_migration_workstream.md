@@ -21,13 +21,16 @@ The WebGPU repository owns:
 - WebGPU-owned support code copied or replaced from ORT.
 - Dawn selection, patches, and build configuration.
 - WGSL templates, generators, and generated-source policy.
-- WebGPU-specific unit, integration, browser, package, and regression tests.
+- WebGPU-specific unit, integration, package, and regression tests, and browser tests of provider behavior.
 - Shared and static provider build targets.
 - Existing Python and NuGet plugin packaging and release pipelines.
 - Version metadata, compatibility policy, CI, and release artifacts.
 
 ORT should consume versioned artifacts or source and should not remain an implementation or packaging repository for
 the provider.
+
+The deprecated JSEP TypeScript compute path in `js/web/lib/wasm/jsep/` is out of scope. It is being removed rather
+than moved.
 
 ## Isolation strategy
 
@@ -64,33 +67,12 @@ elsewhere in the ORT tree.
 
 During isolation:
 
-- Preserve selected history in the new repository through a filtered-history import, such as `git filter-repo` or an
-  equivalent subtree export. Moving files into `plugin-ep-webgpu/` first makes the ownership boundary and subsequent
-  history extraction clearer. The import should exclude unrelated ORT history where practical.
+- Move files into `plugin-ep-webgpu/` first, which clarifies the ownership boundary and simplifies the later history
+  extraction described in History migration.
 - Avoid changing behavior merely to change ownership.
 - Keep ORT integration shims outside the provider root.
 - Make generated files and downloaded dependencies explicit build outputs or inputs.
 - Support an ORT build override pointing at an adjacent WebGPU checkout.
-
-### History migration
-
-Create a history-migration manifest that lists every current and historical path whose changes should be retained.
-The implementation has moved across multiple ORT directories, and path filtering does not automatically follow every
-rename. Filtering only the final `plugin-ep-webgpu/` subtree would therefore omit earlier provider history.
-
-Use `git filter-repo` or equivalent tooling to:
-
-- Select the complete historical path set.
-- Remap those paths into the new repository layout.
-- Retain relevant authors, dates, commit messages, branches, tags, and merge relationships where practical.
-- Exclude unrelated ORT source and history.
-
-The filtered import rewrites commit IDs. Pull requests, reviews, issues, and other GitHub metadata are not Git objects
-and do not transfer with repository history. Record the source ORT repository, extraction commit, filtering command or
-script, and path manifest in the new repository so commits can be traced back to their original context.
-
-Perform and review a trial history import before the final source move. Verify representative files with `git log`
-and blame, and confirm that the resulting repository does not contain unrelated or sensitive content.
 
 ## Private dependency removal
 
@@ -126,11 +108,10 @@ with the ORT implementation.
 The isolated subtree should build against a declared ORT plugin SDK or installed ORT package without an ORT source
 checkout.
 
-It should produce:
+The subtree build should produce:
 
 - A native shared plugin library.
 - A static plugin-API library for Emscripten and other static hosts.
-- Provider metadata sufficient to diagnose ORT compatibility.
 - Test executables or packages that consume public ORT interfaces.
 - Development artifacts from the same commit as release artifacts.
 
@@ -143,25 +124,15 @@ The build should support:
 - Reproducible source archives.
 - Adjacent-checkout development from ORT.
 
-## Repository foundation
-
-The external repository skeleton can be created before isolation is complete to validate:
-
-- Directory and CMake layout.
-- Required checks and platform matrix.
-- Dependency caching and Dawn build time.
-- Version and compatibility metadata.
-- Artifact naming and retention.
-- Issue ownership and contribution policy.
-- Release automation.
-
-The final code import should wait until a clean copy of the staging root builds and tests without undeclared ORT
-source-tree dependencies.
+Browser-hosted provider tests are an exception to the no-source-checkout rule. Static linkage requires building ORT
+Web with the provider, so the WebGPU repository builds ORT Web from a pinned ORT source revision using the
+adjacent-checkout override. ORT separately validates its pinned WebGPU revision as part of ORT Web release gating.
 
 ## Packaging migration
 
-Python and NuGet plugin packaging already exist. This workstream migrates their sources and release pipelines rather
-than redesigning them.
+Python and NuGet plugin packaging sources already live under `plugin-ep-webgpu/`. What remains outside the staging
+root is the pipeline definitions that drive them, currently under `tools/ci_build/`. This workstream moves those
+rather than redesigning the packaging.
 
 The packaging model is:
 
@@ -177,33 +148,81 @@ registration, and compatibility behavior are owned end-to-end by
 
 ## Test relocation
 
-The `test-conformance` workstream classifies existing tests. This workstream physically moves tests classified as
-WebGPU-owned, including:
+The `test-conformance` workstream owns test classification and gating policy. This workstream physically relocates
+the tests it classifies as WebGPU-owned and supplies the targets and environments they need:
 
-- Kernel and shader generation tests.
-- Dawn integration and backend tests.
-- Device-limit and feature tests.
-- Caching and provider-option tests.
-- Browser interop tests for WebGPU-specific behavior.
-- Package installation and artifact tests.
-- Provider implementation regressions.
+- Moving test sources and data into the staging root and then the external repository.
+- Building provider test targets against a plugin SDK rather than the ORT build graph.
+- Providing CI environments, devices, and browser hosts for the relocated lanes.
+- Retaining in-tree originals until their relocated equivalents run.
 
-Portable operator cases and generic plugin contract tests remain owned by ORT. Temporary legacy tests may remain in
-ORT until equivalent external coverage is blocking.
+The classification table, coverage continuity rules, and extraction gates are in
+[Test ownership and operator conformance](../test_ownership_and_conformance/test_ownership_and_conformance_workstream.md).
 
-## Parallel work packages
+## Repository foundation
+
+The external repository skeleton can be created before isolation is complete to validate:
+
+- Directory and CMake layout.
+- Required checks and platform matrix.
+- Dependency caching and Dawn build time.
+- Version and compatibility metadata.
+- Artifact naming and retention.
+- Issue ownership and contribution policy.
+- Release automation.
+
+## History migration
+
+Create a history-migration manifest that lists every current and historical path whose changes should be retained.
+The implementation has moved across multiple ORT directories, and path filtering does not automatically follow every
+rename. Filtering only the final `plugin-ep-webgpu/` subtree would therefore omit earlier provider history.
+
+Use `git filter-repo` or equivalent tooling to:
+
+- Select the complete historical path set.
+- Remap those paths into the new repository layout.
+- Retain relevant authors, dates, commit messages, branches, tags, and merge relationships where practical.
+- Exclude unrelated ORT source and history.
+
+The filtered import rewrites commit IDs. Pull requests, reviews, issues, and other GitHub metadata are not Git objects
+and do not transfer with repository history. Record the source ORT repository, extraction commit, filtering command or
+script, and path manifest in the new repository so commits can be traced back to their original context.
+
+Perform and review a trial history import before the final source move. Verify representative files with `git log`
+and blame, and confirm that the resulting repository does not contain unrelated or sensitive content.
+
+## Versioning and provenance
+
+The WebGPU EP version is independent from the ORT version. Compatibility metadata declares the minimum and tested ORT
+versions instead of coupling release numbers.
+
+Package signing, provenance, and release controls should meet the same requirements as comparable ORT core packages.
+
+ORT should consume WebGPU source using the standard mechanism used for comparable third-party source dependencies.
+The dependency inventory should compare existing ORT mechanisms before selecting the exact implementation.
+
+## Work packages
 
 1. **Dependency inventory:** enumerate includes, libraries, generated inputs, and build assumptions.
 2. **Staging-root design:** define layout, targets, SDK inputs, and integration shims.
 3. **Support-code isolation:** copy or replace implementation helpers.
 4. **Dependency ownership:** move Dawn, patches, and WGSL generation.
 5. **Standalone build:** produce static and shared artifacts outside the ORT build graph.
-6. **Repository and CI scaffold:** validate clean-checkout development and release jobs.
-7. **Packaging migration:** move the existing Python and NuGet pipelines.
-8. **Source transfer:** copy the proven staging root and switch ORT to pinned consumption.
+6. **Minimum-version validation:** run the provider against its declared `MIN_ONNXRUNTIME_VERSION` runtime so the
+   floor is verified rather than claimed.
+7. **Repository and CI scaffold:** validate clean-checkout development and release jobs.
+8. **Packaging migration:** move the plugin packaging pipeline definitions into the staging root.
+9. **Source transfer:** copy the proven staging root, import filtered history, and switch ORT to pinned consumption.
 
-Inventory, repository scaffolding, packaging analysis, and test classification can begin immediately. Source transfer
-depends on the standalone build.
+Sequencing:
+
+- Dependency inventory, staging-root design, dependency ownership, and repository and CI scaffold can start
+  immediately and proceed in parallel.
+- Support-code isolation depends on the dependency inventory.
+- The standalone build depends on staging-root design, support-code isolation, and dependency ownership.
+- Minimum-version validation and packaging migration depend on the standalone build for their final form, but both
+  can be prototyped against current in-tree artifacts.
+- Source transfer is the final package and depends on all of the others.
 
 ## Interfaces with other workstreams
 
@@ -215,9 +234,8 @@ depends on the standalone build.
 
 ### Test ownership and operator conformance
 
-- The `test-conformance` workstream decides test ownership and minimum regression gates.
-- This workstream supplies external test targets and CI environments.
-- The provider profile, exclusions, and WebGPU-specific tests move with the provider.
+- The `test-conformance` workstream owns test classification and gating policy.
+- This workstream supplies external test targets, CI environments, and browser hosts.
 
 ### Node plugin migration
 
@@ -226,26 +244,22 @@ depends on the standalone build.
 
 ## Completion criteria
 
-- All WebGPU-owned build inputs live under the isolated staging root.
-- Shared and static libraries build from a clean copy without private ORT libraries or headers.
-- Dawn and WGSL generation are provider-owned and reproducible.
-- WebGPU-specific tests run from the isolated tree and remain blocking.
-- Python and NuGet plugin packages are produced and tested from the isolated tree.
+### Isolation milestone
+
+The staging root is ready for transfer when a clean copy of it builds, tests, and packages everything listed in
+Desired end state, with no provider build input resolving outside the root and no private ORT headers or libraries in
+the link interface.
+
+### End state
+
+The provider lives in its own repository:
+
 - The external repository CI builds, tests, and packages a clean checkout.
 - ORT can consume a pinned external source artifact and can override it with an adjacent checkout.
+- ORT retains provider integration shims only, not provider implementation, build, or packaging inputs.
 - Native ORT packages remain WebGPU-independent.
 
-## Versioning, provenance, and remaining questions
-
-The WebGPU EP version is independent from the ORT version. Compatibility metadata declares the minimum and tested ORT
-versions instead of coupling release numbers.
-
-Package signing, provenance, and release controls should meet the same requirements as comparable ORT core packages.
-
-ORT should consume WebGPU source using the standard mechanism used for comparable third-party source dependencies.
-The dependency inventory should compare existing ORT mechanisms before selecting the exact implementation.
-
-Remaining questions:
+## Open questions
 
 - Which copied ORT helpers need independent namespaces or API cleanup before transfer?
 - How should reduced-operator configuration be represented as an external provider input?

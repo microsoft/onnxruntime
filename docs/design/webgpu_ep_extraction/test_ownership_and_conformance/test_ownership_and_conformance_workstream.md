@@ -62,7 +62,8 @@ Before the source move:
 
 - Run existing WebGPU operator tests through the plugin adapter path.
 - Disable or detect CPU fallback for cases intended to validate WebGPU.
-- Preserve current platform and browser lanes or document an approved replacement.
+- Preserve current platform and browser lanes or document an approved replacement. Some WebGPU web lanes are
+  currently non-blocking or build-only, so preserving them does not by itself establish a gate.
 - Establish baseline results for the extraction launch matrix in
   [WebGPU EP Repository Extraction](../webgpu_ep_extraction.md).
 - Make isolated-tree tests blocking before removing their in-tree originals.
@@ -135,7 +136,7 @@ lets an external EP build the static form against a released ORT SDK without an 
 - Keep the inventory current while extraction is in progress. New WebGPU tests must be classified when added, and CI
   should detect test files or registrations missing from the inventory where practical.
 
-## Parallel work packages
+## Work packages
 
 1. **Inventory and classification:** enumerate tests and produce the ownership map.
 2. **Plugin-path baseline:** run existing cases through the adapter and close fallback blind spots.

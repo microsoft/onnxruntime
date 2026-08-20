@@ -29,9 +29,7 @@ does not own WebGPU kernels, Dawn, shader tooling, or the provider's standalone 
 - Native hosts can load WebGPU as an optional plugin without core ORT packages depending on it.
 - The legacy direct/static WebGPU provider path is removed after parity is demonstrated.
 
-## Scope
-
-### Generic static plugin registration
+## Generic static plugin registration
 
 Add an ORT facility that accepts statically linked plugin factory entry points. It should reuse the existing dynamic
 plugin path after library loading and symbol lookup.
@@ -48,7 +46,7 @@ The design must address:
 
 The facility must be generic and validated with at least one non-WebGPU test plugin where practical.
 
-### Process-global ownership and teardown
+## Process-global ownership and teardown
 
 Static registration removes the dynamic-library unload boundary. The current WebGPU plugin cleanup path cannot be
 reused unchanged: releasing a factory clears global WebGPU contexts and kernel registries, destroys a global logger
@@ -76,7 +74,7 @@ The static registration and provider lifetime design must cover:
 `ReleaseEpFactory` must release only state whose ownership and last-user condition are established. A prototype that
 executes correctly but retains unsafe dynamic cleanup behavior does not satisfy static parity.
 
-### WebGPU plugin-path parity
+## WebGPU plugin-path parity
 
 Compile the existing WebGPU adapter implementation as both a shared plugin and a static plugin library. Exercise the
 same factory, device discovery, provider options, allocator, data transfer, graph assignment, and execution code in
@@ -94,7 +92,7 @@ Parity work includes:
 
 The direct in-tree WebGPU provider path remains only as a temporary comparison baseline.
 
-### Plugin API gap closure
+## Plugin API gap closure
 
 Provider-isolation work will identify uses of private ORT interfaces. Each finding should be resolved by:
 
@@ -114,7 +112,7 @@ Likely investigation areas include:
 - Logging, threading, allocators, and data transfer.
 - Environment and process-global initialization.
 
-### Browser/Wasm bridge
+## Browser/Wasm bridge
 
 Define the smallest stable interface needed to pass JavaScript-owned WebGPU objects between ORT Web and the provider.
 
@@ -130,7 +128,7 @@ The provider repository should own WebGPU-specific behavior. The boundary must d
 
 The bridge should not expose unrelated ORT private implementation details.
 
-## Parallel work packages
+## Work packages
 
 1. **Static registration core:** implement and contract-test generic static factory registration.
 2. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.

@@ -102,7 +102,7 @@ Required coverage includes:
 - Node worker initialization and cleanup.
 - Upgrade tests for the selected package transition.
 
-## Parallel work packages
+## Work packages
 
 1. **API design:** define generic plugin registration for the singleton Node ORT environment.
 2. **Binding implementation:** load and register arbitrary plugin EP libraries.
