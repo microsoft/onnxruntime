@@ -426,22 +426,31 @@ MlasLinearAttentionProcessHeadNeon(
     switch (Work->Rule) {
         case MlasLinearAttentionRuleLinear:
             ProcessHeadNeon<false, false>(Work);
-            break;
+            return;
         case MlasLinearAttentionRuleGated:
             ProcessHeadNeon<true, false>(Work);
-            break;
+            return;
         case MlasLinearAttentionRuleDelta:
             ProcessHeadNeon<false, true>(Work);
-            break;
-        default:  // MlasLinearAttentionRuleGatedDelta
+            return;
+        case MlasLinearAttentionRuleGatedDelta:
             ProcessHeadNeon<true, true>(Work);
-            break;
+            return;
     }
+
+    //
+    // Deliberately no default label above: -Wswitch turns a newly added rule
+    // into a compile error here rather than silently routing it to one of the
+    // existing specializations. A value outside the enum can still arrive at
+    // runtime, so defer to the portable kernel rather than guess at its
+    // semantics.
+    //
+    MlasLinearAttentionProcessHead(Work);
 }
 
 //
 // Kernel dispatch structure definition.
 //
 const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon = {
-    MlasLinearAttentionProcessHeadNeon
+    .ProcessHead = MlasLinearAttentionProcessHeadNeon
 };
