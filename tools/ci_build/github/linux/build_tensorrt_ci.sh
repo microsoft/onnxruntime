@@ -40,10 +40,11 @@ if [ -x "$(command -v ninja)" ]; then
 fi
 
 if [ -d /build ]; then
-    BUILD_ARGS+=('--build_dir' '/build')
+    BUILD_DIR='/build'
 else
-    BUILD_ARGS+=('--build_dir' 'build')
+    BUILD_DIR='build'
 fi
+BUILD_ARGS+=('--build_dir' "${BUILD_DIR}")
 
 if command -v ccache &> /dev/null; then
     ccache --zero-stats
@@ -59,4 +60,9 @@ fi
 if command -v ccache &> /dev/null; then
     # FIXME: can't use `-vv` for extra details b/c we're shipping with a decrepit version of ccache (3.something) that doesn't support it.
     ccache --show-stats # -vv
+fi
+
+if [[ " ${BUILD_ARGS[*]} " == *" --enable_cuda_minimal_build "* ]]; then
+    ! nm -D --undefined-only "${BUILD_DIR}/Release/libonnxruntime_providers_cuda.so" |
+        c++filt | grep -q 'EstimateMatMulNBitsWorkspace'
 fi
