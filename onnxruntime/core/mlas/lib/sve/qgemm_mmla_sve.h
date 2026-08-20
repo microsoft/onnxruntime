@@ -26,6 +26,21 @@ Abstract:
 #include <cstddef>
 #include <cstdint>
 
+//
+// The 12-row tile. The driver translation units use this to pick Strides.M, and
+// the compute core uses it to pick the Rows == 12 path; the two are compiled
+// separately, so the default lives in the one header both include rather than
+// in per-target compile flags, where they could drift apart. An explicit
+// -DMLAS_SVE_QGEMM_TILE_12X8=0 still overrides.
+//
+// Turning it off is correct, only slower: the kernel returns the row count it
+// handled and the driver advances packed A linearly by it, so a 12-row group
+// packed as [8-group][4-group] is simply consumed as 8 then 4.
+//
+#ifndef MLAS_SVE_QGEMM_TILE_12X8
+#define MLAS_SVE_QGEMM_TILE_12X8 1
+#endif
+
 extern "C" {
 
 size_t

@@ -31,7 +31,6 @@ Example (QGEMM svmmla kernels):
       --src sve/qgemm_mmla_sve_impl.cpp \
       --out aarch64/qgemm_mmla_sve_asm.S \
       --march armv8.2-a+sve+i8mm \
-      --define MLAS_SVE_QGEMM_TILE_12X8=1 --define MLAS_SVE_QGEMM_TILE_8X12=1 \
       --symbols MlasGemmS8S8KernelSmmlaSveImpl,MlasGemmU8X8KernelUmmlaSveImpl \
       --module qgemm_mmla_sve
 """
