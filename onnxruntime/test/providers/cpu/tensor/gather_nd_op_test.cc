@@ -447,14 +447,20 @@ TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
     GTEST_SKIP() << "CUDA not available";
   }
 
+  OrtCUDAProviderOptionsV2 cuda_options{};
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda_ep = CudaExecutionProviderWithOptions(&cuda_options);
+  ASSERT_NE(cuda_ep, nullptr);
+  if (!cuda_ep->IsGraphCaptureEnabled()) {
+    GTEST_SKIP() << "Selected CUDA EP does not support graph capture.";
+  }
+
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
   test.AddInput<int64_t>("indices", {1, 1}, {0});
   test.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
 
-  OrtCUDAProviderOptionsV2 cuda_options{};
-  cuda_options.enable_cuda_graph = 1;
-  test.ConfigEp(CudaExecutionProviderWithOptions(&cuda_options));
+  test.ConfigEp(std::move(cuda_ep));
   test.Config(OpTester::ExpectResult::kExpectFailure,
               "CUDA graph capture does not support GatherND because runtime index validation "
               "requires host-visible error reporting");
