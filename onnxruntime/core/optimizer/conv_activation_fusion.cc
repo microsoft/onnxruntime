@@ -206,8 +206,11 @@ class FuseConvActivationAction : public ReplaceWithNew {
       activation_params.push_back(alpha);
       activation_params.push_back(beta);
     } else if (activation_op_type == "QuickGelu") {
+      // com.microsoft.QuickGelu defaults alpha to 1.702 (the GELU approximation), not 1.0.
+      // Alpha 1.0 would silently turn this into SiLU/Swish.
+      constexpr float kQuickGeluDefaultAlpha = 1.702f;
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
-      activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
+      activation_params.push_back(alpha_attr == nullptr ? kQuickGeluDefaultAlpha : alpha_attr->f());
     } else if (activation_op_type == "Elu") {
       auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
       activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
