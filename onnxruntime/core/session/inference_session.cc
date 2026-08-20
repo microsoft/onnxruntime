@@ -4373,12 +4373,33 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
       add_inputs_outputs(graph.GetInputs(), input_defs);
     }
 
+    const auto& graph_inputs = graph.GetInputs();
+    InlinedHashSet<const NodeArg*> graph_input_set;
+    graph_input_set.reserve(graph_inputs.size());
+    for (const auto* input : graph_inputs) {
+      graph_input_set.insert(input);
+    }
+
+    InlinedHashSet<const NodeArg*> consumed_graph_inputs;
+    auto collect_consumed_graph_inputs = [&graph_input_set, &consumed_graph_inputs](const auto& node_inputs) {
+      for (const auto* node_input : node_inputs) {
+        if (node_input->Exists() && graph_input_set.count(node_input) != 0) {
+          consumed_graph_inputs.insert(node_input);
+        }
+      }
+    };
+
+    for (const auto& node : graph.Nodes()) {
+      collect_consumed_graph_inputs(node.InputDefs());
+      collect_consumed_graph_inputs(node.ImplicitInputDefs());
+    }
+
     const auto& graph_outputs = graph.GetOutputs();
-    for (const auto* input : graph.GetInputs()) {
+    for (const auto* input : graph_inputs) {
       const auto* type_proto = input->TypeAsProto();
       const bool is_graph_output = std::find(graph_outputs.begin(), graph_outputs.end(), input) != graph_outputs.end();
       if ((type_proto == nullptr || !type_proto->has_optional_type()) &&
-          (!graph.GetConsumerNodes(input->Name()).empty() || is_graph_output)) {
+          (consumed_graph_inputs.count(input) != 0 || is_graph_output)) {
         required_input_names.push_back(input->Name());
       }
     }
