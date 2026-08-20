@@ -520,7 +520,7 @@ class Node {
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
                            const OrtFormatLoadOptions& load_options,
                            const logging::Logger& logger);
-  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
+  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, Graph& graph);
 
   /**
   @class Definitions
