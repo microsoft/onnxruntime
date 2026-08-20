@@ -2,243 +2,270 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/varlen_linear_attention.h"
-#include "contrib_ops/cpu/bert/linear_attention_helper.h"
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCudaType
+using namespace onnxruntime::cuda;
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      VarlenLinearAttention,                                            \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
+#define REGISTER_KERNEL_TYPED(T, G_TYPES)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      VarlenLinearAttention,                                                   \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("G", G_TYPES)                                        \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())           \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())         \
+          .MayInplace(4, 1),                                                   \
       VarlenLinearAttention<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, DataTypeImpl::GetTensorType<float>())
+REGISTER_KERNEL_TYPED(MLFloat16, (BuildKernelDefConstraints<MLFloat16, float>()))
+REGISTER_KERNEL_TYPED(BFloat16, (BuildKernelDefConstraints<BFloat16, float>()))
+
+#undef REGISTER_KERNEL_TYPED
 
 template <typename T>
 VarlenLinearAttention<T>::VarlenLinearAttention(const OpKernelInfo& info) : CudaKernel(info) {
-  int64_t q_num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("q_num_heads", &q_num_heads).IsOK() &&
-                  q_num_heads > 0 && q_num_heads <= std::numeric_limits<int>::max(),
-              "q_num_heads must be in [1, INT_MAX]");
-  q_num_heads_ = static_cast<int>(q_num_heads);
-
-  int64_t kv_num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() &&
-                  kv_num_heads > 0 && kv_num_heads <= std::numeric_limits<int>::max(),
-              "kv_num_heads must be in [1, INT_MAX]");
-  kv_num_heads_ = static_cast<int>(kv_num_heads);
-
   update_rule_ = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
   ORT_ENFORCE(update_rule_ == "linear" || update_rule_ == "gated" ||
                   update_rule_ == "delta" || update_rule_ == "gated_delta",
               "update_rule must be one of: linear, gated, delta, gated_delta");
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-  ORT_THROW_IF_ERROR(linear_attention_helper::ParseStateWindow(info, state_window_));
+  decay_activation_ = info.GetAttrOrDefault<std::string>("decay_activation", "none");
+  ORT_ENFORCE(decay_activation_ == "none" || decay_activation_ == "softplus_decay",
+              "decay_activation must be one of: none, softplus_decay");
+
+  beta_activation_ = info.GetAttrOrDefault<std::string>("beta_activation", "none");
+  ORT_ENFORCE(beta_activation_ == "none" || beta_activation_ == "sigmoid" ||
+                  beta_activation_ == "twice_sigmoid",
+              "beta_activation must be one of: none, sigmoid, twice_sigmoid");
+
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  const int64_t max_checkpoints = info.GetAttrOrDefault<int64_t>("max_checkpoints", 0);
+  ORT_ENFORCE(max_checkpoints >= 0 && max_checkpoints <= 8,
+              "max_checkpoints must be in [0, 8]");
+  max_checkpoints_ = static_cast<int>(max_checkpoints);
 }
+
+namespace {
+
+Status CheckTokenGateShape(const Tensor& tensor, int64_t total_tokens, int v_num_heads,
+                           int d_k, bool allow_key_dim, bool& per_key_dim,
+                           const char* name) {
+  const auto& shape = tensor.Shape();
+  ORT_RETURN_IF_NOT(shape.NumDimensions() == 2 || (allow_key_dim && shape.NumDimensions() == 3),
+                    name, " must have shape [N,Hv]",
+                    allow_key_dim ? " or [N,Hv,K]" : "");
+  ORT_RETURN_IF_NOT(shape[0] == total_tokens, name, " token dimension must equal N");
+  ORT_RETURN_IF_NOT(shape[1] == v_num_heads, name, " head dimension must equal Hv");
+  per_key_dim = shape.NumDimensions() == 3;
+  if (per_key_dim) {
+    ORT_RETURN_IF_NOT(shape[2] == d_k, name, " key dimension must equal K");
+  }
+  return Status::OK();
+}
+
+Status CheckDecayParamShape(const Tensor& tensor, int v_num_heads, int d_k,
+                            bool& per_key_dim, const char* name) {
+  const auto& shape = tensor.Shape();
+  ORT_RETURN_IF_NOT(shape.NumDimensions() == 1 || shape.NumDimensions() == 2,
+                    name, " must have shape [Hv] or [Hv,K]");
+  ORT_RETURN_IF_NOT(shape[0] == v_num_heads, name, " head dimension must equal Hv");
+  per_key_dim = shape.NumDimensions() == 2;
+  if (per_key_dim) {
+    ORT_RETURN_IF_NOT(shape[1] == d_k, name, " key dimension must equal K");
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 template <typename T>
 Status VarlenLinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* query_tensor = context->Input<Tensor>(0);
-  const Tensor* key_tensor = context->Input<Tensor>(1);
-  const Tensor* value_tensor = context->Input<Tensor>(2);
-  const Tensor* cu_seqlens_tensor = context->Input<Tensor>(3);
-  const Tensor* past_state_tensor = context->Input<Tensor>(4);  // optional
-  const Tensor* decay_tensor = context->Input<Tensor>(5);       // optional
-  const Tensor* beta_tensor = context->Input<Tensor>(6);        // optional
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key = context->Input<Tensor>(1);
+  const Tensor* value = context->Input<Tensor>(2);
+  const Tensor* cu_seqlens = context->Input<Tensor>(3);
+  const Tensor* initial_state = context->Input<Tensor>(4);
+  const Tensor* decay = context->Input<Tensor>(5);
+  const Tensor* beta = context->Input<Tensor>(6);
+  const Tensor* a_log = context->Input<Tensor>(7);
+  const Tensor* dt_bias = context->Input<Tensor>(8);
 
-  ORT_RETURN_IF_NOT(query_tensor != nullptr && key_tensor != nullptr && value_tensor != nullptr,
-                    "query, key and value inputs are required");
-  ORT_RETURN_IF_NOT(cu_seqlens_tensor != nullptr, "cumulative_sequence_length input is required");
+  ORT_RETURN_IF_NOT(query && key && value && cu_seqlens && initial_state,
+                    "query, key, value, cumulative_sequence_length, and initial_state are required");
 
-  const auto& query_shape = query_tensor->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 2,
-                    "query must be rank 2 (total_tokens, q_num_heads * d_k), got rank ",
-                    query_shape.NumDimensions());
+  const auto& q_shape = query->Shape();
+  const auto& k_shape = key->Shape();
+  const auto& v_shape = value->Shape();
+  ORT_RETURN_IF_NOT(q_shape.NumDimensions() == 3, "query must have rank 3 [N,Hq,K]");
+  ORT_RETURN_IF_NOT(k_shape.NumDimensions() == 3, "key must have rank 3 [N,Hk,K]");
+  ORT_RETURN_IF_NOT(v_shape.NumDimensions() == 3, "value must have rank 3 [N,Hv,V]");
 
-  const int64_t total_tokens_64 = query_shape[0];
-  const int64_t query_hidden_64 = query_shape[1];
-  ORT_RETURN_IF_NOT(total_tokens_64 <= std::numeric_limits<int>::max() &&
-                        query_hidden_64 <= std::numeric_limits<int>::max(),
-                    "query dimensions are too large for the CUDA kernel");
+  const int64_t total_tokens_64 = q_shape[0];
+  ORT_RETURN_IF_NOT(total_tokens_64 > 0 && total_tokens_64 <= std::numeric_limits<int>::max(),
+                    "N must be in [1, INT_MAX]");
+  ORT_RETURN_IF_NOT(k_shape[0] == total_tokens_64 && v_shape[0] == total_tokens_64,
+                    "query, key, and value must have the same N");
+  ORT_RETURN_IF_NOT(q_shape[2] > 0 && q_shape[2] <= std::numeric_limits<int>::max(),
+                    "K must be in [1, INT_MAX]");
+  ORT_RETURN_IF_NOT(k_shape[2] == q_shape[2], "query and key must have the same K");
+  ORT_RETURN_IF_NOT(v_shape[2] > 0 && v_shape[2] <= std::numeric_limits<int>::max(),
+                    "V must be in [1, INT_MAX]");
+  ORT_RETURN_IF_NOT(q_shape[1] > 0 && q_shape[1] <= std::numeric_limits<int>::max() &&
+                        k_shape[1] > 0 && k_shape[1] <= std::numeric_limits<int>::max() &&
+                        v_shape[1] > 0 && v_shape[1] <= std::numeric_limits<int>::max(),
+                    "head counts must be in [1, INT_MAX]");
 
-  const auto& cu_seqlens_shape = cu_seqlens_tensor->Shape();
-  ORT_RETURN_IF_NOT(cu_seqlens_shape.NumDimensions() == 1,
-                    "cumulative_sequence_length must be rank 1 (batch_size + 1), got rank ",
-                    cu_seqlens_shape.NumDimensions());
-  ORT_RETURN_IF_NOT(cu_seqlens_shape[0] >= 2,
-                    "cumulative_sequence_length must have at least 2 elements (batch_size >= 1), got ",
-                    cu_seqlens_shape[0]);
-  // batch_size = cu_seqlens.Shape()[0] - 1. Never derived from the packed token dimension: that
-  // is the whole point of a ragged batch, where total_tokens has no fixed relationship to
-  // batch_size beyond total_tokens >= batch_size.
-  const int64_t batch_size_64 = cu_seqlens_shape[0] - 1;
+  const int q_num_heads = static_cast<int>(q_shape[1]);
+  const int k_num_heads = static_cast<int>(k_shape[1]);
+  const int v_num_heads = static_cast<int>(v_shape[1]);
+  const int d_k = static_cast<int>(q_shape[2]);
+  const int d_v = static_cast<int>(v_shape[2]);
+  ORT_RETURN_IF_NOT(v_num_heads % k_num_heads == 0,
+                    "Hv must be divisible by Hk");
+  if (q_num_heads >= v_num_heads) {
+    ORT_RETURN_IF_NOT(q_num_heads % v_num_heads == 0,
+                      "standard mapping requires Hq divisible by Hv");
+  } else {
+    ORT_RETURN_IF_NOT(v_num_heads % q_num_heads == 0,
+                      "inverse mapping requires Hv divisible by Hq");
+  }
+
+  const auto& offsets_shape = cu_seqlens->Shape();
+  ORT_RETURN_IF_NOT(offsets_shape.NumDimensions() == 1 && offsets_shape[0] >= 2,
+                    "cumulative_sequence_length must have shape [B+1] with B >= 1");
+  const int64_t batch_size_64 = offsets_shape[0] - 1;
   ORT_RETURN_IF_NOT(batch_size_64 <= std::numeric_limits<int>::max(),
-                    "batch size is too large for the CUDA kernel");
-  ORT_RETURN_IF_NOT(total_tokens_64 >= batch_size_64,
-                    "total_tokens must be at least batch_size because every sequence must contain a token");
+                    "B is too large for the CUDA kernel");
   const int batch_size = static_cast<int>(batch_size_64);
 
-  const auto& key_shape = key_tensor->Shape();
-  const auto& value_shape = value_tensor->Shape();
-  ORT_RETURN_IF_NOT(key_shape.NumDimensions() == 2 && value_shape.NumDimensions() == 2,
-                    "key and value must be rank 2 (total_tokens, hidden)");
-  ORT_RETURN_IF_NOT(key_shape[1] <= std::numeric_limits<int>::max() &&
-                        value_shape[1] <= std::numeric_limits<int>::max(),
-                    "key and value dimensions are too large for the CUDA kernel");
-  ORT_RETURN_IF_NOT(key_shape[0] == total_tokens_64 && value_shape[0] == total_tokens_64,
-                    "key and value token dimensions must match query");
-  ORT_RETURN_IF_NOT(query_hidden_64 > 0 && query_hidden_64 % q_num_heads_ == 0,
-                    "query last dim (", query_hidden_64, ") must be positive and divisible by q_num_heads (",
-                    q_num_heads_, ")");
-  ORT_RETURN_IF_NOT(value_shape[1] > 0 && value_shape[1] % kv_num_heads_ == 0,
-                    "value last dim (", value_shape[1], ") must be positive and divisible by kv_num_heads (",
-                    kv_num_heads_, ")");
-  const int d_k = static_cast<int>(query_hidden_64 / q_num_heads_);
-  int d_v = static_cast<int>(value_shape[1]) / kv_num_heads_;
-  ORT_RETURN_IF_NOT(key_shape[1] > 0 && key_shape[1] % d_k == 0,
-                    "key last dim (", key_shape[1], ") must be divisible by d_k (", d_k, ")");
-  int n_k_heads = static_cast<int>(key_shape[1]) / d_k;
+  const TensorShape expected_state_shape({batch_size_64, v_shape[1], v_shape[2], q_shape[2]});
+  ORT_RETURN_IF_NOT(initial_state->Shape() == expected_state_shape,
+                    "initial_state must have shape [B,Hv,V,K] = ", expected_state_shape);
 
-  // GQA head mapping validations
-  if (q_num_heads_ >= kv_num_heads_) {
-    ORT_ENFORCE(q_num_heads_ % kv_num_heads_ == 0,
-                "q_num_heads must be divisible by kv_num_heads");
-  } else {
-    ORT_ENFORCE(kv_num_heads_ % q_num_heads_ == 0,
-                "kv_num_heads must be divisible by q_num_heads (inverse GQA)");
-  }
-  ORT_ENFORCE(kv_num_heads_ % n_k_heads == 0,
-              "kv_num_heads must be divisible by n_k_heads");
-
-  float s = scale_;
-  if (s == 0.0f) {
-    s = 1.0f / std::sqrt(static_cast<float>(d_k));
-  }
-
-  bool needs_decay = (update_rule_ == "gated" || update_rule_ == "gated_delta");
-  bool needs_beta = (update_rule_ == "delta" || update_rule_ == "gated_delta");
-  bool needs_retrieval = (update_rule_ == "delta" || update_rule_ == "gated_delta");
-
-  ORT_ENFORCE(!needs_decay || decay_tensor != nullptr,
-              "decay input is required for update_rule=", update_rule_);
-  ORT_ENFORCE(!needs_beta || beta_tensor != nullptr,
-              "beta input is required for update_rule=", update_rule_);
+  const bool needs_decay = update_rule_ == "gated" || update_rule_ == "gated_delta";
+  const bool needs_beta = update_rule_ == "delta" || update_rule_ == "gated_delta";
+  const bool needs_retrieval = needs_beta;
+  ORT_RETURN_IF_NOT(needs_decay == (decay != nullptr),
+                    needs_decay ? "decay is required for the selected update_rule"
+                                : "decay must be omitted for the selected update_rule");
+  ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr),
+                    needs_beta ? "beta is required for the selected update_rule"
+                               : "beta must be omitted for the selected update_rule");
 
   bool decay_per_key_dim = false;
-  if (decay_tensor != nullptr) {
-    const auto& decay_shape = decay_tensor->Shape();
-    ORT_RETURN_IF_NOT(decay_shape.NumDimensions() == 2,
-                      "decay must be rank 2 (total_tokens, ...), got rank ", decay_shape.NumDimensions());
-    ORT_RETURN_IF_NOT(decay_shape[0] == total_tokens_64,
-                      "decay token dimension must match query");
-    const int64_t decay_last = decay_shape[1];
-    if (decay_last == static_cast<int64_t>(kv_num_heads_) * d_k) {
-      decay_per_key_dim = true;
-    } else {
-      ORT_RETURN_IF_NOT(decay_last == kv_num_heads_,
-                        "decay last dim must be H_kv or H_kv*d_k");
-    }
+  bool decay_params_per_key_dim = false;
+  if (decay) {
+    ORT_RETURN_IF_ERROR(CheckTokenGateShape(*decay, total_tokens_64, v_num_heads, d_k,
+                                            true, decay_per_key_dim, "decay"));
+  }
+
+  const bool softplus_decay = decay_activation_ == "softplus_decay";
+  ORT_RETURN_IF_NOT(!softplus_decay || needs_decay,
+                    "softplus_decay requires a gated update_rule");
+  ORT_RETURN_IF_NOT(softplus_decay == (a_log != nullptr) && softplus_decay == (dt_bias != nullptr),
+                    softplus_decay ? "A_log and dt_bias are required for softplus_decay"
+                                   : "A_log and dt_bias must be omitted when decay_activation=none");
+  if (softplus_decay) {
+    bool a_log_per_key_dim = false;
+    bool dt_bias_per_key_dim = false;
+    ORT_RETURN_IF_ERROR(CheckDecayParamShape(*a_log, v_num_heads, d_k, a_log_per_key_dim, "A_log"));
+    ORT_RETURN_IF_ERROR(CheckDecayParamShape(*dt_bias, v_num_heads, d_k, dt_bias_per_key_dim, "dt_bias"));
+    ORT_RETURN_IF_NOT(a_log_per_key_dim == dt_bias_per_key_dim,
+                      "A_log and dt_bias must use the same [Hv] or [Hv,K] shape");
+    decay_params_per_key_dim = a_log_per_key_dim;
   }
 
   bool beta_per_head = false;
-  if (beta_tensor != nullptr) {
-    const auto& beta_shape = beta_tensor->Shape();
-    ORT_RETURN_IF_NOT(beta_shape.NumDimensions() == 2,
-                      "beta must be rank 2 (total_tokens, ...), got rank ", beta_shape.NumDimensions());
-    ORT_RETURN_IF_NOT(beta_shape[0] == total_tokens_64,
-                      "beta token dimension must match query");
-    const int64_t beta_last = beta_shape[1];
-    if (beta_last == kv_num_heads_) {
-      beta_per_head = true;
-    } else {
-      ORT_RETURN_IF_NOT(beta_last == 1, "beta last dim must be H_kv or 1");
-    }
+  if (beta) {
+    const auto& beta_shape = beta->Shape();
+    ORT_RETURN_IF_NOT(beta_shape.NumDimensions() == 2 && beta_shape[0] == total_tokens_64,
+                      "beta must have shape [N,Hv] or [N,1]");
+    ORT_RETURN_IF_NOT(beta_shape[1] == v_num_heads || beta_shape[1] == 1,
+                      "beta must have shape [N,Hv] or [N,1]");
+    beta_per_head = beta_shape[1] == v_num_heads;
   }
 
-  // Allocate outputs
-  const int64_t output_hidden_64 = static_cast<int64_t>(std::max(q_num_heads_, kv_num_heads_)) * d_v;
-  ORT_RETURN_IF_NOT(output_hidden_64 <= std::numeric_limits<int>::max(),
-                    "output hidden dimension is too large for the CUDA kernel");
-  TensorShape output_shape({total_tokens_64, output_hidden_64});
-  Tensor* output_tensor = context->Output(0, output_shape);
-
-  // past_state / present_state are [batch_size, H_kv, d_k, d_v], or [W, batch_size, H_kv, d_k,
-  // d_v] when state_window_ = W > 0. batch_size here is the number of packed sequences (from
-  // cu_seqlens), not total_tokens.
-  const int state_slots = state_window_ > 0 ? state_window_ : 1;
-  TensorShape state_shape;
-  ORT_RETURN_IF_ERROR(linear_attention_helper::CheckInputs(
-      state_window_, batch_size, kv_num_heads_, d_k, d_v, past_state_tensor, state_shape));
-  Tensor* present_state_tensor = context->Output(1, state_shape);
-
-  T* present_state_data = present_state_tensor->MutableData<T>();
-  const T* initial_state_data = present_state_data;
-
-  // Every sequence's own length decides which window slots it writes (right-aligned: slot
-  // t + W - L), so which slots stay untouched varies per sequence -- unlike the dense op, no
-  // single contiguous prefix is safe to skip. Zero the whole fresh present_state buffer
-  // unconditionally so every slot this call does not write is well-defined, whether or not
-  // past_state was provided.
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-      present_state_data, 0, present_state_tensor->SizeInBytes(), Stream(context)));
-
-  if (past_state_tensor != nullptr) {
-    initial_state_data = past_state_tensor->Data<T>();
+  const Tensor* gate_type_source = decay ? decay : beta;
+  if (decay && beta) {
+    ORT_RETURN_IF_NOT(decay->DataType() == beta->DataType(),
+                      "decay and beta must have the same G type");
+  }
+  if constexpr (std::is_same_v<T, float>) {
+    ORT_RETURN_IF_NOT(!gate_type_source || gate_type_source->IsDataType<float>(),
+                      "T=float requires G=float");
+  } else {
+    ORT_RETURN_IF_NOT(!gate_type_source || gate_type_source->IsDataType<T>() ||
+                          gate_type_source->IsDataType<float>(),
+                      "T=float16/bfloat16 requires G=T or G=float");
   }
 
-  // total_tokens == batch_size is a host-visible shape fact under the trusted offsets contract:
-  // every sequence contributes at least one token, so this can only hold when every sequence
-  // contributes exactly one. It selects the dedicated fast path without reading cu_seqlens.
-  const bool all_ones = (total_tokens_64 == batch_size_64);
+  float scale = scale_;
+  if (scale == 0.0f) {
+    scale = 1.0f / std::sqrt(static_cast<float>(d_k));
+  }
 
-  typedef typename OrtToCudaType<T>::type CudaT;
+  const int out_heads = std::max(q_num_heads, v_num_heads);
+  Tensor* output = context->Output(0, TensorShape({total_tokens_64, out_heads, v_shape[2]}));
+  Tensor* final_state = context->Output(1, expected_state_shape);
+  Tensor* checkpoints = context->Output(
+      2, TensorShape({max_checkpoints_, batch_size_64, v_shape[1], v_shape[2], q_shape[2]}));
 
-  return LaunchVarlenLinearAttentionKernel<CudaT>(
-      Stream(context),
-      reinterpret_cast<const CudaT*>(query_tensor->Data<T>()),
-      reinterpret_cast<const CudaT*>(key_tensor->Data<T>()),
-      reinterpret_cast<const CudaT*>(value_tensor->Data<T>()),
-      decay_tensor ? reinterpret_cast<const CudaT*>(decay_tensor->Data<T>()) : nullptr,
-      beta_tensor ? reinterpret_cast<const CudaT*>(beta_tensor->Data<T>()) : nullptr,
-      reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
-      reinterpret_cast<const CudaT*>(initial_state_data),
-      reinterpret_cast<CudaT*>(present_state_data),
-      cu_seqlens_tensor->Data<int32_t>(),
-      batch_size,
-      all_ones,
-      q_num_heads_,
-      kv_num_heads_,
-      n_k_heads,
-      d_k,
-      d_v,
-      s,
-      needs_decay,
-      decay_per_key_dim,
-      needs_beta,
-      beta_per_head,
-      needs_retrieval,
-      GetDeviceProp().multiProcessorCount,
-      GetDeviceProp().maxThreadsPerBlock,
-      GetDeviceProp().sharedMemPerBlockOptin,
-      state_slots);
+  const auto decay_activation = softplus_decay ? VarlenDecayActivation::kSoftplusDecay
+                                                : VarlenDecayActivation::kNone;
+  VarlenBetaActivation beta_activation = VarlenBetaActivation::kNone;
+  if (beta_activation_ == "sigmoid") {
+    beta_activation = VarlenBetaActivation::kSigmoid;
+  } else if (beta_activation_ == "twice_sigmoid") {
+    beta_activation = VarlenBetaActivation::kTwiceSigmoid;
+  }
+
+  using CudaT = typename OrtToCudaType<T>::type;
+  const CudaT* q_data = reinterpret_cast<const CudaT*>(query->Data<T>());
+  const CudaT* k_data = reinterpret_cast<const CudaT*>(key->Data<T>());
+  const CudaT* v_data = reinterpret_cast<const CudaT*>(value->Data<T>());
+  CudaT* out_data = reinterpret_cast<CudaT*>(output->MutableData<T>());
+  const int total_tokens = static_cast<int>(total_tokens_64);
+
+#define LAUNCH_WITH_GATE_TYPE(G_HOST, G_CUDA)                                                        \
+  return LaunchVarlenLinearAttentionKernel<CudaT, G_CUDA>(                                          \
+      Stream(context), q_data, k_data, v_data,                                                       \
+      decay ? reinterpret_cast<const G_CUDA*>(decay->Data<G_HOST>()) : nullptr,                      \
+      beta ? reinterpret_cast<const G_CUDA*>(beta->Data<G_HOST>()) : nullptr,                        \
+      a_log ? a_log->Data<float>() : nullptr, dt_bias ? dt_bias->Data<float>() : nullptr,             \
+      out_data, initial_state->Data<float>(), final_state->MutableData<float>(),                      \
+      checkpoints ? checkpoints->MutableData<float>() : nullptr, cu_seqlens->Data<int32_t>(),        \
+      total_tokens, batch_size, q_num_heads, k_num_heads, v_num_heads, d_k, d_v, scale,              \
+      needs_decay, decay_per_key_dim, decay_activation, decay_params_per_key_dim, needs_beta,         \
+      beta_per_head, beta_activation, needs_retrieval, max_checkpoints_,                              \
+      GetDeviceProp().maxThreadsPerBlock, GetDeviceProp().sharedMemPerBlockOptin)
+
+  if (!gate_type_source || gate_type_source->IsDataType<T>()) {
+    LAUNCH_WITH_GATE_TYPE(T, CudaT);
+  }
+  LAUNCH_WITH_GATE_TYPE(float, float);
+
+#undef LAUNCH_WITH_GATE_TYPE
 }
+
+template class VarlenLinearAttention<float>;
+template class VarlenLinearAttention<MLFloat16>;
+template class VarlenLinearAttention<BFloat16>;
 
 }  // namespace cuda
 }  // namespace contrib
