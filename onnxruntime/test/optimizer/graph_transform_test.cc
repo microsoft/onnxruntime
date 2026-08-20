@@ -3606,10 +3606,19 @@ TEST_F(GraphTransformationTests, NoFuseOnnxDomainConvQuickGeluForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectQuickGeluPresent));
 }
 
+// An absent optional input is either omitted from the node or serialized with an empty name;
+// both forms are bias-free, but only the first shrinks InputDefs().
+enum class OptionalActivationInput {
+  kAbsent,
+  kEmptyName,
+  kPresent,
+};
+
 static void BuildConvActivationGraph(ModelTestBuilder& builder, const std::string& act_op,
                                      const std::string& act_domain, const std::string& ep,
                                      const std::function<void(Node&)>& decorate = nullptr,
-                                     bool extra_input = false) {
+                                     OptionalActivationInput optional_input =
+                                         OptionalActivationInput::kAbsent) {
   auto* input = builder.MakeInput<float>({1, 5, 5, 2}, -1.0f, 1.0f);
   auto* weight = builder.MakeInitializer<float>({3, 2, 3, 3}, -1.0f, 1.0f);
   auto* conv_out = builder.MakeIntermediate();
@@ -3619,8 +3628,10 @@ static void BuildConvActivationGraph(ModelTestBuilder& builder, const std::strin
   conv.SetExecutionProviderType(ep);
 
   std::vector<NodeArg*> act_inputs{conv_out};
-  if (extra_input) {
+  if (optional_input == OptionalActivationInput::kPresent) {
     act_inputs.push_back(builder.MakeInitializer<float>({3}, -1.0f, 1.0f));
+  } else if (optional_input == OptionalActivationInput::kEmptyName) {
+    act_inputs.push_back(builder.MakeEmptyInput());
   }
 
   Node& activation = builder.AddNode(act_op, act_inputs, {output}, act_domain);
@@ -3780,11 +3791,45 @@ TEST_F(GraphTransformationTests, FuseNhwcConvFastGeluForWebGpuEp) {
 TEST_F(GraphTransformationTests, NoFuseNhwcConvFastGeluWithBiasForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildConvActivationGraph(builder, "FastGelu", kMSDomain, kWebGpuExecutionProvider, nullptr,
-                             /*extra_input=*/true);
+                             OptionalActivationInput::kPresent);
   };
 
   ASSERT_STATUS_OK(
       RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("FastGelu"), 17));
+}
+
+// An absent optional input may be serialized with an empty name instead of being omitted, which
+// still leaves two entries in InputDefs(). That FastGelu is bias-free and must fuse exactly like
+// the omitted form: a transpose handler that pushes Transposes through the empty-name form would
+// otherwise pay the layout churn only to have the fusion refused here.
+TEST_F(GraphTransformationTests, FuseNhwcConvFastGeluWithEmptyBiasForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvActivationGraph(builder, "FastGelu", kMSDomain, kWebGpuExecutionProvider, nullptr,
+                             OptionalActivationInput::kEmptyName);
+  };
+
+  // Without this the test would silently degrade into a duplicate of the no-bias case above.
+  auto verify_fusion_sees_the_empty_bias = [](Graph& graph) -> Status {
+    bool checked = false;
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() != "FastGelu") {
+        continue;
+      }
+      ORT_RETURN_IF_NOT(node.InputDefs().size() == 2,
+                        "Graph::Resolve() dropped FastGelu's empty optional input, leaving ",
+                        node.InputDefs().size(), " inputs");
+      ORT_RETURN_IF_NOT(!node.InputDefs()[1]->Exists(),
+                        "expected FastGelu's second input to be a non-existent NodeArg");
+      checked = true;
+    }
+    ORT_RETURN_IF_NOT(checked, "no FastGelu node found before fusion");
+    return Status::OK();
+  };
+
+  auto check = [](Graph& graph) { return ExpectFusedInto(graph, "FastGelu", {}); };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17,
+                                           verify_fusion_sees_the_empty_bias));
 }
 
 TEST_F(GraphTransformationTests, FuseNhwcConvSoftplusForWebGpuEp) {
