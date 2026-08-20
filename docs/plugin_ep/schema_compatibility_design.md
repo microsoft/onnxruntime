@@ -8,11 +8,12 @@ The API-30 implementation now includes the fixed operator descriptor, the option
 factory callback, canonical per-schema digest computation, negotiation during plugin
 EP creation, effective kernel-registry filtering, post-`GetCapability()` validation,
 the API-30 `com.microsoft` freeze-point manifest, CUDA manifest publication, and
-central current/last-released contrib opset constants. The two GQA transformers are
-the first optimizer gates: they query the session's effective kernel registry before
-changing an assigned GQA node. Converting the remaining EP-specific contrib
-optimizers, automatic manifest generation, and strict handling of plugins without
-the callback remain follow-up work.
+central current/last-released contrib opset constants. A synthetic v1/v2 matrix now
+exercises model loading, negotiation, and kernel filtering. The two GQA transformers
+are the first optimizer gates: they query the session's effective kernel registry
+before changing an assigned GQA node. Converting the remaining EP-specific contrib
+optimizers, automatic manifest generation, true historical-binary matrix coverage,
+and strict handling of plugins without the callback remain follow-up work.
 
 This document describes how ONNX Runtime (ORT) core and a separately built plugin
 Execution Provider (EP) negotiate operator-schema compatibility. The immediate
@@ -830,6 +831,60 @@ For every plugin release, CI should run at least:
 - previous supported plugin against current ORT core;
 - a deliberately mismatched-digest build that must fail closed for the affected
   operator only.
+
+### Synthetic v1/v2 experiment
+
+`PluginEpSchemaCompatibilityTest.VersionedContribSchemaCompatibilityMatrix` exercises
+the matrix against the real model loader, schema negotiation, effective plugin kernel
+registry, and kernel lookup. It registers a test `com.microsoft` operator with these
+contracts:
+
+- OP1: one `tensor(float)` input and one output;
+- OP2: a second required input, a second output, a required `axis` attribute, and
+  `tensor(int32)` added to the type constraint.
+
+CUDA0 has no API-30 callback and an open-ended v1 kernel registration. CUDA1 publishes
+the OP1 digest and has a bounded `[1,1]` kernel. CUDA2 publishes both OP1 and OP2
+digests and retains bounded `[1,1]` and `[2,2]` kernels. "Fallback" below means the
+CUDA plugin does not have an eligible kernel; another EP may execute the node if it
+has an implementation.
+
+| Core/model | CUDA0 | CUDA1 | CUDA2 |
+|---|---|---|---|
+| ORT0 + OP1 | CUDA v1 | CUDA v1 | CUDA v1 |
+| ORT0 + OP2 | model rejected | model rejected | model rejected |
+| ORT1 + OP1 | CUDA v1 | CUDA v1 | CUDA v1 |
+| ORT1 + OP2 | model rejected | model rejected | model rejected |
+| ORT2 + OP1 | CUDA v1 | CUDA v1 | CUDA v1 |
+| ORT2 + OP2 | fallback | fallback | CUDA v2 |
+
+The ORT0 rows emulate a pre-API-30 core by making the appended callback invisible;
+they verify the ABI behavior after a plugin has loaded. They do not override the CUDA
+package compatibility floor. The current CUDA plugin has
+`MIN_ONNXRUNTIME_VERSION=1.30.0`, so an actual CUDA1 or CUDA2 package rejects ORT0 at
+plugin initialization before reaching the behavior shown in those rows. This is the
+intended deployment result described in [New plugin on an old core](#new-plugin-on-an-old-core).
+
+The experiment establishes the following:
+
+1. An old core rejects an OP2 model before EP assignment, regardless of how new the
+   plugin is.
+2. A new core can use CUDA1 for OP1 but does not reinterpret its open-ended or bounded
+   v1 kernel as an OP2 implementation. OP2 falls back.
+3. CUDA2 remains backward compatible only because it carries both historical and new
+   manifest entries and kernels. Its future OP2 kernel is excluded from ORT1's
+   effective registry, while its OP1 kernel remains usable.
+4. Proper schema versioning protects ORT2 from CUDA0 even under the temporary
+   permissive missing-callback policy: `KernelRegistry` treats an unbounded v1
+   registration as an exact v1 match once a v2 node is resolved.
+
+A companion control, `SameVersionContractChangeIsQuarantined`, labels the changed
+contract as v1 instead. API-30 negotiation detects the different digest and removes
+the v1 plugin kernel. The callback-free CUDA0 path cannot detect that mistake and
+leaves the kernel enabled under the temporary legacy policy. This confirms both why
+the API-30 digest is necessary and why every post-freeze breaking change must use a
+new schema version; the permissive policy is not a general defense for arbitrary
+pre-freeze or privately patched binaries.
 
 ## Implementation map
 
