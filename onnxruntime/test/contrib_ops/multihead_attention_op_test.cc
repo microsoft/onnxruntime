@@ -589,12 +589,12 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
 }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-static void RunCudaMask1DKeySeqLenStartSanitizationTest(const std::vector<int32_t>& mask_data) {
+static void RunCudaMask1DKeySeqLenStartSanitizationTest(const std::vector<int32_t>& mask_data,
+                                                        int64_t batch_size = 1) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA execution provider not available";
   }
 
-  constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 256;
   constexpr int64_t hidden_size = 32;
 
@@ -614,8 +614,14 @@ static void RunCudaMask1DKeySeqLenStartSanitizationTest(const std::vector<int32_
                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.1f));
   tester.AddInput<float>("key", {batch_size, sequence_length, hidden_size},
                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.2f));
+  std::vector<float> value_data(static_cast<size_t>(batch_size * sequence_length * hidden_size));
+  for (int64_t batch = 0; batch < batch_size; ++batch) {
+    const float value = 0.3f + static_cast<float>(batch) * 0.4f;
+    const size_t batch_elements = static_cast<size_t>(sequence_length * hidden_size);
+    std::fill_n(value_data.begin() + batch * batch_elements, batch_elements, value);
+  }
   tester.AddInput<float>("value", {batch_size, sequence_length, hidden_size},
-                         std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.3f));
+                         value_data);
   tester.AddOptionalInputEdge<float>();
   tester.AddInput<int32_t>("key_padding_mask", {3 * batch_size + 2}, mask_data);
   tester.AddOptionalInputEdge<float>();
@@ -624,10 +630,10 @@ static void RunCudaMask1DKeySeqLenStartSanitizationTest(const std::vector<int32_
   tester.AddOptionalInputEdge<int32_t>();
   tester.AddOptionalInputEdge<int32_t>();
 
-  // Every value row is identical, so any convex combination of the attended
-  // rows produces the same result regardless of how the offsets are clamped.
+  // Every row within a batch is identical, while batches differ. Correctly bounded
+  // attention therefore reproduces the input value rows and exposes cross-batch reads.
   tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.3f));
+                          value_data);
   tester.AddOptionalOutputEdge<float>();
   tester.AddOptionalOutputEdge<float>();
   tester.AddOptionalOutputEdge<float>();
@@ -643,6 +649,11 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesOversizedOffsets) 
 
 TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesRequiredBoundaries) {
   RunCudaMask1DKeySeqLenStartSanitizationTest({256, 1, 255, 1, 255});
+}
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartBoundsKeyLengthPerBatch) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest(
+      {512, 256, 0, 256, 512, 0, 256, 512}, 2);
 }
 #endif
 

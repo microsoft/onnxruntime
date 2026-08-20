@@ -97,7 +97,8 @@ __global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
   output_seqstart_k[batch_size] = static_cast<int32_t>(max_key_offset);
 
   for (int32_t i = 0; i < batch_size; ++i) {
-    const int64_t max_seqlen = max_key_offset - output_seqstart_k[i];
+    const int64_t max_seqlen =
+        static_cast<int64_t>(output_seqstart_k[i + 1]) - output_seqstart_k[i];
     int64_t seqlen = static_cast<int64_t>(input_seqlen_k[i]);
     seqlen = seqlen < 0 ? 0 : seqlen;
     seqlen = seqlen > max_seqlen ? max_seqlen : seqlen;
