@@ -262,20 +262,33 @@ __device__ __forceinline__ ChunkedSmem<DK, BT> CarveChunked(char* raw) {
   using L = Ld<DK, BT>;
   ChunkedSmem<DK, BT> s;
   float* f = reinterpret_cast<float*>(raw);
-  s.s_f = f;  f += DK * L::kVf;
-  s.t_f = f;  f += BT * L::kVf;
-  s.gc = f;   f += BT;
-  s.beta = f; f += BT;
+  s.s_f = f;
+  f += DK * L::kVf;
+  s.t_f = f;
+  f += BT * L::kVf;
+  s.gc = f;
+  f += BT;
+  s.beta = f;
+  f += BT;
   __half* h = reinterpret_cast<__half*>(f);
-  s.k_h = h;  h += BT * L::kKh;
-  s.q_h = h;  h += BT * L::kKh;
-  s.v_h = h;  h += BT * L::kVh;
-  s.u_h = h;  h += BT * L::kVh;
-  s.m_h = h;  h += BT * L::kMh;
-  s.s_h = h;  h += DK * L::kVh;
-  s.db_h = h; h += BT * L::kMh;
-  s.nb_h = h; h += BT * L::kMh;
-  s.ti_h = h; h += BT * L::kMh;
+  s.k_h = h;
+  h += BT * L::kKh;
+  s.q_h = h;
+  h += BT * L::kKh;
+  s.v_h = h;
+  h += BT * L::kVh;
+  s.u_h = h;
+  h += BT * L::kVh;
+  s.m_h = h;
+  h += BT * L::kMh;
+  s.s_h = h;
+  h += DK * L::kVh;
+  s.db_h = h;
+  h += BT * L::kMh;
+  s.nb_h = h;
+  h += BT * L::kMh;
+  s.ti_h = h;
+  h += BT * L::kMh;
   return s;
 }
 
@@ -312,7 +325,7 @@ __device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK, BT>& s, in
   __syncthreads();
 
   SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.db_h, L::kMh, s.m_h, L::kMh,
-                                               warp_id, lane);
+                                            warp_id, lane);
   __syncthreads();
   for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
     const int r = idx / BT, c = idx % BT;
@@ -328,7 +341,7 @@ __device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK, BT>& s, in
 #pragma unroll
   for (int it = 0; it < BT / 16 - 2; ++it) {
     SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.nb_h, L::kMh, s.ti_h, L::kMh,
-                                                 warp_id, lane);
+                                              warp_id, lane);
     __syncthreads();
     for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
       const int r = idx / BT, c = idx % BT;
@@ -338,7 +351,7 @@ __device__ __forceinline__ void BuildTriInverse(const ChunkedSmem<DK, BT>& s, in
   }
 
   SmemGemm<BT, BT, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.db_h, L::kMh,
-                                               warp_id, lane);
+                                            warp_id, lane);
   __syncthreads();
   for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
     const int r = idx / BT, c = idx % BT;
@@ -484,7 +497,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     const float g_total = s.gc[BT - 1];
 
     SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.k_h, L::kKh, warp_id,
-                                               lane);
+                                             lane);
     __syncthreads();
     for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
       const int t = idx / BT, sc = idx % BT;
@@ -498,7 +511,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     BuildTriInverse<DK, BT>(s, warp_id, lane, tid);
 
     SmemGemm<BT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
-                                                 warp_id, lane);
+                                                warp_id, lane);
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
@@ -508,7 +521,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     }
     __syncthreads();
     SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.u_h, L::kVh,
-                                                  warp_id, lane);
+                                                warp_id, lane);
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
@@ -517,7 +530,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     __syncthreads();
 
     SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
-                                               lane);
+                                             lane);
     __syncthreads();
     for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
       const int t = idx / BT, sc = idx % BT;
@@ -533,10 +546,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     __syncthreads();
 
     SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.m_h, L::kMh, s.u_h, L::kVh,
-                                                  warp_id, lane);
+                                                warp_id, lane);
     __syncthreads();
     SmemGemm<BT, kDVB, DK, false, false, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_h, L::kVh,
-                                                warp_id, lane);
+                                               warp_id, lane);
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
@@ -553,7 +566,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     }
     __syncthreads();
     SmemGemm<DK, kDVB, BT, true, false, true>(s.s_f, L::kVf, s.k_h, L::kKh, s.u_h, L::kVh, warp_id,
-                                               lane);
+                                              lane);
     __syncthreads();
   }
 
@@ -721,14 +734,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 // ---------------------------------------------------------------------------
 template <typename T, int kThreads>
 __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(VariantPack<T> pack,
-                                                                        KernelParams p, int d_k,
-                                                                        int d_v) {
+                                                                         KernelParams p, int d_k,
+                                                                         int d_v) {
   extern __shared__ float rsmem[];
-  float* S = rsmem;              // [d_k][d_v]
-  float* kbuf = S + d_k * d_v;   // [d_k]
-  float* qbuf = kbuf + d_k;      // [d_k]
-  float* rbuf = qbuf + d_k;      // [d_v]
-  float* gbuf = rbuf + d_v;      // [d_k] per-key-dim decay
+  float* S = rsmem;             // [d_k][d_v]
+  float* kbuf = S + d_k * d_v;  // [d_k]
+  float* qbuf = kbuf + d_k;     // [d_k]
+  float* rbuf = qbuf + d_k;     // [d_v]
+  float* gbuf = rbuf + d_v;     // [d_k] per-key-dim decay
 
   const int b = blockIdx.x, hv = blockIdx.y;
   const int tid = threadIdx.x;

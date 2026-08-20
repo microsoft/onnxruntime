@@ -23,12 +23,19 @@ namespace contrib {
 namespace cuda {
 namespace gated_delta_net {
 
-enum class UpdateRule : int { kLinear = 0, kGated = 1, kDelta = 2, kGatedDelta = 3 };
-enum class GateActivation : int { kNone = 0, kQwen = 1 };
-enum class BetaActivation : int { kNone = 0, kSigmoid = 1 };
+enum class UpdateRule : int { kLinear = 0,
+                              kGated = 1,
+                              kDelta = 2,
+                              kGatedDelta = 3 };
+enum class GateActivation : int { kNone = 0,
+                                  kQwen = 1 };
+enum class BetaActivation : int { kNone = 0,
+                                  kSigmoid = 1 };
 
 // Element type of the q/k/v/output tensors. The state is always float.
-enum class IoType : int { kFloat = 0, kFloat16 = 1, kBFloat16 = 2 };
+enum class IoType : int { kFloat = 0,
+                          kFloat16 = 1,
+                          kBFloat16 = 2 };
 
 enum class Engine : int {
   kAuto = 0,
@@ -75,8 +82,8 @@ struct DescriptorHash {
 struct Plan {
   Engine engine = Engine::kRecurrent;
   int chunk_size = 64;
-  int v_block = 64;      // dv columns owned by one CTA (chunked engine)
-  int threads = 512;     // CTA size
+  int v_block = 64;         // dv columns owned by one CTA (chunked engine)
+  int threads = 512;        // CTA size
   int cols_per_block = 32;  // dv columns per CTA (recurrent engine)
   // Recurrent engine only: one warp per v-column with lanes spanning K, instead of one CTA
   // per v-head with the state in shared memory.

@@ -435,9 +435,9 @@ TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
   Inputs in = MakeInputs(g, 43);
 
   for (const std::vector<int32_t>& bad :
-       {std::vector<int32_t>{0, -8, 64},        // negative
-        std::vector<int32_t>{0, 48, 16},        // decreasing
-        std::vector<int32_t>{0, 32, 4096}}) {   // end beyond total_tokens
+       {std::vector<int32_t>{0, -8, 64},       // negative
+        std::vector<int32_t>{0, 48, 16},       // decreasing
+        std::vector<int32_t>{0, 32, 4096}}) {  // end beyond total_tokens
     OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
     Options o;
     AddCommonAttrs(test, o);

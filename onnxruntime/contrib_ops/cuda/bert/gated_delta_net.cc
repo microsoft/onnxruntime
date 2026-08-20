@@ -16,16 +16,16 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 namespace gdn = gated_delta_net;
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      GatedDeltaNet,                                              \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>()) \
+#define REGISTER_KERNEL_TYPED(T)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      GatedDeltaNet,                                                     \
+      kMSDomain,                                                         \
+      1,                                                                 \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())    \
           .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()), \
       GatedDeltaNet<T>);
 
