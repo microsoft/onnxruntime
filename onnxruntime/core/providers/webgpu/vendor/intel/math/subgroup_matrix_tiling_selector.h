@@ -22,6 +22,14 @@ namespace intel {
 SubgroupMatrixTilingSelector CreateSubgroupMatrixTilingSelector(
     const ComputeContextBase& context);
 
+// Like CreateSubgroupMatrixTilingSelector, but for the subgroup-matrix Conv path.
+// The tile candidates and autotuner hooks (override / arch capture) are shared,
+// but selection uses the Conv workgroup-memory budget (which also stages the
+// im2col A tile) and consults the Conv-specific pretuned data instead of the
+// MatMul table. Returns an empty selector on non-Intel devices.
+SubgroupMatrixTilingSelector CreateSubgroupMatrixConvTilingSelector(
+    const ComputeContextBase& context);
+
 }  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime

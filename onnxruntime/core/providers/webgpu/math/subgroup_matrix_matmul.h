@@ -10,20 +10,12 @@
 #include <optional>
 
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/subgroup_matrix_tiling.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
-// Per-workgroup output tiling for one MatMul problem: the tile shape and split-K
-// factor chosen by a vendor-specific policy. The subgroup-matrix shape itself is
-// separate from this selection.
-struct SubgroupMatrixTiling {
-  uint32_t tile_m;   // output rows per workgroup
-  uint32_t tile_n;   // output cols per workgroup
-  uint32_t split_k;  // subgroups cooperating along K (1 = no split)
-};
 
 // Vendor-supplied callback that selects the output tiling for a given problem.
 // batch is the number of z-dispatched slices (1 for a shared 2D weight), used by
