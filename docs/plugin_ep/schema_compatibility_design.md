@@ -8,9 +8,11 @@ The API-30 implementation now includes the fixed operator descriptor, the option
 factory callback, canonical per-schema digest computation, negotiation during plugin
 EP creation, effective kernel-registry filtering, post-`GetCapability()` validation,
 the API-30 `com.microsoft` freeze-point manifest, CUDA manifest publication, and
-central current/last-released contrib opset constants. Optimizer gates,
-automatic manifest generation, and strict handling of plugins without the callback
-remain follow-up work.
+central current/last-released contrib opset constants. The two GQA transformers are
+the first optimizer gates: they query the session's effective kernel registry before
+changing an assigned GQA node. Converting the remaining EP-specific contrib
+optimizers, automatic manifest generation, and strict handling of plugins without
+the callback remain follow-up work.
 
 This document describes how ONNX Runtime (ORT) core and a separately built plugin
 Execution Provider (EP) negotiate operator-schema compatibility. The immediate
@@ -553,23 +555,22 @@ version validation.
 
 ### Required query
 
-`KernelRegistry` already exposes the right entry point, added for exactly this
-"is the node I am about to generate supported" case:
+`KernelRegistryManager` already exposes the right entry point for a fully resolved
+node:
 
 ```cpp
-Status TryFindKernel(ProviderType exec_provider,
-                     std::string_view op_type,
-                     std::string_view domain,
-                     int version,
-                     const KernelRegistry::TypeConstraintMap& type_constraints,
-                     const logging::Logger& logger,
-                     const KernelCreateInfo** out) const;
+static bool HasImplementationOf(const KernelRegistryManager& registry_manager,
+                                const Node& node,
+                                const std::string& provider_type,
+                                const logging::Logger& logger);
 ```
 
-Rather than introducing a parallel notion of "supported", `KernelRegistryManager`
-gains a thin wrapper over this overload that additionally consults the negotiated
-operator digests when the provider is a plugin EP. For an in-tree EP the wrapper is
-just the existing lookup. Unknown or ambiguous support is reported as unsupported.
+It uses the node's resolved schema and actual type constraints. For a plugin EP,
+`RegisterKernels()` has already received the effective registry produced by schema
+negotiation: kernels whose per-operator digest did not match have been removed.
+Consequently the existing lookup answers both questions without introducing a
+parallel support mechanism. For an in-tree EP it remains the normal kernel lookup.
+Unknown or ambiguous support is reported as unsupported.
 
 Keeping a single lookup path matters: two subtly different definitions of "supported"
 between the fusion gate and `EpGraphSupportInfo_LookUpKernel()` would reintroduce the
@@ -587,9 +588,14 @@ Checking only the EP name (for example, `CUDAExecutionProvider`) is no longer
 sufficient. The static CUDA EP and the separately released CUDA plugin can have
 different kernel/schema coverage while exposing the same logical provider name.
 
-The check should occur at the matched rewrite, where the target types are known, not
-only when the transformer list is constructed. If no eligible EP supports the exact
-target, ORT preserves the original unfused subgraph.
+The check occurs at the matched rewrite, where the target types are known, not only
+when the transformer list is constructed. Session-created transformers receive a
+checker backed by `KernelRegistryManager`; standalone/offline transformer use may
+omit the checker because it has no session registry. A transformer that creates a
+new operator or changes its resolved schema must construct a fully described target
+candidate before querying. The current GQA transforms retain the existing GQA schema
+and types, so they query the assigned GQA node immediately before mutating it. If the
+lookup fails, ORT preserves the original unfused subgraph.
 
 ### Compile-based plugin EPs
 
@@ -604,18 +610,23 @@ This is separate from the operator digest negotiation proposed here.
 
 ## `GroupQueryAttention` example
 
-Assume the q/k normalization inputs become the first versioned change:
+The q/k normalization inputs and `qk_norm_epsilon` are already part of the API-30
+freeze point, so they remain in `GroupQueryAttention-1`. The current
+`GroupQueryAttentionPreNormFusion` still produces version 1 and is safe only when the
+assigned EP's GQA-1 kernel survived negotiation.
 
-- `GroupQueryAttention-1` is restored to and frozen at its historical contract.
-- `GroupQueryAttention-2` contains `q_norm_weight`, `k_norm_weight`, and
-  `qk_norm_epsilon`.
+Assume instead that a future breaking GQA contract change is the first change after
+the API-30 release:
+
+- `GroupQueryAttention-1`, including q/k normalization, remains frozen.
+- `GroupQueryAttention-2` contains only that future contract change.
 - The `com.microsoft` domain range becomes `[1, 2]`.
 - CUDA registers a legacy v1 kernel if it still supports the old contract and a
   separately bounded v2 kernel for the new contract.
 - CPU, WebGPU, and JS registrations are independently versioned according to the
   contracts they actually implement.
-- `GroupQueryAttentionPreNormFusion` matches and produces version 2 only. It does not
-  mutate a v1 GQA node while retaining `since_version == 1`.
+- `GroupQueryAttentionPreNormFusion` continues to produce version 1 unless it is
+  deliberately updated to use the future v2 contract and the graph imports opset 2.
 - `GroupQueryAttentionFusion`, when targeting CUDA, checks exact GQA v1 or v2 kernel
   support based on the graph's selected `com.microsoft` opset before replacing the
   original attention subgraph.
