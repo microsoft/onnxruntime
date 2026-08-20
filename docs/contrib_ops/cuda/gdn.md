@@ -179,6 +179,7 @@ execution binds a `VariantPack` of device pointers.
 | Engine | Used for | Shape |
 |---|---|---|
 | `chunked` | prefill | one CTA per `(sequence, v-head, v-block)`, 512 threads, state resident in shared memory for the whole walk, `mma.sync.m16n8k16` GEMMs |
+| `chunked_split` | prefill, where the fused grid underfills the device | a token-parallel prepare launch, one CTA per `(sequence, v-head, chunk)`, followed by a scan that carries only the state |
 | `recurrent` (warp-specialised) | decode / MTP verify | one **warp** per `(sequence, v-head, v-column)`, lanes spanning K |
 | `recurrent` (generic) | head geometries the warp kernel cannot take | one CTA per `(sequence, v-head)`, state in shared memory |
 | `cudnn` | reserved, not implemented | see §11 |
@@ -192,6 +193,36 @@ or newer, and enough shared memory.
 The **32-token threshold is measured, not assumed**: below roughly 30 tokens the chunked
 engine still pays for a full 64-token chunk, so a single token costs about what 64 do
 (46.5 us against 17.9 us for a sequential recurrence at the Qwen3.8 shape).
+
+### Choosing between the fused and split chunked engines
+
+The split engine exists to fill a machine the fused one leaves idle, so the choice is made
+on the fused engine's own **wave-quantisation efficiency** rather than on a shape guess.
+The fused grid is one CTA per `(sequence, v-head, 64 v-columns)`, so it occupies
+`waves = batch * num_heads_v * (head_size_v / 64) / sm_count` waves of a device but costs
+`ceil(waves)`. Measured on H200 (132 SMs) at the Qwen3.8 geometry, the split/fused runtime
+ratio tracks that efficiency and nothing else:
+
+| batch | fused CTAs | waves | efficiency | `T=256` | `T=1024` | `T=4096` |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 96 | 0.73 | 73% | 0.90 | **0.80** | 0.83 |
+| 2 | 192 | 1.45 | 73% | 0.80 | **0.88** | 0.88 |
+| 3 | 288 | 2.18 | 73% | 0.85 | **0.91** | 0.90 |
+| 4 | 384 | 2.91 | 97% | 0.94 | 1.12 | 1.13 |
+| 8 | 768 | 5.82 | 97% | 1.22 | 1.31 | 1.32 |
+
+The fused per-token cost jumps from 0.392 us to 0.298 us across that same boundary, so once
+the fused engine stops wasting a wave the split engine's extra launch and its round-trip
+through the workspace are pure overhead. `SelectPlan` therefore takes the split engine when
+efficiency is below 85% **and** the longest sequence is at least two chunks — at one chunk
+there is nothing to pipeline and the extra launch measures 1.18x. Both kernels must also fit
+the device's shared-memory opt-in limit, which excludes SM120.
+
+Because the split engine keeps its state in float16 where the fused engine uses float32, the
+two are **not** numerically identical, so this choice is deliberately a deterministic
+function of the descriptor rather than a runtime autotune: an autotuned choice would make a
+model's output depend on timing noise across processes. See §8 and §11 for the accuracy
+evidence behind allowing it by default.
 
 ### Why the decode engine is warp-specialised
 
@@ -384,7 +415,7 @@ should be gated on a task-level quality evaluation rather than on output hashes.
 
 | Variable | Values | Description |
 |---|---|---|
-| `ORT_GDN_PLAN` | `chunked`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic. The analogue of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
+| `ORT_GDN_PLAN` | `chunked`, `chunked_split`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic, in either direction: `chunked` keeps the fused engine where the heuristic would split, and `chunked_split` forces the split engine where it would not. The analogue of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
 
 ## 10. Testing
 
@@ -442,7 +473,8 @@ shared-memory chunk configuration. Three cases are worth calling out:
   per-CTA time is fixed and co-residency contributes nothing.
   Consequently the only way to speed this engine up is to **shorten the per-CTA critical
   path**. That is what `Engine::kChunkedSplit` does; see below.
-- **The split engine (`Engine::kChunkedSplit`) is 20% faster and is opt-in.** Pushing
+- **The split engine (`Engine::kChunkedSplit`) is 20% faster where the fused grid underfills
+  the device, and is selected automatically there.** Pushing
   `(I+M)^-1` through the subtraction gives `U = Uv - W S0` with `Uv = (I+M)^-1 (beta v)` and
   `W = (I+M)^-1 diag(beta e^gc) k`, so every state-independent term factorises out. A
   prepare kernel owns one `(sequence, v-head, chunk)` — 768 CTAs instead of 96 at `T=1024` —
@@ -486,8 +518,9 @@ shared-memory chunk configuration. Three cases are worth calling out:
   | MMLU-Pro | 800 | 83.38% | 84.38% | +1.00pp | 46 (19/27) | 0.30 |
 
   Long chain-of-thought is the sensitive probe for a prefill-only numerics change, so GPQA is
-  the one that matters here; neither moves. The engine nevertheless stays opt-in until it has
-  run in a release candidate.
+  the one that matters here; neither moves. That evidence is what allows the split engine to
+  be chosen automatically (§5) rather than only on request; `ORT_GDN_PLAN=chunked` pins the
+  float32-state engine for anyone who needs the older numerics.
 - **cuDNN backend.** `Engine::kCudnn` is reserved and unimplemented. As of cudnn-frontend
   v1.27.0 — the version this build pins, and the release that introduced GDN — the operation
   exists **only** in the Python package (`python/cudnn/linear_attention/`); there are no GDN

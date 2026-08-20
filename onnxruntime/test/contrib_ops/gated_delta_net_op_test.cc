@@ -582,6 +582,9 @@ TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
   d.chunk_size = 64;
   d.io_type = gdn::IoType::kFloat16;
   d.sm_major = 12;
+  // Pin the fused engine so this stays a test of chunk sizing. The automatic rule would
+  // otherwise route this shape to the split engine; that choice is covered below.
+  d.preferred_engine = gdn::Engine::kChunked;
 
   const gdn::Plan blackwell = gdn::SelectPlan(d, 128, 101376);
   EXPECT_TRUE(blackwell.supported);
@@ -598,6 +601,59 @@ TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
   const gdn::Plan tiny = gdn::SelectPlan(d, 132, 48 * 1024);
   EXPECT_TRUE(tiny.supported);
   EXPECT_EQ(tiny.engine, gdn::Engine::kRecurrent);
+}
+
+// The split engine exists to fill a machine the fused engine leaves idle, so selection keys
+// on the fused grid's wave-quantisation efficiency. The fused grid is one CTA per
+// (sequence, v-head, 64 v-columns), so at the Qwen3.8 geometry on 132 SMs batches 1-3 sit at
+// 73% efficiency and batch 4 and up at 97% -- and that is exactly where the measured
+// split/fused runtime ratio crosses 1.0.
+TEST(GatedDeltaNetPlanTest, AutoSelectsSplitOnlyWhileTheFusedGridUnderfills) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor base{};
+  base.num_heads_q = 16;
+  base.num_heads_k = 16;
+  base.num_heads_v = 48;
+  base.head_size_qk = 128;
+  base.head_size_v = 128;
+  base.chunk_size = 64;
+  base.io_type = gdn::IoType::kFloat16;
+  base.sm_major = 9;
+
+  auto engine_for = [&base](int batch, int64_t tokens_per_seq) {
+    gdn::Descriptor d = base;
+    d.batch = batch;
+    d.total_tokens = tokens_per_seq * batch;
+    return gdn::SelectPlan(d, 132, 232448).engine;
+  };
+
+  EXPECT_EQ(engine_for(1, 1024), gdn::Engine::kChunkedSplit);
+  EXPECT_EQ(engine_for(2, 1024), gdn::Engine::kChunkedSplit);
+  EXPECT_EQ(engine_for(3, 1024), gdn::Engine::kChunkedSplit);
+  EXPECT_EQ(engine_for(4, 1024), gdn::Engine::kChunked) << "the fused grid is full by here";
+  EXPECT_EQ(engine_for(8, 1024), gdn::Engine::kChunked);
+
+  // A single chunk has no sequence to pipeline, and the extra launch measured 1.18x there.
+  EXPECT_EQ(engine_for(1, 64), gdn::Engine::kChunked);
+  EXPECT_EQ(engine_for(1, 128), gdn::Engine::kChunkedSplit);
+
+  // A wider machine is underfilled for longer, so the same batch flips the other way.
+  gdn::Descriptor wide = base;
+  wide.batch = 4;
+  wide.total_tokens = 4096;
+  EXPECT_EQ(gdn::SelectPlan(wide, 132, 232448).engine, gdn::Engine::kChunked);
+  EXPECT_EQ(gdn::SelectPlan(wide, 512, 232448).engine, gdn::Engine::kChunkedSplit);
+
+  // An explicit request overrides the heuristic in both directions.
+  gdn::Descriptor forced = base;
+  forced.batch = 8;
+  forced.total_tokens = 8 * 1024;
+  forced.preferred_engine = gdn::Engine::kChunkedSplit;
+  EXPECT_EQ(gdn::SelectPlan(forced, 132, 232448).engine, gdn::Engine::kChunkedSplit);
+  forced.batch = 1;
+  forced.total_tokens = 1024;
+  forced.preferred_engine = gdn::Engine::kChunked;
+  EXPECT_EQ(gdn::SelectPlan(forced, 132, 232448).engine, gdn::Engine::kChunked);
 }
 
 // The split engine's whole point is that its scan can be narrow: the state-independent work

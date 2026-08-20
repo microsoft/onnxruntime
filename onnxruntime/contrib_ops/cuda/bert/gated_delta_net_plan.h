@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -184,10 +185,36 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
     plan.threads = 512;
 
     // Split engine: a token-parallel prepare launch followed by a scan that only carries
-    // the state. Opt-in for now -- it changes the state to fp16, so it does not silently
-    // take over a numerically validated deployment.
-    if (desc.preferred_engine == Engine::kChunkedSplit) {
-      const int bt = 64;
+    // the state. It exists to fill a machine the fused engine leaves idle, so it is chosen
+    // on the fused engine's own wave-quantisation efficiency rather than on a shape guess.
+    //
+    // The fused grid is one CTA per (sequence, v-head, 64 v-columns), so it costs
+    // ceil(waves) waves to do `waves` waves of work. Measured on H200 (132 SMs) at the
+    // Qwen3.8 geometry, split/fused runtime tracks that efficiency and nothing else:
+    //
+    //   batch  CTAs  waves  efficiency   T=256  T=1024  T=4096
+    //     1      96   0.73     73%        0.90    0.80    0.83
+    //     2     192   1.45     73%        0.80    0.88    0.88
+    //     3     288   2.18     73%        0.85    0.91    0.90
+    //     4     384   2.91     97%        0.94    1.12    1.13
+    //     8     768   5.82     97%        1.22    1.31    1.32
+    //
+    // The fused per-token cost jumps 0.392 -> 0.298 us across that same boundary, so once
+    // the fused engine stops wasting a wave the split engine's extra launch and its
+    // round-trip through the workspace are pure overhead. Below two chunks there is no
+    // sequence to pipeline either and the extra launch dominates (T=64 measures 1.18x).
+    const int bt = 64;
+    const int64_t longest_seq = (desc.total_tokens + batch - 1) / batch;
+    const int64_t fused_ctas = batch * desc.num_heads_v * (desc.head_size_v / plan.v_block);
+    const double waves = sm_count > 0 ? static_cast<double>(fused_ctas) / sm_count : 0.0;
+    const double wave_efficiency = waves > 0.0 ? waves / std::ceil(waves) : 0.0;
+    const bool fused_underfills = sm_count > 0 && wave_efficiency < 0.85;
+    const bool long_enough_to_pipeline = longest_seq >= 2 * bt;
+
+    const bool want_split = desc.preferred_engine == Engine::kChunkedSplit ||
+                            (desc.preferred_engine != Engine::kChunked && fused_underfills &&
+                             long_enough_to_pipeline);
+    if (want_split) {
       const size_t prep = SplitPrepareSmemBytes(bt, desc.head_size_qk, desc.head_size_v);
       // Narrow v-blocks only pay off once the state-independent work has been hoisted out
       // of the scan, which is what this engine does: all four of the scan's GEMMs then
@@ -207,7 +234,7 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
         // for a workspace proportional to its length.
         const size_t tile = SplitTileBytes(bt, desc.head_size_qk, desc.head_size_v);
         const size_t per_chunk = tile * static_cast<size_t>(batch) * desc.num_heads_v;
-        const int64_t longest = (desc.total_tokens + batch - 1) / batch;
+        const int64_t longest = longest_seq;
         const int total_chunks = static_cast<int>((longest + bt - 1) / bt);
         const size_t kWorkspaceCap = 64u << 20;
         int per_pass = static_cast<int>(kWorkspaceCap / (per_chunk > 0 ? per_chunk : 1));
@@ -270,7 +297,6 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
       plan.reject_reason = "chunked engine requires float16 input";
     }
   }
-  (void)sm_count;
   return plan;
 }
 
