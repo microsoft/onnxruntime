@@ -1049,10 +1049,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       // rejects head_sink / softcap / TurboQuant / non-SEPARATE-layout at
       // input validation and force-sets qkv_format = BSNH, so
       // use_paged_prefill collapses to ShouldRunFusedPagedPrefill(). When
-      // that helper rejects (non-shm adapter, block_size < max_k_step,
-      // head_size > 256), PagedAttention takes the gather-then-flash
-      // cascade upstream and calls FA with block_table = nullptr, so this
-      // branch is never reached with use_paged_kv_cache == true.
+      // that helper rejects (fp32, block_size < max_k_step, head_size > 256),
+      // PagedAttention takes the gather-then-flash cascade upstream and
+      // calls FA with block_table = nullptr, so this branch is never reached
+      // with use_paged_kv_cache == true.
       //
       // If a future Phase-2 item (softcap, head_sink, q_norm_weight, ...)
       // is added to PagedAttention without matching support in

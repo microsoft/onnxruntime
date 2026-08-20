@@ -723,5 +723,28 @@ TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+// Fused paged prefill under GQA + nonzero past, with non-contiguous physical
+// pages. Combines conditions the existing fused-prefill tests cover
+// separately: fused path (max_seqlen_q >= 32), num_heads > kv_num_heads,
+// past_seqlens != 0, and a block_table whose physical page order does not
+// match the logical order. Locks the fused shader's kv_head_idx =
+// head_idx / uniforms.n_reps mapping and the causal-mask past-offset
+// derivation on the same shape.
+TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 32;  // prefill: max_seqlen_q >= 32 fires fused shader
+  c.num_heads = 4;
+  c.kv_num_heads = 2;  // GQA (n_reps = 2)
+  c.head_size = 128;
+  c.block_size = 32;  // == max_k_step for fp16 head_size <= 128 (min alignment)
+  c.num_blocks = 6;
+  c.max_num_blocks_per_seq = 3;  // covers total KV = 64 tokens across 2 blocks
+  c.cumulative_seqlens_q = {0, 32};
+  c.past_seqlens = {32};      // nonzero past
+  c.block_table = {5, 2, 0};  // non-contiguous physical pages
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
