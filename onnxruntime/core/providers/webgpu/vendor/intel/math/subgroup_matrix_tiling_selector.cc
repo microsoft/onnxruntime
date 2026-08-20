@@ -27,10 +27,8 @@ namespace intel {
 
 namespace {
 
-// Subgroup matrix configuration used by this implementation (Intel Xe2/Xe3, F16).
-constexpr uint32_t kSubgroupMatrixM = 8;
-constexpr uint32_t kSubgroupMatrixN = 16;
-constexpr uint32_t kSubgroupMatrixK = 16;
+// The subgroup-matrix shape (8x16x16, F16) comes from subgroup_matrix_common.h:
+// kSubgroupMatrixM / kSubgroupMatrixN / kSubgroupMatrixK.
 
 constexpr uint32_t kTileMCandidates[] = {8, 16, 32, 64};
 constexpr uint32_t kTileNCandidates[] = {16, 32, 64};

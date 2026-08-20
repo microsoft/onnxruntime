@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
@@ -15,6 +17,46 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+// Eligibility for the MatMul Conv fast paths, which reshape a Conv into a plain 2D
+// matmul (see Conv::ComputeInternal and the subgroup-matrix Conv impl). A reshape is
+// only equivalent to the Conv when nothing is padded: a leading pad shifts the window,
+// and a trailing pad adds output positions the matmul never computes. Comparing the
+// inferred output geometry on top of that also covers dilations, which change the
+// effective kernel size without appearing anywhere in the reshape.
+// The containers hold the spatial attributes in ONNX order, i.e. pads is
+// [begin..., end...] and strides is one entry per spatial dim; both must already be
+// defaulted/normalized to the 2D layout the callers use.
+
+// True when every pad is zero, leading and trailing, across all spatial dims.
+template <typename PadContainer>
+bool HasNoConvPadding(const PadContainer& pads) {
+  return std::all_of(pads.begin(), pads.end(), [](auto p) { return p == 0; });
+}
+
+// 1x1 reshape: each N,H,W position becomes an independent matmul row, so the output
+// grid has to match the input grid one-to-one in row-major order. With a 1x1 kernel, no
+// padding and unit strides that holds for any dilation (the effective kernel stays
+// 1x1), so this predicate needs only the attributes -- PrePackInternal, which cannot
+// see the input shape, uses the same one to stay in sync with ComputeInternal.
+template <typename PadContainer, typename StrideContainer>
+bool IsConv1x1MatMul(int64_t kernel_height, int64_t kernel_width,
+                     const PadContainer& pads, const StrideContainer& strides) {
+  return kernel_height == 1 && kernel_width == 1 && HasNoConvPadding(pads) &&
+         strides[0] == 1 && strides[1] == 1;
+}
+
+// same-size reshape: the whole window folds into a single matmul row per batch element,
+// so the kernel must cover the entire input and leave exactly one output position.
+// Only valid for channels-last (the caller checks that).
+template <typename PadContainer>
+bool IsConvSameSizeMatMul(int64_t input_height, int64_t input_width,
+                          int64_t kernel_height, int64_t kernel_width,
+                          int64_t output_height, int64_t output_width,
+                          const PadContainer& pads) {
+  return input_height == kernel_height && input_width == kernel_width &&
+         output_height == 1 && output_width == 1 && HasNoConvPadding(pads);
+}
 
 template <bool is_channels_last, bool is_fused>
 class Conv : public WebGpuKernel {

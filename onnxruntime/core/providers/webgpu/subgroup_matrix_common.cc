@@ -16,7 +16,14 @@ namespace webgpu {
 
 SubgroupMatrixTilingSelector MakeDefaultSubgroupMatrixTilingSelector() {
   return [](const ComputeContext&, uint32_t /*M*/, uint32_t /*N*/,
-            uint32_t /*K*/, uint32_t /*batch*/) -> std::optional<SubgroupMatrixTiling> {
+            uint32_t K, uint32_t /*batch*/) -> std::optional<SubgroupMatrixTiling> {
+    // Only K needs to align to the subgroup-matrix shape; M and N partial tiles are
+    // handled by bounds-checked stores in the kernel. Decline a misaligned K, which
+    // the kernel would otherwise silently truncate to whole blocks.
+    if (K % kSubgroupMatrixK != 0) {
+      return std::nullopt;
+    }
+    // 32x32 is a multiple of the subgroup-matrix M/N and fits the scratch budget.
     return SubgroupMatrixTiling{32, 32, 1};
   };
 }
@@ -28,7 +35,7 @@ bool TrySelectSubgroupMatrixConfig(const ComputeContextBase& context,
   // are implemented for are supported.
   config_index = 0;
   if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
+      !supported_subgroup_matrix_configs[config_index].Is(kSubgroupMatrixM, kSubgroupMatrixN, kSubgroupMatrixK)) {
     return false;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back to a

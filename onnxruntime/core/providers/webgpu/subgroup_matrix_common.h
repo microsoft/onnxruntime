@@ -19,6 +19,15 @@ namespace webgpu {
 // TODO: use subgroup-size-control to enforce the subgroup size is 32.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
+// The subgroup-matrix shape these kernels are implemented for (see
+// TrySelectSubgroupMatrixConfig, which rejects any device not reporting it).
+// A tiling must be a multiple of M/N, and K must be a multiple of
+// kSubgroupMatrixK: the kernel walks the reduction in whole blocks
+// (k_blocks = K / kSubgroupMatrixK) and has no K tail handling.
+constexpr uint32_t kSubgroupMatrixM = 8;
+constexpr uint32_t kSubgroupMatrixN = 16;
+constexpr uint32_t kSubgroupMatrixK = 16;
+
 // Per-workgroup output tiling for one subgroup-matrix problem: the tile shape and
 // split-K factor chosen by a vendor-specific policy. The subgroup-matrix shape
 // itself is separate from this selection.
@@ -39,12 +48,14 @@ using SubgroupMatrixTilingSelector =
 
 // Default tiling used on any vendor without a specialized policy: a fixed 32x32
 // output tile with no split-K. The fallback selector when no vendor policy applies.
+// Declines (nullopt) problems whose K is not a multiple of kSubgroupMatrixK, which
+// the kernel cannot compute.
 SubgroupMatrixTilingSelector MakeDefaultSubgroupMatrixTilingSelector();
 
 // Selects the device subgroup-matrix config and the vendor tiling selector shared by
 // the MatMul, Gemm and Conv 1x1 factories. On a supported device sets config_index /
-// tiling_selector and returns true; returns false (leaving the outputs untouched) when
-// the device or vendor is unsupported, so the caller yields no implementation.
+// tiling_selector and returns true; returns false when the device or vendor is
+// unsupported, so the caller yields no implementation.
 bool TrySelectSubgroupMatrixConfig(const ComputeContextBase& context,
                                    /*out*/ int32_t& config_index,
                                    /*out*/ SubgroupMatrixTilingSelector& tiling_selector);

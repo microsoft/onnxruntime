@@ -224,8 +224,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     return context.RunProgram(program);
   }
 
-  const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
-  if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
+  // Both reshapes need all pads (not just the leading ones) and the inferred output
+  // geometry to qualify; see the predicates in conv.h.
+  const auto same_size = is_channels_last && IsConvSameSizeMatMul(input_height, input_width, kernel_height,
+                                                                  kernel_width, output_height, output_width, pads);
+  if (same_size || IsConv1x1MatMul(kernel_height, kernel_width, pads, strides)) {
     Tensor transposed_kernel;
     TensorShape input_reshape;
     TensorShape kernel_reshape;
@@ -387,9 +390,10 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   const int64_t kernel_height = dims[2];
   const int64_t kernel_width = dims[3];
 
-  const bool is_1x1_conv =
-      (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 &&
-       strides[0] == 1 && strides[1] == 1);
+  // Must stay in sync with the gate in ComputeInternal: if this predicate accepted a
+  // Conv that ComputeInternal sends down the general path instead, that path would read
+  // a kernel we deliberately left untransposed here.
+  const bool is_1x1_conv = IsConv1x1MatMul(kernel_height, kernel_width, pads, strides);
 
   if constexpr (!is_channels_last) {
     if (is_1x1_conv) {

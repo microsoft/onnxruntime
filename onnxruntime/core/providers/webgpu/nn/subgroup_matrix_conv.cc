@@ -5,13 +5,11 @@
 
 #include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <mutex>
 #include <utility>
-#include <vector>
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/subgroup_matrix_common.h"
@@ -92,20 +90,21 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     output_shape_vector.push_back(output_channels);
     const TensorShape output_shape = TensorShape(output_shape_vector);
 
-    // Only pads/strides are needed to detect the 1x1 / same-size case.
-    std::vector<uint32_t> strides, pads;
-    auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
-    std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
-    std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
-
     const auto input_height = input_shape[1];
     const auto input_width = input_shape[2];
     const auto input_channels = input_shape[3];
     const auto kernel_height = kernel_shape[2];
     const auto kernel_width = kernel_shape[3];
+    const auto output_height = output_shape_vector[1];
+    const auto output_width = output_shape_vector[2];
 
-    const bool same_size = input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
-    const bool is_conv_matmul = same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1);
+    // Both reshapes need all pads (not just the leading ones) and the inferred output
+    // geometry to qualify; see the predicates in conv.h, which the normal Conv MatMul
+    // path shares.
+    const bool same_size = IsConvSameSizeMatMul(input_height, input_width, kernel_height, kernel_width,
+                                                output_height, output_width, local_pads);
+    const bool is_conv_matmul =
+        same_size || IsConv1x1MatMul(kernel_height, kernel_width, local_pads, local_strides);
     if (!is_conv_matmul) {
       return Status::OK();
     }
