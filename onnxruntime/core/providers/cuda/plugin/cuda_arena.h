@@ -465,8 +465,6 @@ class ArenaImpl {
   void FreeAndMaybeCoalesce(ChunkHandle h);
   ChunkHandle Coalesce(ChunkHandle h);
   void InsertFreeChunkIntoBin(ChunkHandle h);
-  void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
-                                  const Bin::FreeChunkSet::iterator& c);
   void RemoveFreeChunkFromBin(ChunkHandle h);
   Chunk* SplitFreeChunkFromBin(Bin::FreeChunkSet* free_chunks,
                                const Bin::FreeChunkSet::iterator& citer,

@@ -493,12 +493,22 @@ ArenaImpl::Chunk* ArenaImpl::SplitFreeChunkFromBin(Bin::FreeChunkSet* free_chunk
                                                    size_t rounded_bytes,
                                                    size_t num_bytes) {
   const ChunkHandle h = (*citer);
-  RemoveFreeChunkIterFromBin(free_chunks, citer);
   Chunk* chunk = ChunkFromHandle(h);
+  const BinNum original_bin_num = chunk->bin_num;
+  auto free_chunk_node = free_chunks->extract(citer);
+  chunk->bin_num = kInvalidBinNum;
 
   if (chunk->size >= rounded_bytes * 2 ||
       static_cast<int64_t>(chunk->size - rounded_bytes) >= config_.max_dead_bytes_per_chunk) {
-    SplitChunk(h, rounded_bytes);
+    ORT_TRY {
+      SplitChunk(h, rounded_bytes);
+    }
+    ORT_CATCH(...) {
+      const auto insert_result = free_chunks->insert(std::move(free_chunk_node));
+      CUDA_ARENA_ENFORCE(insert_result.inserted, "Could not restore chunk to bin");
+      ChunkFromHandle(h)->bin_num = original_bin_num;
+      ORT_RETHROW;
+    }
     chunk = ChunkFromHandle(h);
   }
 
@@ -584,39 +594,40 @@ void ArenaImpl::SplitChunk(ChunkHandle h, size_t num_bytes) {
   new_chunk->stream = c->stream;
   new_chunk->stream_sync_id = c->stream_sync_id;
   new_chunk->quarantined = c->quarantined;
+  new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
+  new_chunk->size = c->size - num_bytes;
+  new_chunk->allocation_id = -1;
 
-  // Track the remainder chunk's stream assignment so ResetChunksUsingStream
-  // can clear it later. Without this, the free remainder retains a stale
-  // stream pointer after the stream is released — risking use-after-free
-  // in GetSyncIdForLastWaitOnSyncStream.
-  if (new_chunk->stream) {
-    ORT_TRY {
+  bool region_handle_set = false;
+  ORT_TRY {
+    // Track the remainder chunk's stream assignment so ResetChunksUsingStream
+    // can clear it later. Without this, the free remainder retains a stale
+    // stream pointer after the stream is released — risking use-after-free
+    // in GetSyncIdForLastWaitOnSyncStream.
+    if (new_chunk->stream) {
       stream_to_chunks_.at(new_chunk->stream).insert(h_new_chunk);
     }
-    ORT_CATCH(...) {
-      DeallocateChunk(h_new_chunk);
-      ORT_RETHROW;
-    }
+    region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
+    region_handle_set = true;
+    InsertFreeChunkIntoBin(h_new_chunk);
   }
-
-  new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
-  region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
-
-  new_chunk->size = c->size - num_bytes;
-  c->size = num_bytes;
-
-  new_chunk->allocation_id = -1;
+  ORT_CATCH(...) {
+    if (region_handle_set) {
+      region_manager_.erase(new_chunk->ptr);
+    }
+    DeallocateChunk(h_new_chunk);
+    ORT_RETHROW;
+  }
 
   ChunkHandle h_neighbor = c->next;
   new_chunk->prev = h;
   new_chunk->next = h_neighbor;
+  c->size = num_bytes;
   c->next = h_new_chunk;
   if (h_neighbor != kInvalidChunkHandle) {
     Chunk* c_neighbor = ChunkFromHandle(h_neighbor);
     c_neighbor->prev = h_new_chunk;
   }
-
-  InsertFreeChunkIntoBin(h_new_chunk);
 }
 
 void ArenaImpl::Free(void* p) {
@@ -680,17 +691,9 @@ void ArenaImpl::InsertFreeChunkIntoBin(ChunkHandle h) {
   CUDA_ARENA_ENFORCE(!c->in_use() && (c->bin_num == kInvalidBinNum), __FUNCTION__);
   BinNum bin_num = BinNumForSize(c->size);
   Bin* new_bin = BinFromIndex(bin_num);
+  const auto [_, inserted] = new_bin->free_chunks.insert(h);
+  CUDA_ARENA_ENFORCE(inserted, "Could not insert chunk into bin");
   c->bin_num = bin_num;
-  new_bin->free_chunks.insert(h);
-}
-
-void ArenaImpl::RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
-                                           const Bin::FreeChunkSet::iterator& citer) {
-  ChunkHandle h = *citer;
-  Chunk* c = ChunkFromHandle(h);
-  CUDA_ARENA_ENFORCE(!c->in_use() && (c->bin_num != kInvalidBinNum), __FUNCTION__);
-  free_chunks->erase(citer);
-  c->bin_num = kInvalidBinNum;
 }
 
 void ArenaImpl::RemoveFreeChunkFromBin(ChunkHandle h) {
