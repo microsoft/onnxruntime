@@ -2998,7 +2998,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "State after each of the last state_checkpoints tokens, right-aligned, shape "
                 "(state_checkpoints, batch_size, num_heads_v, head_size_v, head_size_qk)",
                 "TS", OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"},
                         "Constrain query/key/value/output types.")
         .TypeConstraint("TS", {"tensor(float)"},
                         "State, gate and beta tensors are always float.")

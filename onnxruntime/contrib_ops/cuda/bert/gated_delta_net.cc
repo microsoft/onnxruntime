@@ -26,7 +26,8 @@ namespace gdn = gated_delta_net;
       (*KernelDefBuilder::Create())                                      \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
           .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())    \
-          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()), \
+          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())  \
+          .MayInplace(6, 1),                                             \
       GatedDeltaNet<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -89,6 +90,17 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* initial_state = context->Input<Tensor>(6);
   const Tensor* a_log = context->Input<Tensor>(7);
   const Tensor* dt_bias = context->Input<Tensor>(8);
+
+  const bool needs_decay =
+      update_rule_ == gdn::UpdateRule::kGated ||
+      update_rule_ == gdn::UpdateRule::kGatedDelta;
+  const bool needs_beta =
+      update_rule_ == gdn::UpdateRule::kDelta ||
+      update_rule_ == gdn::UpdateRule::kGatedDelta;
+  ORT_RETURN_IF_NOT(needs_decay == (decay != nullptr),
+                    "decay input presence must match update_rule");
+  ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr),
+                    "beta input presence must match update_rule");
 
   ORT_RETURN_IF_NOT(query != nullptr && key != nullptr && value != nullptr,
                     "query, key and value are required");
