@@ -1601,20 +1601,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(11,
                "fc1_zero_points",
                "2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or "
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
-               "T1",
+               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided. "
+               "Integer zero-points use the same packed uint8 layout as the weights (T1). Float zero-points "
+               "(TZ) are unpacked, one value per group, matching the scales layout, and dequantize as "
+               "w = (code - zero_point) * scale.",
+               "TZ",
                OpSchema::Optional)
         .Input(12,
                "fc2_zero_points",
                "2D tensor with shape (num_experts, hidden_size / pack_size), or "
-               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.",
-               "T1",
+               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided. "
+               "See fc1_zero_points for the integer (T1) vs float (TZ) layouts.",
+               "TZ",
                OpSchema::Optional)
         .Input(13,
                "fc3_zero_points",
                "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
-               "T1",
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided. "
+               "See fc1_zero_points for the integer (T1) vs float (TZ) layouts.",
+               "TZ",
                OpSchema::Optional)
         .Input(14,
                "router_weights",
@@ -1665,6 +1670,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
+        .TypeConstraint("TZ", {"tensor(uint8)", "tensor(float8e4m3fn)", "tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain zero-point types. Integer zero-points use packed uint8 (same layout as weights). "
+                        "Float zero-points are unpacked (one per group, scales layout) and support fractional/asymmetric schemes.")
         .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
                         "Constrain scale types. Float tensors are used for integer quantization scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
