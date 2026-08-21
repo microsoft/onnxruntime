@@ -20,6 +20,7 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/abi_key_value_pairs.h"
+#include "core/session/onnxruntime_env_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/asserts.h"
 
@@ -78,8 +79,8 @@ TEST(WebGpuDeviceConfigTest, ParsesEnvironmentOptions) {
 
 TEST(WebGpuDeviceConfigTest, ParsesEnvironmentConfigEntries) {
   OrtKeyValuePairs environment_options;
-  environment_options.Add(kEnableRobustness, "0");
-  environment_options.Add(kEnableZeroBuffer, "1");
+  environment_options.Add(kOrtEnvWebGpuEnableRobustness, "0");
+  environment_options.Add(kOrtEnvWebGpuEnableZeroBuffer, "1");
 
   const auto config = ParseWebGpuDeviceConfig(environment_options);
 
@@ -104,7 +105,7 @@ TEST(WebGpuDeviceConfigTest, ControlsContextCreation) {
   EXPECT_FALSE(context.EnableZeroBuffer());
 }
 
-TEST(WebGpuDeviceConfigTest, SessionOptionsCannotOverrideDeviceConfig) {
+TEST(WebGpuDeviceConfigTest, DeprecatedSessionRobustnessOptionWarnsAndCannotOverrideDeviceConfig) {
   ConfigOptions session_options;
   ORT_THROW_IF_ERROR(
       session_options.AddConfigEntry("ep.webgpuexecutionprovider.enableRobustness", "0"));
@@ -112,12 +113,33 @@ TEST(WebGpuDeviceConfigTest, SessionOptionsCannotOverrideDeviceConfig) {
       session_options.AddConfigEntry("ep.webgpuexecutionprovider.enableZeroBuffer", "1"));
   const auto device_config = ParseWebGpuDeviceConfig("1", "0");
 
+  testing::internal::CaptureStderr();
   auto ep = WebGpuProviderFactoryCreator::Create(session_options, device_config)->CreateProvider();
+  const std::string warning = testing::internal::GetCapturedStderr();
 
   ASSERT_NE(ep, nullptr);
   const auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   EXPECT_TRUE(context.EnableRobustness());
   EXPECT_FALSE(context.EnableZeroBuffer());
+  EXPECT_NE(warning.find("Session-level enableRobustness is no longer honored"), std::string::npos);
+  EXPECT_NE(warning.find(kOrtEnvWebGpuEnableRobustness), std::string::npos);
+}
+
+TEST(WebGpuDeviceConfigTest, MatchingAndOmittedDeviceOptionsDoNotWarn) {
+  ConfigOptions session_options;
+  const auto device_config = ParseWebGpuDeviceConfig("1", "0");
+  auto first_ep = WebGpuProviderFactoryCreator::Create(session_options, device_config)->CreateProvider();
+  ASSERT_NE(first_ep, nullptr);
+
+  testing::internal::CaptureStderr();
+  auto matching_ep = WebGpuProviderFactoryCreator::Create(session_options, device_config)->CreateProvider();
+  auto omitted_ep = WebGpuProviderFactoryCreator::Create(session_options)->CreateProvider();
+  const std::string warning = testing::internal::GetCapturedStderr();
+
+  ASSERT_NE(matching_ep, nullptr);
+  ASSERT_NE(omitted_ep, nullptr);
+  EXPECT_EQ(warning.find("already initialized with enableRobustness"), std::string::npos);
+  EXPECT_EQ(warning.find("already initialized with enableZeroBuffer"), std::string::npos);
 }
 
 std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuContext& context,

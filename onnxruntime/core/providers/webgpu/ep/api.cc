@@ -86,8 +86,8 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
 
   auto env_config = Ort::GetEnvConfigEntries();
   const auto device_config = onnxruntime::ParseWebGpuDeviceConfig(
-      env_config.GetValue(onnxruntime::webgpu::options::kEnableRobustness),
-      env_config.GetValue(onnxruntime::webgpu::options::kEnableZeroBuffer));
+      env_config.GetValue(kOrtEnvWebGpuEnableRobustness),
+      env_config.GetValue(kOrtEnvWebGpuEnableZeroBuffer));
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory =

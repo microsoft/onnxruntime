@@ -39,6 +39,9 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
 namespace {
 
+constexpr const char* kDeprecatedSessionEnableRobustness =
+    "ep.webgpuexecutionprovider.enableRobustness";
+
 WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
 
@@ -161,6 +164,13 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   config.enable_robustness_explicitly_set = device_config.enable_robustness_explicitly_set;
   config.enable_zero_buffer = device_config.enable_zero_buffer;
   config.enable_zero_buffer_explicitly_set = device_config.enable_zero_buffer_explicitly_set;
+
+  if (std::string ignored_value;
+      config_options.TryGetConfigEntry(kDeprecatedSessionEnableRobustness, ignored_value)) {
+    LOGS_DEFAULT(WARNING)
+        << "Session-level enableRobustness is no longer honored. Use the environment option "
+        << kOrtEnvWebGpuEnableRobustness << " instead.";
+  }
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
@@ -366,8 +376,8 @@ webgpu::WebGpuDeviceConfig ParseWebGpuDeviceConfig(const char* enable_robustness
 
 webgpu::WebGpuDeviceConfig ParseWebGpuDeviceConfig(const OrtKeyValuePairs& environment_options) {
   const auto& entries = environment_options.Entries();
-  const auto robustness = entries.find(kEnableRobustness);
-  const auto zero_buffer = entries.find(kEnableZeroBuffer);
+  const auto robustness = entries.find(kOrtEnvWebGpuEnableRobustness);
+  const auto zero_buffer = entries.find(kOrtEnvWebGpuEnableZeroBuffer);
   return ParseWebGpuDeviceConfig(
       robustness == entries.end() ? nullptr : robustness->second.c_str(),
       zero_buffer == entries.end() ? nullptr : zero_buffer->second.c_str());

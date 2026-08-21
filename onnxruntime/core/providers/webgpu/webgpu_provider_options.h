@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/session/onnxruntime_env_config_keys.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -20,10 +22,6 @@ struct WebGpuDeviceConfig {
 };
 
 namespace options {
-
-// Environment-level options that configure the default WebGPU device before a session is created.
-constexpr const char* kEnableRobustness = "ep_factory.WebGpuExecutionProvider.enableRobustness";
-constexpr const char* kEnableZeroBuffer = "ep_factory.WebGpuExecutionProvider.enableZeroBuffer";
 
 // The following are the options that can be set in the WebGPU session provider options.
 
