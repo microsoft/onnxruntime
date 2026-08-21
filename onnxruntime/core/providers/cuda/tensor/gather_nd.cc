@@ -58,21 +58,17 @@ Status GatherNDBase::PrepareCompute(
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
 
-  std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
+  // Passed to the kernel by value rather than staged through device memory: an async
+  // copy out of this function's own vector would be recorded by CUDA graph capture as
+  // a read of host memory that no longer exists by the time the graph is replayed.
+  TArray<int64_t> sizes_from_slice_dims(gsl::narrow_cast<int32_t>(num_slice_dims));
   {
     auto running_product = slice_size;
     for (int64_t i = 0; i < num_slice_dims; ++i) {
-      sizes_from_slice_dims[num_slice_dims - 1 - i] = running_product;
+      sizes_from_slice_dims[gsl::narrow_cast<int32_t>(num_slice_dims - 1 - i)] = running_product;
       running_product *= input_shape[batch_dims + num_slice_dims - 1 - i];
     }
   }
-
-  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), alloc_stream);
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-      sizes_from_slice_dims_buffer.get(),
-      sizes_from_slice_dims.data(),
-      sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice, cuda_stream));
 
   input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, alloc_stream);
 
@@ -86,7 +82,7 @@ Status GatherNDBase::PrepareCompute(
       num_slices_per_batch,
       input_batch_stride,
       num_slice_dims,
-      sizes_from_slice_dims_buffer.get(),
+      sizes_from_slice_dims,
       indices_data,
       input_slice_offsets_buffer.get());
 
