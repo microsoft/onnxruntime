@@ -2115,10 +2115,16 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
       activation_type_(activation_type),
       normalize_routing_weights_(normalize_routing_weights),
       use_sparse_mixer_(use_sparse_mixer) {
-  auto tactics = getTactics(sm_);
-  if (!tactics.empty()) {
-    gemm1_config_ = tactics[0];
-    gemm2_config_ = tactics[0];
+  // Best-effort default tactic seed only. The SM80-FP4 decision is still unknown here (the QMoE op
+  // pushes it via setUseSm80Fp4() immediately after construction and re-picks), so a config family
+  // that looks unavailable under the provisional use_sm80_fp4=false view must not be fatal.
+  try {
+    auto tactics = getTactics(sm_);
+    if (!tactics.empty()) {
+      gemm1_config_ = tactics[0];
+      gemm2_config_ = tactics[0];
+    }
+  } catch (const std::exception&) {
   }
 }
 
