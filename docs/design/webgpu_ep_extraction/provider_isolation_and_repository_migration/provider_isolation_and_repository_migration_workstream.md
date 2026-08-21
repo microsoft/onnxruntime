@@ -25,6 +25,8 @@ The WebGPU repository owns:
 - Shared and static provider build targets.
 - Existing Python and NuGet plugin packaging, CI, and release pipelines.
 - Version metadata, compatibility policy, CI, and release artifacts.
+- User-facing provider documentation, which onnxruntime.ai references rather than duplicates.
+- WebGPU issues and pull requests.
 
 ORT should consume versioned artifacts or source and should not remain an implementation or packaging repository for
 the provider.
@@ -41,14 +43,14 @@ ownership until the directory mirrors the intended external repository:
 ```text
 plugin-ep-webgpu/
   cmake/
+    patches/
+      dawn/
   include/
   src/
     ep/
     kernels/
     runtime/
     support/
-  third_party/
-    dawn/
   tools/
     wgsl/
   tests/
@@ -61,6 +63,9 @@ plugin-ep-webgpu/
   VERSION_NUMBER
   MIN_ONNXRUNTIME_VERSION
 ```
+
+Dawn keeps its current form: a pinned, fetched dependency with patches applied at build time. The staging root holds
+the pin and the patches, not a vendored copy of the source.
 
 All provider-owned build inputs should be reachable from that root without consulting an implicit list of files
 elsewhere in the ORT tree.
@@ -78,7 +83,20 @@ During isolation:
 
 ## Private dependency removal
 
-Create a machine-reviewable inventory of:
+The provider uses ORT-internal code deliberately. While the implementation and the runtime live in one repository,
+reusing ORT's kernel-authoring types and operator helpers avoids duplicating code that is already maintained next to
+it. That trade stops paying once the provider ships from its own repository, and unwinding it is a large part of what
+the move is for. The coupling is not accidental, and removing it is not a correction.
+
+The provider's dependencies on ORT source fall into two groups with different dispositions:
+
+- **Framework surface** — the kernel-authoring types the provider is written against. Replacing these is the
+  kernel-authoring foundation work in the code isolation package, not a copy decision.
+- **Operator helpers** — parameter parsing, shape math, and similar utilities shared with the CPU and CUDA EPs today
+  only because everything lives in one repository. Copying these is the intended outcome, and the provider owns the
+  correctness of its copies afterwards.
+
+The inventory is broader than source dependencies. Create a machine-reviewable inventory of:
 
 - Private ORT headers included by provider sources.
 - Private ORT libraries in provider link interfaces.
@@ -128,7 +146,8 @@ The build should support:
 
 Browser-hosted provider tests are an exception to the no-source-checkout rule. Static linkage requires building ORT
 Web with the provider, so the WebGPU repository builds ORT Web from a pinned ORT source revision using the
-adjacent-checkout override. ORT separately validates its pinned WebGPU revision as part of ORT Web release gating.
+adjacent-checkout override. That revision is selected by the cross-repository version policy below. ORT separately
+validates its pinned WebGPU revision as part of ORT Web release gating.
 
 ## Packaging and pipeline migration
 
@@ -183,6 +202,11 @@ The external repository skeleton can be created before isolation is complete to 
 - Artifact naming and retention.
 - Issue ownership and contribution policy.
 - Release automation.
+- Component governance registration for Dawn and other dependencies, currently under `cgmanifests/webgpu/`.
+- Security review, signing, and compliant release pipelines.
+
+The compliance items are long-lead in practice and are easy to defer until they block a release. Establishing them
+with the skeleton keeps them off the critical path.
 
 ## History migration
 
@@ -201,6 +225,10 @@ The filtered import rewrites commit IDs. Pull requests, reviews, issues, and oth
 and do not transfer with repository history. Record the source ORT repository, extraction commit, filtering command or
 script, and path manifest in the new repository so commits can be traced back to their original context.
 
+After the cutover, WebGPU issues and pull requests belong in the new repository. Items open in `microsoft/onnxruntime`
+at transfer time need a disposition: those describing provider behavior move or are refiled, while those describing
+ORT-side integration stay where they are.
+
 Perform and review a trial history import before the final source move. Verify representative files with `git log`
 and blame, and confirm that the resulting repository does not contain unrelated or sensitive content.
 
@@ -213,6 +241,42 @@ Package signing, provenance, and release controls should meet the same requireme
 
 ORT should consume WebGPU source using the standard mechanism used for comparable third-party source dependencies.
 The dependency inventory should compare existing ORT mechanisms before selecting the exact implementation.
+
+### Cross-repository version policy
+
+Each repository pins the other, so the pins must be arranged so that neither side can be blocked waiting for the
+other. Only one lane floats, and it never blocks a merge:
+
+| Lane | Built or run against | Blocking |
+| --- | --- | --- |
+| WebGPU build | A released ORT version providing every EP API feature the provider references | Yes |
+| WebGPU minimum-version validation | The declared `MIN_ONNXRUNTIME_VERSION` runtime | Yes |
+| WebGPU integration | ORT main | No |
+| ORT | Its pinned WebGPU revision | Yes |
+
+Both blocking WebGPU lanes target immutable released ORT artifacts, so neither can wait on an ORT revision that does
+not yet exist. ORT advances its WebGPU pin on its own schedule and declines the update when it fails.
+
+Two ORT versions matter here, and they are not the same number:
+
+- The **build-against version** must declare every EP API the provider references, including calls reached only
+  through a runtime version gate, because a gated call still needs its declaration to compile.
+- The **runtime floor**, `MIN_ONNXRUNTIME_VERSION`, is the oldest runtime the provider loads against. It can be
+  lower, because newer calls are gated at runtime through `CurrentOrtApiVersion()`.
+
+They coincide only while nothing is gated above the floor. A build against newer headers cannot detect a mis-gated
+call, so the floor has to be exercised by running against it. That is the minimum-version validation package.
+
+The non-blocking integration lane against ORT main exists to catch ORT changes that break the provider while the fix
+is still cheap. Neither blocking lane can do this: both target already-released ORT versions, so a regression
+introduced on main stays invisible until it ships.
+
+A failure in the integration lane is an ORT compatibility regression and is fixed in ORT, because the boundary is the
+public plugin EP API. The exception is a provider dependency on unspecified behavior, which is fixed in the WebGPU
+repository. Without a stated owner the lane goes permanently red and stops being read.
+
+Adopting a newly added EP API therefore requires an ORT release carrying it before the provider can build against it.
+This does not force the runtime floor upward, since the new call can be gated.
 
 ## Work packages
 

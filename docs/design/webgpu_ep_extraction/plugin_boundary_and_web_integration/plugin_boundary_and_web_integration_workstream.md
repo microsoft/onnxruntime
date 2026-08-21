@@ -76,9 +76,9 @@ executes correctly but retains unsafe dynamic cleanup behavior does not satisfy 
 
 ## WebGPU plugin-path parity
 
-Compile the existing WebGPU adapter implementation as both a shared plugin and a static plugin library. Exercise the
-same factory, device discovery, provider options, allocator, data transfer, graph assignment, and execution code in
-both forms.
+The shared-library plugin form already builds and ships. The deliverable here is the static form for Emscripten and
+other static hosts, plus lifetime correctness in both. Exercise the same factory, device discovery, provider options,
+allocator, data transfer, graph assignment, and execution code in each.
 
 Parity work includes:
 
@@ -111,6 +111,12 @@ Likely investigation areas include:
 - Reduced-operator configuration.
 - Logging, threading, allocators, and data transfer.
 - Environment and process-global initialization.
+- Setting EP default configuration before a session exists, equivalent to the existing `SetCurrentGpuDeviceId`.
+
+The adapter's own `Missing parts` section in `onnxruntime/core/providers/webgpu/ep/README.md` is authoritative input
+to this inventory rather than speculation. It records two gaps: WebGPU cleanup, which the process-global ownership
+and teardown work covers, and EP default configuration, which is missing for both static and shared library builds
+and sketches an `OrtApi` addition for it.
 
 ## Browser/Wasm bridge
 
@@ -163,7 +169,9 @@ The first five packages can proceed largely in parallel. Legacy-path removal wai
 - Existing plugin-path tests are blocking and detect fallback.
 - All required private-runtime interactions have a documented public API or provider-owned replacement.
 - Browser object ownership and lifecycle are documented and tested.
-- Reduced WebAssembly builds retain required plugin infrastructure within accepted size and startup budgets.
+- Reduced WebAssembly builds retain required plugin infrastructure within accepted size budgets, measured against
+  the baselines established before the work begins.
+- Inference latency through static plugin registration stays within an accepted tolerance of the same baselines.
 - The direct `IExecutionProvider` WebGPU path is removed.
 
 ## Open questions

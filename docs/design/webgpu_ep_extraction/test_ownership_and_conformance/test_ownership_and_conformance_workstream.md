@@ -50,6 +50,12 @@ Each inventory entry should record:
 - Required platforms or devices.
 - Tracking issue for temporary legacy coverage.
 
+While JSEP and the native WebGPU EP coexist, `onnxruntime-web` runs one browser test list against both. The same
+suite executes against JSEP in the default and `./all` bundles and against the native WebGPU EP in the `./webgpu` and
+`./jspi` bundles, selected when the bundle is built. Which implementation a browser test exercises is therefore a
+property of the CI lane, not of the test, and does not change the test's class, owner, or destination. Record the
+provider path per lane, and treat the JSEP lane as following JSEP removal rather than this extraction.
+
 Classification is a prerequisite for deleting or moving tests, not for beginning other workstreams.
 
 A temporary legacy test is not a permanent ownership category. Its inventory entry must identify the intended final
@@ -64,7 +70,7 @@ Before the source move:
 - Disable or detect CPU fallback for cases intended to validate WebGPU.
 - Preserve current platform and browser lanes or document an approved replacement. Some WebGPU web lanes are
   currently non-blocking or build-only, so preserving them does not by itself establish a gate.
-- Establish baseline results for the extraction launch matrix in
+- Establish baseline results for the consumers listed in
   [WebGPU EP Repository Extraction](../webgpu_ep_extraction.md).
 - Make isolated-tree tests blocking before removing their in-tree originals.
 - Verify package installation and execution for existing Python, NuGet, Node, and Web consumers as applicable.
@@ -130,6 +136,9 @@ lets an external EP build the static form against a released ORT package without
 - `NOT_RUN` does not satisfy a required lane.
 - Exclusions require stable case IDs, reasons, and preferably tracking issues.
 - Provider-wide tolerance inflation is not an acceptable migration shortcut.
+- Forking a shared ORT helper transfers the behavior it implements to the provider. Where that behavior was covered
+  only incidentally by tests of another consumer, the inventory entry must record whether existing coverage follows
+  the fork or new provider-side coverage is required.
 - Static and dynamic forms should share case definitions and outcome semantics.
 - For cases requiring full target-EP assignment, use the existing `session.disable_cpu_ep_fallback` session option.
   Cases intentionally allowing partial assignment need explicit assignment requirements and may require additional
@@ -166,7 +175,7 @@ on the `plugin-boundary` workstream's static registration facility.
 
 ### Node plugin migration
 
-- Supplies Node package installation and execution coverage for the launch matrix.
+- Supplies Node package installation and execution coverage for the consumer dispositions.
 - Reuses portable cases where practical but keeps Node host-loading behavior in the Node workstream.
 
 ## Extraction gates

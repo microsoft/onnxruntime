@@ -2,6 +2,10 @@
 
 Status: Working plan
 
+This overview and the workstream documents it links define objectives, ownership, sequencing, and gates.
+Implementation detail such as dependency inventories, staging-root layout, and test classification is produced by the
+work packages themselves rather than specified here.
+
 ## Goal
 
 Move the WebGPU Execution Provider (EP) into its own repository without making ongoing WebGPU EP development slower or
@@ -24,9 +28,21 @@ provider into its WebAssembly module.
 - A normal kernel change should be developed, tested, reviewed, and released in the WebGPU repository alone.
 - Do not create an undocumented cross-repository C++ interface to private ORT implementation code.
 - Treat copied ORT helpers as WebGPU-owned forks. Preserve provenance and license, but do not keep the copies
-  synchronized with ORT.
+  synchronized with ORT. A plugin EP is responsible for the correctness of its own implementation, whether or not
+  that implementation started from ORT-provided utility code.
 - Keep cross-repository integration reproducible through pinned versions, compatibility checks, and CI.
 - Preserve existing tested behavior and supported consumers throughout the move.
+
+## Terminology
+
+| Term | Meaning |
+| --- | --- |
+| Plugin EP API | The public ORT API used to implement a plugin EP: `OrtApi`, `OrtEpApi`, `OrtEpFactory`, and `OrtEp` |
+| Staging root | `plugin-ep-webgpu/`, the in-tree directory the provider is consolidated into before the move |
+| Conformance suite | The portable operator cases together with their execution and result semantics |
+| Conformance kit | The versioned artifact published with an ORT release, containing cases, schemas, and a runner |
+| Case archive | The platform-neutral conformance cases and schemas within a conformance kit |
+| Provider profile | An EP's declared support surface, options, exclusions, and comparison overrides, supplied when running the conformance suite |
 
 ## Workstreams
 
@@ -41,6 +57,24 @@ The effort is divided into four workstreams:
 
 The detailed reusable conformance-suite design is in
 [Execution Provider Operator Conformance Suite](test_ownership_and_conformance/ep_operator_conformance_design.md).
+
+## Related work
+
+Two adjacent efforts target `onnxruntime-web` and are independent of this one:
+
+- [ORT Web JSEP to WebGPU EP migration](../onnxruntime_web_jsep_to_webgpu_ep_migration.md), with the user-facing
+  [JSEP deprecation notice](../../JSEP_Deprecation.md), replaces the deprecated JSEP TypeScript compute path with the
+  native WebGPU EP.
+- [ORT Web WebGL backend removal](../onnxruntime_web_remove_webgl_backend.md) retires the WebGL backend.
+
+Neither effort gates this extraction, and this extraction does not gate them. `onnxruntime-web` includes the WebGPU
+EP in some form regardless of when JSEP is removed, and both implementations register under the same `webgpu` backend
+key, so changing which one a bundle ships requires no consumer source change.
+
+The efforts interact in one place: while both implementations coexist, the browser CI lanes are
+implementation-specific even though the tests are not, so a passing default-bundle lane says nothing about the
+provider being extracted. This is handled in
+[Test ownership and operator conformance](test_ownership_and_conformance/test_ownership_and_conformance_workstream.md).
 
 ## Workstream dependencies
 
@@ -58,9 +92,9 @@ graph LR
 
 Static plugin registration is a prerequisite for isolation, not merely an enabler. The `provider-isolation` workstream
 moves provider sources into the staging root rather than copying them, so once isolation completes there is exactly
-one WebGPU implementation and it is adapter-free. The non-plugin static build that `onnxruntime-web` and the
-`onnxruntime-webgpu` package ship from today must already be served through static plugin registration before the
-adapter can be removed. Relocating the sources is not itself blocked; removing the adapter is.
+one WebGPU implementation and it is adapter-free. The non-plugin static build that `onnxruntime-web` ships from today
+must already be served through static plugin registration before the adapter can be removed. Relocating the sources
+is not itself blocked; removing the adapter is.
 
 The remaining convergence points are not on the critical path:
 
@@ -71,22 +105,24 @@ The remaining convergence points are not on the critical path:
 - The Node workstream consumes generic plugin loading from ORT and native WebGPU artifacts from the external provider.
 - The final repository copy depends on `plugin-ep-webgpu/` being independently buildable.
 
-## Extraction launch matrix
+## Consumer dispositions
 
-The extraction launch matrix records existing consumers that require an explicit disposition before built-in code is
-removed. Platform and architecture details remain to be inventoried in the individual workstreams.
+Every consumer that receives WebGPU today needs a recorded disposition before the built-in implementation is removed
+from ORT. Platform and architecture details remain to be inventoried in the individual workstreams.
 
-| Consumer or package | Launch disposition | Extraction requirement |
+| Consumer or package | Disposition | Extraction requirement |
 | --- | --- | --- |
 | `onnxruntime-web` | Consume a pinned external WebGPU source revision through static plugin registration | Required |
 | Python WebGPU plugin package | Move the existing optional plugin package and release pipeline | Required |
 | WebGPU NuGet plugin package | Move the existing optional plugin package and release pipeline | Required |
 | Node WebGPU support | Provide a tested replacement for the WebGPU implementation currently bundled in `onnxruntime-node`; final package naming is open | Required before bundled support is removed |
-| Deprecated native packages with built-in WebGPU | Retire according to an explicit compatibility plan; do not make core packages depend on or bundle the plugin | Required disposition |
-| New native hosts without current WebGPU support | Add later unless explicitly included in the launch matrix | Not an extraction prerequisite |
+| `onnxruntime-webgpu` on PyPI | Publication has already stopped; do not resurrect it or convert it into a plugin-dependent package | Confirm whether any other retired package needs the same treatment |
 
-The matrix should be updated as the current package and platform inventory is completed. Any removal from the launch
-scope requires an explicit compatibility decision rather than silently dropping support.
+Hosts that do not ship WebGPU support today are outside this table. Adding one is a separate decision and is not an
+extraction prerequisite.
+
+The table should be updated as the current package and platform inventory is completed. Dropping a consumer requires
+an explicit compatibility decision rather than silently removing support.
 
 ## Integrated delivery stages
 
@@ -94,8 +130,9 @@ scope requires an explicit compatibility decision rather than silently dropping 
 
 - Inventory private dependencies, build inputs, packages, consumers, platforms, and tests.
 - Record every current test's owner and intended destination.
-- Establish correctness, package installation, WebAssembly size, and startup baselines.
-- Confirm the launch matrix and platform coverage.
+- Establish baselines for correctness, package installation, WebAssembly size, and inference latency. The later size
+  and performance gates are measured against these baselines.
+- Confirm the consumer dispositions and platform coverage.
 
 ### Stage 2: Execute workstreams in parallel
 
@@ -130,8 +167,8 @@ The source move is ready when:
 - Publish versioned native plugin artifacts and immutable source artifacts for static consumers.
 - Move Python and NuGet plugin releases to the WebGPU repository.
 - Pin the WebGPU revision used by `onnxruntime-web`.
-- Execute the approved Node package transition.
-- Retire deprecated built-in packages and remove obsolete implementation and packaging code from ORT.
+- Execute the approved Node package transition, including any package retirement it implies.
+- Remove obsolete WebGPU implementation and packaging code from ORT.
 
 ## Success criteria
 
@@ -154,4 +191,4 @@ The source move is ready when:
 - What compatibility window should the WebGPU EP promise across ORT releases?
 - Should the Node transition keep the `onnxruntime-node` name or introduce a core-only package such as
   `onnxruntime-node-core`?
-- How should coordinated ORT API and WebGPU provider changes be tested before either repository merges?
+- May the WebGPU build-against ORT version reference a pre-release, to shorten the wait for a newly added EP API?

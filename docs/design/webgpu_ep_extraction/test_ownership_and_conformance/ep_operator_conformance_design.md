@@ -60,8 +60,8 @@ The design separates case authorship, case distribution, and execution:
 5. **Provider profile** declares the EP's expected support surface, options, exclusions, and narrow comparison
    overrides.
 
-The portable contract is the case format and execution/result semantics. A particular C++ runner implementation is
-not the contract.
+The portable contract is the case format and execution/result semantics. A particular runner implementation is not
+the contract, and the vehicle for the runner is still open — see Open questions.
 
 ## Relationship to `onnxruntime_provider_test`
 
@@ -331,7 +331,7 @@ The report should make newly unsupported or newly excluded cases easy to detect 
 - Publish native runners and platform-neutral case archives with ORT releases.
 - Add a nightly kit for ORT `main`.
 - Add a static-runner SDK or CMake package.
-- Integrate the released kit into an external plugin EP repository.
+- Integrate the conformance kit into an external plugin EP repository.
 
 ### Phase 4: Expand coverage and hosts
 
@@ -345,12 +345,19 @@ The report should make newly unsupported or newly excluded cases easy to detect 
 - One case definition runs against CPU and a dynamically loaded plugin EP.
 - The same case detects and fails unexpected CPU fallback.
 - Dynamic and static forms of one plugin produce equivalent results.
-- An external EP repository can run a released kit without an ORT source checkout.
+- An external EP repository can run a conformance kit without an ORT source checkout.
 - Results distinguish failures, unsupported cases, exclusions, and infrastructure failures.
 - Existing provider coverage can be mapped to stable conformance case IDs without an all-at-once migration.
 
 ## Open questions
 
+- What should the runner be built on? Candidates are a new public-API-only C++ runner as sketched here,
+  `onnx_test_runner` extended with plugin EP registration, or a Python suite over the existing plugin registration
+  APIs. `onnx_test_runner` already ships, consumes ONNX backend test data, and supports disabling CPU fallback, but
+  links private ORT libraries. A Python suite has no build barrier for external consumers but covers native dynamic
+  loading only.
+- Is a native static-linkage runner needed at all? The static-linkage consumer is `onnxruntime-web`, which requires a
+  browser runner regardless, so a native static host may be a hypothetical consumer.
 - Should canonical simple cases use JSON, protobuf, Python source, or another representation?
 - Which ONNX backend cases can be consumed directly without duplication?
 - What public mechanism best proves target-EP assignment when partial assignment is allowed?
