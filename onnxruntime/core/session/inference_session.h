@@ -120,22 +120,24 @@ struct ModelMetadata {
  *  process the output here...
  */
 
+// Metadata about a model input or output def, used to validate the feeds/fetches passed to Run().
+struct InputOutputDefMetaData {
+  InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
+      : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
+  }
+
+  InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0)
+      : node_arg(node_arg0), ml_data_type(ml_data_type0) {
+  }
+
+  gsl::not_null<const NodeArg*> node_arg;
+  MLDataType ml_data_type;
+  std::optional<TensorShape> tensor_shape;  // not applicable if the input is non-tensor type
+};
+
+using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+
 class InferenceSession {
-  struct InputOutputDefMetaData {
-    InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
-        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
-    }
-
-    InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0)
-        : node_arg(node_arg0), ml_data_type(ml_data_type0) {
-    }
-
-    gsl::not_null<const NodeArg*> node_arg;
-    MLDataType ml_data_type;
-    std::optional<TensorShape> tensor_shape;  // not applicable if the input is non-tensor type
-  };
-
-  using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
   static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
@@ -850,20 +852,6 @@ class InferenceSession {
   void InitLogger(logging::LoggingManager* logging_manager);
 
   static void TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger);
-
-  [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                                           const TensorShape& expected_shape, const char* input_output_moniker) const;
-
-  [[nodiscard]] common::Status ValidateInputs(gsl::span<const std::string> feed_names,
-                                              gsl::span<const OrtValue> feeds) const;
-
-  [[nodiscard]] common::Status ValidateOutputs(gsl::span<const std::string> output_names,
-                                               const std::vector<OrtValue>* p_fetches) const;
-
-  [[nodiscard]] common::Status ValidateInputsOutputs(gsl::span<const std::string> feed_fetches_names,
-                                                     gsl::span<const OrtValue> feeds_fetches,
-                                                     const InputOutputDefMetaMap& input_output_meta_map,
-                                                     ArgType arg_type) const;
 
   [[nodiscard]] common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
