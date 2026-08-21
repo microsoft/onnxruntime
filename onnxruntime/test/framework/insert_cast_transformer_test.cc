@@ -461,6 +461,66 @@ TEST(TransformerTest, Fp16NodeWithCpuKernelAtGraphBoundaryNotForced) {
   EXPECT_EQ(ops.find("Cast"), ops.end());
 }
 
+// Regression test for a CPU-assigned fp16 node whose only fp16 value is an output, with no fp16
+// (or any) input at all. RandomNormal(dtype=float16) has no CPU kernel for float16 (only float and
+// double), so IsFp16NodeOnCpuWithoutKernel forces it to fp32, but NeedInsertCast only ever fires on
+// fp16 *inputs* and this node has none. ApplyImpl must still assign it the CPU EP, rewrite its
+// `dtype` attribute to FLOAT, and cast its output back to float16 for the graph output.
+TEST(TransformerTest, Fp16OutputOnlyNodeWithNoCpuKernelForcedToFp32) {
+  // Pin the ai.onnx opset to one where RandomNormal's schema (and therefore Node::SinceVersion())
+  // resolves to version 1, matching the only CPU kernel registered for it. RandomNormal's schema was
+  // later revised for a newer opset, and the CPU kernel for that revision isn't the point of this test.
+  auto model = std::make_shared<onnxruntime::Model>(
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 12}},
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg o1_def("O1", &tensor_float_16);
+
+  NodeAttributes attrs = {
+      {"dtype", utils::MakeAttribute("dtype", static_cast<int64_t>(TensorProto_DataType_FLOAT16))},
+      {"shape", utils::MakeAttribute("shape", std::vector<int64_t>{1})}};
+
+  auto& random_normal = graph.AddNode("random_normal", "RandomNormal", "fp16 output with no CPU fp16 kernel",
+                                      ArgMap{}, ArgMap{&o1_def}, &attrs);
+  // Simulate the node somehow ending up assigned to the CPU EP without a kernel check.
+  random_normal.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({random_normal.OutputDefs()[0]});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_TRUE(modified) << "The kernel-less output-only fp16 node should have been forced to fp32";
+  status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
+    return node_arg.Type() != nullptr &&
+           DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
+  };
+
+  EXPECT_TRUE(is_type(*random_normal.OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_EQ(random_normal.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
+
+  const auto& post_attrs = random_normal.GetAttributes();
+  auto dtype_attr = post_attrs.find("dtype");
+  ASSERT_NE(dtype_attr, post_attrs.end());
+  EXPECT_EQ(dtype_attr->second.i(), static_cast<int64_t>(TensorProto_DataType_FLOAT));
+
+  // Cast the output back to fp16 for the graph output.
+  auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops["Cast"], 1);
+}
+
 // Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)
 // because the intermediate int32 truncation changes semantics (e.g. -0.1 -> 0 -> false vs -0.1 -> true).
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28089
