@@ -16,6 +16,17 @@ on:
         required: false
         type: boolean
         default: false
+      run_mlas_tests:
+        required: false
+        type: boolean
+        default: false
+        description: >-
+          Explicitly execute onnxruntime_mlas_test on native (non-cross-compiled) arm64 runs.
+          onnxruntime_mlas_test is a standalone gtest binary that is never registered with
+          CTest's add_test(), so `build.py --test` (which drives ctest on this workflow) never
+          runs it; see the "Run onnxruntime_mlas_test directly" step below. Opt-in per caller
+          job to avoid running the same MLAS coverage redundantly across every macOS workflow
+          (coreml/xnnpack/webgpu) that reuses this file.
       python_version:
         required: false
         type: string
@@ -138,3 +149,65 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
+
+      - name: Run onnxruntime_mlas_test directly
+        # `build.py --test` above drives ctest, but onnxruntime_mlas_test is a standalone gtest
+        # binary that is never wired up with CTest's add_test() (in
+        # cmake/onnxruntime_unittests.cmake), so ctest silently runs zero MLAS tests on every
+        # platform, including this one. Invoke the binary directly so this native arm64 lane
+        # gets real MLAS coverage. Native-only (skipped when cross-compiling, same as the ctest
+        # step above) and opt-in per caller job (see `run_mlas_tests` input) to avoid running
+        # the same MLAS suite redundantly across every macOS workflow that reuses this file.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.run_mlas_tests }}
+        shell: bash
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          set -e -x
+          test_bin="./onnxruntime_mlas_test"
+          if [ ! -x "${test_bin}" ]; then
+            echo "::error::${test_bin} was not found or is not executable. Expected it to be built by build.py --build alongside the other unit tests (onnxruntime_BUILD_UNIT_TESTS defaults ON)." >&2
+            exit 1
+          fi
+          # Run the full default (short) suite, matching what build.py's own non-ctest fallback
+          # path (`run_onnxruntime_tests` in tools/ci_build/build.py) already runs on platforms
+          # without a resolved ctest binary.
+          #
+          # One narrow exclusion, Debug-only: HalfGemmPackB.PackBExitsEarlyForInvalidArguments
+          # deliberately calls MlasHalfGemmPackB() with invalid arguments (null buffers / ldb < N)
+          # to verify it exits early without touching PackedB. In a Debug build this hits an
+          # `assert()` in onnxruntime/core/mlas/lib/halfgemm.cpp (MlasHalfGemmPackB) that
+          # contradicts the very early-return null/ldb check on the next line and the test's own
+          # intent, aborting the whole process (SIGABRT) before any later test suites can run.
+          # Release builds compile asserts out (default -DNDEBUG), so the test passes cleanly
+          # there and is only excluded in Debug to preserve that coverage. This is a pre-existing
+          # product bug -- both the assert and the test were added together in the same upstream
+          # commit, 01f0dba66cc5da8ad20ee81b1795b3b110ad913a ("[MLAS][KleidiAI] Add MLAS Arm64
+          # half GEMM and convolution support", #28786) -- unrelated to this workflow change, and
+          # only surfaced now because onnxruntime_mlas_test has never actually executed in CI --
+          # exactly the gap this PR fixes. Fixing the assert itself is out of scope for a CI-only
+          # change and belongs in a separate MLAS PR, so exclude only this one test by exact name
+          # (not a suite-wide or wildcard exclusion), and only for the build config that actually
+          # crashes, to keep the rest of the suite's coverage intact.
+          test_args=()
+          if [ "${{ matrix.build_config }}" = "Debug" ]; then
+            test_args+=("--gtest_filter=-HalfGemmPackB.PackBExitsEarlyForInvalidArguments")
+          fi
+          output_xml="onnxruntime_mlas_test.${{ matrix.build_config }}.results.xml"
+          rm -f "${output_xml}"
+          "${test_bin}" "${test_args[@]}" --gtest_output="xml:${output_xml}"
+
+          # Belt-and-suspenders: gtest's own RUN_ALL_TESTS() returns 0 even when zero tests ran
+          # (e.g. every LongShortExecuteManager registrar in test_main.cpp declines because a
+          # runtime CPU-feature check failed), so a passing exit code alone is not proof that any
+          # MLAS coverage actually executed. Read the count gtest itself reports in the XML root
+          # element (`<testsuites tests="N" ...>`) and fail loudly if it is missing or zero,
+          # instead of letting that look identical to a real, non-vacuous pass.
+          if [ ! -f "${output_xml}" ]; then
+            echo "::error::${test_bin} did not produce ${output_xml}; cannot verify any MLAS tests actually ran." >&2
+            exit 1
+          fi
+          if ! grep -Eq '<testsuites[^>]*[[:space:]]tests="[1-9][0-9]*"' "${output_xml}"; then
+            echo "::error::${output_xml} reports zero MLAS tests were executed. A gtest binary that registers/matches zero tests still exits 0, so this is treated as a hard failure instead of a silent pass." >&2
+            cat "${output_xml}" >&2
+            exit 1
+          fi
