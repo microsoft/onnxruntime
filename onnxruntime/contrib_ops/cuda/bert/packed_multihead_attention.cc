@@ -163,10 +163,10 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
   parameters.sequence_length = static_cast<int>(sequence_length);
   parameters.input_hidden_size = -1;  // not applicable
   parameters.hidden_size = static_cast<int>(hidden_size);
-  parameters.v_hidden_size = static_cast<int>(v_hidden_size);
   parameters.head_size = static_cast<int>(hidden_size) / num_heads;
   parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
   parameters.num_heads = num_heads;
+  parameters.kv_num_heads = num_heads;
   parameters.scale = this->GetScale();
   parameters.token_count = static_cast<int32_t>(token_count);
 
@@ -196,7 +196,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                   attention_bias,
                                   parameters));
 
-  TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
+  TensorShapeVector output_shape{parameters.token_count, parameters.GetOutputHiddenSize()};
   Tensor* output = context->Output(0, output_shape);
 
   auto& device_prop = this->GetDeviceProp();

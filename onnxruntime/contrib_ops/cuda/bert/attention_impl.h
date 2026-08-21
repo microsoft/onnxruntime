@@ -67,7 +67,8 @@ size_t GetAttentionWorkspaceSize(
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention,
     bool use_cudnn_flash_attention,
-    bool no_qkv_workspace);
+    bool no_qkv_workspace,
+    size_t kv_num_heads = 0);  // 0 means same as num_heads
 
 // Return true if it does not need qkv workspace, false otherwise.
 template <typename T>

@@ -49,7 +49,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   bool use_fused_runner = !disable_fused_runner_ &&
                           !has_attention_bias &&
-                          parameters.hidden_size == parameters.v_hidden_size;
+                          parameters.hidden_size == parameters.GetOutputHiddenSize();
 
   if (!use_fused_runner) {
     return fused_runner;
@@ -218,10 +218,10 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.sequence_length = static_cast<int>(sequence_length);
   parameters.input_hidden_size = static_cast<int>(input_hidden_size);
   parameters.hidden_size = static_cast<int>(q_hidden_size);
-  parameters.v_hidden_size = static_cast<int>(v_hidden_size);
   parameters.head_size = static_cast<int>(q_hidden_size) / num_heads;
   parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
   parameters.num_heads = num_heads;
+  parameters.kv_num_heads = num_heads;
   parameters.scale = this->GetScale();
   parameters.token_count = static_cast<int32_t>(token_count);
 
@@ -247,7 +247,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                   attention_bias,
                                   parameters));
 
-  TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
+  TensorShapeVector output_shape{parameters.token_count, parameters.GetOutputHiddenSize()};
   Tensor* output = context->Output(0, output_shape);
 
   auto& device_prop = this->GetDeviceProp();
@@ -283,7 +283,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   IAllocatorUniquePtr<T> gemm_buffer;
   int m = parameters.token_count;
-  int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
+  int n = parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize() + parameters.GetValueHiddenSize();
   int k = parameters.input_hidden_size;
   gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, this->GetComputeStream(context));
 
