@@ -3,6 +3,7 @@
 
 #include "core/framework/allocator.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "gtest/gtest.h"
@@ -369,6 +370,95 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
 
   auto ops = CountOpsInGraph(graph);
   EXPECT_EQ(ops["Cast"], 4);
+}
+
+// Regression test for a Level2+ fusion transformer assigning a fused node to the CPU EP without
+// checking that a kernel actually exists for it. com.microsoft.BiasGelu only has a CPU kernel for
+// float, not float16, but fusing an fp16 Add and an fp16 Gelu (both of which do have CPU kernels)
+// can still produce a CPU-assigned fp16 BiasGelu node. The node here has no input edges (it only
+// consumes graph inputs) and produces a graph output, so the pre-fix "isolated fp16 node" check
+// would have skipped it entirely, leaving it fp16 and causing kernel lookup to fail when a session
+// is initialized with this graph. IsFp16NodeOnCpuWithoutKernel must force it to fp32 regardless.
+TEST(TransformerTest, Fp16FusedNodeWithNoCpuKernelForcedToFp32) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg a_def("A", &tensor_float_16),
+      b_def("B", &tensor_float_16),
+      c_def("C", &tensor_float_16);
+
+  auto& bias_gelu = graph.AddNode("bias_gelu", "BiasGelu", "fp16 fusion output with no CPU fp16 kernel",
+                                  ArgMap{&a_def, &b_def}, ArgMap{&c_def}, nullptr, kMSDomain);
+  // Simulate the fusion transformer assigning the fused node the CPU EP without checking for a kernel.
+  bias_gelu.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({bias_gelu.OutputDefs()[0]});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_TRUE(modified) << "The kernel-less fp16 node should have been wrapped with fp32 casts";
+  status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
+    return node_arg.Type() != nullptr &&
+           DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
+  };
+
+  EXPECT_TRUE(is_type(*bias_gelu.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*bias_gelu.InputDefs()[1], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*bias_gelu.OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_EQ(bias_gelu.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
+
+  // Cast A and B to fp32 on the way in, and cast the output back to fp16 for the graph output.
+  auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops["Cast"], 3);
+}
+
+// Contrast case for Fp16FusedNodeWithNoCpuKernelForcedToFp32: Round has a genuine CPU fp16 kernel,
+// so even with the same "no input edges, produces a graph output" shape it must be left running in
+// fp16. Forcing fp32 is only correct when there is no fp16 kernel to begin with.
+TEST(TransformerTest, Fp16NodeWithCpuKernelAtGraphBoundaryNotForced) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg i1_def("I1", &tensor_float_16),
+      o1_def("O1", &tensor_float_16);
+
+  auto& round = graph.AddNode("round", "Round", "fp16 with real CPU kernel", {&i1_def}, {&o1_def});
+  round.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({round.OutputDefs()[0]});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_FALSE(modified) << "A node with a real fp16 kernel should not be forced to fp32";
+  status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  ASSERT_TRUE(round.InputDefs()[0]->Type() != nullptr);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(*round.InputDefs()[0]->TypeAsProto()),
+            DataTypeImpl::GetTensorType<MLFloat16>());
+  EXPECT_EQ(round.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
+
+  auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops.find("Cast"), ops.end());
 }
 
 // Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)
