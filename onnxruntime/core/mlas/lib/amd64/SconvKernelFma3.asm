@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE SconvKernelAvxCommon.inc
-        .list
 
 ;
 ; Share the post process functions with the AVX implementation.
@@ -29,7 +27,7 @@ INCLUDE SconvKernelAvxCommon.inc
         IRP     FilterCount, <1, 2, 3, 4>
         IRP     OutputCount, <1, 2, 3>
 
-        EXTERN  MlasConvPostProcessFloatFma3Filter&FilterCount&Output&OutputCount:NEAR
+        EXTERN  MlasConvPostProcessFloatFma3Filter&FilterCount&Output&OutputCount:PROC
 
         ENDM
         ENDM
@@ -73,9 +71,9 @@ ComputeBlock MACRO KernelType, FilterCount, OutputCount, VectorOffset, Broadcast
 
 IFIDNI <KernelType>, <Depthwise>
         vmovups ymm12,YMMWORD PTR [rdx]
-        EmitIfCountGE OutputCount, 1, <vfmadd231ps ymm0,ymm12,DWORD PTR [rcx]>
-        EmitIfCountGE OutputCount, 2, <vfmadd231ps ymm4,ymm12,DWORD PTR [rcx+r9]>
-        EmitIfCountGE OutputCount, 3, <vfmadd231ps ymm8,ymm12,DWORD PTR [rcx+r9*2]>
+        EmitIfCountGE OutputCount, 1, <vfmadd231ps ymm0,ymm12,YMMWORD PTR [rcx]>
+        EmitIfCountGE OutputCount, 2, <vfmadd231ps ymm4,ymm12,YMMWORD PTR [rcx+r9]>
+        EmitIfCountGE OutputCount, 3, <vfmadd231ps ymm8,ymm12,YMMWORD PTR [rcx+r9*2]>
 ELSE
         EmitIfCountGE OutputCount, 1, <vbroadcastss ymm13,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCountGE OutputCount, 2, <vbroadcastss ymm14,DWORD PTR [rcx+r9+BroadcastOffset]>
@@ -140,13 +138,7 @@ ENDIF
 ;
 
 ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
-
-        LOCAL   ProcessOutputCountLeftPad
-        LOCAL   ProcessOutputCount
-        LOCAL   ProcessNextOutputCountBy3
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessRemainingOutputCount1
-        LOCAL   ProcessOutputCountRightPadAndRemaining
+        LOCAL   ProcessOutputCountLeftPad, ProcessOutputCount, ProcessNextOutputCountBy3, ProcessRemainingOutputCount, ProcessRemainingOutputCount1, ProcessOutputCountRightPadAndRemaining
 
 ;
 ; Process the output blocks that include left padding.
@@ -189,7 +181,7 @@ ProcessRemainingOutputCount:
 
 ProcessOutputCountRightPadAndRemaining:
         add     r10,KernelFrame.OutputCountRightPad[rsp]
-        jz      ExitKernel
+        jz      ExitKernel&KernelType&
         call    MlasConv&KernelType&FloatSingleFma3Filter&FilterCount
 
         ENDM
@@ -222,10 +214,7 @@ ProcessOutputCountRightPadAndRemaining:
 ;
 
 ProcessPointwiseFilterCountN MACRO FilterCount
-
-        LOCAL   ProcessNextOutputCountBy3
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessRemainingOutputCount1
+        LOCAL   ProcessNextOutputCountBy3, ProcessRemainingOutputCount, ProcessRemainingOutputCount1
 
         sub     r10,3
         jb      ProcessRemainingOutputCount
@@ -239,11 +228,11 @@ ProcessNextOutputCountBy3:
 
 ProcessRemainingOutputCount:
         add     r10,3                       ; correct for over-subtract above
-        jz      ExitKernel
+        jz      ExitKernelPointwise
         cmp     r10,2
         jb      ProcessRemainingOutputCount1
         ProcessPointwiseOutputCountN Fma3, 8, FilterCount, 2
-        jmp     ExitKernel
+        jmp     ExitKernelPointwise
 
 ProcessRemainingOutputCount1:
         ProcessPointwiseOutputCountN Fma3, 8, FilterCount, 1

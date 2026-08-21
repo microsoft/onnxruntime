@@ -41,7 +41,6 @@
 ;
 
 AccumulateAndStoreBlock MACRO RowCount, VectorCount
-
         LOCAL   SkipAccumulateOutput
 
         test    r15b,r15b                   ; ZeroMode?

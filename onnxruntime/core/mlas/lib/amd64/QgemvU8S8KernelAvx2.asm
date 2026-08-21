@@ -17,12 +17,10 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMaskMoveAvx:NEAR
-        EXTERN  MlasTranspose4x4BytesAvx:NEAR
+        EXTERN  MlasMaskMoveAvx:PROC
+        EXTERN  MlasTranspose4x4BytesAvx:PROC
 
 ;
 ; Stack frame layout for the U8S8 kernel.
@@ -30,7 +28,7 @@ INCLUDE mlasi.inc
 
 GemvU8S8KernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
@@ -179,7 +177,7 @@ ProcessRemainingRows:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,GemvU8S8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm6,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm6[rsp]
         add     rsp,(GemvU8S8KernelFrame.SavedRdi)
 
         BEGIN_EPILOGUE

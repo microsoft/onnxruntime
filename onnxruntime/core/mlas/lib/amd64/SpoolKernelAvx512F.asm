@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE SpoolKernelAvxCommon.inc
-        .list
 
 ;
 ; Macro Description:
@@ -44,7 +42,7 @@ IFIDNI <PoolingType>, <AverageExcludePad>
         imul    rax,SpoolKernelFrame.KernelWidth[rsp]
         vcvtsi2ss xmm5,xmm5,rax
 ELSE
-        vcvtsi2ss xmm5,xmm5,SpoolKernelFrame.ActualKernelSize[rsp]
+        vcvtsi2ss xmm5,xmm5,QWORD PTR SpoolKernelFrame.ActualKernelSize[rsp]
 ENDIF
         vbroadcastss zmm5,xmm5
 ENDIF

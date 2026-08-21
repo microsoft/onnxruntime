@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE QgemvU8S8KernelAvx512Common.inc
-        .list
 
 ;
 ; Generate the GEMV kernel.

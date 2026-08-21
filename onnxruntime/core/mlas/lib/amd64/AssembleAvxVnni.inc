@@ -72,7 +72,6 @@ XmmIndex_xmm15  EQU     15
 ;
 
 VnniYmmYmmYmm MACRO Opcode, DestReg, Src1Reg, Src2Reg
-
         LOCAL   Payload0, Payload1, ModRMByte
 
         Payload0 = 002h                     ; "0F 38" prefix
@@ -134,7 +133,6 @@ VpdpwssdsYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 
 VnniXmmXmmXmm MACRO Opcode, DestReg, Src1Reg, Src2Reg
-
         LOCAL   Payload0, Payload1, ModRMByte
 
         Payload0 = 002h                     ; "0F 38" prefix
@@ -198,7 +196,6 @@ VpdpwssdsXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 
 Avx2VnniYmmYmmYmm MACRO Opcode, Prefix, DestReg, Src1Reg, Src2Reg
-
         LOCAL   Payload0, Payload1, ModRMByte
 
         Payload0 = 002h                     ; "0F 38" prefix
@@ -274,7 +271,6 @@ VpdpbuudsYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 
 Avx2VnniXmmXmmXmm MACRO Opcode, Prefix, DestReg, Src1Reg, Src2Reg
-
         LOCAL   Payload0, Payload1, ModRMByte
 
         Payload0 = 002h                     ; "0F 38" prefix

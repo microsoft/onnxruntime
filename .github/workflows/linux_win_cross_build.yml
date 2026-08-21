@@ -1,0 +1,192 @@
+name: ONNX Runtime Windows-x64 Cross-Build (Linux)
+
+# Cross-compiles the full onnxruntime.dll for Windows x64 from a Linux runner,
+# using clang-cl + lld-link for C/C++, llvm-ml for the MLAS amd64 MASM assembly
+# kernels, llvm-rc for the version resource, and a Windows SDK/CRT staged by
+# `xwin`.
+#
+# Why: downstream consumers such as the Edge browser build their Windows releases
+# on Linux machines (faster/cheaper than native Windows builders). Historically
+# ONNX Runtime could not cross-build for Windows because the MLAS x64 assembly
+# assembled only under ml64.exe (a Windows-only PE tool). The amd64/*.asm sources
+# are now dual-assembler compatible (ml64 + llvm-ml), and the remaining C/C++
+# portability gaps for clang-cl have been addressed, so the whole DLL links on
+# Linux. This job is the authoritative guard that the property keeps holding.
+#
+# The complementary native path (cl.exe + ml64.exe, warnings-as-errors on) is
+# exercised by the regular Windows build/test pipelines, so both toolchains
+# remain covered.
+#
+# clang-cl surfaces many warnings MSVC never emits; treating them as errors would
+# make the cross-build unbuildable for no portability benefit, so this job sets
+# -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF (the native pipelines keep -WX on).
+#
+# The MSVC runtime library is pinned to the dynamic CRT (MultiThreadedDLL) for
+# every target, including the FetchContent'd protobuf, so the shared DLL links
+# without a /failifmismatch RuntimeLibrary conflict (protobuf otherwise defaults
+# to the static CRT under MSVC-like toolchains).
+#
+# Tests are intentionally NOT run here: the artifacts are Windows-x64 binaries,
+# which cannot execute natively on a Linux runner (Wine is unreliable for the
+# AVX-512/AMX kernels MLAS ships). Runtime correctness is covered by the existing
+# native Windows test pipelines.
+
+on:
+  push:
+    branches: [main, 'rel-*']
+    paths:
+      - 'onnxruntime/core/**'
+      - 'include/onnxruntime/**'
+      - 'cmake/**'
+      - '.github/workflows/linux_win_cross_build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'onnxruntime/core/**'
+      - 'include/onnxruntime/**'
+      - 'cmake/**'
+      - '.github/workflows/linux_win_cross_build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The MSVC CRT headers staged by xwin enforce a minimum Clang version via a
+  # static_assert (STL1000); keep this at or above what that CRT requires.
+  LLVM_VERSION: '19'
+  XWIN_VERSION: '0.9.0'
+  # SHA256 of xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz. GitHub release
+  # assets are mutable, so pin the digest and verify it rather than trusting the
+  # release (or its co-located .sha256 sidecar, which an attacker could swap too).
+  XWIN_SHA256: '31e1033f30608ba6b821d17f1461042bd54c23424813c9b4e9ae15b6d32fa4cd'
+  # SHA256 of apt.llvm.org/llvm.sh, which is fetched and run as root. The script
+  # is maintained upstream (opencollab/llvm-jenkins.debian.net) and changes when
+  # new LLVM releases are added, so this digest must be re-verified and updated
+  # when it legitimately changes; a mismatch fails the job rather than silently
+  # executing tampered/rotated content as root.
+  LLVM_SH_SHA256: '9474ecd78b52aba6e923976b1e9773f5613027cc7e237b9956986cb536e02a36'
+
+jobs:
+  win-cross-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Install build tools (cmake, ninja, LLVM/clang cross toolchain)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build curl ca-certificates
+
+          # LLVM (clang-cl, lld-link, llvm-ml, llvm-lib, llvm-mt, llvm-rc) from apt.llvm.org.
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c -
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y --no-install-recommends "llvm-${LLVM_VERSION}"
+
+          # Expose the version-suffixed tools under stable, unsuffixed names.
+          BIN="${HOME}/llvmbin"
+          mkdir -p "${BIN}"
+          link() {  # link <unsuffixed> <suffixed-candidate...>
+            local dest="$1"; shift
+            local src
+            for src in "$@"; do
+              if command -v "${src}" >/dev/null 2>&1; then
+                ln -sf "$(command -v "${src}")" "${BIN}/${dest}"
+                return 0
+              fi
+            done
+            echo "::error::required LLVM tool not found (tried: $*)"
+            return 1
+          }
+          link clang-cl "clang-cl-${LLVM_VERSION}"
+          link lld-link "lld-link-${LLVM_VERSION}"
+          link llvm-ml  "llvm-ml-${LLVM_VERSION}"
+          link llvm-mt  "llvm-mt-${LLVM_VERSION}"
+          link llvm-rc  "llvm-rc-${LLVM_VERSION}"
+          # llvm-lib is llvm-ar invoked under the lib.exe-compatible name.
+          link llvm-lib "llvm-lib-${LLVM_VERSION}" "llvm-ar-${LLVM_VERSION}"
+          # llvm-ar (Unix archive tool) is used to inspect the built .lib in the
+          # verify step; it lists members that the lib.exe-mode driver does not.
+          link llvm-ar  "llvm-ar-${LLVM_VERSION}"
+
+          echo "ORT_LLVM_BIN=${BIN}" >> "${GITHUB_ENV}"
+          echo "${BIN}" >> "${GITHUB_PATH}"
+          echo "== resolved LLVM tools =="
+          ls -l "${BIN}"
+
+      - name: Stage Windows SDK / CRT with xwin
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL "${url}" -o /tmp/xwin.tar.gz
+          echo "${XWIN_SHA256}  /tmp/xwin.tar.gz" | sha256sum -c -
+          mkdir -p /tmp/xwin-dist
+          tar -xzf /tmp/xwin.tar.gz -C /tmp/xwin-dist --strip-components=1
+          XWIN_BIN="$(find /tmp/xwin-dist -name xwin -type f | head -1)"
+          chmod +x "${XWIN_BIN}"
+
+          XWIN_ROOT="${HOME}/xwinroot"
+          "${XWIN_BIN}" --accept-license --arch x86_64 splat --output "${XWIN_ROOT}"
+          echo "ORT_WIN_XWIN_ROOT=${XWIN_ROOT}" >> "${GITHUB_ENV}"
+          echo "== xwin layout =="
+          ls "${XWIN_ROOT}" && ls "${XWIN_ROOT}/crt" && ls "${XWIN_ROOT}/sdk"
+
+      - name: Configure (Windows x64 cross toolchain)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S cmake -B build_win_cross -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/cmake/win_x64_crosscompile_toolchain.cmake" \
+            -DORT_WIN_XWIN_ROOT="${ORT_WIN_XWIN_ROOT}" \
+            -DORT_LLVM_BIN="${ORT_LLVM_BIN}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL \
+            -Dprotobuf_MSVC_STATIC_RUNTIME=OFF \
+            -Donnxruntime_BUILD_UNIT_TESTS=OFF \
+            -Donnxruntime_BUILD_SHARED_LIB=ON \
+            -Donnxruntime_ENABLE_PYTHON=OFF \
+            -Donnxruntime_USE_FULL_PROTOBUF=OFF
+
+      - name: Build onnxruntime.dll
+        shell: bash
+        run: cmake --build build_win_cross --target onnxruntime -j"$(nproc)"
+
+      - name: Verify cross-built artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          dll="$(find build_win_cross -name 'onnxruntime.dll' | head -1)"
+          if [ -z "${dll}" ]; then
+            echo "::error::onnxruntime.dll was not produced"
+            exit 1
+          fi
+          echo "Built: ${dll} ($(stat -c%s "${dll}") bytes)"
+          # A PE32+ (x86-64) DLL starts with the 'MZ' DOS stub.
+          if [ "$(head -c2 "${dll}")" != "MZ" ]; then
+            echo "::error::onnxruntime.dll is not a PE image"
+            exit 1
+          fi
+
+          # The DLL must embed the MLAS amd64 MASM kernels assembled by llvm-ml.
+          mlas_lib="$(find build_win_cross -name 'onnxruntime_mlas.lib' | head -1)"
+          asm_objs="$( { llvm-ar t "${mlas_lib}" 2>/dev/null || true; } | grep -c '\.asm\.obj$' || true)"
+          echo "amd64 .asm objects in onnxruntime_mlas.lib: ${asm_objs}"
+          if [ "${asm_objs}" -lt 1 ]; then
+            echo "::error::no amd64 .asm objects found in onnxruntime_mlas.lib"
+            exit 1
+          fi

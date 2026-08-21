@@ -49,7 +49,7 @@ SpoolKernelFrame ENDS
 SpoolKernelSingleFrame STRUCT
 
         ReturnAddress QWORD ?
-        KernelFrame SpoolKernelFrame <>
+        KernelFrame SpoolKernelFrame {}
 
 SpoolKernelSingleFrame ENDS
 
@@ -136,11 +136,7 @@ SpoolKernelExit MACRO
 ;
 
 ProcessOutputCountN MACRO KernelFrame, PoolingType, OutputCount
-
-        LOCAL   ProcessNextRow
-        LOCAL   ProcessNextColumn
-        LOCAL   SkipOverPadding
-        LOCAL   HandlePostProcessing
+        LOCAL   ProcessNextRow, ProcessNextColumn, SkipOverPadding, HandlePostProcessing
 
         mov     rcx,rdi
         mov     r11,KernelFrame.KernelHeight[rsp]

@@ -144,18 +144,18 @@ IFNB <PrefetchOffset>
         prefetcht0 [rdx+VectorOffset+PrefetchOffset]
 ENDIF
         vmovapf zmm0,ZMMWORD PTR [rdx+VectorOffset]
-        EmitIfCountGE RowCount, 1, <vfmadd231pf zmm5,zmm0,FgemmElementBcst [rcx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 2, <vfmadd231pf zmm7,zmm0,FgemmElementBcst [rcx+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 3, <vfmadd231pf zmm9,zmm0,FgemmElementBcst [rcx+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 4, <vfmadd231pf zmm11,zmm0,FgemmElementBcst [rbx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 5, <vfmadd231pf zmm13,zmm0,FgemmElementBcst [rbx+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 6, <vfmadd231pf zmm15,zmm0,FgemmElementBcst [rbx+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm17,zmm0,FgemmElementBcst [r13+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm19,zmm0,FgemmElementBcst [r13+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm21,zmm0,FgemmElementBcst [r13+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm23,zmm0,FgemmElementBcst [r14+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm25,zmm0,FgemmElementBcst [r14+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm27,zmm0,FgemmElementBcst [r14+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 1, <vfmadd231pf zmm5,zmm0,FgemmElementBcst [rcx+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 2, <vfmadd231pf zmm7,zmm0,FgemmElementBcst [rcx+r10+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 3, <vfmadd231pf zmm9,zmm0,FgemmElementBcst [rcx+r10*2+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 4, <vfmadd231pf zmm11,zmm0,FgemmElementBcst [rbx+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 5, <vfmadd231pf zmm13,zmm0,FgemmElementBcst [rbx+r10+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 6, <vfmadd231pf zmm15,zmm0,FgemmElementBcst [rbx+r10*2+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm17,zmm0,FgemmElementBcst [r13+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm19,zmm0,FgemmElementBcst [r13+r10+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm21,zmm0,FgemmElementBcst [r13+r10*2+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm23,zmm0,FgemmElementBcst [r14+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm25,zmm0,FgemmElementBcst [r14+r10+BroadcastOffset]FgemmElementBcstSuffix>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm27,zmm0,FgemmElementBcst [r14+r10*2+BroadcastOffset]FgemmElementBcstSuffix>
 
         ENDM
 
@@ -240,15 +240,7 @@ ENDIF
 ;
 
 ProcessCountM MACRO RowCount
-
-        LOCAL   ProcessNextColumnLoop2xN
-        LOCAL   MultiplyAlpha2xNBlock
-        LOCAL   Store2xNBlock
-        LOCAL   Output1xNBlock
-        LOCAL   Output1xNBlockWithMask
-        LOCAL   MultiplyAlpha1xNBlockWithMask
-        LOCAL   Store1xNBlockWithMask
-        LOCAL   ProcessRemainingCountN
+        LOCAL   ProcessNextColumnLoop2xN, MultiplyAlpha2xNBlock, Store2xNBlock, Output1xNBlock, Output1xNBlockWithMask, MultiplyAlpha1xNBlockWithMask, Store1xNBlockWithMask, ProcessRemainingCountN
 
         cmp     rbp,FgemmZmmElementCount
         jbe     ProcessRemainingCountN
