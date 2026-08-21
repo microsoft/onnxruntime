@@ -518,6 +518,7 @@ Return Value:
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.

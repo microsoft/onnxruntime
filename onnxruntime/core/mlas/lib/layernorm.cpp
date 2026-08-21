@@ -36,6 +36,26 @@ bool
         return false;
     }
 
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+    //
+    // Skip the AVX2 kernel for very short rows where it cannot win.
+    //
+    // For NormSize < 8 the AVX2 kernel performs zero 256-bit iterations
+    // and falls entirely into its scalar tail, yet still pays vector
+    // register setup and horizontal reduction overhead.
+    //
+    // This threshold is x86-specific. Other platforms (e.g. RISC-V RVV)
+    // use variable-length vectors and handle short rows natively, so they
+    // must not be gated here.
+    //
+    // Keep in sync: test/mlas/unittest/test_layernorm.cpp kKernelDispatchThreshold.
+    //
+    //
+    if (NormSize < 8) {
+        return false;
+    }
+#endif
+
     kernel(Input, Scale, Bias, Output, MeanOut, InvStdDevOut, NormSize, Epsilon, Simplified);
     return true;
 }
