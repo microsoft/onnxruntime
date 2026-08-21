@@ -43,8 +43,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
             echo "run_documentation_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
