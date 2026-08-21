@@ -54,7 +54,48 @@ bool IsDeviceSupported(const ComputeContextBase& context) {
   return false;
 }
 
+// Keep this list synchronized with the activation_kind branches in the WGSL template.
+bool IsActivationSupported(const Activation& activation) {
+  switch (activation.activation_kind_) {
+    case ActivationKind::None:
+    case ActivationKind::Relu:
+    case ActivationKind::Sigmoid:
+    case ActivationKind::Clip:
+    case ActivationKind::HardSigmoid:
+    case ActivationKind::LeakyRelu:
+    case ActivationKind::Tanh:
+    case ActivationKind::QuickGelu:
+    case ActivationKind::HardSwish:
+    case ActivationKind::Elu:
+    case ActivationKind::Gelu:
+    case ActivationKind::GeluTanh:
+    case ActivationKind::Softplus:
+    case ActivationKind::ThresholdedRelu:
+    case ActivationKind::Erf:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
+
+// The template dispatches on the numeric enum values.
+static_assert(static_cast<int>(ActivationKind::None) == 0, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Relu) == 1, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Sigmoid) == 2, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Clip) == 3, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::HardSigmoid) == 4, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::LeakyRelu) == 5, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::HardSwish) == 8, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Elu) == 9, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Gelu) == 10, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::GeluTanh) == 11, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Softplus) == 12, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::ThresholdedRelu) == 13, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Erf) == 14, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -69,7 +110,9 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   ORT_ENFORCE(vec_size_ == 1 || vec_size_ == 2 || vec_size_ == 4, "vec_size must be 1, 2 or 4.");
 
   return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, quick_gelu_unit_alpha_),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_PARAMETER(use_subgroup, use_subgroup_),
@@ -81,6 +124,7 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 bool is_channels_last,
+                                const Activation& activation,
                                 const std::vector<uint32_t>& dilations,
                                 const std::vector<uint32_t>& pads,
                                 const std::vector<uint32_t>& strides,
@@ -125,7 +169,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   // If the status of this condition is uncertain, the feature must be disabled.
   const bool use_subgroup = false;
   const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
-  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup};
+  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup,
+                                        activation.activation_kind_, activation.HasUnitQuickGeluAlpha()};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
@@ -161,14 +206,15 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {dilations},
                                          {pads},
                                          {strides}});
-  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup);
+  AppendActivationUniformsData(activation, im2col_mm_program);
+  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup, activation.ToString());
 
   return context.RunProgram(im2col_mm_program);
 }
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const bool is_fused,
+                                 const Activation& activation,
                                  const TensorShape weight_shape,
                                  const uint32_t group,
                                  const MLDataType data_type) {
@@ -183,9 +229,12 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
   }
 
   // TODO: Support !is_channels_last
-  // TODO: Support fuse
   // TODO: Support group conv
-  if (!is_channels_last || is_fused || group != 1) {
+  if (!is_channels_last || group != 1) {
+    return false;
+  }
+
+  if (!IsActivationSupported(activation)) {
     return false;
   }
 
