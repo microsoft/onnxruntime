@@ -132,8 +132,8 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
   //    does not produce a graph output (node must produce fp16 output for the graph output),
   //    and is assigned to the CPU EP (we have fp32 implementations of all kernels so forcing to fp32 is safe)
   if ((no_cpu_kernel || (node.GetInputEdgesCount() > 0 &&
-      !node.ContainsSubgraph() &&
-      !graph.NodeProducesGraphOutput(node))) &&
+                         !node.ContainsSubgraph() &&
+                         !graph.NodeProducesGraphOutput(node))) &&
       node.GetExecutionProviderType() == kCpuExecutionProvider) {
     //
     // Three tasks here:
@@ -267,20 +267,33 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
 // Collect their indices so ApplyImpl can skip the on_partition_assignment_fn_ callback for them:
 // the callback is only for nodes that are newly receiving a CPU EP fallback from this transformer,
 // not for nodes whose partitioner assignment is already on record.
+//
+// nodes_forced_to_fp32 collects every node unassigned here, whether or not it has an fp16 kernel.
+// ApplyImpl needs it to catch the ones NeedInsertCast will not fire on; see its use there.
 static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry,
                                                  const logging::Logger& logger,
-                                                 InlinedHashSet<NodeIndex>& nodes_with_recorded_cpu_assignment) {
+                                                 InlinedHashSet<NodeIndex>& nodes_with_recorded_cpu_assignment,
+                                                 InlinedHashSet<NodeIndex>& nodes_forced_to_fp32) {
   for (auto& node : graph.Nodes()) {
     const bool no_cpu_kernel = IsFp16NodeOnCpuWithoutKernel(node, cpu_kernel_registry, logger);
     if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry, logger, no_cpu_kernel)) {
       // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32.
-      // A node that has an fp16 kernel was assigned to the CPU EP by the partitioner, which recorded
-      // that assignment. A node without a kernel got its assignment from a fusion that ran after
-      // partitioning, so nothing was recorded for it and ApplyImpl must run the callback as usual.
       if (!no_cpu_kernel) {
+        // A node that has an fp16 kernel was assigned to the CPU EP by the partitioner, which
+        // recorded that assignment, so ApplyImpl must not fire the callback for it again. One
+        // without a kernel got its EP from a fusion that ran after partitioning, so nothing was
+        // recorded and the callback does need to run -- hence it is left out of the set.
         nodes_with_recorded_cpu_assignment.insert(node.Index());
       }
+      nodes_forced_to_fp32.insert(node.Index());
       node.SetExecutionProviderType("");
+    } else if (no_cpu_kernel) {
+      // The node has no fp16 CPU kernel, but IsIsolatedFp16NodeOnCpu could not confirm an fp32 one
+      // to fall back to either, so it is left alone and will fail kernel lookup during session
+      // initialization.
+      LOGS(logger, WARNING) << "Node '" << node.Name() << "' (" << node.OpType()
+                            << ") is assigned to the CPU EP and uses fp16, but has no fp16 kernel "
+                               "and no fp32 kernel to fall back to.";
     }
   }
 
@@ -566,9 +579,11 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
   // avoid isolated fp16 islands).  Those nodes are tracked here so we can skip the callback —
   // their assignment was already recorded by the partitioner.
   InlinedHashSet<NodeIndex> nodes_with_recorded_cpu_assignment;
+  InlinedHashSet<NodeIndex> nodes_forced_to_fp32;
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger,
-                                                           nodes_with_recorded_cpu_assignment));
+                                                           nodes_with_recorded_cpu_assignment,
+                                                           nodes_forced_to_fp32));
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -607,7 +622,14 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       }
     }
 
-    if (casted) {
+    // ForceSingleNodeCPUFloat16ToFloat32 may have unassigned a node whose only fp16 value is an
+    // output -- a generator op such as RandomNormal(dtype=float16) has no inputs at all -- so
+    // NeedInsertCast never fires above and `casted` stays false. Such a node still needs the CPU EP
+    // (re-)assigned and its dtype/output fixed up below, exactly like one that got an input cast.
+    const bool force_output_only_conversion =
+        !casted && nodes_forced_to_fp32.find(node->Index()) != nodes_forced_to_fp32.end();
+
+    if (casted || force_output_only_conversion) {
       // Set current node to run on the CPU execution provider
       // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
@@ -661,7 +683,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       }
 
       node->ReplaceDefs(replacement_defs);
-      modified = modified || casted;
+      modified = true;
     }
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
