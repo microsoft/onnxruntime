@@ -102,7 +102,8 @@ The MVP should provide:
 - A small SDK or CMake target that uses the same core and lets an external EP link its static factory registration.
 - CPU fallback prevention or reliable assignment verification.
 - Case, provider-profile, and report schemas.
-- Structured `PASS`, `UNSUPPORTED`, `FAIL`, `EXCLUDED`, and `NOT_RUN` results.
+- Structured `PASS`, `UNSUPPORTED`, `FAIL`, `EXCLUDED`, and `NOT_RUN` results, with semantics defined in
+  [Execution Provider Operator Conformance Suite](ep_operator_conformance_design.md).
 - A representative set of ONNX and contrib cases spanning important data types, shapes, options, and failure modes.
 - Execution against CPU as a reference and WebGPU in shared and static forms.
 - A versioned artifact usable without an ORT source checkout.
@@ -119,7 +120,7 @@ link ORT-private test libraries because ORT builds and distributes it as a self-
 however, must also be consumable by an external EP repository to build a statically linked runner. Requiring private
 ORT headers or libraries there would couple the external repository to ORT's source layout and private C++ ABI.
 Keeping the shared core on the public API boundary allows ORT to distribute one implementation for both frontends and
-lets an external EP build the static form against a released ORT SDK without an ORT source checkout.
+lets an external EP build the static form against a released ORT package without an ORT source checkout.
 
 ## Coverage continuity rules
 

@@ -23,14 +23,14 @@ The WebGPU repository owns:
 - WGSL templates, generators, and generated-source policy.
 - WebGPU-specific unit, integration, package, and regression tests, and browser tests of provider behavior.
 - Shared and static provider build targets.
-- Existing Python and NuGet plugin packaging and release pipelines.
+- Existing Python and NuGet plugin packaging, CI, and release pipelines.
 - Version metadata, compatibility policy, CI, and release artifacts.
 
 ORT should consume versioned artifacts or source and should not remain an implementation or packaging repository for
 the provider.
 
-The deprecated JSEP TypeScript compute path in `js/web/lib/wasm/jsep/` is out of scope. It is being removed rather
-than moved.
+The deprecated JSEP TypeScript WebGPU compute path under `js/web/lib/wasm/jsep/` is out of scope. It is being removed
+rather than moved. The WebNN code in that directory is unaffected by this work.
 
 ## Isolation strategy
 
@@ -71,7 +71,9 @@ During isolation:
   extraction described in History migration.
 - Avoid changing behavior merely to change ownership.
 - Keep ORT integration shims outside the provider root.
-- Make generated files and downloaded dependencies explicit build outputs or inputs.
+- Make generated files and downloaded dependencies explicit build outputs or inputs. WGSL generation remains a
+  build-time step; the Python requirement it places on consuming builds is acceptable because ORT already requires
+  Python.
 - Support an ORT build override pointing at an adjacent WebGPU checkout.
 
 ## Private dependency removal
@@ -89,7 +91,7 @@ Classify each dependency:
 
 | Resolution | Use when |
 | --- | --- |
-| Existing public API | The plugin SDK already expresses the required runtime interaction |
+| Existing public API | The plugin EP API already expresses the required runtime interaction |
 | New public plugin API | The operation is a stable, generally useful runtime boundary |
 | WebGPU-owned copy | The code is implementation support and can evolve independently |
 | WebGPU-specific replacement | Existing ORT code is unsuitable as a cross-repository dependency |
@@ -105,8 +107,8 @@ with the ORT implementation.
 
 ## Standalone build contract
 
-The isolated subtree should build against a declared ORT plugin SDK or installed ORT package without an ORT source
-checkout.
+The isolated subtree should build against the public ORT headers and an installed or pinned ORT package, without an
+ORT source checkout.
 
 The subtree build should produce:
 
@@ -117,7 +119,7 @@ The subtree build should produce:
 
 The build should support:
 
-- Pinned and overridable ORT SDK locations.
+- Pinned and overridable ORT package and header locations.
 - Pinned Dawn and other third-party dependencies.
 - Reduced-operator input from an ORT Web build.
 - Platform-specific symbol visibility and export rules.
@@ -128,11 +130,21 @@ Browser-hosted provider tests are an exception to the no-source-checkout rule. S
 Web with the provider, so the WebGPU repository builds ORT Web from a pinned ORT source revision using the
 adjacent-checkout override. ORT separately validates its pinned WebGPU revision as part of ORT Web release gating.
 
-## Packaging migration
+## Packaging and pipeline migration
 
 Python and NuGet plugin packaging sources already live under `plugin-ep-webgpu/`. What remains outside the staging
-root is the pipeline definitions that drive them, currently under `tools/ci_build/`. This workstream moves those
-rather than redesigning the packaging.
+root is the packaging and CI pipeline definitions that drive them, under `tools/ci_build/` and `.github/workflows/`.
+This workstream relocates those and rewires them to invoke the standalone build, but does not redesign the packaging
+scripts themselves.
+
+The pipelines invoke `tools/ci_build/build.py --use_webgpu shared_lib` and consume artifacts from ORT's build output
+locations, so they break the moment the standalone build replaces the in-tree one. The rewiring therefore lands with
+the standalone build rather than after it, and no temporary shim over `build.py` is maintained. Relocating the
+pipeline files is mechanical and happens earlier, with the rest of the staging-root move.
+
+ORT workflows that merely trigger on `plugin-ep-webgpu/rel-*` branches stay in ORT and need only their trigger
+configuration updated. Shared assets such as the WebGPU shader-key validation action are consumed by both moving and
+staying lanes, so their ownership is decided individually.
 
 The packaging model is:
 
@@ -152,7 +164,8 @@ The `test-conformance` workstream owns test classification and gating policy. Th
 the tests it classifies as WebGPU-owned and supplies the targets and environments they need:
 
 - Moving test sources and data into the staging root and then the external repository.
-- Building provider test targets against a plugin SDK rather than the ORT build graph.
+- Building provider test targets against the plugin EP API and an installed ORT package rather than the ORT build
+  graph.
 - Providing CI environments, devices, and browser hosts for the relocated lanes.
 - Retaining in-tree originals until their relocated equivalents run.
 
@@ -204,24 +217,39 @@ The dependency inventory should compare existing ORT mechanisms before selecting
 ## Work packages
 
 1. **Dependency inventory:** enumerate includes, libraries, generated inputs, and build assumptions.
-2. **Staging-root design:** define layout, targets, SDK inputs, and integration shims.
-3. **Support-code isolation:** copy or replace implementation helpers.
-4. **Dependency ownership:** move Dawn, patches, and WGSL generation.
-5. **Standalone build:** produce static and shared artifacts outside the ORT build graph.
-6. **Minimum-version validation:** run the provider against its declared `MIN_ONNXRUNTIME_VERSION` runtime so the
+2. **Staging-root design:** define layout, targets, ORT package inputs, and integration shims.
+3. **Staging-root move:** relocate provider sources, Dawn patches, the WGSL templates and generator, and the plugin
+   packaging and CI pipeline definitions into the staging root without changing behavior.
+4. **Code isolation and standalone build:** replace the kernel-authoring foundation with WebGPU-owned equivalents,
+   copy or replace the remaining implementation helpers, take over the Dawn dependency pin and fetch, produce static
+   and shared artifacts outside the ORT build graph, and rewire the packaging and CI pipelines onto that build.
+5. **Minimum-version validation:** run the provider against its declared `MIN_ONNXRUNTIME_VERSION` runtime so the
    floor is verified rather than claimed.
-7. **Repository and CI scaffold:** validate clean-checkout development and release jobs.
-8. **Packaging migration:** move the plugin packaging pipeline definitions into the staging root.
-9. **Source transfer:** copy the proven staging root, import filtered history, and switch ORT to pinned consumption.
+6. **Repository and CI scaffold:** validate clean-checkout development and release jobs, including component
+   governance and compliance registration for the new repository.
+7. **Source transfer:** copy the proven staging root, import filtered history, and switch ORT to pinned consumption.
+
+The staging-root move is deliberately separate and mechanical. It is one behavior-preserving relocation that
+conflicts with in-flight WebGPU changes exactly once, and it lets later contributions land in the destination rather
+than adding to the isolation work.
+
+Code isolation and the standalone build are one package because the provider is not independently buildable until the
+kernel-authoring foundation is replaced, and that replacement is most of the work. The packaging and CI pipelines are
+rewired in the same package because they drive the in-tree build directly and would otherwise break. Until the
+separate build exists, isolation progress is visible in the WebGPU target's include and link lists in
+`cmake/onnxruntime_providers_webgpu.cmake`; those lists are expected to shrink monotonically.
 
 Sequencing:
 
-- Dependency inventory, staging-root design, dependency ownership, and repository and CI scaffold can start
-  immediately and proceed in parallel.
-- Support-code isolation depends on the dependency inventory.
-- The standalone build depends on staging-root design, support-code isolation, and dependency ownership.
-- Minimum-version validation and packaging migration depend on the standalone build for their final form, but both
-  can be prototyped against current in-tree artifacts.
+- Dependency inventory, staging-root design, and repository and CI scaffold can start immediately and proceed in
+  parallel.
+- The staging-root move depends on staging-root design. It is not on the critical path, because relocating files does
+  not change which base classes the provider uses and the existing static build keeps working from the new location.
+- Code isolation and standalone build depends on the dependency inventory and the staging-root move. It also depends
+  on generic static plugin registration from the `plugin-boundary` workstream, because the staging root must serve
+  the static build before the adapter can be removed.
+- Minimum-version validation depends on code isolation and standalone build for its final form, but can be
+  prototyped against current in-tree artifacts.
 - Source transfer is the final package and depends on all of the others.
 
 ## Interfaces with other workstreams

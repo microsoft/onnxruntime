@@ -228,7 +228,7 @@ support surface.
 An ORT release should publish a versioned conformance kit, for example:
 
 ```text
-onnxruntime-ep-conformance-1.25.0/
+onnxruntime-ep-conformance-<ORT_VERSION>/
   bin/
     onnxruntime_ep_conformance_test
   cases/
@@ -254,14 +254,16 @@ A native dynamically loaded plugin could be tested as follows:
 ```powershell
 onnxruntime_ep_conformance_test `
   --ep-library .\onnxruntime_providers_webgpu.dll `
-  --registration-name WebGPUExecutionProvider `
-  --ep-name WebGPUExecutionProvider `
+  --registration-name webgpu_plugin `
+  --ep-name WebGpuExecutionProvider `
   --cases .\cases `
   --provider-profile .\provider-profile.json `
   --report .\results.json
 ```
 
-The runner should use public plugin registration, device discovery, session creation, and execution APIs.
+The registration name is chosen by the caller and identifies the loaded library. The EP name is the one the factory
+reports, and selects which provider from that library to use. The runner should use public plugin registration,
+device discovery, session creation, and execution APIs.
 
 ## Static plugin usage
 

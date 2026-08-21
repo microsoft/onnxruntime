@@ -44,28 +44,32 @@ The detailed reusable conformance-suite design is in
 
 ## Workstream dependencies
 
-The workstreams can make progress concurrently, with these convergence points:
+Most work proceeds concurrently, but one sequence determines the end date:
+
+```mermaid
+graph LR
+    A[plugin-boundary:<br/>static plugin registration] --> B[provider-isolation:<br/>code isolation and standalone build]
+    M[provider-isolation:<br/>staging-root move] --> B
+    B --> C[provider-isolation:<br/>source transfer]
+    D[test-conformance:<br/>classification and conformance MVP] --> C
+    E[provider-isolation:<br/>repository and CI scaffold] --> C
+    B -. native artifacts .-> G[node-migration:<br/>Node WebGPU package]
+```
+
+Static plugin registration is a prerequisite for isolation, not merely an enabler. The `provider-isolation` workstream
+moves provider sources into the staging root rather than copying them, so once isolation completes there is exactly
+one WebGPU implementation and it is adapter-free. The non-plugin static build that `onnxruntime-web` and the
+`onnxruntime-webgpu` package ship from today must already be served through static plugin registration before the
+adapter can be removed. Relocating the sources is not itself blocked; removing the adapter is.
+
+The remaining convergence points are not on the critical path:
 
 - Provider isolation identifies private dependencies. A dependency becomes public API work only when an existing
   public API cannot express a necessary, stable runtime interaction and the proposed addition meets the high bar for
   a permanent plugin EP API.
 - Test classification determines which tests move with the provider and which remain in ORT.
-- Static plugin registration enables ORT Web parity and static conformance execution.
 - The Node workstream consumes generic plugin loading from ORT and native WebGPU artifacts from the external provider.
 - The final repository copy depends on `plugin-ep-webgpu/` being independently buildable.
-
-```text
-Plugin boundary ───────────────> ORT Web static integration
-       │
-       ├───────────────────────> Node plugin loading
-       │
-Provider isolation ────────────> External provider artifacts
-       │                              │
-       └──────────────────────────────> Node WebGPU package
-
-Test classification ──────────> Provider test relocation
-Conformance MVP ──────────────> Static/shared parity gates
-```
 
 ## Extraction launch matrix
 
@@ -95,8 +99,12 @@ scope requires an explicit compatibility decision rather than silently dropping 
 
 ### Stage 2: Execute workstreams in parallel
 
+The critical path runs through this stage: static plugin registration, then code isolation and the standalone build.
+The remaining items proceed alongside it.
+
 - Add generic static plugin registration and run WebGPU through the plugin path.
-- Consolidate provider-owned sources and build inputs under `plugin-ep-webgpu/`.
+- Replace the kernel-authoring foundation and consolidate provider-owned sources and build inputs under
+  `plugin-ep-webgpu/`, so the staging root is adapter-free and independently buildable.
 - Preserve current tests while implementing the conformance MVP.
 - Scaffold the external repository and CI against the standalone build contract.
 - Design and implement the Node plugin-loading and package transition.
