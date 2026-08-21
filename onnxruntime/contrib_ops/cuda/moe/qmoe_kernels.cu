@@ -638,6 +638,52 @@ void LaunchQMoEPrePackOffsetBias(
   QMoEPrePackZPKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(zp, scales, output, num_elements, offset);
 }
 
+// Constant zero-point bias: bias = delta * scale, with delta = center - offset a single
+// per-tensor scalar. Used for integer schemes whose zero-point is a fractional constant not
+// representable by a uint8 zp tensor (e.g. int2 balanced center 1.5). The in-register weight
+// converter already subtracts the symmetric center 2^(bits-1); this bias corrects it to the
+// requested fractional center so dequant = (code - offset) * scale.
+template <typename T>
+__global__ void QMoEConstantBiasKernel(const T* scales, T* out, int num_elements, float delta) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < num_elements) {
+    out[idx] = static_cast<T>(delta * static_cast<float>(scales[idx]));
+  }
+}
+
+void LaunchQMoEConstantBias(
+    const float* scales,
+    float* output,
+    int num_elements,
+    float delta,
+    cudaStream_t stream) {
+  int block = 256;
+  int grid = Compute1DGridSize(num_elements, block);
+  QMoEConstantBiasKernel<float><<<grid, block, 0, stream>>>(scales, output, num_elements, delta);
+}
+
+void LaunchQMoEConstantBias(
+    const half* scales,
+    half* output,
+    int num_elements,
+    float delta,
+    cudaStream_t stream) {
+  int block = 256;
+  int grid = Compute1DGridSize(num_elements, block);
+  QMoEConstantBiasKernel<half><<<grid, block, 0, stream>>>(scales, output, num_elements, delta);
+}
+
+void LaunchQMoEConstantBias(
+    const __nv_bfloat16* scales,
+    __nv_bfloat16* output,
+    int num_elements,
+    float delta,
+    cudaStream_t stream) {
+  int block = 256;
+  int grid = Compute1DGridSize(num_elements, block);
+  QMoEConstantBiasKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(scales, output, num_elements, delta);
+}
+
 // Batched 4-bit packed ZP scaled bias kernel.
 // Grid: (ceil(n/16), ceil(k_blocks/16), experts)
 // Each thread computes one output element: output[e][out_row][out_col]

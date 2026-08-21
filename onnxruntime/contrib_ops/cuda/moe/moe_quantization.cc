@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -261,6 +262,15 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   // input format we accept.
   if (quant_type_ == "int" && expert_weight_bits_ == 2) {
     weights_prepacked_ = false;
+  }
+
+  // Optional fractional zero-point center (unset -> NaN -> symmetric center 2^(bits-1)).
+  zero_point_offset_ = op_kernel_info.GetAttrOrDefault<float>(
+      "zero_point_offset", std::numeric_limits<float>::quiet_NaN());
+  if (!std::isnan(zero_point_offset_)) {
+    ORT_ENFORCE(quant_type_ == "int" && block_size_ > 0,
+                "zero_point_offset is only supported for integer block-wise quantization "
+                "(quant_type='int' with block_size > 0).");
   }
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
@@ -1351,6 +1361,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           eff_zp = zeros->DataRaw();
         }
       }
+    } else if (!std::isnan(zero_point_offset_) && block_size_ > 0 && scales && eff_scale) {
+      // Fractional zero-point center, no uint8 zero-point tensor, and PrePack did NOT consume the
+      // scales (e.g. session.disable_prepacking) -- the packed_bias slot above was not populated, so
+      // build the constant bias here from the live scales. The normal path builds it at PrePack time
+      // (PrePackConstantBiasFromScales) and takes the ``packed_bias`` branch above. The weight
+      // converter already subtracts the symmetric center 2^(bits-1); this bias corrects it so the
+      // effective dequant is (code - zero_point_offset_) * scale. bias = (center - offset) * scale.
+      const float delta = static_cast<float>(1 << (expert_weight_bits_ - 1)) - zero_point_offset_;
+      size_t num_elements = scales->Shape().Size();
+      bool is_fp16 = scales->IsDataType<MLFloat16>();
+      bool is_bf16 = scales->IsDataType<BFloat16>();
+      size_t bytes = num_elements * (is_fp16 || is_bf16 ? 2 : 4);
+      transient_bias = GetScratchBuffer<void>(bytes, GetComputeStream(context));
+      eff_zp = transient_bias.get();
+      if (is_fp16) {
+        LaunchQMoEConstantBias(static_cast<const half*>(eff_scale),
+                               static_cast<half*>(transient_bias.get()),
+                               static_cast<int>(num_elements), delta, stream);
+      } else if (is_bf16) {
+        LaunchQMoEConstantBias(static_cast<const __nv_bfloat16*>(eff_scale),
+                               static_cast<__nv_bfloat16*>(transient_bias.get()),
+                               static_cast<int>(num_elements), delta, stream);
+      } else {
+        LaunchQMoEConstantBias(static_cast<const float*>(eff_scale),
+                               static_cast<float*>(transient_bias.get()),
+                               static_cast<int>(num_elements), delta, stream);
+      }
     }
   };
 
@@ -2112,6 +2149,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     } else if (quant_type_ == "int") {
       PrePackTransposeAndPack(tensor, stream, alloc, packed_fc1_scales_, is_packed);
       DUMP_PACK_TENSOR("packed_fc1_scales", packed_fc1_scales_, tensor);
+      PrePackConstantBiasFromScales(tensor, stream, alloc, packed_fc1_scales_, packed_fc1_bias_);
     }
     if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "wfp4afp8") {
       is_packed = false;
@@ -2155,6 +2193,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     } else if (quant_type_ == "int") {
       PrePackTransposeAndPack(tensor, stream, alloc, packed_fc2_scales_, is_packed);
       DUMP_PACK_TENSOR("packed_fc2_scales", packed_fc2_scales_, tensor);
+      PrePackConstantBiasFromScales(tensor, stream, alloc, packed_fc2_scales_, packed_fc2_bias_);
     }
     if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "wfp4afp8") {
       is_packed = false;
@@ -2751,6 +2790,39 @@ void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, Allocat
   }
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   is_packed = true;
+}
+
+void QMoE::PrePackConstantBiasFromScales(const Tensor& scales, cudaStream_t stream, AllocatorPtr alloc,
+                                         const IAllocatorUniquePtr<void>& packed_scale,
+                                         IAllocatorUniquePtr<void>& packed_bias) {
+  // Only when a fractional zero-point center was requested (finite) and block-wise integer quant is
+  // in use. The packed scale is already on GPU in the runner's expected layout; the bias has the
+  // same element count/dtype and is bias = (2^(bits-1) - zero_point_offset_) * scale, so the fused
+  // dequant (code - 2^(bits-1)) * scale + bias == (code - zero_point_offset_) * scale.
+  if (std::isnan(zero_point_offset_) || block_size_ <= 0 || !packed_scale) {
+    return;
+  }
+  const float delta = static_cast<float>(1 << (expert_weight_bits_ - 1)) - zero_point_offset_;
+  size_t num_elements = scales.Shape().Size();
+  // QMoE inputs are FP16/BF16 (is_fp16_ set in ctor); scales may also arrive as float32.
+  bool is_fp16 = scales.IsDataType<MLFloat16>();
+  bool is_bf16 = scales.IsDataType<BFloat16>();
+  size_t bytes = num_elements * (is_fp16 || is_bf16 ? 2 : 4);
+  packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+  if (is_fp16) {
+    LaunchQMoEConstantBias(static_cast<const half*>(packed_scale.get()),
+                           static_cast<half*>(packed_bias.get()),
+                           static_cast<int>(num_elements), delta, stream);
+  } else if (is_bf16) {
+    LaunchQMoEConstantBias(static_cast<const __nv_bfloat16*>(packed_scale.get()),
+                           static_cast<__nv_bfloat16*>(packed_bias.get()),
+                           static_cast<int>(num_elements), delta, stream);
+  } else {
+    LaunchQMoEConstantBias(static_cast<const float*>(packed_scale.get()),
+                           static_cast<float*>(packed_bias.get()),
+                           static_cast<int>(num_elements), delta, stream);
+  }
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
 }
 
 }  // namespace cuda

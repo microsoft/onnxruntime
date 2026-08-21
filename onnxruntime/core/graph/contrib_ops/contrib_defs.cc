@@ -1531,6 +1531,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("zero_point_offset",
+              "Only meaningful when quant_type='int' and block_size > 0 and no integer "
+              "fc*_zero_points are provided. A single fractional zero-point applied uniformly to "
+              "every weight code: dequant = (code - zero_point_offset) * scale. Enables balanced "
+              "asymmetric schemes whose zero-point is not integer-representable (e.g. the 1.5 "
+              "midpoint of a 2-bit checkpoint, giving codes {0,1,2,3} -> {-1.5,-0.5,0.5,1.5}*scale). "
+              "When omitted, symmetric quantization centered on 2^(expert_weight_bits-1) is used.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
