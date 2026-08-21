@@ -255,6 +255,56 @@ void unpack_uint4_transposed_to_int8_direct_cuda(
       k);
 }
 
+// 2-bit analog of unpack_transpose_pack_uint4_to_int8_kernel_v2. Input packed_weight is
+// [n, k/4] (4 unsigned 2-bit codes per byte, along k); output packed_transposed_weight is
+// [k, n/4] (4 signed 2-bit codes per byte, along n). Each output byte packs the 4 consecutive
+// N-dimension codes {4*out_col_packed .. +3} at output row out_row_packed, with the default
+// zero point (2) subtracted so the stored codes are signed in [-2, 1].
+__global__ void unpack_transpose_pack_uint2_to_int2_kernel(
+    const unsigned char* __restrict__ packed_weight,
+    signed char* __restrict__ packed_transposed_weight,
+    int n,  // original matrix rows
+    int k)  // original matrix columns
+{
+  int out_flat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total_output_bytes = k * (n / 4);
+
+  if (out_flat_idx < total_output_bytes) {
+    constexpr signed char default_zero_point = 2;
+
+    const int out_row_packed = out_flat_idx / (n / 4);  // row in k (0..k-1)
+    const int out_col_packed = out_flat_idx % (n / 4);  // byte column in n/4
+
+    uint8_t out_byte = 0;
+    for (int s = 0; s < 4; ++s) {
+      const int r_orig = 4 * out_col_packed + s;  // original row in n
+      const int c_orig = out_row_packed;          // original col in k
+
+      // packed_weight is [n, k/4]: byte holds 4 codes along k, code c_orig at sub-index c_orig % 4.
+      const int packed_idx = r_orig * (k / 4) + c_orig / 4;
+      const unsigned char packed_data = packed_weight[packed_idx];
+      const uint8_t code = (packed_data >> ((c_orig % 4) * 2)) & 0x03;
+
+      const signed char val = static_cast<signed char>(code) - default_zero_point;
+      out_byte |= static_cast<uint8_t>(val & 0x03) << (s * 2);
+    }
+    packed_transposed_weight[out_flat_idx] = static_cast<signed char>(out_byte);
+  }
+}
+
+void unpack_uint2_transposed_to_int2_direct_cuda(
+    cudaStream_t stream, void* packed_transposed_weight, const void* packed_weight, int n, int k) {
+  int total_output_bytes = k * (n / 4);
+  int threads_per_block = 256;
+  int num_blocks = (total_output_bytes + threads_per_block - 1) / threads_per_block;
+
+  unpack_transpose_pack_uint2_to_int2_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
+      (const unsigned char*)packed_weight,
+      (signed char*)packed_transposed_weight,
+      n,
+      k);
+}
+
 __global__ void transpose_uint8_matrix_and_convert_to_int8_kernel(
     const uint8_t* __restrict__ input,  // shape: (n, k)
     int8_t* __restrict__ output,        // shape: (k, n)

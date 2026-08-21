@@ -45,7 +45,7 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
 
 // Launches symmetric INT MoE GEMV. group_size <= 0 means per-channel scales;
 // group_size 32/64/128 means block-wise scales laid out as [num_experts, k_blocks, n].
-// T is half or __nv_bfloat16. WeightType is cutlass::uint4b_t or uint8_t.
+// T is half or __nv_bfloat16. WeightType is cutlass::uint4b_t, cutlass::uint2b_t or uint8_t.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,

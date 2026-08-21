@@ -38,6 +38,13 @@ class QMoE final : public CudaKernel, public MoEBase {
   void PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                           const IAllocatorUniquePtr<void>& packed_scale,
                           IAllocatorUniquePtr<void>& packed_bias, bool& is_packed);
+  // Builds a constant fractional zero-point bias (bias = (2^(bits-1) - zero_point_offset_) * scale)
+  // from the already-packed scales, when a finite ``zero_point_offset_`` was requested and no uint8
+  // zero-point tensor is supplied. Runs at PrePack time because the scales initializer is consumed
+  // there; ComputeInternal then consumes ``packed_bias`` via the same slot int4-asymmetric uses.
+  void PrePackConstantBiasFromScales(const Tensor& scales, cudaStream_t stream, AllocatorPtr alloc,
+                                     const IAllocatorUniquePtr<void>& packed_scale,
+                                     IAllocatorUniquePtr<void>& packed_bias);
   void PrePackCopyToGpu(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                         IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   void PrePackSwizzleBlockScales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
@@ -67,6 +74,12 @@ class QMoE final : public CudaKernel, public MoEBase {
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   bool is_fp16_;
+  // Optional fractional zero-point center for integer block-wise quantization when no uint8
+  // fc*_zero_points tensor is provided. NaN means "unset" -> symmetric center 2^(bits-1).
+  // A finite value selects dequant = (code - zero_point_offset_) * scale via a constant bias
+  // buffer (bias = (2^(bits-1) - zero_point_offset_) * scale). Motivating case: a 2-bit
+  // checkpoint quantized around the balanced midpoint 1.5, which uint8 cannot represent.
+  float zero_point_offset_;
   // When true, the int4/int8 fc1/fc2 weight initializers are already in a
   // CUTLASS fpA_intB layout — produced offline e.g. via
   // ``pack_weights_for_cuda_mixed_gemm`` — and the compute path reads them
