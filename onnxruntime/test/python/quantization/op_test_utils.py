@@ -234,6 +234,22 @@ def input_feeds_neg_one_zero_one_list(n, name2shape, seed=None):
     return input_data_list
 
 
+def build_tiny_weights(tiny_value, weight_shape, np_float_type, name="weight"):
+    """
+    Builds a weight initializer whose elements all have magnitude tiny_value.
+
+    A tiny weight scale makes the bias scale (input_scale * weight_scale) small
+    enough that the quantized int32 bias may saturate.
+    """
+    weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
+    with np.nditer(weight_data, op_flags=["readwrite"]) as it:
+        # Swap signs so that the elements aren't all identical
+        for i, x in enumerate(it):
+            if i % 2 == 0:
+                x[...] = -x
+    return onnx.numpy_helper.from_array(weight_data, name)
+
+
 class GenerateCalibrationData(CalibrationDataReader):
     def __init__(self, data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last=None):
         print("Generating calibration dataset from " + str(data_list))
