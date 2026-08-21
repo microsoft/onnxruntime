@@ -5785,6 +5785,33 @@ TEST_F(GraphTransformationTests, ReshapeFusion_Contiguous_Reshape) {
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, ReshapeFusion_DoesNotFuseShapeInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInput<int64_t>({1}, {4});
+    auto* reshape_shape = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* reshape_shape_output = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {shape_data, reshape_shape}, {reshape_shape_output});
+
+    auto* data = builder.MakeInitializer<float>({4}, {10.0f, 20.0f, 30.0f, 40.0f});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{4});
+    builder.AddNode("Reshape", {data, reshape_shape_output}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count.at("Reshape"), 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    21,
+                    0.0,
+                    0.0,
+                    std::make_unique<ReshapeFusion>());
+}
+
 // Test eliminating redundant Concat-Slice pattern.
 TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "concat_slice_basic_test.onnx";
