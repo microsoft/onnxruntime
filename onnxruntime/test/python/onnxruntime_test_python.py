@@ -695,6 +695,9 @@ class TestInferenceSession(unittest.TestCase):
 
         from onnxruntime.tools.onnxruntime_test import generate_feeds, run_model  # noqa: PLC0415
 
+        # Opset 9 is the first standard opset mapped to IR v4, where initializers
+        # can also be graph inputs and therefore overridable at runtime.
+        opset_imports = [helper.make_opsetid("", 9)]
         input_info = helper.make_tensor_value_info("X", TensorProto.FLOAT, [0, 3])
         output_info = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [0, 3])
         graph = helper.make_graph(
@@ -703,8 +706,10 @@ class TestInferenceSession(unittest.TestCase):
             [input_info],
             [output_info],
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
-        model.ir_version = 10
+        model = helper.make_model_gen_version(
+            graph,
+            opset_imports=opset_imports,
+        )
 
         session = onnxrt.InferenceSession(
             model.SerializeToString(),
@@ -725,16 +730,18 @@ class TestInferenceSession(unittest.TestCase):
             [output_info],
             [initializer],
         )
-        initializer_model = helper.make_model(
+        initializer_model = helper.make_model_gen_version(
             initializer_graph,
-            opset_imports=[helper.make_opsetid("", 21)],
+            opset_imports=opset_imports,
         )
-        initializer_model.ir_version = 10
 
         with tempfile.TemporaryDirectory() as temp_dir:
             model_path = pathlib.Path(temp_dir) / "zero_sized_initializer.onnx"
             onnx.save_model(initializer_model, model_path)
-            exit_code, initializer_feeds, outputs = run_model(model_path)
+            exit_code, initializer_feeds, outputs = run_model(
+                model_path,
+                providers=["CPUExecutionProvider"],
+            )
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(initializer_feeds["W"].shape, (0, 3))

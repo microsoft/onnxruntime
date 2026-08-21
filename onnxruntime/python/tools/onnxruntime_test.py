@@ -72,6 +72,7 @@ def run_model(
     symbolic_dims=None,
     feeds=None,
     override_initializers=True,
+    providers=None,
 ):
     symbolic_dims = symbolic_dims or {}
     if debug:
@@ -85,10 +86,11 @@ def run_model(
         sess_options.enable_profiling = True
         sess_options.profile_file_prefix = os.path.basename(model_path)
 
+    providers = providers if providers is not None else onnxrt.get_available_providers()
     sess = onnxrt.InferenceSession(
         model_path,
         sess_options=sess_options,
-        providers=onnxrt.get_available_providers(),
+        providers=providers,
     )
     meta = sess.get_modelmeta()
 
