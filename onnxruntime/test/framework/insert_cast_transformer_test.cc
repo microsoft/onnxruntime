@@ -380,6 +380,9 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
 // would have skipped it entirely, leaving it fp16 and causing kernel lookup to fail when a session
 // is initialized with this graph. IsFp16NodeOnCpuWithoutKernel must force it to fp32 regardless.
 TEST(TransformerTest, Fp16FusedNodeWithNoCpuKernelForcedToFp32) {
+#if defined(DISABLE_CONTRIB_OPS)
+  GTEST_SKIP() << "BiasGelu is unavailable when contrib ops are disabled.";
+#endif
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
