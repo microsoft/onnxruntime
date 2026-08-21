@@ -1360,7 +1360,30 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
+//
+// AVX-512 accelerated NCHW<->NCHWc reorder block helpers (block size 16).
+// Declared unconditionally for AMD64; only invoked when NchwcBlockSize == 16.
+//
+void
+MLASCALL
+MlasReorderInputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderOutputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t OutputSize
+    );
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
