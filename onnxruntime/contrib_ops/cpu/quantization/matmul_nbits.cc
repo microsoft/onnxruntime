@@ -46,6 +46,12 @@ typedef enum {
   Level4, /*!< input int8, accumulator int32 */
 } ACCURACY_LEVEL;
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+constexpr bool kQNBitForceFp32Supported = true;
+#else
+constexpr bool kQNBitForceFp32Supported = false;
+#endif
+
 // T: A data type.
 template <typename T>
 MLAS_QNBIT_GEMM_COMPUTE_TYPE
@@ -106,12 +112,19 @@ class MatMulNBits final : public OpKernel {
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
         prefer_lut_gemm_{std::is_same_v<T1, float> &&
+                         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32) != "1" &&
                          info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
                          MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("K")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
-        compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
+        compute_type_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32) == "1" &&
+                              kQNBitForceFp32Supported && std::is_same_v<T1, float> &&
+                              nbits_ == 4 && block_size_ == 32 &&
+                              info.GetAttr<int64_t>("accuracy_level") == static_cast<int64_t>(Level4) &&
+                              MlasIsQNBitGemmAvailable(nbits_, block_size_, SQNBIT_CompFp32)
+                          ? SQNBIT_CompFp32
+                          : GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 
     const auto& node = info.node();
