@@ -10,6 +10,7 @@ import os
 import pathlib
 import platform
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -2458,6 +2459,67 @@ class TestInferenceSession(unittest.TestCase):
         result_leaf_neg = sess_leaf_neg.run(None, test_input)
         with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
             np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
+
+@unittest.skipUnless(
+    sys.platform == "linux" and platform.libc_ver()[0] == "glibc" and not hasattr(ctypes.CDLL(None), "__asan_init"),
+    "requires Linux with glibc and without AddressSanitizer",
+)
+class TestMemoryReclamation(unittest.TestCase):
+    @staticmethod
+    def _get_rss_kb() -> int:
+        with open("/proc/self/status", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+        raise RuntimeError("Could not read VmRSS from /proc/self/status")
+
+    def test_destroy_does_not_accumulate_memory(self) -> None:
+        marker = "ORT_RUN_PYTHON_SESSION_MEMORY_RECLAMATION_CHILD"
+        if os.getenv(marker) != "1":
+            child_environment = os.environ.copy()
+            child_environment[marker] = "1"
+            child_environment["MALLOC_TRIM_THRESHOLD_"] = "-1"
+            child_environment["MALLOC_MMAP_THRESHOLD_"] = "1073741824"
+            child = subprocess.run(
+                [
+                    sys.executable,
+                    str(pathlib.Path(__file__).resolve()),
+                    "TestMemoryReclamation.test_destroy_does_not_accumulate_memory",
+                ],
+                check=False,
+                capture_output=True,
+                env=child_environment,
+                text=True,
+                timeout=60,
+            )
+            self.assertEqual(
+                child.returncode, 0, f"Memory reclamation subprocess failed:\n{child.stdout}{child.stderr}"
+            )
+            return
+
+        session_options = onnxrt.SessionOptions()
+        session_options.enable_cpu_mem_arena = False
+
+        def create_session(model_name: str) -> onnxrt.InferenceSession:
+            return onnxrt.InferenceSession(
+                get_name(model_name), sess_options=session_options, providers=["CPUExecutionProvider"]
+            )
+
+        # Page in session code while keeping the warm-up session alive. The large session
+        # is then the first destruction to request an allocator purge in this subprocess.
+        _warmup_session = create_session("mul_1.onnx")
+        rss_after_warmup = self._get_rss_kb()
+
+        large_session = create_session("bart_tiny.onnx")
+        del large_session
+        gc.collect()
+        rss_after_first_session = self._get_rss_kb()
+
+        # Without allocator release, a model-sized working set remains resident. Allow ample
+        # headroom for allocator metadata and RSS measurement noise.
+        max_rss_growth_kb = 10 * 1024
+        self.assertLessEqual(rss_after_first_session - rss_after_warmup, max_rss_growth_kb)
 
 
 if __name__ == "__main__":

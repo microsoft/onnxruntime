@@ -10,11 +10,22 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 
 #if defined(USE_MIMALLOC)
 #include <mimalloc.h>
+#endif
+
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
+#if defined(__linux__) && !defined(__ANDROID__) && !defined(USE_MIMALLOC)
+#include <dlfcn.h>
 #endif
 
 #include "core/framework/bfc_arena.h"
@@ -192,6 +203,56 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 
 IArena* IArena::SafeArenaCast(IAllocator* allocator) {
   return allocator ? allocator->AsArena() : nullptr;
+}
+
+#if defined(USE_MIMALLOC) || (defined(__linux__) && !defined(__ANDROID__))
+namespace {
+
+bool ShouldReleaseFreedMemoryToOS() noexcept {
+  // Allocator-wide purges can be expensive. Coalesce bursts of session destruction
+  // while ensuring that the first release returns unused pages immediately.
+  constexpr int64_t kReleaseIntervalNs =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::seconds{1}).count();
+  static std::atomic<int64_t> next_release_time_ns{std::numeric_limits<int64_t>::min()};
+
+  const int64_t now_ns = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                  std::chrono::steady_clock::now().time_since_epoch())
+                                                  .count());
+  int64_t next_release_ns = next_release_time_ns.load(std::memory_order_relaxed);
+  while (now_ns >= next_release_ns) {
+    if (next_release_time_ns.compare_exchange_weak(next_release_ns, now_ns + kReleaseIntervalNs,
+                                                   std::memory_order_relaxed)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+}  // namespace
+#endif
+
+void ReleaseFreedMemoryToOS() noexcept {
+#if defined(USE_MIMALLOC) || (defined(__linux__) && !defined(__ANDROID__))
+  if (!ShouldReleaseFreedMemoryToOS()) {
+    return;
+  }
+#endif
+
+#if defined(USE_MIMALLOC)
+  mi_collect(true);
+#elif defined(__linux__) && !defined(__ANDROID__)
+  // Collect mimalloc heaps when mimalloc is available through LD_PRELOAD.
+  using MiCollectFn = void (*)(bool);
+  static const auto mi_collect_fn = reinterpret_cast<MiCollectFn>(dlsym(RTLD_DEFAULT, "mi_collect"));
+  if (mi_collect_fn != nullptr) {
+    mi_collect_fn(true);
+  }
+
+#if defined(__GLIBC__)
+  malloc_trim(0);
+#endif
+#endif
 }
 
 }  // namespace onnxruntime
