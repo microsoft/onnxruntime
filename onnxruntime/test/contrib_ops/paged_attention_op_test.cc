@@ -1110,6 +1110,16 @@ TEST(PagedAttention, EndToEnd_Prefill_SingleBatch_NoPast) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+TEST(PagedAttention, EndToEnd_Prefill_PagedFlashAttention) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 32;
+  c.cumulative_seqlens_q = {0, 32};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
 // Multi-batch decode with differing past lengths — exercises variable-length
 // packing across batches.
 TEST(PagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {
@@ -1161,6 +1171,113 @@ TEST(PagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) {
   c.cumulative_seqlens_q = {0, 3, 5};
   c.past_seqlens = {2, 4};
   c.block_table = {0, 2};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+// Varlen prefill above the fused-paged-prefill gate: max_seqlen_q >= 32 and
+// B * max_seqlen_q != token_count. Exercises the WebGPU fused shader's
+// q_varlen=1 code path (raw-packed Q read via cumulative_seqlens_q). Uses
+// head_size = 128 to match the shared-memory tile the shader is sized for.
+TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
+  EndToEndCase c{};
+  c.batch_size = 2;
+  c.token_count = 48;  // seq 0: 32 tokens, seq 1: 16 tokens
+  c.num_heads = 2;
+  c.kv_num_heads = 2;  // MHA (n_reps = 1)
+  c.head_size = 128;
+  c.num_blocks = 3;
+  c.cumulative_seqlens_q = {0, 32, 48};
+  c.past_seqlens = {0, 0};
+  c.block_table = {0, 2};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+// Fused paged prefill across a block boundary. block_size == max_k_step (32
+// for fp16 head_size <= 128) is the tightest configuration
+// ShouldRunFusedPagedPrefill accepts. token_count = 64 spans two paged
+// blocks, and block_table = {3, 1} makes the two logical pages map to
+// non-adjacent physical blocks — any indexing bug that assumes physical
+// adjacency of consecutive logical pages will fail here (see the alignment
+// invariant note at the top of flash_attention_paged_prefill.wgsl.template).
+TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_BlockBoundaryCrossing) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 64;  // >= 32 for fused prefill; spans 2 blocks of 32
+  c.num_heads = 2;
+  c.kv_num_heads = 2;  // MHA
+  c.head_size = 128;
+  c.block_size = 32;
+  c.num_blocks = 5;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 64};
+  c.past_seqlens = {0};
+  c.block_table = {3, 1};  // logical page 0 -> phys 3, page 1 -> phys 1
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+// Direct paged decode with a KV history that crosses a block boundary. Uses
+// block_size = 32 and past = 40 so total KV = 41 spans two paged blocks;
+// block_table = {4, 1} makes the two logical pages non-contiguous, catching
+// any indexing bug in the per-slot block_table lookup inside
+// flash_attention_paged_decode_qkv.wgsl.template.
+TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 1;  // decode: one new Q token
+  c.num_heads = 1;
+  c.kv_num_heads = 1;
+  c.head_size = 8;
+  c.block_size = 32;
+  c.num_blocks = 5;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 1};
+  c.past_seqlens = {40};   // total KV = 41 slots, spans 2 blocks of 32
+  c.block_table = {4, 1};  // logical page 0 -> phys 4, page 1 -> phys 1
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+// Force the ShouldRunFusedPagedPrefill *reject* branch. With fp16 head_size
+// 128, max_k_step is 32, so block_size 16 fails the block_size >= max_k_step
+// guard. PagedAttention must then take the gather-then-flash cascade (the
+// merged #31611 code path). Verifies output parity against the reference in
+// the fallback path, locking down the reject-boundary so a future refactor
+// of ShouldRunFusedPagedPrefill can't silently change it.
+TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 64;  // prefill (>= 32)
+  c.num_heads = 2;
+  c.kv_num_heads = 2;  // MHA
+  c.head_size = 128;
+  c.block_size = 16;  // < max_k_step (=32 for fp16 head_size<=128) => rejected
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 4;  // 64 tokens / 16 slots per block
+  c.cumulative_seqlens_q = {0, 64};
+  c.past_seqlens = {0};
+  c.block_table = {3, 1, 5, 2};  // non-contiguous physical pages
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+// Fused paged prefill under GQA + nonzero past, with non-contiguous physical
+// pages. Combines conditions the existing fused-prefill tests cover
+// separately: fused path (max_seqlen_q >= 32), num_heads > kv_num_heads,
+// past_seqlens != 0, and a block_table whose physical page order does not
+// match the logical order. Locks the fused shader's kv_head_idx =
+// head_idx / uniforms.n_reps mapping and the causal-mask past-offset
+// derivation on the same shape.
+TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 32;  // prefill: max_seqlen_q >= 32 fires fused shader
+  c.num_heads = 4;
+  c.kv_num_heads = 2;  // GQA (n_reps = 2)
+  c.head_size = 128;
+  c.block_size = 32;  // == max_k_step for fp16 head_size <= 128 (min alignment)
+  c.num_blocks = 6;
+  c.max_num_blocks_per_seq = 3;  // covers total KV = 64 tokens across 2 blocks
+  c.cumulative_seqlens_q = {0, 32};
+  c.past_seqlens = {32};      // nonzero past
+  c.block_table = {5, 2, 0};  // non-contiguous physical pages
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
