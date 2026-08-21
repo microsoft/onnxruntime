@@ -219,8 +219,8 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       device_alloc,                     // default device allocator
       webgpu::CreateWebGpuAllocator(
           device_free,
-          [context_id]() -> const webgpu::BufferManager& {
-            return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
+          [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
+            return webgpu_ep_ptr->InitializerBufferManager();
           },
           true),  // initializer device allocator
   };

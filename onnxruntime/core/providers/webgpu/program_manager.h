@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -72,6 +73,14 @@ class ProgramManager {
                std::vector<int>& shape_uniform_ranks,
                wgpu::Future& future,
                PipelineCallbackContext& callback_context) const;
+  // Pipeline cache lookup / insert. These are the only members shared across sessions, so both
+  // are serialized. Build() is deliberately not: callers invoke it between Get() and Set(), which
+  // keeps shader compilation - by far the expensive part - outside the lock. Two sessions racing
+  // on the same key therefore compile it twice; Set() keeps the first artifact and the loser is
+  // discarded, so the only cost is the duplicated compile.
+  //
+  // The pointer stays valid after the lock is released: this map is insert-only and
+  // std::unordered_map keeps element references stable across rehash.
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
 
@@ -82,6 +91,7 @@ class ProgramManager {
                                             std::span<const int> shape_uniform_ranks,
                                             wgpu::BindGroupLayout& bind_group_layout) const;
 
+  mutable std::mutex programs_mutex_;
   std::unordered_map<std::string, ProgramArtifact> programs_;
   WebGpuContext& webgpu_context_;
 

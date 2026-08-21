@@ -604,9 +604,23 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
+      recording_{std::make_unique<webgpu::CommandRecordingState>()},
+      session_buffer_mgr_{webgpu::BufferManagerFactory::Create(context_,
+                                                               *recording_,
+                                                               context_.BufferCacheConfig().storage.mode,
+                                                               context_.BufferCacheConfig().uniform.mode,
+                                                               context_.BufferCacheConfig().query_resolve.mode,
+                                                               context_.BufferCacheConfig().default_entry.mode)},
+      session_initializer_buffer_mgr_{webgpu::BufferManagerFactory::Create(
+          context_,
+          *recording_,
+          webgpu::BufferCacheMode::LazyRelease,
+          webgpu::BufferCacheMode::LazyRelease,
+          webgpu::BufferCacheMode::Disabled,
+          webgpu::BufferCacheMode::Disabled)},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); }, false)} {
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -627,7 +641,7 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // allocator for initializers
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
+          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
@@ -837,6 +851,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       if (inserted) {
         it->second = webgpu::BufferManagerFactory::Create(
             context_,
+            *recording_,
             webgpu::BufferCacheMode::Graph,
             webgpu::BufferCacheMode::GraphSimple,
             webgpu::BufferCacheMode::Disabled,
@@ -867,7 +882,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   if (!flush_status.IsOK()) {
     if (IsGraphCaptureEnabled()) {
-      context_.CaptureEnd();
+      context_.CaptureEnd(BufferManager());
       auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
       if (commands_it != captured_graphs_.end()) {
         context_.ReleaseGraphResources(commands_it->second);
@@ -883,7 +898,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {
-      context_.CaptureEnd();
+      context_.CaptureEnd(BufferManager());
       captured_graph_ids_.insert(current_graph_annotation_id_);
       ORT_RETURN_IF_ERROR(ReplayGraph(current_graph_annotation_id_));
     } else {
@@ -973,7 +988,7 @@ webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
       return *it->second;
     }
   }
-  return context_.BufferManager();
+  return *session_buffer_mgr_;
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {

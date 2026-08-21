@@ -487,8 +487,9 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
   return os;
 }
 
-BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode)
+BufferManager::BufferManager(WebGpuContext& context, CommandRecordingState& recording, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode)
     : context_{context},
+      recording_{recording},
       storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
       uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
       query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
@@ -522,9 +523,8 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto& command_encoder = context_.GetCommandEncoder(recording_);
+  context_.EndComputePass(recording_);
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
   ORT_THROW_IF_ERROR(context_.Flush(*this));
 }
@@ -541,9 +541,8 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto& command_encoder = context_.GetCommandEncoder(recording_);
+  context_.EndComputePass(recording_);
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
@@ -559,9 +558,9 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool init
       // whether that clear is submitted before Create returns. Session::Run defers submission to preserve dispatch
       // batching, while allocations made outside Run submit immediately so subsequent queue work observes the clear.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
-      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-      context_.EndComputePass();
-      context_.GetCommandEncoder().ClearBuffer(buffer, 0, buffer_size);
+      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(*this));
+      context_.EndComputePass(recording_);
+      context_.GetCommandEncoder(recording_).ClearBuffer(buffer, 0, buffer_size);
       if (submit_zero_initialize) {
         ORT_THROW_IF_ERROR(context_.Flush(*this));
       }
@@ -602,7 +601,7 @@ void BufferManager::Release(WGPUBuffer buffer) const {
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   // Encode pending deferred dispatches before recording the readback; the flush below submits both
   // in order.
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(*this));
 
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
@@ -612,8 +611,8 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto& command_encoder = context_.GetCommandEncoder(recording_);
+  context_.EndComputePass(recording_);
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
   ORT_THROW_IF_ERROR(context_.Flush(*this));
 
@@ -671,8 +670,8 @@ IBufferCacheManager& BufferManager::GetCacheManager(WGPUBuffer buffer) const {
   return GetCacheManager(usage);
 }
 
-std::unique_ptr<BufferManager> BufferManagerFactory::Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode) {
-  return std::make_unique<BufferManager>(context, storage_buffer_cache_mode, uniform_buffer_cache_mode, query_resolve_buffer_cache_mode, default_buffer_cache_mode);
+std::unique_ptr<BufferManager> BufferManagerFactory::Create(WebGpuContext& context, CommandRecordingState& recording, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode) {
+  return std::make_unique<BufferManager>(context, recording, storage_buffer_cache_mode, uniform_buffer_cache_mode, query_resolve_buffer_cache_mode, default_buffer_cache_mode);
 }
 
 }  // namespace webgpu
