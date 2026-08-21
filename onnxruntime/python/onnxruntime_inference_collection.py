@@ -1228,12 +1228,13 @@ class IOBinding:
         return result
 
     def get_outputs_as_ortvaluevector(self):
-        outputs = self._iobinding.get_outputs()
-        if any(ortvalue._is_webgpu_buffer() for ortvalue in outputs):
-            raise RuntimeError(
-                "Raw OrtValueVector output is unavailable for WebGPU sessions because it cannot retain session provenance."
-            )
-        return outputs
+        """Return the raw OrtValueVector of outputs from the Run() that preceded the call.
+
+        The vector is a reference into this IOBinding (pybind ``reference_internal``), so it keeps the
+        IOBinding alive, which in turn keeps the session alive. Device-resident outputs are therefore
+        safe to hold past the session going out of scope.
+        """
+        return self._iobinding.get_outputs()
 
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU."""

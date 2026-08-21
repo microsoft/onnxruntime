@@ -2274,8 +2274,9 @@ class TestInferenceSession(unittest.TestCase):
         bound_output = io_binding.get_outputs()[0]
         self.assertIs(bound_output._session, session._sess)
         np.testing.assert_allclose(bound_output.numpy(), expected)
-        with self.assertRaisesRegex(RuntimeError, "session provenance"):
-            io_binding.get_outputs_as_ortvaluevector()
+        vector_outputs = io_binding.get_outputs_as_ortvaluevector()
+        self.assertTrue(vector_outputs[0]._is_webgpu_buffer())
+        del vector_outputs
 
         updated_input = input_value + 10.0
         gpu_input.update_inplace(updated_input)
@@ -2411,6 +2412,58 @@ class TestInferenceSession(unittest.TestCase):
         session.release_captured_graph()
         second_binding.clear_binding_inputs()
         second_binding.clear_binding_outputs()
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_raw_output_vector_keeps_session_alive(self):
+        """A device OrtValue reached through the raw vector must survive its session.
+
+        This pins the pybind keepalive chain that makes get_outputs_as_ortvaluevector() safe:
+
+            OrtValue --keep_alive<0,1> on OrtValueVector.__getitem__-->
+            OrtValueVector --reference_internal on SessionIOBinding.get_outputs-->
+            SessionIOBinding --keep_alive<1,2> on SessionIOBinding.__init__--> InferenceSession
+
+        Without the full chain, freeing the buffer after the session is gone would call
+        GpuBufferAllocator::Free() through a buffer-manager getter that captured the dead EP.
+        """
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        io_binding = session.io_binding()
+        io_binding.bind_cpu_input(input_metadata.name, input_value)
+        io_binding.bind_output(output_metadata.name, "webgpu")
+        session.run_with_iobinding(io_binding)
+
+        held = io_binding.get_outputs_as_ortvaluevector()[0]
+        self.assertTrue(held._is_webgpu_buffer())
+
+        del io_binding
+        del session
+        gc.collect()
+
+        # The value is still valid with no session in scope ...
+        self.assertTrue(held._is_webgpu_buffer())
+        # ... and releasing the WebGPU buffer afterwards must not fault.
+        del held
+        gc.collect()
 
     def test_memory_arena_shrinkage(self):
         if (
