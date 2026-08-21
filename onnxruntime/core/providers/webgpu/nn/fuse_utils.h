@@ -25,7 +25,7 @@ enum class ActivationKind {
 };
 
 using Activation = struct Activation {
-  std::string ToString() const {
+  std::string CacheKey() const {
     std::stringstream oss;
     oss << "ActivationKind: " << static_cast<int>(activation_kind_) << ";";
     return oss.str();
@@ -54,9 +54,7 @@ constexpr size_t kActivationUniformVariableCount = 2;
 // Activation uniforms must be last in each program's uniform definition list.
 #define WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES                                     \
   {"activation_param_0", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32}, \
-  {                                                                                     \
-    "activation_param_1", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32  \
-  }
+  { "activation_param_1", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32 }
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation);
 

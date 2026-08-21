@@ -166,7 +166,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias, is_channels_last};
 
     program
-        .CacheHint(Activation().ToString(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
+        .CacheHint(Activation().CacheKey(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
 
@@ -311,7 +311,7 @@ Status ComputeMatMul(ComputeContext* context,
 
   MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
   matmul_program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
+      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
