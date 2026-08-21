@@ -23,6 +23,10 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
+#ifdef _WIN32
+#include "core/providers/migraphx/migraphx_external_resource_importer.h"
+#endif
+
 namespace onnxruntime {
 
 void InitializeRegistry();
@@ -221,6 +225,13 @@ struct MigraphXEpFactory : OrtEpFactory {
 
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+
+#ifdef _WIN32
+    // External resource import (D3D12 to HIP)
+    CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
+#else
+    CreateExternalResourceImporterForDevice = nullptr;
+#endif
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -312,18 +323,86 @@ struct MigraphXEpFactory : OrtEpFactory {
   }
 
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+#ifdef _WIN32
+    // Stream support enabled on Windows for external resource import
+    return true;
+#else
     return false;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
-                                                               const OrtMemoryDevice* /*memory_device*/,
+                                                               const OrtMemoryDevice* memory_device,
                                                                const OrtKeyValuePairs* /*stream_options*/,
                                                                OrtSyncStreamImpl** stream) noexcept {
     auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
 
+    if (stream == nullptr) {
+      return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "stream cannot be nullptr");
+    }
+
     *stream = nullptr;
+
+#ifdef _WIN32
+    // Get device ID from memory_device
+    const OrtEpApi* ep_api = factory->ort_api.GetEpApi();
+    int device_id = 0;
+    if (memory_device != nullptr && ep_api != nullptr) {
+      device_id = static_cast<int>(ep_api->MemoryDevice_GetDeviceId(memory_device));
+    }
+
+    // Create and return the sync stream
+    auto* sync_stream = new (std::nothrow) MigraphxSyncStreamImpl(device_id, factory->ort_api);
+    if (sync_stream == nullptr) {
+      return factory->ort_api.CreateStatus(ORT_FAIL, "Failed to allocate sync stream");
+    }
+
+    if (sync_stream->stream_ == nullptr) {
+      delete sync_stream;
+      return factory->ort_api.CreateStatus(ORT_FAIL, "Failed to create HIP stream");
+    }
+
+    *stream = sync_stream;
+    return nullptr;
+#else
     return factory->ort_api.CreateStatus(
-        ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
+        ORT_NOT_IMPLEMENTED, "CreateSyncStreamForDevice is not supported on non-Windows platforms");
+#endif
+  }
+
+  // External resource importer for D3D12 to HIP import
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDeviceImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      OrtExternalResourceImporterImpl** out_importer) noexcept {
+    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+
+    if (out_importer == nullptr) {
+      return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "out_importer cannot be nullptr");
+    }
+
+    *out_importer = nullptr;
+
+#ifdef _WIN32
+    // For now, use device 0. In the future, we could extract device ID from ep_device
+    // using OrtApi::EpDevice_MemoryInfo and then querying the resulting OrtMemoryInfo.
+    // However, since CreateExternalResourceImporterForDeviceImpl doesn't take memory_device
+    // as a parameter (unlike CreateSyncStreamForDeviceImpl), and we don't have direct API
+    // to extract device ID from OrtEpDevice, we default to 0.
+    int device_id = 0;
+
+    // Create the external resource importer
+    auto* importer = new (std::nothrow) MigraphxExternalResourceImporterImpl(device_id, factory->ort_api);
+    if (importer == nullptr) {
+      return factory->ort_api.CreateStatus(ORT_FAIL, "Failed to allocate external resource importer");
+    }
+
+    *out_importer = importer;
+    return nullptr;
+#else
+    return factory->ort_api.CreateStatus(
+        ORT_NOT_IMPLEMENTED, "External resource import is not supported on non-Windows platforms");
+#endif
   }
 
   const OrtApi& ort_api;
@@ -372,3 +451,6 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
 }
+
+
+
