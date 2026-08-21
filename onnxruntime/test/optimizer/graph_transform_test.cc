@@ -3270,10 +3270,10 @@ void RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(float alpha_first, float a
       ASSERT_GT(params_attr->floats_size(), 0);
       fused_alphas.push_back(params_attr->floats(0));
     }
-    // Ensure both activations are fused into Conv to exercise the parameter-specific MatMulNaiveProgram path.
+    // Both must fuse so that one MatMulNaive pipeline is dispatched twice with different uniforms.
     ASSERT_THAT(fused_alphas, ::testing::UnorderedElementsAre(alpha_first, alpha_second))
-        << "expected both convolutions to absorb their HardSigmoid, so that two MatMulNaive "
-           "variants differing only in activation parameters are compiled in one session";
+        << "expected both convolutions to absorb their HardSigmoid, so that a single MatMulNaive "
+           "pipeline runs twice with different activation parameter uniforms";
   };
 
   RunWebGpuFusionTransformerTest(build_test_case,
@@ -3375,8 +3375,10 @@ TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationsIn
   RunWebGpuSmallMatMulConvActivationPairTest("Sigmoid", "Relu");
 }
 
-// Use distinct alpha values that match at the stringstream default precision.
-TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache) {
+// These alphas render identically at the default stringstream precision, so before activation
+// parameters became uniforms they collided in the pipeline cache key. Both convolutions now share
+// one pipeline and must still produce distinct results from their per-dispatch uniforms.
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossActivationParams) {
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000015.0f, 1000025.0f);
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000025.0f, 1000015.0f);
 }
@@ -3597,7 +3599,10 @@ TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
   RunWebGpuConvActivationParity(add_clip, "Clip", 17);
 }
 
-TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossParameterValues) {
+// Each call builds its own session, so these are two independent parity checks rather than a
+// pipeline-sharing test. Sharing is covered by WebGpuSmallMatMulConvSharesPipelineAcrossActivationParams,
+// which puts both parameter values in one session.
+TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
   // Keep N and K below 8 to select MatMulNaiveProgram.
   const std::vector<int64_t> input_shape{1, 4, 8, 8};
   const std::vector<int64_t> weight_shape{6, 4, 1, 1};
