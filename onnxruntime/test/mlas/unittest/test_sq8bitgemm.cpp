@@ -751,9 +751,11 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     }
   }
 
-  template <bool HasBias, bool HasZp, size_t M, size_t K, size_t N, size_t BlkLen>
-  void TestSQ8BitGemmKernel() {
+  template <bool HasBias, bool HasZp, size_t M, size_t K, size_t N, size_t BlkLen, bool WithThreadpool = false>
+  void TestSQ8BitGemmKernel(float rtol = 0.01f, float atol = 0.02f) {
     if (!MlasIsQNBitGemmAvailable(8, BlkLen, SQNBIT_CompInt8)) return;
+
+    MLAS_THREADPOOL* threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkCount * BlkLen;
@@ -814,14 +816,14 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, HasZp, inputZp, nullptr, nullptr);
+        inputScale, HasZp, inputZp, threadpool, nullptr);
 
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        inputScale, HasZp, nullptr, nullptr, nullptr);
+        inputScale, HasZp, nullptr, threadpool, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        nullptr, HasZp, inputZp, nullptr, nullptr);
+        nullptr, HasZp, inputZp, threadpool, nullptr);
 
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
     PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, isQuantAUnsigned);
@@ -850,10 +852,10 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     data.C = C;
     data.ldc = ldc;
 
-    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr, nullptr);
+    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, threadpool, nullptr);
 
     MatMul<M, K, N, BlkLen>(A, lda, B, bias, ref, ldc);
-    Check<M, K, N, BlkLen>(C, ref, ldc, 0.01f, 0.02f);
+    Check<M, K, N, BlkLen>(C, ref, ldc, rtol, atol);
   }
 
  public:
@@ -872,6 +874,51 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
     TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
     TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
+  }
+
+  // B-packing chunk-boundary coverage: MLAS_PACK_BLKS_PER_CHUNK is 64, so the
+  // subblock-count-based chunking in Q8PackQuantB (and the matching
+  // Q8ComputePackBlkSum scale reordering) switches from a single chunk to
+  // multiple chunks around 64 subblocks. K is chosen as an exact multiple of
+  // BlkLen so BlockCountK lands exactly on SubBlkCountKTarget, exercising
+  // values just below, at, and just above the boundary (and its second
+  // occurrence), regardless of which SubBlkLen the active ISA path selects.
+  // These K values (up to ~33K) are much larger than the pre-existing cases
+  // in this suite (K <= 3072), so int8 per-block quantization noise on A
+  // accumulates more; use a slightly wider (but still tight) tolerance than
+  // the default so that this expected noise doesn't cause flaky failures.
+  template <size_t BlkLen, size_t SubBlkCountKTarget, size_t N, bool WithThreadpool>
+  void ExecuteBoundaryN(void) {
+    constexpr size_t K = SubBlkCountKTarget * BlkLen;
+    constexpr float rtol = 0.015f;
+    constexpr float atol = 0.03f;
+    TestSQ8BitGemmKernel<false, true, 1, K, N, BlkLen, WithThreadpool>(rtol, atol);
+    TestSQ8BitGemmKernel<true, true, 1, K, N, BlkLen, WithThreadpool>(rtol, atol);
+    TestSQ8BitGemmKernel<false, false, 1, K, N, BlkLen, WithThreadpool>(rtol, atol);
+    TestSQ8BitGemmKernel<true, false, 1, K, N, BlkLen, WithThreadpool>(rtol, atol);
+  }
+
+  template <size_t BlkLen, size_t SubBlkCountKTarget>
+  void ExecuteBoundary(void) {
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 1, false>();
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 3, false>();
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 4, false>();
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 5, false>();
+
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 1, true>();
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 3, true>();
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 4, true>();
+    ExecuteBoundaryN<BlkLen, SubBlkCountKTarget, 5, true>();
+  }
+
+  template <size_t BlkLen>
+  void ExecuteBoundarySetForBlkLen(void) {
+    ExecuteBoundary<BlkLen, 63>();
+    ExecuteBoundary<BlkLen, 64>();
+    ExecuteBoundary<BlkLen, 65>();
+    ExecuteBoundary<BlkLen, 127>();
+    ExecuteBoundary<BlkLen, 128>();
+    ExecuteBoundary<BlkLen, 129>();
   }
 
   void ExecuteShort(void) override {
@@ -905,6 +952,12 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     Execute<6, 257, 7, 256>();
     Execute<1, 3072, 128, 256>();
     Execute<2, 3072, 128, 256>();
+
+    ExecuteBoundarySetForBlkLen<16>();
+    ExecuteBoundarySetForBlkLen<32>();
+    ExecuteBoundarySetForBlkLen<64>();
+    ExecuteBoundarySetForBlkLen<128>();
+    ExecuteBoundarySetForBlkLen<256>();
   }
 };
 
