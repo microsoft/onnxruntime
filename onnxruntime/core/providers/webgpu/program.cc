@@ -340,7 +340,13 @@ ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
 }
 
 ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) {
+  inputs_.reserve(inputs_.size() + inputs.size());
   inputs_.insert(inputs_.end(), inputs.begin(), inputs.end());
+  return *this;
+}
+
+ProgramBase& ProgramBase::ReserveInputCapacity(size_t capacity) {
+  inputs_.reserve(capacity);
   return *this;
 }
 
@@ -350,7 +356,13 @@ ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
 }
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
+  outputs_.reserve(outputs_.size() + outputs.size());
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
+  return *this;
+}
+
+ProgramBase& ProgramBase::ReserveOutputCapacity(size_t capacity) {
+  outputs_.reserve(capacity);
   return *this;
 }
 
@@ -401,7 +413,13 @@ ProgramBase& ProgramBase::AddUniformVariable(ProgramUniformVariableValue&& varia
 }
 
 ProgramBase& ProgramBase::AddUniformVariables(std::initializer_list<ProgramUniformVariableValue> variables) {
+  variables_.reserve(variables_.size() + variables.size());
   variables_.insert(variables_.end(), variables.begin(), variables.end());
+  return *this;
+}
+
+ProgramBase& ProgramBase::ReserveUniformVariableCapacity(size_t capacity) {
+  variables_.reserve(capacity);
   return *this;
 }
 
