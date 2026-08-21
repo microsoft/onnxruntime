@@ -7,69 +7,63 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_kernel_ummla.cpp
+    qgemm_kernel_ummla_sve.cpp
 
 Abstract:
 
-    This module implements ummla QGEMM kernel.
+    This module implements the SVE i8mm (svmmla_u32) variant of the U8X8 int8
+    QGEMM kernel. Like qgemm_kernel_smmla_sve.cpp it reuses the NEON ummla A/B
+    packing (byte-identical, PackedK=8, unsigned RowSum) verbatim and only
+    reimplements the compute, which it shares with the S8S8 kernel through
+    MlasQGemmMmlaKernelSve<AUnsigned=true>.
+
+    The instruction is svmmla_u32 -- unsigned x UNSIGNED -- not svusmmla:
+    CopyPackB bit-flips signed B to unsigned (XOR 0x80) and compensates via
+    MlasGemmQuantFixupZeroPointB, so both operands are unsigned by the time the
+    kernel sees them. That also makes U8U8 the simpler case of the same kernel
+    type, which is why this dispatch serves both GemmU8S8Dispatch and
+    GemmU8U8Dispatch.
+
+    This translation unit is plain C++ (driver, packing and dispatch); it needs
+    no SVE compiler support and is built without -march=...+sve+i8mm. Only the
+    compute kernel carries that flag -- see sve/qgemm_mmla_sve_impl.cpp. The
+    dispatch is installed when MLAS_CPUIDINFO::HasArmSVE_I8MM() is true.
 
 --*/
 
-#include "mlasi.h"
-#include "qgemm.h"
+#include "../mlasi.h"
+#include "../qgemm.h"
 
-//
-// Define the prototypes of the NEON UMMLA routines written in assembly.
-//
+#include "qgemm_mmla_sve.h"
 
-extern "C" {
-
-size_t MLASCALL
-MlasGemmU8X8KernelUmmlaZero(const uint8_t* A,
-                            const uint8_t* B,
-                            int32_t* C,
-                            size_t PackedCountK,
-                            size_t CountM,
-                            size_t CountN,
-                            size_t ldc,
-                            const int32_t* RowSumVector,
-                            const int32_t* ColumnSumVector,
-                            const int32_t* ZeroPointB);
-
-size_t MLASCALL
-MlasGemmU8X8KernelUmmlaAdd(const uint8_t* A,
-                           const uint8_t* B,
-                           int32_t* C,
-                           size_t PackedCountK,
-                           size_t CountM,
-                           size_t CountN,
-                           size_t ldc,
-                           const int32_t* RowSumVector,
-                           const int32_t* ColumnSumVector,
-                           const int32_t* ZeroPointB);
-}
-
-struct MLAS_GEMM_U8X8_KERNEL_UMMLA {
+struct MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
     typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
+#if defined(MLAS_SVE_QGEMM_TILE_12X8) && MLAS_SVE_QGEMM_TILE_12X8
+    // 12-row M-tiles: CopyPackA emits the [8-group][4-group] layout the 12x8
+    // kernel consumes (greedy 8/4/2/1 grouping packs CountM==12 exactly so).
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{12, 128, 256};
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{12, 128, 384};
+#else
     static constexpr MLAS_GEMM_QUANT_STRIDES Strides{24, 128, 256};
     static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{24, 128, 384};
+#endif
 };
 
-constexpr size_t MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedK;
-constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UMMLA::Strides;
-constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedStrides;
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedK;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedStrides;
 
 template <>
 MLAS_FORCEINLINE int32_t
-MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UMMLA>(int32_t ZeroPointB, bool BIsSigned)
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>(int32_t ZeroPointB, bool BIsSigned)
 {
     if (BIsSigned) {
-        ZeroPointB = MLAS_GEMM_U8X8_KERNEL_UMMLA::OffsetBType(ZeroPointB ^ 0x80);
+        ZeroPointB = MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::OffsetBType(ZeroPointB ^ 0x80);
     }
 
     return ZeroPointB;
@@ -77,7 +71,7 @@ MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UMMLA>(int32_t ZeroPointB, bo
 
 template <>
 void
-MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* D,
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>(MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedAType* D,
                                                     const uint8_t* A,
                                                     size_t lda,
                                                     size_t CountM,
@@ -652,7 +646,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
 
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8CopyPackBProcessUmmla(MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* D,
+MlasGemmU8X8CopyPackBProcessUmmla(MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedBType* D,
                                   uint8x8_t BytesRow[8],
                                   uint8x16_t BitFlipVector,
                                   uint32x4_t ColumnSums[2])
@@ -704,7 +698,7 @@ MlasGemmU8X8CopyPackBProcessUmmla(MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* D,
 
 template <>
 void
-MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* D,
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>(MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedBType* D,
                                                     const uint8_t* B,
                                                     size_t ldb,
                                                     size_t CountN,
@@ -862,8 +856,8 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
 
 template <>
 MLAS_FORCEINLINE size_t
-MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UMMLA>(const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
-                                                 const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>(const MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedAType* A,
+                                                 const MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedBType* B,
                                                  int32_t* C,
                                                  size_t PackedCountK,
                                                  size_t CountM,
@@ -874,23 +868,26 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UMMLA>(const MLAS_GEMM_U8X8_KERNEL_UMM
                                                  const int32_t* ZeroPointB,
                                                  bool ZeroMode)
 {
-    size_t RowsHandled;
-
-    if (ZeroMode) {
-        RowsHandled = MlasGemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                  RowSumBuffer, ColumnSumBuffer, ZeroPointB);
-    } else {
-        RowsHandled = MlasGemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                 RowSumBuffer, ColumnSumBuffer, ZeroPointB);
-    }
-
-    return RowsHandled;
+    // U8S8: unsigned A x signed B. The compute lives in the extern "C" impl
+    // symbol (intrinsics reference TU or the generated machine-code variant
+    // -- see qgemm_mmla_sve.h); this driver TU compiles without SVE support.
+    return MlasGemmU8X8KernelUmmlaSveImpl(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                          RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla = {
-    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_UMMLA>,
-    MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_UMMLA>,
-    MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA>,
-    MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedK,
-    MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedStrides.K,
+//
+// M == 1 needs no special handling: the shared SVE core has a dedicated
+// single-row path (MLAS_SVE_QGEMM_M1_LEAN in qgemm_mmla_kernel_sve.h) that
+// measures at parity with the NEON ummla kernel. Parity is also the ceiling --
+// with one real row an mmla does 16 MACs, exactly a dot-product kernel's rate --
+// so the previous delegation to the NEON dispatch bought nothing and is gone,
+// along with its OS-conditional guard.
+//
+
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmlaSve = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE>,
+    MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedK,
+    MLAS_GEMM_U8X8_KERNEL_UMMLA_SVE::PackedStrides.K,
     8};

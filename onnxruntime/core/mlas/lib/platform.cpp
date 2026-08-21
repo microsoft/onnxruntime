@@ -806,12 +806,41 @@ Return Value:
     const bool HasI8MMInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM();
     if (HasI8MMInstructions) {
 #if defined(__linux__)
-
+        //
+        // Hand-written GAS assembly (aarch64/Qgemm{S8S8KernelSmmla,
+        // U8X8KernelUmmla}.S): GAS-only, because armasm64 cannot encode i8mm
+        // mnemonics -- and those kernels also use x18, the reserved platform
+        // register, as a matrix-C row pointer. Off Linux the SVE svmmla
+        // dispatches below cover S8S8, U8S8 and U8U8 from portable frozen
+        // machine code, so nothing is lost.
+        //
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
 #endif
     }
+
+#if defined(MLAS_USE_SVE)
+    //
+    // Prefer the SVE i8mm (svmmla) signed int8 GEMM kernel when the processor
+    // supports SVE with the I8MM extension. It consumes the same packed panels
+    // as the NEON smmla kernel (identical RowSum/ColumnSum zero-point layout),
+    // so the signed-activation contract established below is preserved. The
+    // compute kernels are portable machine code, so this is not OS-gated.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmlaSve;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmlaSve;
+        //
+        // U8U8 uses the same U8X8 kernel type: MlasGemmQuantFixupZeroPointB
+        // and CopyPackB both key off BIsSigned, and unsigned B is the simpler
+        // case (no 0x80 bit-flip, no zero-point fixup) -- svmmla_u32 wants
+        // unsigned operands either way. The NEON ummla dispatch already serves
+        // both U8U8 and U8S8 from this kernel type on Linux.
+        //
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmlaSve;
+    }
+#endif
 
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
