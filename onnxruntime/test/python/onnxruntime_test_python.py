@@ -2185,11 +2185,14 @@ class TestInferenceSession(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "graph capture requires"):
             session.run_with_ortvaluevector(None, [], None, [], None, None)
-        with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
-            onnxrt.copy_tensors([gpu_input], [gpu_output])
+        # Default-context WebGPU values copy in both directions through the shared data transfer.
+        onnxrt.copy_tensors([gpu_input], [gpu_output])
+        np.testing.assert_allclose(gpu_output.numpy(), input_value)
 
         raw_vector = OrtValueVector()
-        with self.assertRaisesRegex(RuntimeError, "cannot retain the session ownership"):
+        # A standalone vector has no parent to keep the session alive; the IOBinding one does.
+        raw_vector.push_back(onnxrt.OrtValue.ortvalue_from_numpy(input_value)._get_c_value())
+        with self.assertRaisesRegex(RuntimeError, "standalone OrtValueVector"):
             raw_vector.push_back(gpu_input._get_c_value())
 
         unsafe_io_binding = session.io_binding()

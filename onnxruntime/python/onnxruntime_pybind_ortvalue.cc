@@ -530,8 +530,16 @@ void addOrtValueMethods(pybind11::module& m) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
       .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
+        // A standalone OrtValueVector has no parent object, so unlike the vector returned by
+        // SessionIOBinding::get_outputs it cannot keep the owning session alive. A WebGPU buffer
+        // allocated by a session's EP is freed through GpuBufferAllocator, whose buffer-manager
+        // getter captures that EP, so releasing it after the session is gone is a use-after-free.
+        // TODO: remove once GpuBufferAllocator owns a reference to whatever owns its BufferManager,
+        // at which point a WebGPU OrtValue is safe to hold independently of any session.
         ORT_ENFORCE(!IsWebGpuBuffer(ortvalue),
-                    "OrtValueVector cannot retain the session ownership required by WebGPU OrtValues.");
+                    "A WebGPU OrtValue cannot be stored in a standalone OrtValueVector because the "
+                    "vector cannot keep the session that allocated the buffer alive. Use IOBinding, "
+                    "or IOBinding.get_outputs_as_ortvaluevector() for device-resident outputs.");
         v->push_back(ortvalue);
       })
 #if defined(ENABLE_DLPACK)
@@ -553,9 +561,14 @@ void addOrtValueMethods(pybind11::module& m) {
 
               auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
               auto device = devices.at(i);
+              // This overload wraps foreign (PyTorch) storage by raw address. A WebGPU allocation is
+              // an opaque WGPUBuffer handle rather than an addressable pointer, so no torch tensor
+              // can back one. The OrtMemoryInfo built below would also be mislabelled, since it uses
+              // GetDeviceName rather than the WEBGPU_BUFFER allocator name the binding paths expect.
               ORT_ENFORCE(!(device.Type() == OrtDevice::GPU &&
                             device.Vendor() == OrtDevice::VendorIds::NONE),
-                          "OrtValueVector.push_back_batch does not support WebGPU buffers.");
+                          "OrtValueVector.push_back_batch cannot wrap WebGPU memory: a WebGPU "
+                          "allocation is an opaque buffer handle, not a raw data pointer.");
               OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
               OrtValue ml_value;
               Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
