@@ -12,6 +12,15 @@ set(mlas_private_compile_definitions)
 if(onnxruntime_BUILD_UNIT_TESTS)
   list(APPEND mlas_private_compile_definitions MLAS_ENABLE_TEST_HOOKS)
 endif()
+
+# Adds compile definitions to mlas_private_compile_definitions from any scope, including from within nested function
+# calls. set(... PARENT_SCOPE) propagates a value exactly one scope up, so it silently drops the definition when the
+# caller is itself a function (e.g. setup_arm_neon_nchwc() called from setup_mlas_source_for_windows()). Directory
+# properties are not affected by function scopes, so accumulate the definitions in one and merge them back into
+# mlas_private_compile_definitions before it is consumed.
+function(mlas_add_private_compile_definitions)
+  set_property(DIRECTORY APPEND PROPERTY mlas_private_compile_definitions_from_functions ${ARGN})
+endfunction()
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -185,8 +194,7 @@ function(setup_mlas_source_for_windows)
           ${MLAS_SRC_DIR}/sve/elementwise_sve_dispatch.cpp
         )
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
-        list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
-        set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+        mlas_add_private_compile_definitions(MLAS_USE_SVE)
       endif()
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -406,8 +414,7 @@ function (setup_arm_neon_nchwc)
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
      )
   endif()
-  list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
-  set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+  mlas_add_private_compile_definitions(MLAS_USE_ARM_NEON_NCHWC)
 endfunction ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -1145,6 +1152,12 @@ else()
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
+
+# Merge in the definitions that were added from within functions.
+get_property(mlas_private_compile_definitions_from_functions
+             DIRECTORY PROPERTY mlas_private_compile_definitions_from_functions)
+list(APPEND mlas_private_compile_definitions ${mlas_private_compile_definitions_from_functions})
+list(REMOVE_DUPLICATES mlas_private_compile_definitions)
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
