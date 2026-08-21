@@ -688,7 +688,7 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
 }
 
 template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const VariantPack<float>&,
-                                          float, int, size_t, cudaStream_t);
+                                           float, int, size_t, cudaStream_t);
 template Status LaunchGatedDeltaNet<half>(const Descriptor&, const Plan&, const VariantPack<half>&,
                                           float, int, size_t, cudaStream_t);
 

@@ -65,12 +65,12 @@ namespace {
 // Padded leading dimensions; see the note in gated_delta_net_impl.cu on why the +8.
 template <int DK, int DV, int BT, int DVB>
 struct SplitLd {
-  static constexpr int kKh = DK + 8;    // rows of length DK
-  static constexpr int kVh = DV + 8;    // rows of length DV
-  static constexpr int kBh = DVB + 8;   // rows of length DVB
-  static constexpr int kMh = BT + 8;    // rows of length BT
-  static constexpr int kSh = DVB + 8;   // state rows, DVB wide
-  static constexpr int kF1 = (DV > BT ? DV : BT) + 4;   // K1 fp32 scratch
+  static constexpr int kKh = DK + 8;                     // rows of length DK
+  static constexpr int kVh = DV + 8;                     // rows of length DV
+  static constexpr int kBh = DVB + 8;                    // rows of length DVB
+  static constexpr int kMh = BT + 8;                     // rows of length BT
+  static constexpr int kSh = DVB + 8;                    // state rows, DVB wide
+  static constexpr int kF1 = (DV > BT ? DV : BT) + 4;    // K1 fp32 scratch
   static constexpr int kF2 = (DVB > BT ? DVB : BT) + 4;  // K2 fp32 scratch
 };
 
