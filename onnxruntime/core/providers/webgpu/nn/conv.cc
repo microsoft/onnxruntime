@@ -113,6 +113,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                               {std::vector<uint32_t>{x_depth, x_height, x_width}},
                               {x_channels}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    // Activation uniforms must remain last because definitions and values are matched by index.
+    AppendActivationUniformsData(activation_, program);
     if (has_bias) {
       program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), 1});
     }
@@ -162,12 +164,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
 
   if (CanApplyIm2ColMatMulProgram(context,
                                   is_channels_last,
-                                  activation_.activation_kind_ != ActivationKind::None,
+                                  activation_,
                                   kernel_shape,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group),
                                   kernel->DataType())) {
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,
+                                    activation_,
                                     dilations,
                                     pads,
                                     strides,
@@ -197,6 +200,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    // Activation uniforms must remain last because definitions and values are matched by index.
+    AppendActivationUniformsData(activation_, program);
     if (has_bias) {
       auto reduced_bias_shape = ReduceShapeByComponents(modified_input_output_shapes[2], components);
       program.AddInput({inputs[2], ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
@@ -258,7 +263,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
       MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
       program
-          .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+          .CacheHint(activation_.ToString(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
           .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
                       {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
       if (has_bias) {
@@ -269,6 +274,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
           .AddIndices(outer_dims)
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
+      // Activation uniforms must remain last because definitions and values are matched by index.
+      AppendActivationUniformsData(activation_, program);
       return context.RunProgram(program);
     } else {
       return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
@@ -334,7 +341,7 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // Im2ColMatMul path uses a different transpose (OIHW -> OHWI) and reads
   // kernel directly from context.Input(1), ignoring prepacked weights.
   // Skip prepacking when this path will be used at runtime.
-  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_.activation_kind_ != ActivationKind::None,
+  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
                                   kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
                                   tensor.DataType())) {
     return Status::OK();
