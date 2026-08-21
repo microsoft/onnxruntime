@@ -4,6 +4,8 @@
 #include <exception>
 #include <limits>
 #include <type_traits>
+
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -3292,8 +3294,7 @@ TEST(ResizeOpTest, Axes_NegativeOutOfRange_18) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
-// Valid negative axes (within [-rank, -1]) must still produce correct output.
-TEST(ResizeOpTest, Axes_NegativeInRange_18) {
+static void ConfigureNegativeAxesInRange18Test(OpTester& test) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0.f);
   std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f,
@@ -3305,7 +3306,6 @@ TEST(ResizeOpTest, Axes_NegativeInRange_18) {
   std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
   std::vector<int64_t> axes{-3, -2, -1};
 
-  OpTester test("Resize", 18);
   test.AddAttribute<int64_t>("exclude_outside", 0LL);
   test.AddAttribute<std::vector<int64_t>>("axes", axes);
   test.AddAttribute<int64_t>("antialias", 0LL);
@@ -3316,11 +3316,62 @@ TEST(ResizeOpTest, Axes_NegativeInRange_18) {
   test.AddInput<float>("scales", {int64_t(scales.size())}, scales, true);
 
   test.AddOutput<float>("Y", output_shape, Y);
-  // OpenVINO EP's Resize importer does not normalize negative axes against the input rank,
-  // so it rejects models that the ONNX spec accepts. Tracked by GH issue #28788.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider});
 }
+
+// Valid negative axes (within [-rank, -1]) must still produce correct output.
+TEST(ResizeOpTest, Axes_NegativeInRange_18) {
+  OpTester test("Resize", 18);
+  ConfigureNegativeAxesInRange18Test(test);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+#ifdef USE_OPENVINO
+class OpenVINOResizeOpTester : public OpTester {
+ public:
+  OpenVINOResizeOpTester() : OpTester("Resize", 18) {}
+
+ protected:
+  void AddNodes(onnxruntime::Graph& graph,
+                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
+    auto& identity1_output = graph.GetOrCreateNodeArg("identity1_output", graph_input_defs[0]->TypeAsProto());
+    auto& identity2_output = graph.GetOrCreateNodeArg("identity2_output", graph_input_defs[0]->TypeAsProto());
+    auto& resize_output = graph.GetOrCreateNodeArg("resize_output", graph_output_defs[0]->TypeAsProto());
+
+    graph.AddNode("identity1", "Identity", "", {graph_input_defs[0]}, {&identity1_output});
+    graph.AddNode("identity2", "Identity", "", {&identity1_output}, {&identity2_output});
+
+    auto resize_inputs = graph_input_defs;
+    resize_inputs[0] = &identity2_output;
+    auto& resize_node = graph.AddNode("resize", "Resize", "", resize_inputs, {&resize_output});
+    for (auto& add_attribute_fn : add_attribute_funcs) {
+      add_attribute_fn(resize_node);
+    }
+
+    graph.AddNode("identity3", "Identity", "", {&resize_output}, graph_output_defs);
+  }
+};
+
+TEST(ResizeOpTest, Axes_NegativeInRange_18_OpenVINO) {
+  auto openvino_ep = DefaultOpenVINOExecutionProvider();
+  if (openvino_ep == nullptr) {
+    GTEST_SKIP() << "OpenVINO EP is unavailable.";
+  }
+
+  SessionOptions session_options;
+  session_options.use_per_session_threads = false;
+  session_options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpenVINOResizeOpTester test;
+  ConfigureNegativeAxesInRange18Test(test);
+  test.Config(session_options)
+      .ConfigEp(std::move(openvino_ep))
+      .RunWithConfig();
+}
+#endif
 
 // When axes is provided, the sizes input length must match axes length so the scatter
 // loop does not read past the end of sizes.
