@@ -23,6 +23,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import (
     _GRAPH_ANNOTATION_SKIP,
     _graph_annotation_id,
+    _has_foreign_webgpu_context,
 )
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
@@ -1914,8 +1915,13 @@ class TestInferenceSession(unittest.TestCase):
             session.run_with_ort_values(None, {input_metadata.name: session_value})[0].numpy(),
             ortvalue_update_expected,
         )
-        with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
+        # copy_tensors no longer rejects a value merely for being session-scoped. It can still fail
+        # here for an unrelated pre-existing reason: the environment DataTransferManager has no
+        # CPU-to-CPU entry. What matters is that our guard is not what rejects it.
+        try:
             onnxrt.copy_tensors([session_value], [session_value])
+        except (ValueError, RuntimeError) as error:
+            self.assertNotIn("WebGPU", str(error))
 
         other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         other_session_value = other_session.create_ortvalue_from_numpy(input_value, "cpu")
@@ -1999,6 +2005,49 @@ class TestInferenceSession(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "same session"):
             owned.update_inplace(foreign)
+
+    def test_foreign_webgpu_context_predicate(self):
+        """Unit-test the copy_tensors context predicate without needing a second WebGPU context.
+
+        A real custom context requires caller-supplied Dawn instance and device handles, which are
+        not reachable from Python, so the context id is injected here instead. This is the only
+        coverage of the rejection branch that runs on a CPU-only machine.
+        """
+
+        class FakeValue:
+            def __init__(self, is_webgpu, session):
+                self._is_webgpu_buffer = is_webgpu
+                self._session = session
+
+        default_session = object()
+        custom_session = object()
+        no_webgpu_session = object()
+        context_ids = {id(default_session): 0, id(custom_session): 1, id(no_webgpu_session): -1}
+
+        def context_id_getter(session):
+            return context_ids[id(session)]
+
+        cpu_unowned = FakeValue(False, None)
+        cpu_owned = FakeValue(False, custom_session)
+        webgpu_unowned = FakeValue(True, None)
+        webgpu_default = FakeValue(True, default_session)
+        webgpu_custom = FakeValue(True, custom_session)
+        webgpu_no_ep = FakeValue(True, no_webgpu_session)
+
+        # Only a WebGPU value that can be attributed to a non-default context is rejected.
+        for allowed in (cpu_unowned, cpu_owned, webgpu_unowned, webgpu_default, webgpu_no_ep):
+            self.assertFalse(_has_foreign_webgpu_context([allowed], context_id_getter))
+        self.assertTrue(_has_foreign_webgpu_context([webgpu_custom], context_id_getter))
+
+        # One offending value anywhere in the batch is enough, in either direction.
+        self.assertTrue(_has_foreign_webgpu_context([webgpu_default, webgpu_custom], context_id_getter))
+        self.assertTrue(_has_foreign_webgpu_context([cpu_unowned, webgpu_custom], context_id_getter))
+        self.assertFalse(_has_foreign_webgpu_context([], context_id_getter))
+
+    def test_webgpu_context_id_reports_default_for_cpu_session(self):
+        """A session with no WebGPU EP reports -1, which the copy_tensors predicate treats as unknown."""
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        self.assertEqual(session._sess.webgpu_context_id(), -1)
 
     def test_graph_annotation_id_run_option(self):
         """gpu_graph_id defaults to 0, accepts integer strings, and uses -1 to skip capture."""
@@ -2219,8 +2268,9 @@ class TestInferenceSession(unittest.TestCase):
         except (ValueError, RuntimeError) as error:
             self.assertNotIn("retain the session", str(error))
 
-        with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
-            onnxrt.copy_tensors([unowned_webgpu_input], [global_cpu_input])
+        # WebGPU -> CPU readback through the shared data transfer is supported for the default context.
+        onnxrt.copy_tensors([unowned_webgpu_input], [global_cpu_input])
+        np.testing.assert_allclose(global_cpu_input.numpy(), input_value)
         del unowned_webgpu_input
         del shared_provenance_source
         del scratch_webgpu_value

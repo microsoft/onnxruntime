@@ -1627,13 +1627,51 @@ class OrtValue:
             self._ortvalue.update_inplace(data)
 
 
+_DEFAULT_WEBGPU_CONTEXT_ID = 0
+
+
+def _session_webgpu_context_id(session: C.InferenceSession) -> int:
+    """Return a session's WebGPU context id, or -1 when it has no WebGPU EP."""
+    return session.webgpu_context_id()
+
+
+def _has_foreign_webgpu_context(
+    values: Sequence[OrtValue],
+    context_id_getter=_session_webgpu_context_id,
+) -> bool:
+    """Whether any value provably belongs to a WebGPU context other than the default one.
+
+    The environment data transfer resolves the default WebGPU context, so copying a buffer that
+    belongs to a caller-supplied context would silently run on the wrong device. A value with no
+    owning session cannot be attributed to a context and is treated as default-context, as is a
+    session with no WebGPU EP.
+
+    TODO: this can only attribute a value that carries session provenance, because every WebGPU
+    allocation reports OrtDevice(GPU, VendorIds::NONE, 0) regardless of its context. Replace this
+    with a device-level check once WebGPU allocations carry their real context id, which would also
+    let the data transfer itself reject the copy instead of relying on this Python-side guard.
+    """
+    for value in values:
+        if not value._is_webgpu_buffer or value._session is None:
+            continue
+        if context_id_getter(value._session) not in (-1, _DEFAULT_WEBGPU_CONTEXT_ID):
+            return True
+    return False
+
+
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
     """
     Copy tensor data from source OrtValue sequence to destination OrtValue sequence.
+
+    WebGPU values belonging to the default context are supported in either direction. A value from a
+    caller-supplied WebGPU context is not, because the shared data transfer is bound to the default
+    context.
     """
-    if any(value._session is not None or value._is_webgpu_buffer for value in [*src, *dst]):
+    if _has_foreign_webgpu_context([*src, *dst]):
         raise ValueError(
-            "copy_tensors does not support session-owned or WebGPU OrtValues; use update_inplace or IOBinding readback."
+            "copy_tensors cannot copy a WebGPU OrtValue that belongs to a custom WebGPU context "
+            "because the shared data transfer is bound to the default context; use IOBinding "
+            "readback instead."
         )
     c_sources = [s._get_c_value() for s in src]
     c_dsts = [d._get_c_value() for d in dst]

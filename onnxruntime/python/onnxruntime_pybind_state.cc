@@ -3049,6 +3049,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         const auto* webgpu_ep =
             sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
         return webgpu_ep != nullptr && webgpu_ep->IsGraphCaptureEnabled(); })
+      .def("webgpu_context_id", [](const PyInferenceSession* sess) {
+        // WebGpuExecutionProvider::GetDeviceId() returns its WebGPU context id. Context 0 is the
+        // default context, which is the only one the environment-registered shared data transfer
+        // can serve; a caller-supplied instance/device gets a context id > 0.
+        // Returns -1 when the session has no WebGPU EP.
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr ? webgpu_ep->GetDeviceId() : -1; })
       .def("create_ortvalue_from_shape_and_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
