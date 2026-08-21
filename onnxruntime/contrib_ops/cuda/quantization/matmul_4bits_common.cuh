@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstring>
+
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
@@ -81,11 +83,17 @@ __device__ __forceinline__ void AccumulateEightElements4b(
   half2 v2 = elements[2] * scale_half2 + zp_adjust2;
   half2 v3 = elements[3] * scale_half2 + zp_adjust2;
 
+  half2 a_half2_0, a_half2_1, a_half2_2, a_half2_3;
+  memcpy(&a_half2_0, &vec_permuted.x, sizeof(half2));
+  memcpy(&a_half2_1, &vec_permuted.y, sizeof(half2));
+  memcpy(&a_half2_2, &vec_permuted.z, sizeof(half2));
+  memcpy(&a_half2_3, &vec_permuted.w, sizeof(half2));
+
   half2* sums_half2 = reinterpret_cast<half2*>(sums);
-  sums_half2[0] = sums_half2[0] + v0 * (*(reinterpret_cast<half2*>(&(vec_permuted.x))));
-  sums_half2[1] = sums_half2[1] + v1 * (*(reinterpret_cast<half2*>(&(vec_permuted.y))));
-  sums_half2[2] = sums_half2[2] + v2 * (*(reinterpret_cast<half2*>(&(vec_permuted.z))));
-  sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_permuted.w))));
+  sums_half2[0] = sums_half2[0] + v0 * a_half2_0;
+  sums_half2[1] = sums_half2[1] + v1 * a_half2_1;
+  sums_half2[2] = sums_half2[2] + v2 * a_half2_2;
+  sums_half2[3] = sums_half2[3] + v3 * a_half2_3;
 }
 #else
 __device__ __forceinline__ void AccumulateEightElements4b(
@@ -105,11 +113,17 @@ __device__ __forceinline__ void AccumulateEightElements4b(
   half2 v2 = element45 * scale_half2 + zp_adjust2;
   half2 v3 = element67 * scale_half2 + zp_adjust2;
 
+  half2 a_half2_0, a_half2_1, a_half2_2, a_half2_3;
+  memcpy(&a_half2_0, &vec_a.x, sizeof(half2));
+  memcpy(&a_half2_1, &vec_a.y, sizeof(half2));
+  memcpy(&a_half2_2, &vec_a.z, sizeof(half2));
+  memcpy(&a_half2_3, &vec_a.w, sizeof(half2));
+
   half2* sums_half2 = reinterpret_cast<half2*>(sums);
-  sums_half2[0] = sums_half2[0] + v0 * (*(reinterpret_cast<half2*>(&(vec_a.x))));
-  sums_half2[1] = sums_half2[1] + v1 * (*(reinterpret_cast<half2*>(&(vec_a.y))));
-  sums_half2[2] = sums_half2[2] + v2 * (*(reinterpret_cast<half2*>(&(vec_a.z))));
-  sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_a.w))));
+  sums_half2[0] = sums_half2[0] + v0 * a_half2_0;
+  sums_half2[1] = sums_half2[1] + v1 * a_half2_1;
+  sums_half2[2] = sums_half2[2] + v2 * a_half2_2;
+  sums_half2[3] = sums_half2[3] + v3 * a_half2_3;
 }
 #endif
 
@@ -152,6 +166,9 @@ __device__ __forceinline__ void Convert8xInt4To8xBF16s(uint32_t value, __nv_bflo
   bf16_2x4[1] = __floats2bfloat162_rn(static_cast<float>(i1), static_cast<float>(i5));
   bf16_2x4[2] = __floats2bfloat162_rn(static_cast<float>(i2), static_cast<float>(i6));
   bf16_2x4[3] = __floats2bfloat162_rn(static_cast<float>(i3), static_cast<float>(i7));
+#else
+  (void)value;
+  (void)bf16_2x4;
 #endif
 }
 
@@ -178,11 +195,23 @@ __device__ __forceinline__ void AccumulateEightElements4b(
   __nv_bfloat162 v2 = __hfma2(elements[2], scale_bf162, zp_adjust2);
   __nv_bfloat162 v3 = __hfma2(elements[3], scale_bf162, zp_adjust2);
 
+  __nv_bfloat162 a_bf162_0, a_bf162_1, a_bf162_2, a_bf162_3;
+  memcpy(&a_bf162_0, &vec_permuted.x, sizeof(__nv_bfloat162));
+  memcpy(&a_bf162_1, &vec_permuted.y, sizeof(__nv_bfloat162));
+  memcpy(&a_bf162_2, &vec_permuted.z, sizeof(__nv_bfloat162));
+  memcpy(&a_bf162_3, &vec_permuted.w, sizeof(__nv_bfloat162));
+
   __nv_bfloat162* sums_bf162 = reinterpret_cast<__nv_bfloat162*>(sums);
-  sums_bf162[0] = __hfma2(v0, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.x), sums_bf162[0]);
-  sums_bf162[1] = __hfma2(v1, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.y), sums_bf162[1]);
-  sums_bf162[2] = __hfma2(v2, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.z), sums_bf162[2]);
-  sums_bf162[3] = __hfma2(v3, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.w), sums_bf162[3]);
+  sums_bf162[0] = __hfma2(v0, a_bf162_0, sums_bf162[0]);
+  sums_bf162[1] = __hfma2(v1, a_bf162_1, sums_bf162[1]);
+  sums_bf162[2] = __hfma2(v2, a_bf162_2, sums_bf162[2]);
+  sums_bf162[3] = __hfma2(v3, a_bf162_3, sums_bf162[3]);
+#else
+  (void)values_quant;
+  (void)scale;
+  (void)zp;
+  (void)a;
+  (void)sums;
 #endif
 }
 
