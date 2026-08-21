@@ -241,6 +241,23 @@ class MatMulNBits final : public CudaKernel {
 #endif
   }
 
+#if USE_FPA_INTB_GEMM
+  ~MatMulNBits() {
+    // Best-effort: stage tactics discovered lazily during inference (runtime M buckets that were not
+    // part of the construction-time sweep) into the process-global in-memory cache. This does NOT
+    // write to disk: with one MatMulNBits object per node, a per-node disk flush would rewrite the
+    // whole cache file once per node. The single disk write happens at CUDA EP teardown, via
+    // FlushMatMulNBitsTacticCaches() called from ~CUDAExecutionProvider(). Never throw.
+    if (gemmProfiler_ != nullptr) {
+      try {
+        gemmProfiler_->persistProfiledTactics(gemmId_);
+      } catch (...) {
+        // Swallow: cache staging is best-effort and must not escape the destructor.
+      }
+    }
+  }
+#endif
+
   Status ComputeInternal(OpKernelContext* context) const override;
 #if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

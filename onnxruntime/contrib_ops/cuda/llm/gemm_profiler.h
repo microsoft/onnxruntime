@@ -172,11 +172,27 @@ class GemmPluginProfiler {
   // Like getBestConfig, but if the requested M bucket has not been profiled yet, profiles it
   // lazily (single bucket) and inserts it into the in-process map. This briefly blocks the caller
   // but guarantees a tuned tactic for any runtime M, which is what makes the reduced first-time M
-  // sweep safe. Must not be called while the compute stream is being captured into a CUDA graph
-  // (the caller is responsible for using getBestConfig instead during capture).
+  // sweep safe. It does NOT write to the persistent disk cache (that would put file I/O on the
+  // inference hot path); disk persistence happens off the hot path in profileTactics and the
+  // offline tuning tool. Must not be called while the compute stream is being captured into a
+  // CUDA graph (the caller is responsible for using getBestConfig instead during capture).
   std::optional<Config> getBestConfigOrProfile(int m, GemmIdType const& gemmId);
 
   virtual int getMaxProfileM() const;
+
+  // Stages the current in-process tactics for `gemmId` (including buckets profiled lazily during
+  // inference via getBestConfigOrProfile) into the subclass's persistent cache, if one is configured.
+  // This only populates the process-global in-memory cache; it does NOT write to disk, so calling it
+  // from every MatMulNBits kernel destructor does not cause O(number-of-nodes) full-file rewrites.
+  // The staged tactics are written to disk once, when the process-global cache is torn down. No-op if
+  // `gemmId` was never profiled or the subclass has no persistent cache. Best-effort, off the hot path.
+  void persistProfiledTactics(GemmIdType const& gemmId) {
+    reader_lock lock(mMNKProfileMap->mutex);
+    if (mSkip || !mMNKProfileMap->existsMProfileMap(gemmId)) {
+      return;
+    }
+    stagePersistentCache(gemmId, *mMNKProfileMap->getMProfileMap(gemmId), mHasWeightOnlyCudaKernel);
+  }
 
  protected:
   virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
@@ -195,6 +211,24 @@ class GemmPluginProfiler {
   // (rounded) profile range [minM, maxM]. The default reproduces the historical dense sweep.
   // Subclasses may override to profile a smaller, configurable bucket set.
   virtual std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const;
+
+  // Optional persistent (disk) tactic cache hooks. Default implementations are no-ops, which
+  // preserves the in-process-only behavior. Subclasses may override them to load matching
+  // tactics before the M sweep (populating `map` so profiling is skipped) and to persist the
+  // profiled tactics afterwards. Both are invoked while holding the profile-map writer lock.
+  virtual void loadPersistentCache(GemmIdType const& /*gemmId*/, MProfileMap& /*map*/,
+                                   bool /*hasWeightOnlyCudaKernel*/) {}
+
+  // Called from the construction-time sweep: stage the profiled tactics AND write them to disk
+  // immediately (so the file exists while the session is alive, e.g. for the offline tuning tool).
+  virtual void storePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
+                                    bool /*hasWeightOnlyCudaKernel*/) {}
+
+  // Called at kernel/session teardown: stage the profiled tactics into the in-memory cache WITHOUT
+  // writing to disk. The single disk write is deferred to the process-global cache teardown so that
+  // many per-node destructors do not each rewrite the whole cache file.
+  virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
+                                    bool /*hasWeightOnlyCudaKernel*/) {}
 
  private:
   std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics,
@@ -225,7 +259,7 @@ class GemmPluginProfiler {
   bool mSkip{false};
 
   // Remembered from the initial profileTactics call so lazy single-bucket profiling can
-  // reproduce the same tactic candidate set.
+  // reproduce the same tactic candidate set and cache key.
   bool mHasWeightOnlyCudaKernel{false};
 
   onnxruntime::AllocatorPtr mAllocator;
@@ -312,6 +346,9 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   onnxruntime::IAllocatorUniquePtr<char> workspace_tmp{nullptr};
   cudaStream_t stream;
 
+  // Populate from the persistent cache (if any) so already-tuned M buckets are skipped below.
+  loadPersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
+
   auto profileTactics = [&](int m, int n, int k) {
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
@@ -346,6 +383,9 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
     workspace_tmp.reset();
   }
   CUDA_CALL_THROW(cudaStreamDestroy(stream));
+
+  // Persist any newly profiled tactics to the disk cache (if configured).
+  storePersistentCache(gemmId, *mProfileMap, hasWeightOnlyCudaKernel);
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -455,6 +495,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
   mProfileMap->insert({target, best});
 
+  // Deliberately do not flush lazily-profiled buckets on the inference path. Kernel teardown
+  // stages them in memory, and CUDA EP teardown performs the disk write.
   return best;
 }
 

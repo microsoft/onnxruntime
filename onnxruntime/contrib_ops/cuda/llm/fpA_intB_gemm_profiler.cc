@@ -153,5 +153,105 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
   return std::vector<int>(buckets.begin(), buckets.end());
 }
 
+onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginProfiler::makeCacheKey(
+    GemmIdCore const& gemmId, bool hasWeightOnlyCudaKernel) const {
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey key;
+  key.n_16b = gemmId.n;
+  key.k = gemmId.k;
+  key.activation_dtype = (gemmId.dtype == onnxruntime::llm::nvinfer::DataType::kBF16) ? "bfloat16" : "half";
+  key.weight_type = (mQuantBits == 8) ? "uint8_t" : "uint4b_t";
+  key.bits = mQuantBits;
+  key.block_size = mGroupSize;
+  key.has_zero_points = mHasZeros;
+  key.zero_point_dtype = mHasZeros ? key.weight_type : "none";
+  key.gemv_enabled = hasWeightOnlyCudaKernel;
+  key.packing_sm = mArch;
+  return key;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
+    GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  auto buckets = mCache->GetAll(key);
+  if (buckets.empty()) {
+    return;
+  }
+
+  // Validate CUTLASS tactics loaded from disk against the tactics this runner can actually
+  // dispatch. A parseable-but-incompatible cache row (e.g. hand-edited, or written by a build
+  // whose signature happens to match but whose tactic set differs) would otherwise be handed
+  // straight to the kernel. Non-matching CUTLASS tactics are dropped so the bucket is re-profiled.
+  // The synthetic CUDA-GEMV tactic (enableCudaKernel) is not part of getConfigs(); its validity
+  // is already keyed by gemv_enabled in the cache key, so it is accepted as-is.
+  auto const valid_configs = getTactics(0, gemmId.n, gemmId.k);
+  auto is_valid_cutlass = [&valid_configs](Config const& c) {
+    for (auto const& v : valid_configs) {
+      if (v.sm_version == c.sm_version && v.is_tma_warp_specialized == c.is_tma_warp_specialized &&
+          v.tile_config_sm80 == c.tile_config_sm80 && v.tile_config_sm90 == c.tile_config_sm90 &&
+          v.tile_config_sm100 == c.tile_config_sm100 && v.tile_config_sm120 == c.tile_config_sm120 &&
+          v.split_k_style == c.split_k_style && v.split_k_factor == c.split_k_factor &&
+          v.stages == c.stages && v.cluster_shape == c.cluster_shape &&
+          v.mainloop_schedule == c.mainloop_schedule && v.epilogue_schedule == c.epilogue_schedule) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (auto const& [m, config] : buckets) {
+    if (config.has_value()) {
+      if (!checkTactic(m, gemmId.n, gemmId.k, *config)) {
+        ORT_LLM_LOG_WARNING("Dropping unsupported cached fpA_intB tactic from the tactic cache; re-profiling.");
+        continue;
+      }
+      if (!config->enableCudaKernel && !is_valid_cutlass(*config)) {
+        ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
+        continue;
+      }
+    }
+    // Do not clobber tactics already selected in-process this session.
+    map.emplace(m, config);
+  }
+}
+
+bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr) {
+    return false;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  bool added = false;
+  for (auto const& [m, config] : map) {
+    // Only stage buckets that are not already recorded (skips re-staging cache hits).
+    if (!mCache->Get(key, m).has_value()) {
+      mCache->Put(key, m, config);
+      added = true;
+    }
+  }
+  return added;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  // Construction-time sweep: stage and flush immediately so the cache file exists while the session
+  // is alive (the offline tuning tool reads it before the process exits).
+  if (stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel)) {
+    auto status = mCache->Flush();
+    if (!status.IsOK()) {
+      ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+    }
+  }
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  // Teardown path: stage only (no disk write). Every MatMulNBits kernel destructor calls this, so
+  // flushing here would rewrite the whole cache file once per node. The staged tactics are written
+  // to disk a single time when the process-global cache table is destroyed (see matmul_nbits.cc).
+  stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
+}
 }  // namespace onnxruntime::llm::kernels::weight_only
 #endif
