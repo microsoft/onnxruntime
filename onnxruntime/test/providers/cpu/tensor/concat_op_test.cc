@@ -441,6 +441,41 @@ TEST(ConcatOpTest, Concat4D_2) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+static void RunCudaRaggedInputCountTest(int input_count) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (cuda_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  std::vector<float> expected;
+  for (int input_index = 0; input_index < input_count; ++input_index) {
+    const int64_t input_size = input_index % 2 + 1;
+    std::vector<float> input_values(static_cast<size_t>(input_size));
+    for (int64_t element_index = 0; element_index < input_size; ++element_index) {
+      input_values[static_cast<size_t>(element_index)] = static_cast<float>(input_index * 2 + element_index);
+    }
+
+    test.AddInput<float>(MakeString("input_", input_index).c_str(), {input_size}, input_values);
+    expected.insert(expected.end(), input_values.begin(), input_values.end());
+  }
+
+  test.AddOutput<float>("concat_result", {static_cast<int64_t>(expected.size())}, expected);
+  test.ConfigEp(std::move(cuda_provider)).RunWithConfig();
+}
+
+TEST(ConcatOpTest, CudaRagged32InputsUsesByValueMetadata) {
+  RunCudaRaggedInputCountTest(32);
+}
+
+TEST(ConcatOpTest, CudaRagged33InputsUsesGpuMetadataFallback) {
+  RunCudaRaggedInputCountTest(33);
+}
+#endif
+
 #ifdef USE_WEBGPU
 TEST(ConcatOpTest, Concat1D_int32_4inputs) {
   OpTester test("Concat");
