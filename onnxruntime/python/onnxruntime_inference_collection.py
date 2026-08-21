@@ -1271,12 +1271,21 @@ class OrtValue:
             self._numpy_obj = numpy_obj
             # Session-scoped device allocators can be invalidated when their session is destroyed.
             self._session = session
-            self._is_webgpu_buffer = ortvalue._is_webgpu_buffer()
         else:
             # An end user won't hit this error
             raise ValueError(
                 "`Provided ortvalue` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
             )
+
+    @property
+    def _is_webgpu_buffer(self) -> bool:
+        """Whether this value is backed by a WebGPU buffer.
+
+        Resolved from the native OrtValue on every access and deliberately read-only: graph-capture
+        validation and the copy-path checks below refuse host memory, so a settable attribute would
+        let a CPU tensor pass itself off as a device tensor.
+        """
+        return self._ortvalue._is_webgpu_buffer()
 
     def _get_c_value(self) -> C.OrtValue:
         return self._ortvalue

@@ -1942,72 +1942,63 @@ class TestInferenceSession(unittest.TestCase):
         scalar_value = session.create_ortvalue_from_numpy(np.array(1.0, dtype=np.float32), "cpu")
         self.assertEqual(scalar_value.shape(), [])
 
-    def test_device_ortvalue_provenance_rules(self):
-        """Reject only device values owned by another session.
+    def test_is_webgpu_buffer_is_read_only(self):
+        """OrtValue._is_webgpu_buffer must always come from the native value and never be settable.
 
-        ``_is_webgpu_buffer`` does not encode ownership, so CPU values can model shared WebGPU provenance.
+        Graph-capture validation and the OrtValue copy paths refuse host memory based on it, so a
+        settable attribute would let a CPU tensor pass itself off as a WebGPU device tensor.
         """
+        cpu_value = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros((2, 2), dtype=np.float32))
+        self.assertFalse(cpu_value._is_webgpu_buffer)
+        self.assertEqual(cpu_value._is_webgpu_buffer, cpu_value._get_c_value()._is_webgpu_buffer())
+
+        with self.assertRaises(AttributeError):
+            cpu_value._is_webgpu_buffer = True
+        self.assertFalse(cpu_value._is_webgpu_buffer)
+
+        # A spoofed value must not be able to satisfy graph-capture validation either.
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input(session.get_inputs()[0].name, cpu_value)
+        with self.assertRaisesRegex(ValueError, "requires fixed WebGPU device OrtValues"):
+            io_binding._validate_capture_bindings()
+
+    def test_device_ortvalue_provenance_rules(self):
+        """Session-scoped OrtValues are usable only with the session that created them."""
         session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         input_metadata = session.get_inputs()[0]
         input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
 
-        def make_value(owner, is_webgpu):
-            # Copy CPU storage so in-place updates remain isolated.
-            value = (
-                onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy())
-                if owner is None
-                else owner.create_ortvalue_from_numpy(input_value, "cpu")
-            )
-            value._is_webgpu_buffer = is_webgpu
-            return value
+        # Copy CPU storage so in-place updates remain isolated.
+        unowned = onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy())
+        owned = session.create_ortvalue_from_numpy(input_value, "cpu")
+        foreign = other_session.create_ortvalue_from_numpy(input_value, "cpu")
 
-        unowned_plain = make_value(None, False)
-        unowned_device = make_value(None, True)
-        owned_plain = make_value(session, False)
-        owned_device = make_value(session, True)
-        foreign_plain = make_value(other_session, False)
-        foreign_device = make_value(other_session, True)
+        # Shared-allocator and locally owned values are both accepted.
+        session._validate_ortvalue_ownership([unowned, owned])
 
-        # Local and shared values are accepted.
-        session._validate_ortvalue_ownership([unowned_plain, owned_plain])
-
-        # Device values require IOBinding regardless of ownership.
-        for value in (unowned_device, owned_device):
-            with self.assertRaises(ValueError) as raised:
-                session._validate_ortvalue_ownership([value])
-            self.assertIn("must be used with IOBinding", str(raised.exception))
-            self.assertNotIn("session that created it", str(raised.exception))
-
-        # Foreign ownership is rejected before the IOBinding requirement.
-        for value in (foreign_plain, foreign_device):
-            with self.assertRaises(ValueError) as raised:
-                session._validate_ortvalue_ownership([value])
-            self.assertIn("session that created it", str(raised.exception))
-            self.assertNotIn("IOBinding", str(raised.exception))
+        with self.assertRaises(ValueError) as raised:
+            session._validate_ortvalue_ownership([foreign])
+        self.assertIn("session that created it", str(raised.exception))
 
         io_binding = session.io_binding()
-        io_binding.bind_ortvalue_input(input_metadata.name, unowned_device)
-        io_binding.bind_ortvalue_input(input_metadata.name, owned_device)
-        io_binding.bind_ortvalue_output(session.get_outputs()[0].name, make_value(None, True))
-        for value in (foreign_plain, foreign_device):
-            with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
-                io_binding.bind_ortvalue_input(input_metadata.name, value)
+        io_binding.bind_ortvalue_input(input_metadata.name, unowned)
+        io_binding.bind_ortvalue_input(input_metadata.name, owned)
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_input(input_metadata.name, foreign)
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_output(session.get_outputs()[0].name, foreign)
 
-        # Shared device values remain writable.
+        # Shared values remain writable through the environment transfer.
         updated_input = input_value + 1.0
-        unowned_device.update_inplace(updated_input)
-        np.testing.assert_array_equal(unowned_device.numpy(), updated_input)
-        unowned_device.update_inplace(make_value(None, True))
-        np.testing.assert_array_equal(unowned_device.numpy(), input_value)
+        unowned.update_inplace(updated_input)
+        np.testing.assert_array_equal(unowned.numpy(), updated_input)
+        unowned.update_inplace(onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy()))
+        np.testing.assert_array_equal(unowned.numpy(), input_value)
 
-        # Mixing device and non-device values in a copy remains an error.
-        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
-            unowned_device.update_inplace(unowned_plain)
-        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
-            unowned_plain.update_inplace(unowned_device)
         with self.assertRaisesRegex(ValueError, "same session"):
-            owned_device.update_inplace(foreign_device)
+            owned.update_inplace(foreign)
 
     def test_graph_annotation_id_run_option(self):
         """gpu_graph_id defaults to 0, accepts integer strings, and uses -1 to skip capture."""
