@@ -2700,12 +2700,15 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   For 4-bit quantization, the data type is uint8 where each byte contains two 4-bit values. The bit width of quantized KV cache can be set using `kv_cache_bit_width` attribute.
   
+  For 2-bit quantization (OSCAR), the data type is uint8 where each byte contains four 2-bit codes, followed by per-group scale and zero-point metadata stored inline in the same row. The `PER_GROUP` quantization mode with the `kv_quant_group_size` attribute selects this asymmetric per-group codec; the scale/zero-point are computed dynamically at append time and stored in the cache, so `k_scale`/`v_scale` inputs are not required.
+  
   The shapes of the k_scale, v_scale tensors shall be broadcastable to present_key shape.
   
   **Quantization Modes (`k_quant_type`, `v_quant_type` attributes):**
   - **"NONE"**: No quantization.
   - **"PER_TENSOR"**: A single scale for the entire tensor. Scale example shape: `[1]`.
   - **"PER_CHANNEL"**: A scale for each channel. Scale example shape: `[1, num_heads_k, 1, head_size]`.
+  - **"PER_GROUP"**: Per-token, per-group asymmetric (scale + zero-point), used with `kv_cache_bit_width == 2`. Group size is set by `kv_quant_group_size`.
 
 #### Version
 
@@ -2718,12 +2721,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_quant_rho</tt> : float</dt>
+<dd>Magnitude percentile (0,1] used to clip outliers before computing per-group K min/max in PER_GROUP mode. 1.0 (default) disables clipping.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
-<dd>Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
+<dd>Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL', 'PER_GROUP'.</dd>
 <dt><tt>kv_cache_bit_width</tt> : int</dt>
-<dd>Bit width of quantized KV cache. Supported values are 8 and 4.</dd>
+<dd>Bit width of quantized KV cache. Supported values are 8, 4 and 2 (2 requires PER_GROUP).</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
+<dt><tt>kv_quant_group_size</tt> : int</dt>
+<dd>Group size for PER_GROUP (OSCAR 2-bit) KV quantization. 0 (default) means the whole head is one group.</dd>
+<dt><tt>kv_quant_metadata_fp16</tt> : int</dt>
+<dd>PER_GROUP (OSCAR 2-bit) only: store the per-group scale/zero metadata as fp16 (1) instead of fp32 (0, default). fp16 shrinks the packed history row from head_size/4 + num_groups*8 to head_size/4 + num_groups*4 bytes.</dd>
 <dt><tt>local_window_size</tt> : int</dt>
 <dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
@@ -2742,11 +2751,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_quant_rho</tt> : float</dt>
+<dd>Magnitude percentile (0,1] used to clip outliers before computing per-group V min/max in PER_GROUP mode. 1.0 (default) disables clipping.</dd>
 <dt><tt>v_quant_type</tt> : string</dt>
-<dd>Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
+<dd>Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL', 'PER_GROUP'.</dd>
 </dl>
 
-#### Inputs (7 - 16)
+#### Inputs (7 - 20)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2781,9 +2792,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
+<dt><tt>past_hp_key</tt> (optional) : T</dt>
+<dd>OSCAR mixed-precision KV cache: high-precision (unquantized) past keys for the sink+recent window, shape (batch_size, kv_num_heads, sink+recent, head_size). Only used when kv_cache_bit_width==2 and the gqa.kv_quant.sink / gqa.kv_quant.recent session-config entries are set.</dd>
+<dt><tt>past_hp_value</tt> (optional) : T</dt>
+<dd>OSCAR mixed-precision KV cache: high-precision (unquantized) past values for the sink+recent window. See past_hp_key.</dd>
+<dt><tt>oscar_rotation_k</tt> (optional) : T</dt>
+<dd>OSCAR spectral rotation for keys, shape (kv_num_heads, head_size, head_size). When provided (with kv_cache_bit_width==2 and the gqa.kv_quant.sink / gqa.kv_quant.recent session-config entries set), the kernel rotates post-RoPE query and key rows by this per-kv-head orthogonal matrix before 2-bit quantization so the history quantizes with much lower error. QK scores are invariant to this shared rotation. Provided as a constant initializer.</dd>
+<dt><tt>oscar_rotation_v</tt> (optional) : T</dt>
+<dd>OSCAR spectral rotation for values, shape (kv_num_heads, head_size, head_size). Rotates value rows before 2-bit quantization; the attention output is un-rotated by its transpose. See oscar_rotation_k.</dd>
 </dl>
 
-#### Outputs (1 - 4)
+#### Outputs (1 - 6)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
@@ -2794,6 +2813,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>output_qk</tt> (optional) : T</dt>
 <dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>
+<dt><tt>present_hp_key</tt> (optional) : T</dt>
+<dd>OSCAR mixed-precision KV cache: high-precision present keys for the sink+recent window. See past_hp_key.</dd>
+<dt><tt>present_hp_value</tt> (optional) : T</dt>
+<dd>OSCAR mixed-precision KV cache: high-precision present values for the sink+recent window. See past_hp_key.</dd>
 </dl>
 
 #### Type Constraints
