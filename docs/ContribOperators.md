@@ -38,6 +38,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
+  * <a href="#com.microsoft.GatedLatentPool">com.microsoft.GatedLatentPool</a>
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
@@ -115,6 +116,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseAttention">com.microsoft.SparseAttention</a>
+  * <a href="#com.microsoft.SparseRowSelect">com.microsoft.SparseRowSelect</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -2089,6 +2091,102 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatedLatentPool"></a><a name="com.microsoft.gatedlatentpool">**com.microsoft.GatedLatentPool**</a>
+
+  Gated pooling of `ratio` consecutive tokens into one latent row, the compression branch of a sparse-attention stack. DeepSeek-V4 uses it for both its KV compressor and the cache its row selector scores against.
+  
+  `kv` and `score` are this step's raw projections, `window_multiplier * head_dim` wide. They are appended to the rolling state, which holds the `window_multiplier * ratio` projections that preceded them, so a row whose window straddles the step boundary can still be pooled:
+    full_kv = Concat(past_state_kv, kv, axis=1), likewise for the score
+  `score` may be omitted, in which case the two came out of one GEMM and `kv` is `2 * window_multiplier * head_dim` wide, holding the value projection in the low half of each row and the gate in the high half.
+  Row `j` of sequence `b` covers slot `past_lens[b] / ratio + j`, that is the `ratio` absolute positions starting at `slot * ratio`. When `window_multiplier` is 2 the window is twice as wide: the preceding `ratio` positions are read from the low half of each projection and the current ones from the high half. Positions that are out of the state's range, negative, or not yet generated are masked out.
+    w      = Softmax(Where(valid, full_score[window] + ape, -1e30), over the window)
+    pooled = ReduceSum(full_kv[window] * w, over the window)
+    normed = norm_weight * pooled / Sqrt(ReduceMean(pooled * pooled, -1) + epsilon)
+  The trailing `rope_head_dim` channels are then rotated with the tables read at `Clip(slot * ratio, 0, max_seq_len - 1)`. With `simulate_fp8`, the leading channels take a simulated FP8-E4M3 round trip in blocks of 64 with a power-of-two scale. With `simulate_rotated_fp4`, the whole row is Hadamard-rotated and takes a simulated FP4-E2M1 round trip in blocks of 32.
+  
+  `rows` is `(seq_len - 1) / ratio + 2` wide: one row per slot the step can touch, plus a spare, so the shape never depends on `past_lens`. `first_slot`, `last_slot` and `row_count` say which of those rows are live. Intermediates are computed in float and rounded to T where the unfused subgraph rounds.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>dtype</tt> : int</dt>
+<dd>Element type of `rows`. T appears on no input, so it cannot be inferred.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Value added to the mean of squares before the square root.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Width of one latent row.</dd>
+<dt><tt>max_seq_len</tt> : int</dt>
+<dd>Number of rows in the rotary tables.</dd>
+<dt><tt>ratio</tt> : int</dt>
+<dd>How many consecutive tokens pool into one row.</dd>
+<dt><tt>rope_head_dim</tt> : int</dt>
+<dd>Width of the trailing slice that gets rotated.</dd>
+<dt><tt>simulate_fp8</tt> : int</dt>
+<dd>Simulate the FP8 round trip on the un-rotated channels.</dd>
+<dt><tt>simulate_rotated_fp4</tt> : int</dt>
+<dd>Hadamard-rotate the row and simulate the FP4 round trip.</dd>
+<dt><tt>window_multiplier</tt> : int</dt>
+<dd>1, or 2 when consecutive windows overlap and the projections are paired.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>kv</tt> : P</dt>
+<dd>Pooled-value projection, shape (batch, seq, window_multiplier * head_dim), or both projections interleaved, (batch, seq, 2 * window_multiplier * head_dim), when score is omitted.</dd>
+<dt><tt>score</tt> (optional) : P</dt>
+<dd>Pooling-gate projection, same shape as kv.</dd>
+<dt><tt>past_state_kv</tt> : M</dt>
+<dd>Preceding value projections, shape (batch, window_multiplier * ratio, window_multiplier * head_dim).</dd>
+<dt><tt>past_state_score</tt> : M</dt>
+<dd>Preceding gate projections, same shape as past_state_kv.</dd>
+<dt><tt>ape</tt> : M</dt>
+<dd>Positional bias added to the gate, shape (ratio, window_multiplier * head_dim).</dd>
+<dt><tt>norm_weight</tt> : M</dt>
+<dd>Weights of the RMS norm applied to the pooled row, shape (head_dim).</dd>
+<dt><tt>cos</tt> : M</dt>
+<dd>Rotary cosines, shape (max_seq_len, rope_head_dim).</dd>
+<dt><tt>sin</tt> : M</dt>
+<dd>Rotary sines, shape (max_seq_len, rope_head_dim).</dd>
+<dt><tt>past_lens</tt> : I</dt>
+<dd>Tokens already generated per sequence, shape (batch).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>rows</tt> : T</dt>
+<dd>Candidate latent rows, shape (batch, (seq - 1) / ratio + 2, head_dim).</dd>
+<dt><tt>first_slot</tt> : I</dt>
+<dd>Slot the first row lands in, shape (batch, 1).</dd>
+<dt><tt>last_slot</tt> : I</dt>
+<dd>Slot of the last live row, shape (batch, 1).</dd>
+<dt><tt>row_count</tt> : I</dt>
+<dd>Number of candidate rows, a scalar, on the device.</dd>
+<dt><tt>present_state_kv</tt> : M</dt>
+<dd>Rolled-forward value projections, same shape as past_state_kv.</dd>
+<dt><tt>present_state_score</tt> : M</dt>
+<dd>Rolled-forward gate projections, same shape as past_state_score.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the latent row type to float tensors.</dd>
+<dt><tt>P</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain this step's projections to float tensors. They are read once and widened to float, so passing them in the activation type costs nothing but the rounding the producing MatMul already did.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain the rolling state and the weights to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Constrain the slot bookkeeping to int64 tensors.</dd>
 </dl>
 
 
@@ -6667,6 +6765,90 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain integer type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SparseRowSelect"></a><a name="com.microsoft.sparserowselect">**com.microsoft.SparseRowSelect**</a>
+
+  Selects which compressed cache rows each query token may attend to, by scoring every row with a lightweight multi-head scorer and keeping the best `topk` (DeepSeek-V4's Lightning Indexer is one such scorer).
+  
+  `query` is this step's raw projection, `num_heads * head_dim` wide. Its trailing `rope_head_dim` channels are rotated with `cos`/`sin`, and the whole row is then Hadamard-rotated and put through a simulated FP4-E2M1 round trip in blocks of 32 when `simulate_rotated_fp4` is set -- the same treatment the cached rows already had, which is what makes the rotation matter instead of canceling.
+  
+  `rows` are the candidate rows a GatedLatentPool produced this step; row `j` lands in cache slot `first_slot + j`, and slots below `first_slot` keep what `past_cache` held:
+    present_cache[b, c] = rows[b, c - first_slot[b]] if first_slot[b] <= c <= last_slot[b] else past_cache[b, c],  for c <= last_slot[b]
+  Slots above `last_slot` are unspecified: no step has ever written them, and a query can only reach `(past_lens[b] + s + 1) / ratio <= last_slot[b] + 1` rows, so they are never read. On a long-context export they are almost the whole cache, and producing them would dominate the operator.
+  Every row is then scored against every head and the heads are folded together with the per-head `weights`:
+    score[b, s, c] = sum_h Relu(dot(query[b, s, h], present_cache[b, c])) * weights[b, s, h] * scale
+  A query at absolute position `past_lens[b] + s` may only see the first `(past_lens[b] + s + 1) / ratio` rows. `selection` holds the `topk` highest scoring of those, given as `row_id_offset + c` so they can be concatenated straight into a paged cache's index list, padded with -1 when fewer are visible.
+  
+  Attention does not depend on the order of the rows it gathers, so the selection is emitted in ascending row order rather than by descending score.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Width of one scoring head.</dd>
+<dt><tt>num_heads</tt> : int</dt>
+<dd>Scoring heads. These are replicated, never sharded.</dd>
+<dt><tt>ratio</tt> : int</dt>
+<dd>How many tokens one compressed row covers.</dd>
+<dt><tt>rope_head_dim</tt> : int</dt>
+<dd>Width of the trailing slice that gets rotated.</dd>
+<dt><tt>row_id_offset</tt> : int</dt>
+<dd>Logical offset that marks a compressed row in the cache.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Factor folded into the per-head weight.</dd>
+<dt><tt>simulate_rotated_fp4</tt> : int</dt>
+<dd>Hadamard-rotate the query and simulate the FP4 round trip.</dd>
+<dt><tt>topk</tt> : int</dt>
+<dd>Rows kept per query token.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query projection, shape (batch, seq, num_heads * head_dim).</dd>
+<dt><tt>cos</tt> : M</dt>
+<dd>Rotary cosines for this step, shape (batch, seq, rope_head_dim).</dd>
+<dt><tt>sin</tt> : M</dt>
+<dd>Rotary sines for this step, same shape as cos.</dd>
+<dt><tt>rows</tt> : T</dt>
+<dd>Candidate compressed rows, shape (batch, num_rows, head_dim).</dd>
+<dt><tt>first_slot</tt> : I</dt>
+<dd>Slot the first candidate row lands in, shape (batch, 1).</dd>
+<dt><tt>last_slot</tt> : I</dt>
+<dd>Slot of the last live candidate row, shape (batch, 1).</dd>
+<dt><tt>past_cache</tt> : T</dt>
+<dd>Indexer cache, shape (batch, capacity, head_dim).</dd>
+<dt><tt>weights</tt> : T</dt>
+<dd>Per-head scoring weights, shape (batch, seq, num_heads).</dd>
+<dt><tt>past_lens</tt> : I</dt>
+<dd>Tokens already generated per sequence, shape (batch).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>selection</tt> : I</dt>
+<dd>Selected cache rows, shape (batch, seq, topk).</dd>
+<dt><tt>present_cache</tt> : T</dt>
+<dd>Updated indexer cache, same shape as past_cache. Only slots up to last_slot are defined.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain the rotary tables to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Constrain the row bookkeeping to int64 tensors.</dd>
 </dl>
 
 
