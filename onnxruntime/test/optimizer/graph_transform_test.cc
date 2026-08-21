@@ -11212,6 +11212,26 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+
+  // Out-of-range axis.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{2, 3, 3, 3}});        // rank 4, valid axes are [0, 4)
+      auto* gather_index_1 = builder.MakeInput<int64_t>(std::nullopt);  // typed but no shape -> skips axis check
+      auto* gather_index_2 = builder.MakeInput<int64_t>(std::nullopt);
+      auto* gather_out_1 = builder.MakeOutput();
+      auto* gather_out_2 = builder.MakeOutput();
+
+      builder.AddNode("Gather", {data_arg, gather_index_1}, {gather_out_1})
+          .AddAttribute("axis", static_cast<int64_t>(100));
+      builder.AddNode("Gather", {data_arg, gather_index_2}, {gather_out_2})
+          .AddAttribute("axis", static_cast<int64_t>(100));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
 }
 
 // The fusion reads the 'axis' attribute/input straight from the model, and needs to reject a value
