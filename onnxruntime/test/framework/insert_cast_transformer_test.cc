@@ -323,14 +323,14 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
       o4_def("O4", &tensor_float_16),
       o5_def("O5", &tensor_float_16);
 
-  // for the sake of this example, pretend Clip has no fp16 kernel but Abs does
-  // -> Clip -> Abs -> Clip -> Abs -> Clip ->
-  //                            |       |
-  //                            - O4     - O5
+  // for the sake of this example, pretend Clip has no fp16 kernel; Round genuinely has one on CPU
+  // -> Clip -> Round -> Clip -> Round -> Clip ->
+  //                              |         |
+  //                              - O4       - O5
   auto& node1 = graph.AddNode("node1", "Clip", "no fp16", {&i1_def}, {&o1_def});
-  auto& node2 = graph.AddNode("node2", "Abs", "fp16", {&o1_def}, {&o2_def});
+  auto& node2 = graph.AddNode("node2", "Round", "fp16", {&o1_def}, {&o2_def});
   auto& node3 = graph.AddNode("node3", "Clip", "no fp16", {&o2_def}, {&o3_def});
-  auto& node4 = graph.AddNode("node4", "Abs", "fp16 producing graph output", {&o3_def}, {&o4_def});
+  auto& node4 = graph.AddNode("node4", "Round", "fp16 producing graph output", {&o3_def}, {&o4_def});
   auto& node5 = graph.AddNode("node5", "Clip", "no fp16", {&o4_def}, {&o5_def});
 
   // manually set outputs as we want O4 and well as O5 to be graph outputs.
@@ -355,12 +355,12 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   };
 
   // we expect:
-  //   node2 Abs to get forced to fp32 as it's isolated between node1 and node3 which need Casts
-  //   node4 Abs should not get forced to fp32 as it produces a graph output
+  //   node2 Round to get forced to fp32 as it's isolated between node1 and node3 which need Casts
+  //   node4 Round should not get forced to fp32 as it produces a graph output
   //
-  // -> CastFp32 -> Clip -> Abs -> Clip -> CastFp16 -> Abs -> CastFp32 -> Clip -> CastFp16
-  //                                                    |                            |
-  //                                                     - O4                         - O5
+  // -> CastFp32 -> Clip -> Round -> Clip -> CastFp16 -> Round -> CastFp32 -> Clip -> CastFp16
+  //                                                       |                              |
+  //                                                        - O4                           - O5
   EXPECT_TRUE(is_type(*node1.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
   EXPECT_TRUE(is_type(*node2.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
   EXPECT_TRUE(is_type(*node3.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
