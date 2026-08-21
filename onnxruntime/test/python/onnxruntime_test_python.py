@@ -2094,10 +2094,10 @@ class TestInferenceSession(unittest.TestCase):
             vendor_id=onnxrt.OrtDeviceVendorId.NONE,
         )
         self.assertTrue(gpu_alias_input._is_webgpu_buffer)
-        with self.assertRaisesRegex(RuntimeError, "opaque buffer handles"):
-            gpu_input.data_ptr()
-        with self.assertRaisesRegex(RuntimeError, "explicit readback"):
-            gpu_input.numpy()
+        # data_ptr() returns the opaque WGPUBuffer handle, which is what interop callers want.
+        self.assertNotEqual(gpu_input.data_ptr(), 0)
+        # numpy() reads back through the environment-registered WebGPU data transfer.
+        np.testing.assert_allclose(gpu_input.numpy(), input_value)
         with self.assertRaisesRegex(RuntimeError, "DLPack export"):
             gpu_input.__dlpack__()
         with self.assertRaisesRegex(RuntimeError, "DLPack export"):
@@ -2203,8 +2203,7 @@ class TestInferenceSession(unittest.TestCase):
         del raw_outputs
         bound_output = io_binding.get_outputs()[0]
         self.assertIs(bound_output._session, session._sess)
-        with self.assertRaisesRegex(RuntimeError, "explicit readback"):
-            bound_output.numpy()
+        np.testing.assert_allclose(bound_output.numpy(), expected)
         with self.assertRaisesRegex(RuntimeError, "session provenance"):
             io_binding.get_outputs_as_ortvaluevector()
 

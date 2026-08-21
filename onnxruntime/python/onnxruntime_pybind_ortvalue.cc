@@ -369,8 +369,6 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("data_ptr", [](OrtValue* ml_value) -> uintptr_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
-        ORT_ENFORCE(!IsWebGpuBuffer(*ml_value),
-                    "WebGPU OrtValues contain opaque buffer handles and do not expose a data pointer.");
 
         auto* tensor = ml_value->GetMutable<Tensor>();
 
@@ -460,8 +458,6 @@ void addOrtValueMethods(pybind11::module& m) {
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
-        ORT_ENFORCE(!IsWebGpuBuffer(*ml_value),
-                    "WebGPU OrtValues require explicit readback with IOBinding.copy_outputs_to_cpu().");
         [[maybe_unused]] const auto& device = ml_value->Get<Tensor>().Location().device;
 #ifdef _MSC_VER
 // The switch statement may only contain the 'default' label. In such a case, the MSVC compiler
