@@ -5,6 +5,8 @@
 #include "core/providers/cuda/tensor/gather_nd_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
+#include <algorithm>
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -54,25 +56,76 @@ Status GatherNDBase::PrepareCompute(
   slice_size = input_shape.SizeFromDimension(batch_dims + num_slice_dims);
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
+
+  // Validate num_batches != 0 and num_slices divisibility to prevent division by zero
+  ORT_RETURN_IF_NOT(num_batches != 0,
+                    "Batch dimension cannot be zero");
+  ORT_RETURN_IF_NOT(num_slices % num_batches == 0,
+                    "Number of slices must be divisible by number of batches. ",
+                    "num_slices = ", num_slices, ", num_batches = ", num_batches);
   const auto num_slices_per_batch = num_slices / num_batches;
 
-  const TIndex* const indices_data = indices_tensor->Data<TIndex>();
+  const TIndex* indices_data = indices_tensor->Data<TIndex>();
+  IAllocatorUniquePtr<TIndex> indices_device_buffer;
 
-  std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
+  // Use on-device validation kernel to avoid full D2H copy for large indices tensors
+  // This kernel records only the first invalid index into a 1-element device buffer,
+  // then copies back only that value for error reporting.
+  if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
+    // For CPU-resident indices, fall back to host-side validation
+    const size_t num_slices_size_t = static_cast<size_t>(num_slices);
+    const size_t num_slice_dims_size_t = static_cast<size_t>(num_slice_dims);
+    for (size_t slice_idx = 0; slice_idx < num_slices_size_t; ++slice_idx) {
+      const size_t slice_base = slice_idx * num_slice_dims_size_t;
+      for (size_t dim_idx = 0; dim_idx < num_slice_dims_size_t; ++dim_idx) {
+        const int64_t index = static_cast<int64_t>(indices_data[slice_base + dim_idx]);
+        const auto upper_limit = input_shape[batch_dims + static_cast<int64_t>(dim_idx)];
+        const auto lower_limit = -upper_limit;
+        ORT_RETURN_IF_NOT(index >= lower_limit && index < upper_limit,
+                          "invalid index found, index = ", index);
+      }
+    }
+  } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
+    // Use on-device validation and copy back only the first invalid index for error reporting.
+    TArray<int64_t> input_dims(input_shape.GetDims());
+    auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
+    const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
+        cuda_stream,
+        batch_dims,
+        input_dims,
+        num_slices,
+        num_slice_dims,
+        indices_data,
+        validation_result_buffer.get());
+
+    if (validation_result.position != -1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "invalid index found, index = ", validation_result.value);
+    }
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Unsupported device type for indices tensor in CUDA GatherND");
+  }
+
+  if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
+    indices_device_buffer = GetScratchBuffer<TIndex>(indices_tensor->Shape().Size(), alloc_stream);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_device_buffer.get(),
+                                         indices_data,
+                                         indices_tensor->Shape().Size() * sizeof(TIndex),
+                                         cudaMemcpyHostToDevice,
+                                         cuda_stream));
+    indices_data = indices_device_buffer.get();
+  }
+
+  // Pass strides by value so captured graphs do not retain a pointer to temporary host storage.
+  TArray<int64_t> sizes_from_slice_dims(static_cast<int32_t>(num_slice_dims));
   {
     auto running_product = slice_size;
     for (int64_t i = 0; i < num_slice_dims; ++i) {
-      sizes_from_slice_dims[num_slice_dims - 1 - i] = running_product;
+      sizes_from_slice_dims[static_cast<int32_t>(num_slice_dims - 1 - i)] = running_product;
       running_product *= input_shape[batch_dims + num_slice_dims - 1 - i];
     }
   }
-
-  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), alloc_stream);
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-      sizes_from_slice_dims_buffer.get(),
-      sizes_from_slice_dims.data(),
-      sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice, cuda_stream));
 
   input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, alloc_stream);
 
@@ -86,7 +139,7 @@ Status GatherNDBase::PrepareCompute(
       num_slices_per_batch,
       input_batch_stride,
       num_slice_dims,
-      sizes_from_slice_dims_buffer.get(),
+      sizes_from_slice_dims,
       indices_data,
       input_slice_offsets_buffer.get());
 
