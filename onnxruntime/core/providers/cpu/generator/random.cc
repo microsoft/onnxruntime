@@ -82,25 +82,50 @@ using EnabledRandomNormalComputeOutputTypes =
         EnabledRandomNormalOutputTypes,
         EnabledRandomNormalLikeOutputTypes>;
 
-ONNX_CPU_OPERATOR_KERNEL(
+// All the ops below were revised in opset 22, which widened their float type constraints to the
+// full set of float types by adding bfloat16. These kernels still implement float and double only,
+// so the opset 22 registrations declare the same type constraints as the earlier ones. They are
+// needed because a kernel registered without an end version matches its start version exactly
+// (see VerifyVersion in kernel_registry.cc), so without them these ops have no CPU kernel at all
+// at opset 22+, for any dtype.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RandomNormal,
     1,
+    21,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalOutputTypes>()),
     RandomNormal);
 
 ONNX_CPU_OPERATOR_KERNEL(
+    RandomNormal,
+    22,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalOutputTypes>()),
+    RandomNormal);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RandomUniform,
     1,
+    21,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformOutputTypes>()),
     RandomUniform);
 
 ONNX_CPU_OPERATOR_KERNEL(
+    RandomUniform,
+    22,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformOutputTypes>()),
+    RandomUniform);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RandomNormalLike,
     1,
+    21,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T2",
@@ -108,8 +133,27 @@ ONNX_CPU_OPERATOR_KERNEL(
     RandomNormalLike);
 
 ONNX_CPU_OPERATOR_KERNEL(
+    RandomNormalLike,
+    22,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T2",
+                        BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalLikeOutputTypes>()),
+    RandomNormalLike);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RandomUniformLike,
     1,
+    21,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T2",
+                        BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformLikeOutputTypes>()),
+    RandomUniformLike);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    RandomUniformLike,
+    22,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T2",
@@ -117,9 +161,19 @@ ONNX_CPU_OPERATOR_KERNEL(
     RandomUniformLike);
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#multinomial
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Multinomial,
     7,
+    21,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2",
+                        BuildKernelDefConstraintsFromTypeList<EnabledMultinomialOutputTypes>()),
+    Multinomial);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Multinomial,
+    22,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2",
