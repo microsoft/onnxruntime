@@ -3,12 +3,14 @@
 
 #include <limits>
 
+#include "core/common/float16.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
 #include "core/util/force_inline.h"
+#include "core/util/narrow_float_utils.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_helper.h"
 
@@ -38,6 +40,7 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 namespace {
 
@@ -99,13 +102,23 @@ void ComputeJob(
 }
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
-  if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
+  const auto elem_type = tensor.GetElementType();
+  if (elem_type == utils::ToTensorProtoElementType<MLFloat16>()) {
     auto tensor_data_ptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
     auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
 
     if (tensor_size > 0) {
       MlasConvertHalfToFloatBuffer(tensor_data_ptr, float_ptr.get(), tensor_size);
+    }
+    dest = std::move(float_ptr);
+    is_packed = true;
+  } else if (elem_type == utils::ToTensorProtoElementType<BFloat16>()) {
+    auto tensor_data_ptr = tensor.Data<BFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+    if (tensor_size > 0) {
+      BFloat16ToFloat(tensor_data_ptr, float_ptr.get(), tensor_size);
     }
     dest = std::move(float_ptr);
     is_packed = true;
@@ -196,7 +209,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   T* skip_input_bias_add_output_data = skip_input_bias_add_output == nullptr ? nullptr : skip_input_bias_add_output->MutableData<T>();
   const int64_t skip_size = skip ? skip->Shape().Size() : prepacked_skip_shape_.Size();
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     const size_t total_data_size = static_cast<size_t>(input->Shape().Size());
 
     AllocatorPtr alloc;
@@ -221,7 +234,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
     const size_t num_elems = static_cast<size_t>(hidden_size);
 
     input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
-    MlasConvertHalfToFloatBuffer(input_data, input_fp32.get(), total_data_size);
+    NarrowToFloat<T>(input_data, input_fp32.get(), total_data_size);
     input_data_f = input_fp32.get();
 
     output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
@@ -232,7 +245,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
     if (skip_data) {
       skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(skip_size));
-      MlasConvertHalfToFloatBuffer(skip_data, skip_fp32.get(), static_cast<size_t>(skip_size));
+      NarrowToFloat<T>(skip_data, skip_fp32.get(), static_cast<size_t>(skip_size));
       skip_data_f = skip_fp32.get();
     } else if (has_prepacked_skip_) {
       skip_data_f = prepacked_skip_fp32_data_.get();
@@ -240,7 +253,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
     if (gamma_data) {
       gamma_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      MlasConvertHalfToFloatBuffer(gamma_data, gamma_fp32.get(), num_elems);
+      NarrowToFloat<T>(gamma_data, gamma_fp32.get(), num_elems);
       gamma_data_f = gamma_fp32.get();
     } else if (has_prepacked_gamma_) {
       gamma_data_f = prepacked_gamma_fp32_data_.get();
@@ -248,7 +261,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
     if (beta_data) {
       beta_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      MlasConvertHalfToFloatBuffer(beta_data, beta_fp32.get(), num_elems);
+      NarrowToFloat<T>(beta_data, beta_fp32.get(), num_elems);
       beta_data_f = beta_fp32.get();
     } else if (has_prepacked_beta_) {
       beta_data_f = prepacked_beta_fp32_data_.get();
@@ -256,7 +269,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
     if (bias_data) {
       bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
+      NarrowToFloat<T>(bias_data, bias_fp32.get(), num_elems);
       bias_data_f = bias_fp32.get();
     } else if (has_prepacked_bias_) {
       bias_data_f = prepacked_bias_fp32_data_.get();
@@ -269,9 +282,9 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                      epsilon_, simplified, output_data_f, skip_input_bias_add_output_data_f);
         },
         0);
-    MlasConvertFloatToHalfBuffer(output_data_f, output_data, total_data_size);
+    FloatToNarrow<T>(output_data_f, output_data, total_data_size);
     if (skip_input_bias_add_output_data != nullptr)
-      MlasConvertFloatToHalfBuffer(skip_input_bias_add_output_data_f, skip_input_bias_add_output_data, total_data_size);
+      FloatToNarrow<T>(skip_input_bias_add_output_data_f, skip_input_bias_add_output_data, total_data_size);
   } else {
     concurrency::ThreadPool::TryBatchParallelFor(
         p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),

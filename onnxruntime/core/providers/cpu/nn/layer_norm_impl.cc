@@ -6,6 +6,7 @@
 
 #include <type_traits>
 
+#include "core/common/float16.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
@@ -13,6 +14,7 @@
 #include "core/providers/common.h"
 #include "core/util/force_inline.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/narrow_float_utils.h"
 
 namespace onnxruntime {
 
@@ -108,6 +110,14 @@ inline Eigen::Index ToEigenIndex(int64_t v) {
   return narrow<Eigen::Index>(v);
 }
 
+// Write a statistic value (mean or 1/denom) into the output buffer.
+// U is the stat output type — always float for narrow-float T (the ONNX spec
+// constrains Mean/InvStdDev to float, and the contrib schema does the same).
+template <typename U>
+ORT_FORCEINLINE void WriteStat(U* dst, ptrdiff_t index, double v) {
+  dst[index] = gsl::narrow_cast<U>(v);
+}
+
 template <typename U>
 void ComputeJob(
     const MLFloat16* X_data,
@@ -185,24 +195,86 @@ void ComputeJob(
   }
 
   if (mean_data != nullptr) {
-    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-    mean_data[task_idx] = MLFloat16(mean);
+    WriteStat<U>(mean_data, task_idx, static_cast<double>(mean));
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1.0f / std_dev);
+    WriteStat<U>(inv_std_dev_data, task_idx, static_cast<double>(1.0f / std_dev));
   }
 }
-// Write a statistic value (mean or 1/denom) into the output buffer,
-// converting from double to the target type U (including MLFloat16).
+
+// BFloat16 ComputeJob: widen to f32, Welford/RMS in f32, narrow back.
+// All arithmetic is f32; BFloat16 is storage only.
 template <typename U>
-ORT_FORCEINLINE void WriteStat(U* dst, ptrdiff_t index, double v) {
-  if constexpr (std::is_same_v<U, MLFloat16>) {
-    dst[index] = MLFloat16(static_cast<float>(v));
+void ComputeJob(
+    const BFloat16* X_data,
+    const BFloat16* scale_data,
+    const BFloat16* bias_data,
+    const ptrdiff_t task_idx,
+    const int64_t norm_size,
+    const int64_t broadcast_param,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
+    float epsilon,
+    bool simplified,
+    BFloat16* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data,
+    AllocatorPtr alloc) {
+  ORT_UNUSED_PARAMETER(scale_data);
+  ORT_UNUSED_PARAMETER(bias_data);
+  ORT_UNUSED_PARAMETER(alloc);
+
+  const ptrdiff_t input_offset = SafeInt<ptrdiff_t>(task_idx) * norm_size;
+  const BFloat16* p_input = X_data + input_offset;
+  BFloat16* p_output = Y_data + input_offset;
+
+  float mean = 0.0f;
+  float std_dev = 0.0f;
+
+  if (simplified) {
+    float sum_sq = 0.0f;
+    for (int64_t h = 0; h < norm_size; ++h) {
+      float val = p_input[h].ToFloat();
+      sum_sq += val * val;
+    }
+    std_dev = std::sqrt(sum_sq / norm_size + epsilon);
   } else {
-    dst[index] = gsl::narrow_cast<U>(v);
+    // Welford's online algorithm in f32
+    float M2 = 0.0f;
+    for (int64_t h = 0; h < norm_size; ++h) {
+      float val = p_input[h].ToFloat();
+      float delta = val - mean;
+      mean += delta / static_cast<float>(h + 1);
+      float delta2 = val - mean;
+      M2 += delta * delta2;
+    }
+    std_dev = std::sqrt(M2 / norm_size + epsilon);
+  }
+
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
+
+  for (int64_t h = 0; h < norm_size; ++h, ++i) {
+    float x = p_input[h].ToFloat();
+    float y = 0.0f;
+    if (simplified) {
+      y = x / std_dev * scale_float_ptr[i];
+    } else if (bias_float_ptr == nullptr) {
+      y = (x - mean) / std_dev * scale_float_ptr[i];
+    } else {
+      y = (x - mean) / std_dev * scale_float_ptr[i] + bias_float_ptr[i];
+    }
+    p_output[h] = BFloat16(y);
+  }
+
+  if (mean_data != nullptr) {
+    WriteStat<U>(mean_data, task_idx, static_cast<double>(mean));
+  }
+  if (inv_std_dev_data != nullptr) {
+    WriteStat<U>(inv_std_dev_data, task_idx, static_cast<double>(1.0f / std_dev));
   }
 }
+
 template <typename T>
 struct NormalizationMath {
   static double LoadInput(const T* ptr, int64_t offset) {
@@ -259,6 +331,39 @@ struct HalfMath {
 
   static void StoreOutput(MLFloat16* dst, int64_t offset, double v) {
     dst[offset] = MLFloat16(static_cast<float>(v));
+  }
+};
+
+// BFloat16 policy for ComputeJobGenericShared: widen to f64 for accumulation,
+// all arithmetic is f32/f64 — BFloat16 is storage only.
+struct BFloat16Math {
+  static double LoadInput(const BFloat16* ptr, int64_t offset) {
+    return static_cast<double>(ptr[offset].ToFloat());
+  }
+
+  static double LoadScale(const BFloat16* scale_data,
+                          const float* scale_float_ptr,
+                          int64_t offset) {
+    if (scale_float_ptr) {
+      return static_cast<double>(scale_float_ptr[offset]);
+    }
+    return static_cast<double>(scale_data[offset].ToFloat());
+  }
+
+  static double LoadBias(const BFloat16* bias_data,
+                         const float* bias_float_ptr,
+                         int64_t offset) {
+    if (bias_float_ptr) {
+      return static_cast<double>(bias_float_ptr[offset]);
+    }
+    if (bias_data) {
+      return static_cast<double>(bias_data[offset].ToFloat());
+    }
+    return 0.0;
+  }
+
+  static void StoreOutput(BFloat16* dst, int64_t offset, double v) {
+    dst[offset] = BFloat16(static_cast<float>(v));
   }
 };
 // Shared generic implementation for LayerNorm with full NumPy-style broadcasting.
@@ -444,13 +549,44 @@ void ComputeJobGeneric(
       Y_data, mean_data, inv_std_dev_data);
 }
 
+template <typename U>
+void ComputeJobGeneric(
+    const BFloat16* X_data,
+    const BFloat16* scale_data,
+    const BFloat16* bias_data,
+    const ptrdiff_t task_idx,
+    const LayerNormParams& params,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
+    float epsilon,
+    bool simplified,
+    BFloat16* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data) {
+  using Policy = BFloat16Math;
+  ComputeJobGenericShared<BFloat16, Policy, U>(
+      X_data, scale_data, bias_data,
+      task_idx, params,
+      scale_float_ptr, bias_float_ptr,
+      epsilon, simplified,
+      Y_data, mean_data, inv_std_dev_data);
+}
+
+// Convert a narrow-float tensor (MLFloat16 or BFloat16) to f32 for prepacking.
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
-  if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
+  const auto elem_type = tensor.GetElementType();
+  if (elem_type == utils::ToTensorProtoElementType<MLFloat16>()) {
     auto tensor_data_ptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
     auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
-
     MlasConvertHalfToFloatBuffer(tensor_data_ptr, float_ptr.get(), tensor_size);
+    dest = std::move(float_ptr);
+    is_packed = true;
+  } else if (elem_type == utils::ToTensorProtoElementType<BFloat16>()) {
+    auto tensor_data_ptr = tensor.Data<BFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+    BFloat16ToFloat(tensor_data_ptr, float_ptr.get(), tensor_size);
     dest = std::move(float_ptr);
     is_packed = true;
   }
@@ -473,8 +609,8 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   // Currently only instantiated for T in {float, double, MLFloat16}. Integer types would
   // require addressing overflow in variance computation and fixed-point normalization.
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, double> ||
-                    std::is_same_v<T, MLFloat16>,
-                "LayerNorm is only supported for float, double, or MLFloat16.");
+                    std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>,
+                "LayerNorm is only supported for float, double, MLFloat16, or BFloat16.");
 
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
@@ -528,7 +664,7 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
 Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
   const auto elem_type = p_ctx->Input<Tensor>(0)->GetElementType();
 
-  using SupportedTypeList = boost::mp11::mp_list<float, double, MLFloat16>;
+  using SupportedTypeList = boost::mp11::mp_list<float, double, MLFloat16, BFloat16>;
 
   utils::MLTypeCallDispatcherFromTypeList<SupportedTypeList> t_disp(elem_type);
   return t_disp.InvokeRet<Status, SrcDispatcher>(this, p_ctx, axis_, epsilon_, simplified_, contrib_op_);
@@ -570,32 +706,32 @@ Status LayerNormImpl::ComputeWithoutContext(
   const bool has_bias =
       !simplified &&
       (bias_data != nullptr ||
-       (std::is_same_v<T, MLFloat16> && prepacked_bias_fp32_data_ != nullptr));
+       (is_narrow_float_v<T> && prepacked_bias_fp32_data_ != nullptr));
 
   ORT_RETURN_IF_ERROR(
       LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, has_bias, axis, params));
 
   IAllocatorUniquePtr<float> scale_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (is_narrow_float_v<T>) {
     if (prepacked_scale_fp32_data_ == nullptr) {
       const size_t num_elems = static_cast<size_t>(params.scale_size);
       scale_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      MlasConvertHalfToFloatBuffer(scale_data, scale_fp32.get(), num_elems);
+      NarrowToFloat(scale_data, scale_fp32.get(), num_elems);
     }
     if (prepacked_bias_fp32_data_ == nullptr && bias_data) {
       const size_t num_elems = static_cast<size_t>(params.bias_size);
       bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
+      NarrowToFloat(bias_data, bias_fp32.get(), num_elems);
     }
   }
 
-  // Resolve the float32 pointers for scale/bias (scf/bif) in the MLFloat16 case.
-  // For non-MLFloat16 types, these remain null and the original T* buffers are used.
+  // Resolve the float32 pointers for scale/bias (scf/bif) in the narrow-float case.
+  // For float/double types, these remain null and the original T* buffers are used.
   const float* scf = nullptr;
   const float* bif = nullptr;
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (is_narrow_float_v<T>) {
     scf = prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get()
                                      : scale_fp32.get();
 
