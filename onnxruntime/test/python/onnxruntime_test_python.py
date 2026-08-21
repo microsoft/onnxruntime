@@ -2058,10 +2058,80 @@ class TestInferenceSession(unittest.TestCase):
         )
         session.release_captured_graph()
 
+    def test_run_with_ortvaluevector_is_gated_only_on_capture(self):
+        """run_with_ortvaluevector must be gated on graph capture, not on provider identity.
+
+        It is the only run API that used a provider-name check; run(), run_with_ort_values() and
+        run_async() all gate on _validate_graph_capture_run_api. A raw vector is unsafe only while
+        capture is armed, because replay re-issues the buffers recorded at capture.
+        """
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        feeds = OrtValueVector()
+        feeds.push_back(onnxrt.OrtValue.ortvalue_from_numpy(input_value)._get_c_value())
+        fetches = OrtValueVector()
+        session.run_with_ortvaluevector(
+            onnxrt.RunOptions(),
+            [input_metadata.name],
+            feeds,
+            [output_metadata.name],
+            fetches,
+            [onnxrt.OrtDevice.make("cpu", 0)._get_c_device()],
+        )
+        np.testing.assert_allclose(
+            fetches[0].numpy(),
+            session.run(None, {input_metadata.name: input_value})[0],
+        )
+
     @unittest.skipIf(
         "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
         "WebGpuExecutionProvider is not available",
     )
+    def test_webgpu_run_with_ortvaluevector_without_capture(self):
+        """A WebGPU session that is not capturing must accept raw OrtValue vectors.
+
+        The previous guard rejected every WebGPU session regardless of capture state or of whether
+        the vectors were even device-backed, which broke a pre-existing CPU-only use.
+        """
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        self.assertIn("WebGpuExecutionProvider", session.get_providers())
+        self.assertFalse(session._sess.is_webgpu_graph_capture_enabled())
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        expected = reference_session.run(None, {input_metadata.name: input_value})[0]
+
+        feeds = OrtValueVector()
+        feeds.push_back(onnxrt.OrtValue.ortvalue_from_numpy(input_value)._get_c_value())
+        fetches = OrtValueVector()
+        session.run_with_ortvaluevector(
+            onnxrt.RunOptions(),
+            [input_metadata.name],
+            feeds,
+            [output_metadata.name],
+            fetches,
+            [onnxrt.OrtDevice.make("cpu", 0)._get_c_device()],
+        )
+        np.testing.assert_allclose(fetches[0].numpy(), expected, rtol=1e-5, atol=1e-5)
+
     def test_webgpu_graph_capture_session_ortvalues(self):
         so = onnxrt.SessionOptions()
         so.enable_mem_pattern = False
@@ -2113,7 +2183,7 @@ class TestInferenceSession(unittest.TestCase):
                 lambda *_: None,
                 None,
             )
-        with self.assertRaisesRegex(RuntimeError, "raw OrtValue vectors"):
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
             session.run_with_ortvaluevector(None, [], None, [], None, None)
         with self.assertRaisesRegex(ValueError, "copy_tensors does not support"):
             onnxrt.copy_tensors([gpu_input], [gpu_output])

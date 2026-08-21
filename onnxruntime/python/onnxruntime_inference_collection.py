@@ -615,11 +615,10 @@ class Session:
         :param fetches: list of output OrtValue.
         :param fetch_devices: list of output devices.
         """
-        if "WebGpuExecutionProvider" in self._providers:
-            raise RuntimeError(
-                "run_with_ortvaluevector is unavailable for WebGPU sessions because raw OrtValue vectors "
-                "cannot retain session ownership; use IOBinding."
-            )
+        # Same capture check as run(), run_with_ort_values() and run_async(): replay re-issues the
+        # buffers recorded at capture, so transient vectors would be silently ignored. Nothing about
+        # a raw vector is unsafe outside capture, including on a WebGPU session.
+        self._validate_graph_capture_run_api(run_options)
         self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
 
