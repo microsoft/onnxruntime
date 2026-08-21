@@ -70,31 +70,28 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
 }
 
 std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type) {
-  auto base_type_cast = [base_type](float value) -> std::string {
-    return base_type + "(" + std::to_string(value) + ")";
+  auto base_type_cast = [base_type](const std::string& value) -> std::string {
+    return base_type + "(" + value + ")";
   };
-  auto value_type_cast = [base_type_cast, value_type](float f) -> std::string {
-    return value_type + "(" + base_type_cast(f) + ")";
-  };
-  // Cast f32 activation uniforms to the shader's scalar or vector value type.
-  auto base_param = [&base_type](int index) -> std::string {
-    return base_type + "(uniforms.activation_param_" + std::to_string(index) + ")";
-  };
-  auto value_param = [&base_param, &value_type](int index) -> std::string {
-    return value_type + "(" + base_param(index) + ")";
+  auto value_type_cast = [base_type_cast, value_type](const std::string& value) -> std::string {
+    return value_type + "(" + base_type_cast(value) + ")";
   };
   switch (activation.activation_kind_) {
     case ActivationKind::Relu:
-      return "value = max(value, " + value_type_cast(0.0) + ");";
+      return "value = max(value, " + value_type_cast(std::to_string(0.0f)) + ");";
     case ActivationKind::Sigmoid:
-      return "value = " + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-value));";
+      return "value = " + value_type_cast(std::to_string(1.0f)) + " / (" + value_type_cast(std::to_string(1.0f)) +
+             " + exp(-value));";
     case ActivationKind::Clip:
-      return "value = clamp(value, " + value_param(0) + ", " + value_param(1) + ");";
+      return "value = clamp(value, " + value_type_cast("uniforms.activation_param_0") + ", " +
+             value_type_cast("uniforms.activation_param_1") + ");";
     case ActivationKind::HardSigmoid:
-      return "value = clamp(" + value_param(0) + " * value + " + value_param(1) + ", " + value_type_cast(0.0) + ", " +
-             value_type_cast(1.0) + ");";
+      return "value = clamp(" + value_type_cast("uniforms.activation_param_0") + " * value + " +
+             value_type_cast("uniforms.activation_param_1") + ", " + value_type_cast(std::to_string(0.0f)) + ", " +
+             value_type_cast(std::to_string(1.0f)) + ");";
     case ActivationKind::LeakyRelu:
-      return "value = select(" + base_param(0) + " * value, value, value >= " + value_type_cast(0.0) + ");";
+      return "value = select(" + base_type_cast("uniforms.activation_param_0") + " * value, value, value >= " +
+             value_type_cast(std::to_string(0.0f)) + ");";
     case ActivationKind::Tanh:
       return "value = tanh(value);";
     default:
