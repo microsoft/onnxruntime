@@ -26,6 +26,8 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
+  // Emit activation helpers before the write function uses them.
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
   MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
@@ -134,6 +136,8 @@ Status ApplyMatMulIntel(ComputeContext& context,
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
+  // Activation uniforms must remain last because definitions and values are matched by index.
+  AppendActivationUniformsData(activation, program);
 
   if (has_bias) {
     auto bias_components = 1;
