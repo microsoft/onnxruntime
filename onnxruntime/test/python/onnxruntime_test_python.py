@@ -13,6 +13,7 @@ import queue
 import sys
 import threading
 import unittest
+import weakref
 
 import numpy as np
 from helper import get_name
@@ -2025,6 +2026,47 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be an integer"):
             _graph_annotation_id(invalid_options)
 
+    def test_reset_session_releases_captured_graphs(self):
+        """set_providers() must not leave captured-graph bookkeeping pointing at the replaced session.
+
+        The dict is keyed by graph annotation id and holds a weakref to the IOBinding that captured
+        it, so a stale entry would reject a binding from the replacement session and a later
+        release_captured_graph() would act on the replacement session while unpinning the old
+        binding.
+        """
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        output_name = session.get_outputs()[0].name
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        stale_binding = session.io_binding()
+        stale_binding.bind_cpu_input(input_metadata.name, input_value)
+        stale_binding.bind_output(output_name)
+        # Reproduce exactly what run_with_iobinding() records once a graph has been captured.
+        # Capture itself needs a WebGPU device, but the bookkeeping this exercises does not.
+        stale_signature = stale_binding._capture_signature()
+        session._captured_graph_bindings[0] = (weakref.ref(stale_binding), stale_signature)
+        stale_binding._pinned_graph_ids.add(0)
+
+        session.set_providers(["CPUExecutionProvider"])
+
+        # Both sides of the bookkeeping must be cleared, and the old binding usable again.
+        self.assertEqual(session._captured_graph_bindings, {})
+        self.assertEqual(stale_binding._pinned_graph_ids, set())
+        stale_binding.clear_binding_inputs()
+        stale_binding.clear_binding_outputs()
+
+        # The same graph id must be capturable again through the replacement session.
+        fresh_binding = session.io_binding()
+        fresh_binding.bind_cpu_input(input_metadata.name, input_value)
+        fresh_binding.bind_output(output_name)
+        session.run_with_iobinding(fresh_binding)
+        np.testing.assert_allclose(
+            fresh_binding.copy_outputs_to_cpu()[0],
+            session.run(None, {input_metadata.name: input_value})[0],
+        )
+        session.release_captured_graph()
+
     @unittest.skipIf(
         "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
         "WebGpuExecutionProvider is not available",
@@ -2248,6 +2290,67 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(indexed_raw_output._is_webgpu_buffer())
         del indexed_raw_output
         gc.collect()
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_graph_capture_across_set_providers(self):
+        """A real capture must not outlive the session handle that set_providers() replaces."""
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        so.add_session_config_entry("ep.webgpuexecutionprovider.enableGraphCapture", "1")
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        expected = reference_session.run(None, {input_metadata.name: input_value})[0]
+
+        def capture(current_session):
+            io_binding = current_session.io_binding()
+            io_binding.bind_ortvalue_input(
+                input_metadata.name,
+                current_session.create_ortvalue_from_numpy(input_value, "webgpu"),
+            )
+            io_binding.bind_ortvalue_output(
+                output_metadata.name,
+                current_session.create_ortvalue_from_shape_and_type(output_metadata.shape, np.float32, "webgpu"),
+            )
+            current_session.run_with_iobinding(io_binding)
+            return io_binding
+
+        first_binding = capture(session)
+        np.testing.assert_allclose(first_binding.copy_outputs_to_cpu()[0], expected, rtol=1e-5, atol=1e-5)
+        self.assertEqual(set(session._captured_graph_bindings), {0})
+        self.assertEqual(first_binding._pinned_graph_ids, {0})
+
+        session.set_providers(["WebGpuExecutionProvider"])
+
+        # The replaced handle's capture must be gone from both sides of the bookkeeping.
+        self.assertEqual(session._captured_graph_bindings, {})
+        self.assertEqual(first_binding._pinned_graph_ids, set())
+        first_binding.clear_binding_inputs()
+        first_binding.clear_binding_outputs()
+
+        # Graph 0 must be capturable again through the replacement session.
+        second_binding = capture(session)
+        np.testing.assert_allclose(second_binding.copy_outputs_to_cpu()[0], expected, rtol=1e-5, atol=1e-5)
+        session.release_captured_graph()
+        second_binding.clear_binding_inputs()
+        second_binding.clear_binding_outputs()
 
     def test_memory_arena_shrinkage(self):
         if (

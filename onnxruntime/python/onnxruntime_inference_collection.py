@@ -809,8 +809,23 @@ class InferenceSession(Session):
         self._provider_options = self._sess.get_provider_options()
         self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
 
+    def _release_captured_graphs(self) -> None:
+        """Release every graph captured by the current session handle and unpin its IOBinding.
+
+        A captured graph belongs to the ``C.InferenceSession`` that captured it, so it must be
+        released before that handle is replaced. Otherwise the stale bookkeeping would reject an
+        IOBinding created by the replacement session and a later ``release_captured_graph`` would
+        act on the replacement session while unpinning the old binding.
+        """
+        for graph_annotation_id in sorted(self._captured_graph_bindings):
+            self.release_captured_graph(graph_annotation_id)
+
     def _reset_session(self, providers, provider_options) -> None:
         "release underlying session object."
+        # Captured graphs outlive neither the session handle nor its bookkeeping. Release them
+        # first so a failure here leaves the session intact instead of half torn down.
+        self._release_captured_graphs()
+
         # meta data references session internal structures
         # so they must be set to None to decrement _sess reference count.
         self._sess_options = None
