@@ -524,6 +524,166 @@ TEST(TransformerTest, Fp16OutputOnlyNodeWithNoCpuKernelForcedToFp32) {
   EXPECT_EQ(ops["Cast"], 1);
 }
 
+// A stand-in for a kernel registry a user adds to a session (SessionOptions::AddCustomOpDomain and
+// friends end up in KernelRegistryManager::custom_kernel_registries_). Only the kernel def matters
+// here: InsertCastTransformer looks kernels up but never creates one, so the create function is
+// never called.
+static std::shared_ptr<KernelRegistry> MakeCustomCpuRegistry(const char* op_type, const char* domain,
+                                                             MLDataType constrained_type) {
+  auto kernel_def = KernelDefBuilder()
+                        .SetName(op_type)
+                        .SetDomain(domain)
+                        .SinceVersion(1)
+                        .Provider(onnxruntime::kCpuExecutionProvider)
+                        .TypeConstraint("T", constrained_type)
+                        .Build();
+
+  auto registry = std::make_shared<KernelRegistry>();
+  ORT_THROW_IF_ERROR(registry->Register(KernelCreateInfo(
+      std::move(kernel_def),
+      [](FuncManager&, const OpKernelInfo&, std::unique_ptr<OpKernel>&) -> Status {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "kernel is only ever looked up, never created");
+      })));
+  return registry;
+}
+
+// Custom kernel registries must be searched alongside the CPU EP's own registry when deciding whether
+// a node has a kernel. This is the graph from Fp16FusedNodeWithNoCpuKernelForcedToFp32 -- an fp16
+// com.microsoft.BiasGelu, which the CPU EP implements for float only -- except that a custom registry
+// supplies the missing fp16 kernel. The node is therefore not kernel-less: rewriting it to fp32 would
+// wrap it in casts it does not need and, worse, mean the kernel the user registered never runs.
+TEST(TransformerTest, Fp16NodeWithCustomRegistryFp16KernelNotForced) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg a_def("A", &tensor_float_16),
+      b_def("B", &tensor_float_16),
+      c_def("C", &tensor_float_16);
+
+  auto& bias_gelu = graph.AddNode("bias_gelu", "BiasGelu", "fp16, kernel comes from a custom registry",
+                                  ArgMap{&a_def, &b_def}, ArgMap{&c_def}, nullptr, kMSDomain);
+  bias_gelu.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({bias_gelu.OutputDefs()[0]});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto custom_registry = MakeCustomCpuRegistry("BiasGelu", kMSDomain, DataTypeImpl::GetTensorType<MLFloat16>());
+  auto cpu_registry = DefaultCpuExecutionProvider()->GetKernelRegistry();
+  // Custom registries first, matching the order GetKernelRegistriesByProviderType returns and the
+  // priority SearchKernelRegistry applies when the kernel is looked up for real.
+  InsertCastTransformer transformer("Test",
+                                    InsertCastTransformer::KernelRegistryList{custom_registry.get(),
+                                                                              cpu_registry.get()});
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_FALSE(modified) << "A node whose fp16 kernel comes from a custom registry must be left in fp16";
+  status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
+    return node_arg.Type() != nullptr &&
+           DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
+  };
+
+  EXPECT_TRUE(is_type(*bias_gelu.InputDefs()[0], DataTypeImpl::GetTensorType<MLFloat16>()));
+  EXPECT_TRUE(is_type(*bias_gelu.InputDefs()[1], DataTypeImpl::GetTensorType<MLFloat16>()));
+  EXPECT_TRUE(is_type(*bias_gelu.OutputDefs()[0], DataTypeImpl::GetTensorType<MLFloat16>()));
+  EXPECT_EQ(bias_gelu.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
+
+  auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops.find("Cast"), ops.end());
+}
+
+// Builds a graph holding a single CPU-assigned fp16 com.microsoft.BiasAdd producing a graph output.
+// BiasAdd has no CPU kernel in any precision, so the node is kernel-less and whether it can be
+// rewritten to fp32 depends entirely on where an fp32 kernel is found.
+static onnxruntime::Node& BuildFp16BiasAddGraph(onnxruntime::Graph& graph, TypeProto& tensor_float_16,
+                                                std::vector<std::unique_ptr<onnxruntime::NodeArg>>& arg_storage) {
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  ArgMap inputs;
+  for (const char* name : {"X", "bias", "skip"}) {
+    arg_storage.push_back(std::make_unique<onnxruntime::NodeArg>(name, &tensor_float_16));
+    inputs.push_back(arg_storage.back().get());
+  }
+  arg_storage.push_back(std::make_unique<onnxruntime::NodeArg>("Y", &tensor_float_16));
+
+  auto& bias_add = graph.AddNode("bias_add", "BiasAdd", "fp16 with no CPU kernel at all",
+                                 inputs, ArgMap{arg_storage.back().get()}, nullptr, kMSDomain);
+  bias_add.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({bias_add.OutputDefs()[0]});
+  return bias_add;
+}
+
+// The other half of the same requirement: the fp32 kernel the fallback relies on may also live in a
+// custom registry. Without one the transformer cannot confirm an fp32 kernel exists and has to leave
+// the node alone (it warns and session initialization fails later); with one it converts the node.
+TEST(TransformerTest, Fp16NodeWithCustomRegistryFp32KernelForcedToFp32) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  auto cpu_registry = DefaultCpuExecutionProvider()->GetKernelRegistry();
+  auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
+    return node_arg.Type() != nullptr &&
+           DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
+  };
+
+  // Baseline: the CPU EP registry alone has neither an fp16 nor an fp32 BiasAdd kernel, so there is
+  // nothing to fall back to and the node stays as it is.
+  {
+    auto model = std::make_shared<onnxruntime::Model>("test", false, logger);
+    TypeProto tensor_float_16;
+    std::vector<std::unique_ptr<onnxruntime::NodeArg>> arg_storage;
+    auto& bias_add = BuildFp16BiasAddGraph(model->MainGraph(), tensor_float_16, arg_storage);
+
+    auto status = model->MainGraph().Resolve();
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    InsertCastTransformer transformer("Test", cpu_registry.get());
+    bool modified = false;
+    status = transformer.Apply(model->MainGraph(), modified, logger);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    EXPECT_FALSE(modified) << "With no fp32 kernel to fall back to the node must be left untouched";
+    EXPECT_TRUE(is_type(*bias_add.OutputDefs()[0], DataTypeImpl::GetTensorType<MLFloat16>()));
+  }
+
+  // With the fp32 kernel supplied by a custom registry the fallback is available and is applied.
+  {
+    auto model = std::make_shared<onnxruntime::Model>("test", false, logger);
+    TypeProto tensor_float_16;
+    std::vector<std::unique_ptr<onnxruntime::NodeArg>> arg_storage;
+    auto& bias_add = BuildFp16BiasAddGraph(model->MainGraph(), tensor_float_16, arg_storage);
+
+    auto status = model->MainGraph().Resolve();
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    auto custom_registry = MakeCustomCpuRegistry("BiasAdd", kMSDomain, DataTypeImpl::GetTensorType<float>());
+    InsertCastTransformer transformer("Test",
+                                      InsertCastTransformer::KernelRegistryList{custom_registry.get(),
+                                                                                cpu_registry.get()});
+    bool modified = false;
+    status = transformer.Apply(model->MainGraph(), modified, logger);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    EXPECT_TRUE(modified) << "The fp32 kernel in the custom registry makes the fp32 fallback possible";
+    status = model->MainGraph().Resolve();
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    for (const auto* input_def : bias_add.InputDefs()) {
+      EXPECT_TRUE(is_type(*input_def, DataTypeImpl::GetTensorType<float>()));
+    }
+    EXPECT_TRUE(is_type(*bias_add.OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+    EXPECT_EQ(bias_add.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
+
+    // Three inputs cast to fp32 on the way in, and the output cast back to fp16 for the graph output.
+    auto ops = CountOpsInGraph(model->MainGraph());
+    EXPECT_EQ(ops["Cast"], 4);
+  }
+}
+
 // Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)
 // because the intermediate int32 truncation changes semantics (e.g. -0.1 -> 0 -> false vs -0.1 -> true).
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28089

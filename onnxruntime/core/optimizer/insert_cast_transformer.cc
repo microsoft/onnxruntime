@@ -17,6 +17,8 @@ static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
          DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>();
 }
 
+using KernelRegistryList = InsertCastTransformer::KernelRegistryList;
+
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
   // If the node's input is float16 and currently the node is not assigned to any EP
   // we need to insert a cast to float, and put the node on CPU for default behavior.
@@ -75,7 +77,7 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 // converted to fp32 like an unassigned one, otherwise session initialization fails when its kernel is
 // looked up.
 static bool IsFp16NodeOnCpuWithoutKernel(const onnxruntime::Node& node,
-                                         const KernelRegistry& cpu_kernel_registry,
+                                         const KernelRegistryList& cpu_kernel_registries,
                                          const logging::Logger& logger) {
   if (node.GetExecutionProviderType() != kCpuExecutionProvider ||
       node.ContainsSubgraph() ||
@@ -91,11 +93,16 @@ static bool IsFp16NodeOnCpuWithoutKernel(const onnxruntime::Node& node,
     return false;
   }
 
+  // Check every registry, not just the CPU EP's own one: a kernel registered through a custom registry
+  // takes priority at kernel lookup time, so a node it covers is not kernel-less and must be left alone.
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelCreateInfo* kernel_create_info{};
-  return !cpu_kernel_registry.TryFindKernel(node, kCpuExecutionProvider, kernel_type_str_resolver,
-                                            logger, &kernel_create_info)
-              .IsOK();
+  return std::none_of(cpu_kernel_registries.cbegin(), cpu_kernel_registries.cend(),
+                      [&](const gsl::not_null<const KernelRegistry*>& registry) {
+                        const auto lookup_status = registry->TryFindKernel(
+                            node, kCpuExecutionProvider, kernel_type_str_resolver, logger, &kernel_create_info);
+                        return lookup_status.IsOK();
+                      });
 }
 
 // Detect an isolated node that is able to process fp16 data but is between other nodes that have fp16 inputs
@@ -123,7 +130,7 @@ static bool IsFp16NodeOnCpuWithoutKernel(const onnxruntime::Node& node,
 // If no_cpu_kernel is true the node cannot run as fp16 at all, so the checks on the neighbouring nodes
 // are skipped: converting it to fp32 is not an optimization then but the only way to run it.
 static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph,
-                                    const KernelRegistry& cpu_kernel_registry,
+                                    const KernelRegistryList& cpu_kernel_registries,
                                     const logging::Logger& logger,
                                     bool no_cpu_kernel) {
   // we can check if it's an isolated fp16 node
@@ -250,10 +257,15 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
     // now all fp16 inputs and outputs would have a cast
     // make sure fp32 version of the kernel is available.
     const KernelCreateInfo* kernel_create_info{};
-    const auto lookup_status = cpu_kernel_registry.TryFindKernel(
-        kCpuExecutionProvider, node.OpType(), node.Domain(),
-        node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
-    if (lookup_status.IsOK() && kernel_create_info != nullptr) {
+    const bool have_fp32_kernel =
+        std::any_of(cpu_kernel_registries.cbegin(), cpu_kernel_registries.cend(),
+                    [&](const gsl::not_null<const KernelRegistry*>& registry) {
+                      const auto lookup_status = registry->TryFindKernel(
+                          kCpuExecutionProvider, node.OpType(), node.Domain(),
+                          node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
+                      return lookup_status.IsOK() && kernel_create_info != nullptr;
+                    });
+    if (have_fp32_kernel) {
       return true;
     }
   }
@@ -270,13 +282,14 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
 //
 // nodes_forced_to_fp32 collects every node unassigned here, whether or not it has an fp16 kernel.
 // ApplyImpl needs it to catch the ones NeedInsertCast will not fire on; see its use there.
-static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry,
+static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph,
+                                                 const KernelRegistryList& cpu_kernel_registries,
                                                  const logging::Logger& logger,
                                                  InlinedHashSet<NodeIndex>& nodes_with_recorded_cpu_assignment,
                                                  InlinedHashSet<NodeIndex>& nodes_forced_to_fp32) {
   for (auto& node : graph.Nodes()) {
-    const bool no_cpu_kernel = IsFp16NodeOnCpuWithoutKernel(node, cpu_kernel_registry, logger);
-    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry, logger, no_cpu_kernel)) {
+    const bool no_cpu_kernel = IsFp16NodeOnCpuWithoutKernel(node, cpu_kernel_registries, logger);
+    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registries, logger, no_cpu_kernel)) {
       // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32.
       if (!no_cpu_kernel) {
         // A node that has an fp16 kernel was assigned to the CPU EP by the partitioner, which
@@ -581,7 +594,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
   InlinedHashSet<NodeIndex> nodes_with_recorded_cpu_assignment;
   InlinedHashSet<NodeIndex> nodes_forced_to_fp32;
   if (force_cpu_fp32_)
-    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger,
+    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, cpu_kernel_registries_, logger,
                                                            nodes_with_recorded_cpu_assignment,
                                                            nodes_forced_to_fp32));
 
