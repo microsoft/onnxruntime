@@ -93,6 +93,9 @@ const KaiF32SgemmKernel& GetKleidiAISGemmUKernel();
 // Returns the selected FP32 kernel used for GEMV-style workloads based on runtime CPU capabilities.
 const KaiF32SgemvKernel& GetKleidiAISGemvUKernel();
 
+// Returns the SVE FP32 GEMM ukernel (unpacked LHS + packed RHS). Requires only SVE (not SME).
+const KaiF32SgemvKernel& GetKleidiAISGemmSveUKernel();
+
 // Returns the selected FP32 IMATMUL ukernel used by the KleidiAI convolution implementation.
 const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel();
 
