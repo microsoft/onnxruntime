@@ -12,6 +12,7 @@ if (typeof window !== 'undefined') {
 }
 
 require('./backends/wasm/test-model-metadata');
+require('./backends/wasm/test-webgpu-feature-selection');
 
 require('./pool-output-shape');
 

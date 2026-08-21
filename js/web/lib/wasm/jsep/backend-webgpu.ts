@@ -134,6 +134,29 @@ class AdapterInfoImpl implements AdapterInfo {
   }
 }
 
+const isElectronRuntime = (): boolean => {
+  const processWithVersions = (globalThis as typeof globalThis & {
+    process?: { versions?: { electron?: string } };
+  }).process;
+  if (processWithVersions?.versions?.electron) {
+    return true;
+  }
+  return globalThis.navigator?.userAgent?.includes('Electron') ?? false;
+};
+
+export const shouldRequestSubgroupsFeature = (adapterInfo?: GPUAdapterInfo): boolean => {
+  if (!isElectronRuntime()) {
+    return true;
+  }
+
+  const vendor = adapterInfo?.vendor?.toLowerCase();
+  if (!vendor) {
+    return false;
+  }
+
+  return !vendor.includes('intel');
+};
+
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
@@ -251,10 +274,6 @@ export class WebGpuBackend {
       requireFeatureIfAvailable('timestamp-query');
     }
     requireFeatureIfAvailable('shader-f16');
-    // Try subgroups
-    requireFeatureIfAvailable('subgroups');
-
-    this.device = await adapter.requestDevice(deviceDescriptor);
     const adapterWithRequestInfo = adapter as GPUAdapter & {
       requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
     };
@@ -263,6 +282,12 @@ export class WebGpuBackend {
       (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
         ? await adapterWithRequestInfo.requestAdapterInfo()
         : undefined);
+    // Subgroups are known to cause incorrect results in Electron on Intel GPUs.
+    if (shouldRequestSubgroupsFeature(adapterInfo)) {
+      requireFeatureIfAvailable('subgroups');
+    }
+
+    this.device = await adapter.requestDevice(deviceDescriptor);
     // adapterInfo is optional and may not be available in all browsers.
     // AdapterInfoImpl will handle the case when adapterInfo is undefined.
     this.adapterInfo = new AdapterInfoImpl(adapterInfo);
