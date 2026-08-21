@@ -71,6 +71,7 @@ class Case:
     block_size: int | None = None
     bias: bool = False
     w8a8: bool = False
+    dynamic_w8a8: bool = False
     seed: int = 0
 
 
@@ -258,6 +259,13 @@ def _quantize_dequantize_activation_fp8(a: torch.Tensor) -> tuple[torch.Tensor, 
     return a_deq.contiguous(), a_scale
 
 
+def _dynamic_quantize_dequantize_activation_fp8(a: torch.Tensor) -> torch.Tensor:
+    """Dynamic per-row W8A8 activation QDQ used by cuBLASLt outer-vector scaling."""
+    max_abs = a.float().abs().amax(dim=-1, keepdim=True)
+    scale = torch.clamp(max_abs / _FP8_E4M3_MAX, min=1.0 / 65504.0)
+    return ((a.float() / scale).to(torch.float8_e4m3fn).float() * scale).to(a.dtype).contiguous()
+
+
 def _make_fp8_model(
     case: Case,
     b_fp8: torch.Tensor,
@@ -304,6 +312,15 @@ def _fp8_expected_path(case: Case) -> str:
     block_size = case.block_size or 128
     if case.m > 0 and case.m <= 8 and case.k % 16 == 0 and block_size % 16 == 0:
         return "fp8_gemv"
+    if (
+        case.dynamic_w8a8
+        and not case.bias
+        and block_size >= case.k
+        and case.n >= 4096
+        and case.n % 16 == 0
+        and case.k % 16 == 0
+    ):
+        return "rowwise_fp8_cublaslt"
     return "fp8_dequant_cublas"
 
 
@@ -311,6 +328,7 @@ def _make_fp8_inputs(case: Case) -> tuple[bytes, torch.Tensor, torch.Tensor, str
     generator = torch.Generator(device="cuda")
     generator.manual_seed(case.seed)
     block_size = case.block_size or 128
+    expected_path = _fp8_expected_path(case)
 
     activation_dtype = _torch_dtype(case.activation_dtype)
     a = (torch.randn((case.m, case.k), generator=generator, device="cuda") * 0.75).to(activation_dtype).contiguous()
@@ -324,10 +342,12 @@ def _make_fp8_inputs(case: Case) -> tuple[bytes, torch.Tensor, torch.Tensor, str
     a_effective = a
     if case.w8a8:
         a_effective, a_scale = _quantize_dequantize_activation_fp8(a)
+    elif case.dynamic_w8a8 and expected_path == "rowwise_fp8_cublaslt":
+        a_effective = _dynamic_quantize_dequantize_activation_fp8(a)
 
     model = _make_fp8_model(case, b_fp8, b_scale, a_scale, bias)
     reference = _fp8_reference(a_effective, b_dequantized, bias)
-    return model, a, reference, _fp8_expected_path(case)
+    return model, a, reference, expected_path
 
 
 def _make_inputs(case: Case) -> tuple[bytes, torch.Tensor, torch.Tensor, str]:
@@ -422,6 +442,7 @@ def run_case(case: Case, warmup: int, repeat: int, atol: float, rtol: float) -> 
         "activation_dtype": case.activation_dtype,
         "bias": case.bias,
         "w8a8": case.w8a8,
+        "dynamic_w8a8": case.dynamic_w8a8,
         "expected_path": expected_path,
         "passed": passed,
         "atol": atol,
@@ -446,6 +467,7 @@ def _default_cases(args) -> list[Case]:
                 block_size=args.block_size,
                 bias=args.bias,
                 w8a8=args.w8a8,
+                dynamic_w8a8=args.dynamic_w8a8,
                 seed=args.seed,
             )
         ]
@@ -464,7 +486,18 @@ def _default_cases(args) -> list[Case]:
     matrix_shapes = [(4096, 4096), (4096, 11008)]
     for k, n in matrix_shapes:
         cases.extend(
-            Case(args.op, m, n, k, args.activation_dtype, bias=args.bias, w8a8=args.w8a8, seed=args.seed + 100 + m)
+            Case(
+                args.op,
+                m,
+                n,
+                k,
+                args.activation_dtype,
+                block_size=args.block_size,
+                bias=args.bias,
+                w8a8=args.w8a8,
+                dynamic_w8a8=args.dynamic_w8a8,
+                seed=args.seed + 100 + m,
+            )
             for m in matrix_ms
         )
     return cases
@@ -481,6 +514,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--activation-dtype", choices=["fp16", "bf16"], default="fp16")
     parser.add_argument("--bias", action="store_true", help="Enable bias input")
     parser.add_argument("--w8a8", action="store_true", help="FP8 only: statically quantize A to FP8 (a_scale)")
+    parser.add_argument(
+        "--dynamic-w8a8",
+        action="store_true",
+        help="FP8 only: dynamically quantize each A row and enable native row-wise FP8 GEMM",
+    )
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--repeat", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
@@ -492,6 +530,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     _require_cuda()
+    if args.w8a8 and args.dynamic_w8a8:
+        raise ValueError("--w8a8 and --dynamic-w8a8 are mutually exclusive.")
+    if args.dynamic_w8a8 and args.bias:
+        raise ValueError("--dynamic-w8a8 does not support the bias epilogue.")
+    if args.dynamic_w8a8:
+        os.environ["ORT_ENABLE_ROW_WISE_FP8_GEMM"] = "1"
     single_case_args = [args.m is not None, args.n is not None, args.k is not None]
     if any(single_case_args) and not all(single_case_args):
         raise ValueError("Single-case mode requires all of --m, --n and --k.")

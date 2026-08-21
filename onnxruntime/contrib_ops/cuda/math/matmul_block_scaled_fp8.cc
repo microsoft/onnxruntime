@@ -22,6 +22,140 @@ bool FusedFp8ActivationQdqDisabled() {
   return disabled;
 }
 
+bool RowwiseFp8PrefillEnabled() {
+  // Read per invocation so tests and long-lived processes can change the opt-in switch between
+  // sessions without depending on which operator was executed first.
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_ROW_WISE_FP8_GEMM", false);
+}
+
+Status LaunchRowwiseFp8Gemm(cublasLtHandle_t cublas_lt,
+                            cudaStream_t stream,
+                            const void* a_fp8,
+                            const void* b_fp8,
+                            const float* scale_a,
+                            const float* scale_b,
+                            void* output,
+                            int m,
+                            int n,
+                            int k,
+                            bool is_bf16,
+                            void* workspace,
+                            size_t workspace_size,
+                            bool& handled) {
+#if !defined(DISABLE_FLOAT8_TYPES) && CUDA_VERSION >= 12090
+  handled = false;
+  cublasLtMatmulDesc_t operation_desc = nullptr;
+  auto clean_operation_desc = gsl::finally([&operation_desc]() {
+    if (operation_desc) {
+      cublasLtMatmulDescDestroy(operation_desc);
+    }
+  });
+  cublasLtMatrixLayout_t a_desc = nullptr;
+  auto clean_a_desc = gsl::finally([&a_desc]() {
+    if (a_desc) {
+      cublasLtMatrixLayoutDestroy(a_desc);
+    }
+  });
+  cublasLtMatrixLayout_t b_desc = nullptr;
+  auto clean_b_desc = gsl::finally([&b_desc]() {
+    if (b_desc) {
+      cublasLtMatrixLayoutDestroy(b_desc);
+    }
+  });
+  cublasLtMatrixLayout_t c_desc = nullptr;
+  auto clean_c_desc = gsl::finally([&c_desc]() {
+    if (c_desc) {
+      cublasLtMatrixLayoutDestroy(c_desc);
+    }
+  });
+  cublasLtMatrixLayout_t d_desc = nullptr;
+  auto clean_d_desc = gsl::finally([&d_desc]() {
+    if (d_desc) {
+      cublasLtMatrixLayoutDestroy(d_desc);
+    }
+  });
+  cublasLtMatmulPreference_t preference = nullptr;
+  auto clean_preference = gsl::finally([&preference]() {
+    if (preference) {
+      cublasLtMatmulPreferenceDestroy(preference);
+    }
+  });
+
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&operation_desc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
+  const cublasOperation_t trans_a = CUBLAS_OP_N;
+  const cublasOperation_t trans_b = CUBLAS_OP_T;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_TRANSA, &trans_a, sizeof(trans_a)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_TRANSB, &trans_b, sizeof(trans_b)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &scale_a, sizeof(scale_a)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &scale_b, sizeof(scale_b)));
+  const cublasLtMatmulMatrixScale_t scale_mode = CUBLASLT_MATMUL_MATRIX_SCALE_OUTER_VEC_32F;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_A_SCALE_MODE, &scale_mode, sizeof(scale_mode)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_B_SCALE_MODE, &scale_mode, sizeof(scale_mode)));
+  constexpr int8_t fast_accumulation = 1;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operation_desc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &fast_accumulation, sizeof(fast_accumulation)));
+
+  const cudaDataType_t output_type = is_bf16 ? CUDA_R_16BF : CUDA_R_16F;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&a_desc, CUDA_R_8F_E4M3, m, k, k));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&b_desc, CUDA_R_8F_E4M3, n, k, k));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&c_desc, output_type, m, n, n));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&d_desc, output_type, m, n, n));
+  const cublasLtOrder_t row_major = CUBLASLT_ORDER_ROW;
+  for (cublasLtMatrixLayout_t desc : {a_desc, b_desc, c_desc, d_desc}) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(
+        desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(row_major)));
+  }
+
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceCreate(&preference));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceSetAttribute(
+      preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspace_size, sizeof(workspace_size)));
+  cublasLtMatmulHeuristicResult_t heuristic_result{};
+  int returned_results = 0;
+  const cublasStatus_t heuristic_status = cublasLtMatmulAlgoGetHeuristic(
+      cublas_lt, operation_desc, a_desc, b_desc, c_desc, d_desc, preference,
+      1, &heuristic_result, &returned_results);
+  if (heuristic_status == CUBLAS_STATUS_NOT_SUPPORTED ||
+      (heuristic_status == CUBLAS_STATUS_SUCCESS && returned_results == 0)) {
+    return Status::OK();
+  }
+  CUBLAS_RETURN_IF_ERROR(heuristic_status);
+
+  constexpr float alpha = 1.0f;
+  constexpr float beta = 0.0f;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
+      cublas_lt, operation_desc, &alpha,
+      a_fp8, a_desc, b_fp8, b_desc, &beta,
+      output, c_desc, output, d_desc,
+      &heuristic_result.algo, workspace, workspace_size, stream));
+  handled = true;
+  return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(cublas_lt);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(a_fp8);
+  ORT_UNUSED_PARAMETER(b_fp8);
+  ORT_UNUSED_PARAMETER(scale_a);
+  ORT_UNUSED_PARAMETER(scale_b);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(is_bf16);
+  ORT_UNUSED_PARAMETER(workspace);
+  ORT_UNUSED_PARAMETER(workspace_size);
+  ORT_UNUSED_PARAMETER(handled);
+  // The opt-in path is allowed to fall back when the provider was built with an older toolkit.
+  // This keeps the environment switch harmless on CUDA 12.8 and older supported builds.
+  return Status::OK();
+#endif
+}
+
 size_t DequantScratchLimitBytes() {
   const int64_t limit = ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP8_DEQUANT_SCRATCH_MIB", 256);
   ORT_ENFORCE(limit > 0, "ORT_FP8_DEQUANT_SCRATCH_MIB must be positive.");
@@ -160,6 +294,30 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         std::is_same<T, BFloat16>::value,
         GetDeviceProp(),
         Stream(context));
+  }
+
+  const bool use_rowwise_fp8 = RowwiseFp8PrefillEnabled() && GetDeviceProp().major >= 9 &&
+                               a_scale == nullptr && bias == nullptr && block_size_ >= k_i &&
+                               n_i >= 4096 && (n_i % 16 == 0) && (k_i % 16 == 0);
+  if (use_rowwise_fp8) {
+    auto a_fp8 = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i),
+                                           GetComputeStream(context));
+    auto row_scales = GetScratchBuffer<float>(m_i, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(LaunchDynamicQuantizeActivationFp8(
+        a_fp8.get(), row_scales.get(), a->DataRaw(), m_i, k_i,
+        std::is_same<T, BFloat16>::value, Stream(context)));
+
+    constexpr size_t kWorkspaceSize = 32 * 1024 * 1024;
+    auto workspace = GetScratchBuffer<uint8_t>(kWorkspaceSize, GetComputeStream(context));
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(LaunchRowwiseFp8Gemm(
+        GetCublasLtHandle(context), Stream(context),
+        a_fp8.get(), b->DataRaw(), row_scales.get(), b_scale->Data<float>(), Y->MutableDataRaw(),
+        m_i, n_i, k_i, std::is_same<T, BFloat16>::value,
+        workspace.get(), kWorkspaceSize, handled));
+    if (handled) {
+      return Status::OK();
+    }
   }
 
   // Dequantize the FP8 weight into a scratch buffer of the activation type, then GEMM. The scratch
