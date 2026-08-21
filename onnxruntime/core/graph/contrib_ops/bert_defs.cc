@@ -2865,6 +2865,206 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
+Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+
+Layout. Query, key and value are token-major, so head counts are derived from the shapes
+rather than from attributes:
+
+  query [total_tokens, num_heads_q, head_size_qk]
+  key   [total_tokens, num_heads_k, head_size_qk]
+  value [total_tokens, num_heads_v, head_size_v]
+
+The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
+pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
+is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
+activation with static Reshape targets instead of Shape-derived ones. Ragged packing
+(`cu_seqlens`) requires the rank-3 spelling.
+
+`num_heads_q` must equal `num_heads_k`, and `num_heads_v` must be a positive multiple of
+`num_heads_q` (inverse grouped-query attention: each query/key head is shared by
+`num_heads_v / num_heads_q` value heads). Decay, beta, the state and the output are all at
+`num_heads_v`.
+
+Sequence packing. When `cu_seqlens` is provided it is a device int32 tensor of length
+`batch_size + 1` holding the exclusive prefix sums of the per-request token counts, so
+requests may have different lengths. When it is absent the packing is uniform and the batch
+size is taken from `initial_state`, which is then required.
+
+State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
+head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
+boundary is where reduced precision hurts most, and V-major is the layout used by cuDNN's
+GDN/KDA and by FLA with `state_v_first=true`. The two may be the same allocation; the
+implementation reads the whole incoming state before writing any of it.
+
+Checkpoints. When the `state_checkpoints` attribute W is greater than zero, the optional
+`checkpoints` output is `[W, batch_size, num_heads_v, head_size_v, head_size_qk]` and holds
+the state after each of the last W tokens, **right-aligned**: slot W-1 is the state after the
+final token (the same value as `final_state`) and slot W-1-k is the state after the k-th token
+from the end. This is the series a speculative decoder needs to roll back to a partially
+accepted draft. Slots this call does not write are left unspecified rather than cleared,
+because the buffer may alias live state; in particular a request longer than W tokens fills
+only the last slot, since such a request is a prefill with nothing to roll back.
+
+Because slot W-1 is the committed state, `initial_state` may also be given with that leading
+window, `[W, batch_size, num_heads_v, head_size_v, head_size_qk]`, in which case the operator
+reads the last slot and `final_state` may be omitted. One buffer then serves as both the past
+and the present state of a speculative decoding loop.
+
+Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
+
+  S_t = exp(g_t) S_{t-1} + k_t (beta_t (v_t - exp(g_t) S_{t-1}^T k_t))^T
+  o_t = scale * S_t^T q_t
+
+`update_rule` selects which terms are present: 'linear' drops both the decay and the delta
+retrieval, 'gated' keeps only the decay, 'delta' keeps only the retrieval, and 'gated_delta'
+keeps both.
+
+The delta family ('delta' and 'gated_delta') requires L2-normalized keys. Without them the
+per-chunk system (I + M) is arbitrarily ill-conditioned and the recurrence diverges. Either
+normalize upstream or set `qk_l2_norm=1` to have the operator do it.
+
+Fused activations. `gate_activation='qwen'` computes the effective decay in float32 from the
+raw projection carried by `decay`:
+
+  g = -exp(a_log) * Softplus(decay + dt_bias)
+
+`beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
+query and key head vector. Folding these in avoids materializing the intermediates and keeps
+the gate arithmetic in float32 independent of the input type.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedDeltaNet, 1,
+    OpSchema()
+        .SetDoc(GatedDeltaNet_ver1_doc)
+        .Attr("update_rule",
+              "One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.",
+              AttributeProto::STRING, std::string("gated_delta"))
+        .Attr("scale",
+              "Output scaling factor. When 0.0 (default) uses 1/sqrt(head_size_qk).",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("gate_activation",
+              "'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes "
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32.",
+              AttributeProto::STRING, std::string("none"))
+        .Attr("beta_activation",
+              "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "
+              "sigmoid.",
+              AttributeProto::STRING, std::string("none"))
+        .Attr("qk_l2_norm",
+              "When 1, L2-normalize each query and key head vector before the recurrence. "
+              "Default 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("chunk_size",
+              "Tuning hint for the chunk-parallel prefill algorithm. Default 64.",
+              AttributeProto::INT, static_cast<int64_t>(64))
+        .Attr("state_checkpoints",
+              "Number of trailing per-token state checkpoint slots W, in [0, 8]. 0 (default) "
+              "disables the `checkpoints` output.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "query", "Query, shape (total_tokens, num_heads_q, head_size_qk)", "T")
+        .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T")
+        .Input(2, "value", "Value, shape (total_tokens, num_heads_v, head_size_v)", "T")
+        .Input(3, "cu_seqlens",
+               "Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). "
+               "Absent means uniform packing.",
+               "TI", OpSchema::Optional)
+        .Input(4, "decay",
+               "Log-space decay, shape (total_tokens, num_heads_v) for a scalar per-head decay or "
+               "(total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay.",
+               "TS", OpSchema::Optional)
+        .Input(5, "beta", "Update rate, shape (total_tokens, num_heads_v)", "TS",
+               OpSchema::Optional)
+        .Input(6, "initial_state",
+               "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
+               "V-major, optionally with a leading checkpoint window of state_checkpoints "
+               "slots whose last slot is the committed state. May alias final_state or "
+               "checkpoints.",
+               "TS", OpSchema::Optional)
+        .Input(7, "a_log", "Per-head gate scale, shape (num_heads_v). Requires gate_activation=qwen.",
+               "TS", OpSchema::Optional)
+        .Input(8, "dt_bias",
+               "Per-head gate bias, shape (num_heads_v). "
+               "Requires gate_activation=qwen.",
+               "TS", OpSchema::Optional)
+        .Output(0, "output",
+                "Output, shape (total_tokens, max(num_heads_q, num_heads_v), head_size_v)", "T")
+        .Output(1, "final_state",
+                "State after the last token of each request, shape "
+                "(batch_size, num_heads_v, head_size_v, head_size_qk)",
+                "TS", OpSchema::Optional)
+        .Output(2, "checkpoints",
+                "State after each of the last state_checkpoints tokens, right-aligned, shape "
+                "(state_checkpoints, batch_size, num_heads_v, head_size_v, head_size_qk)",
+                "TS", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"},
+                        "Constrain query/key/value/output types.")
+        .TypeConstraint("TS", {"tensor(float)"},
+                        "State, gate and beta tensors are always float.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Constrain cu_seqlens to int32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          }
+          if (ctx.getNumOutputs() > 2) {
+            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          }
+
+          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 2)) {
+            return;
+          }
+          const auto& query_shape = getInputShape(ctx, 0);
+          const auto& value_shape = getInputShape(ctx, 2);
+          const int rank = query_shape.dim_size();
+          if ((rank != 3 && rank != 4) || value_shape.dim_size() != rank) {
+            fail_shape_inference(
+                "GatedDeltaNet: query and value must both have rank 3 or both have rank 4");
+          }
+          const int token_dims = rank - 2;
+
+          ONNX_NAMESPACE::TensorShapeProto out_shape;
+          for (int i = 0; i < token_dims; ++i) {
+            *out_shape.add_dim() = query_shape.dim(i);
+          }
+          if (query_shape.dim(token_dims).has_dim_value() &&
+              value_shape.dim(token_dims).has_dim_value()) {
+            out_shape.add_dim()->set_dim_value(std::max(query_shape.dim(token_dims).dim_value(),
+                                                        value_shape.dim(token_dims).dim_value()));
+          } else {
+            out_shape.add_dim();
+          }
+          *out_shape.add_dim() = value_shape.dim(token_dims + 1);
+          updateOutputShape(ctx, 0, out_shape);
+
+          if (hasInputShape(ctx, 6)) {
+            // A rank-5 initial_state carries the checkpoint window; the committed state that
+            // final_state and each checkpoint slot hold is its trailing rank-4 part.
+            const auto& in_state = getInputShape(ctx, 6);
+            const int first = in_state.dim_size() - 4;
+            if (first < 0) {
+              fail_shape_inference("GatedDeltaNet: initial_state must have rank 4 or 5");
+            }
+            ONNX_NAMESPACE::TensorShapeProto committed;
+            for (int i = first; i < in_state.dim_size(); ++i) {
+              *committed.add_dim() = in_state.dim(i);
+            }
+            if (ctx.getNumOutputs() > 1) {
+              updateOutputShape(ctx, 1, committed);
+            }
+            if (ctx.getNumOutputs() > 2) {
+              ONNX_NAMESPACE::TensorShapeProto ckpt;
+              ckpt.add_dim()->set_dim_value(
+                  getAttribute(ctx, "state_checkpoints", static_cast<int64_t>(0)));
+              for (int i = 0; i < committed.dim_size(); ++i) {
+                *ckpt.add_dim() = committed.dim(i);
+              }
+              updateOutputShape(ctx, 2, ckpt);
+            }
+          }
+        }));
+
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
 Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
 
