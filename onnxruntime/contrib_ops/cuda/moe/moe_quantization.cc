@@ -801,6 +801,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   bool use_awq = (fc1_zeros != nullptr) || (packed_fc1_bias_ != nullptr);
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
 
+  // Shared-expert fusion: the last ``num_shared_experts_`` expert slots are
+  // always-on shared experts (see SoftmaxTopKKernel). Each token is routed to
+  // its ``k_`` routed experts plus all ``num_shared_experts_`` shared experts,
+  // so every per-token "selected experts" buffer holds ``k_total`` entries and
+  // the grouped GEMM / finalize operate over ``moe_params.num_experts`` (which
+  // already includes the shared slots, derived from router_probs' column count).
+  ORT_RETURN_IF_NOT(num_shared_experts_ < moe_params.num_experts,
+                    "num_shared_experts (", num_shared_experts_, ") must be < num_experts (",
+                    moe_params.num_experts, ").");
+  const int64_t k_total = k_ + num_shared_experts_;
+  ORT_RETURN_IF_NOT(k_ <= moe_params.num_experts - num_shared_experts_,
+                    "QMoE requires k <= num_experts - num_shared_experts, got k=", k_,
+                    ", num_experts=", moe_params.num_experts,
+                    " and num_shared_experts=", num_shared_experts_);
+
   // Per-call native-vs-dense routing for the FP4 prefill regime. The native FP4 grouped GEMM wins
   // when each expert processes few tokens, but the dense A16 grouped GEMM (MXFP4 weights
   // dequantized to FP16/BF16) is faster once the average per-expert token count is large
@@ -810,9 +825,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool fp4_native_available = is_fp4_family && !use_fp4_dequant_fallback_ && m_fp4_dense_fallback_runner_ != nullptr;
   const int64_t avg_tokens_per_expert =
       moe_params.num_experts > 0
-          ? (static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_)) /
+          ? (static_cast<int64_t>(moe_params.num_rows) * k_total) /
                 static_cast<int64_t>(moe_params.num_experts)
-          : static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_);
+          : static_cast<int64_t>(moe_params.num_rows) * k_total;
   const bool route_native_fp4 =
       fp4_native_available &&
       (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_) &&
@@ -865,7 +880,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
            : (gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr)) &&
       gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr;
   bool use_fp4_gemv = false;
-  if (is_fp4_family && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
+  if (num_shared_experts_ == 0 && is_fp4_family && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
       fp4_gemv_buffers_ready) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
     const int64_t expanded = moe_params.num_rows * static_cast<int64_t>(k_);
@@ -934,7 +949,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         RunnerTileConfig tile_config{tile_rows, deterministic_config, deterministic_config, 0};
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
-            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
             activation_type_, parallelism_config, use_awq);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
         runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
@@ -943,7 +958,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       AllocatorPtr allocator;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
       mGemmProfiler.setAllocator(std::move(allocator));
-      mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_),
+      mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_total),
                                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
                                       fp4_sm80_prefill ? int64_t{32} : static_cast<int64_t>(block_size_), activation_type_,
                                       false, true, parallelism_config, sm_);
@@ -1026,7 +1041,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
-            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
             activation_type_, parallelism_config, use_awq);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
         runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
@@ -1039,7 +1054,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // routing metadata. Every tile completes its launches on the same stream before the next tile
   // reuses these addresses.
   const qmoe::ScratchLayout scratch_layout =
-      qmoe::MakeScratchLayout(workspace_size, row_tile_plan, k_);
+      qmoe::MakeScratchLayout(workspace_size, row_tile_plan, k_total);
   const size_t total_scratch_bytes = scratch_layout.total_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
@@ -1066,7 +1081,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     // Fused routing remains limited to an untiled one-row request; a one-row final tile
     // continues using the same routing implementation as the preceding tiles.
-    if (!row_tile_plan.IsTiled() && !is_fp4_family &&
+    if (num_shared_experts_ == 0 && !row_tile_plan.IsTiled() && !is_fp4_family &&
         onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
             tile_rows, static_cast<int>(moe_params.num_experts),
             static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
@@ -1084,7 +1099,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(moe_params.num_experts),
           static_cast<int>(k_),
           normalize_routing_weights_,
-          stream);
+          stream,
+          static_cast<int>(num_shared_experts_));
     } else if (is_bf16) {
       LaunchSoftmaxTopK(
           reinterpret_cast<const __nv_bfloat16*>(tile_router_probs),
@@ -1094,7 +1110,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(moe_params.num_experts),
           static_cast<int>(k_),
           normalize_routing_weights_,
-          stream);
+          stream,
+          static_cast<int>(num_shared_experts_));
     } else {
       LaunchSoftmaxTopK(
           reinterpret_cast<const float*>(tile_router_probs),
@@ -1104,7 +1121,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(moe_params.num_experts),
           static_cast<int>(k_),
           normalize_routing_weights_,
-          stream);
+          stream,
+          static_cast<int>(num_shared_experts_));
     }
     return fused_routing;
   };
@@ -1893,7 +1911,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         moe_params.hidden_size,
         moe_params.inter_size,
         moe_params.num_experts,
-        k_,
+        k_total,
         workspace_ptr,
         tile_output,
         unpermuted_row_to_permuted_row,

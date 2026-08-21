@@ -3831,6 +3831,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
+<dt><tt>num_shared_experts</tt> : int</dt>
+<dd>Number of always-on shared experts fused into the op. When > 0, the last num_shared_experts expert slots in the fc1/fc2 weight (and bias/scale) tensors are the shared experts, and the last num_shared_experts columns of router_probs hold their raw (pre-sigmoid) per-token gate logits. Each token is routed to its top-k routed experts plus all shared experts; the shared experts are always selected, weighted by sigmoid(gate logit), and excluded from the routed softmax/top-k/normalization. The shared experts must share the routed experts' inter_size. Default 0 (disabled).</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -5335,6 +5337,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
+<dt><tt>num_shared_experts</tt> : int</dt>
+<dd>Number of always-on shared experts fused into the op. When > 0, the last num_shared_experts expert slots in the fc1/fc2 weight (and bias/scale) tensors are the shared experts, and the last num_shared_experts columns of router_probs hold their raw (pre-sigmoid) per-token gate logits. Each token is routed to its top-k routed experts plus all shared experts; the shared experts are always selected, weighted by sigmoid(gate logit), and excluded from the routed softmax/top-k/normalization. The shared experts must share the routed experts' inter_size. Default 0 (disabled).</dd>
 <dt><tt>quant_type</tt> : string</dt>
 <dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
