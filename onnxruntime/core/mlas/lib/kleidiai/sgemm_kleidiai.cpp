@@ -6,8 +6,11 @@
 
 #include <vector>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <cstddef>
+#include <limits>
+#include <stdexcept>
 #include <arm_neon.h>
 
 #include "mlas.h"
@@ -19,6 +22,10 @@
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
+
+#include "kai/ukernels/matmul/kai_matmul.h"
+#include "kai/ukernels/matmul/kai_matmul_pack_lhs.h"
+#include "kai/ukernels/matmul/kai_matmul_pack_rhs.h"
 
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffers {
@@ -32,6 +39,110 @@ static thread_local KaiTlsBuffers g_kai_tls;
 
 const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
 const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
+
+namespace {
+
+const kai_matmul_uker_config kSme2MatmulConfig{};
+const kai_matmul_pack_lhs_uker_config kSme2PackLhsConfig{};
+const kai_matmul_pack_rhs_uker_config kSme2PackRhsConfig{};
+
+const kai_matmul_uker_api kSme2Gemm4vsx1 =
+    kai_matmul_clamp_f32_f32p4vsx1_f32p4vsx1bf32_8vsx8vs_sme2_mopa();
+const kai_matmul_pack_lhs_uker_api kSme2PackLhs4vsx1 =
+    kai_matmul_pack_lhs_mxk_x32p4vsx1_x32_sme();
+const kai_matmul_pack_rhs_uker_api kSme2PackRhsKxN4vsx1 =
+    kai_matmul_pack_rhs_kxn_x32p4vsx1bx32_x32_x32_sme();
+const kai_matmul_pack_rhs_uker_api kSme2PackRhsNxK4vsx1 =
+    kai_matmul_pack_rhs_nxk_x32p4vsx1bx32_x32_x32_sme();
+
+constexpr float kNoActivationClampMin = -std::numeric_limits<float>::infinity();
+constexpr float kNoActivationClampMax = std::numeric_limits<float>::infinity();
+
+const kai_matmul_pack_rhs_uker_api* GetSme2PackRhs(CBLAS_TRANSPOSE TransB) {
+    switch (TransB) {
+        case CblasNoTrans:
+            return &kSme2PackRhsKxN4vsx1;
+        case CblasTrans:
+            return &kSme2PackRhsNxK4vsx1;
+        default:
+            return nullptr;
+    }
+}
+
+size_t GetSme2PackedBSize(CBLAS_TRANSPOSE TransB, size_t N, size_t K) {
+    const auto* pack_rhs = GetSme2PackRhs(TransB);
+    if (pack_rhs == nullptr || N == 0 || K == 0) {
+        return 0;
+    }
+
+    const kai_matmul_pack_rhs_uker_rhs_packed_dim_args shape{N, K};
+    const auto stride = pack_rhs->get_rhs_packed_stride(&kSme2PackRhsConfig, &shape);
+    return pack_rhs->get_rhs_packed_size(&kSme2PackRhsConfig, &shape, &stride);
+}
+
+bool PackSme2B(CBLAS_TRANSPOSE TransB,
+               size_t N,
+               size_t K,
+               const float* B,
+               size_t ldb,
+               const float* Bias,
+               void* PackedB) {
+    const auto* pack_rhs = GetSme2PackRhs(TransB);
+    if (pack_rhs == nullptr || N == 0 || K == 0) {
+        return false;
+    }
+
+    const kai_matmul_pack_rhs_uker_rhs_packed_dim_args shape{N, K};
+    const auto packed_stride = pack_rhs->get_rhs_packed_stride(&kSme2PackRhsConfig, &shape);
+
+    kai_matmul_pack_rhs_uker_args args{};
+    args.shape = {N, K};
+    args.operand.rhs.ptr = B;
+    args.operand.rhs_packed.ptr = PackedB;
+    args.operand.rhs_packed.stride = packed_stride;
+    args.operand.bias_n.ptr = Bias;
+
+    if (TransB == CblasNoTrans) {
+        args.operand.rhs.stride.n = sizeof(float);
+        args.operand.rhs.stride.k = ldb * sizeof(float);
+    } else {
+        args.operand.rhs.stride.n = ldb * sizeof(float);
+        args.operand.rhs.stride.k = sizeof(float);
+    }
+
+    pack_rhs->run(&kSme2PackRhsConfig, &args);
+    return true;
+}
+
+size_t GetSme2PackedASize(size_t M, size_t K) {
+    const kai_matmul_pack_lhs_uker_lhs_packed_dim_args shape{M, K};
+    const auto stride = kSme2PackLhs4vsx1.get_lhs_packed_stride(&kSme2PackLhsConfig, &shape);
+    return kSme2PackLhs4vsx1.get_lhs_packed_size(&kSme2PackLhsConfig, &shape, &stride);
+}
+
+void PackSme2A(size_t M, size_t K, const float* A, size_t lda, void* PackedA) {
+    const kai_matmul_pack_lhs_uker_lhs_packed_dim_args shape{M, K};
+    const auto packed_stride = kSme2PackLhs4vsx1.get_lhs_packed_stride(&kSme2PackLhsConfig, &shape);
+
+    kai_matmul_pack_lhs_uker_args args{};
+    args.shape = {M, K};
+    args.operand.lhs.ptr = A;
+    args.operand.lhs.stride.m = lda * sizeof(float);
+    args.operand.lhs_packed.ptr = PackedA;
+    args.operand.lhs_packed.stride = packed_stride;
+
+    kSme2PackLhs4vsx1.run(&kSme2PackLhsConfig, &args);
+}
+
+bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
+                       size_t M,
+                       size_t N,
+                       size_t K,
+                       const MLAS_SGEMM_DATA_PARAMS* Data,
+                       size_t BatchSize,
+                       MLAS_THREADPOOL* ThreadPool);
+
+}  // namespace
 
 // Avoid vector setup overhead on tiny outputs.
 constexpr size_t kAlphaBetaNeonMinElements = 32;
@@ -177,9 +288,233 @@ static inline void ApplyBetaToC(float* C, size_t ldc, size_t M, size_t N, float 
     }
 }
 
+namespace {
+
+bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
+                       size_t M,
+                       size_t N,
+                       size_t K,
+                       const MLAS_SGEMM_DATA_PARAMS* Data,
+                       size_t BatchSize,
+                       MLAS_THREADPOOL* ThreadPool) {
+    const bool b_is_packed = Data[0].BIsPacked;
+    for (size_t batch = 1; batch < BatchSize; ++batch) {
+        if (Data[batch].BIsPacked != b_is_packed) {
+            return false;
+        }
+    }
+
+    // Both source orientations produce the same p4vsx1 packed layout. Packed
+    // MLAS calls do not preserve the source TransB value, so use one canonical
+    // packer contract for offsets and strides during execution.
+    if (b_is_packed) {
+        TransB = CblasNoTrans;
+    }
+
+    const auto* pack_rhs = GetSme2PackRhs(TransB);
+    if (pack_rhs == nullptr) {
+        return false;
+    }
+
+    const auto step = kSme2Gemm4vsx1.get_step(&kSme2MatmulConfig);
+    const auto lhs_pack_step = kSme2PackLhs4vsx1.get_step(&kSme2PackLhsConfig);
+    const auto rhs_pack_step = pack_rhs->get_step(&kSme2PackRhsConfig);
+    if (step.m == 0 || step.n == 0 || lhs_pack_step.m != step.m || rhs_pack_step.n != step.n ||
+        lhs_pack_step.k != 0 || rhs_pack_step.k != 0) {
+        return false;
+    }
+
+    const kai_matmul_uker_lhs_dim_args lhs_shape{M, K};
+    const kai_matmul_uker_rhs_dim_args rhs_shape{N, K};
+    const auto lhs_stride = kSme2Gemm4vsx1.get_lhs_stride(&kSme2MatmulConfig, &lhs_shape);
+    const auto rhs_stride = kSme2Gemm4vsx1.get_rhs_stride(&kSme2MatmulConfig, &rhs_shape);
+
+    const kai_matmul_pack_lhs_uker_lhs_packed_dim_args lhs_packed_shape{M, K};
+    const auto lhs_packed_stride =
+        kSme2PackLhs4vsx1.get_lhs_packed_stride(&kSme2PackLhsConfig, &lhs_packed_shape);
+    const kai_matmul_pack_rhs_uker_rhs_packed_dim_args rhs_packed_shape{N, K};
+    const auto rhs_packed_stride =
+        pack_rhs->get_rhs_packed_stride(&kSme2PackRhsConfig, &rhs_packed_shape);
+    if (lhs_stride.m != lhs_packed_stride.m || rhs_stride.n != rhs_packed_stride.n) {
+        return false;
+    }
+
+    const size_t lhs_packed_size = GetSme2PackedASize(M, K);
+    const size_t rhs_packed_size = GetSme2PackedBSize(TransB, N, K);
+    if (lhs_packed_size == 0 || rhs_packed_size == 0) {
+        return false;
+    }
+
+    size_t lhs_buffer_size = 0;
+    size_t rhs_buffer_size = 0;
+    if (MlasMultiplyOverflowsSizeT(lhs_packed_size, BatchSize, &lhs_buffer_size) ||
+        (!b_is_packed && MlasMultiplyOverflowsSizeT(rhs_packed_size, BatchSize, &rhs_buffer_size))) {
+        return false;
+    }
+
+    size_t packing_iterations = BatchSize;
+    if (!b_is_packed && MlasMultiplyOverflowsSizeT(BatchSize, size_t{2}, &packing_iterations)) {
+        return false;
+    }
+    if (packing_iterations > static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max())) {
+        return false;
+    }
+
+    size_t m_step = step.m;
+    size_t n_step = step.n;
+    std::array<size_t, 3> dim{
+        BatchSize,
+        MlasDivRoundup(M, m_step),
+        MlasDivRoundup(N, n_step)};
+
+    size_t initial_mn_tiles = 0;
+    size_t initial_tile_count = 0;
+    if (MlasMultiplyOverflowsSizeT(dim[1], dim[2], &initial_mn_tiles) ||
+        MlasMultiplyOverflowsSizeT(dim[0], initial_mn_tiles, &initial_tile_count)) {
+        return false;
+    }
+
+    const size_t maximum_thread_count =
+        std::max<size_t>(1, static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)));
+    const size_t required_tiles = std::min(maximum_thread_count, initial_tile_count);
+
+    size_t required_m_tiles = 0;
+    size_t required_n_tiles = 0;
+    if (required_tiles == 0 ||
+        MlasMultiplyOverflowsSizeT(required_tiles, dim[1], &required_m_tiles) ||
+        MlasMultiplyOverflowsSizeT(required_tiles, dim[2], &required_n_tiles)) {
+        return false;
+    }
+
+    dim[1] = MlasDivRoundup(required_m_tiles, initial_mn_tiles);
+    size_t n_tile_denominator = 0;
+    if (MlasMultiplyOverflowsSizeT(dim[1], dim[2], &n_tile_denominator) || n_tile_denominator == 0) {
+        return false;
+    }
+    dim[2] = MlasDivRoundup(required_n_tiles, n_tile_denominator);
+    if (dim[1] == 0 || dim[2] == 0) {
+        return false;
+    }
+
+    const size_t m_step_scale = MlasDivRoundup(MlasDivRoundup(M, dim[1]), m_step);
+    const size_t n_step_scale = MlasDivRoundup(MlasDivRoundup(N, dim[2]), n_step);
+    if (MlasMultiplyOverflowsSizeT(m_step, m_step_scale, &m_step) ||
+        MlasMultiplyOverflowsSizeT(n_step, n_step_scale, &n_step)) {
+        return false;
+    }
+
+    dim[1] = MlasDivRoundup(M, m_step);
+    dim[2] = MlasDivRoundup(N, n_step);
+
+    size_t mn_tiles = 0;
+    size_t total_tiles = 0;
+    if (MlasMultiplyOverflowsSizeT(dim[1], dim[2], &mn_tiles) ||
+        MlasMultiplyOverflowsSizeT(dim[0], mn_tiles, &total_tiles) ||
+        total_tiles > static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max())) {
+        return false;
+    }
+
+    size_t max_tile_elements = 0;
+    if (MlasMultiplyOverflowsSizeT(m_step, n_step, &max_tile_elements)) {
+        return false;
+    }
+
+    g_kai_tls.lhs_packed.resize(lhs_buffer_size);
+    if (!b_is_packed) {
+        g_kai_tls.rhs_packed.resize(rhs_buffer_size);
+        g_kai_tls.bias_zero.assign(N, 0.0f);
+    }
+
+    std::byte* const lhs_packed_data = g_kai_tls.lhs_packed.data();
+    std::byte* const rhs_packed_data = b_is_packed ? nullptr : g_kai_tls.rhs_packed.data();
+    const float* const bias_zero = b_is_packed ? nullptr : g_kai_tls.bias_zero.data();
+
+    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(packing_iterations), [&](ptrdiff_t tid) {
+        const size_t batch_idx = b_is_packed ? static_cast<size_t>(tid) : static_cast<size_t>(tid >> 1);
+        if (b_is_packed || (tid & 0x1)) {
+            PackSme2A(M,
+                      K,
+                      Data[batch_idx].A,
+                      Data[batch_idx].lda,
+                      lhs_packed_data + lhs_packed_size * batch_idx);
+        } else {
+            PackSme2B(TransB,
+                      N,
+                      K,
+                      reinterpret_cast<const float*>(Data[batch_idx].B),
+                      Data[batch_idx].ldb,
+                      bias_zero,
+                      rhs_packed_data + rhs_packed_size * batch_idx);
+        }
+    });
+
+    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(total_tiles), [=](ptrdiff_t tid) {
+        const size_t work_idx = static_cast<size_t>(tid);
+        const size_t batch_idx = work_idx / mn_tiles;
+        const size_t tile_idx = work_idx % mn_tiles;
+        const size_t m_idx = tile_idx / dim[2];
+        const size_t n_idx = tile_idx % dim[2];
+
+        const size_t start_m = m_idx * m_step;
+        const size_t start_n = n_idx * n_step;
+        const size_t tile_m = std::min(m_step, M - start_m);
+        const size_t tile_n = std::min(n_step, N - start_n);
+
+        const kai_matmul_pack_lhs_uker_lhs_packed_dim_args lhs_index{start_m, 0};
+        const kai_matmul_pack_rhs_uker_rhs_packed_dim_args rhs_index{start_n, 0};
+        const size_t lhs_offset = kSme2PackLhs4vsx1.get_lhs_packed_offset(
+            &kSme2PackLhsConfig, &lhs_index, &lhs_packed_stride);
+        const size_t rhs_offset = pack_rhs->get_rhs_packed_offset(
+            &kSme2PackRhsConfig, &rhs_index, &rhs_packed_stride);
+
+        const auto* lhs_tile = lhs_packed_data + lhs_packed_size * batch_idx + lhs_offset;
+        const std::byte* rhs_base = b_is_packed
+            ? reinterpret_cast<const std::byte*>(Data[batch_idx].B)
+            : rhs_packed_data + rhs_packed_size * batch_idx;
+        const auto* rhs_tile = rhs_base + rhs_offset;
+        float* const dst_tile = Data[batch_idx].C + start_m * Data[batch_idx].ldc + start_n;
+
+        const float alpha = Data[batch_idx].alpha;
+        const float beta = Data[batch_idx].beta;
+        const bool direct_to_c = alpha == 1.0f && beta == 0.0f;
+
+        float* output = dst_tile;
+        size_t output_stride = Data[batch_idx].ldc * sizeof(float);
+        if (!direct_to_c) {
+            g_kai_tls.output_tile.resize(tile_m * tile_n);
+            output = g_kai_tls.output_tile.data();
+            output_stride = tile_n * sizeof(float);
+        }
+
+        kai_matmul_uker_args args{};
+        args.flags = KAI_MATMUL_UKER_FLAGS_ARGS_CLAMP;
+        args.shape = {tile_m, tile_n, K};
+        args.operand.lhs.ptr = lhs_tile;
+        args.operand.lhs.stride = lhs_stride;
+        args.operand.rhs.ptr = rhs_tile;
+        args.operand.rhs.stride = rhs_stride;
+        args.operand.dst.ptr = output;
+        args.operand.dst.stride.m = output_stride;
+        args.activation.clamp.min_ptr = &kNoActivationClampMin;
+        args.activation.clamp.max_ptr = &kNoActivationClampMax;
+
+        KLEIDIAI_KERNEL_LOG("kai_matmul_clamp_f32_f32p4vsx1_f32p4vsx1bf32_8vsx8vs_sme2_mopa"
+                            << " M=" << tile_m << " N=" << tile_n << " K=" << K);
+        kSme2Gemm4vsx1.run(&kSme2MatmulConfig, &args);
+
+        if (!direct_to_c) {
+            ApplyAlphaBeta2D(output, tile_m, tile_n, alpha, beta, dst_tile, Data[batch_idx].ldc);
+        }
+    });
+
+    return true;
+}
+
+}  // namespace
+
 /*++
 Routine Description:
-    Execute GEMV using the SME/SME2 1xN microkernel for degenerate GEMM shapes:
+    Execute GEMV using the retained SME 1xN microkernel for degenerate GEMM shapes:
     - M == 1 (row-vector times matrix)
     - N == 1 (matrix times column-vector)
 
@@ -342,6 +677,11 @@ Return Value:
         KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize returning 0 size. N=" << N << " K=" << K);
         return 0;
     }
+
+    if (ArmKleidiAI::UseSME2) {
+        return GetSme2PackedBSize(TransB, N, K);
+    }
+
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
@@ -409,6 +749,17 @@ Return Value:
     }
 
     if (TransA == CblasNoTrans) {
+
+        if (ArmKleidiAI::UseSME2) {
+            const auto* pack_rhs = GetSme2PackRhs(TransB);
+            if (pack_rhs == nullptr) {
+                return false;
+            }
+
+            g_kai_tls.bias_zero.assign(N, 0.0f);
+            return PackSme2B(
+                TransB, N, K, B, ldb, g_kai_tls.bias_zero.data(), PackedB);
+        }
 
         const size_t nr = sgemm_gemm.ukernel.get_nr();
         const size_t kr = sgemm_gemm.ukernel.get_kr();
@@ -513,6 +864,26 @@ Return Value:
             ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
         }
         return true;
+    }
+
+    if (ArmKleidiAI::UseSME2) {
+        if (TransA != CblasNoTrans) {
+            return false;
+        }
+
+        bool has_packed_b = false;
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            has_packed_b |= Data[batch].BIsPacked;
+        }
+
+        const bool handled = MlasGemmBatchSme2(TransB, M, N, K, Data, BatchSize, ThreadPool);
+        if (!handled && has_packed_b) {
+            // Public SME2 packing uses p4vsx1, which the generic MLAS fallback
+            // and the retained SME implementation cannot consume.
+            MLAS_THROW_EX(std::runtime_error,
+                          "KleidiAI SME2 cannot fall back with an SME2-packed SGEMM B.");
+        }
+        return handled;
     }
 
     // Attempt GEMV (M==1 or N==1)

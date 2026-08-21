@@ -39,14 +39,10 @@
 #include "kai/ukernels/matmul/imatmul_clamp_f16_f16p_f16p/kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2b_2vlx2vl_sme_mopa.h"
 
 // SME2 kernels
-//   GEMM/QGEMM/SBGEMM
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
+//   QGEMM/SBGEMM
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa.h"
 
-//   GEMV
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p16vlx1b_1x16vl_sme2_mla.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla.h"
 //   IMATMUL
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa.h"
 #include "kai/ukernels/matmul/imatmul_clamp_f16_f16p_f16p/kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_sme2_mopa.h"
@@ -310,9 +306,6 @@ const KaiF32IMatmulKernel imatmul_conv_qmx =
     KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa);
 #endif // ENABLE_QMX_KERNELS
 
-const KaiF32SgemmKernel sgemm_gemm_sme2 =
-    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa);
-
 const KaiDynamicQGemmKernel qgemm_gemm_sme =
     KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa);
     
@@ -351,23 +344,6 @@ const KaiF32SgemvKernel sgemm_gemv_sme =
         kai_get_dst_size_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
         kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla}
     };
-
-const KaiF32SgemvKernel sgemm_gemv_sme2 =
-    {
-        "kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla",
-        {kai_get_m_step_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_n_step_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_lhs_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_rhs_packed_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_dst_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_get_dst_size_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-        kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla}
-    };
-
-
 
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
@@ -412,29 +388,18 @@ const KaiQnbitAsymGemmKernel& GetKleidiAIQai4GemvUKernel() {
 }
 
 const KaiF32SgemmKernel& GetKleidiAISGemmUKernel() {
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
-        return sgemm_gemm_sme2;
-    } else {
 #if defined(ENABLE_QMX_KERNELS)
-        if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
-        {
-            KLEIDIAI_KERNEL_LOG("SGEMM: Using QMX Kernel");
-            return sgemm_gemm_qmx;
-        } else {
-            return sgemm_gemm_sme;
-        }
-#else
-        return sgemm_gemm_sme;
-#endif // ENABLE_QMX_KERNELS
+    if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
+    {
+        KLEIDIAI_KERNEL_LOG("SGEMM: Using QMX Kernel");
+        return sgemm_gemm_qmx;
     }
+#endif // ENABLE_QMX_KERNELS
+    return sgemm_gemm_sme;
 }
 
 const KaiF32SgemvKernel& GetKleidiAISGemvUKernel() {
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
-        return sgemm_gemv_sme2;
-    } else {
-        return sgemm_gemv_sme;
-    }
+    return sgemm_gemv_sme;
 }
 
 const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel() {
