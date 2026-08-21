@@ -12,10 +12,12 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #include <limits>
+#include <mutex>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -75,6 +77,26 @@ class MoEBase {
 
     sm_ = device_prop.major * 10 + device_prop.minor;
   }
+
+  // Returns the effective swiglu_fusion. Models exported before the swiglu_fusion attribute existed
+  // (like the published gpt-oss-20b) hard-coded the interleaved fused layout but leave the attribute
+  // at its default of 0, so treat SwiGLU without a separate FC3 weight as interleaved fusion.
+  int GetSwigluFusion(bool has_fc3) const;
+
+  // True when FC1 holds the pre-fused gate and value projections (shape [E, 2 * inter_size, K]).
+  bool IsFusedSwiglu(bool has_fc3) const;
+
+  // Shared implementation of the MoE computation used by both the MoE and the ShardedMoE kernels.
+  // The result (which is only a partial result when parallelism_config spans multiple ranks, so the
+  // caller has to combine the ranks with an all-reduce) is written to output_data.
+  template <typename T>
+  Status RunMoe(OpKernelContext* context,
+                onnxruntime::Stream* ort_stream,
+                const MoEParameters& moe_params,
+                onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config,
+                onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler& gemm_profiler,
+                std::mutex& gemm_profiler_mutex,
+                void* output_data) const;
 
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
