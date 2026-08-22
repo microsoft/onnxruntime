@@ -5,6 +5,7 @@
 #include <chrono>
 #include <fstream>
 #include "core/common/inlined_containers.h"
+#include "core/common/path_utils.h"
 #include "core/common/span_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -19,6 +20,7 @@
 #include "core/session/environment.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/temp_dir.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
@@ -2072,6 +2074,79 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     // This if-else is added for suppressing warning C6011: dereferencing NULL pointer.
     ASSERT_TRUE(false);
   }
+}
+
+TEST_F(GraphTest, ShapeInferenceWithFileBackedExternalData) {
+  TemporaryDirectory temp_dir{ORT_TSTR("shape_inference_with_file_external_data")};
+  const PathString model_path = ConcatPathComponent(temp_dir.Path(), ORT_TSTR("model.onnx"));
+  const PathString external_data_path = ConcatPathComponent(temp_dir.Path(), ORT_TSTR("model.onnx.data"));
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ImportOpset(model_proto, kOnnxDomain, 17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("input");
+  SetTypeAndShape(input->mutable_type()->mutable_tensor_type(),
+                  ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 3});
+
+  auto* output = graph_proto->add_output();
+  output->set_name("reduced");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* axes = graph_proto->add_initializer();
+  axes->set_name("axes");
+  axes->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  axes->add_dims(1);
+  axes->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  SetTensorProtoExternalData("location", "model.onnx.data", *axes);
+  SetTensorProtoExternalData("offset", "0", *axes);
+  SetTensorProtoExternalData("length", std::to_string(sizeof(int64_t)), *axes);
+
+  auto* reduce_sum = graph_proto->add_node();
+  reduce_sum->set_name("reduce_sum");
+  reduce_sum->set_op_type("ReduceSum");
+  reduce_sum->add_input("input");
+  reduce_sum->add_input("axes");
+  reduce_sum->add_output("reduced");
+  auto* keepdims = reduce_sum->add_attribute();
+  keepdims->set_name("keepdims");
+  keepdims->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  keepdims->set_i(0);
+
+  {
+    std::ofstream external_data_file{external_data_path, std::ios::binary};
+    ASSERT_TRUE(external_data_file.is_open());
+    const int64_t axis = 1;
+    external_data_file.write(reinterpret_cast<const char*>(&axis), sizeof(axis));
+    ASSERT_TRUE(external_data_file.good());
+  }
+
+  {
+    std::ofstream model_file{model_path, std::ios::binary};
+    ASSERT_TRUE(model_file.is_open());
+    ASSERT_TRUE(model_proto.SerializeToOstream(&model_file));
+  }
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, *logger_));
+
+  const Graph& graph = model->MainGraph();
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("axes", initializer));
+  ASSERT_NE(initializer, nullptr);
+  EXPECT_TRUE(utils::HasExternalDataInFile(*initializer));
+
+  const NodeArg* reduced = graph.GetNodeArg("reduced");
+  ASSERT_NE(reduced, nullptr);
+  const TensorShapeProto* reduced_shape = reduced->Shape();
+  ASSERT_NE(reduced_shape, nullptr);
+  ASSERT_EQ(reduced_shape->dim_size(), 1);
+  EXPECT_EQ(reduced_shape->dim(0).dim_value(), 2);
 }
 #endif
 
