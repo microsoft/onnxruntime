@@ -9876,6 +9876,32 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptions) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptionsSemicolon) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_with_scalar_shape_to_initializer.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.FilterEnabledOptimizersViaSessionOptionsSemicolon";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "MatMulAddFusion;ConstantFolding"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+  const auto& graph = session_object.GetGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+}
+
 TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
   struct PropagateCastOpsTestSpecs {
