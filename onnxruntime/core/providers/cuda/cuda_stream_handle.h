@@ -49,7 +49,14 @@ struct CudaStream : Stream {
   onnxruntime::IAllocator* GetCpuAllocator() const { return cpu_allocator_.get(); }
 
  private:
+  // Releases the pinned staging buffers that were retained because the caller was capturing.
+  void ReleaseCaptureRetainedCpuBuffers();
+
   std::vector<void*> deferred_cpu_buffers_;
+  // Pinned staging buffers that a caller-initiated capture recorded as the host source of a
+  // cudaMemcpyAsync node. A captured node keeps that host address for every replay, so these are
+  // owned until this stream is destroyed rather than until the next run end. See CleanUpOnRunEnd.
+  std::vector<void*> capture_retained_cpu_buffers_;
   AllocatorPtr cpu_allocator_;
   bool release_cpu_buffer_on_cuda_stream_{true};
   DeferredCpuAllocator deferred_cpu_allocator_;

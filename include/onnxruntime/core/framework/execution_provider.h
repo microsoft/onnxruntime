@@ -467,6 +467,23 @@ class IExecutionProvider {
     return nullptr;
   }
 
+  /**
+     Indicate whether the provider's compute stream is currently inside a device graph
+     capture that was started by the caller rather than by ORT ("external capture").
+
+     While an external capture is active, a Run() must execute in record-only mode: work
+     is issued to the capturing stream so that the caller's graph records it, and ORT must
+     not start a capture of its own, must not replay an ORT-managed graph, and must not
+     perform any host-side synchronization. This is what lets a caller record several
+     sequential Run() calls - including calls on different sessions that share one
+     caller-owned stream - into a single device graph, so the whole sequence replays with
+     one launch and no host round trip in between.
+
+     EPs that do not support caller-owned device graph capture return false and keep their
+     existing behavior.
+   */
+  virtual bool IsExternalDeviceGraphCaptureActive() const { return false; }
+
  private:
   const std::string type_;
 
