@@ -500,7 +500,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     auto disabled_string = session_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsDisableSpecifiedOptimizers, "");
     if (!disabled_string.empty()) {
-      const auto disabled_list = utils::SplitString(disabled_string, ";");
+      const auto disabled_list = utils::SplitStringOnAny(disabled_string, ",;");
       InlinedHashSet<std::string> disabled_rules_and_transformers;
       disabled_rules_and_transformers.reserve(disabled_list.size());
       disabled_rules_and_transformers.insert(disabled_list.cbegin(), disabled_list.cend());
