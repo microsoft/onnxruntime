@@ -77,6 +77,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
           std::string value;
           if (name == "preferredLayout" ||
               name == "validationMode" ||
+              name == "preferredMatmulAccumulatorPrecision" ||
               name == "storageBufferCacheMode" ||
               name == "uniformBufferCacheMode" ||
               name == "queryResolveBufferCacheMode" ||
