@@ -122,6 +122,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.VarlenLinearAttention">com.microsoft.VarlenLinearAttention</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
@@ -7003,6 +7004,106 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
 <dd>Input can be of any tensor type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.VarlenLinearAttention"></a><a name="com.microsoft.varlenlinearattention">**com.microsoft.VarlenLinearAttention**</a>
+
+  Packed variable-length linear attention (CUDA only). Query, key, and value use THD layouts
+  [N,Hq,K], [N,Hk,K], and [N,Hv,V]. Head counts are inferred from these shapes. The output is
+  [N,Hout,V], where Hout=Hq for the standard mapping (Hq is divisible by Hv) and Hout=Hv for the
+  inverse mapping (Hv is divisible by Hq). Hv must be divisible by Hk. This includes the Qwen
+  direct mapping Hq==Hk and Hv%Hq==0.
+  
+  cumulative_sequence_length is device int32 [B+1]. A valid tensor has offsets[0]=0,
+  offsets[B]=N, and 0<=offsets[b]<offsets[b+1]<=N. Kernels check these conditions before any
+  token access, including the all-one decode path. A malformed row returns without access and all
+  outputs are unspecified. This is asynchronous memory-safety containment, not synchronous input
+  validation.
+  
+  State is FP32 and V-major [B,Hv,V,K]. initial_state is required and represents committed state;
+  final_state has the same shape and may alias initial_state. In-place use is transaction-safe only
+  when the complete call is unconditionally committed. Accumulation and state outputs are FP32.
+  
+  The four update rules are:
+  - linear: S'=S+k outer v
+  - gated: S'=exp(log_decay)*S+k outer v
+  - delta: S'=S+beta*k outer (v-S^T k)
+  - gated_delta: D=exp(log_decay)*S; S'=D+beta*k outer (v-D^T k)
+  and output=scale*q^T S'. decay_activation=none consumes decay as effective log_decay.
+  softplus_decay computes log_decay=-exp(A_log)*softplus(decay+dt_bias) in FP32. A_log and
+  dt_bias are FP32 [Hv] or [Hv,K] with matching shapes; [Hv] broadcasts over K. decay is
+  [N,Hv] or [N,Hv,K]. beta is [N,Hv] or [N,1], and beta_activation is none, sigmoid, or
+  twice_sigmoid. Query/key normalization is not fused in version 1.
+  
+  If requested, checkpoints is FP32 [W,B,Hv,V,K], W=max_checkpoints. Slot j contains the state
+  after local token j when j<min(W,L_b). Unwritten slots are unspecified. No writes occur when
+  the optional output is absent.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>beta_activation</tt> : string</dt>
+<dd>Activation applied to beta: none, sigmoid, or twice_sigmoid.</dd>
+<dt><tt>decay_activation</tt> : string</dt>
+<dd>none consumes effective log-decay; softplus_decay computes -exp(A_log)*softplus(decay+dt_bias) in FP32.</dd>
+<dt><tt>max_checkpoints</tt> : int</dt>
+<dd>Static W for the optional prefix-aligned checkpoints output. Valid range [0,8].</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Output scaling factor. 0.0 (default) uses 1/sqrt(K).</dd>
+<dt><tt>update_rule</tt> : string</dt>
+<dd>The update rule for the linear attention recurrence. One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
+</dl>
+
+#### Inputs (5 - 9)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Packed query vectors [N,Hq,K].</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Packed key vectors [N,Hk,K]. Hv must be divisible by Hk.</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Packed value vectors [N,Hv,V].</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
+<dt><tt>initial_state</tt> : S</dt>
+<dd>Required committed FP32 V-major state [B,Hv,V,K].</dd>
+<dt><tt>decay</tt> (optional) : G</dt>
+<dd>Gate G [N,Hv] or [N,Hv,K]. Required by gated rules.</dd>
+<dt><tt>beta</tt> (optional) : G</dt>
+<dd>Gate G [N,Hv] or [N,1]. Required by delta rules.</dd>
+<dt><tt>A_log</tt> (optional) : S</dt>
+<dd>FP32 [Hv] or [Hv,K]. Required only for softplus_decay.</dd>
+<dt><tt>dt_bias</tt> (optional) : S</dt>
+<dd>FP32 with the same shape as A_log. Required only for softplus_decay.</dd>
+</dl>
+
+#### Outputs (2 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Packed attention output [N,Hout,V].</dd>
+<dt><tt>final_state</tt> : S</dt>
+<dd>Updated FP32 state [B,Hv,V,K]. May alias initial_state.</dd>
+<dt><tt>checkpoints</tt> (optional) : S</dt>
+<dd>Optional FP32 prefix checkpoints [max_checkpoints,B,Hv,V,K].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Query, key, value, and output type.</dd>
+<dt><tt>G</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Gate type. T=float requires G=float; T=float16/bfloat16 permits G=T or float.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>State and decay-parameter type.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
 </dl>
 
 

@@ -2865,6 +2865,177 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* VarlenLinearAttention_ver1_doc = R"DOC(
+Packed variable-length linear attention (CUDA only). Query, key, and value use THD layouts
+[N,Hq,K], [N,Hk,K], and [N,Hv,V]. Head counts are inferred from these shapes. The output is
+[N,Hout,V], where Hout=Hq for the standard mapping (Hq is divisible by Hv) and Hout=Hv for the
+inverse mapping (Hv is divisible by Hq). Hv must be divisible by Hk. This includes the Qwen
+direct mapping Hq==Hk and Hv%Hq==0.
+
+cumulative_sequence_length is device int32 [B+1]. A valid tensor has offsets[0]=0,
+offsets[B]=N, and 0<=offsets[b]<offsets[b+1]<=N. Kernels check these conditions before any
+token access, including the all-one decode path. A malformed row returns without access and all
+outputs are unspecified. This is asynchronous memory-safety containment, not synchronous input
+validation.
+
+State is FP32 and V-major [B,Hv,V,K]. initial_state is required and represents committed state;
+final_state has the same shape and may alias initial_state. In-place use is transaction-safe only
+when the complete call is unconditionally committed. Accumulation and state outputs are FP32.
+
+The four update rules are:
+- linear: S'=S+k outer v
+- gated: S'=exp(log_decay)*S+k outer v
+- delta: S'=S+beta*k outer (v-S^T k)
+- gated_delta: D=exp(log_decay)*S; S'=D+beta*k outer (v-D^T k)
+and output=scale*q^T S'. decay_activation=none consumes decay as effective log_decay.
+softplus_decay computes log_decay=-exp(A_log)*softplus(decay+dt_bias) in FP32. A_log and
+dt_bias are FP32 [Hv] or [Hv,K] with matching shapes; [Hv] broadcasts over K. decay is
+[N,Hv] or [N,Hv,K]. beta is [N,Hv] or [N,1], and beta_activation is none, sigmoid, or
+twice_sigmoid. Query/key normalization is not fused in version 1.
+
+If requested, checkpoints is FP32 [W,B,Hv,V,K], W=max_checkpoints. Slot j contains the state
+after local token j when j<min(W,L_b). Unwritten slots are unspecified. No writes occur when
+the optional output is absent.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenLinearAttention, 1,
+    OpSchema()
+        .SetDoc(VarlenLinearAttention_ver1_doc)
+        .Attr("update_rule",
+              "The update rule for the linear attention recurrence. "
+              "One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.",
+              AttributeProto::STRING,
+              std::string("gated_delta"))
+        .Attr("scale",
+              "Output scaling factor. 0.0 (default) uses 1/sqrt(K).",
+              AttributeProto::FLOAT,
+              0.0f)
+        .Attr("decay_activation",
+              "none consumes effective log-decay; softplus_decay computes "
+              "-exp(A_log)*softplus(decay+dt_bias) in FP32.",
+              AttributeProto::STRING,
+              std::string("none"))
+        .Attr("beta_activation",
+              "Activation applied to beta: none, sigmoid, or twice_sigmoid.",
+              AttributeProto::STRING,
+              std::string("none"))
+        .Attr("max_checkpoints",
+              "Static W for the optional prefix-aligned checkpoints output. Valid range [0,8].",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Input(0,
+               "query",
+               "Packed query vectors [N,Hq,K].",
+               "T")
+        .Input(1,
+               "key",
+               "Packed key vectors [N,Hk,K]. Hv must be divisible by Hk.",
+               "T")
+        .Input(2,
+               "value",
+               "Packed value vectors [N,Hv,V].",
+               "T")
+        .Input(3,
+               "cumulative_sequence_length",
+               "Device tensor with shape (batch_size + 1) giving the half-open packed token "
+               "range of each sequence.",
+               "M")
+        .Input(4,
+               "initial_state",
+               "Required committed FP32 V-major state [B,Hv,V,K].",
+               "S")
+        .Input(5,
+               "decay",
+               "Gate G [N,Hv] or [N,Hv,K]. Required by gated rules.",
+               "G",
+               OpSchema::Optional)
+        .Input(6,
+               "beta",
+               "Gate G [N,Hv] or [N,1]. Required by delta rules.",
+               "G",
+               OpSchema::Optional)
+        .Input(7,
+               "A_log",
+               "FP32 [Hv] or [Hv,K]. Required only for softplus_decay.",
+               "S",
+               OpSchema::Optional)
+        .Input(8,
+               "dt_bias",
+               "FP32 with the same shape as A_log. Required only for softplus_decay.",
+               "S",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Packed attention output [N,Hout,V].",
+                "T")
+        .Output(1,
+                "final_state",
+                "Updated FP32 state [B,Hv,V,K]. May alias initial_state.",
+                "S")
+        .Output(2,
+                "checkpoints",
+                "Optional FP32 prefix checkpoints [max_checkpoints,B,Hv,V,K].",
+                "S",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Query, key, value, and output type.")
+        .TypeConstraint("G",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Gate type. T=float requires G=float; T=float16/bfloat16 permits G=T or float.")
+        .TypeConstraint("S",
+                        {"tensor(float)"},
+                        "State and decay-parameter type.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 4, 1);
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 4, 2);
+          }
+
+          const int64_t w = getAttribute(ctx, "max_checkpoints", 0);
+          if (w < 0 || w > kMaxStateWindow) {
+            fail_shape_inference("VarlenLinearAttention: max_checkpoints must be in [0, ",
+                                 kMaxStateWindow, "], got ", w);
+          }
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            const auto& q = getInputShape(ctx, 0);
+            const auto& k = getInputShape(ctx, 1);
+            const auto& v = getInputShape(ctx, 2);
+            if (q.dim_size() != 3 || k.dim_size() != 3 || v.dim_size() != 3) {
+              fail_shape_inference("VarlenLinearAttention: query, key, and value must be rank 3");
+            }
+            TensorShapeProto out;
+            *out.add_dim() = q.dim(0);
+            if (q.dim(1).has_dim_value() && v.dim(1).has_dim_value()) {
+              out.add_dim()->set_dim_value(std::max(q.dim(1).dim_value(), v.dim(1).dim_value()));
+            } else {
+              out.add_dim();
+            }
+            *out.add_dim() = v.dim(2);
+            updateOutputShape(ctx, 0, out);
+          }
+          if (hasInputShape(ctx, 4)) {
+            const auto& state = getInputShape(ctx, 4);
+            if (state.dim_size() != 4) {
+              fail_shape_inference("VarlenLinearAttention: initial_state must be rank 4 [B,Hv,V,K]");
+            }
+            updateOutputShape(ctx, 1, state);
+            if (ctx.getNumOutputs() > 2) {
+              TensorShapeProto checkpoints;
+              checkpoints.add_dim()->set_dim_value(w);
+              for (int i = 0; i < state.dim_size(); ++i) {
+                *checkpoints.add_dim() = state.dim(i);
+              }
+              updateOutputShape(ctx, 2, checkpoints);
+            }
+          }
+        }));
+
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
 Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
 

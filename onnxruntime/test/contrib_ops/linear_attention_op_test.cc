@@ -4,15 +4,24 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <sstream>
+#include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/session/IOBinding.h"
+#include "core/session/inference_session.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/test_environment.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime_api.h>
@@ -1808,6 +1817,663 @@ TEST(ContribOpLinearAttentionTest, BFloat16_Cuda) {
   execution_providers.push_back(std::move(ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+namespace {
+
+struct VarlenV1Case {
+  std::vector<int> lengths{3, 1, 2};
+  int hq = 2;
+  int hk = 2;
+  int hv = 2;
+  int k = 8;
+  int v = 5;
+  int checkpoints = 0;
+  std::string rule = "gated_delta";
+  std::string decay_activation = "none";
+  std::string beta_activation = "none";
+  bool omit_checkpoints = false;
+  bool decay_per_key = false;
+  bool decay_params_per_key = false;
+  bool beta_shared = false;
+};
+
+float VarlenSigmoid(float x) {
+  return x > 0.0f ? 1.0f / (1.0f + std::exp(-x)) : 1.0f - 1.0f / (1.0f + std::exp(x));
+}
+
+float VarlenSoftplus(float x) {
+  return x > 0.0f ? x + std::log1p(std::exp(-x)) : std::log1p(std::exp(x));
+}
+
+void RunVarlenV1Case(const VarlenV1Case& c) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  const int bsz = static_cast<int>(c.lengths.size());
+  std::vector<int32_t> offsets(static_cast<size_t>(bsz) + 1);
+  for (int b = 0; b < bsz; ++b) offsets[b + 1] = offsets[b] + c.lengths[b];
+  const int n = offsets.back();
+  const int hout = std::max(c.hq, c.hv);
+  const bool gated = c.rule == "gated" || c.rule == "gated_delta";
+  const bool delta = c.rule == "delta" || c.rule == "gated_delta";
+
+  auto make = [](size_t count, float base, float step) {
+    std::vector<float> x(count);
+    for (size_t i = 0; i < count; ++i) x[i] = base + step * std::sin(static_cast<float>(i) * 0.17f);
+    return x;
+  };
+  auto q = make(static_cast<size_t>(n) * c.hq * c.k, -0.1f, 0.3f);
+  auto key = make(static_cast<size_t>(n) * c.hk * c.k, 0.05f, 0.2f);
+  auto value = make(static_cast<size_t>(n) * c.hv * c.v, -0.2f, 0.4f);
+  auto initial = make(static_cast<size_t>(bsz) * c.hv * c.v * c.k, 0.01f, 0.03f);
+  auto decay = make(static_cast<size_t>(n) * c.hv * (c.decay_per_key ? c.k : 1),
+                    -0.25f, 0.05f);
+  auto beta = make(static_cast<size_t>(n) * (c.beta_shared ? 1 : c.hv), 0.4f, 0.2f);
+  auto a_log = make(static_cast<size_t>(c.hv) * (c.decay_params_per_key ? c.k : 1),
+                    -0.3f, 0.1f);
+  auto dt_bias = make(static_cast<size_t>(c.hv) * (c.decay_params_per_key ? c.k : 1),
+                      0.2f, 0.15f);
+  std::vector<float> expected_output(static_cast<size_t>(n) * hout * c.v, 0.0f);
+  std::vector<float> expected_state = initial;
+  std::vector<float> expected_checkpoints(
+      static_cast<size_t>(c.checkpoints) * bsz * c.hv * c.v * c.k, -999.0f);
+  const float scale = 1.0f / std::sqrt(static_cast<float>(c.k));
+
+  auto state_at = [&](int b, int h, int vv, int kk) -> float& {
+    return expected_state[(((static_cast<size_t>(b) * c.hv + h) * c.v + vv) * c.k + kk)];
+  };
+  for (int b = 0; b < bsz; ++b) {
+    for (int t = 0; t < c.lengths[b]; ++t) {
+      const int token = offsets[b] + t;
+      for (int h = 0; h < c.hv; ++h) {
+        const int kh = h / (c.hv / c.hk);
+        if (gated) {
+          for (int vv = 0; vv < c.v; ++vv) {
+            for (int kk = 0; kk < c.k; ++kk) {
+              const size_t gate_index = c.decay_per_key
+                                            ? (static_cast<size_t>(token) * c.hv + h) * c.k + kk
+                                            : static_cast<size_t>(token) * c.hv + h;
+              float log_decay = decay[gate_index];
+              if (c.decay_activation == "softplus_decay") {
+                const size_t param_index = c.decay_params_per_key
+                                               ? static_cast<size_t>(h) * c.k + kk
+                                               : h;
+                log_decay = -std::exp(a_log[param_index]) *
+                            VarlenSoftplus(log_decay + dt_bias[param_index]);
+              }
+              state_at(b, h, vv, kk) *= std::exp(log_decay);
+            }
+          }
+        }
+        std::vector<float> retrieval(c.v);
+        if (delta) {
+          for (int vv = 0; vv < c.v; ++vv) {
+            for (int kk = 0; kk < c.k; ++kk) {
+              retrieval[vv] += state_at(b, h, vv, kk) *
+                               key[(static_cast<size_t>(token) * c.hk + kh) * c.k + kk];
+            }
+          }
+        }
+        float beta_value = beta[c.beta_shared ? token : token * c.hv + h];
+        if (c.beta_activation == "sigmoid") beta_value = VarlenSigmoid(beta_value);
+        if (c.beta_activation == "twice_sigmoid") beta_value = 2.0f * VarlenSigmoid(beta_value);
+        for (int vv = 0; vv < c.v; ++vv) {
+          float update = value[(static_cast<size_t>(token) * c.hv + h) * c.v + vv];
+          if (delta) update = beta_value * (update - retrieval[vv]);
+          for (int kk = 0; kk < c.k; ++kk) {
+            state_at(b, h, vv, kk) +=
+                key[(static_cast<size_t>(token) * c.hk + kh) * c.k + kk] * update;
+          }
+        }
+        if (t < c.checkpoints) {
+          for (int vv = 0; vv < c.v; ++vv) {
+            for (int kk = 0; kk < c.k; ++kk) {
+              expected_checkpoints[
+                  ((((static_cast<size_t>(t) * bsz + b) * c.hv + h) * c.v + vv) * c.k + kk)] =
+                  state_at(b, h, vv, kk);
+            }
+          }
+        }
+        const int groups = c.hq >= c.hv ? c.hq / c.hv : 1;
+        for (int g = 0; g < groups; ++g) {
+          const int qh = c.hq >= c.hv ? h * groups + g : h * c.hq / c.hv;
+          const int oh = c.hq >= c.hv ? qh : h;
+          for (int vv = 0; vv < c.v; ++vv) {
+            float acc = 0.0f;
+            for (int kk = 0; kk < c.k; ++kk) {
+              acc += state_at(b, h, vv, kk) *
+                     q[(static_cast<size_t>(token) * c.hq + qh) * c.k + kk];
+            }
+            expected_output[(static_cast<size_t>(token) * hout + oh) * c.v + vv] = scale * acc;
+          }
+        }
+      }
+    }
+  }
+
+  OpTester tester("VarlenLinearAttention", 1, kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", c.rule);
+  tester.AddAttribute<std::string>("decay_activation", c.decay_activation);
+  tester.AddAttribute<std::string>("beta_activation", c.beta_activation);
+  tester.AddAttribute<int64_t>("max_checkpoints", c.checkpoints);
+  tester.AddInput<float>("query", {n, c.hq, c.k}, q);
+  tester.AddInput<float>("key", {n, c.hk, c.k}, key);
+  tester.AddInput<float>("value", {n, c.hv, c.v}, value);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {bsz + 1}, offsets);
+  tester.AddInput<float>("initial_state", {bsz, c.hv, c.v, c.k}, initial);
+  if (gated) {
+    if (c.decay_per_key) {
+      tester.AddInput<float>("decay", {n, c.hv, c.k}, decay);
+    } else {
+      tester.AddInput<float>("decay", {n, c.hv}, decay);
+    }
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  if (delta) {
+    tester.AddInput<float>("beta", {n, c.beta_shared ? 1 : c.hv}, beta);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  if (gated && c.decay_activation == "softplus_decay") {
+    if (c.decay_params_per_key) {
+      tester.AddInput<float>("A_log", {c.hv, c.k}, a_log);
+      tester.AddInput<float>("dt_bias", {c.hv, c.k}, dt_bias);
+    } else {
+      tester.AddInput<float>("A_log", {c.hv}, a_log);
+      tester.AddInput<float>("dt_bias", {c.hv}, dt_bias);
+    }
+  } else {
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOptionalInputEdge<float>();
+  }
+  tester.AddOutput<float>("output", {n, hout, c.v}, expected_output, false, 1e-4f, 1e-4f);
+  tester.AddOutput<float>("final_state", {bsz, c.hv, c.v, c.k}, expected_state, false, 1e-4f, 1e-4f);
+  if (c.omit_checkpoints) {
+    tester.AddOptionalOutputEdge<float>();
+  } else {
+    // Only written prefixes are compared. These cases choose W <= every request length.
+    tester.AddOutput<float>("checkpoints", {c.checkpoints, bsz, c.hv, c.v, c.k},
+                            expected_checkpoints, false, 1e-4f, 1e-4f);
+  }
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+void RunMalformedOffsets(const std::vector<int32_t>& offsets, int n) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  const int b = static_cast<int>(offsets.size()) - 1;
+  std::vector<float> q(static_cast<size_t>(n) * 2 * 64, 0.1f);
+  std::vector<float> v(static_cast<size_t>(n) * 2 * 32, 0.2f);
+  std::vector<float> state(static_cast<size_t>(b) * 2 * 32 * 64, 0.0f);
+  OpTester tester("VarlenLinearAttention", 1, kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddInput<float>("query", {n, 2, 64}, q);
+  tester.AddInput<float>("key", {n, 2, 64}, q);
+  tester.AddInput<float>("value", {n, 2, 32}, v);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {b + 1}, offsets);
+  tester.AddInput<float>("initial_state", {b, 2, 32, 64}, state);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {n, 2, 32}, std::vector<float>(static_cast<size_t>(n) * 64));
+  tester.AddOutput<float>("final_state", {b, 2, 32, 64}, state);
+  tester.AddOptionalOutputEdge<float>();
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+void RunVarlenInvalidState(bool wrong_type) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  OpTester tester("VarlenLinearAttention", 1, kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddInput<float>("query", {1, 1, 2}, {0.1f, 0.2f});
+  tester.AddInput<float>("key", {1, 1, 2}, {0.1f, 0.2f});
+  tester.AddInput<float>("value", {1, 1, 3}, {0.1f, 0.2f, 0.3f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  if (wrong_type) {
+    tester.AddInput<MLFloat16>("initial_state", {1, 1, 3, 2},
+                               ToFloat16(std::vector<float>(6)));
+  } else {
+    tester.AddInput<float>("initial_state", {1, 1, 2, 3}, std::vector<float>(6));
+  }
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 3}, std::vector<float>(3));
+  tester.AddOutput<float>("final_state", wrong_type ? std::vector<int64_t>{1, 1, 3, 2}
+                                                    : std::vector<int64_t>{1, 1, 2, 3},
+                          std::vector<float>(6));
+  tester.AddOptionalOutputEdge<float>();
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, wrong_type ? "Type Error" : "initial_state",
+             {}, nullptr, &eps);
+}
+
+template <typename T>
+void RunVarlenMixedPrecisionActivations(bool float_gates = false) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  constexpr int K = 128;
+  constexpr int V = 128;
+  std::vector<float> qf(K), kf(K), vf(V);
+  for (int i = 0; i < K; ++i) {
+    qf[i] = 0.02f * std::sin(static_cast<float>(i + 1) * 0.13f);
+    kf[i] = 0.02f * std::cos(static_cast<float>(i + 1) * 0.11f);
+  }
+  for (int i = 0; i < V; ++i) {
+    vf[i] = 0.1f * std::sin(static_cast<float>(i + 1) * 0.07f);
+  }
+  const std::vector<float> gf{-0.4f};
+  const std::vector<float> bf{0.25f};
+  std::vector<T> q, key, value, gate, beta_gate;
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    q = ToFloat16(qf);
+    key = ToFloat16(kf);
+    value = ToFloat16(vf);
+    gate = ToFloat16(gf);
+    beta_gate = ToFloat16(bf);
+  } else {
+    q = ToBFloat16(qf);
+    key = ToBFloat16(kf);
+    value = ToBFloat16(vf);
+    gate = ToBFloat16(gf);
+    beta_gate = ToBFloat16(bf);
+  }
+  auto as_float = [](T x) { return static_cast<float>(x); };
+  const float gate_value = float_gates ? gf[0] : as_float(gate[0]);
+  const float beta_value = float_gates ? bf[0] : as_float(beta_gate[0]);
+  const float decay = std::exp(-std::exp(-0.2f) * VarlenSoftplus(gate_value + 0.1f));
+  const float beta = VarlenSigmoid(beta_value);
+  std::vector<float> state(static_cast<size_t>(V) * K);
+  for (size_t i = 0; i < state.size(); ++i) {
+    state[i] = 0.001f * std::sin(static_cast<float>(i + 1) * 0.017f);
+  }
+  std::vector<float> final = state;
+  std::vector<float> expected_output(V);
+  for (int vv = 0; vv < V; ++vv) {
+    float retrieval = 0.0f;
+    for (int kk = 0; kk < K; ++kk) {
+      final[vv * K + kk] *= decay;
+      retrieval += final[vv * K + kk] * as_float(key[kk]);
+    }
+    const float update = beta * (as_float(value[vv]) - retrieval);
+    float out = 0.0f;
+    for (int kk = 0; kk < K; ++kk) {
+      final[vv * K + kk] += as_float(key[kk]) * update;
+      out += final[vv * K + kk] * as_float(q[kk]);
+    }
+    expected_output[vv] = out / std::sqrt(static_cast<float>(K));
+  }
+  std::vector<T> expected_output_t;
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    expected_output_t = ToFloat16(expected_output);
+  } else {
+    expected_output_t = ToBFloat16(expected_output);
+  }
+
+  OpTester tester("VarlenLinearAttention", 1, kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "gated_delta");
+  tester.AddAttribute<std::string>("decay_activation", "softplus_decay");
+  tester.AddAttribute<std::string>("beta_activation", "sigmoid");
+  tester.AddInput<T>("query", {1, 1, K}, q);
+  tester.AddInput<T>("key", {1, 1, K}, key);
+  tester.AddInput<T>("value", {1, 1, V}, value);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddInput<float>("initial_state", {1, 1, V, K}, state);
+  if (float_gates) {
+    tester.AddInput<float>("decay", {1, 1}, gf);
+    tester.AddInput<float>("beta", {1, 1}, bf);
+  } else {
+    tester.AddInput<T>("decay", {1, 1}, gate);
+    tester.AddInput<T>("beta", {1, 1}, beta_gate);
+  }
+  tester.AddInput<float>("A_log", {1}, {-0.2f});
+  tester.AddInput<float>("dt_bias", {1}, {0.1f});
+  tester.AddOutput<T>("output", {1, 1, V}, expected_output_t, false, 0.01f, 0.01f);
+  tester.AddOutput<float>("final_state", {1, 1, V, K}, final, false, 1e-4f, 1e-4f);
+  tester.AddOptionalOutputEdge<float>();
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+}  // namespace
+
+TEST(ContribOpVarlenLinearAttentionV1Test, SchemaContract) {
+  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenLinearAttention", 1, kMSDomain);
+  ASSERT_NE(schema, nullptr);
+  EXPECT_EQ(schema->inputs().size(), 9u);
+  EXPECT_EQ(schema->outputs().size(), 3u);
+  EXPECT_EQ(schema->attributes().count("q_num_heads"), 0u);
+  EXPECT_EQ(schema->attributes().count("kv_num_heads"), 0u);
+  EXPECT_EQ(schema->attributes().count("chunk_size"), 0u);
+  EXPECT_EQ(schema->attributes().count("state_window"), 0u);
+  EXPECT_EQ(schema->attributes().count("max_checkpoints"), 1u);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, AsymmetricVMajorRaggedCheckpoints) {
+  VarlenV1Case c;
+  c.lengths = {4, 3, 5};
+  c.k = 64;
+  c.v = 32;
+  c.checkpoints = 3;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, OmittedCheckpoints) {
+  VarlenV1Case c;
+  c.checkpoints = 0;
+  c.omit_checkpoints = true;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, LinearRule) {
+  VarlenV1Case c;
+  c.rule = "linear";
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, GatedRule) {
+  VarlenV1Case c;
+  c.rule = "gated";
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, StandardMapping) {
+  VarlenV1Case c;
+  c.hq = 4;
+  c.hk = 2;
+  c.hv = 2;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, QwenDirectInverseMapping) {
+  VarlenV1Case c;
+  c.hq = 2;
+  c.hk = 2;
+  c.hv = 4;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, ProductionDK128StandardMapping) {
+  VarlenV1Case c;
+  c.hq = 4;
+  c.hk = 2;
+  c.hv = 2;
+  c.k = 128;
+  c.v = 128;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, ProductionDK128AllOnesInverseMapping) {
+  VarlenV1Case c;
+  c.lengths = {1, 1, 1};
+  c.hq = 2;
+  c.hk = 2;
+  c.hv = 4;
+  c.k = 128;
+  c.v = 128;
+  c.checkpoints = 1;
+  c.decay_activation = "softplus_decay";
+  c.beta_activation = "twice_sigmoid";
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, SoftplusDecayAndTwiceSigmoid) {
+  VarlenV1Case c;
+  c.decay_activation = "softplus_decay";
+  c.beta_activation = "twice_sigmoid";
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, PerKeyDecayAndParameters) {
+  VarlenV1Case c;
+  c.decay_activation = "softplus_decay";
+  c.decay_per_key = true;
+  c.decay_params_per_key = true;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, SigmoidBeta) {
+  VarlenV1Case c;
+  c.rule = "delta";
+  c.beta_activation = "sigmoid";
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, SharedBeta) {
+  VarlenV1Case c;
+  c.beta_shared = true;
+  RunVarlenV1Case(c);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, Float16ActivationsWithFloatState) {
+  RunVarlenMixedPrecisionActivations<MLFloat16>();
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, BFloat16ActivationsWithFloatState) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16";
+  }
+  RunVarlenMixedPrecisionActivations<BFloat16>();
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, Float16ActivationsWithFloatGates) {
+  RunVarlenMixedPrecisionActivations<MLFloat16>(true);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, BFloat16ActivationsWithFloatGates) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16";
+  }
+  RunVarlenMixedPrecisionActivations<BFloat16>(true);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, MalformedOffsetsContained) {
+  RunMalformedOffsets({0, -1, 4}, 4);
+  RunMalformedOffsets({0, 3, 2, 4}, 4);
+  RunMalformedOffsets({0, 2, 7}, 4);
+  RunMalformedOffsets({1, 2, 4}, 4);
+  RunMalformedOffsets({0, 1, 3}, 4);
+  // N==B selects the all-one kernel; this balanced-but-malformed row must still read offsets.
+  RunMalformedOffsets({0, 2, 2}, 2);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, RejectsMissingRequiredState) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+  OpTester tester("VarlenLinearAttention", 1, kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddInput<float>("query", {1, 1, 2}, {0.1f, 0.2f});
+  tester.AddInput<float>("key", {1, 1, 2}, {0.1f, 0.2f});
+  tester.AddInput<float>("value", {1, 1, 3}, {0.1f, 0.2f, 0.3f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 3}, {0.0f, 0.0f, 0.0f});
+  tester.AddOutput<float>("final_state", {1, 1, 3, 2}, std::vector<float>(6));
+  tester.AddOptionalOutputEdge<float>();
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "input 4 is marked single", {}, nullptr, &eps);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, RejectsWrongQueryRank) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+  OpTester tester("VarlenLinearAttention", 1, kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddInput<float>("query", {1, 2}, {0.1f, 0.2f});
+  tester.AddInput<float>("key", {1, 1, 2}, {0.1f, 0.2f});
+  tester.AddInput<float>("value", {1, 1, 3}, {0.1f, 0.2f, 0.3f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddInput<float>("initial_state", {1, 1, 3, 2}, std::vector<float>(6));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 3}, {0.0f, 0.0f, 0.0f});
+  tester.AddOutput<float>("final_state", {1, 1, 3, 2}, std::vector<float>(6));
+  tester.AddOptionalOutputEdge<float>();
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "rank 3", {}, nullptr, &eps);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, RejectsWrongStateShape) {
+  RunVarlenInvalidState(false);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, RejectsNonFloatState) {
+  RunVarlenInvalidState(true);
+}
+
+TEST(ContribOpVarlenLinearAttentionV1Test, AliasedStateTwoCallContinuationIOBinding) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+  std::vector<ONNX_NAMESPACE::FunctionProto> functions;
+  auto model = std::make_unique<Model>(
+      "varlen_linear_attention_alias", true, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, functions,
+      DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model->MainGraph();
+  std::vector<ONNX_NAMESPACE::TypeProto> types;
+  types.reserve(7);
+  auto tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
+    types.emplace_back();
+    auto* type = &types.back();
+    type->mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t dim : dims) {
+      type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+    return type;
+  };
+  auto& q_arg = graph.GetOrCreateNodeArg(
+      "query", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 2}));
+  auto& k_arg = graph.GetOrCreateNodeArg(
+      "key", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 2}));
+  auto& v_arg = graph.GetOrCreateNodeArg(
+      "value", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 3}));
+  auto& offsets_arg = graph.GetOrCreateNodeArg(
+      "cumulative_sequence_length",
+      tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
+  auto& state_arg = graph.GetOrCreateNodeArg(
+      "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 3, 2}));
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto& output_arg = graph.GetOrCreateNodeArg(
+      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 3}));
+  auto& final_arg = graph.GetOrCreateNodeArg(
+      "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 3, 2}));
+  std::vector<NodeArg*> inputs = {
+      &q_arg, &k_arg, &v_arg, &offsets_arg, &state_arg, &empty, &empty, &empty, &empty};
+  std::vector<NodeArg*> outputs = {&output_arg, &final_arg};
+  NodeAttributes attrs = {
+      {"update_rule", utils::MakeAttribute("update_rule", std::string{"linear"})}};
+  auto& node = graph.AddNode("varlen", "VarlenLinearAttention", "alias continuation",
+                             inputs, outputs, &attrs, kMSDomain);
+  node.SetExecutionProviderType(kCudaExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model->ToProto().SerializeToString(&serialized));
+  std::stringstream stream(serialized);
+  SessionOptions options;
+  InferenceSession session(options, GetEnvironment());
+  IExecutionProvider* ep_ptr = ep.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+  auto allocators = ep_ptr->CreatePreferredAllocators();
+  const OrtMemoryInfo* gpu_info = nullptr;
+  for (const auto& allocator : allocators) {
+    if (allocator->Info().device.Type() == OrtDevice::GPU &&
+        allocator->Info().mem_type == OrtMemTypeDefault) {
+      gpu_info = &allocator->Info();
+    }
+  }
+  ASSERT_NE(gpu_info, nullptr);
+  const OrtMemoryInfo copied_gpu_info = *gpu_info;
+  ASSERT_STATUS_OK(session.Load(stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto gpu_alloc = session.GetAllocator(copied_gpu_info);
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  auto make_gpu = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
+    using Elem = typename std::decay_t<decltype(data)>::value_type;
+    Tensor cpu(data_type, shape, const_cast<Elem*>(data.data()), cpu_alloc->Info());
+    Tensor gpu(data_type, shape, gpu_alloc);
+    ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, gpu));
+    OrtValue result;
+    Tensor::InitOrtValue(std::move(gpu), result);
+    return result;
+  };
+  const std::vector<float> q{0.2f, -0.1f};
+  const std::vector<float> key{1.0f, 2.0f};
+  const std::vector<float> value{3.0f, 4.0f, 5.0f};
+  const std::vector<int32_t> offsets{0, 1};
+  const std::vector<float> zeros(6);
+  auto q_value = make_gpu(q, DataTypeImpl::GetType<float>(), TensorShape({1, 1, 2}));
+  auto k_value = make_gpu(key, DataTypeImpl::GetType<float>(), TensorShape({1, 1, 2}));
+  auto v_value = make_gpu(value, DataTypeImpl::GetType<float>(), TensorShape({1, 1, 3}));
+  auto offsets_value = make_gpu(offsets, DataTypeImpl::GetType<int32_t>(), TensorShape({2}));
+  auto state_value = make_gpu(zeros, DataTypeImpl::GetType<float>(), TensorShape({1, 1, 3, 2}));
+  auto output_value = make_gpu(std::vector<float>(3), DataTypeImpl::GetType<float>(),
+                               TensorShape({1, 1, 3}));
+
+  std::unique_ptr<IOBinding> binding;
+  ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+  ASSERT_STATUS_OK(binding->BindInput("query", q_value));
+  ASSERT_STATUS_OK(binding->BindInput("key", k_value));
+  ASSERT_STATUS_OK(binding->BindInput("value", v_value));
+  ASSERT_STATUS_OK(binding->BindInput("cumulative_sequence_length", offsets_value));
+  ASSERT_STATUS_OK(binding->BindInput("initial_state", state_value));
+  ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
+  ASSERT_STATUS_OK(binding->BindOutput("final_state", state_value));
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  ASSERT_EQ(binding->GetOutputs().size(), 2u);
+  EXPECT_EQ(binding->GetOutputs()[1].Get<Tensor>().Data<float>(),
+            state_value.Get<Tensor>().Data<float>());
+
+  std::vector<float> actual(6);
+  Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 3, 2}),
+                    actual.data(), cpu_alloc->Info());
+  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
+  const std::vector<float> expected{6.0f, 12.0f, 8.0f, 16.0f, 10.0f, 20.0f};
+  EXPECT_EQ(actual, expected);
+}
+
 #endif  // USE_CUDA
 }  // namespace test
 }  // namespace onnxruntime
