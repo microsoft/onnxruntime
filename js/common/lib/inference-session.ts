@@ -482,7 +482,11 @@ export declare namespace InferenceSession {
     logVerbosityLevel?: number;
 
     /**
-     * Terminate all incomplete OrtRun calls as soon as possible if true
+     * Whether to terminate the inference run that receives these options as soon as possible.
+     *
+     * This option does not cancel other in-progress or queued inference runs. The JavaScript API does not currently
+     * support changing a run's options after it has started, so setting this to true terminates the run that receives
+     * these options.
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      */
