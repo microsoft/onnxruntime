@@ -8,6 +8,9 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include <exception>
+#include <memory>
+#include <shared_mutex>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -19,6 +22,7 @@
 #include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
 #include "core/providers/cann/cann_utils.h"
+#include "core/providers/cann/cann_graph.h"
 
 using onnxruntime::cann::BuildONNXModel;
 using onnxruntime::cann::CannModelPreparation;
@@ -30,6 +34,13 @@ namespace onnxruntime {
 
 // Models can only be parsed and built serially in the same process
 std::mutex g_mutex;
+namespace cann {
+
+// See cann_graph.cc
+extern std::unique_ptr<GeState> g_ge_state;
+extern std::shared_mutex g_ge_mutex;
+
+}  // namespace cann
 
 class Memcpy final : public OpKernel {
  public:
@@ -1067,7 +1078,23 @@ void InitializeRegistry() {
 void DeleteRegistry() {
   s_kernel_registry.reset();
 
-  ge::aclgrphBuildFinalize();
+  {
+    std::unique_lock<std::shared_mutex> lock(cann::g_ge_mutex);
+
+    if (cann::g_ge_state) {
+      // Calls ge::aclgrphBuildFinalize
+      cann::g_ge_state->promise_final.set_value();
+      if (cann::g_ge_state->thread.joinable()) {
+        cann::g_ge_state->thread.join();
+      }
+
+      if (cann::g_ge_state->ex_ptr_final) {
+        std::rethrow_exception(cann::g_ge_state->ex_ptr_final);
+      }
+
+      cann::g_ge_state.reset();
+    }
+  }
 
   if (!cann::GetRepeatInitFlag()) {
     CANN_CALL_THROW(aclFinalize());
