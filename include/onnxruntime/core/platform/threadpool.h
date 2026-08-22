@@ -396,6 +396,10 @@ class ThreadPool {
   // working in combination with the thread initiating the loop.
   static int DegreeOfParallelism(const ThreadPool* tp);
 
+  // Return the number of worker threads created by the pool, excluding the caller.
+  // Returns zero if tp is null.
+  static int WorkerThreadCount(const ThreadPool* tp);
+
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
   // StartProfiling and StopProfiling are not to be consumed as public-facing API
