@@ -384,6 +384,91 @@ inline Status CheckKVCacheDataType(const KVCacheDataType cache_dtype, const KVCa
                          "'. Leave the attribute at '' to use the tensor's element type.");
 }
 
+inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequence_length,
+                                                  const int32_t* past_seqlens,
+                                                  const int32_t* block_table,
+                                                  int batch_size,
+                                                  int max_num_blocks_per_seq,
+                                                  int block_size,
+                                                  int num_blocks,
+                                                  int token_count) {
+  if (batch_size <= 0 || max_num_blocks_per_seq <= 0 || block_size <= 0 || num_blocks <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention validation requires positive "
+                           "batch_size/max_num_blocks_per_seq/block_size/num_blocks.");
+  }
+
+  if (cumulative_sequence_length[0] != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_sequence_length must start with 0, got ",
+                           cumulative_sequence_length[0]);
+  }
+
+  if (cumulative_sequence_length[batch_size] != token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_sequence_length must end with token_count (", token_count,
+                           "), got ", cumulative_sequence_length[batch_size]);
+  }
+
+  const int64_t max_cache_sequence_length = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+  for (int b = 0; b < batch_size; ++b) {
+    const int32_t q_start = cumulative_sequence_length[b];
+    const int32_t q_end = cumulative_sequence_length[b + 1];
+
+    if (q_start < 0 || q_end < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_sequence_length values must be non-negative. Invalid value at index ",
+                             (q_start < 0 ? b : b + 1), ": ", (q_start < 0 ? q_start : q_end));
+    }
+
+    if (q_end < q_start) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_sequence_length must be non-decreasing.");
+    }
+
+    const int32_t q_len = q_end - q_start;
+    const int32_t past_length = past_seqlens[b];
+    if (past_length < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "past_seqlens values must be non-negative. Invalid value: ",
+                             past_length);
+    }
+
+    if (q_len == 0) {
+      if (static_cast<int64_t>(past_length) > max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "past_seqlens exceeds max_num_blocks_per_seq * block_size for zero-token sequence. Invalid value: ",
+            past_length);
+      }
+    } else {
+      if (static_cast<int64_t>(past_length) >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "past_seqlens must be less than max_num_blocks_per_seq * block_size when q_len > 0. Invalid value: ",
+            past_length);
+      }
+
+      const int64_t last_position = static_cast<int64_t>(past_length) + q_len - 1;
+      if (last_position >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens + query_length exceeds block_table capacity for a sequence.");
+      }
+    }
+
+    for (int block_index = 0; block_index < max_num_blocks_per_seq; ++block_index) {
+      const int32_t block_id = block_table[static_cast<int64_t>(b) * max_num_blocks_per_seq + block_index];
+      if (block_id < -1 || block_id >= num_blocks) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "block_table values must be in [-1, num_blocks). Invalid value: ",
+                               block_id);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,

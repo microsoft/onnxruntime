@@ -24,6 +24,24 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+__global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sanitized_block_table,
+                                         int element_count, int num_blocks) {
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < element_count) {
+    const int32_t block_id = block_table[index];
+    sanitized_block_table[index] = block_id >= -1 && block_id < num_blocks ? block_id : 0;
+  }
+}
+
+Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
+                                int element_count, int num_blocks, cudaStream_t stream) {
+  constexpr int kThreadsPerBlock = 256;
+  const int blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  SanitizeBlockTableKernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
+      block_table, sanitized_block_table, element_count, num_blocks);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 ////////// Quantized paged KV cache helpers
 //
 // Symmetric, zero-point-free quantization with the same numerics GroupQueryAttention uses
