@@ -293,6 +293,8 @@ session = ort.InferenceSession("model.onnx", opts,
 
 ONNX Runtime processes nodes in topological order, accumulating estimated memory. When the cumulative cost exceeds the budget, assignment to the CUDA EP halts immediately — remaining nodes are not considered even if they would individually fit within the budget. Those nodes are eligible for assignment by the subsequent EPs in the session's provider list.
 
+Stats files may contain only a subset of graph nodes. For backward compatibility, a node missing from a supplied stats file has zero accounting cost; ONNX Runtime does not mix ad-hoc estimates into a profile-based accounting session.
+
 Because assignment follows topological order, groups of nodes that you would prefer to offload (for example, MoE expert blocks) may appear at arbitrary positions in the graph. If you want specific node groups to have the lowest priority for device placement, combine the memory budget with layer annotations: annotate the nodes you want to offload to CPU explicitly, and let the capacity-aware partitioner handle the rest.
 
 ### Ad-Hoc Mode (No Stats File)
@@ -308,6 +310,20 @@ opts.add_session_config_entry(
     "4194304,"
 )
 ```
+
+For dynamic-shape models, `session.max_shape_override` supplies planning shapes:
+
+```python
+opts.add_session_config_entry(
+    "session.max_shape_override",
+    "input_ids:[8,4096];attention_mask:[8,4096]"
+)
+```
+
+ONNX Runtime propagates these values through a separate shape-inference graph. The resulting shapes
+are used for ad-hoc dynamic-output sizes and Level-1 workspace estimates, so they directly affect the
+hard partitioning budget and can change CUDA/CPU assignment. They do not constrain runtime inputs and
+are estimation hints rather than guaranteed upper bounds.
 
 ### Setting Format Summary
 The value of `session.resource_cuda_partitioning_settings` is a comma-separated pair:
