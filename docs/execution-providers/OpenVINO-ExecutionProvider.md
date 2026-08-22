@@ -9,6 +9,8 @@ redirect_from: /docs/reference/execution-providers/OpenVINO-ExecutionProvider
 # OpenVINO™ Execution Provider
 {: .no_toc }
 
+> **⚠️ Deprecation Notice:** The built-in OpenVINO Execution Provider in the ONNX Runtime repository is deprecated. We strongly recommend using the standalone EP ABI plugin instead. Instructions to install the OpenVINO EP ABI are available at [Install](#install)
+
 Accelerate ONNX models on Intel CPUs, GPUs, NPU with Intel OpenVINO™ Execution Provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 ## Contents
@@ -19,12 +21,28 @@ Accelerate ONNX models on Intel CPUs, GPUs, NPU with Intel OpenVINO™ Execution
 
 ## Install
 
+### Legacy EP
+
 Intel publishes pre-built OpenVINO™ Execution Provider packages for ONNX Runtime with each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.8 Release](https://github.com/intel/onnxruntime/releases)
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.9 Release](https://github.com/intel/onnxruntime/releases)
 * Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
 
-## Requirements
+### ABI EP
+See the [WinML install section](https://onnxruntime.ai/docs/install/#cccwinml-installs) for WinML-related installation instructions.
 
+#### Python
+To explicitly use the Intel OpenVINO™ EP from Python, install:
+
+```bash
+pip install onnxruntime-ep-openvino
+```
+
+#### Nuget
+Nuget Package for ABI EP is published under namespace: 
+
+[Intel.ML.OnnxRuntime.EP.OpenVINO](https://www.nuget.org/packages/Intel.ML.OnnxRuntime.EP.OpenVINO)
+
+## Requirements
 
 ONNX Runtime OpenVINO™ Execution Provider is compatible with three latest releases of OpenVINO™.
 
