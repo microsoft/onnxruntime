@@ -87,6 +87,13 @@ static std::string_view PerformanceModeToString(HtpPerformanceMode htp_performan
   return "UNKNOWN";
 }
 
+Status HtpPowerConfigManager::AddHtpPerformanceConfig(QnnHtpPerfInfrastructure_PowerConfig_t htp_performance_cfg) {
+  power_configs_.emplace_back(std::move(htp_performance_cfg));
+  last_set_htp_performance_mode_ = HtpPerformanceMode::kHtpDefault;
+  htp_performance_mode_set_ = true;
+  return Status::OK();
+}
+
 Status HtpPowerConfigManager::AddHtpPerformanceMode(HtpPerformanceMode htp_performance_mode,
                                                     uint32_t htp_power_config_client_id) {
   ORT_RETURN_IF(htp_performance_mode_set_, "There is already a pending HTP performance mode config");
@@ -268,6 +275,81 @@ Status HtpPowerConfigManager::SetHtpPerformancePowerConfig(QnnHtpPerfInfrastruct
       break;
   }
 
+  return Status::OK();
+}
+
+Status HtpPowerConfigManager::SetRelaxedPerfPowerConfig(QnnHtpPerfInfrastructure_PowerConfig_t& power_config, uint32_t htp_power_config_client_id, DcvsState_t dcvsState) {
+  power_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
+  QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = power_config.dcvsV3Config;
+  dcvs_v3.contextId = htp_power_config_client_id;
+  dcvs_v3.dcvsEnable = 1;
+  dcvs_v3.setDcvsEnable = 1;
+  dcvs_v3.sleepLatency = kSleepHighLatency;
+  dcvs_v3.setSleepLatency = 1;
+  dcvs_v3.sleepDisable = 0;
+  dcvs_v3.setSleepDisable = 0;
+  if (dcvsState == DcvsState_t::DCVS_ENABLE) {
+    dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_ADJUST_UP_DOWN;
+  } else {
+    dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_POWER_SAVER_MODE;
+  }
+  dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
+  dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
+  dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS;
+  dcvs_v3.setBusParams = 1;
+  dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
+  dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
+  dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS;
+  dcvs_v3.setCoreParams = 1;
+  return Status::OK();
+}
+
+Status HtpPowerConfigManager::SetExtremeLowPerfPowerConfig(QnnHtpPerfInfrastructure_PowerConfig_t& power_config, uint32_t htp_power_config_client_id) {
+  power_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
+  QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = power_config.dcvsV3Config;
+  dcvs_v3.contextId = htp_power_config_client_id;
+  dcvs_v3.dcvsEnable = 1;
+  dcvs_v3.setDcvsEnable = 1;
+  dcvs_v3.sleepLatency = kSleepHigherLatency;
+  dcvs_v3.setSleepLatency = 1;
+  dcvs_v3.sleepDisable = 0;
+  dcvs_v3.setSleepDisable = 0;
+  dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_POWER_SAVER_MODE;
+  dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
+  dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
+  dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
+  dcvs_v3.setBusParams = 1;
+  dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
+  dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
+  dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
+  dcvs_v3.setCoreParams = 1;
+
+  return Status::OK();
+}
+
+Status HtpPowerConfigManager::SetReleasedPerfPowerConfig(QnnHtpPerfInfrastructure_PowerConfig_t& power_config, uint32_t htp_power_config_client_id, DcvsState_t dcvsState) {
+  power_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
+  QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = power_config.dcvsV3Config;
+  dcvs_v3.contextId = htp_power_config_client_id;
+  dcvs_v3.dcvsEnable = 1;
+  dcvs_v3.setDcvsEnable = 1;
+  dcvs_v3.sleepLatency = kSleepHigherLatency;
+  dcvs_v3.setSleepLatency = 1;
+  dcvs_v3.sleepDisable = 0;
+  dcvs_v3.setSleepDisable = 0;
+  if (dcvsState == DcvsState_t::DCVS_ENABLE) {
+    dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_ADJUST_UP_DOWN;
+  } else {
+    dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_POWER_SAVER_MODE;
+  }
+  dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MIN_VOLTAGE_CORNER;
+  dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MIN_VOLTAGE_CORNER;
+  dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MIN_VOLTAGE_CORNER;
+  dcvs_v3.setBusParams = 1;
+  dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MIN_VOLTAGE_CORNER;
+  dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MIN_VOLTAGE_CORNER;
+  dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MIN_VOLTAGE_CORNER;
+  dcvs_v3.setCoreParams = 1;
   return Status::OK();
 }
 
