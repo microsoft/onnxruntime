@@ -250,6 +250,10 @@ class Environment {
   // Every instance here is also in shared_allocators_.
   std::unordered_set<OrtAllocator*> shared_ort_allocators_;
 
+  // Tracks the EP factory that created each EP-owned shared allocator so unloading an EP library does not remove
+  // a user-provided allocator, or an allocator created by another EP, with equivalent memory info.
+  std::unordered_map<OrtAllocator*, OrtEpFactory*> ep_allocator_owners_;
+
   // OrtAllocator wrapped CPUAllocator::DefaultInstance that is returned by GetSharedAllocator when no plugin EP is
   // providing a CPU allocator.
   std::unique_ptr<OrtAllocatorImplWrappingIAllocator> default_cpu_ort_allocator_;

@@ -98,6 +98,36 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
   ort_env->ReleaseSharedAllocator(example_ep.get(), OrtDeviceMemoryType_DEFAULT);
 }
 
+TEST(SharedAllocators, EpRegistrationPreservesEquivalentCustomAllocator) {
+  auto custom_memory_info = Ort::MemoryInfo{"ExampleEP GPU",
+                                            OrtMemoryInfoDeviceType_GPU,
+                                            /*vendor_id*/ 0xBE57,
+                                            /*device_id*/ 0,
+                                            OrtDeviceMemoryType_DEFAULT,
+                                            /*alignment*/ 0,
+                                            OrtDeviceAllocator};
+  DummyAllocator dummy_allocator{custom_memory_info};
+  ort_env->RegisterAllocator(&dummy_allocator);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  auto unregister_allocator = gsl::finally([&] {
+    Ort::Status ignored{Ort::GetApi().UnregisterAllocator(*ort_env, custom_memory_info)};
+  });
+
+  auto allocator = ort_env->GetSharedAllocator(custom_memory_info);
+  ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &dummy_allocator);
+
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
+
+  allocator = ort_env->GetSharedAllocator(custom_memory_info);
+  ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &dummy_allocator);
+
+  example_ep.reset();
+
+  allocator = ort_env->GetSharedAllocator(custom_memory_info);
+  ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &dummy_allocator);
+}
+
 TEST(SharedAllocators, GetSharedAllocator) {
   // default CPU allocator should be available.
   // create a memory info with a different name to validate the shared allocator lookup ignores the name
