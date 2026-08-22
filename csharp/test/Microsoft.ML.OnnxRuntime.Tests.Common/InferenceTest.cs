@@ -29,6 +29,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             this.output = o;
         }
 
+        [Fact(DisplayName = "TestSetSeed")]
+        public void TestSetSeed()
+        {
+            OrtEnv.SetSeed(8888);
+        }
+
         [Fact(DisplayName = "TestSessionOptions")]
         public void TestSessionOptions()
         {

@@ -24,6 +24,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/random_seed.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
@@ -4420,7 +4421,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_29 = {
+static constexpr OrtApi ort_api_1_to_30 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4940,6 +4941,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::SessionOptionsSetWeightlessSourceModelBuffer,
     // End of Version 29 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SetSeed,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4999,7 +5002,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.30.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_29;
+    return &ort_api_1_to_30;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
@@ -5018,6 +5021,13 @@ ORT_API(const char*, OrtApis::GetVersionString) {
 
 ORT_API(const char*, OrtApis::GetBuildInfoString) {
   return ORT_BUILD_INFO;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetSeed, _In_ int64_t seed) {
+  API_IMPL_BEGIN
+  utils::SetRandomSeed(seed);
+  return nullptr;
+  API_IMPL_END
 }
 
 const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
