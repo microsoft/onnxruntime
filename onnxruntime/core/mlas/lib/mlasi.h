@@ -36,6 +36,7 @@ Abstract:
 #endif  // MLAS_NO_EXCEPTION
 
 #include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -1014,6 +1015,66 @@ void
     const float* Bias,
     void* PackedB);
 
+typedef bool(MLASCALL MLAS_QNBIT_GEMM_IS_SUPPORTED_OVERRIDE)(
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef size_t(MLASCALL MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_SIZE_OVERRIDE)(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef void(MLASCALL MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_OVERRIDE)(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const void* QuantBData,
+    void* PackedQuantBData,
+    const void* QuantBScale,
+    bool HasZeroPoint,
+    const void* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef size_t(MLASCALL MLAS_QNBIT_GEMM_BATCH_WORKSPACE_SIZE_OVERRIDE)(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef void(MLASCALL MLAS_QNBIT_GEMM_BATCH_OVERRIDE)(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* DataParams,
+    void* Workspace,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
 #if defined(__aarch64__) && defined(__linux__)
 typedef
 bool
@@ -1708,6 +1769,12 @@ struct MLAS_PLATFORM {
     MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_OVERRIDE* MlasDynamicQGemmPackBOverride = nullptr;
+    // MLAS QNBitGemm overrides
+    MLAS_QNBIT_GEMM_IS_SUPPORTED_OVERRIDE* MlasQNBitGemmIsSupportedOverride = nullptr;
+    MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_SIZE_OVERRIDE* MlasQNBitGemmPackQuantBDataSizeOverride = nullptr;
+    MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_OVERRIDE* MlasQNBitGemmPackQuantBDataOverride = nullptr;
+    MLAS_QNBIT_GEMM_BATCH_WORKSPACE_SIZE_OVERRIDE* MlasQNBitGemmBatchWorkspaceSizeOverride = nullptr;
+    MLAS_QNBIT_GEMM_BATCH_OVERRIDE* MlasQNBitGemmBatchOverride = nullptr;
     // MLAS HalfGemm overrides
     MLAS_HALF_GEMM_BATCH_OVERRIDE* MlasHalfGemmBatchOverride = nullptr;
     MLAS_HALF_GEMM_PACK_B_SIZE_OVERRIDE* MlasHalfGemmPackBSizeOverride = nullptr;
