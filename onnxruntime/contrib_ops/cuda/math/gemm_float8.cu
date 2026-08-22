@@ -93,9 +93,12 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
     if (ctx->Input<Tensor>(2) != nullptr) {
       input_C = ctx->Input<Tensor>(2);
       has_bias = true;
-      ORT_ENFORCE(input_C->GetElementType() == dtype_, "Bias type must be equal to dtype.");
     }
   }
+
+#if CUDA_VERSION < 12000
+  ORT_RETURN_IF(has_bias && beta_ != 0, "CUDA < 12.0 does not support a nonzero beta with input C.");
+#endif
 
   auto first_type = input_A->GetElementType();
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -196,10 +199,33 @@ Status GemmFloat8::ComputeGemm(
   cudaDataType_t d_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_Y);
   cudaDataType_t scale_cuda_type =
       onnxruntime::cuda::ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-  cudaDataType_t bias_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_C);
+  cudaDataType_t c_cuda_type = has_bias
+                                   ? onnxruntime::cuda::ToCudaDataType(dtype_C)
+                                   : d_cuda_type;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  const bool is_fp8_output =
+      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
+      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+  if (is_fp8_output) {
+    ORT_RETURN_IF(has_bias &&
+                      c_cuda_type != CUDA_R_16F &&
+                      c_cuda_type != CUDA_R_16BF,
+                  "FP8 output requires input C to be FLOAT16 or BFLOAT16.");
+    if (!has_bias) {
+      c_cuda_type = CUDA_R_16F;
+    }
+  }
+#endif
 
   cublasComputeType_t compute_type;
   switch (d_cuda_type) {
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case CUDA_R_8F_E4M3:
+    case CUDA_R_8F_E5M2:
+      compute_type = CUBLAS_COMPUTE_32F;
+      break;
+#endif
     case CUDA_R_16F:
       switch (a_cuda_type) {
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -282,29 +308,18 @@ Status GemmFloat8::ComputeGemm(
         operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &p_scale_y,
         sizeof(p_scale_b)));
 #endif
-
-    // float 8
-#if !defined(DISABLE_FLOAT8_TYPES)
-    if (dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
-        dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2) {
-      // For FP8 output, cuBLAS requires C_type to be same as bias_type
-      CUBLAS_RETURN_IF_ERROR(
-          cublasLtMatrixLayoutCreate(&Cdesc, bias_cuda_type, M, N, ldd));
-      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-          operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &bias_cuda_type,
-          sizeof(bias_cuda_type)));
-    } else {
-      CUBLAS_RETURN_IF_ERROR(
-          cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
-    }
-#else
-    CUBLAS_RETURN_IF_ERROR(
-        cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
-#endif
-  } else {
-    CUBLAS_RETURN_IF_ERROR(
-        cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
   }
+
+  CUBLAS_RETURN_IF_ERROR(
+      cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, M, N, ldd));
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  if (has_bias && is_fp8_output) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+        operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type,
+        sizeof(c_cuda_type)));
+  }
+#endif
 
   if (row_major_compute) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
@@ -315,6 +330,8 @@ Status GemmFloat8::ComputeGemm(
         cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
                                          &matrixOrder, sizeof(matrixOrder)));
   }
+
+  const float beta = has_bias ? beta_ : 0.0f;
 
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE,
                                  &epilogue_, sizeof(epilogue_));
@@ -342,12 +359,11 @@ Status GemmFloat8::ComputeGemm(
       " Unable to find any suitable algorithm due to ",
       onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
       ", returnedResults=", returnedResults,
-      ", alpha=", alpha_, ", beta=", beta_, ", n_inputs=", n_inputs,
+      ", alpha=", alpha_, ", beta=", beta, ", n_inputs=", n_inputs,
       ", A_type=", onnxruntime::cuda::CudaDataTypeToString(a_cuda_type),
       ", B_type=", onnxruntime::cuda::CudaDataTypeToString(b_cuda_type),
-      ", C_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+      ", C_type=", onnxruntime::cuda::CudaDataTypeToString(c_cuda_type),
       ", result_type=", onnxruntime::cuda::CudaDataTypeToString(d_cuda_type),
-      ", bias_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
       ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
@@ -368,13 +384,13 @@ Status GemmFloat8::ComputeGemm(
     CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
   }
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
-  const void* bias = has_bias ? p_input_c : p_output_y;
+  const void* c_input = has_bias ? p_input_c : nullptr;
   cuda_status = cublasLtMatmul(
       cublasLt, operationDesc, static_cast<const void*>(&alpha_), /* alpha */
       p_input_a,                                                  /* A */
       Adesc, p_input_b,                                           /* B */
-      Bdesc, static_cast<const void*>(&beta_),                    /* beta */
-      bias,                                                       /* C */
+      Bdesc, static_cast<const void*>(&beta),                     /* beta */
+      c_input,                                                    /* C */
       Cdesc, p_output_y,                                          /* Y */
       Ddesc, &heuristicResult.algo,                               /* algo */
       workspace,                                                  /* workspace */
@@ -383,12 +399,12 @@ Status GemmFloat8::ComputeGemm(
       cuda_status == CUBLAS_STATUS_SUCCESS,
       " Unable to run cublasLtMatmul due to ",
       onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
-      ", returnedResults=", returnedResults, ", alpha=", alpha_,
+      ", returnedResults=", returnedResults, ", alpha=", alpha_, ", beta=", beta,
       ", n_inputs=", n_inputs, ", A_type=",
       onnxruntime::cuda::CudaDataTypeToString(a_cuda_type),
       ", B_type=", onnxruntime::cuda::CudaDataTypeToString(b_cuda_type),
+      ", C_type=", onnxruntime::cuda::CudaDataTypeToString(c_cuda_type),
       ", result_type=", onnxruntime::cuda::CudaDataTypeToString(d_cuda_type),
-      ", bias_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
       ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
