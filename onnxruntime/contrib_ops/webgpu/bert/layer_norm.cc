@@ -31,6 +31,14 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
     onnxruntime::webgpu::LayerNorm<true>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    SimplifiedLayerNormalization,
+    kMSDomain,
+    1,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    onnxruntime::webgpu::LayerNorm<true>);
+
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

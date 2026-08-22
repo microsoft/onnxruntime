@@ -31,6 +31,16 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("U", onnxruntime::js::JsepSupportedFloatTypes()),
     onnxruntime::js::LayerNorm<true>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    SimplifiedLayerNormalization,
+    kMSDomain,
+    1,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", onnxruntime::js::JsepSupportedFloatTypes())
+        .TypeConstraint("U", onnxruntime::js::JsepSupportedFloatTypes()),
+    onnxruntime::js::LayerNorm<true>);
+
 }  // namespace js
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -100,7 +100,7 @@ Do not modify directly.*
 | ScatterND | ai.onnx(11-12,13-15,16-17,18+) |  |
 | Shape | ai.onnx(1-12,13-14,15-18,19-20,21+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
-| SimplifiedLayerNormalization | ai.onnx(1+) |  |
+| SimplifiedLayerNormalization | ai.onnx(1+); com.microsoft(1+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
 | SkipLayerNormalization | com.microsoft(1+) |  |
