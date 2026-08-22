@@ -16,6 +16,10 @@ on:
         required: false
         type: boolean
         default: false
+      use_apple_accelerate:
+        required: false
+        type: boolean
+        default: false
       python_version:
         required: false
         type: string
@@ -67,6 +71,7 @@ jobs:
         ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
         ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
+        ${{ inputs.use_apple_accelerate && '--use_apple_accelerate' || '' }}
         --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --config ${{ matrix.build_config }}
         --osx_arch ${{ matrix.target }}
@@ -138,3 +143,171 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
+
+      - name: Running MLAS LayerNorm/RMSNorm tests (onnxruntime_mlas_test)
+        # onnxruntime_mlas_test is a standalone gtest binary that is never
+        # registered with add_test()/ctest (see cmake/onnxruntime_unittests.cmake),
+        # so the ctest-driven "build.py --test" step above never runs it on
+        # any macOS CI lane, including this one -- the only lane that builds
+        # the Apple Accelerate LayerNorm/RMSNorm kernel and its gated
+        # test_layernorm_apple_accelerate.cpp. Without this explicit
+        # invocation those tests would never execute in CI at all. Guarded
+        # to native arm64 (skip when cross-compiling, matching the step
+        # above) and use_apple_accelerate, so this only runs on this job.
+        # Runs on every native-arm64 entry in this matrix regardless of
+        # build_config: Debug (assertion-rich, catches contract violations
+        # that Release may optimize past) and Release (the same binary the
+        # benchmark steps below build) are both intentional here -- unlike
+        # the benchmark steps, correctness coverage is not config-gated.
+        #
+        # The filter is "*LayerNorm*", not just "LayerNormAppleAccelerate.*":
+        # registering GetMlasPlatform().LayerNormF32Kernel on this job also
+        # makes the pre-existing, platform-agnostic LayerNorm.* suite in
+        # test_layernorm.cpp *actually execute* for the first time on ARM64
+        # (it was previously a guaranteed no-op everywhere on this
+        # architecture, since MlasLayerNormF32 returned false and every case
+        # hit its own early `if (!used) return;`). That suite is a real,
+        # independent correctness check of this kernel using a differently-
+        # ordered reference formula, and must run here for the same "no
+        # explicit ctest registration" reason as above -- a filter scoped to
+        # only this PR's own new tests would let a regression in the shared
+        # suite go completely uncaught by any CI lane.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate }}
+        shell: bash
+        # build.py's --build_dir ./build + --config ${{ matrix.build_config }}
+        # places test executables directly at build/<config>/, the same
+        # layout the "Install" step above already relies on.
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          set -e -x
+          echo "Build config: ${{ matrix.build_config }}"
+          ls -l ./onnxruntime_mlas_test
+
+          # A gtest binary invoked with --gtest_filter that matches zero
+          # tests still exits 0 -- it "ran" a suite of nothing and reports
+          # success. That would make this whole step a silent no-op if either
+          # suite were ever absent from this binary (e.g.
+          # test_layernorm_apple_accelerate.cpp not compiled in because
+          # MLAS_USE_APPLE_ACCELERATE/__APPLE__/MLAS_TARGET_ARM64 didn't all
+          # evaluate true, or test_layernorm.cpp removed/renamed upstream),
+          # and this CI lane would appear green while providing zero real
+          # coverage. Enumerate the filtered suites first and fail loudly if
+          # either is missing, instead of trusting the runner's own exit
+          # code or a single substring match that could be satisfied by only
+          # one of the two suites.
+          listed_tests="$(./onnxruntime_mlas_test --gtest_filter="*LayerNorm*" --gtest_list_tests)"
+          echo "${listed_tests}"
+          if ! grep -q "LayerNormAppleAccelerate" <<< "${listed_tests}"; then
+            echo "::error::onnxruntime_mlas_test --gtest_filter='*LayerNorm*' did not list the LayerNormAppleAccelerate suite (see --gtest_list_tests output above). This means test_layernorm_apple_accelerate.cpp was not compiled into onnxruntime_mlas_test on this job -- check that MLAS_USE_APPLE_ACCELERATE, __APPLE__, and MLAS_TARGET_ARM64 all evaluate true for this build -- so the Apple Accelerate LayerNorm/RMSNorm kernel has zero test coverage despite this step appearing to pass. Failing loudly instead of silently succeeding with 0 tests run." >&2
+            exit 1
+          fi
+          if ! grep -q "^LayerNorm\.$" <<< "${listed_tests}"; then
+            echo "::error::onnxruntime_mlas_test --gtest_filter='*LayerNorm*' did not list the pre-existing, platform-agnostic LayerNorm suite (see --gtest_list_tests output above). This suite (test_layernorm.cpp) is the primary cross-platform correctness check for the kernel this PR registers on ARM64 -- if it disappeared from the binary, this step would silently stop covering it. Failing loudly instead of silently succeeding with reduced coverage." >&2
+            exit 1
+          fi
+
+          ./onnxruntime_mlas_test --gtest_filter="*LayerNorm*"
+
+      - name: Build MLAS benchmark target (onnxruntime_mlas_benchmark)
+        # Real performance evidence is a Ready blocker for this optimization
+        # PR -- no numbers for the apple_accelerate_vdsp LayerNorm/RMSNorm
+        # path have ever been produced. --build_micro_benchmarks turns on
+        # the existing onnxruntime_BUILD_BENCHMARKS CMake option (see
+        # cmake/onnxruntime_unittests.cmake), which also guards the general,
+        # unrelated onnxruntime_benchmark target (modeltest/pooling/resize/
+        # batchnorm/etc.).
+        #
+        # Gated to build_config == 'Release': a Debug/-O0 binary is not
+        # meaningful performance evidence, so the benchmark is only ever
+        # built/run on the Release entry of this matrix.
+        #
+        # This step intentionally does NOT call
+        # "build.py --update --build ${{ env.build_flags }}" as one command.
+        # env.build_flags includes --build_wheel (needed by the earlier
+        # Configure/Build/Install steps for this job's normal build_flags
+        # matrix), and build.py's main() unconditionally repackages the
+        # Python wheel via build_python_wheel() whenever `args.build` is
+        # set and `args.build_wheel` is set -- regardless of what
+        # --target was passed to the underlying cmake --build invocation.
+        # Rebuilding/repackaging the entire wheel on every CI run of this
+        # job just to add one benchmark binary would be wasteful.
+        #
+        # Instead: reconfigure only (--update, no --build) to add
+        # --build_micro_benchmarks into the existing CMakeCache in-place
+        # (this preserves the cache/build tree from the earlier Configure
+        # step -- no directory removal, unlike that step's initial `rm -rf`),
+        # then invoke cmake directly with --target to build only
+        # onnxruntime_mlas_benchmark and its dependencies. This never touches
+        # the wheel-packaging code path at all.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate && matrix.build_config == 'Release' }}
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e -x
+          echo "Build config: ${{ matrix.build_config }}"
+          python ./tools/ci_build/build.py --update --build_micro_benchmarks ${{ env.build_flags }}
+          cmake --build "./build/${{ matrix.build_config }}" --config "${{ matrix.build_config }}" --target onnxruntime_mlas_benchmark --parallel
+
+      - name: Running MLAS LayerNorm/RMSNorm benchmark A/B (onnxruntime_mlas_benchmark)
+        # No performance claim is made by this step or anywhere else in this
+        # PR -- this only ensures the LayerNorm/RMSNorm dispatch-vs-portable-
+        # scalar-baseline A/B numbers are actually produced and printed to CI
+        # logs on real Apple Silicon, so a human reviewer has real evidence
+        # to read instead of none. BM_LayerNormDispatch/BM_RMSNormDispatch
+        # call the public MlasLayerNormF32 entry point, which resolves to
+        # the vDSP kernel on this job and is labeled "apple_accelerate_vdsp"
+        # (see DispatchPathLabel in bench_layernorm_apple_accelerate.cpp);
+        # BM_LayerNormPortableScalarBaseline/BM_RMSNormPortableScalarBaseline
+        # call a standalone reproduction of the real ARM64 scalar fallback
+        # (onnxruntime/core/providers/cpu/nn/layer_norm_impl.cc's
+        # ComputeJob), labeled "portable_scalar_baseline" -- so the labels
+        # in the printed output are what prove this ran the intended A/B
+        # against the actual alternative ARM64 uses today, not two copies
+        # of the same kernel.
+        #
+        # Gated to build_config == 'Release', matching the build step above
+        # -- a Debug/-O0 run here would be reported as if it were
+        # performance evidence, which it is not.
+        if: ${{ matrix.machine == matrix.target && matrix.target == 'arm64' && inputs.use_apple_accelerate && matrix.build_config == 'Release' }}
+        shell: bash
+        # Same layout as onnxruntime_mlas_test above: build.py's
+        # --build_dir ./build + --config ${{ matrix.build_config }} places
+        # executables directly at build/<config>/.
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          set -e -x
+          echo "Build config: ${{ matrix.build_config }}"
+          ls -l ./onnxruntime_mlas_benchmark
+
+          # A benchmark binary invoked with --benchmark_filter that matches
+          # zero benchmarks still exits 0 and prints an empty table -- it
+          # would silently "run" nothing and this step would appear to pass
+          # while producing zero real A/B evidence (e.g. if the filter
+          # regex and the actual registered benchmark names ever drifted
+          # apart). Enumerate the filtered set first via
+          # --benchmark_list_tests=true and fail loudly if any expected
+          # benchmark name is missing, instead of trusting the runner's own
+          # exit code.
+          listed_benchmarks="$(./onnxruntime_mlas_benchmark --benchmark_filter="BM_(LayerNorm|RMSNorm)(Dispatch|PortableScalarBaseline)" --benchmark_list_tests=true)"
+          echo "${listed_benchmarks}"
+          for name in BM_LayerNormDispatch BM_LayerNormPortableScalarBaseline BM_RMSNormDispatch BM_RMSNormPortableScalarBaseline; do
+            if ! grep -q "^${name}" <<< "${listed_benchmarks}"; then
+              echo "::error::onnxruntime_mlas_benchmark --benchmark_filter='BM_(LayerNorm|RMSNorm)(Dispatch|PortableScalarBaseline)' --benchmark_list_tests=true did not list ${name} (see listing above). This means the A/B benchmark did not register at all on this job -- failing loudly instead of silently producing zero evidence." >&2
+              exit 1
+            fi
+          done
+
+          benchmark_output="$(./onnxruntime_mlas_benchmark --benchmark_filter="BM_(LayerNorm|RMSNorm)(Dispatch|PortableScalarBaseline)")"
+          echo "${benchmark_output}"
+
+          # BM_LayerNormDispatch/BM_RMSNormDispatch must actually resolve to
+          # the vDSP kernel (labeled "apple_accelerate_vdsp" by
+          # DispatchPathLabel in bench_layernorm_apple_accelerate.cpp) on
+          # this job. Without this check, a misconfigured build where the
+          # dispatch benchmark silently fell back to "no_kernel_registered"
+          # or some other path would still print numbers, and a reviewer
+          # could easily mistake them for the intended vDSP measurement.
+          if ! grep -q "apple_accelerate_vdsp" <<< "${benchmark_output}"; then
+            echo "::error::BM_LayerNormDispatch/BM_RMSNormDispatch output did not contain the 'apple_accelerate_vdsp' label (see output above). This means MlasLayerNormF32 did not dispatch to MlasLayerNormKernelAppleAccelerate on this job -- check the registration in platform.cpp -- so the numbers above are NOT the intended A/B comparison." >&2
+            exit 1
+          fi

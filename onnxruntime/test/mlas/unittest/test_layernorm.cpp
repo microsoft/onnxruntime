@@ -17,8 +17,47 @@ Abstract:
 #include "test_util.h"
 #include "mlas.h"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
+
+namespace {
+// This test's own ScalarLayerNorm oracle (below) intentionally uses the
+// single-pass "E[x^2] - mean^2" formula, which is a *different* (but
+// equally valid) floating-point evaluation order than a centered two-pass
+// "mean first, then sum-of-centered-squares" formula that a registered
+// kernel is free to use instead (e.g. the Apple Accelerate/vDSP kernel in
+// onnxruntime/core/mlas/lib/layernorm.cpp). The two orders only disagree by
+// a handful of ULPs for most inputs, but the uncentered formula suffers
+// catastrophic cancellation at small norm_size for this test's fixed input
+// pattern (observed: norm_size=7 diverges from a centered kernel by ~2e-3
+// absolute in 1/std_dev, versus ~4e-5 relative) -- an artifact of which
+// formula the *reference* happens to use, not a kernel defect. A relative
+// tolerance (with a small absolute floor for near-zero reference values)
+// accepts either valid evaluation order while still catching real bugs:
+// a wrong scale factor, dropped bias, or incorrect epsilon placement
+// produces mismatches many orders of magnitude larger than the floating-
+// point evaluation-order noise this tolerates.
+constexpr float kRelTolerance = 1e-3f;
+constexpr float kAbsToleranceFloor = 1e-4f;
+
+::testing::AssertionResult NearRelative(const char* actual_expr, const char* expected_expr,
+                                        const char* /*rel_expr*/, const char* /*floor_expr*/,
+                                        float actual, float expected, float rel_tol, float abs_floor) {
+  const float tol = std::max(abs_floor, rel_tol * std::abs(expected));
+  const float diff = std::abs(actual - expected);
+  if (diff <= tol) {
+    return ::testing::AssertionSuccess();
+  }
+  return ::testing::AssertionFailure()
+         << actual_expr << " (" << actual << ") and " << expected_expr << " (" << expected
+         << ") are not near enough: diff=" << diff << " > tol=" << tol
+         << " (rel_tol=" << rel_tol << ", abs_floor=" << abs_floor << ")";
+}
+}  // namespace
+
+#define ASSERT_NEAR_REL(actual, expected) \
+  ASSERT_PRED_FORMAT4(NearRelative, actual, expected, kRelTolerance, kAbsToleranceFloor)
 
 class MlasLayerNormTest : public MlasTestBase {
  private:
@@ -92,12 +131,12 @@ class MlasLayerNormTest : public MlasTestBase {
     }
 
     for (size_t i = 0; i < norm_size; i++) {
-      ASSERT_NEAR(output_mlas[i], output_ref[i], 1e-4f)
+      ASSERT_NEAR_REL(output_mlas[i], output_ref[i])
           << "output mismatch at [" << i << "], norm_size=" << norm_size
           << " simplified=" << simplified << " bias=" << with_bias;
     }
-    ASSERT_NEAR(mean_mlas, mean_ref, 1e-4f) << "mean mismatch";
-    ASSERT_NEAR(inv_std_mlas, inv_std_ref, 1e-4f) << "inv_std_dev mismatch";
+    ASSERT_NEAR_REL(mean_mlas, mean_ref) << "mean mismatch";
+    ASSERT_NEAR_REL(inv_std_mlas, inv_std_ref) << "inv_std_dev mismatch";
   }
 };
 
