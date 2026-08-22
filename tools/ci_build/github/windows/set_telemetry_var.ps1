@@ -7,9 +7,9 @@ if (-not [string]::IsNullOrEmpty( $Env:TELEMETRYGUID) -and $Env:TELEMETRYGUID.St
     $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
       TraceLoggingOptionGroup("+$Env:TELEMETRYGUID.substring(1, $length-2)+")"
     New-Item -Path "include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-    Write-Host "##vso[task.setvariable variable=TelemetryOption]--use_telemetry"
+    Write-Host "##vso[task.setvariable variable=TelemetryOption]"
     Write-Host "Telemetry is enabled."
 } else {
-    Write-Host "##vso[task.setvariable variable=TelemetryOption]"
+    Write-Host "##vso[task.setvariable variable=TelemetryOption]--no_telemetry"
     Write-Host "Telemetry is disabled."
 }

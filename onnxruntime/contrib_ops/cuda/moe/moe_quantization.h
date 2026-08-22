@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
@@ -18,6 +19,10 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+
+constexpr const char* kEnableQMoEKernelDebugInfo = "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO";
+constexpr const char* kQMoERowTileSize = "ORT_QMOE_ROW_TILE_SIZE";
+constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 
 class QMoE final : public CudaKernel, public MoEBase {
  public:
@@ -81,8 +86,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
   // Cached source weight shapes captured at PrePack time. When the
-  // PrePack hook consumed and released the original int4/int8 weight
-  // initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
+  // PrePack hook consumed and released the original int4/int8 (or MXFP4)
+  // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
   // and ``(5)`` return nothing, so ``moe_helper::CheckInputs`` can no
   // longer read the shapes from the live tensors. We feed it these
   // cached shapes instead via the ``TensorShape*`` overload, matching
@@ -96,6 +101,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
+  bool enable_kernel_debug_info_ = false;
+  int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 
@@ -140,6 +147,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // fc2 GEMV -> finalize) instead of dequantizing to dense weights. Falls back to the
   // dequant path for unsupported shapes (prefill / large batch).
   bool enable_fp4_gemv_ = false;
+  // Read once during op construction so ORT_DISABLE_FP4_GEMV_SKIP_EXPAND follows the same
+  // session-scoped configuration model as the other FP4 GEMV environment options.
+  bool fp4_gemv_skip_expand_ = true;
   bool enable_fp4_cutlass_gemm_ = false;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
@@ -156,6 +166,22 @@ class QMoE final : public CudaKernel, public MoEBase {
   // incompatible with the decode GEMV kernel, PrePack also packs a separate ColToRow copy of
   // the e2m1 weights (gemv_fp4_fc*_weights_decode_) that the fused GEMV decode path consumes.
   bool enable_fp4_sm80_gemm_ = false;
+  // When true, PrePack reports ``is_packed = true`` for the e2m1 weight initializers (inputs 2/5)
+  // so ORT releases them. Safe only in the ``enable_fp4_sm80_gemm_`` regime, where prefill reads
+  // gemv_fp4_fc*_weights_ and decode reads either that same buffer (pair-interleaved un-permute)
+  // or gemv_fp4_fc*_weights_decode_, and the dequant fallback -- the only consumer of the raw
+  // [E, K, N/2] layout -- is unreachable. For a 20B-class MXFP4 MoE the retained initializers are
+  // ~9 GiB of otherwise dead device memory. NOTE: the memory is returned to the *device* only when
+  // initializers bypass the BFC arena, i.e. with the session option
+  // ``session.use_device_allocator_for_initializers = 1``; otherwise it is merely recycled inside
+  // the arena for later activation/KV allocations.
+  bool release_fp4_raw_weights_ = false;
+  // Set by PrePack (per weight tensor) when the decode GEMV will read the SM80 pair-interleaved
+  // buffer in gemv_fp4_fc*_weights_ instead of a dedicated gemv_fp4_fc*_weights_decode_ copy.
+  // False when SM80 GEMM is off (gemv_fp4_fc*_weights_ is already GEMV-native) or when the shape
+  // misses the interleaved rules.
+  bool gemv_fp4_fc1_reads_sm80_layout_ = false;
+  bool gemv_fp4_fc2_reads_sm80_layout_ = false;
   // When native CUTLASS WFP4A16 is enabled, GEMV is also pre-packed and used for decode shapes
   // (M < this threshold); prefill (M >= threshold) runs the native grouped GEMM. 0 disables the
   // split (pure GEMV regime). Overridable via ORT_FP4_PREFILL_MIN_TOKENS.
@@ -175,10 +201,11 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_;  // [E, 2*inter, hidden/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_;  // [E, hidden, inter/2] row-major e2m1
   // When enable_fp4_sm80_gemm_ repurposes gemv_fp4_fc*_weights_ for the SM80 grouped-GEMM
-  // prefill (SM80 pair-interleaved layout, which the decode GEMV kernel cannot read), these
-  // hold the decode GEMV's own copy of the e2m1 weights in the GEMV-consumed layout
-  // (ColToRow, or the interleaved layout's preprocessor steps 1-3). Null when SM80 GEMM is disabled -- then the decode GEMV
-  // reads gemv_fp4_fc*_weights_ directly.
+  // prefill (SM80 pair-interleaved layout), these hold a dedicated decode-GEMV copy of the e2m1
+  // weights in the GEMV-native layout (ColToRow, or the interleaved layout's preprocessor steps
+  // 1-3). Only allocated when gemv_fp4_fc*_reads_sm80_layout_ is false, i.e. when the GEMV cannot
+  // un-permute the pair-interleaved buffer itself. Null when SM80 GEMM is disabled -- then the
+  // decode GEMV reads gemv_fp4_fc*_weights_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_decode_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_decode_;
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;  // [E, hidden/32, 2*inter] activation dtype

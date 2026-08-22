@@ -212,12 +212,15 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     processed_q_weight_torch = processed_q_weight.to(weights.device).view(torch.uint8)
     result = dequantized.view(n, k)
 
-    if asymmetric:
-        zero_points_storage = zero_point.to(weights.device).to(torch.uint8)
-    elif not is_4_bit_quantization:
-        zero_points_storage = torch.full((n, block_per_k), 128, dtype=torch.uint8, device=weights.device)
-    else:
-        zero_points_storage = None
+    # Symmetric quantization carries no zero-points for either width. The uint8/uint4 storage is
+    # offset-binary (centred on 128 / 8), and that offset is baked into the weight converter --
+    # FastInterleavedAndBiasedNumericArrayConverter subtracts 1152 = 1024 + 128 in fp16 math for
+    # uint8, and 8 for uint4 -- so it is applied whether or not zero-points are supplied. This
+    # function used to emit an all-128 tensor for symmetric 8-bit on the theory that "Cutlass
+    # expects an explicit Zero Point = 128"; that produced bias = (128 - 128) * scale = 0, a no-op
+    # that silently kept every block-wise 8-bit config off the MoE GEMV, whose dispatch rejects any
+    # block-wise case with a non-null zeros pointer.
+    zero_points_storage = zero_point.to(weights.device).to(torch.uint8) if asymmetric else None
 
     return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
 
@@ -1421,9 +1424,13 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         return final_hidden_states
 
 
-# Define test cases for different MoE types
+# Define test cases for different MoE types.
+# NOTE: these all run with hidden_size=128 / intermediate_size=256, which is below the MoE GEMV's
+# profiled minimum, so they exercise the CUTLASS grouped GEMM path. See moe_gemv_test_cases below
+# for the shapes that select the GEMV.
 phi3_test_cases = [
-    (1, 1, 4),  # decode-sized INT4 per-channel path exercises the MoE GEMV fast path
+    (1, 1, 4),  # decode-sized INT4 per-channel
+    (2, 1, 4),  # 2 tokens x top_k 2 = 4 expanded rows
     (1, 32, 4),
     (1, 32, 8),
     (2, 16, 4),
@@ -1433,6 +1440,7 @@ phi3_test_cases = [
 # Define test cases for block-wise quantization
 phi3_blockwise_test_cases = [
     (1, 1, 4, 32),  # tiny debug case for asymmetric ZP compensation
+    (2, 1, 4, 32),  # multi-token decode shape
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 4, 64),
     (1, 32, 4, 128),
@@ -1464,6 +1472,30 @@ qmoe_cutlass_gemm_second_scale_row_test_cases = [
     (4, True),
     (8, False),
     (8, True),
+]
+
+# Cases that actually select the decode-time MoE GEMV. is_moe_gemv_supported() requires every GEMM
+# dimension to be >= 512 (kMinProfiledProblemDim): FC1 sees n = 2 * inter_size, k = hidden_size and
+# FC2 sees n = hidden_size, k = inter_size, so hidden_size and intermediate_size must both be >= 512
+# (and multiples of 64 for the K-tile). Every other config in this file uses 128/256 and therefore
+# never reaches the GEMV. Paired with num_experts_per_token=4, batch * seq of 1 and 2 gives 4 and 8
+# expanded rows, covering both sides of kMaxProfiledExpandedRowsForSmallProblemDim. The 2-token cases
+# are the ones that exercise the multi-token index math that degenerates at num_rows == 1: FC1's
+# skip-expand source lookup (permuted_row_to_unpermuted_row % num_rows) and the per-token block
+# indexing of the FC2 GEMV's fused finalize epilogue.
+# (batch_size, sequence_length, quant_bits, block_size); block_size 0 means per-channel.
+moe_gemv_test_cases = [
+    (1, 1, 4, 0),
+    (2, 1, 4, 0),
+    (1, 1, 8, 0),
+    (2, 1, 8, 0),
+    (2, 1, 4, 32),
+    (2, 1, 4, 64),
+    # INT8 block-wise. This reached the GEMV only after quant_dequant_blockwise() stopped emitting a
+    # redundant all-128 zero-point tensor for symmetric 8-bit: it made weight_zeros non-null, and
+    # every MoE GEMV entry point rejects on `group_size > 0 && weight_zeros != nullptr`
+    # (has_block_zeros in moe_kernels.cu) before the shape check runs.
+    (2, 1, 8, 64),
 ]
 
 
@@ -2013,6 +2045,29 @@ class TestSwigluQMoE(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             block_size=block_size,
             use_asymmetric_quant=True,
+        )
+        swiglu_moe.parity_check()
+
+    @parameterized.expand(moe_gemv_test_cases)
+    def test_swiglu_qmoe_gemv_parity(self, batch_size, sequence_length, quant_bits, block_size):
+        # Decode-shaped cases large enough to select the MoE GEMV instead of the CUTLASS grouped GEMM.
+        # See the comment on moe_gemv_test_cases for why hidden_size/intermediate_size must be >= 512.
+        torch.manual_seed(45)
+        numpy.random.seed(45)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running SwiGLU QMoE GEMV test: {test_config}")
+
+        config = SwigluMoeConfig(hidden_size=512, intermediate_size=512, num_local_experts=8, num_experts_per_token=4)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT16,
+            block_size=block_size,
+            use_asymmetric_quant=False,
         )
         swiglu_moe.parity_check()
 
@@ -2675,7 +2730,17 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
                 self.assertTrue(torch.equal(scales, torch.tensor([1.0])))
                 self.assertTrue(torch.equal(qweight, expected_qweight))
 
-    def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):
+    def _run_one(
+        self,
+        *,
+        hidden_size,
+        inter_size,
+        num_experts,
+        top_k,
+        swiglu_fusion,
+        batch_size,
+        row_tile_size=None,
+    ):
         torch.manual_seed(123)
         numpy.random.seed(123)
 
@@ -2745,7 +2810,13 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         )
         model.ir_version = 10
 
-        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=ort_provider)
+        session_options = None
+        if row_tile_size is not None:
+            session_options = onnxruntime.SessionOptions()
+            session_options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
+        sess = onnxruntime.InferenceSession(
+            model.SerializeToString(), sess_options=session_options, providers=ort_provider
+        )
         x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
         router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
         out = sess.run(None, {"x": x, "router": router})[0]
@@ -2760,6 +2831,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         # indicate the PrePack hook silently produced wrong bytes.
         self.assertGreater(numpy.abs(out).mean(), 1e-4, "Output is suspiciously close to zero")
         self.assertLess(numpy.abs(out).max(), 10.0, "Output magnitude is implausibly large")
+        return out
 
     def _run_default_prepacked_model(
         self,
@@ -2932,6 +3004,25 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
 
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
+
+    def test_int4_grouped_moe_row_tiling_parity(self):
+        shape = dict(
+            hidden_size=128,
+            inter_size=128,
+            num_experts=8,
+            top_k=2,
+            swiglu_fusion=1,
+            batch_size=65,
+        )
+        tiled_output = self._run_one(**shape, row_tile_size=16)
+        untiled_output = self._run_one(**shape, row_tile_size=1024)
+        max_diff = numpy.max(numpy.abs(untiled_output.astype(numpy.float32) - tiled_output.astype(numpy.float32)))
+
+        self.assertLess(
+            max_diff,
+            0.02,
+            f"INT4 grouped-MoE row-tiled output differs from untiled output: max_diff={max_diff:.6f}",
+        )
 
 
 class TestQMoECudaGraph(unittest.TestCase):

@@ -1138,11 +1138,12 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   }
 
   const size_t c_size = static_cast<size_t>(y->Shape().Size());
-  // When the int8 path can emit fp16 directly, skip the full fp32 copy of the result:
+  // When the compute path can emit fp16 directly, skip the full fp32 copy of the result:
   // each worker converts its own output tile to fp16 in place. Otherwise compute into an
   // fp32 buffer and convert once at the end. No zero-init: the GEMM writes every element.
   const bool output_fp16_direct =
-      compute_type_ == SQNBIT_CompInt8 && MlasQNBitGemmFp16DirectCOutputSupported(nbits_);
+      (compute_type_ == SQNBIT_CompInt8 || compute_type_ == SQNBIT_CompFp32) &&
+      MlasQNBitGemmFp16DirectCOutputSupported(nbits_, compute_type_);
   IAllocatorUniquePtr<float> c_v;
   if (!output_fp16_direct) {
     c_v = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);

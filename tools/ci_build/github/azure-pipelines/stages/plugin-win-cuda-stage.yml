@@ -47,6 +47,14 @@ parameters:
   type: string
   default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
 
+- name: enable_cuda_fatbin_size_compression
+  type: boolean
+  default: false
+
+- name: enable_fpa_intb_gemm
+  type: boolean
+  default: true
+
 stages:
   - stage: Win_plugin_cuda_${{ parameters.arch }}_Build
     dependsOn: []
@@ -85,6 +93,16 @@ stages:
         value: '-Dorg.gradle.daemon=false'
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
+      - name: FatbinCompressOption
+        ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
+          value: '--cmake_extra_defines onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON'
+        ${{ else }}:
+          value: ''
+      - name: FpaIntBGemmOption
+        ${{ if eq(parameters.enable_fpa_intb_gemm, true) }}:
+          value: '--cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=ON'
+        ${{ else }}:
+          value: '--cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=OFF'
       steps:
       - checkout: self
         clean: true
@@ -192,6 +210,8 @@ stages:
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
+              $(FpaIntBGemmOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -221,6 +241,8 @@ stages:
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
+              $(FpaIntBGemmOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -250,7 +272,10 @@ stages:
               --skip_tests
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
+              $(FpaIntBGemmOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -268,8 +293,29 @@ stages:
             Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
             exit 1
           }
-          Write-Host "Verified plugin binary exists at: $pluginPath"
-        displayName: 'Verify plugin binary exists'
+
+          $versionInfo = (Get-Item $pluginPath).VersionInfo
+          $requiredProperties = @(
+            'FileDescription',
+            'FileVersion',
+            'OriginalFilename',
+            'ProductName',
+            'ProductVersion',
+            'LegalCopyright',
+            'Language'
+          )
+          foreach ($property in $requiredProperties) {
+            if ([string]::IsNullOrWhiteSpace($versionInfo.$property)) {
+              throw "Plugin DLL version property '$property' is missing."
+            }
+          }
+          if ($versionInfo.OriginalFilename -ne 'onnxruntime_providers_cuda.dll') {
+            throw "Unexpected OriginalFilename '$($versionInfo.OriginalFilename)'."
+          }
+
+          Write-Host "Verified plugin DLL version information:"
+          $versionInfo | Format-List $requiredProperties
+        displayName: 'Verify plugin binary and version information'
 
       - task: CopyFiles@2
         displayName: 'Copy plugin binaries to staging directory'
@@ -335,6 +381,11 @@ stages:
           targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
       - powershell: |
+          if ('${{ parameters.arch }}' -eq 'arm64') {
+            $env:_PYTHON_HOST_PLATFORM = 'win-arm64'
+          } else {
+            $env:_PYTHON_HOST_PLATFORM = 'win-amd64'
+          }
           python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
           python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
             --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `

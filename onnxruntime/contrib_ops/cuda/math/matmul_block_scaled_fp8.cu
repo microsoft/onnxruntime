@@ -6,7 +6,9 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 // cuda_fp8.h only ships with CUDA 11.8+. Guard the include so older toolkits (or
 // DISABLE_FLOAT8_TYPES builds) still compile. CUDA_VERSION is provided by <cuda.h>,
@@ -21,31 +23,7 @@ namespace onnxruntime::contrib::cuda {
 
 namespace {
 
-template <typename T>
-__device__ __forceinline__ T FromFloat(float v);
-
-template <>
-__device__ __forceinline__ half FromFloat<half>(float v) {
-  return __float2half(v);
-}
-
-template <>
-__device__ __forceinline__ __nv_bfloat16 FromFloat<__nv_bfloat16>(float v) {
-  return __float2bfloat16(v);
-}
-
-template <typename T>
-__device__ __forceinline__ float ToFloat(T v);
-
-template <>
-__device__ __forceinline__ float ToFloat<half>(half v) {
-  return __half2float(v);
-}
-
-template <>
-__device__ __forceinline__ float ToFloat<__nv_bfloat16>(__nv_bfloat16 v) {
-  return __bfloat162float(v);
-}
+// to_float / from_float / to_float2 / Vec2 come from core/providers/cuda/cu_inc/cuda_type_helper.cuh.
 
 // Dequantizes FP8 E4M3 weights with per-block FP32 scales into FP16/BF16.
 // b_fp8 is [N, K] row-major FP8 E4M3, weight_scale is [N, k_blocks] fp32. Scalar per-element
@@ -67,7 +45,7 @@ __global__ void DequantizeBlockScaledFp8Kernel(T* __restrict__ out,
   const int col = static_cast<int>(idx - static_cast<long long>(row) * k);
   const int blk = col / block_size;
   const float scale = weight_scale[row * k_blocks + blk];
-  out[idx] = FromFloat<T>(static_cast<float>(b_fp8[idx]) * scale);
+  out[idx] = from_float<T>(static_cast<float>(b_fp8[idx]) * scale);
 }
 
 // Vectorized dequantization for K % 16 == 0. Each thread converts one 16-element K chunk of a
@@ -101,12 +79,12 @@ __global__ void DequantizeBlockScaledFp8Vec16Kernel(T* __restrict__ out,
       const float scale = srow[col0 / block_size];
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        outv[i] = FromFloat<T>(static_cast<float>(bp[i]) * scale);
+        outv[i] = from_float<T>(static_cast<float>(bp[i]) * scale);
       }
     } else {
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        outv[i] = FromFloat<T>(static_cast<float>(bp[i]) * srow[(col0 + i) / block_size]);
+        outv[i] = from_float<T>(static_cast<float>(bp[i]) * srow[(col0 + i) / block_size]);
       }
     }
 
@@ -124,7 +102,7 @@ __global__ void AddBiasKernel(T* __restrict__ y, const T* __restrict__ bias, int
     return;
   }
   const int col = static_cast<int>(idx % n);
-  y[idx] = FromFloat<T>(ToFloat<T>(y[idx]) + ToFloat<T>(bias[col]));
+  y[idx] = from_float<T>(to_float<T>(y[idx]) + to_float<T>(bias[col]));
 }
 
 // Statically quantizes a FP16/BF16 activation to FP8 E4M3 using a single per-tensor scale and then
@@ -144,9 +122,22 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
   }
   const float scale = *a_scale;
   const float inv_scale = scale != 0.f ? 1.0f / scale : 0.f;
-  const float x = ToFloat<T>(in[idx]);
+  const float x = to_float<T>(in[idx]);
   const float q = static_cast<float>(__nv_fp8_e4m3(x * inv_scale));
-  out[idx] = FromFloat<T>(q * scale);
+  out[idx] = from_float<T>(q * scale);
+}
+
+// In-register form of QuantizeDequantizeActivationFp8Kernel for the 8 activations packed in one
+// uint4. Bit-identical to the standalone kernel, so the GEMV can absorb the W8A8 activation
+// rounding instead of round-tripping A through a scratch buffer.
+template <typename AType>
+__device__ __forceinline__ void Fp8ActQdq16(uint4& raw, float inv_scale, float scale) {
+  AType* v = reinterpret_cast<AType*>(&raw);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const float q = static_cast<float>(__nv_fp8_e4m3(to_float<AType>(v[i]) * inv_scale));
+    v[i] = from_float<AType>(q * scale);
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -175,20 +166,9 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
 // memory-level parallelism, which is the right trade when there is only one wave.
 // <RowsPerWarp, 1, 1> reproduces the original one-column-per-warp geometry.
 
-// Vector-2 companion type and float2 widening for the accumulate type.
-template <typename T>
-struct Fp8GemvVec2;
-template <>
-struct Fp8GemvVec2<half> {
-  using type = __half2;
-};
-template <>
-struct Fp8GemvVec2<__nv_bfloat16> {
-  using type = __nv_bfloat162;
-};
-
-__device__ __forceinline__ float2 Fp8GemvToFloat2(const __half2& v) { return __half22float2(v); }
-__device__ __forceinline__ float2 Fp8GemvToFloat2(const __nv_bfloat162& v) { return __bfloat1622float2(v); }
+// Vector-2 companion type and float2 widening for the accumulate type come from
+// core/providers/cuda/cu_inc/cuda_type_helper.cuh (Vec2 / to_float2), shared with
+// the NVFP4 GEMV in matmul_block_scaled_fp4.cu.
 
 // Convert 16 packed FP8 bytes into 8 half2 (one `cvt.rn.f16x2.e4m3x2` per pair
 // instead of 16 scalar converts). FP8 E4M3 is exactly representable in FP16, so
@@ -206,18 +186,23 @@ __device__ __forceinline__ float2 Fp8GemvToFloat2(const __nv_bfloat162& v) { ret
   } while (0)
 
 // acc += dot(A[0:16], B[0:16]) with FP32 accumulation, matching the scalar version bit for bit.
+//
+// `bh` is always __half2: ORT_FP8_GEMV_CVT16 decodes FP8 E4M3 through __nv_cvt_fp8x2_to_halfraw2
+// for both the half and the bfloat16 instantiation (E4M3 is exactly representable in FP16), so
+// __half22float2 is the correct widening here regardless of AType. If ORT_FP8_GEMV_CVT16 is ever
+// changed to emit __nv_bfloat162 for the bfloat16 path, this macro must be updated in lockstep.
 #define ORT_FP8_GEMV_DOT16(a0, a1, bh, acc)                   \
   do {                                                        \
     const AVec2* _a0 = reinterpret_cast<const AVec2*>(&(a0)); \
     const AVec2* _a1 = reinterpret_cast<const AVec2*>(&(a1)); \
     _Pragma("unroll") for (int _i = 0; _i < 4; ++_i) {        \
-      const float2 _av = Fp8GemvToFloat2(_a0[_i]);            \
+      const float2 _av = to_float2(_a0[_i]);                  \
       const float2 _bv = __half22float2((bh)[_i]);            \
       (acc) = fmaf(_av.x, _bv.x, (acc));                      \
       (acc) = fmaf(_av.y, _bv.y, (acc));                      \
     }                                                         \
     _Pragma("unroll") for (int _i = 0; _i < 4; ++_i) {        \
-      const float2 _av = Fp8GemvToFloat2(_a1[_i]);            \
+      const float2 _av = to_float2(_a1[_i]);                  \
       const float2 _bv = __half22float2((bh)[4 + _i]);        \
       (acc) = fmaf(_av.x, _bv.x, (acc));                      \
       (acc) = fmaf(_av.y, _bv.y, (acc));                      \
@@ -230,12 +215,13 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
                                                const __nv_fp8_e4m3* __restrict__ input_b,
                                                const float* __restrict__ weight_scale,
                                                const AType* __restrict__ bias,
+                                               const float* __restrict__ act_scale,
                                                int m,
                                                int n,
                                                int k,
                                                int block_size,
                                                int k_blocks) {
-  using AVec2 = typename Fp8GemvVec2<AType>::type;
+  using AVec2 = Vec2<AType>;
 
   constexpr int kElemsPerLane = 16;
   constexpr int kStride = 32 * kElemsPerLane;  // 512 elements per warp sub-chunk
@@ -246,6 +232,10 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
   if (row_base >= m || col_base >= n) {
     return;
   }
+
+  const bool act_qdq = act_scale != nullptr;
+  const float a_scale = act_qdq ? *act_scale : 0.f;
+  const float a_inv_scale = a_scale != 0.f ? 1.0f / a_scale : 0.f;
 
   float acc[RowsPerWarp][ColsPerWarp] = {};
 
@@ -275,6 +265,10 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
           const uint4* ap = reinterpret_cast<const uint4*>(input_a + static_cast<size_t>(row) * k + koff[u]);
           a_lo[u][r] = ap[0];
           a_hi[u][r] = ap[1];
+          if (act_qdq) {
+            Fp8ActQdq16<AType>(a_lo[u][r], a_inv_scale, a_scale);
+            Fp8ActQdq16<AType>(a_hi[u][r], a_inv_scale, a_scale);
+          }
         } else {
           a_lo[u][r] = make_uint4(0, 0, 0, 0);
           a_hi[u][r] = make_uint4(0, 0, 0, 0);
@@ -289,23 +283,87 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
         continue;
       }
       const int kb = koff[u] / block_size;
+      if constexpr (RowsPerWarp == 1) {
+        // One row: nothing to amortize, and the extra live fp32 values of the hoisted
+        // form measurably cost occupancy at the wide M == 1 tiles (<1,4,2>).
 #pragma unroll
-      for (int c = 0; c < ColsPerWarp; ++c) {
-        const int col = col_base + c;
-        if (col >= n) {
-          continue;
+        for (int c = 0; c < ColsPerWarp; ++c) {
+          const int col = col_base + c;
+          if (col >= n) {
+            continue;
+          }
+          __half2 b_half[8];
+          ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half);
+          const float b_scale = weight_scale[static_cast<size_t>(col) * k_blocks + kb];
+          float partial = 0.0f;
+          ORT_FP8_GEMV_DOT16(a_lo[u][0], a_hi[u][0], b_half, partial);
+          acc[0][c] += partial * b_scale;
         }
-        __half2 b_half[8];
-        ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half);
-        const float b_scale = weight_scale[static_cast<size_t>(col) * k_blocks + kb];
+      } else {
+        // M > 1 (speculative decode / MTP verify): the naive form widens B to fp32 once
+        // per row and A once per column, so a lane spends 8 + 48 * RowsPerWarp
+        // instructions per 16 weight bytes and the kernel goes ALU-bound long before it
+        // saturates HBM (1.25 TB/s at M == 4 vs 2.35 TB/s at M == 1 on H200). Hoisting
+        // both widenings out of the inner loop drops that to
+        // 8 * C + 16 * R + 16 * C + 16 * R * C, i.e. 200 -> 120 per column at R=4, C=2.
+        // The fma order is unchanged, so the result is bit-identical to the scalar form.
+        // The 16-element chunk is consumed in two halves to keep only RowsPerWarp * 8
+        // widened A values live at a time.
+        __half2 b_half[ColsPerWarp][8];
+#pragma unroll
+        for (int c = 0; c < ColsPerWarp; ++c) {
+          ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half[c]);
+        }
+        float b_scale[ColsPerWarp];
+#pragma unroll
+        for (int c = 0; c < ColsPerWarp; ++c) {
+          const int col = col_base + c;
+          b_scale[c] = (col < n) ? weight_scale[static_cast<size_t>(col) * k_blocks + kb] : 0.0f;
+        }
+        float partial[RowsPerWarp][ColsPerWarp] = {};
+#pragma unroll
+        for (int h = 0; h < 2; ++h) {
+          float a_f[RowsPerWarp][8];
+#pragma unroll
+          for (int r = 0; r < RowsPerWarp; ++r) {
+            const AVec2* av = reinterpret_cast<const AVec2*>(h == 0 ? &a_lo[u][r] : &a_hi[u][r]);
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+              const float2 v = to_float2(av[i]);
+              a_f[r][2 * i] = v.x;
+              a_f[r][2 * i + 1] = v.y;
+            }
+          }
+#pragma unroll
+          for (int c = 0; c < ColsPerWarp; ++c) {
+            float b_f[8];
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+              const float2 v = __half22float2(b_half[c][4 * h + i]);
+              b_f[2 * i] = v.x;
+              b_f[2 * i + 1] = v.y;
+            }
+#pragma unroll
+            for (int r = 0; r < RowsPerWarp; ++r) {
+#pragma unroll
+              for (int j = 0; j < 8; ++j) {
+                partial[r][c] = fmaf(a_f[r][j], b_f[j], partial[r][c]);
+              }
+            }
+          }
+        }
 #pragma unroll
         for (int r = 0; r < RowsPerWarp; ++r) {
           if (row_base + r >= m) {
             continue;
           }
-          float partial = 0.0f;
-          ORT_FP8_GEMV_DOT16(a_lo[u][r], a_hi[u][r], b_half, partial);
-          acc[r][c] += partial * b_scale;
+#pragma unroll
+          for (int c = 0; c < ColsPerWarp; ++c) {
+            if (col_base + c >= n) {
+              continue;
+            }
+            acc[r][c] += partial[r][c] * b_scale[c];
+          }
         }
       }
     }
@@ -336,12 +394,275 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
         }
         float result = acc[r][c];
         if (bias != nullptr) {
-          result += ToFloat<AType>(bias[col]);
+          result += to_float<AType>(bias[col]);
         }
-        output[static_cast<size_t>(row) * n + col] = FromFloat<AType>(result);
+        output[static_cast<size_t>(row) * n + col] = from_float<AType>(result);
       }
     }
   }
+}
+
+// -----------------------------------------------------------------------------
+// Tensor-core decode GEMV (SM80+): mma.m16n8k16 with FP32 accumulation.
+//
+// The fp32-FMA kernel above is ALU bound once M > 1 (it re-widens A and B to fp32 for every
+// row/column pair), so more ILP cannot help. The fix is to stop doing the dot products on the
+// FMA pipe. Operand mapping -- the WEIGHT goes into the mma A slot and the ACTIVATION into the
+// mma B slot, which makes both fragments match the tensors' natural layouts:
+//
+//   mma A[16, 16] row-major  <- weight[16 output columns][16 k]   (B is [N, K] row-major)
+//   mma B[16,  8] col-major  <- activation[16 k][8 rows]          (A is [M, K] row-major)
+//   mma D[16,  8]            -> y[16 output columns][8 rows]
+//
+// The mma "M" extent is therefore our N (16 output columns per warp) and the mma "N" extent is
+// our M (up to 8 rows, which is why the caller caps the GEMV at M <= 8). At M == 4 half the mma N
+// lanes are idle, but the instruction count per weight byte still drops about 10x, which is what
+// the ALU-bound path needs.
+//
+// Per-lane fragment ownership (PTX m16n8k16 layout, g = lane >> 2, t = lane & 3). A lane does NOT
+// compute a whole dot product on its own: the tensor core exchanges partial products across the
+// warp, so the A rows, the B column and the D rows a lane holds are three independent slices.
+//
+//   ra[0] = (mma row g,     mma k 2t,   2t+1)  <- weight column col_lo = 16 * blockIdx.x + g
+//   ra[1] = (mma row g + 8, mma k 2t,   2t+1)  <- weight column col_hi = col_lo + 8
+//   ra[2] = (mma row g,     mma k 2t+8, 2t+9)  <- weight column col_lo
+//   ra[3] = (mma row g + 8, mma k 2t+8, 2t+9)  <- weight column col_hi
+//   rb[0] = (mma k 2t,   2t+1, mma col g)      <- activation row g
+//   rb[1] = (mma k 2t+8, 2t+9, mma col g)      <- activation row g
+//   acc[0], acc[1] = (mma row g,     mma col 2t, 2t+1) -> y[2t][col_lo], y[2t+1][col_lo]
+//   acc[2], acc[3] = (mma row g + 8, mma col 2t, 2t+1) -> y[2t][col_hi], y[2t+1][col_hi]
+//
+// So `g` selects both the output-column pair (through the A fragment) and the activation row
+// (through the B fragment), while the accumulator the lane ends up owning covers output rows 2t
+// and 2t + 1. Loads keyed off `g` and stores keyed off `t` are therefore both correct and are
+// deliberately different; see the GemvTensorCoreLaneOwnership* tests for a one-hot probe of this
+// mapping.
+//
+// Fragment loads are made fully coalesced by PERMUTING the K axis. K is a reduction axis, so any
+// permutation applied to BOTH operands leaves the result unchanged. Within a 64-element K window,
+// lane (g = lane >> 2, t = lane & 3) loads one contiguous uint4 of weight bytes [16t, 16t + 16)
+// and the matching 32 contiguous activation bytes; mma step j (0..3) then consumes bytes
+// 4j..4j+3 of them. Four lanes cover 64 contiguous bytes of one weight row (no sector
+// over-fetch) and a single uint4 load feeds four mma instructions.
+//
+// KSplit warps per block each take a strided share of the K windows and are reduced through
+// shared memory. Without it, 16 columns per warp gives ~8x fewer warps than the fp32 kernel and
+// the GPU runs out of memory-level parallelism long before it runs out of bandwidth.
+//
+// Requires k % 64 == 0 and block_size % 64 == 0 (so a 64-element window lies in one K block).
+// Accuracy is unchanged: FP8 E4M3 -> FP16/BF16 is lossless, products are exact, and the mma
+// accumulates in FP32 exactly like the FMA path. Measured against an FP64 reference on the Qwen
+// shapes, max error is identical to the FMA kernel (~2-4e-4, i.e. pure FP16 output rounding).
+template <typename T>
+struct Fp8GemvMma;
+
+template <>
+struct Fp8GemvMma<half> {
+  // 16 packed FP8 bytes -> 8 b32 registers, each holding 2 halves.
+  __device__ __forceinline__ static void Cvt16(const uint4& raw, uint32_t (&out)[8]) {
+    const __nv_fp8x2_storage_t* p = reinterpret_cast<const __nv_fp8x2_storage_t*>(&raw);
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const __half2 v = __half2(__nv_cvt_fp8x2_to_halfraw2(p[i], __NV_E4M3));
+      out[i] = *reinterpret_cast<const uint32_t*>(&v);
+    }
+  }
+
+  __device__ __forceinline__ static void Mma(float (&d)[4], const uint32_t (&a)[4], const uint32_t (&b)[2]) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+    asm volatile(
+        "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
+        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
+        : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
+        : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+#else
+    ORT_UNUSED_PARAMETER(d);
+    ORT_UNUSED_PARAMETER(a);
+    ORT_UNUSED_PARAMETER(b);
+#endif
+  }
+};
+
+template <>
+struct Fp8GemvMma<__nv_bfloat16> {
+  // No direct FP8 -> BF16 intrinsic, so go through the (lossless) FP8 -> FP16 converter and then
+  // FP16 -> FP32 -> BF16. Every step is exact for E4M3: 3 mantissa bits fit in BF16's 7 and the
+  // E4M3 exponent range is a strict subset of BF16's.
+  __device__ __forceinline__ static void Cvt16(const uint4& raw, uint32_t (&out)[8]) {
+    const __nv_fp8x2_storage_t* p = reinterpret_cast<const __nv_fp8x2_storage_t*>(&raw);
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const __half2 h = __half2(__nv_cvt_fp8x2_to_halfraw2(p[i], __NV_E4M3));
+      const __nv_bfloat162 v = __float22bfloat162_rn(__half22float2(h));
+      out[i] = *reinterpret_cast<const uint32_t*>(&v);
+    }
+  }
+
+  __device__ __forceinline__ static void Mma(float (&d)[4], const uint32_t (&a)[4], const uint32_t (&b)[2]) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+    asm volatile(
+        "mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 "
+        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
+        : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
+        : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+#else
+    ORT_UNUSED_PARAMETER(d);
+    ORT_UNUSED_PARAMETER(a);
+    ORT_UNUSED_PARAMETER(b);
+#endif
+  }
+};
+
+template <int KSplit, typename AType>
+__global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
+                                                  const AType* __restrict__ input_a,
+                                                  const __nv_fp8_e4m3* __restrict__ input_b,
+                                                  const float* __restrict__ weight_scale,
+                                                  const AType* __restrict__ bias,
+                                                  const float* __restrict__ act_scale,
+                                                  int m,
+                                                  int n,
+                                                  int k,
+                                                  int block_size,
+                                                  int k_blocks) {
+  using Mma = Fp8GemvMma<AType>;
+
+  const bool act_qdq = act_scale != nullptr;
+  const float a_scale = act_qdq ? *act_scale : 0.f;
+  const float a_inv_scale = a_scale != 0.f ? 1.0f / a_scale : 0.f;
+
+  const int lane = threadIdx.x;
+  const int warp = threadIdx.y;
+  // See the fragment-ownership table above: `g` indexes the A rows (output columns col_lo/col_hi)
+  // and the B column (activation row); `t` indexes the k sub-slice and, in the accumulator, the
+  // output rows 2t / 2t + 1 this lane stores.
+  const int g = lane >> 2;
+  const int t = lane & 3;
+  const int windows = k >> 6;
+
+  const int col_lo = blockIdx.x * 16 + g;
+  const int col_hi = col_lo + 8;
+  const bool lo_ok = col_lo < n;
+  const bool hi_ok = col_hi < n;
+
+  const bool a_ok = g < m;
+  const size_t a_off = static_cast<size_t>(g) * k + (t << 4);
+
+  float acc[4] = {0.f, 0.f, 0.f, 0.f};   // scaled, summed over K blocks
+  float accb[4] = {0.f, 0.f, 0.f, 0.f};  // unscaled, within the current K block
+  int cur_kb = -1;
+
+  for (int wi = warp; wi < windows; wi += KSplit) {
+    const int k0 = wi << 6;
+    const int kb = k0 / block_size;
+    if (kb != cur_kb) {
+      if (cur_kb >= 0) {
+        const float s_lo = lo_ok ? weight_scale[static_cast<size_t>(col_lo) * k_blocks + cur_kb] : 0.f;
+        const float s_hi = hi_ok ? weight_scale[static_cast<size_t>(col_hi) * k_blocks + cur_kb] : 0.f;
+        acc[0] += accb[0] * s_lo;
+        acc[1] += accb[1] * s_lo;
+        acc[2] += accb[2] * s_hi;
+        acc[3] += accb[3] * s_hi;
+        accb[0] = accb[1] = accb[2] = accb[3] = 0.f;
+      }
+      cur_kb = kb;
+    }
+
+    // Activation: 32 contiguous bytes of row g (row >= m reads as zero).
+    uint4 a_raw[2];
+    if (a_ok) {
+      const uint4* ap = reinterpret_cast<const uint4*>(input_a + a_off + k0);
+      a_raw[0] = ap[0];
+      a_raw[1] = ap[1];
+      if (act_qdq) {
+        Fp8ActQdq16<AType>(a_raw[0], a_inv_scale, a_scale);
+        Fp8ActQdq16<AType>(a_raw[1], a_inv_scale, a_scale);
+      }
+    } else {
+      a_raw[0] = make_uint4(0, 0, 0, 0);
+      a_raw[1] = make_uint4(0, 0, 0, 0);
+    }
+    const uint32_t* av = reinterpret_cast<const uint32_t*>(a_raw);
+
+    // Weight: one uint4 per half of the 16-column tile.
+    const uint4 w_lo = lo_ok
+                           ? *reinterpret_cast<const uint4*>(input_b + static_cast<size_t>(col_lo) * k + k0 + (t << 4))
+                           : make_uint4(0, 0, 0, 0);
+    const uint4 w_hi = hi_ok
+                           ? *reinterpret_cast<const uint4*>(input_b + static_cast<size_t>(col_hi) * k + k0 + (t << 4))
+                           : make_uint4(0, 0, 0, 0);
+
+    uint32_t b_lo[8], b_hi[8];
+    Mma::Cvt16(w_lo, b_lo);
+    Mma::Cvt16(w_hi, b_hi);
+
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      const uint32_t ra[4] = {b_lo[2 * j], b_hi[2 * j], b_lo[2 * j + 1], b_hi[2 * j + 1]};
+      const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
+      Mma::Mma(accb, ra, rb);
+    }
+  }
+
+  if (cur_kb >= 0) {
+    const float s_lo = lo_ok ? weight_scale[static_cast<size_t>(col_lo) * k_blocks + cur_kb] : 0.f;
+    const float s_hi = hi_ok ? weight_scale[static_cast<size_t>(col_hi) * k_blocks + cur_kb] : 0.f;
+    acc[0] += accb[0] * s_lo;
+    acc[1] += accb[1] * s_lo;
+    acc[2] += accb[2] * s_hi;
+    acc[3] += accb[3] * s_hi;
+  }
+
+  if constexpr (KSplit > 1) {
+    __shared__ float red[KSplit * 32 * 4];
+    float* slot = red + (warp * 32 + lane) * 4;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      slot[i] = acc[i];
+    }
+    __syncthreads();
+    if (warp != 0) {
+      return;
+    }
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      acc[i] = 0.f;
+    }
+    for (int ws = 0; ws < KSplit; ++ws) {
+      const float* p = red + (ws * 32 + lane) * 4;
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        acc[i] += p[i];
+      }
+    }
+  }
+
+  // Lane (g, t) owns y[2t, col_lo], y[2t + 1, col_lo], y[2t, col_hi], y[2t + 1, col_hi].
+  const int row = t << 1;
+  const float bias_lo = (bias != nullptr && lo_ok) ? to_float<AType>(bias[col_lo]) : 0.f;
+  const float bias_hi = (bias != nullptr && hi_ok) ? to_float<AType>(bias[col_hi]) : 0.f;
+  if (row < m) {
+    if (lo_ok) {
+      output[static_cast<size_t>(row) * n + col_lo] = from_float<AType>(acc[0] + bias_lo);
+    }
+    if (hi_ok) {
+      output[static_cast<size_t>(row) * n + col_hi] = from_float<AType>(acc[2] + bias_hi);
+    }
+  }
+  if (row + 1 < m) {
+    if (lo_ok) {
+      output[static_cast<size_t>(row + 1) * n + col_lo] = from_float<AType>(acc[1] + bias_lo);
+    }
+    if (hi_ok) {
+      output[static_cast<size_t>(row + 1) * n + col_hi] = from_float<AType>(acc[3] + bias_hi);
+    }
+  }
+}
+
+// Kill switch for A/B testing the tensor-core path against the FMA path in the same binary.
+bool Fp8GemvMmaEnabled() {
+  static bool const enabled = onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_GEMV_MMA", true);
+  return enabled;
 }
 
 }  // namespace
@@ -476,11 +797,13 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const void* b_fp8,
                                       const float* weight_scale,
                                       const void* bias,
+                                      const float* act_scale,
                                       int m,
                                       int n,
                                       int k,
                                       int block_size,
                                       bool is_bf16,
+                                      const cudaDeviceProp& device_prop,
                                       cudaStream_t stream) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   if (m <= 0 || n <= 0 || k <= 0) {
@@ -493,9 +816,47 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   ORT_RETURN_IF_NOT(block_size % 16 == 0,
                     "MatMulBlockQuantizedFp8Weight GEMV requires block_size divisible by 16, got ", block_size, ".");
   const int k_blocks = (k + block_size - 1) / block_size;
+  const auto* b = reinterpret_cast<const __nv_fp8_e4m3*>(b_fp8);
+
+  // Tensor-core path (SM80+). Beats the FMA kernel at every M on H200: 1.06-1.23x at M == 1 and
+  // 1.4-1.87x at M == 4, where the FMA kernel is ALU bound. Needs 64-element K windows, and at
+  // least 4 of them so KSplit warps have something to do.
+  //
+  // M <= 8 is a hard requirement, not a heuristic: one warp owns a 16-column x 8-row output tile,
+  // where lane (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns
+  // 16 * blockIdx.x + g and + 8, and stores output rows 2t and 2t + 1 of those two columns. Rows
+  // beyond the mma's 8-row N extent have nowhere to live.
+  if (device_prop.major >= 8 && m <= 8 && k % 64 == 0 && k >= 256 && block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
+    const int windows = k / 64;
+    int k_split = (n >= 8192) ? 8 : 16;  // wide N already fills the grid, so fewer warps per block
+    if (windows < k_split) {
+      k_split = (windows >= 8) ? 8 : 4;
+    }
+    const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
+    const auto launch_mma = [&]<int KSplit>() {
+      const dim3 mma_threads{32, KSplit};
+      if (is_bf16) {
+        MatMulBlockScaledFp8MmaGemvKernel<KSplit><<<mma_blocks, mma_threads, 0, stream>>>(
+            reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
+            weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks);
+      } else {
+        MatMulBlockScaledFp8MmaGemvKernel<KSplit><<<mma_blocks, mma_threads, 0, stream>>>(
+            reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
+            weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks);
+      }
+    };
+    if (k_split == 16) {
+      launch_mma.template operator()<16>();
+    } else if (k_split == 8) {
+      launch_mma.template operator()<8>();
+    } else {
+      launch_mma.template operator()<4>();
+    }
+    return CUDA_CALL(cudaGetLastError());
+  }
+
   constexpr int kWarpsPerBlock = 8;
   const dim3 threads{32, kWarpsPerBlock};
-  const auto* b = reinterpret_cast<const __nv_fp8_e4m3*>(b_fp8);
   const auto launch = [&]<int RowsPerWarp, int ColsPerWarp, int Unroll>() {
     const int cols_per_block = kWarpsPerBlock * ColsPerWarp;
     const dim3 blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block),
@@ -503,11 +864,11 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
     if (is_bf16) {
       MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
-          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), m, n, k, block_size, k_blocks);
+          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks);
     } else {
       MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
-          weight_scale, reinterpret_cast<const half*>(bias), m, n, k, block_size, k_blocks);
+          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks);
     }
   };
 
@@ -515,9 +876,19 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   // single wave, so widening each warp (ColsPerWarp) and pre-issuing loads (Unroll) buys
   // memory-level parallelism at no real occupancy cost. It only pays once N is large
   // enough that dividing the column count still leaves the GPU full -- below N == 4096
-  // the wider tiles measured slower than one column per warp on H200, and for M > 1 the
-  // extra live registers per warp (RowsPerWarp * ColsPerWarp accumulators plus the
-  // pre-issued loads) cost more than the extra parallelism is worth.
+  // the wider tiles measured slower than one column per warp on H200.
+  //
+  // M in [2, 4] is speculative decode (the MTP verify forward is N+1 tokens wide). There
+  // RowsPerWarp > 1 already reads the weight once for every row, so the kernel is ALU
+  // bound rather than bandwidth bound, and ColsPerWarp pays for a second reason: it
+  // amortizes the fp32 widening of A across columns (see the hoisted path in the kernel).
+  // ColsPerWarp is capped so that gridDim.x stays >= ~128 blocks (H200 has 132 SMs) --
+  // below that the lost column parallelism costs more than the saved instructions.
+  // Measured on H200 (us, M == 4, vs the previous <R,1,1> and vs cuBLAS fp16):
+  //   8192x2048  10.9 cublas | 13.7 <4,1,1> | 9.7 <4,4,1>
+  //   4096x2048   8.3 cublas |  8.1 <4,1,1> | 6.9 <4,4,1>
+  //   2048x4096   8.3 cublas |  9.0 <4,1,1> | 7.9 <4,2,2>
+  //    512x2048   7.3 cublas |  5.0 <4,1,1> | 4.6 <4,1,2>
   if (m == 1) {
     if (n >= 8192) {
       launch.template operator()<1, 4, 2>();
@@ -527,9 +898,21 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
       launch.template operator()<1, 1, 1>();
     }
   } else if (m <= 2) {
-    launch.template operator()<2, 1, 1>();
+    if (n >= 8192) {
+      launch.template operator()<2, 4, 1>();
+    } else if (n >= 2048) {
+      launch.template operator()<2, 2, 1>();
+    } else {
+      launch.template operator()<2, 1, 2>();
+    }
   } else if (m <= 4) {
-    launch.template operator()<4, 1, 1>();
+    if (n >= 4096) {
+      launch.template operator()<4, 4, 1>();
+    } else if (n >= 2048) {
+      launch.template operator()<4, 2, 2>();
+    } else {
+      launch.template operator()<4, 1, 2>();
+    }
   } else {
     launch.template operator()<8, 1, 1>();
   }
@@ -545,6 +928,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   ORT_UNUSED_PARAMETER(k);
   ORT_UNUSED_PARAMETER(block_size);
   ORT_UNUSED_PARAMETER(is_bf16);
+  ORT_UNUSED_PARAMETER(device_prop);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp8Weight requires CUDA 11.8 or later.");
 #endif

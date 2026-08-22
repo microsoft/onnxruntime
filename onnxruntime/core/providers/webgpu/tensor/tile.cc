@@ -5,6 +5,7 @@
 #include "core/providers/webgpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 #include <limits>
@@ -12,22 +13,6 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Tile,
-    kOnnxDomain,
-    6, 12,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPU, 1),
-    Tile);
-
-ONNX_OPERATOR_KERNEL_EX(
-    Tile,
-    kOnnxDomain,
-    13,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPU, 1),
-    Tile);
 
 Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -44,7 +29,16 @@ Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << input.IndicesSet("input_indices", i, input_dim_value) << ";\n";
   }
 
-  shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
+  if (is_int64_) {
+    // For int64 (stored as vec2<u32>), copy the raw storage bits to preserve the full
+    // 64-bit value without loss. Using GetByIndices would silently truncate to i32.
+    const auto input_value =
+        input.GetByOffset("input_raw_offset", /*use_storage_type=*/true);
+    shader.MainFunctionBody() << "let input_raw_offset = " << input.IndicesToOffset("input_indices") << ";\n"
+                              << output.SetByOffset("global_idx", input_value, /*use_storage_type=*/true);
+  } else {
+    shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
+  }
 
   return Status::OK();
 }
@@ -132,7 +126,8 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  TileProgram program{};
+  bool is_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
+  TileProgram program{is_int64};
   program
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({output_tensor})
@@ -140,6 +135,46 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {repeats}});
   return context.RunProgram(program);
+}
+
+KernelCreateInfo CreateTileVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Tile>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Tile")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(start_version, end_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+KernelCreateInfo CreateTileKernelInfo(int since_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Tile>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Tile")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(since_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
 }
 
 }  // namespace webgpu

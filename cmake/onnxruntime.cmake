@@ -121,6 +121,18 @@ if(onnxruntime_BUILD_SHARED_LIB)
       string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
     endif()
 
+    if(onnxruntime_USE_TELEMETRY)
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      else()
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      endif()
+    endif()
+
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
     configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
     configure_file(
@@ -297,8 +309,15 @@ else()
   )
 endif()
 
-if(WIN32)
+# Delay-load flags only apply to the actual onnxruntime.dll. In a static build the onnxruntime target is an
+# INTERFACE library, which rejects the PRIVATE keyword ("may only set INTERFACE properties on INTERFACE targets"),
+# and delay-loading is meaningless for a static lib anyway. Consumers that need delay-load in a static build (e.g.
+# the WebGPU plugin EP DLL) apply onnxruntime_DELAYLOAD_FLAGS to their own target.
+if(WIN32 AND onnxruntime_BUILD_SHARED_LIB)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  if(onnxruntime_DELAYLOAD_FLAGS)
+    target_link_libraries(onnxruntime PRIVATE delayimp.lib)
+  endif()
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT WIN32)

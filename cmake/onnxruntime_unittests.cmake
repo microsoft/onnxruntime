@@ -1023,6 +1023,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
   if(TARGET onnxruntime_providers_cuda_llm)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm)
   endif()
+  if(TARGET onnxruntime_providers_cuda_llm_fp4)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm_fp4)
+  endif()
   if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1063,6 +1066,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_common.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cufft_loader.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/fpgeneric.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cu"
       "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc"
@@ -1159,6 +1163,15 @@ endif()
 
 partition_provider_test_srcs(all_tests onnxruntime_provider_test_srcs onnxruntime_test_all_srcs)
 
+if (onnxruntime_USE_OPENVINO)
+  # ov_protobuf_utils.cpp lives under core/providers (not test/), so partition_provider_test_srcs
+  # would route it to onnxruntime_test_all. Append it here after the partition so it is compiled into
+  # onnxruntime_provider_test alongside openvino_ov_protobuf_utils_test.cc, because the OpenVINO EP
+  # is a dynamically-loaded module and is not statically linked into the test binary.
+  list(APPEND onnxruntime_provider_test_srcs
+       ${ONNXRUNTIME_ROOT}/core/providers/openvino/ov_protobuf_utils.cpp)
+endif()
+
 # Workarounds for onnxruntime test targets.
 function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
@@ -1231,6 +1244,20 @@ if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
     ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
     ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
+
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  # Route the WebGPU EP through the dynamic plugin EP infrastructure in plugin builds
+  # (--use_webgpu shared_lib). Same rationale as the CUDA-as-plugin block above: without initializing the
+  # infra in test_main.cc, WebGpuExecutionProviderWithOptions() (default_providers.cc, adapters branch)
+  # returns null and every WebGPU test skips itself, leaving the plugin path with no test coverage.
+  target_compile_definitions(onnxruntime_test_all PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>"
+    ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
+  # The plugin EP DLL is dlopen'd at test-run time (not linked), so add an explicit build-order
+  # dependency to ensure it (and its co-located dawn/dxcompiler DLLs) exist before the tests run.
+  add_dependencies(onnxruntime_test_all onnxruntime_providers_webgpu)
 endif()
 
 if (MSVC)
@@ -1520,7 +1547,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc
-      ${BENCHMARK_DIR}/layer_normalization.cc)
+      ${BENCHMARK_DIR}/layer_normalization.cc
+      $<$<BOOL:${onnxruntime_USE_WEBGPU}>:${BENCHMARK_DIR}/paged_attention.cc>)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     target_compile_definitions(onnxruntime_benchmark PRIVATE ${mlas_private_compile_definitions})

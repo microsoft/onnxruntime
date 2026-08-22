@@ -37,6 +37,7 @@ Source files:
 3. [Dispatch Chain](#3-dispatch-chain)
 4. [Decode Path - Fused GEMV](#4-decode-path---fused-gemv)
 5. [Default Path - Dequantize + cuBLAS](#5-default-path---dequantize--cublas)
+   - [5.1 Tiling the dequantization scratch over N](#51-tiling-the-dequantization-scratch-over-n)
 6. [Optional W8A8 Activation Path](#6-optional-w8a8-activation-path)
 7. [Testing and Benchmarking](#7-testing-and-benchmarking)
 
@@ -129,6 +130,42 @@ This path avoids a materialized dequant buffer and runs on all supported CUDA
 architectures because it uses regular FP8 conversion and warp-shuffle reduction,
 not architecture-specific block-scaled tensor cores.
 
+### 4.1 Tensor-Core Sub-Path (SM80+)
+
+When the device is SM80 or newer and, in addition to the predicate above,
+
+- `K % 64 == 0` and `K >= 256`,
+- `block_size % 64 == 0`,
+- `M <= 8` (the mma "N" extent),
+
+the GEMV runs `MatMulBlockScaledFp8MmaGemvKernel`, which replaces the FP32 FMA
+dot products with `mma.m16n8k16` (FP32 accumulate). The FMA kernel is ALU bound
+for `M > 1` because it re-widens `A` and `B` to FP32 for every row/column pair;
+the tensor-core kernel cuts instructions per weight byte roughly 10x.
+
+The weight is fed to the mma **A** operand and the activation to the **B**
+operand, so both fragments match the tensors' natural row-major layouts. The mma
+"M" extent is therefore the output column count (16 columns per warp) and the mma
+"N" extent is `M` (up to 8 rows). A lane does not own a whole dot product: with
+`g = lane >> 2` and `t = lane & 3`, it supplies the weights of output columns
+`g` and `g + 8` (the A fragment) and activation row `g` (the B fragment), and the
+accumulator it receives back covers output rows `2t` and `2t + 1` of those two
+columns. Loads are therefore keyed off `g` and stores off `t`; the kernel source
+carries the full fragment table, and the `GemvTensorCoreLaneOwnership*` tests
+probe the mapping with a one-hot activation. Fragment loads are made fully
+coalesced by permuting the K axis - K is a reduction axis, so any permutation
+applied to both operands leaves the result unchanged - which lets each lane load
+one contiguous `uint4` of weight bytes per 64-element K window and feed four mma
+instructions with it. `KSplit` warps per block take a strided share of the K
+windows and are reduced through shared memory, which restores the memory-level
+parallelism lost by giving each warp 16 columns instead of 1-4.
+
+Every individual product is exact (E4M3 to FP16/BF16 is lossless) and the mma
+accumulates in FP32 just like the FMA path, but the summation order differs, so
+the result is **not** bit-identical to the FMA kernel. Note also that the mma
+path is preferred over the FMA kernel by default on SM80+, including at `M == 1`.
+Set `ORT_FP8_GEMV_MMA=0` to fall back to the FMA kernel.
+
 ---
 
 ## 5. Default Path - Dequantize + cuBLAS
@@ -159,6 +196,32 @@ back `LaunchDequantizeBlockScaledFp8`:
 
 This keeps the GEMM in the activation type and runs on any CUDA architecture
 with FP8 conversion intrinsics (CUDA >= 11.8). It is the default prefill path.
+
+### 5.1 Tiling the dequantization scratch over N
+
+A full `[N, K]` scratch is 2.37 GiB for a 248320 x 5120 LM head, and it is
+allocated for the whole GEMM even though the GEMM reads it once. The scratch is
+therefore capped and the dequantize + GEMM pair is run over N tiles that fit
+inside the cap. Because the row-major `[M, N]` output is column-major `[N, M]`
+to cuBLAS, an N tile is a plain row offset into `Y`, so no extra copy is needed:
+
+```
+for n_offset in 0, tile_rows, 2 * tile_rows, ...:
+    dequantize B[n_offset : n_offset + rows, :] into the scratch
+    cublasGemmHelper(...) writing Y + n_offset
+```
+
+`ORT_FP8_DEQUANT_SCRATCH_MIB` sets the cap in MiB (default 256). The default was
+chosen by sweeping it on Qwen3.8-27B at an 8K prompt:
+
+| cap | peak memory (MiB) | reduction vs. untiled (MiB) | TTFT change |
+|---|---:|---:|---:|
+| untiled | 32609 | baseline | baseline |
+| 1 GiB | 29509 | -3100 | +5.2% |
+| **256 MiB** | **28503** | **-4106** | **+1.1%** |
+| 128 MiB | 28503 | -4106 | +13.9% |
+
+Shapes small enough to fit the cap take a single tile and are unaffected.
 
 ---
 

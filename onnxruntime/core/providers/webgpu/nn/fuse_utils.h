@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <iomanip>
+#include <limits>
 #include <string>
 #include <sstream>
 
@@ -26,6 +28,10 @@ using Activation = struct Activation {
   std::string ToString() const {
     std::stringstream oss;
     oss << "ActivationKind: " << static_cast<int>(activation_kind_) << ";";
+    // Increase the serialization precision so that activation_params_.values_ are captured with
+    // max_digits10 significant digits rather than the default 6. This ensures that WGSL shaders
+    // embedding different activation constants receive distinct cache keys.
+    oss << std::setprecision(std::numeric_limits<float>::max_digits10);
     oss << "ActivationParams: " << activation_params_.values_[0] << ";";
     oss << "ActivationParams: " << activation_params_.values_[1] << ";";
     return oss.str();

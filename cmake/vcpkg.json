@@ -97,11 +97,26 @@
       "dependencies": []
     },
     "telemetry": {
-      "description": "Build with 1DS telemetry support (cpp-client-telemetry) on non-Windows platforms",
+      "description": "Build with static 1DS telemetry support on non-Windows platforms",
       "dependencies": [
         {
           "name": "cpp-client-telemetry",
           "platform": "!windows & !android & !emscripten & !uwp"
+        },
+        {
+          "name": "curl",
+          "default-features": false,
+          "features": [
+            "mbedtls"
+          ],
+          "platform": "linux"
+        },
+        {
+          "name": "mbedtls",
+          "features": [
+            "pthreads"
+          ],
+          "platform": "linux"
         },
         {
           "name": "sqlite3",

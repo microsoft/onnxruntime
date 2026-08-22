@@ -3,12 +3,16 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+// Register int64 Clip kernels (dedicated ClipInt64 kernel) with conditional int64 support.
+void RegisterClipInt64Kernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 class UnaryElementwiseProgram final : public Program<UnaryElementwiseProgram> {
  public:

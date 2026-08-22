@@ -375,6 +375,17 @@ WEBGPU_CLIP_KERNEL_FROM_12(uint32_t)
 // dedicated ClipInt64 kernel above; the 4-byte templated Clip cannot cover int64.
 WEBGPU_CLIP_INT64_KERNEL()
 
+void RegisterClipInt64Kernels(KernelRegistry& kernel_registry, bool enable_int64) {
+  // int64 Clip is opt-in: register the dedicated ClipInt64 kernels only when int64 support is
+  // enabled, consistent with the other int64 kernels (Cast, Expand, Range, ...).
+  if (enable_int64) {
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, int64_t, Clip)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Clip)>()));
+  }
+}
+
 //
 // activation
 //

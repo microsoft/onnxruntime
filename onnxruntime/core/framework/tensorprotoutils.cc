@@ -312,11 +312,13 @@ namespace utils {
 
 bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   if (HasExternalData(ten_proto)) {
-    // Retrieve the external data info
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
-        PathString location = ToWideString(entry.value());
-        return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
+        const PathString location = ToWideString(entry.value());
+        if (location == kTensorProtoLittleEndianMemoryAddressTag ||
+            location == kTensorProtoNativeEndianMemoryAddressTag) {
+          return true;
+        }
       }
     }
   }
@@ -407,11 +409,12 @@ static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const st
 ///
 /// Validation steps:
 ///   1. Reject empty paths
-///   2. Reject absolute paths (including Unix-style '/...' on Windows)
-///   3. Skip remaining checks on WASM if no filesystem is available
-///   4. Resolve `model_dir / external_data_path` to a canonical path (resolving symlinks for existing segments)
-///   5. Verify the canonical path is a prefix-child of the canonical model_dir (containment check)
-///   6. Verify the resolved file exists on disk
+///   2. Reject internal in-memory reference tags
+///   3. Reject absolute paths (including Unix-style '/...' on Windows)
+///   4. Skip remaining checks on WASM if no filesystem is available
+///   5. Resolve `model_dir / external_data_path` to a canonical path (resolving symlinks for existing segments)
+///   6. Verify the canonical path is a prefix-child of the canonical model_dir (containment check)
+///   7. Verify the resolved file exists on disk
 ///
 /// This function does NOT handle the symlinked-model fallback — that is the responsibility of
 /// ValidateExternalDataPath(), which calls this function as a first pass.
@@ -420,13 +423,18 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   // Step 1: Reject empty external data paths.
   ORT_RETURN_IF(external_data_path.empty(), "Empty external data path not allowed");
 
-  // Step 2: Reject absolute paths.
+  // Step 2: Reject internal in-memory reference tags.
+  ORT_RETURN_IF(external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag,
+                "In-memory external data reference tag is not a valid file path");
+
+  // Step 3: Reject absolute paths.
   // Use !root_path().empty() to reject paths like '/some/path' even on Windows (where is_absolute()
   // requires a drive letter).
   ORT_RETURN_IF(!external_data_path.root_path().empty(), "Absolute path not allowed for external data location");
 
 #if defined(__wasm__)
-  // Step 3 (WASM only): If we can't access the current working directory, assume the WASM environment
+  // Step 4 (WASM only): If we can't access the current working directory, assume the WASM environment
   // does not have a virtual filesystem and defer validation to an ExternalDataLoader for the WASM EP.
   std::error_code error_code;
   std::filesystem::current_path(error_code);
@@ -435,7 +443,7 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   }
 #endif
 
-  // Step 4: Resolve both the model directory and the combined path to canonical forms.
+  // Step 5: Resolve both the model directory and the combined path to canonical forms.
   // WeaklyCanonicalPath resolves symlinks for existing path segments while lexically normalizing
   // non-existent trailing segments.
   std::filesystem::path resolved_dir = model_dir.empty() ? std::filesystem::path{"."} : model_dir;
@@ -445,8 +453,8 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(resolved_dir, model_dir_canonical));
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir_canonical / external_data_path, external_data_path_canonical));
 
-  // Step 5: Containment check — verify the resolved external data path starts with the model directory.
-  // Step 6: Existence check — verify the file actually exists on disk.
+  // Step 6: Containment check — verify the resolved external data path starts with the model directory.
+  // Step 7: Existence check — verify the file actually exists on disk.
   if (HasPathComponentPrefix(model_dir_canonical, external_data_path_canonical)) {
     bool path_exists = false;
     ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
@@ -466,7 +474,7 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
 /// Validation flow:
 ///   1. Try ValidateExternalDataPathFromDir against the model file's parent directory.
 ///      If it passes, return success.
-///   2. If it fails due to empty/absolute external_data_path, return the error immediately
+///   2. If it fails due to an empty/absolute path or an in-memory reference tag, return the error immediately
 ///      (these are input errors unrelated to the model location).
 ///   3. If model_path is empty (model loaded from bytes), wrap the error with context.
 ///   4. If model_path is a symlink, try the symlink fallback:
@@ -494,9 +502,11 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   }
 
   // --- Guard: Don't retry for input-validation errors ---
-  // Empty and absolute paths are always invalid regardless of model directory or symlinks.
+  // Empty paths, absolute paths, and in-memory reference tags are always invalid regardless of model directory.
   // Return the error directly without misleading "escapes directory" context.
-  if (external_data_path.empty() || !external_data_path.root_path().empty()) {
+  if (external_data_path.empty() || !external_data_path.root_path().empty() ||
+      external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
+      external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag) {
     return status;
   }
 
