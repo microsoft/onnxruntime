@@ -35,8 +35,8 @@ export declare namespace Binding {
     readonly inputMetadata: ValueMetadata[];
     readonly outputMetadata: ValueMetadata[];
 
-    run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): ReturnType;
-
+    run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
+    runSync(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): ReturnType;
     endProfiling(): void;
 
     dispose(): void;
