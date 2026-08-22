@@ -7,6 +7,7 @@
 #include "core/session/plugin_ep/ep_factory_internal_impl.h"
 
 #include "core/graph/constants.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 namespace onnxruntime {
 
@@ -16,9 +17,10 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
   // rather than queried from the OrtEnv singleton inside GetSupportedDevices: internal EPs are
   // registered while the OrtEnv creation mutex is already held on this thread, so querying the singleton
   // there would self-deadlock.
-  explicit WebGpuEpFactory(bool allow_virtual_devices)
+  WebGpuEpFactory(bool allow_virtual_devices, const webgpu::WebGpuDeviceConfig& device_config)
       : EpFactoryInternalImpl(kWebGpuExecutionProvider, "Microsoft", OrtDevice::VendorIds::MICROSOFT),
-        allow_virtual_devices_{allow_virtual_devices} {
+        allow_virtual_devices_{allow_virtual_devices},
+        device_config_{device_config} {
   }
 
   ~WebGpuEpFactory() override;
@@ -32,6 +34,7 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
                                  size_t* p_num_ep_devices) noexcept override;
 
   const bool allow_virtual_devices_;
+  const webgpu::WebGpuDeviceConfig device_config_;
 
   // Owned virtual GPU hardware device created on demand by GetSupportedDevices when the environment
   // allows virtual devices (OrtEnv config "allow_virtual_devices"=1) and no real GPU device was

@@ -631,7 +631,8 @@ Status Environment::CreateAndRegisterInternalEps() {
   // OrtEnv singleton there: internal EPs are registered while OrtEnv's creation mutex is already held on
   // this thread, so the query would self-deadlock.
   const bool allow_virtual_devices = num_allow_virtual_device_uses_ > 0;
-  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps(allow_virtual_devices);
+  auto internal_ep_libraries =
+      EpLibraryInternal::CreateInternalEps(allow_virtual_devices, GetConfigEntries());
   for (auto& ep_library : internal_ep_libraries) {
     // we do a std::move in the function call so need a valid pointer for the args after the move
     auto* internal_library_ptr = ep_library.get();

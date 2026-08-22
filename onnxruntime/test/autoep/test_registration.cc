@@ -1,17 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <filesystem>
+#include <string_view>
+#include <vector>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_env_config_keys.h"
+
+#if defined(USE_WEBGPU)
+#include "core/graph/constants.h"
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/webgpu_context.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+#endif
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" void ortenv_setup();
@@ -220,5 +234,185 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
 }
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+TEST(OrtEpLibrary, BuiltInWebGpuReadsDeviceOptionsFromEnvironment) {
+  ortenv_teardown();
+
+  auto run_test = [&]() -> void {
+    Ort::KeyValuePairs env_configs;
+    env_configs.Add(kOrtEnvAllowVirtualDevices, "1");
+    env_configs.Add(kOrtEnvWebGpuEnableZeroBuffer, "0");
+
+    OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
+    env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    env_options.log_id = "BuiltInWebGpuReadsDeviceOptionsFromEnvironment";
+    env_options.config_entries = env_configs.GetConst();
+
+    Ort::Env tmp_env(&env_options);
+
+    std::vector<Ort::ConstEpDevice> selected;
+    for (const auto& ep_device : tmp_env.GetEpDevices()) {
+      if (std::string_view{ep_device.EpName()} != kWebGpuExecutionProvider) {
+        continue;
+      }
+
+      const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+      const auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+      if (is_virtual != metadata.end() && is_virtual->second == "1") {
+        selected.push_back(ep_device);
+        break;
+      }
+    }
+    ASSERT_EQ(selected.size(), 1u);
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1");
+    Ort::KeyValuePairs ep_options;
+    session_options.AppendExecutionProvider_V2(tmp_env, selected, ep_options);
+
+    Ort::Session session(tmp_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+    EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(0).EnableZeroBuffer());
+  };
+
+  EXPECT_NO_FATAL_FAILURE(run_test());
+  ortenv_setup();
+}
+#endif
+
+#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
+TEST(OrtEpLibrary, WebGpuPluginReadsDeviceOptionsFromEnvironment) {
+  ortenv_teardown();
+
+  auto run_test = [&]() -> void {
+    Ort::KeyValuePairs env_configs;
+    env_configs.Add(kOrtEnvWebGpuEnableZeroBuffer, "invalid");
+
+    OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
+    env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    env_options.log_id = "WebGpuPluginReadsDeviceOptionsFromEnvironment";
+    env_options.config_entries = env_configs.GetConst();
+
+    Ort::Env tmp_env(&env_options);
+    const auto library_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"));
+
+    try {
+      tmp_env.RegisterExecutionProviderLibrary("webgpu_device_config_test", library_path.c_str());
+      FAIL() << "Expected WebGPU plugin registration to reject an invalid enableZeroBuffer value.";
+    } catch (const Ort::Exception& ex) {
+      EXPECT_NE(std::string_view{ex.what()}.find("Invalid enableZeroBuffer value"), std::string_view::npos);
+    }
+  };
+
+  EXPECT_NO_FATAL_FAILURE(run_test());
+  ortenv_setup();
+}
+#endif
+
+#if defined(USE_WEBGPU)
+TEST(OrtEpLibrary, WebGpuZeroBufferOptionControlsReusedAllocations) {
+  ortenv_teardown();
+  struct OrtEnvRestorer {
+    ~OrtEnvRestorer() { ortenv_setup(); }
+  } ort_env_restorer;
+
+  auto run_test = [](bool enable_zero_buffer) -> bool {
+    Ort::KeyValuePairs env_configs;
+    env_configs.Add(kOrtEnvWebGpuEnableZeroBuffer, enable_zero_buffer ? "1" : "0");
+
+    OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
+    env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    env_options.log_id = "WebGpuZeroBufferOptionControlsReusedAllocations";
+    env_options.config_entries = env_configs.GetConst();
+
+    Ort::Env tmp_env(&env_options);
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    const auto library_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"));
+    tmp_env.RegisterExecutionProviderLibrary("webgpu_zero_buffer_test", library_path.c_str());
+#endif
+
+    Ort::ConstEpDevice webgpu_device{nullptr};
+    for (const auto& ep_device : tmp_env.GetEpDevices()) {
+      if (std::string_view{ep_device.EpName()} != kWebGpuExecutionProvider) {
+        continue;
+      }
+
+      const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+      const auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+      if (is_virtual == metadata.end() || is_virtual->second != "1") {
+        webgpu_device = ep_device;
+        break;
+      }
+    }
+
+    if (!webgpu_device) {
+      return false;
+    }
+
+    Ort::SessionOptions session_options;
+    Ort::KeyValuePairs ep_options;
+    std::vector<Ort::ConstEpDevice> selected{webgpu_device};
+    session_options.AppendExecutionProvider_V2(tmp_env, selected, ep_options);
+    const auto model_path = std::filesystem::path{ORT_TSTR_ON_MACRO(__FILE__)}.parent_path().parent_path() /
+                            ORT_TSTR("testdata/mul_1.onnx");
+    Ort::Session session(tmp_env, model_path.c_str(), session_options);
+
+    Ort::MemoryInfo device_memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    Ort::Allocator device_allocator(session, device_memory_info);
+
+    constexpr std::array<int64_t, 1> shape{16};
+    std::array<float, 16> nonzero_data{
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+        9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+    Ort::AllocatorWithDefaultOptions cpu_allocator;
+    auto source = Ort::Value::CreateTensor<float>(cpu_allocator.GetInfo(), nonzero_data.data(),
+                                                  nonzero_data.size(), shape.data(), shape.size());
+
+    const void* released_buffer = nullptr;
+    {
+      auto device_tensor = Ort::Value::CreateTensor<float>(device_allocator, shape.data(), shape.size());
+      released_buffer = device_tensor.GetTensorRawData();
+
+      auto status = tmp_env.CopyTensor(source, device_tensor, nullptr);
+      EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+      if (!status.IsOK()) {
+        return true;
+      }
+    }
+
+    auto reused_tensor = Ort::Value::CreateTensor<float>(device_allocator, shape.data(), shape.size());
+    if (reused_tensor.GetTensorRawData() != released_buffer) {
+      ADD_FAILURE() << "The WebGPU allocator did not reuse the released buffer.";
+      return true;
+    }
+
+    std::array<float, 16> actual_data{};
+    auto destination = Ort::Value::CreateTensor<float>(cpu_allocator.GetInfo(), actual_data.data(), actual_data.size(),
+                                                       shape.data(), shape.size());
+    auto status = tmp_env.CopyTensor(reused_tensor, destination, nullptr);
+    EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    if (!status.IsOK()) {
+      return true;
+    }
+
+    if (enable_zero_buffer) {
+      EXPECT_THAT(actual_data, ::testing::Each(0.0f));
+    } else {
+      EXPECT_EQ(actual_data, nonzero_data);
+    }
+
+    return true;
+  };
+
+  if (!run_test(true)) {
+    GTEST_SKIP() << "No non-virtual WebGPU device is available.";
+  }
+  EXPECT_TRUE(run_test(false));
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

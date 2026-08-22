@@ -396,7 +396,8 @@ TEST(InferenceSessionTests, WebGpuEpFactoryVirtualDevice) {
 
   // allow_virtual_devices = true, no hardware devices -> exactly one virtual GPU EP device.
   {
-    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+    EpFactoryInternal factory(
+        std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true, webgpu::WebGpuDeviceConfig{}));
     OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
     size_t num_ep_devices = 0;
     OrtStatus* status = factory.GetSupportedDevices(/*devices=*/nullptr, /*num_devices=*/0,
@@ -420,7 +421,8 @@ TEST(InferenceSessionTests, WebGpuEpFactoryVirtualDevice) {
 
   // allow_virtual_devices = false, no hardware devices -> no virtual device registered.
   {
-    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/false));
+    EpFactoryInternal factory(
+        std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/false, webgpu::WebGpuDeviceConfig{}));
     OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
     size_t num_ep_devices = 0;
     OrtStatus* status = factory.GetSupportedDevices(/*devices=*/nullptr, /*num_devices=*/0,
@@ -439,7 +441,8 @@ TEST(InferenceSessionTests, WebGpuEpFactoryVirtualDevice) {
     real_gpu.vendor = "TestVendor";
     const OrtHardwareDevice* devices[] = {&real_gpu};
 
-    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+    EpFactoryInternal factory(
+        std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true, webgpu::WebGpuDeviceConfig{}));
     OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
     size_t num_ep_devices = 0;
     OrtStatus* status = factory.GetSupportedDevices(devices, /*num_devices=*/1,
@@ -481,7 +484,8 @@ TEST(InferenceSessionTests, WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnl
   virtual_gpu.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
   const OrtHardwareDevice* devices[] = {&virtual_gpu};
 
-  EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+  EpFactoryInternal factory(
+      std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true, webgpu::WebGpuDeviceConfig{}));
 
   Ort::SessionOptions session_options;  // no session.compile_only set -> a runnable (non-compile-only) session
   const OrtSessionOptions* c_session_options = session_options;

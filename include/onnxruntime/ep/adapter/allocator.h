@@ -7,6 +7,7 @@
 #error "This header should not be included directly. Include ep/adapters.h instead."
 #endif
 
+#include <functional>
 #include <mutex>
 #include <string_view>
 #include <utility>
@@ -120,7 +121,7 @@ class Allocator : public OrtAllocator {
     impl_ = impl;
   }
 
-  using AllocatorFactory = AllocatorPtr (*)(const OrtMemoryInfo& memory_info);
+  using AllocatorFactory = std::function<AllocatorPtr(const OrtMemoryInfo& memory_info)>;
 
   /**
    * Create from an AllocatorFactory, which will be called lazily when the first allocation is made.
