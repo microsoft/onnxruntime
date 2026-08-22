@@ -85,25 +85,31 @@ During isolation:
 
 The provider uses ORT-internal code deliberately. While the implementation and the runtime live in one repository,
 reusing ORT's kernel-authoring types and operator helpers avoids duplicating code that is already maintained next to
-it. That trade stops paying once the provider ships from its own repository, and unwinding it is a large part of what
-the move is for. The coupling is not accidental, and removing it is not a correction.
+it. Moving the provider removes the condition that made that trade worthwhile: code it cannot reach from another
+repository has to be replaced or copied before the subtree builds on its own. Unwinding the coupling is a
+precondition of the move.
 
-The provider's dependencies on ORT source fall into two groups with different dispositions:
+The dividing line is the public ORT API. Everything else the provider depends on has to be addressed, whether it is
+private implementation code or a utility ORT offers but does not ship. Those dependencies fall into three groups with
+different dispositions:
 
 - **Framework surface** — the kernel-authoring types the provider is written against. Replacing these is the
   kernel-authoring foundation work in the code isolation package, not a copy decision.
 - **Operator helpers** — parameter parsing, shape math, and similar utilities shared with the CPU and CUDA EPs today
   only because everything lives in one repository. Copying these is the intended outcome, and the provider owns the
   correctness of its copies afterwards.
+- **Plugin EP implementation utilities** — `include/onnxruntime/ep/api.h`, `common.h`, and
+  `get_capability_utils.h`. ORT offers these for plugin EP implementations to use, and they depend only on the public
+  C API, gsl, and the standard library. They are not shipped in the released package, so they are not public API and
+  the provider copies them like anything else in this section. The adapter headers under
+  `include/onnxruntime/ep/adapter/` are a separate tier that the extraction retires rather than copies.
 
-The inventory is broader than source dependencies. Create a machine-reviewable inventory of:
+Create a machine-reviewable inventory of:
 
 - Private ORT headers included by provider sources.
 - Private ORT libraries in provider link interfaces.
 - Source files compiled into WebGPU targets from outside the provider root.
-- Build variables and generated files supplied by ORT.
 - Test-only dependencies on ORT internals.
-- Platform and package scripts that assume an in-tree provider.
 
 Classify each dependency:
 
@@ -128,6 +134,9 @@ with the ORT implementation.
 The isolated subtree should build against the public ORT headers and an installed or pinned ORT package, without an
 ORT source checkout.
 
+Inventory the build variables and generated files ORT's build currently supplies to the provider, since each one is
+either reproduced by the subtree build or becomes an input it must be given.
+
 The subtree build should produce:
 
 - A native shared plugin library.
@@ -149,21 +158,32 @@ Web with the provider, so the WebGPU repository builds ORT Web from a pinned ORT
 adjacent-checkout override. That revision is selected by the cross-repository version policy below. ORT separately
 validates its pinned WebGPU revision as part of ORT Web release gating.
 
-## Packaging and pipeline migration
+## Pipeline and packaging migration
 
-Python and NuGet plugin packaging sources already live under `plugin-ep-webgpu/`. What remains outside the staging
-root is the packaging and CI pipeline definitions that drive them, under `tools/ci_build/` and `.github/workflows/`.
-This workstream relocates those and rewires them to invoke the standalone build, but does not redesign the packaging
-scripts themselves.
+Python and NuGet plugin packaging sources already live under `plugin-ep-webgpu/`. The plugin build, test, and
+packaging pipeline definitions are still outside the staging root, split between
+`tools/ci_build/github/azure-pipelines/` and `.github/workflows/`. This workstream relocates those and rewires them
+to invoke the standalone build, but does not redesign the packaging scripts themselves.
 
 The pipelines invoke `tools/ci_build/build.py --use_webgpu shared_lib` and consume artifacts from ORT's build output
 locations, so they break the moment the standalone build replaces the in-tree one. The rewiring therefore lands with
 the standalone build rather than after it, and no temporary shim over `build.py` is maintained. Relocating the
 pipeline files is mechanical and happens earlier, with the rest of the staging-root move.
 
-ORT workflows that merely trigger on `plugin-ep-webgpu/rel-*` branches stay in ORT and need only their trigger
-configuration updated. Shared assets such as the WebGPU shader-key validation action are consumed by both moving and
-staying lanes, so their ownership is decided individually.
+ORT-root packaging scripts reference WebGPU independently of the plugin packages, such as `setup.py` selecting the
+retired `onnxruntime-webgpu` package name from a `--use_webgpu` flag. Inventory these alongside the pipelines. They
+belong to the retired built-in package rather than to the plugin, so they are removed with it rather than relocated.
+
+Most ORT CI lanes live under `.github/workflows/`, and the WebGPU ones do not share a single disposition. Lanes that
+build the provider statically into ORT validate a configuration that stops existing, so they are retired rather than
+rewired. `onnxruntime-web` is the exception: it keeps static linkage, against the pinned external source, along with
+the WebAssembly build and browser-test lanes that serve it. Provider-owned concerns move to the WebGPU repository,
+including external-Dawn validation, WGSL shader-key validation together with its action at
+`.github/actions/webgpu-validate-shader-key`, and the plugin shared-library build.
+
+The `plugin-ep-webgpu/rel-*` branch prefix exists only because WebGPU release branches share the ORT repository.
+Pipelines that stay in ORT drop that trigger entirely, and pipelines that move use ordinary release branches in the
+WebGPU repository.
 
 The packaging model is:
 
@@ -251,18 +271,20 @@ other. Only one lane floats, and it never blocks a merge:
 | --- | --- | --- |
 | WebGPU build | A released ORT version providing every EP API feature the provider references | Yes |
 | WebGPU minimum-version validation | The declared `MIN_ONNXRUNTIME_VERSION` runtime | Yes |
+| WebGPU browser tests | ORT Web built from the same released ORT revision as the build lane, consumed as source rather than as a package | Yes |
 | WebGPU integration | ORT main | No |
 | ORT | Its pinned WebGPU revision | Yes |
 
-Both blocking WebGPU lanes target immutable released ORT artifacts, so neither can wait on an ORT revision that does
-not yet exist. ORT advances its WebGPU pin on its own schedule and declines the update when it fails.
+The blocking WebGPU lanes all target immutable released ORT artifacts — a package for the build and minimum-version
+lanes, a source revision for browser tests — so none of them can wait on an ORT revision that does not yet exist. ORT
+advances its WebGPU pin on its own schedule and declines the update when it fails.
 
 Two ORT versions matter here, and they are not the same number:
 
 - The **build-against version** must declare every EP API the provider references, including calls reached only
   through a runtime version gate, because a gated call still needs its declaration to compile.
 - The **runtime floor**, `MIN_ONNXRUNTIME_VERSION`, is the oldest runtime the provider loads against. It can be
-  lower, because newer calls are gated at runtime through `CurrentOrtApiVersion()`.
+  lower, because newer calls are gated on the ORT API version detected at runtime.
 
 They coincide only while nothing is gated above the floor. A build against newer headers cannot detect a mis-gated
 call, so the floor has to be exercised by running against it. That is the minimum-version validation package.
