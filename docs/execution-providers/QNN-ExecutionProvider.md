@@ -14,6 +14,15 @@ It uses the Qualcomm AI Engine Direct SDK (QNN SDK) to construct a QNN graph fro
 be executed by a supported accelerator backend library.
 OnnxRuntime QNN Execution Provider can be used on Android and Windows devices with Qualcomm Snapdragon SOC's.
 
+## **NOTICE**
+{: .no_toc }
+
+Since ONNX Runtime 1.25, the [internal QNN EP](https://github.com/microsoft/onnxruntime/tree/v1.24.4/onnxruntime/core/providers/qnn) from the ONNX Runtime repository has been superseded by the [plugin QNN EP](https://github.com/onnxruntime/onnxruntime-qnn). 
+
+The plugin QNN EP is documented [here](https://github.com/onnxruntime/onnxruntime-qnn/blob/main/docs/execution_providers/QNN-ExecutionProvider.md).
+
+This page documents the internal QNN EP.
+
 ## Contents
 {: .no_toc }
 
