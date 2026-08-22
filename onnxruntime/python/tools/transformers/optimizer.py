@@ -18,6 +18,7 @@
 #  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
 
 import argparse
+import json
 import logging
 import os
 import tempfile
@@ -427,6 +428,34 @@ def get_fusion_statistics(optimized_model_path: str) -> dict[str, int]:
     return optimizer.get_fused_operator_statistics()
 
 
+def create_optimization_report(
+    *,
+    input_path: str,
+    output_path: str,
+    model_type: str,
+    opt_level: int | None,
+    use_gpu: bool,
+    provider: str | None,
+    only_onnxruntime: bool,
+    operator_statistics: dict[str, int],
+    fused_operator_statistics: dict[str, int],
+    fully_optimized: bool,
+) -> dict:
+    """Create a JSON-serializable summary of transformer optimization results."""
+    return {
+        "input": input_path,
+        "output": output_path,
+        "model_type": model_type,
+        "opt_level": opt_level,
+        "use_gpu": use_gpu,
+        "provider": provider,
+        "only_onnxruntime": only_onnxruntime,
+        "operator_statistics": dict(sorted(operator_statistics.items())),
+        "fused_operator_statistics": dict(sorted(fused_operator_statistics.items())),
+        "fully_optimized": fully_optimized,
+    }
+
+
 def _parse_arguments():
     parser = argparse.ArgumentParser(
         description="Graph optimization tool for ONNX Runtime."
@@ -435,6 +464,14 @@ def _parse_arguments():
     parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 
     parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
+
+    parser.add_argument(
+        "--report",
+        required=False,
+        type=str,
+        default=None,
+        help="optional path to write a JSON optimization report with operator and fusion statistics",
+    )
 
     parser.add_argument(
         "--model_type",
@@ -600,10 +637,13 @@ def main():
         optimizer.change_graph_inputs_to_int32()
 
     # Print the operator statistics might help end user.
-    optimizer.get_operator_statistics()
+    operator_statistics = optimizer.get_operator_statistics()
 
     fused_op_count = optimizer.get_fused_operator_statistics()
-    if "bert" in args.model_type and optimizer.is_fully_optimized(fused_op_count):
+    fully_optimized = "bert" in args.model_type and optimizer.is_fully_optimized(
+        fused_op_count
+    )
+    if fully_optimized:
         logger.info("The model has been fully optimized.")
     else:
         logger.info("The model has been optimized.")
@@ -615,6 +655,24 @@ def main():
             logger.warning("Packing mode only supports BERT like models")
 
     optimizer.save_model_to_file(args.output, args.use_external_data_format, convert_attribute=args.convert_attribute)
+
+    if args.report:
+        report = create_optimization_report(
+            input_path=args.input,
+            output_path=args.output,
+            model_type=args.model_type,
+            opt_level=args.opt_level,
+            use_gpu=args.use_gpu,
+            provider=args.provider,
+            only_onnxruntime=args.only_onnxruntime,
+            operator_statistics=operator_statistics,
+            fused_operator_statistics=fused_op_count,
+            fully_optimized=fully_optimized,
+        )
+        with open(args.report, "w", encoding="utf-8") as report_file:
+            json.dump(report, report_file, indent=2, sort_keys=True)
+            report_file.write("\n")
+        logger.info("Optimization report saved to %s", args.report)
 
 
 if __name__ == "__main__":

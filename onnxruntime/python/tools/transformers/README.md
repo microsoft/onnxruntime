@@ -22,6 +22,8 @@ Models not in the list may only be partially optimized or not optimized at all.
 
 - **input**: input model path
 - **output**: output model path
+- **report**: (*optional*)
+    Write a JSON report with input/output paths, model type, optimization settings, operator statistics and fused operator statistics.
 - **model_type**: (*defaul: bert*)
     There are 4 model types: *bert* (exported by PyTorch), *gpt2* (exported by PyTorch), and *bert_tf* (BERT exported by tf2onnx), *bert_keras* (BERT exported by keras2onnx) respectively.
 - **num_heads**: (*default: 12*)
