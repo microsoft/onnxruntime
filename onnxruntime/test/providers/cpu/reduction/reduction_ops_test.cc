@@ -11,6 +11,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_WEBGPU
@@ -6794,6 +6795,40 @@ TEST(ReductionOpTest, ReduceMax_int64_Opset20_Cuda) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMax_int8_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                        {-8, -3, -7, -1,
+                         -5, -2, -6, -4,
+                         -9, -12, -10, -11});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<int8_t>("reduced", {3, 1, 1}, {-1, -2, -9});
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMax_uint8_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                         {1, 200, 3, 255,
+                          5, 6, 250, 8,
+                          9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {255, 250, 12});
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(ReductionOpTest, ReduceMin_float_Opset20_Cuda) {
