@@ -7,13 +7,13 @@ pipelines:
         credscan:
           lastModifiedDate: 2024-10-25
         policheck:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
         eslint:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
         psscriptanalyzer:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
         armory:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
       binary:
         credscan:
           lastModifiedDate: 2025-02-06
@@ -22,6 +22,7 @@ pipelines:
         spotbugs:
           lastModifiedDate: 2025-02-06
     usedNonDefaultBranch: true
+    usedBinskimScanAllExtensions: true
   1299:
     retail:
       source:
@@ -284,19 +285,3 @@ pipelines:
           lastModifiedDate: 2026-08-16
         armory:
           lastModifiedDate: 2026-08-16
-  2104:
-    retail:
-      source:
-        policheck:
-          lastModifiedDate: 2026-08-22
-        eslint:
-          lastModifiedDate: 2026-08-22
-        psscriptanalyzer:
-          lastModifiedDate: 2026-08-22
-        armory:
-          lastModifiedDate: 2026-08-22
-      binary:
-        binskim:
-          lastModifiedDate: 2026-08-22
-        spotbugs:
-          lastModifiedDate: 2026-08-22
