@@ -5,10 +5,7 @@
 
 #if !defined(__wasm__)
 
-#include <memory>
-
-#include "core/providers/webgpu/math/matmul.h"
-#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
+#include "core/providers/webgpu/subgroup_matrix_common.h"
 
 namespace onnxruntime {
 namespace webgpu {
