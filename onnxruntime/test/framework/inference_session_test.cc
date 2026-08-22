@@ -1692,9 +1692,105 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
                                         "Invalid input name");
 
     // missing required
-    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(RunOptionalInputTest(false, true, false, version, sess_env),
-                                        (version == 3 ? "Invalid input name" : "Missing Input:"));
+    status = RunOptionalInputTest(false, true, false, version, sess_env);
+    ASSERT_FALSE(status.IsOK());
+    if (version == 3) {
+      ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid input name"));
+    } else {
+      ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+      ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Missing Input: required_input"));
+    }
   }
+}
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+TEST(InferenceSessionTests, OmittedOptionalTypeInput) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(15);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("optional_input");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  input->mutable_type()
+      ->mutable_optional_type()
+      ->mutable_elem_type()
+      ->mutable_tensor_type()
+      ->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("OptionalHasElement");
+  node->add_input("X");
+  node->add_output("Y");
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  std::string serialized;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized));
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(serialized.data(), static_cast<int>(serialized.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  NameMLValMap feeds;
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object.Run(RunOptions{}, feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 1);
+  ASSERT_FALSE(*fetches[0].Get<Tensor>().Data<bool>());
+}
+#endif
+
+TEST(InferenceSessionTests, OmittedUnusedGraphInput) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(7);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("unused_graph_input");
+
+  for (const auto* name : {"X", "unused"}) {
+    auto* input = graph_proto->add_input();
+    input->set_name(name);
+    input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  }
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Identity");
+  node->add_input("X");
+  node->add_output("Y");
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  std::string serialized;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized));
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(serialized.data(), static_cast<int>(serialized.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<int64_t> dims{1};
+  std::vector<float> values{2.0f};
+  OrtValue input_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &input_value);
+
+  NameMLValMap feeds{{"X", input_value}};
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object.Run(RunOptions{}, feeds, output_names, &fetches));
+  VerifySingleOutput(fetches, dims, values);
 }
 
 static void CreateFuseOpModel(const PathString& model_file_name) {

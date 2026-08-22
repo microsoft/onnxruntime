@@ -3129,7 +3129,15 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
 
 common::Status InferenceSession::ValidateInputs(gsl::span<const std::string> feed_names,
                                                 gsl::span<const OrtValue> feeds) const {
-  return ValidateInputsOutputs(feed_names, feeds, input_def_map_, ArgType::kInput);
+  ORT_RETURN_IF_ERROR(ValidateInputsOutputs(feed_names, feeds, input_def_map_, ArgType::kInput));
+
+  for (const auto& required_input_name : required_input_names_) {
+    if (std::find(feed_names.begin(), feed_names.end(), required_input_name) == feed_names.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Missing Input: ", required_input_name);
+    }
+  }
+
+  return Status::OK();
 }
 
 common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> output_names,
@@ -3334,6 +3342,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
+  if (!is_inited_) {
+    LOGS(*session_logger_, ERROR) << "Session was not initialized";
+    return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+  }
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+  ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+
   // Check if this Run() can skip normal execution and replay a previously captured graph.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
@@ -3353,16 +3369,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     InlinedVector<AllocatorPtr> arenas_to_shrink;
 
     ORT_TRY {
-      if (!is_inited_) {
-        LOGS(*session_logger_, ERROR) << "Session was not initialized";
-        return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-      }
-
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
-
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
@@ -4354,6 +4362,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   {
     InputOutputDefMetaMap input_defs;
+    InlinedVector<std::string_view> required_input_names;
     if (graph.CanOverrideInitializer()) {
       // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
       // initializer is explicitly overridable.
@@ -4363,7 +4372,40 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
       // the list of valid inputs by just using the GetInputs() list.
       add_inputs_outputs(graph.GetInputs(), input_defs);
     }
+
+    const auto& graph_inputs = graph.GetInputs();
+    InlinedHashSet<const NodeArg*> graph_input_set;
+    graph_input_set.reserve(graph_inputs.size());
+    for (const auto* input : graph_inputs) {
+      graph_input_set.insert(input);
+    }
+
+    InlinedHashSet<const NodeArg*> consumed_graph_inputs;
+    auto collect_consumed_graph_inputs = [&graph_input_set, &consumed_graph_inputs](const auto& node_inputs) {
+      for (const auto* node_input : node_inputs) {
+        if (node_input->Exists() && graph_input_set.count(node_input) != 0) {
+          consumed_graph_inputs.insert(node_input);
+        }
+      }
+    };
+
+    for (const auto& node : graph.Nodes()) {
+      collect_consumed_graph_inputs(node.InputDefs());
+      collect_consumed_graph_inputs(node.ImplicitInputDefs());
+    }
+
+    const auto& graph_outputs = graph.GetOutputs();
+    for (const auto* input : graph_inputs) {
+      const auto* type_proto = input->TypeAsProto();
+      const bool is_graph_output = std::find(graph_outputs.begin(), graph_outputs.end(), input) != graph_outputs.end();
+      if ((type_proto == nullptr || !type_proto->has_optional_type()) &&
+          (consumed_graph_inputs.count(input) != 0 || is_graph_output)) {
+        required_input_names.push_back(input->Name());
+      }
+    }
+
     input_def_map_.swap(input_defs);
+    required_input_names_.swap(required_input_names);
   }
 
   const auto& outputs = graph.GetOutputs();

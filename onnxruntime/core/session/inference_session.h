@@ -989,6 +989,7 @@ class InferenceSession {
 
   InputOutputDefMetaMap input_def_map_;
   InputOutputDefMetaMap output_def_map_;
+  InlinedVector<std::string_view> required_input_names_;
 
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
