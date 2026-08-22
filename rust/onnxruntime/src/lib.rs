@@ -187,6 +187,7 @@ use sys::OnnxEnumInt;
 // Re-export ndarray as it's part of the public API anyway
 pub use ndarray;
 
+// Recommendation: replace i8 to u8, there is no reason to make this i8
 fn char_p_to_string(raw: *const i8) -> Result<String> {
     let c_string = unsafe { std::ffi::CStr::from_ptr(raw as *mut i8).to_owned() };
 
@@ -253,16 +254,16 @@ mod onnxruntime {
                 sys::OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL => Level::ERROR,
             };
 
-            assert_ne!(category, std::ptr::null());
+            assert!(category.is_null());
             let category = unsafe { CStr::from_ptr(category) };
-            assert_ne!(code_location, std::ptr::null());
+            assert!(code_location.is_null());
             let code_location = unsafe { CStr::from_ptr(code_location) }
                 .to_str()
                 .unwrap_or("unknown");
             assert_ne!(message, std::ptr::null());
             let message = unsafe { CStr::from_ptr(message) };
 
-            assert_ne!(logid, std::ptr::null());
+            assert!(logid.is_null());
             let logid = unsafe { CStr::from_ptr(logid) };
 
             // Parse the code location
