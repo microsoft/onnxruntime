@@ -50,6 +50,18 @@ final class OnnxRuntime {
 
   /**
    * The name of the system property which when set gives the path on disk where the ONNX Runtime
+   * native libraries will be extracted to if needed.
+   */
+  static final String ONNXRUNTIME_NATIVE_EXTRACT_PATH = "onnxruntime.native.extract.path";
+
+  /**
+   * The name of the system property which governs whether to delete any extracted libraries on
+   * termination.
+   */
+  static final String ONNXRUNTIME_NATIVE_EXTRACT_CLEANUP = "onnxruntime.native.extract.cleanup";
+
+  /**
+   * The name of the system property which when set gives the path on disk where the ONNX Runtime
    * native libraries are stored.
    */
   static final String ONNXRUNTIME_NATIVE_PATH = "onnxruntime.native.path";
@@ -96,8 +108,11 @@ final class OnnxRuntime {
   /** Have the core ONNX Runtime native libraries been loaded */
   private static boolean loaded = false;
 
-  /** The temp directory where native libraries are extracted */
-  private static Path tempDirectory;
+  /** The directory where native libraries are extracted */
+  private static Path extractDirectory;
+
+  /** Whether to delete extracted libraries on termination */
+  private static boolean cleanUp = true;
 
   /** The value of the {@link #ONNXRUNTIME_NATIVE_PATH} system property */
   private static String libraryDirPathProperty;
@@ -171,7 +186,24 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
+
+    cleanUp =
+        Boolean.TRUE
+            .toString()
+            .equalsIgnoreCase(System.getProperty(ONNXRUNTIME_NATIVE_EXTRACT_CLEANUP, "true"));
+
+    if (isAndroid()) {
+      extractDirectory = null;
+    } else {
+      String extractDirectoryProperty = System.getProperty(ONNXRUNTIME_NATIVE_EXTRACT_PATH);
+      if (extractDirectoryProperty != null) {
+        // TODO: Switch this to Path.of when the minimum Java version is 11.
+        extractDirectory = Paths.get(extractDirectoryProperty);
+        Files.createDirectories(extractDirectory);
+      } else {
+        extractDirectory = Files.createTempDirectory("onnxruntime-java");
+      }
+    }
     try {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
       // Extract and prepare the shared provider library but don't try to load it,
@@ -201,8 +233,8 @@ final class OnnxRuntime {
       version = initialiseVersion();
       loaded = true;
     } finally {
-      if (tempDirectory != null) {
-        cleanUp(tempDirectory.toFile());
+      if (extractDirectory != null && cleanUp) {
+        cleanUp(extractDirectory.toFile());
       }
     }
   }
@@ -425,7 +457,7 @@ final class OnnxRuntime {
   private static Optional<File> extractFromResources(String library) {
     String libraryFileName = mapLibraryName(library);
     String resourcePath = "/ai/onnxruntime/native/" + OS_ARCH_STR + '/' + libraryFileName;
-    File tempFile = tempDirectory.resolve(libraryFileName).toFile();
+    File targetFile = extractDirectory.resolve(libraryFileName).toFile();
     try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
       if (is == null) {
         // Not found in classpath resources
@@ -439,23 +471,25 @@ final class OnnxRuntime {
                 + "' from resource path "
                 + resourcePath
                 + " copying to "
-                + tempFile);
+                + targetFile);
         byte[] buffer = new byte[4096];
         int readBytes;
-        try (FileOutputStream os = new FileOutputStream(tempFile)) {
+        try (FileOutputStream os = new FileOutputStream(targetFile)) {
           while ((readBytes = is.read(buffer)) != -1) {
             os.write(buffer, 0, readBytes);
           }
         }
         logger.log(Level.FINE, "Extracted native library '" + library + "' from resource path");
-        return Optional.of(tempFile);
+        return Optional.of(targetFile);
       }
     } catch (IOException e) {
       logger.log(
           Level.WARNING, "Failed to extract library '" + library + "' from the resources", e);
       return Optional.empty();
     } finally {
-      cleanUp(tempFile);
+      if (cleanUp) {
+        cleanUp(targetFile);
+      }
     }
   }
 
