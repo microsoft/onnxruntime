@@ -161,7 +161,21 @@ In this section, `ops.config` is a [configuration file](../reference/operators/r
 
 ### Web
 
-_[This section is coming soon]_
+Custom ONNX Runtime Web builds use the same reduced-operator configuration file described in
+[Reduce operator kernels](#reduce-operator-kernels). Pass that file with `--include_ops_by_config`
+when building the WebAssembly artifacts, then build the `onnxruntime-web` NPM package from those
+artifacts as described in [Build for web](web.md).
+
+For example:
+
+```bash
+./build.sh --build_wasm --config Release --skip_tests \
+  --include_ops_by_config /path/to/ops.config
+```
+
+Add the WebAssembly feature flags required by your target, such as `--enable_wasm_simd`,
+`--enable_wasm_threads`, `--use_jsep`, or `--use_webnn`, using the guidance in
+[Build ONNX Runtime Webassembly artifacts](web.md#build-onnx-runtime-webassembly-artifacts).
 
 ### iOS
 
