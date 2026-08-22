@@ -202,13 +202,15 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
                             const logging::Logger& logger, bool allow_empty_input = false);
 
 bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger);
+bool IsOutputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger);
 
-bool IsInputRankSupported(const emscripten::val& wnn_limits,
-                          const std::string_view webnn_op_type,
-                          const std::string_view input_name,
-                          const size_t input_rank,
-                          const std::string_view node_name,
-                          const logging::Logger& logger);
+// Check if a single input/output tensor's rank is supported by the corresponding WebNN op.
+bool IsRankSupportedByWebNNOp(const emscripten::val& wnn_limits,
+                              const std::string_view webnn_op_type,
+                              const std::string_view param_name,
+                              const size_t rank,
+                              const std::string_view node_name,
+                              const logging::Logger& logger);
 
 // Get a set of nodes supported by WebNN EP.
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,

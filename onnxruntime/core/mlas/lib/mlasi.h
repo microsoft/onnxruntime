@@ -1360,7 +1360,30 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
+//
+// AVX-512 accelerated NCHW<->NCHWc reorder block helpers (block size 16).
+// Declared unconditionally for AMD64; only invoked when NchwcBlockSize == 16.
+//
+void
+MLASCALL
+MlasReorderInputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderOutputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t OutputSize
+    );
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -1487,6 +1510,10 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
+#if defined(MLAS_USE_SVE)
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmlaSve;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmlaSve;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchRvv;
@@ -1596,6 +1623,14 @@ struct MLAS_KV_QUANT_GEMM_DISPATCH;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
+
+//
+// Linear (recurrent) attention dispatch structure.
+//
+struct MLAS_LINEAR_ATTENTION_DISPATCH;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1767,6 +1802,9 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     // Hoisted under combined guard so future "shared between AMD64 and RISCV64"
@@ -1774,8 +1812,6 @@ struct MLAS_PLATFORM {
     // assigns these fields independently in platform.cpp.
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
 #endif
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
@@ -1810,7 +1846,6 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
@@ -1845,6 +1880,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
+    const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};
 };
 
 inline
@@ -1944,6 +1980,70 @@ MlasPartitionWork(
         *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
         *WorkRemaining = WorkPerThread;
     }
+}
+
+//
+// Map a cost boundary to a work item index for the NCHWc grouped convolution
+// algorithms.
+//
+// Work items are output rows of a filter set, indexed row-fastest as
+// ((BatchGroup * FilterSetCount) + FilterSet) * OutputHeight + Row. Cost is
+// measured in block-rows: one NCHWc output block of one output row. Items in a
+// full filter set cost FilterSetSize block-rows; items in the ragged last set
+// cost LastSetFilterCount. Returns the index of the first work item whose
+// starting cumulative cost is greater than or equal to Cost, so partitioning a
+// cost interval and converting both endpoints yields work ranges that tile
+// [0, TotalWork) with no gap and no overlap.
+//
+// Worked example, OutputChannels = 96 with BlockSize = 16 and FilterSetSize = 4:
+// TotalBlockedFilters = 96 / 16 = 6 blocked filters, so FilterSetCount = 2 and
+// LastSetFilterCount = 6 - 1 * 4 = 2. Per (batch, group) segment the two sets
+// cost 4 * OutputHeight and 2 * OutputHeight block-rows respectively — the
+// imbalance a uniform split by item index would ignore, since both sets contain
+// OutputHeight items while the first does twice the work.
+//
+
+inline
+size_t
+MlasNchwcCostToWorkIndex(
+    size_t Cost,
+    size_t OutputHeight,
+    size_t FilterSetCount,
+    size_t FilterSetSize,
+    size_t TotalBlockedFilters,
+    size_t LastSetFilterCount
+    )
+{
+    const size_t CostPerBatchGroup = TotalBlockedFilters * OutputHeight;
+
+    size_t BatchGroup = Cost / CostPerBatchGroup;
+    const size_t Remainder = Cost - BatchGroup * CostPerBatchGroup;
+
+    const size_t FullSetCost = FilterSetSize * OutputHeight;
+
+    size_t Set = Remainder / FullSetCost;
+    size_t SetFilterCount = FilterSetSize;
+
+    if (Set >= FilterSetCount - 1) {
+        Set = FilterSetCount - 1;
+        SetFilterCount = LastSetFilterCount;
+    }
+
+    const size_t SetRemainder = Remainder - Set * FullSetCost;
+
+    size_t Row = (SetRemainder + SetFilterCount - 1) / SetFilterCount;
+
+    if (Row >= OutputHeight) {
+
+        Row = 0;
+
+        if (++Set == FilterSetCount) {
+            Set = 0;
+            BatchGroup += 1;
+        }
+    }
+
+    return (BatchGroup * FilterSetCount + Set) * OutputHeight + Row;
 }
 
 //

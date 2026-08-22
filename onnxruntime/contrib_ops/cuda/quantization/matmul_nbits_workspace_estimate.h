@@ -14,9 +14,11 @@
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 
 #include <cuda_runtime_api.h>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 // NOTE: we deliberately do NOT forward-declare Node here. This header has exactly two includers,
@@ -34,6 +36,9 @@ namespace contrib {
 namespace cuda {
 
 std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
+// Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 
 }  // namespace cuda
 }  // namespace contrib

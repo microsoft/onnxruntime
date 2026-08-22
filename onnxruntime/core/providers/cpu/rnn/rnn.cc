@@ -210,6 +210,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
   for (int direction = 0; direction < num_directions; direction++) {
     auto activation_func = GetFuncByName<float>(activations_[direction], "Tanh");
+    const auto& activation = activation_funcs_.Entries()[direction];
     bool isReverse = direction_ == "reverse" || direction == 1;
 
     if (B != nullptr) {
@@ -279,7 +280,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
       // apply activation
       ApplyActivationToBatches<float>(sequence_lens, h_prev, Y_buffer_data_current_frame,
                                       time_step, batch_size, hidden_size_,
-                                      activation_alpha_[direction], activation_beta_[direction], clip_, activation_func);
+                                      activation.alpha, activation.beta, clip_, activation_func);
     }  // close sequence loop
 
     if (Y_h)

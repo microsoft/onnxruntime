@@ -258,7 +258,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
       MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
       program
-          .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+          .CacheHint(activation_.ToString(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
           .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
                       {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
       if (has_bias) {

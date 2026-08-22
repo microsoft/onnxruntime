@@ -92,6 +92,7 @@
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/optimizer/webgpu_fusion_test_util.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -672,6 +673,58 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingCopiesAliasedTensorBuffer) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> values(64);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = static_cast<float>(i + 1);
+    }
+
+    auto* input = builder.MakeInitializer<float>({64}, values);
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{64});
+    builder.AddNode("Identity", {input}, std::vector<NodeArg*>{output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    const auto& outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(outputs.size() == 1U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 1U);
+
+    const ONNX_NAMESPACE::TensorProto* folded_tensor = nullptr;
+    TEST_RETURN_IF_NOT(graph.GetInitializedTensor(outputs[0]->Name(), folded_tensor));
+    TEST_RETURN_IF_NOT(folded_tensor != nullptr);
+
+    Initializer initializer{graph, *folded_tensor, graph.ModelPath()};
+    TEST_RETURN_IF_NOT(initializer.size() == 64U);
+    const float* data = initializer.data<float>();
+    for (size_t i = 0; i < 64; ++i) {
+      TEST_RETURN_IF_NOT(data[i] == static_cast<float>(i + 1));
+    }
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(*cpu_ep, false, empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
@@ -3114,6 +3167,224 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #endif
   }
 }
+
+#if defined(USE_WEBGPU)
+namespace {
+void RunWebGpuSmallMatMulConvActivationPairTest(const std::string& activation_a,
+                                                const std::string& activation_b) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Keep N and K below 8 to select MatMulNaiveProgram.
+    auto* input = builder.MakeInput<float>({1, 4, 8, 8}, -3.0f, 3.0f);
+
+    // Use distinct weights to prevent common subexpression elimination.
+    auto* weight_a = builder.MakeInitializer<float>({6, 4, 1, 1}, -0.5f, 0.5f);
+    auto* bias_a = builder.MakeInitializer<float>({6}, -0.5f, 0.5f);
+    auto* weight_b = builder.MakeInitializer<float>({6, 4, 1, 1}, -0.5f, 0.5f);
+    auto* bias_b = builder.MakeInitializer<float>({6}, -0.5f, 0.5f);
+
+    auto* conv_a_out = builder.MakeIntermediate();
+    auto* conv_b_out = builder.MakeIntermediate();
+    auto* output_a = builder.MakeOutput();
+    auto* output_b = builder.MakeOutput();
+
+    builder.AddNode("Conv", {input, weight_a, bias_a}, {conv_a_out});
+    builder.AddNode(activation_a, {conv_a_out}, {output_a});
+    builder.AddNode("Conv", {input, weight_b, bias_b}, {conv_b_out});
+    builder.AddNode(activation_b, {conv_b_out}, {output_b});
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    std::set<std::string> fused_activations;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr) {
+        fused_activations.insert(activation_attr->s());
+      }
+    }
+    // Ensure both activations are fused into Conv; otherwise this test would not exercise
+    // the activation-specific MatMulNaiveProgram path.
+    ASSERT_THAT(fused_activations, ::testing::UnorderedElementsAre(activation_a, activation_b))
+        << "expected both convolutions to absorb their activation, so that two MatMulNaive "
+           "variants are compiled in one session";
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 /*opset_version=*/17,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+void RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(float alpha_first, float alpha_second) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  // Choose beta so the alpha values clamp to different outputs when Conv produces 8.
+  constexpr float kBeta = -8000160.0f;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Keep N and K below 8 to select MatMulNaiveProgram; N = 5 keeps its bias indexing in bounds.
+    auto* input = builder.MakeInput<float>({1, 4, 8, 8}, std::vector<float>(1 * 4 * 8 * 8, 1.0f));
+
+    // Produce 8 with distinct weights to prevent common subexpression elimination.
+    auto* weight_a = builder.MakeInitializer<float>({5, 4, 1, 1}, std::vector<float>(5 * 4, 1.0f));
+    auto* bias_a = builder.MakeInitializer<float>({5}, std::vector<float>(5, 4.0f));
+    auto* weight_b = builder.MakeInitializer<float>({5, 4, 1, 1}, std::vector<float>(5 * 4, 0.5f));
+    auto* bias_b = builder.MakeInitializer<float>({5}, std::vector<float>(5, 6.0f));
+
+    auto* conv_a_out = builder.MakeIntermediate();
+    auto* conv_b_out = builder.MakeIntermediate();
+    auto* output_a = builder.MakeOutput();
+    auto* output_b = builder.MakeOutput();
+
+    builder.AddNode("Conv", {input, weight_a, bias_a}, {conv_a_out});
+    Node& activation_a = builder.AddNode("HardSigmoid", {conv_a_out}, {output_a});
+    activation_a.AddAttribute("alpha", alpha_first);
+    activation_a.AddAttribute("beta", kBeta);
+
+    builder.AddNode("Conv", {input, weight_b, bias_b}, {conv_b_out});
+    Node& activation_b = builder.AddNode("HardSigmoid", {conv_b_out}, {output_b});
+    activation_b.AddAttribute("alpha", alpha_second);
+    activation_b.AddAttribute("beta", kBeta);
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    std::vector<float> fused_alphas;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr == nullptr || activation_attr->s() != "HardSigmoid") {
+        continue;
+      }
+      const auto* params_attr = graph_utils::GetNodeAttribute(node, "activation_params");
+      ASSERT_NE(params_attr, nullptr) << "fused HardSigmoid must carry its parameters";
+      ASSERT_GT(params_attr->floats_size(), 0);
+      fused_alphas.push_back(params_attr->floats(0));
+    }
+    // Ensure both activations are fused into Conv to exercise the parameter-specific MatMulNaiveProgram path.
+    ASSERT_THAT(fused_alphas, ::testing::UnorderedElementsAre(alpha_first, alpha_second))
+        << "expected both convolutions to absorb their HardSigmoid, so that two MatMulNaive "
+           "variants differing only in activation parameters are compiled in one session";
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 /*opset_version=*/17,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+void RunWebGpuConcurrentLayoutConvCacheTest(bool channels_last_first) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 17;
+  Model model("WebGpuLayoutCacheTester", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+
+  // Keep N, K, and components equal across the channels-first and channels-last paths.
+  auto* input = builder.MakeInput<float>({1, 3, 3, 1},
+                                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f});
+  auto* weight = builder.MakeInitializer<float>({3, 3, 1, 1},
+                                                std::vector<float>{1.0f, 0.0f, 0.0f,
+                                                                   0.0f, 1.0f, 0.0f,
+                                                                   0.0f, 0.0f, 1.0f});
+  // Use distinct bias values to expose layout-dependent indexing.
+  auto* bias = builder.MakeInitializer<float>({3}, std::vector<float>{100.0f, 200.0f, 300.0f});
+  auto* output = builder.MakeOutput();
+  builder.AddNode("Conv", {input, weight, bias}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  RunOptions run_options;
+
+  std::vector<OrtValue> expected_fetches;
+  {
+    InferenceSessionWrapper cpu_session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(cpu_session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(cpu_session.Initialize());
+    ASSERT_STATUS_OK(cpu_session.Run(run_options, builder.feeds_, builder.output_names_, &expected_fetches));
+  }
+
+  // Keep both sessions alive so they share the WebGPU program cache.
+  InferenceSessionWrapper session_first{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_first.RegisterExecutionProvider(DefaultWebGpuExecutionProvider(channels_last_first)));
+  ASSERT_STATUS_OK(session_first.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_first.Initialize());
+
+  InferenceSessionWrapper session_second{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_second.RegisterExecutionProvider(DefaultWebGpuExecutionProvider(!channels_last_first)));
+  ASSERT_STATUS_OK(session_second.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_second.Initialize());
+
+  // Ensure both convolutions run on the WebGPU EP.
+  for (const auto* session : {&session_first, &session_second}) {
+    bool saw_webgpu_conv = false;
+    for (const auto& node : session->GetGraph().Nodes()) {
+      if (node.OpType() == "Conv" || node.OpType() == "NhwcConv" || node.OpType() == "FusedConv") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kWebGpuExecutionProvider);
+        saw_webgpu_conv = node.GetExecutionProviderType() == kWebGpuExecutionProvider;
+      }
+    }
+    ASSERT_TRUE(saw_webgpu_conv) << "expected the convolution to run on the WebGPU EP";
+  }
+
+  std::vector<OrtValue> fetches_first;
+  ASSERT_STATUS_OK(session_first.Run(run_options, builder.feeds_, builder.output_names_, &fetches_first));
+  std::vector<OrtValue> fetches_second;
+  ASSERT_STATUS_OK(session_second.Run(run_options, builder.feeds_, builder.output_names_, &fetches_second));
+
+  ASSERT_EQ(expected_fetches.size(), fetches_first.size());
+  ASSERT_EQ(expected_fetches.size(), fetches_second.size());
+  for (size_t i = 0; i < expected_fetches.size(); ++i) {
+    auto first = CompareOrtValue(fetches_first[i], expected_fetches[i], 2e-3, 2e-3, false);
+    EXPECT_EQ(first.first, COMPARE_RESULT::SUCCESS)
+        << "first session (channels_last=" << channels_last_first << "): " << first.second;
+    auto second = CompareOrtValue(fetches_second[i], expected_fetches[i], 2e-3, 2e-3, false);
+    EXPECT_EQ(second.first, COMPARE_RESULT::SUCCESS)
+        << "second session (channels_last=" << !channels_last_first << "): " << second.second;
+  }
+}
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationsInPipelineCache) {
+  RunWebGpuSmallMatMulConvActivationPairTest("Relu", "Sigmoid");
+  RunWebGpuSmallMatMulConvActivationPairTest("Sigmoid", "Relu");
+}
+
+// Use distinct alpha values that match at the stringstream default precision.
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache) {
+  RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000015.0f, 1000025.0f);
+  RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000025.0f, 1000015.0f);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConcurrentLayoutConvsDistinguishedInPipelineCache) {
+  RunWebGpuConcurrentLayoutConvCacheTest(/*channels_last_first=*/true);
+  RunWebGpuConcurrentLayoutConvCacheTest(/*channels_last_first=*/false);
+}
+#endif  // defined(USE_WEBGPU)
 
 TEST_F(GraphTransformationTests, FuseConvClip11Activation) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_clip11.onnx";
@@ -7330,6 +7601,106 @@ TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
                                         ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// Regression test for the WebGPU entry added to the Level-2 GeluFusion allowlist
+// (cpu_acl_cuda_dml_webgpu_eps in graph_transformer_utils.cc).
+TEST_F(GraphTransformationTests, GeluFusionWebGpu) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+#if defined(USE_WEBGPU)
+  const std::string expected_ep = kWebGpuExecutionProvider;
+#else
+  const std::string expected_ep = kCpuExecutionProvider;
+#endif
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(expected_ep);
+  }
+
+  SessionOptions session_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const InlinedHashSet<std::string> gelu_transformer_names = {"GeluFusionL1", "GeluFusionL2"};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+    for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
+      if (gelu_transformer_names.count(transformer->Name()) != 0) {
+        ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+      }
+    }
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.Gelu"], 1);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Erf"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+
+  const Node* gelu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gelu" && node.Domain() == kMSDomain) {
+      gelu_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(gelu_node, nullptr);
+  EXPECT_EQ(gelu_node->GetExecutionProviderType(), expected_ep);
+}
+
+// Regression test for the WebGPU entry added to the BiasGeluFusion allowlist.
+TEST_F(GraphTransformationTests, BiasGeluFusionWebGpu) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+#if defined(USE_WEBGPU)
+  const std::string expected_ep = kWebGpuExecutionProvider;
+#else
+  const std::string expected_ep = kCpuExecutionProvider;
+#endif
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(expected_ep);
+  }
+
+  SessionOptions session_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const InlinedHashSet<std::string> gelu_transformer_names = {
+      "GeluFusionL1", "GeluFusionL2", "BiasGeluFusion"};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+    for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
+      if (gelu_transformer_names.count(transformer->Name()) != 0) {
+        ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+      }
+    }
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasGelu"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.Gelu"], 0);
+  ASSERT_EQ(op_to_count["Gelu"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Erf"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+
+  const Node* bias_gelu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "BiasGelu" && node.Domain() == kMSDomain) {
+      bias_gelu_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(bias_gelu_node, nullptr);
+  EXPECT_EQ(bias_gelu_node->GetExecutionProviderType(), expected_ep);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
 TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
   // MatMul + Add -> Gemm fusion
   int current_opset = GetCurrentOnnxOpset();
@@ -7851,6 +8222,95 @@ TEST_F(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedScaleMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* scale_mul = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() != "Mul" || node.InputDefs().size() != 2) {
+      continue;
+    }
+
+    for (const NodeArg* input : node.InputDefs()) {
+      if (optimizer_utils::IsInitializerWithExpectedValue(graph, *input, 0.7978845834732056f, true)) {
+        scale_mul = &node;
+        break;
+      }
+    }
+
+    if (scale_mul != nullptr) {
+      break;
+    }
+  }
+
+  ASSERT_NE(scale_mul, nullptr);
+  scale_mul->MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.FastGelu"], 0);
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedFirstFormulaIntermediateMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* coefficient_mul = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Mul" && node.InputDefs().size() == 2 &&
+        (optimizer_utils::IsInitializerWithExpectedValue(graph, *node.InputDefs()[0], 0.044715f, true) ||
+         optimizer_utils::IsInitializerWithExpectedValue(graph, *node.InputDefs()[1], 0.044715f, true))) {
+      coefficient_mul = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(coefficient_mul, nullptr);
+  ASSERT_EQ(coefficient_mul->GetOutputEdgesCount(), 1);
+  Node& intermediate_mul = *graph.GetNode(coefficient_mul->OutputNodesBegin()->Index());
+  intermediate_mul.MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  EXPECT_EQ(CountOpsInGraph(graph)["com.microsoft.FastGelu"], 0);
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionSkipsMalformedSecondFormulaIntermediateMul) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fast_gelu2.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* pow_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Pow") {
+      pow_node = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(pow_node, nullptr);
+  ASSERT_EQ(pow_node->GetOutputEdgesCount(), 1);
+  Node& intermediate_mul = *graph.GetNode(pow_node->OutputNodesBegin()->Index());
+  intermediate_mul.MutableInputDefs().pop_back();
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<FastGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  EXPECT_EQ(CountOpsInGraph(graph)["com.microsoft.FastGelu"], 0);
 }
 
 TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
@@ -10971,6 +11431,50 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+}
+
+// The fusion reads the 'axis' attribute/input straight from the model, and needs to reject a value
+// that falls outside [0, rank) for the shared input's known rank rather than indexing its shape with it.
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_OutOfRangeAxis) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    return Status::OK();
+  };
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
+    return Status::OK();
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>({{54}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
+    auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
+    // gather_index_1 is a graph input with no static shape, so ONNX's own Gather shape inference
+    // (which requires both the data AND indices shapes to be known before range-checking 'axis')
+    // cannot validate 'axis' here and silently skips that check, matching how this can be reached
+    // in a real model without ONNX itself already rejecting it at load.
+    auto* gather_index_1 = builder.MakeInput<int64_t>(std::nullopt);
+    auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* transpose_out_1 = builder.MakeOutput();
+    auto* transpose_out_2 = builder.MakeOutput();
+
+    builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+    // 'axis' is well outside the reshape output's rank of 4; the fusion must reject this before
+    // indexing the shape with it, rather than crashing.
+    builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+        .AddAttribute("axis", static_cast<int64_t>(100));
+    builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, GatherToSliceFusion) {

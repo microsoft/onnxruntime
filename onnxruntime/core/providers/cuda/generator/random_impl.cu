@@ -101,6 +101,12 @@ template <typename T, typename DistFuncT, typename TransformFuncT>
 void RandomKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const DistFuncT& dist_func,
                       const TransformFuncT& transform_func, float alpha, float beta, PhiloxGenerator& generator,
                       T* Y_data) {
+  // Zero-sized output tensors are legal in ONNX. Bail out before computing grid_size, which would otherwise be
+  // zero and make the counter_offset division below divide by zero.
+  if (N == 0) {
+    return;
+  }
+
   const int block_size = 256;
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;
   const int grid_size =
