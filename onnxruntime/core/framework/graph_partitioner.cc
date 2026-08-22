@@ -1150,9 +1150,23 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
+  // A name referenced only from within a node's subgraph (an implicit input)
+  // does not get a NodeArg created by ep_graph.AddNode() above, which only adds
+  // NodeArgs for a node's own inputs and outputs. Collect those names so that an
+  // outer-scope initializer consumed only from a subgraph is still copied below;
+  // otherwise ep_graph.Resolve() fails on the dangling reference (see #32131).
+  InlinedHashSet<std::string_view> implicit_input_names;
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* implicit_input : node.ImplicitInputDefs()) {
+      if (implicit_input != nullptr && implicit_input->Exists()) {
+        implicit_input_names.insert(implicit_input->Name());
+      }
+    }
+  }
+
   // handle initializers
   for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
-    if (ep_graph.GetNodeArg(name) != nullptr) {
+    if (ep_graph.GetNodeArg(name) != nullptr || implicit_input_names.count(name) != 0) {
       graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
     }
   }
