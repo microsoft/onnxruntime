@@ -9854,7 +9854,7 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptions) {
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions";
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "ConstantFolding"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "MatMulAddFusion,ConstantFolding"));
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 

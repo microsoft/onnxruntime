@@ -42,8 +42,8 @@ inline InlinedVector<std::string_view> SplitString(std::string_view string_to_sp
 
 /**
  * Splits a string on any character in `delimiters` (each delimiter is a
- * single character). Used when a config value historically accepted more
- * than one separator, e.g. comma and semicolon.
+ * single character). Callers that previously split only on `;` can pass
+ * `",;"` to also accept documented comma-separated lists.
  */
 inline InlinedVector<std::string_view> SplitStringOnAny(std::string_view string_to_split,
                                                         std::string_view delimiters,
