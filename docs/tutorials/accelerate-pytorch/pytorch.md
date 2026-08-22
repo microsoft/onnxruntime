@@ -146,8 +146,11 @@ The first step is to export your PyTorch model to ONNX format using the PyTorch 
 example = ... 
 
 # Export model to ONNX format
-torch.onnx.export(model, PATH, example)
+onnx_program = torch.onnx.export(model, example)
+onnx_program.save("model.onnx")
 ```
+
+For more export options, including dynamic axes and opset version, see the [PyTorch ONNX export documentation](https://pytorch.org/docs/stable/onnx.html).
 
 Once exported to ONNX format, you can optionally view the model in the Netron viewer to understand the model graph and the inputs and output node names and shapes, and which nodes have variably sized inputs and outputs (dynamic axes).
 

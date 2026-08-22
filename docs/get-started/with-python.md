@@ -36,9 +36,9 @@ The default CUDA version for ORT is 12.x.
 pip install onnxruntime-gpu
 ```
 
-### Install ONNX Runtime GPU (CUDA 11.8)
+### Install ONNX Runtime GPU (CUDA 11.x)
 
-For Cuda 11.8, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview)
+For CUDA 11.x, install from the [ORT Azure DevOps Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview):
 
 ```bash
 pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
@@ -258,19 +258,11 @@ If using pip, run `pip install --upgrade pip` prior to downloading.
 
 | Artifact      | Description | Supported Platforms |
 |-----------    |-------------|---------------------|
-|[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64),  |
-|[nightly](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime)|CPU (Dev)    | Same as above |
-|[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU (Release)| Windows (x64), Linux (x64, ARM64) |
-|[onnxruntime-gpu for CUDA 11.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-11-nightly/PyPI/onnxruntime-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
-|[onnxruntime-gpu for CUDA 12.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
+|[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64) |
+|[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU - CUDA 12.x (Release)| Windows (x64), Linux (x64, ARM64) |
 
 
-Example to install onnxruntime-gpu for CUDA 11.*:
-```
-python -m pip install onnxruntime-gpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-11-nightly/pypi/simple/
-```
-
-Example to install onnxruntime-gpu for CUDA 12.*:
+For nightly GPU builds:
 ```
 python -m pip install onnxruntime-gpu --pre --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```

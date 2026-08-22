@@ -202,6 +202,27 @@ npm install onnxruntime-web
 npm install onnxruntime-web@dev
 ```
 
+#### Enable WebGPU Execution Provider
+
+The WebGPU execution provider is included in `onnxruntime-web`. To use it, import from `onnxruntime-web/webgpu` instead of `onnxruntime-web`:
+
+```js
+// Use the WebGPU-specific bundle
+import * as ort from 'onnxruntime-web/webgpu';
+
+const session = await ort.InferenceSession.create(modelPath, {
+  executionProviders: ['webgpu']
+});
+```
+
+For an HTML script tag, use `ort.webgpu.min.js`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.webgpu.min.js"></script>
+```
+
+WebGPU is available in the latest versions of Chrome and Edge. See the [WebGPU tutorial](../tutorials/web/ep-webgpu.md) for more details.
+
 #### Install ONNX Runtime Node.js binding (Node.js)
 
 ```bash

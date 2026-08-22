@@ -93,15 +93,6 @@ To detect if a particular OS version of Windows has the WinML APIs, use the [IsA
 
 If the OS does not have the runtime you need you can switch to use the redist binaries instead.
 
-|Release|API contract version|
-|--|--|
-|Windows OS 1809| 1|
-|Windows OS 1903| 2|
-|Windows OS 1909| 2|
-|ORT release 1.2| 3|
-|ORT release 1.3| 3|
-|ORT release 1.4| 3|
-
 See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.
 
 ## Additional Resources
