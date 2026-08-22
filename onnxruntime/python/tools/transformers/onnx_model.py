@@ -29,6 +29,21 @@ from onnx import (
 )
 from onnx.external_data_helper import load_external_data_for_tensor, uses_external_data
 
+if __package__:
+    from onnxruntime.tools.onnx_graph_utils import (
+        get_children,
+        get_parent,
+        get_parents,
+        input_name_to_nodes,
+        output_name_to_node,
+    )
+else:
+    _tools_dir = Path(__file__).resolve().parent.parent
+    _shared_module_dir = _tools_dir if (_tools_dir / "onnx_graph_utils.py").is_file() else _tools_dir / "tools"
+    if str(_shared_module_dir) not in sys.path:
+        sys.path.append(str(_shared_module_dir))
+    from onnx_graph_utils import get_children, get_parent, get_parents, input_name_to_nodes, output_name_to_node
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,25 +84,12 @@ class OnnxModel:
         return None
 
     def input_name_to_nodes(self, exclude_subgraphs=False):
-        input_name_to_nodes = {}
         nodes_to_search = self.nodes() if not exclude_subgraphs else self.model.graph.node
-        for node in nodes_to_search:
-            for input_name in node.input:
-                if input_name:  # could be empty when it is optional
-                    if input_name not in input_name_to_nodes:
-                        input_name_to_nodes[input_name] = [node]
-                    else:
-                        input_name_to_nodes[input_name].append(node)
-        return input_name_to_nodes
+        return input_name_to_nodes(nodes_to_search)
 
     def output_name_to_node(self, exclude_subgraphs=False):
-        output_name_to_node = {}
         nodes_to_search = self.nodes() if not exclude_subgraphs else self.model.graph.node
-        for node in nodes_to_search:
-            for output_name in node.output:
-                if output_name:  # could be empty when it is optional
-                    output_name_to_node[output_name] = node
-        return output_name_to_node
+        return output_name_to_node(nodes_to_search)
 
     def functions(self):
         all_functions = [list(self.model.functions)]
@@ -242,41 +244,19 @@ class OnnxModel:
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
-        children = []
-        if output_index is not None:
-            if output_index < len(node.output):
-                output = node.output[output_index]
-                if output in input_name_to_nodes:
-                    children = list(input_name_to_nodes[output])
-        else:
-            for output in node.output:
-                if output in input_name_to_nodes:
-                    children.extend(input_name_to_nodes[output])
-
-        return children
+        return get_children(node, input_name_to_nodes, output_index)
 
     def get_parents(self, node, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
-        parents = []
-        for input in node.input:
-            if input in output_name_to_node:
-                parents.append(output_name_to_node[input])
-        return parents
+        return get_parents(node, output_name_to_node)
 
     def get_parent(self, node, i, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
-        if len(node.input) <= i:
-            return None
-
-        input = node.input[i]
-        if input not in output_name_to_node:
-            return None
-
-        return output_name_to_node[input]
+        return get_parent(node, i, output_name_to_node)
 
     def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):  # noqa: B006
         """
