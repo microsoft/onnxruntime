@@ -74,7 +74,7 @@ jobs:
     ${{ if contains(parameters.pool_name, 'mac')}}:
       os: macOS
 
-  templateContext:        
+  templateContext:
     outputs:
     - output: pipelineArtifact
       targetPath: $(Build.BinariesDirectory)/.artifacts
@@ -83,6 +83,8 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
+
+  - template: setup-feeds-and-python-steps.yml
 
   - task: CmdLine@2
     displayName: Create artifacts directory
@@ -132,6 +134,10 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
+          -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+          --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+          --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
+          --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
           --volume $(Build.BinariesDirectory)/.artifacts:/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
           $QNN_VOLUME \
