@@ -37,7 +37,7 @@ def generate_feeds(sess, symbolic_dims: dict | None = None):
         # replace any symbolic dimensions
         shape = []
         for dim in input_meta.shape:
-            if not dim:
+            if dim is None:
                 # unknown dim
                 shape.append(1)
             elif isinstance(dim, str):
@@ -72,6 +72,7 @@ def run_model(
     symbolic_dims=None,
     feeds=None,
     override_initializers=True,
+    providers=None,
 ):
     symbolic_dims = symbolic_dims or {}
     if debug:
@@ -85,10 +86,11 @@ def run_model(
         sess_options.enable_profiling = True
         sess_options.profile_file_prefix = os.path.basename(model_path)
 
+    providers = providers if providers is not None else onnxrt.get_available_providers()
     sess = onnxrt.InferenceSession(
         model_path,
         sess_options=sess_options,
-        providers=onnxrt.get_available_providers(),
+        providers=providers,
     )
     meta = sess.get_modelmeta()
 
@@ -100,7 +102,7 @@ def run_model(
         # and can be overridden (available in IR4). For IR < 4 models
         # the list would be empty
         for initializer in sess.get_overridable_initializers():
-            shape = [dim if dim else 1 for dim in initializer.shape]
+            shape = [dim if dim is not None else 1 for dim in initializer.shape]
             if initializer.type in float_dict:
                 feeds[initializer.name] = np.random.rand(*shape).astype(float_dict[initializer.type])
             elif initializer.type in integer_dict:
