@@ -1332,7 +1332,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
 
       ASSERT_TRUE(std::filesystem::exists(expected_output_model_file));
       auto modify_time_2 = std::filesystem::last_write_time(expected_output_model_file);
-      ASSERT_EQ(modify_time_2, modify_time_1);  // Check that file was not modified
+      ASSERT_TRUE(modify_time_2 == modify_time_1);  // Check that file was not modified
     }
   }
 
