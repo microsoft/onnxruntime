@@ -235,6 +235,8 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
+      # Protobuf uses offsetof on MessageLite, which is intentionally non-standard-layout.
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=1427>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
