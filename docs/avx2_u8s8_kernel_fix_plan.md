@@ -135,27 +135,35 @@ AVX2 forced. Require the first divergent node to change from the saturating
 hash to the established scalar/VNNI hash, and require the final routing scores
 to match the VNNI result.
 
-## Expected Performance Cost
+## Performance Cost and Deployment Tradeoff
 
 The corrected AVX2 inner loop will perform approximately twice the
 multiply/reduction work, plus masking. A noticeable regression in the
 non-VNNI AVX2 U8/S8 kernel is expected. The actual impact must be benchmarked
 across representative M/N/K sizes, packed-weight usage, and thread counts.
 
-The cost is justified because:
+Whether that cost is worth paying remains an open deployment decision. The ORT
+quantization tools document `reduce_range=True` for U8/S8 quantization on older
+hardware where full-range pair sums can overflow the signed INT16 intermediate.
+Restricting S8 weights to `[-64, 64]` prevents this saturation without slowing
+the AVX2 kernel, and may therefore be preferable when models and deployment
+pipelines can adopt it.
 
-- the current implementation silently returns incorrect results for valid
-  inputs;
-- the error is data-dependent and can materially change model decisions;
-- VNNI-capable machines retain their existing fast paths without regression;
-- packed formats and memory traffic remain unchanged;
-- the decomposition should remain faster than scalar fallback or full
-  byte-to-INT16 expansion; and
-- `reduce_range` is a model-level mitigation, not a correctness fix for
-  full-range `MatMulInteger`.
+The alternatives have different tradeoffs:
 
-Correctness must be the default. The safe AVX2 implementation can be optimized
-further after benchmarks identify the dominant additional instructions.
+- fixing the kernel makes every valid full-range U8/S8 model correct on
+  non-VNNI AVX2 machines, but the measured performance cost is high;
+- using `reduce_range` retains the existing AVX2 performance, but changes
+  weight quantization and may reduce model accuracy;
+- leaving the kernel unchanged preserves performance but silently produces
+  incorrect full-range results when saturation occurs.
+
+The appropriate balance depends on the proportion of deployed machines that
+lack VNNI, the performance requirements on those machines, and the measured
+accuracy cost of `reduce_range` on representative model data. Without those
+deployment and accuracy measurements, this plan establishes a correct kernel
+implementation and its performance cost but does not claim that shipping it is
+necessarily preferable to requiring reduced-range quantization.
 
 ### End-to-End Performance Summary
 
