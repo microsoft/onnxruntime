@@ -10,6 +10,7 @@ vcpkg_from_github(
         protobuf_cmake.patch
         "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_msvc_unreachable_code.patch"
         "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_msvc_map_unreachable_code.patch"
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_compiler_incomplete_type.patch"
 )
 
 string(COMPARE EQUAL "${TARGET_TRIPLET}" "${HOST_TRIPLET}" protobuf_BUILD_PROTOC_BINARIES)
