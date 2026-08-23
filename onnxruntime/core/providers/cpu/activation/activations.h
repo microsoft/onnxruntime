@@ -170,7 +170,7 @@ struct Softsign : public ElementWiseRangedTransform<T> {
     T* output_ptr = this->output + first;
     ConstEigenVectorArrayMap<T> xm(this->input + first, len);
     EigenVectorArrayMap<T> ym(output_ptr, len);
-    ym = (1 + xm.abs()).inverse() * xm;
+    ym = xm / (1 + xm.abs());
   }
 };
 
