@@ -10,6 +10,10 @@
 #include "core/session/lora_adapters.h"
 #include "lora/adapter_format_version.h"
 #include "lora/adapter_format_utils.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && \
+    defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
+#endif
 
 #include "gtest/gtest.h"
 #include <cmath>
@@ -478,6 +482,85 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_BoolDataType) {
 }
 
 #endif  // ORT_NO_EXCEPTIONS
+
+namespace {
+
+class NoDataTransferAllocator final : public IAllocator {
+ public:
+  NoDataTransferAllocator()
+      : IAllocator(OrtMemoryInfo("NoDataTransfer", OrtDeviceAllocator,
+                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                                           OrtDevice::VendorIds::NONE, 0))) {}
+
+  void* Alloc(size_t) override {
+    ++allocation_count_;
+    return nullptr;
+  }
+
+  void Free(void*) override {}
+
+  size_t AllocationCount() const {
+    return allocation_count_;
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NoDataTransferAllocator);
+  size_t allocation_count_{0};
+};
+
+void VerifyMappedParametersAreUsed(const lora::LoraAdapter& adapter) {
+  auto [begin, end] = adapter.GetParamIterators();
+  for (; begin != end; ++begin) {
+    const auto& param = begin->second;
+    EXPECT_EQ(&param.GetMapped(), &param.GetDeviceOrMapped());
+    EXPECT_EQ(param.GetDeviceOrMapped().Get<Tensor>().Location().device.Type(), OrtDevice::CPU);
+  }
+}
+
+}  // namespace
+
+TEST(LoraAdapterTest, UnavailableDataTransferKeepsMappedValues) {
+  auto allocator = std::make_shared<NoDataTransferAllocator>();
+  auto* allocator_ptr = allocator.get();
+  lora::LoraAdapter adapter(std::move(allocator));
+
+  adapter.Load(GenerateTestParameters<float>()());
+
+  EXPECT_EQ(allocator_ptr->AllocationCount(), 0U);
+  VerifyMappedParametersAreUsed(adapter);
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(LoraAdapterTest, CpuAllocatorIsRejected) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
+  lora::LoraAdapter adapter(std::move(cpu_allocator));
+
+  EXPECT_THROW(adapter.Load(GenerateTestParameters<float>()()), OnnxRuntimeException);
+}
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && \
+    defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+TEST(LoraAdapterTest, CudaPluginAllocatorKeepsMappedValues) {
+  const auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value() || *ep_name != dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName) {
+    GTEST_SKIP() << "CUDA plugin EP is not registered";
+  }
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  ASSERT_NE(cuda_ep, nullptr);
+  auto cuda_allocators = cuda_ep->CreatePreferredAllocators();
+  ASSERT_FALSE(cuda_allocators.empty());
+  ASSERT_EQ(cuda_allocators[0]->Info().device.Type(), OrtDevice::GPU);
+  ASSERT_EQ(cuda_allocators[0]->Info().device.Vendor(), OrtDevice::VendorIds::NVIDIA);
+
+  lora::LoraAdapter adapter(std::move(cuda_allocators[0]));
+  adapter.Load(GenerateTestParameters<float>()());
+
+  VerifyMappedParametersAreUsed(adapter);
+}
+#endif
 
 #ifdef USE_CUDA
 TEST(LoraAdapterTest, VerifyDeviceCopy) {
