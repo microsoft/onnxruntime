@@ -4,8 +4,27 @@
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/framework/op_kernel_info.h"
 #include <string>
+#include <utility>
+#include <vector>
 namespace onnxruntime {
 namespace webgpu {
+
+namespace {
+
+// Parameters occupy uniform slots in activation_params_.values_ order.
+size_t GetActivationUsedUniformCount(const Activation& activation) {
+  switch (activation.activation_kind_) {
+    case ActivationKind::Clip:
+    case ActivationKind::HardSigmoid:
+      return 2;
+    case ActivationKind::LeakyRelu:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+}  // namespace
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) {
   activation.activation_kind_ = ActivationKind::None;
@@ -51,32 +70,53 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
 }
 
 std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type) {
-  std::string snippet;
-  auto base_type_cast = [base_type](float value) -> std::string {
-    return base_type + "(" + std::to_string(value) + ")";
+  auto base_type_cast = [base_type](const std::string& value) -> std::string {
+    return base_type + "(" + value + ")";
   };
-  auto value_type_cast = [base_type_cast, value_type](float f) -> std::string {
-    return value_type + "(" + base_type_cast(f) + ")";
+  auto value_type_cast = [base_type_cast, value_type](const std::string& value) -> std::string {
+    return value_type + "(" + base_type_cast(value) + ")";
   };
   switch (activation.activation_kind_) {
     case ActivationKind::Relu:
-      return "value = max(value, " + value_type_cast(0.0) + ");";
+      return "value = max(value, " + value_type_cast(std::to_string(0.0f)) + ");";
     case ActivationKind::Sigmoid:
-      return "value = " + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-value));";
+      return "value = " + value_type_cast(std::to_string(1.0f)) + " / (" + value_type_cast(std::to_string(1.0f)) +
+             " + exp(-value));";
     case ActivationKind::Clip:
-      return "value = clamp(value, " + value_type_cast(activation.activation_params_.Clip.minimum_) + ", " +
-             value_type_cast(activation.activation_params_.Clip.maximum_) + ");";
+      return "value = clamp(value, " + value_type_cast("uniforms.activation_param_0") + ", " +
+             value_type_cast("uniforms.activation_param_1") + ");";
     case ActivationKind::HardSigmoid:
-      return "value = clamp(" + value_type_cast(activation.activation_params_.HardSigmoid.alpha_) + " * value + " +
-             value_type_cast(activation.activation_params_.HardSigmoid.beta_) + ", " + value_type_cast(0.0) + ", " +
-             value_type_cast(1.0) + ");";
+      return "value = clamp(" + value_type_cast("uniforms.activation_param_0") + " * value + " +
+             value_type_cast("uniforms.activation_param_1") + ", " + value_type_cast(std::to_string(0.0f)) + ", " +
+             value_type_cast(std::to_string(1.0f)) + ");";
     case ActivationKind::LeakyRelu:
-      return "value = select(" + base_type_cast(activation.activation_params_.LeakyRelu.alpha_) +
-             " * value, value, value >= " + value_type_cast(0.0) + ");";
+      return "value = select(" + base_type_cast("uniforms.activation_param_0") + " * value, value, value >= " +
+             value_type_cast(std::to_string(0.0f)) + ");";
     case ActivationKind::Tanh:
       return "value = tanh(value);";
     default:
       return "";
+  }
+}
+
+void AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables) {
+  const size_t used = GetActivationUsedUniformCount(activation);
+  for (size_t i = 0; i < kActivationUniformVariableCount; i++) {
+    if (i < used) {
+      variables.emplace_back(activation.activation_params_.values_[i]);
+    } else {
+      // Empty values omit unused slots from both the uniform struct and buffer.
+      variables.emplace_back();
+    }
+  }
+}
+
+void AppendActivationUniformsData(const Activation& activation, ProgramBase& program) {
+  std::vector<ProgramUniformVariableValue> variables;
+  variables.reserve(kActivationUniformVariableCount);
+  AppendActivationUniformsData(activation, variables);
+  for (auto& variable : variables) {
+    program.AddUniformVariable(std::move(variable));
   }
 }
 

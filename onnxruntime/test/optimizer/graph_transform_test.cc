@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <random>
+#include <sstream>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -3269,10 +3270,10 @@ void RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(float alpha_first, float a
       ASSERT_GT(params_attr->floats_size(), 0);
       fused_alphas.push_back(params_attr->floats(0));
     }
-    // Ensure both activations are fused into Conv to exercise the parameter-specific MatMulNaiveProgram path.
+    // Both must fuse so that one MatMulNaive pipeline is dispatched twice with different uniforms.
     ASSERT_THAT(fused_alphas, ::testing::UnorderedElementsAre(alpha_first, alpha_second))
-        << "expected both convolutions to absorb their HardSigmoid, so that two MatMulNaive "
-           "variants differing only in activation parameters are compiled in one session";
+        << "expected both convolutions to absorb their HardSigmoid, so that a single MatMulNaive "
+           "pipeline runs twice with different activation parameter uniforms";
   };
 
   RunWebGpuFusionTransformerTest(build_test_case,
@@ -3374,8 +3375,10 @@ TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationsIn
   RunWebGpuSmallMatMulConvActivationPairTest("Sigmoid", "Relu");
 }
 
-// Use distinct alpha values that match at the stringstream default precision.
-TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvDistinguishesActivationParamsInPipelineCache) {
+// These alphas render identically at the default stringstream precision, so before activation
+// parameters became uniforms they collided in the pipeline cache key. Both convolutions now share
+// one pipeline and must still produce distinct results from their per-dispatch uniforms.
+TEST_F(GraphTransformationTests, WebGpuSmallMatMulConvSharesPipelineAcrossActivationParams) {
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000015.0f, 1000025.0f);
   RunWebGpuSmallMatMulConvHardSigmoidParamPairTest(1000025.0f, 1000015.0f);
 }
@@ -3494,6 +3497,125 @@ TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
   check_ints_attr("pads", AsSpan<int64_t>({1, 1, 1, 1}));
   check_ints_attr("kernel_shape", AsSpan<int64_t>({3, 3}));
 }
+
+#if defined(USE_WEBGPU)
+namespace {
+
+using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, NodeArg*)>;
+
+// Compare Level2 fused execution with the Level1 unfused baseline.
+void RunWebGpuConvActivationParity(const ConvActivationBuilder& add_activation,
+                                   const std::string& expected_activation,
+                                   int opset_version,
+                                   const std::vector<int64_t>& input_shape = {1, 4, 14, 14},
+                                   const std::vector<int64_t>& weight_shape = {8, 4, 3, 3}) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto build_test_case = [&add_activation, &input_shape, &weight_shape](ModelTestBuilder& builder) {
+    // Include negative inputs for asymmetric activations.
+    auto* input = builder.MakeInput<float>(input_shape, -3.0f, 3.0f);
+    auto* weight = builder.MakeInitializer<float>(weight_shape, -0.5f, 0.5f);
+    auto* bias = builder.MakeInitializer<float>({weight_shape[0]}, -0.5f, 0.5f);
+    auto* conv_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    // Start from NCHW so layout transformation creates the NHWC fusion candidate.
+    builder.AddNode("Conv", {input, weight, bias}, {conv_out});
+    add_activation(builder, conv_out, output);
+  };
+
+  auto check_transformed_graph = [&expected_activation](InferenceSessionWrapper& session) {
+    bool fused = false;
+    std::ostringstream graph_description;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      graph_description << " " << node.Domain() << "." << node.OpType()
+                        << "[" << node.GetExecutionProviderType() << "]";
+      if (node.OpType() != "Conv") {
+        continue;
+      }
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr && activation_attr->s() == expected_activation) {
+        fused = true;
+      }
+    }
+    // Ensure the activation is fused; otherwise this test would not exercise the fused kernel.
+    ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
+                       << ", so the fused kernel was never executed. Graph was:"
+                       << graph_description.str();
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case,
+                                 check_transformed_graph,
+                                 TransformerLevel::Level1,
+                                 TransformerLevel::Level2,
+                                 opset_version,
+                                 /*per_sample_tolerance=*/2e-3,
+                                 /*relative_per_sample_tolerance=*/2e-3,
+                                 /*transformer=*/nullptr,
+                                 []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+ConvActivationBuilder SimpleActivation(const std::string& op_type,
+                                       const std::string& domain = kOnnxDomain,
+                                       const std::function<void(Node&)>& decorate = nullptr) {
+  return [op_type, domain, decorate](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    Node& activation = builder.AddNode(op_type, {conv_out}, {output}, domain);
+    if (decorate) {
+      decorate(activation);
+    }
+  };
+}
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, WebGpuConvReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvLeakyReluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.15f); }),
+      "LeakyRelu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvHardSigmoidFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("HardSigmoid", kOnnxDomain,
+                       [](Node& node) {
+                         node.AddAttribute("alpha", 0.3f);
+                         node.AddAttribute("beta", 0.4f);
+                       }),
+      "HardSigmoid", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
+  auto add_clip = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* min_value = builder.MakeScalarInitializer<float>(-0.25f);
+    auto* max_value = builder.MakeScalarInitializer<float>(0.75f);
+    builder.AddNode("Clip", {conv_out, min_value, max_value}, {output});
+  };
+  RunWebGpuConvActivationParity(add_clip, "Clip", 17);
+}
+
+// Each call builds its own session, so these are two independent parity checks rather than a
+// pipeline-sharing test. Sharing is covered by WebGpuSmallMatMulConvSharesPipelineAcrossActivationParams,
+// which puts both parameter values in one session.
+TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
+  // Keep N and K below 8 to select MatMulNaiveProgram.
+  const std::vector<int64_t> input_shape{1, 4, 8, 8};
+  const std::vector<int64_t> weight_shape{6, 4, 1, 1};
+
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.01f); }),
+      "LeakyRelu", 17, input_shape, weight_shape);
+  RunWebGpuConvActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.5f); }),
+      "LeakyRelu", 17, input_shape, weight_shape);
+}
+
+#endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, FuseConvMulNoBias) {

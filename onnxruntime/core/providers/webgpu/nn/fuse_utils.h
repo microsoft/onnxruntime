@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <iomanip>
-#include <limits>
 #include <string>
 #include <sstream>
+#include <vector>
 
 #include "core/common/status.h"
+#include "core/providers/webgpu/program.h"
 
 #pragma once
 namespace onnxruntime {
@@ -25,15 +25,9 @@ enum class ActivationKind {
 };
 
 using Activation = struct Activation {
-  std::string ToString() const {
+  std::string CacheKey() const {
     std::stringstream oss;
     oss << "ActivationKind: " << static_cast<int>(activation_kind_) << ";";
-    // Increase the serialization precision so that activation_params_.values_ are captured with
-    // max_digits10 significant digits rather than the default 6. This ensures that WGSL shaders
-    // embedding different activation constants receive distinct cache keys.
-    oss << std::setprecision(std::numeric_limits<float>::max_digits10);
-    oss << "ActivationParams: " << activation_params_.values_[0] << ";";
-    oss << "ActivationParams: " << activation_params_.values_[1] << ";";
     return oss.str();
   }
   using ActivationParameters = union ActivationParameters {
@@ -54,10 +48,21 @@ using Activation = struct Activation {
   ActivationKind activation_kind_ = ActivationKind::None;
 };
 
+// Fixed slots keep activation uniform definitions and values index-aligned.
+constexpr size_t kActivationUniformVariableCount = 2;
+
+// Activation uniforms must be last in each program's uniform definition list.
+#define WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES                                     \
+  {"activation_param_0", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32}, \
+  { "activation_param_1", onnxruntime::webgpu::ProgramUniformVariableDataType::Float32 }
+
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation);
+
 std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type);
-// Status AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables);
-// Status AppendActivationUniforms(const Activation& activation, std::vector<float>& data);
+
+// Appends exactly kActivationUniformVariableCount values, with empty entries for unused slots.
+void AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables);
+void AppendActivationUniformsData(const Activation& activation, ProgramBase& program);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
