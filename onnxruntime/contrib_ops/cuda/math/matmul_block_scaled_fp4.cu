@@ -76,6 +76,13 @@ __global__ void AddBiasKernel(T* __restrict__ y, const T* __restrict__ bias, int
 // Number of warps (= output columns) per thread block in the GEMV.
 constexpr int kGemvWarpsPerBlock = 8;
 
+// Largest M each sub-path accepts. The mma kernel unrolls 4 tiles of the mma's 8-row N extent and
+// streams the packed weight once for all of them, so a speculative step that packs several tokens
+// per request stays on it. The scalar kernel instead splits M across gridDim.y and re-reads the
+// weight per row tile, which loses to the dequantize + cuBLAS path well before 32 rows.
+constexpr int kFp4MmaGemvMaxM = 32;
+constexpr int kFp4ScalarGemvMaxM = 8;
+
 // Largest M tile the GEMV will fold into a single block. M is at most kGemvMaxM (8) at the
 // call site; beyond 4 rows the register pressure from the per-row accumulators and the A
 // fragments starts to cost more occupancy than the extra weight reuse buys.
@@ -558,7 +565,7 @@ __device__ __forceinline__ void Fp4DecodeWord(uint32_t word, typename Fp4Cvt<T>:
   Fp4Cvt<T>::DecodeQuad(mag >> 16, sgn >> 16, out[2], out[3]);
 }
 
-template <typename T, int KSplit, int ColTiles>
+template <typename T, int KSplit, int ColTiles, int MTiles>
 __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantizedFp4WeightMmaGemvKernel(
     T* __restrict__ y,
     const T* __restrict__ a,
@@ -597,10 +604,19 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
   const uint8_t* ws_lo = weight_scale + static_cast<size_t>(lo_ok ? col_lo : 0) * k_blocks;
   const uint8_t* ws_hi = weight_scale + static_cast<size_t>(hi_ok ? col_hi : 0) * k_blocks;
 
-  const bool a_ok = g < m;
-  const T* a_row = a + static_cast<size_t>(a_ok ? g : 0) * k;
+  // Each M tile is a different group of 8 activation rows sharing one pass over the packed
+  // weight. The weight stream, not the mma, is what this kernel is bound by, so verifying a few
+  // speculative tokens costs little more than decoding one.
+  bool a_ok[MTiles];
+  const T* a_row[MTiles];
+#pragma unroll
+  for (int mt = 0; mt < MTiles; ++mt) {
+    const int row = g + (mt << 3);
+    a_ok[mt] = row < m;
+    a_row[mt] = a + static_cast<size_t>(a_ok[mt] ? row : 0) * k;
+  }
 
-  float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc[MTiles][4] = {};
   const int windows = k >> 7;
 
   for (int wi = warp_k; wi < windows; wi += KSplit) {
@@ -610,7 +626,11 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
     const int kb = (wi << 3) + (t << 1);
     const T2 sl[2] = {MmaOp::BroadcastScale(ws_lo[kb]), MmaOp::BroadcastScale(ws_lo[kb + 1])};
     const T2 sh[2] = {MmaOp::BroadcastScale(ws_hi[kb]), MmaOp::BroadcastScale(ws_hi[kb + 1])};
-    const uint4* ap = reinterpret_cast<const uint4*>(a_row + kbase);
+    const uint4* ap[MTiles];
+#pragma unroll
+    for (int mt = 0; mt < MTiles; ++mt) {
+      ap[mt] = reinterpret_cast<const uint4*>(a_row[mt] + kbase);
+    }
     const uint32_t wl[4] = {wl4.x, wl4.y, wl4.z, wl4.w};
     const uint32_t wh[4] = {wh4.x, wh4.y, wh4.z, wh4.w};
 
@@ -628,25 +648,35 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
         bl[i] = Cvt::Mul(bl[i], s0);
         bh[i] = Cvt::Mul(bh[i], s1);
       }
-      const uint4 av4 = a_ok ? ap[w] : make_uint4(0u, 0u, 0u, 0u);
-      const uint32_t* av = reinterpret_cast<const uint32_t*>(&av4);
+      uint4 av4[MTiles];
+#pragma unroll
+      for (int mt = 0; mt < MTiles; ++mt) {
+        av4[mt] = a_ok[mt] ? ap[mt][w] : make_uint4(0u, 0u, 0u, 0u);
+      }
 #pragma unroll
       for (int j = 0; j < 2; ++j) {
         // A regs are (row g, k 2t..2t+1), (row g+8, ...), (row g, k 2t+8..), (row g+8, ...).
         const uint32_t ra[4] = {MmaOp::Pack(bl[2 * j]), MmaOp::Pack(bh[2 * j]),
                                 MmaOp::Pack(bl[2 * j + 1]), MmaOp::Pack(bh[2 * j + 1])};
-        const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
-        MmaOp::Mma(acc, ra, rb);
+#pragma unroll
+        for (int mt = 0; mt < MTiles; ++mt) {
+          const uint32_t* av = reinterpret_cast<const uint32_t*>(&av4[mt]);
+          const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
+          MmaOp::Mma(acc[mt], ra, rb);
+        }
       }
     }
   }
 
   if constexpr (KSplit > 1) {
-    __shared__ float red[ColTiles * KSplit * 32 * 4];
-    float* mine = red + ((warp_c * KSplit + warp_k) * 32 + lane) * 4;
+    __shared__ float red[ColTiles * KSplit * 32 * 4 * MTiles];
+    float* mine = red + ((warp_c * KSplit + warp_k) * 32 + lane) * (4 * MTiles);
 #pragma unroll
-    for (int i = 0; i < 4; ++i) {
-      mine[i] = acc[i];
+    for (int mt = 0; mt < MTiles; ++mt) {
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        mine[mt * 4 + i] = acc[mt][i];
+      }
     }
     __syncthreads();
     if (warp_k != 0) {
@@ -654,10 +684,13 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
     }
 #pragma unroll
     for (int ws = 1; ws < KSplit; ++ws) {
-      const float* other = red + ((warp_c * KSplit + ws) * 32 + lane) * 4;
+      const float* other = red + ((warp_c * KSplit + ws) * 32 + lane) * (4 * MTiles);
 #pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        acc[i] += other[i];
+      for (int mt = 0; mt < MTiles; ++mt) {
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+          acc[mt][i] += other[mt * 4 + i];
+        }
       }
     }
   }
@@ -668,20 +701,24 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
   const int r0 = t << 1;
   const float bias_lo = (bias != nullptr && lo_ok) ? to_float<T>(bias[col_lo]) : 0.0f;
   const float bias_hi = (bias != nullptr && hi_ok) ? to_float<T>(bias[col_hi]) : 0.0f;
-  if (lo_ok) {
-    if (r0 < m) {
-      y[static_cast<size_t>(r0) * n + col_lo] = from_float<T>(acc[0] * g2 + bias_lo);
+#pragma unroll
+  for (int mt = 0; mt < MTiles; ++mt) {
+    const int row = r0 + (mt << 3);
+    if (lo_ok) {
+      if (row < m) {
+        y[static_cast<size_t>(row) * n + col_lo] = from_float<T>(acc[mt][0] * g2 + bias_lo);
+      }
+      if (row + 1 < m) {
+        y[static_cast<size_t>(row + 1) * n + col_lo] = from_float<T>(acc[mt][1] * g2 + bias_lo);
+      }
     }
-    if (r0 + 1 < m) {
-      y[static_cast<size_t>(r0 + 1) * n + col_lo] = from_float<T>(acc[1] * g2 + bias_lo);
-    }
-  }
-  if (hi_ok) {
-    if (r0 < m) {
-      y[static_cast<size_t>(r0) * n + col_hi] = from_float<T>(acc[2] * g2 + bias_hi);
-    }
-    if (r0 + 1 < m) {
-      y[static_cast<size_t>(r0 + 1) * n + col_hi] = from_float<T>(acc[3] * g2 + bias_hi);
+    if (hi_ok) {
+      if (row < m) {
+        y[static_cast<size_t>(row) * n + col_hi] = from_float<T>(acc[mt][2] * g2 + bias_hi);
+      }
+      if (row + 1 < m) {
+        y[static_cast<size_t>(row + 1) * n + col_hi] = from_float<T>(acc[mt][3] * g2 + bias_hi);
+      }
     }
   }
 }
@@ -860,6 +897,18 @@ Status LaunchAddBiasNvFp4(void* y,
 #endif
 }
 
+int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
+  if (device_prop.major >= 8 && k % 128 == 0 && Fp4GemvMmaEnabled()) {
+    return kFp4MmaGemvMaxM;
+  }
+#else
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(device_prop);
+#endif
+  return kFp4ScalarGemvMaxM;
+}
+
 Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                const void* a,
                                                const void* b_packed,
@@ -885,53 +934,73 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   const int k_blocks = (k + block_size - 1) / block_size;
 
   // Tensor-core sub-path: needs mma.m16n8k16 (SM80+), a whole number of 128-element K windows,
-  // and M within the mma's 8-row N extent. Everything else falls back to the scalar GEMV.
+  // and M within the mma's 8-row N extent times the number of M tiles the kernel unrolls.
   //
-  // The M <= 8 bound is structural: one warp owns a 16-column x 8-row output tile, where lane
-  // (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns 16 * tile + g and
-  // + 8, and stores output rows 2t and 2t + 1 of those two columns.
-  if (device_prop.major >= 8 && k % 128 == 0 && m <= 8 && Fp4GemvMmaEnabled()) {
+  // One warp owns a 16-column x 8-row output tile, where lane (g = lane >> 2, t = lane & 3) reads
+  // activation row g + 8 * mt, covers weight columns 16 * tile + g and + 8, and stores output rows
+  // 2t and 2t + 1 of those two columns. Rows past MTiles * 8 have nowhere to live, so the scalar
+  // GEMV takes over -- and that one re-reads the packed weight once per row tile, which is why the
+  // cap below is much lower without the mma.
+  if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvMaxM && Fp4GemvMmaEnabled()) {
     const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k, device_prop.multiProcessorCount);
     const int cols_per_block = 16 * cfg.col_tiles;
+    const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};
     const dim3 mma_blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block)};
     const uint8_t* mbp = reinterpret_cast<const uint8_t*>(b_packed);
     const uint8_t* mws = reinterpret_cast<const uint8_t*>(weight_scale);
 
-#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT)                                                       \
-  MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT>                                          \
+#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT)                                                   \
+  MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT>                                      \
       <<<mma_blocks, mma_threads, 0, stream>>>(reinterpret_cast<T*>(y),                          \
                                                reinterpret_cast<const T*>(a), mbp, mws,          \
                                                weight_scale_2, reinterpret_cast<const T*>(bias), \
                                                m, n, k, k_blocks)
 
-#define ORT_DISPATCH_FP4_MMA_GEMV(T)         \
-  do {                                       \
-    if (cfg.col_tiles == 4) {                \
-      if (cfg.k_split >= 2) {                \
-        ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 4);    \
-      } else {                               \
-        ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 4);    \
-      }                                      \
-    } else {                                 \
-      switch (cfg.k_split) {                 \
-        case 16:                             \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 16, 1); \
-          break;                             \
-        case 8:                              \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 8, 1);  \
-          break;                             \
-        case 4:                              \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 4, 1);  \
-          break;                             \
-        case 2:                              \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 1);  \
-          break;                             \
-        default:                             \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 1);  \
-          break;                             \
-      }                                      \
-    }                                        \
+#define ORT_DISPATCH_FP4_MMA_GEMV_MT(T, MT)      \
+  do {                                           \
+    if (cfg.col_tiles == 4) {                    \
+      if (cfg.k_split >= 2) {                    \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 4, MT);    \
+      } else {                                   \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 4, MT);    \
+      }                                          \
+    } else {                                     \
+      switch (cfg.k_split) {                     \
+        case 16:                                 \
+          ORT_LAUNCH_FP4_MMA_GEMV(T, 16, 1, MT); \
+          break;                                 \
+        case 8:                                  \
+          ORT_LAUNCH_FP4_MMA_GEMV(T, 8, 1, MT);  \
+          break;                                 \
+        case 4:                                  \
+          ORT_LAUNCH_FP4_MMA_GEMV(T, 4, 1, MT);  \
+          break;                                 \
+        case 2:                                  \
+          ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 1, MT);  \
+          break;                                 \
+        default:                                 \
+          ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 1, MT);  \
+          break;                                 \
+      }                                          \
+    }                                            \
+  } while (0)
+
+// Only 1, 2 and 4 row tiles are instantiated; an M of 17..24 rounds up to 4 and masks the
+// remainder, which costs nothing next to the weight traffic it shares.
+#define ORT_DISPATCH_FP4_MMA_GEMV(T)          \
+  do {                                        \
+    switch (mtiles) {                         \
+      case 1:                                 \
+        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 1);   \
+        break;                                \
+      case 2:                                 \
+        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 2);   \
+        break;                                \
+      default:                                \
+        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 4);   \
+        break;                                \
+    }                                         \
   } while (0)
 
     if (is_bf16) {
@@ -940,10 +1009,14 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
       ORT_DISPATCH_FP4_MMA_GEMV(half);
     }
 #undef ORT_DISPATCH_FP4_MMA_GEMV
+#undef ORT_DISPATCH_FP4_MMA_GEMV_MT
 #undef ORT_LAUNCH_FP4_MMA_GEMV
     return CUDA_CALL(cudaGetLastError());
   }
 
+  ORT_RETURN_IF_NOT(m <= kFp4ScalarGemvMaxM,
+                    "MatMulBlockQuantizedFp4Weight GEMV without the mma sub-path supports M up to ",
+                    kFp4ScalarGemvMaxM, ", got ", m, ".");
   const int rows_per_block = Fp4GemvRowsPerBlock(m, n, device_prop.multiProcessorCount);
   const dim3 threads{32, kGemvWarpsPerBlock};
   const dim3 blocks{static_cast<unsigned int>((n + kGemvWarpsPerBlock - 1) / kGemvWarpsPerBlock),

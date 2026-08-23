@@ -535,7 +535,9 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesFp16) {
   }
 
   for (const auto& shape : kMmaShapes) {
-    for (int m_val : {1, 3, 4, 8}) {
+    // 1-8 use one row tile, 9-16 two and 17-32 four; the odd values leave a partial tile whose
+    // masked rows must not be written.
+    for (int m_val : {1, 3, 4, 8, 9, 16, 17, 32}) {
       const int64_t m = m_val;
       const int64_t n = shape.n;
       const int64_t k = shape.k;
@@ -570,7 +572,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
   constexpr int64_t n = 512;
   constexpr int64_t k = 256;
 
-  for (int m_val : {1, 4, 8}) {
+  for (int m_val : {1, 4, 8, 16, 32}) {
     const int64_t m = m_val;
     SCOPED_TRACE("M = " + std::to_string(m));
 
@@ -680,11 +682,12 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
 }
 
 // ---------------------------------------------------------------------------
-// Prefill (M > kGemvMaxM) dequantize + cuBLAS path.
+// Prefill dequantize + cuBLAS path.
 //
 // LaunchDequantizeNvFp4 picks DequantizeNvFp4Vec8Kernel when K % 8 == 0 and block_size is even,
 // and the scalar DequantizeNvFp4Kernel otherwise. The cases below cover both sides of that guard;
-// every one uses M > 8 so the decode GEMV is skipped and the dequant actually runs.
+// every one uses a block_size other than 16, which the decode GEMV does not handle, so the dequant
+// actually runs regardless of M.
 // ---------------------------------------------------------------------------
 
 // Vectorized path: K % 8 == 0, even block_size, scale boundaries inside every 8-element chunk,
