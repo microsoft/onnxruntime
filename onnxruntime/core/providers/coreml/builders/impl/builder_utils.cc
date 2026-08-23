@@ -156,9 +156,8 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 // ML Program Utils
 //
 
-namespace {
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
-                       std::optional<gsl::span<const int64_t>> shape, bool convert_scalar = false) {
+                       std::optional<gsl::span<const int64_t>> shape, bool convert_scalar) {
   tensor_type.set_datatype(data_type);
   if (shape) {
     auto rank = shape->size();
@@ -179,6 +178,7 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
   }
 }
 
+namespace {
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
                        const ONNX_NAMESPACE::TensorShapeProto* shape, bool convert_scalar = false) {
   tensor_type.set_datatype(data_type);
