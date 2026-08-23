@@ -8,6 +8,7 @@ vcpkg_from_github(
     HEAD_REF master
     PATCHES
         protobuf_cmake.patch
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf/protobuf_msvc_unreachable_code.patch"
 )
 
 string(COMPARE EQUAL "${TARGET_TRIPLET}" "${HOST_TRIPLET}" protobuf_BUILD_PROTOC_BINARIES)
@@ -44,6 +45,7 @@ vcpkg_cmake_configure(
 )
 
 vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(PACKAGE_NAME utf8_range CONFIG_PATH lib/cmake/utf8_range)
 
 # It appears that at this point the build hasn't actually finished. There is probably
 # a process spawned by the build, therefore we need to wait a bit.

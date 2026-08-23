@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <filesystem>
 #include <fstream>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -51,7 +51,7 @@ void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, Or
 }
 
 void LoadModelProtoFromFile(const ORTCHAR_T* model_file, ONNX_NAMESPACE::ModelProto& model_proto) {
-  std::ifstream model_stream{std::filesystem::path(model_file), std::ios::binary};
+  std::ifstream model_stream{std::basic_string<ORTCHAR_T>{model_file}, std::ios::binary};
   ASSERT_TRUE(model_stream.is_open());
   ASSERT_TRUE(model_proto.ParseFromIstream(&model_stream));
 }
