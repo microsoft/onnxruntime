@@ -1478,7 +1478,8 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// The function attempts to load the adapter from the specified file
   /// \param adapter_path The path to the Lora adapter
   /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
-  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time.
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                        OrtAllocator* allocator);
 
@@ -1488,7 +1489,8 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// \param bytes The byte array containing file LoraAdapter format
   /// \param num_bytes The number of bytes in the byte array
   /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
-  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time.
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };

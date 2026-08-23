@@ -13,9 +13,12 @@
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && \
     defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
+
+extern std::unique_ptr<Ort::Env> ort_env;
 #endif
 
 #include "gtest/gtest.h"
+#include <array>
 #include <cmath>
 
 #include "test/util/include/asserts.h"
@@ -559,6 +562,67 @@ TEST(LoraAdapterTest, CudaPluginAllocatorKeepsMappedValues) {
   adapter.Load(GenerateTestParameters<float>()());
 
   VerifyMappedParametersAreUsed(adapter);
+}
+
+TEST(LoraAdapterTest, CudaPluginRunCopiesMappedValues) {
+  const auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value() || *ep_name != dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName) {
+    GTEST_SKIP() << "CUDA plugin EP is not registered";
+  }
+
+  Ort::ConstEpDevice cuda_device;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string_view{ep_device.EpName()} == dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName) {
+      cuda_device = ep_device;
+      break;
+    }
+  }
+  ASSERT_NE(cuda_device, nullptr);
+
+  auto device_memory_info = cuda_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  ASSERT_NE(device_memory_info, nullptr);
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(allocator, nullptr);
+
+  constexpr const ORTCHAR_T* adapter_path = ORT_TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+  auto adapter = Ort::LoraAdapter::CreateLoraAdapter(adapter_path, allocator);
+
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, Ort::KeyValuePairs{});
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/lora/two_params_lora_model.onnx"), session_options);
+  auto input_devices = session.GetEpDeviceForInputs();
+  ASSERT_EQ(input_devices.size(), 3U);
+  for (size_t i = 1; i < input_devices.size(); ++i) {
+    ASSERT_NE(input_devices[i], nullptr);
+    EXPECT_EQ(std::string_view{input_devices[i].EpName()},
+              dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName);
+  }
+
+  Ort::RunOptions run_options;
+  run_options.AddActiveLoraAdapter(adapter);
+
+  constexpr std::array<int64_t, 2> input_shape{4, 4};
+  std::array<float, 16> input{};
+  input.fill(1.0f);
+  auto input_value = Ort::Value::CreateTensor<float>(
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU),
+      input.data(), input.size(), input_shape.data(), input_shape.size());
+
+  constexpr const char* input_names[]{"input_x"};
+  constexpr const char* output_names[]{"output"};
+  auto outputs = session.Run(run_options, input_names, &input_value, 1, output_names, 1);
+
+  constexpr std::array<float, 16> expected_output{
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f};
+  ASSERT_EQ(outputs.size(), 1U);
+  ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementCount(), expected_output.size());
+  const auto* output = outputs[0].GetTensorData<float>();
+  for (size_t i = 0; i < expected_output.size(); ++i) {
+    EXPECT_NEAR(output[i], expected_output[i], 0.06f);
+  }
 }
 #endif
 
