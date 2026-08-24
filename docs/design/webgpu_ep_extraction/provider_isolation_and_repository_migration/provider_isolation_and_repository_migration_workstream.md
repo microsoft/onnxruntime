@@ -264,8 +264,8 @@ The dependency inventory should compare existing ORT mechanisms before selecting
 
 ### Cross-repository version policy
 
-Each repository pins the other, so the pins must be arranged so that neither side can be blocked waiting for the
-other. Only one lane floats, and it never blocks a merge:
+Each repository pins the other, so the pins must be arranged so that the dependency does not become circular. Only
+one lane floats, and it never blocks a merge:
 
 | Lane | Built or run against | Blocking |
 | --- | --- | --- |
@@ -298,7 +298,9 @@ public plugin EP API. The exception is a provider dependency on unspecified beha
 repository. Without a stated owner the lane goes permanently red and stops being read.
 
 Adopting a newly added EP API therefore requires an ORT release carrying it before the provider can build against it.
-This does not force the runtime floor upward, since the new call can be gated.
+This does not force the runtime floor upward, since the new call can be gated. The wait is a scheduling cost rather
+than a deadlock: both repositories keep landing changes while it elapses, and the open question about consuming an
+ORT pre-release exists to shorten it.
 
 ## Work packages
 
@@ -361,8 +363,9 @@ Sequencing:
 ### Isolation milestone
 
 The staging root is ready for transfer when a clean copy of it builds, tests, and packages everything listed in
-Desired end state, with no provider build input resolving outside the root and no private ORT headers or libraries in
-the link interface.
+Desired end state, with every build input either inside the root or a declared external dependency, and no private
+ORT headers or libraries in the link interface. The ORT package and the pinned third-party dependencies are declared
+external inputs, not exceptions to the milestone.
 
 ### End state
 

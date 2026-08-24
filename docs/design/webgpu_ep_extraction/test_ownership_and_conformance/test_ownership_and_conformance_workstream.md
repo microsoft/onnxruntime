@@ -105,7 +105,8 @@ The MVP should provide:
 
 - A shared conformance-runner core for case loading, execution, comparison, and reporting.
 - A prebuilt native executable that uses the core and loads dynamic plugin EP libraries.
-- A small SDK or CMake target that uses the same core and lets an external EP link its static factory registration.
+- A small SDK or CMake target that uses the same core and lets an external EP link its static factory registration,
+  if a native static-linkage runner is adopted.
 - CPU fallback prevention or reliable assignment verification.
 - Case, provider-profile, and report schemas.
 - Structured `PASS`, `UNSUPPORTED`, `FAIL`, `EXCLUDED`, and `NOT_RUN` results, with semantics defined in

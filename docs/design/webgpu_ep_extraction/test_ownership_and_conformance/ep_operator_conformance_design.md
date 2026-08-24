@@ -166,7 +166,7 @@ For an ordinary operator conformance case, the runner should:
 
 1. Load or register the requested plugin EP and select a device.
 2. Apply the requested EP options.
-3. Create a session with CPU fallback disabled.
+3. Create a session with CPU fallback disabled, unless the CPU EP is itself the target.
 4. Load the generated or packaged model.
 5. Require the target EP to accept the nodes specified by the case.
 6. Run every input dataset.
@@ -174,7 +174,8 @@ For an ordinary operator conformance case, the runner should:
 8. Record diagnostics without changing the defined outcome.
 
 Disabling CPU fallback is essential. A correct result produced by the CPU EP does not demonstrate conformance of the
-target EP.
+target EP. The exception is the CPU reference run, where the CPU EP is the target: there is nothing to fall back
+from, and ORT rejects a session that disables CPU fallback while nodes are assigned to the CPU EP.
 
 Cases that intentionally test partial graph assignment must state their assignment requirements explicitly. They
 should be classified separately from single-operator correctness cases.
@@ -267,8 +268,9 @@ device discovery, session creation, and execution APIs.
 
 ## Static plugin usage
 
-A prebuilt executable cannot discover a statically linked plugin. ORT should therefore also publish a small runner
-SDK or CMake target that allows an EP repository to supply static factory registration:
+A prebuilt executable cannot discover a statically linked plugin, so validating static linkage requires a runner the
+EP repository builds itself. Whether that runner is needed is an open question below. If it is adopted, ORT would
+also publish a small runner SDK or CMake target that allows an EP repository to supply static factory registration:
 
 ```cmake
 find_package(onnxruntime_ep_conformance CONFIG REQUIRED)
@@ -330,7 +332,7 @@ The report should make newly unsupported or newly excluded cases easy to detect 
 
 - Publish native runners and platform-neutral case archives with ORT releases.
 - Add a nightly kit for ORT `main`.
-- Add a static-runner SDK or CMake package.
+- Add a static-runner SDK or CMake package, if a native static-linkage runner is adopted.
 - Integrate the conformance kit into an external plugin EP repository.
 
 ### Phase 4: Expand coverage and hosts
