@@ -32,6 +32,7 @@
 #include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/tensor/concat.h"
 #include "core/providers/webgpu/tensor/expand.h"
+#include "core/providers/webgpu/tensor/gather.h"
 #include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/tensor/reshape.h"
 #include "core/providers/webgpu/generator/range.h"
@@ -169,39 +170,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(22, Softplus),
 
     // // binary - math
-    // Add: registered via RegisterKernels with conditional int64 support
-    // Sub: registered via RegisterKernels with conditional int64 support
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
-    KERNEL_CREATE_INFO(14, Mul),
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Div),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Div),
-    KERNEL_CREATE_INFO(14, Div),
-    KERNEL_CREATE_INFO_VERSIONED(8, 11, Max),
-    KERNEL_CREATE_INFO_VERSIONED(12, 12, Max),
-    KERNEL_CREATE_INFO(13, Max),
-    KERNEL_CREATE_INFO_VERSIONED(8, 11, Min),
-    KERNEL_CREATE_INFO_VERSIONED(12, 12, Min),
-    KERNEL_CREATE_INFO(13, Min),
-    KERNEL_CREATE_INFO_VERSIONED(7, 11, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
-    KERNEL_CREATE_INFO(15, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(7, 8, PRelu),
-    KERNEL_CREATE_INFO_VERSIONED(9, 15, PRelu),
-    KERNEL_CREATE_INFO(16, PRelu),
-    // Equal: registered via RegisterKernels with conditional int64 support
-    KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
-    KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
-    KERNEL_CREATE_INFO(13, Greater),
-    KERNEL_CREATE_INFO_VERSIONED(12, 15, GreaterOrEqual),
-    KERNEL_CREATE_INFO(16, GreaterOrEqual),
-    KERNEL_CREATE_INFO_VERSIONED(7, 8, Less),
-    KERNEL_CREATE_INFO_VERSIONED(9, 12, Less),
-    KERNEL_CREATE_INFO(13, Less),
-    KERNEL_CREATE_INFO_VERSIONED(12, 15, LessOrEqual),
-    KERNEL_CREATE_INFO(16, LessOrEqual),
-    KERNEL_CREATE_INFO(7, And),
+    // All binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
+    // GreaterOrEqual, LessOrEqual, Pow, PRelu, And) are registered via RegisterKernels
+    // through RegisterBinaryElementwiseKernels, with conditional int64 support.
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Shape)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 14, Shape)>,
@@ -356,9 +327,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, Split)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, Split)>,
 
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Gather)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Gather)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Gather)>,
+    // Gather: registered via RegisterKernels with conditional int64 support
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, GatherElements)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, GatherElements)>,
@@ -477,13 +446,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   }
 
   // Register Cast kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<6, 8>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<9, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<13, 18>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<19, 20>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<21, 22>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23, 23>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<24>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(6, 8, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(9, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(13, 18, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(19, 20, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(21, 22, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(23, 23, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(24, 24, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(25, enable_int64)));
 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
@@ -492,63 +462,56 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   RegisterRangeKernels(*kernel_registry, enable_int64);
 
   // Register Unsqueeze kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<1, 10>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<11, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<13, 20>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<21, 22>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<23, 23>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<24, 24>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeKernelInfo<25>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo(1, 10, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo(11, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo(13, 20, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo(21, 22, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo(23, 23, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo(24, 24, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeKernelInfo(25, enable_int64)));
 
   // Register Expand kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo(8, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo(13, enable_int64)));
 
-  // Register Add kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<7, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<13, 13>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddKernelInfo<14>(enable_int64)));
+  // Register all binary elementwise kernels (Add, Sub, Mul, Div, Max, Min, Equal, Greater,
+  // Less, GreaterOrEqual, LessOrEqual, Pow, PRelu, And) with conditional int64 support.
+  RegisterBinaryElementwiseKernels(*kernel_registry, enable_int64);
 
   // Register Reshape kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<5, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<13, 13>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<14, 18>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<19, 20>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<21, 22>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<23, 24>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeKernelInfo<25>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo(5, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo(13, 13, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo(14, 18, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo(19, 20, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo(21, 22, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo(23, 24, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeKernelInfo(25, enable_int64)));
 
   // Register Concat kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<1, 3>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<4, 10>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<11, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatKernelInfo<13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo(1, 3, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo(4, 10, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo(11, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatKernelInfo(13, enable_int64)));
 
-  // Register Equal kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<11, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<13, 18>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualKernelInfo<19>(enable_int64)));
-
-  // Register Sub kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<7, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<13, 13>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubKernelInfo<14>(enable_int64)));
+  // Register Gather kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateGatherVersionedKernelInfo(1, 10, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateGatherVersionedKernelInfo(11, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateGatherKernelInfo(13, enable_int64)));
 
   // Register Where kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo<9, 15>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereKernelInfo<16>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo(9, 15, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereKernelInfo(16, enable_int64)));
 
   // Register Tile kernels with conditional int64 support.
   // Tile is a pure data-movement op; int64 is safe because element values are never
   // interpreted or used in shader arithmetic.
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateTileVersionedKernelInfo<6, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateTileKernelInfo<13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateTileVersionedKernelInfo(6, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateTileKernelInfo(13, enable_int64)));
 
   // Register ReduceSum kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<1, 10>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<11, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumKernelInfo<13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo(1, 10, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo(11, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumKernelInfo(13, enable_int64)));
 
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
@@ -668,7 +631,8 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // default allocator
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false),
+          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false,
+          [this]() { return !IsRunActive(); }),
   };
 }
 
@@ -890,11 +854,32 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
+  run_active_.store(true);
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  context_.Flush(BufferManager());
+  run_active_.store(false);
+
+  // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
+  // CaptureEnd() detaches their external storage.
+  Status flush_status = context_.Flush(BufferManager());
+
+  if (!flush_status.IsOK()) {
+    if (IsGraphCaptureEnabled()) {
+      context_.CaptureEnd();
+      auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
+      if (commands_it != captured_graphs_.end()) {
+        context_.ReleaseGraphResources(commands_it->second);
+        commands_it->second.clear();
+      }
+    }
+    graph_buffer_mgr_active_ = false;
+    if (context_.ValidationMode() >= ValidationMode::Basic) {
+      static_cast<void>(context_.PopErrorScope());
+    }
+    return flush_status;
+  }
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {

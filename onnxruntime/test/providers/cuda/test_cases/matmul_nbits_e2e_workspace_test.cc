@@ -5,10 +5,10 @@
 // for the two-level MatMulNBits workspace-estimation pilot: it proves that the workspace *estimator
 // function* agrees with the kernel-instance estimate and with the real runtime workspace request.
 //
-//   Level 1  : EstimateMatMulNBitsWorkspace(node, device_prop)   -- the same estimator function that
-//                                                                    CUDAExecutionProvider::GetCapability()
-//                                                                    calls at partition time; here it is
-//                                                                    invoked DIRECTLY (no kernel).
+//   Level 1  : EstimateMatMulNBitsWorkspace(node, [shape,] device_prop) -- the same estimator function
+//                                                                          that GetCapability() calls at
+//                                                                          partition time; here it is invoked
+//                                                                          DIRECTLY (no kernel).
 //   Level 2  : OpKernel::DeclareWorkspaceRequirements(shapes)     -- constructed kernel instance
 //                                                                    (virtual dispatch into MatMulNBits).
 //   Runtime  : MatMulNBits<MLFloat16>::LastComputeWorkspaceBytes  -- recorded inside the CUTLASS GEMM
@@ -489,6 +489,14 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
       onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(*mm_node, cuda_ep->GetDeviceProp());
   EXPECT_FALSE(level1.has_value())
       << "Level-1 estimate must be nullopt for a dynamic (symbolic) leading dim.";
+
+  // A separately inferred maximum shape makes the same dynamic node estimable without
+  // modifying its canonical shape metadata.
+  const TensorShape max_input_shape({256, kE2eK});
+  const std::optional<size_t> bounded_level1 =
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(
+          *mm_node, max_input_shape.GetDims(), cuda_ep->GetDeviceProp());
+  EXPECT_TRUE(bounded_level1.has_value());
 
   // ---- Level 2: derive the TensorShape from the actual NodeArg proto via the SAME production
   //      converter Level-2 wiring would use. A symbolic dim must convert to a negative extent (-1),

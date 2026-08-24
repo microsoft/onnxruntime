@@ -37,6 +37,7 @@ Source files:
 3. [Dispatch Chain](#3-dispatch-chain)
 4. [Decode Path - Fused GEMV](#4-decode-path---fused-gemv)
 5. [Default Path - Dequantize + cuBLAS](#5-default-path---dequantize--cublas)
+   - [5.1 Tiling the dequantization scratch over N](#51-tiling-the-dequantization-scratch-over-n)
 6. [Optional W8A8 Activation Path](#6-optional-w8a8-activation-path)
 7. [Testing and Benchmarking](#7-testing-and-benchmarking)
 
@@ -195,6 +196,32 @@ back `LaunchDequantizeBlockScaledFp8`:
 
 This keeps the GEMM in the activation type and runs on any CUDA architecture
 with FP8 conversion intrinsics (CUDA >= 11.8). It is the default prefill path.
+
+### 5.1 Tiling the dequantization scratch over N
+
+A full `[N, K]` scratch is 2.37 GiB for a 248320 x 5120 LM head, and it is
+allocated for the whole GEMM even though the GEMM reads it once. The scratch is
+therefore capped and the dequantize + GEMM pair is run over N tiles that fit
+inside the cap. Because the row-major `[M, N]` output is column-major `[N, M]`
+to cuBLAS, an N tile is a plain row offset into `Y`, so no extra copy is needed:
+
+```
+for n_offset in 0, tile_rows, 2 * tile_rows, ...:
+    dequantize B[n_offset : n_offset + rows, :] into the scratch
+    cublasGemmHelper(...) writing Y + n_offset
+```
+
+`ORT_FP8_DEQUANT_SCRATCH_MIB` sets the cap in MiB (default 256). The default was
+chosen by sweeping it on Qwen3.8-27B at an 8K prompt:
+
+| cap | peak memory (MiB) | reduction vs. untiled (MiB) | TTFT change |
+|---|---:|---:|---:|
+| untiled | 32609 | baseline | baseline |
+| 1 GiB | 29509 | -3100 | +5.2% |
+| **256 MiB** | **28503** | **-4106** | **+1.1%** |
+| 128 MiB | 28503 | -4106 | +13.9% |
+
+Shapes small enough to fit the cap take a single tile and are unaffected.
 
 ---
 

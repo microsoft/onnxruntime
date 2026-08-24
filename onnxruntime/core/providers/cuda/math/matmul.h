@@ -8,6 +8,9 @@
 
 namespace onnxruntime {
 namespace cuda {
+
+bool SmallNGemvEnabledFromEnvironment();
+
 template <typename T>
 class MatMul final : public CudaKernel {
   using Base = CudaKernel;
@@ -19,7 +22,8 @@ class MatMul final : public CudaKernel {
         trans_A_{info.GetAttrOrDefault<int64_t>("transA", 0) != 0},
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
-        trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {}
+        trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
+        small_n_gemv_enabled_{SmallNGemvEnabledFromEnvironment()} {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
@@ -30,6 +34,7 @@ class MatMul final : public CudaKernel {
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
+  const bool small_n_gemv_enabled_;
 };
 
 template <typename T>

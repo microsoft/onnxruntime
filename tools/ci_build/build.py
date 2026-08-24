@@ -269,7 +269,6 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
     if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
         vcpkg_install_options.append("--x-feature=telemetry")
-
     overlay_triplets_dir = None
 
     folder_name_parts = []
@@ -394,12 +393,7 @@ def generate_build_tree(
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
 
-    # Telemetry: On Windows uses ETW, on non-Windows uses 1DS. Telemetry is unsupported on
-    # WebAssembly/Emscripten (the 1DS vcpkg feature excludes it), so fail fast on that combination.
-    if args.use_telemetry and args.build_wasm:
-        raise BuildError(
-            "Telemetry is not supported for WebAssembly (Emscripten) builds; omit --use_telemetry when using --build_wasm."
-        )
+    # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
@@ -658,7 +652,6 @@ def generate_build_tree(
                 args.android_cpp_shared,
                 args.android_api,
                 args.use_full_protobuf,
-                args.use_telemetry,
             )
         elif is_windows():
             generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
