@@ -180,7 +180,8 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // SessionOptions.AddInitializer-based sharing) is NOT in use for this session -- that path is
 // already serialized across sessions and is left untouched. Bookkeeping shared across nodes
 // (the pre-packed-weights container, initializer use counts) is synchronized internally; the
-// per-node PrePack() calls that do the heavy lifting are not, and run concurrently.
+// per-node PrePack() calls that do the heavy lifting are not, and run concurrently. Kernel-local
+// prepack thread pools are suppressed while this option is enabled to avoid nested parallelism.
 static const char* const kOrtSessionOptionsEnableParallelPrepack = "session.prepack.enable_parallel";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking

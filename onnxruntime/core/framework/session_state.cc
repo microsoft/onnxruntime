@@ -506,9 +506,26 @@ Status SessionState::PrepackConstantInitializedTensors(
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-            if (constant_initialized_tensors.count(ort_value_idx)) {
+            OrtValue const_initialized_value;
+            bool has_const_initializer = false;
+            {
+              std::unique_lock<std::mutex> initializer_lock(commit_mutex, std::defer_lock);
+              if (guard_bookkeeping) {
+                initializer_lock.lock();
+              }
+
+              const auto initializer_it = constant_initialized_tensors.find(ort_value_idx);
+              if (initializer_it != constant_initialized_tensors.end()) {
+                // Keep the tensor alive while PrePack runs. Another node may consume the final use
+                // and erase the map entry as soon as the bookkeeping lock is released.
+                const_initialized_value = initializer_it->second;
+                has_const_initializer = true;
+              }
+            }
+
+            if (has_const_initializer) {
               bool is_packed = false;
-              const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
+              const Tensor& const_initialized_tensor = const_initialized_value.Get<Tensor>();
 
               auto iter = initializers_to_share_map.find(input_name);
               bool is_shared_initializer = (iter != initializers_to_share_map.end());
@@ -775,8 +792,31 @@ Status SessionState::PrepackConstantInitializedTensors(
           cancellation_requested = true;
           return;
         }
-        statuses[static_cast<size_t>(i)] = process_node(*nodes[static_cast<size_t>(i)],
-                                                        /*should_cache*/ false, /*guard_bookkeeping*/ true);
+
+        Status& status = statuses[static_cast<size_t>(i)];
+        ORT_TRY {
+          status = process_node(*nodes[static_cast<size_t>(i)],
+                                /*should_cache*/ false, /*guard_bookkeeping*/ true);
+        }
+        ORT_CATCH(const OnnxRuntimeException& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = Status(ex.Category(), ex.Code(),
+                            MakeString("Exception while pre-packing node '",
+                                       nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what()));
+          });
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(
+                ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception while pre-packing node '",
+                nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what());
+          });
+        }
+        ORT_CATCH(...) {
+          status = ORT_MAKE_STATUS(
+              ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception while pre-packing node '",
+              nodes[static_cast<size_t>(i)]->Name(), "'.");
+        }
       });
 
   if (cancellation_requested) {

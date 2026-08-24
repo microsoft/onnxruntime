@@ -21,8 +21,10 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/compare_ortvalue.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/contrib_ops/matmul_nbits_prepack_sharing_test_util.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -749,27 +751,93 @@ TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
                                             PrepackSharingMode::kNoSharing));
 }
 
-// Covers session.prepack.enable_parallel (SessionState::PrepackConstantInitializedTensors running
-// kernel->PrePack() across the intra-op thread pool instead of sequentially). Numeric output must
-// match the values produced by the default sequential path for a representative int4 (4-bit) model,
-// with and without a zero-point input and a bias input.
+// Covers multiple concurrent PrePack calls, including two nodes sharing an initializer while a
+// third consumes a distinct initializer. Outputs and prepack counts must match the sequential path.
 TEST(MatMulNBits, ParallelPrepack) {
-  for (bool has_zero_point : {false, true}) {
-    for (bool has_bias : {false, true}) {
-      TestOptions opts{};
-      opts.M = 8;
-      opts.N = 256;
-      opts.K = 512;
-      opts.block_size = 32;
-      opts.accuracy_level = 0;
-      opts.has_zero_point = has_zero_point;
-      opts.zp_is_4bit = true;
-      opts.has_bias = has_bias;
-      opts.output_abs_error = 0.05f;
-      opts.output_rel_error = 0.02f;
-      opts.enable_parallel_prepack = true;
-      RunTest<float>(opts);
+  constexpr int64_t M = 8;
+  constexpr int64_t N = 64;
+  constexpr int64_t K = 128;
+  constexpr int64_t block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  if (!MlasIsQNBitGemmAvailable(QBits, block_size, SQNBIT_CompFp32) &&
+      !MlasIsQNBitGemmAvailable(QBits, block_size, SQNBIT_CompInt8)) {
+    GTEST_SKIP() << "No QNBit GEMM implementation is available.";
+  }
+
+  RandomValueGenerator random{1234};
+  const std::unordered_map<std::string, int> domain_to_version{{"", 21}, {kMSDomain, 1}};
+  Model model("parallel_matmul_nbits_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* input = builder.MakeInput<float>({M, K}, random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+
+  auto make_quantized_initializer = [&](int seed_offset) {
+    RandomValueGenerator weight_random{static_cast<RandomValueGenerator::RandomSeedType>(1234 + seed_offset)};
+    std::vector<float> weights(weight_random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+    std::vector<uint8_t> quantized(static_cast<size_t>(N * k_blocks * blob_size));
+    std::vector<float> scales(static_cast<size_t>(N * k_blocks));
+    QuantizeDequantize(weights, quantized, scales, nullptr, static_cast<int32_t>(N),
+                       static_cast<int32_t>(K), static_cast<int32_t>(block_size));
+    return std::pair{
+        builder.MakeInitializer<uint8_t>({N, k_blocks, blob_size}, quantized),
+        builder.MakeInitializer<float>({N, k_blocks}, scales)};
+  };
+
+  const auto shared_weight = make_quantized_initializer(0);
+  const auto distinct_weight = make_quantized_initializer(1);
+
+  auto add_matmul = [&](NodeArg* weight, NodeArg* scales) {
+    NodeArg* output = builder.MakeOutput<float>({M, N});
+    Node& node = builder.AddNode("MatMulNBits", {input, weight, scales}, {output}, kMSDomain);
+    node.AddAttribute("K", K);
+    node.AddAttribute("N", N);
+    node.AddAttribute("block_size", block_size);
+    node.AddAttribute("bits", static_cast<int64_t>(QBits));
+    node.AddAttribute("accuracy_level", static_cast<int64_t>(0));
+  };
+
+  add_matmul(shared_weight.first, shared_weight.second);
+  add_matmul(shared_weight.first, shared_weight.second);
+  add_matmul(distinct_weight.first, distinct_weight.second);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  auto run_model = [&](bool parallel, std::vector<OrtValue>& fetches, size_t& prepack_count) {
+    SessionOptions session_options;
+    session_options.intra_op_param.thread_pool_size = 4;
+    if (parallel) {
+      ASSERT_STATUS_OK(
+          session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
     }
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    prepack_count = session.GetSessionState().GetNumberOfPrepacksCounter();
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+  };
+
+  std::vector<OrtValue> sequential_fetches;
+  size_t sequential_prepack_count = 0;
+  ASSERT_NO_FATAL_FAILURE(run_model(false, sequential_fetches, sequential_prepack_count));
+
+  std::vector<OrtValue> parallel_fetches;
+  size_t parallel_prepack_count = 0;
+  ASSERT_NO_FATAL_FAILURE(run_model(true, parallel_fetches, parallel_prepack_count));
+
+  ASSERT_EQ(sequential_prepack_count, static_cast<size_t>(3));
+  ASSERT_EQ(parallel_prepack_count, sequential_prepack_count);
+  ASSERT_EQ(parallel_fetches.size(), sequential_fetches.size());
+  for (size_t i = 0; i < parallel_fetches.size(); ++i) {
+    const auto result = CompareOrtValue(parallel_fetches[i], sequential_fetches[i], 0.0, 0.0, false);
+    EXPECT_EQ(result.first, COMPARE_RESULT::SUCCESS) << result.second;
   }
 }
 

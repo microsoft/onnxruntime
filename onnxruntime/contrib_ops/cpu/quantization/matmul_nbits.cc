@@ -365,14 +365,17 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 #endif
 
-  // Create a temporary threadpool for parallel packing
-  // This is used during model load time to speed up weight prepacking
+  // Create a temporary threadpool for parallel packing unless session initialization is already
+  // dispatching PrePack calls in parallel. Avoiding nested pools bounds load-time threads to the
+  // session pool instead of multiplying physical-core-sized pools by the number of concurrent nodes.
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
   concurrency::ThreadPool* threadpool_ptr = nullptr;
 
   // Only create threadpool for LUT GEMM path which can benefit from parallel packing
   // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
-  if (prefer_lut_gemm_) {
+  const bool outer_parallel_prepack =
+      OpKernel::Info().GetConfigOptions().GetConfigEntry(kOrtSessionOptionsEnableParallelPrepack) == "1";
+  if (prefer_lut_gemm_ && !outer_parallel_prepack) {
     OrtThreadPoolParams tpo;
     tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
     tpo.allow_spinning = false;  // Don't spin during model load
