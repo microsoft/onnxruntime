@@ -747,6 +747,17 @@ Return Value:
         }
 #endif
     }
+    else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        //
+        // SVE-only hardware (no SME): route eligible fp32 SGEMM shapes
+        // (TransA/TransB = NoTrans) to the KleidiAI SVE matmul ukernel.
+        // Ineligible shapes decline inside the wrappers and fall back to
+        // the default MLAS SGEMM path.
+        //
+        this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatchSve;
+        this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSizeSve;
+        this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackBSve;
+    }
 #endif
 
 #if defined(MLAS_USE_SVE)

@@ -5,6 +5,7 @@
 //
 
 #include <vector>
+#include <cstdlib>
 #include <algorithm>
 #include <cstring>
 #include <cstddef>
@@ -20,6 +21,10 @@
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
 
+// SVE fp32 GEMM RHS packer (kxn only). Pairs with the SVE matmul ukernel that
+// consumes unpacked LHS + this packed RHS format.
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve.h"
+
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffers {
     std::vector<float> output_tile;
@@ -32,6 +37,10 @@ static thread_local KaiTlsBuffers g_kai_tls;
 
 const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
 const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
+
+// SVE fp32 GEMM ukernel (unpacked LHS + packed RHS). Selected on SVE-only (no SME)
+// hardware; safe to reference unconditionally (only function pointers are stored).
+const KaiF32SgemvKernel& sgemm_gemm_sve = GetKleidiAISGemmSveUKernel();
 
 // Avoid vector setup overhead on tiny outputs.
 constexpr size_t kAlphaBetaNeonMinElements = 32;
@@ -694,6 +703,352 @@ Return Value:
 
         ApplyAlphaBeta2D(out_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
         return;
+    });
+    return true;
+}
+
+// =====================================================================================
+// SVE (non-SME) fp32 SGEMM path.
+//
+// Routes SGEMM to the KleidiAI SVE microkernel
+// `kai_matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla` (family matmul_clamp_f32_f32_f32p:
+// unpacked LHS + packed RHS). Unlike the SME path this needs NO LHS packing — the
+// kernel consumes raw A with a byte stride — and uses the SVE RHS pack format
+// `x32p4vlx1b` (kxn only, i.e. TransB == NoTrans). Anything ineligible returns
+// 0/false so the caller falls back to the default MLAS NEON SGEMM kernel.
+//
+// GEMV (M==1 / N==1) is intentionally NOT routed through ArmKleidiAI::MlasGemvBatch
+// here: that helper uses the SME GEMV ukernel, which would fault on an SVE-only
+// machine. Small M/N shapes decline below and fall back to MLAS instead.
+// =====================================================================================
+
+size_t
+MLASCALL
+ArmKleidiAI::MlasGemmPackBSizeSve(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+)
+{
+    // The SVE RHS packer is kxn-only, so only TransA=NoTrans, TransB=NoTrans is eligible.
+    if (TransA != CblasNoTrans || TransB != CblasNoTrans || N == 0 || K == 0) {
+        return 0;
+    }
+    return kai_get_rhs_packed_size_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve(N, K);
+}
+
+// Pack a column subrange [NStart, NStart + CountN) of a kxn RHS into the
+// corresponding region of the packed buffer. The packed format is a sequence
+// of nr-wide column panels, so a call on an nr-aligned NStart writes exactly
+// the panels the compute path reads at get_rhs_packed_offset(NStart, K) —
+// this is what makes the packing stripe-parallelizable. ZeroBias must point
+// to at least CountN zeros (KleidiAI bakes bias into the packed RHS; MLAS
+// SGEMM has none).
+static void
+MlasKaiPackRhsRangeSve(
+    size_t NStart,
+    size_t CountN,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB,
+    const float* ZeroBias
+)
+{
+    const size_t nr = sgemm_gemm_sve.ukernel.get_nr();
+    const size_t kr = sgemm_gemm_sve.ukernel.get_kr();
+    const size_t sr = sgemm_gemm_sve.ukernel.get_sr();
+
+    std::byte* Dst = reinterpret_cast<std::byte*>(PackedB) +
+        sgemm_gemm_sve.ukernel.get_rhs_packed_offset(NStart, K);
+
+    kai_run_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve(
+        1, CountN, K, nr, kr, sr, ldb * sizeof(float), B + NStart,
+        ZeroBias, nullptr, Dst, 0, nullptr);
+}
+
+// Grow-only zero buffer: the contents are permanently zero, so growing never
+// needs a re-clear and steady-state calls skip the O(N) assign entirely.
+static const float*
+MlasKaiZeroBias(size_t N)
+{
+    if (g_kai_tls.bias_zero.size() < N) {
+        g_kai_tls.bias_zero.resize(N, 0.0f);
+    }
+    return g_kai_tls.bias_zero.data();
+}
+
+bool
+MLASCALL
+ArmKleidiAI::MlasGemmPackBSve(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+)
+{
+    if (TransA != CblasNoTrans || TransB != CblasNoTrans || N == 0 || K == 0) {
+        return false;
+    }
+
+    MlasKaiPackRhsRangeSve(0, N, K, B, ldb, PackedB, MlasKaiZeroBias(N));
+    return true;
+}
+
+bool
+MLASCALL
+ArmKleidiAI::MlasGemmBatchSve(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    if (M == 0 || N == 0 || BatchSize == 0) {
+        return true;
+    }
+
+    // Only TransA=NoTrans, TransB=NoTrans are packable by the SVE RHS packer.
+    // (TransA=Trans is already blocked upstream in sgemm.cpp; guard TransB here.)
+    if (TransA != CblasNoTrans || TransB != CblasNoTrans) {
+        return false;
+    }
+
+    if (K == 0) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+
+    bool all_alpha_zero = true;
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+        if (Data[batch].alpha != 0.0f) {
+            all_alpha_zero = false;
+            break;
+        }
+    }
+    if (all_alpha_zero) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+
+    size_t m_step = sgemm_gemm_sve.ukernel.get_m_step();
+    size_t n_step = sgemm_gemm_sve.ukernel.get_n_step();
+
+    //
+    // Small unpacked shapes fall back to MLAS. get_m_step() is 1 for this
+    // unpacked-LHS ukernel family (any row count is legal), so it cannot
+    // serve as the M floor: use the kernel's native 6-row tile instead,
+    // which keeps GEMV-like M in the MLAS GEMV path (measured up to 10x
+    // faster there — packing all of B is never amortized by a single thin
+    // row). Rank-1-ish K is likewise pack-dominated: at K == 1 the packed
+    // panels are half bias/padding overhead and B is streamed exactly once,
+    // so the conventional kernels win (measured 3-10x).
+    //
+    constexpr size_t KaiSveMinRoutedM = 6;
+    constexpr size_t KaiSveMinRoutedK = 2;
+    if ((M < std::max(m_step, KaiSveMinRoutedM) || N < n_step || K < KaiSveMinRoutedK) &&
+        !Data->BIsPacked) {
+        return false;
+    }
+
+    // RHS packing (no LHS packing needed for this ukernel family).
+    size_t RhsPackedStride = 0;
+    std::byte* RhsPackedData = nullptr;
+
+    if (!Data[0].BIsPacked) {
+        RhsPackedStride = ArmKleidiAI::MlasGemmPackBSizeSve(TransA, TransB, N, K);
+        if (RhsPackedStride == 0) {
+            return false;
+        }
+        size_t rhs_resize = 0;
+        if (MlasMultiplyOverflowsSizeT(RhsPackedStride, BatchSize, &rhs_resize)) {
+            return false;
+        }
+        g_kai_tls.rhs_packed.resize(rhs_resize);
+        RhsPackedData = g_kai_tls.rhs_packed.data();
+
+        //
+        // Stripe-parallel RHS packing: the packed format is a sequence of
+        // nr-wide column panels, so nr-aligned column groups pack
+        // independently into disjoint regions of the buffer. Splitting the
+        // pack across the pool removes the serial pack from the critical
+        // path (previously one thread packed all of B per batch entry).
+        // Group size targets ~4 tasks per thread, with a 4-panel floor so
+        // tiny groups don't pay the packer's per-call setup.
+        //
+        const size_t PackNr = sgemm_gemm_sve.ukernel.get_nr();
+        const size_t NPanels = MlasDivRoundup(N, PackNr);
+        const size_t PackThreads = size_t(MlasGetMaximumThreadCount(ThreadPool));
+        const size_t GroupPanels = std::max(
+            MlasDivRoundup(NPanels * BatchSize, 4 * PackThreads), size_t(4));
+        const size_t PackGroups = MlasDivRoundup(NPanels, GroupPanels);
+
+        // The zero-bias buffer is captured by pointer: pool workers must not
+        // touch their own thread_local copy, and the buffer contents are
+        // shared read-only zeros.
+        const float* ZeroBias = MlasKaiZeroBias(std::min(N, GroupPanels * PackNr));
+
+        MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(BatchSize * PackGroups), [&](ptrdiff_t tid) {
+            const size_t batch_idx = size_t(tid) / PackGroups;
+            const size_t group_idx = size_t(tid) % PackGroups;
+            const size_t NStart = group_idx * GroupPanels * PackNr;
+            const size_t CountN = std::min(N - NStart, GroupPanels * PackNr);
+            MlasKaiPackRhsRangeSve(NStart, CountN, K,
+                                   reinterpret_cast<const float*>(Data[batch_idx].B),
+                                   Data[batch_idx].ldb,
+                                   RhsPackedData + RhsPackedStride * batch_idx,
+                                   ZeroBias);
+        });
+    }
+
+    // tile iteration dimensions
+    std::array<size_t, 3> dim;
+    dim[0] = BatchSize;                  // B
+    dim[1] = MlasDivRoundup(M, m_step);  // M
+    dim[2] = MlasDivRoundup(N, n_step);  // N
+
+    //
+    // Bounded-working-set fine tiling (see results/why_we_beat_kleidiai.md):
+    // each task covers one native n_step panel, so its RHS slab is
+    // n_step * K floats — L2-resident at any problem size — and the
+    // ukernel's internal 6-row m-strips sweep only that resident panel
+    // (the previous coarsen-to-thread-count tiling made each strip sweep
+    // the task's whole N range, collapsing at large N). Rows are chunked
+    // in multiples of the native m_step; the task count is far larger than
+    // the thread count so the pool can rebalance across heterogeneous
+    // cores. Units are the ukernel's own step getters, so the tiling is
+    // vector-length agnostic. Chunk factors are env-tunable for experiments.
+    //
+
+    static const size_t RowChunkStepsOverride = []() {
+        const char* Value = std::getenv("MLAS_KAI_RC");
+        return (Value != nullptr && atoi(Value) > 0) ? size_t(atoi(Value)) : size_t(0);
+    }();
+    static const size_t ColChunkStepsOverride = []() {
+        const char* Value = std::getenv("MLAS_KAI_CC");
+        return (Value != nullptr && atoi(Value) > 0) ? size_t(atoi(Value)) : size_t(0);
+    }();
+    // Minimum tasks-per-thread before the adaptive loop stops narrowing the
+    // chunks (finer grids help the heterogeneous big/mid pool rebalance;
+    // taller tasks amortize per-call ukernel overhead — 4 is the measured
+    // balance point on X925, overridable for experiments).
+    static const size_t TaskMultiplier = []() {
+        const char* Value = std::getenv("MLAS_KAI_TM");
+        return (Value != nullptr && atoi(Value) > 0) ? size_t(atoi(Value)) : size_t(4);
+    }();
+
+    //
+    // Adaptive defaults (measured on X925: tall tasks amortize the per-call
+    // ukernel overhead; the column chunk bounds the RHS slab): rows in
+    // chunks of ~1020 (170 m_steps), columns in 4 n_step panels (64 columns
+    // at VL=128 — slab = 256*K bytes). If that yields too few tasks for the
+    // pool to balance (measured trap: 16 tasks on 5 threads), narrow the
+    // column chunk, then the row chunk, until there are at least 4 tasks
+    // per thread or the chunks reach their minima.
+    //
+
+    size_t RowChunkSteps = (RowChunkStepsOverride != 0) ? RowChunkStepsOverride : size_t(170);
+    size_t ColChunkSteps = (ColChunkStepsOverride != 0) ? ColChunkStepsOverride : size_t(4);
+
+    const size_t ThreadCount = size_t(MlasGetMaximumThreadCount(ThreadPool));
+
+    for (;;) {
+        dim[1] = MlasDivRoundup(M, m_step * RowChunkSteps);
+        dim[2] = MlasDivRoundup(N, n_step * ColChunkSteps);
+        if (RowChunkStepsOverride != 0 || ColChunkStepsOverride != 0) {
+            break;
+        }
+        if (dim[0] * dim[1] * dim[2] >= TaskMultiplier * ThreadCount) {
+            break;
+        }
+        if (ColChunkSteps > 1) {
+            ColChunkSteps /= 2;
+        } else if (RowChunkSteps > 16) {
+            RowChunkSteps /= 2;
+        } else {
+            break;
+        }
+    }
+
+    m_step *= RowChunkSteps;
+    n_step *= ColChunkSteps;
+
+    size_t max_tile_elems = 0;
+    if (MlasMultiplyOverflowsSizeT(m_step, n_step, &max_tile_elems)) {
+        return false;
+    }
+
+    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [=](ptrdiff_t tid) {
+        ptrdiff_t BIdx = tid / (dim[1] * dim[2]);
+        ptrdiff_t MIdx = (tid % (dim[1] * dim[2])) / dim[2];
+        ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
+
+        // RHS (packed) tile.
+        const size_t rhs_packed_offset = sgemm_gemm_sve.ukernel.get_rhs_packed_offset(NIdx * n_step, K);
+        const std::byte* B_base = Data[0].BIsPacked
+            ? reinterpret_cast<const std::byte*>(Data[BIdx].B)
+            : (RhsPackedData + RhsPackedStride * BIdx);
+        auto BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
+
+        // LHS (raw/unpacked) tile: A + MIdx*m_step rows, passed with a byte row stride.
+        const size_t lda = Data[BIdx].lda;
+        const size_t lhs_stride_bytes = lda * sizeof(float);
+        const size_t lhs_offset = sgemm_gemm_sve.ukernel.get_lhs_offset(MIdx * m_step, lhs_stride_bytes);
+        auto ATile = reinterpret_cast<const void*>(
+            reinterpret_cast<const std::byte*>(Data[BIdx].A) + lhs_offset);
+
+        auto TileSizeM = (MIdx + 1) * m_step > M ? (M - MIdx * m_step) : m_step;
+        auto TileSizeN = (NIdx + 1) * n_step > N ? (N - NIdx * n_step) : n_step;
+
+        auto CTile = reinterpret_cast<void*>(
+            reinterpret_cast<std::byte*>(Data[BIdx].C) +
+            MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
+            NIdx * n_step * sizeof(float)
+        );
+        float* dst_tile = reinterpret_cast<float*>(CTile);
+
+        const float alpha = Data[BIdx].alpha;
+        const float beta = Data[BIdx].beta;
+        const size_t ldc = Data[BIdx].ldc;
+
+        const bool direct_to_c = (alpha == 1.0f && beta == 0.0f);
+
+        float* out_tile = nullptr;
+        size_t out_row_stride_bytes = 0;
+        if (direct_to_c) {
+            out_tile = dst_tile;
+            out_row_stride_bytes = ldc * sizeof(float);
+        } else {
+            const size_t tile_elems = TileSizeM * TileSizeN;
+            g_kai_tls.output_tile.resize(tile_elems);
+            out_tile = g_kai_tls.output_tile.data();
+            out_row_stride_bytes = TileSizeN * sizeof(float);
+        }
+
+        sgemm_gemm_sve.ukernel.run_matmul(
+            TileSizeM, TileSizeN, K,
+            ATile, lhs_stride_bytes,
+            BTile,
+            out_tile, out_row_stride_bytes, sizeof(float),
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+        );
+
+        if (direct_to_c) {
+            return;
+        }
+        ApplyAlphaBeta2D(out_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
     });
     return true;
 }
