@@ -12,7 +12,7 @@
 //
 //   Error: Failed to download build list. HTTP status code = 302
 //
-// This patch adds a small `followRedirects` helper used by both `downloadFile`
+// This patch adds a small `getWithRedirects` helper used by both `downloadFile`
 // and `downloadJson`. It caps the hop count to avoid redirect loops and keeps
 // behavior identical otherwise.
 
