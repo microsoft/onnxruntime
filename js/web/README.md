@@ -30,30 +30,6 @@ See [Compatibility](#Compatibility) and [Operators Supported](#Operators) for a 
 
 - See also [ONNX Runtime Web API reference](https://onnxruntime.ai/docs/api/js/index.html) for detailed API documentation.
 
-### Migrating from WebGL
-
-Use WebGPU on supported browsers:
-
-```js
-import * as ort from 'onnxruntime-web/webgpu';
-
-const session = await ort.InferenceSession.create(model, {
-  executionProviders: ['webgpu'],
-});
-```
-
-Use the WebAssembly/CPU backend when WebGPU is unavailable or broader browser compatibility is required:
-
-```js
-import * as ort from 'onnxruntime-web/wasm';
-
-const session = await ort.InferenceSession.create(model);
-```
-
-The default `onnxruntime-web` import also uses WebAssembly/CPU when no execution providers are specified. There is
-no automatic redirect from WebGL because WebGPU is not available on every browser and changing backends can change
-operator support or numerical behavior.
-
 ## Documents
 
 ### Development
