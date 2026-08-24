@@ -525,6 +525,37 @@ TEST(GatedDeltaNetTest, Ragged_MixedPrefillAndDecodeKeepsShortRowCheckpoints) {
   }
 }
 
+// Full-width verification is the only rollback shape that consumes checkpoint slot 0. Exercise it
+// at the production Qwen3.8 head geometry while a prefill row selects the chunked engine.
+TEST(GatedDeltaNetTest, Ragged_MixedPrefillAndFullVerifyWritesSlotZero) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  constexpr int kWindow = 8;
+  Geometry g{264, 2, 16, 16, kDim, kDim};
+  Options o;
+  o.state_checkpoints = kWindow;
+  o.checkpoints_partially_specified = true;
+  Inputs in = MakeInputs(g, 61);
+  in.cu_seqlens = {0, 256, 264};
+
+  std::vector<float> ref_out, ref_state, ref_ckpt;
+  Reference(g, o, in, &ref_out, &ref_state, &ref_ckpt);
+
+  std::vector<OrtValue> fetches;
+  RunCase(g, o, in, 3e-2f, 3e-2f, /*rank4=*/false, &fetches);
+
+  ASSERT_EQ(fetches.size(), 3u);
+  const float* ckpt = fetches[2].Get<Tensor>().Data<float>();
+  const size_t row = static_cast<size_t>(g.hv) * g.dv * g.dk;
+  const size_t slot = static_cast<size_t>(g.batch) * row;
+  for (int s = 0; s < kWindow; ++s) {
+    for (size_t i = 0; i < row; ++i) {
+      const size_t idx = static_cast<size_t>(s) * slot + row + i;
+      ASSERT_NEAR(ckpt[idx], ref_ckpt[idx], 3e-2f)
+          << "slot " << s << " element " << i;
+    }
+  }
+}
+
 // initial_state and final_state may be the same allocation. Feeding a run's state output
 // back in as the next run's input must reproduce one long run.
 TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
