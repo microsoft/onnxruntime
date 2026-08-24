@@ -3079,7 +3079,9 @@ final token (the same value as `final_state`) and slot W-1-k is the state after 
 from the end. This is the series a speculative decoder needs to roll back to a partially
 accepted draft. Slots this call does not write are left unspecified rather than cleared,
 because the buffer may alias live state; in particular a request longer than W tokens fills
-only the last slot, since such a request is a prefill with nothing to roll back.
+only the last slot, since such a request is a prefill with nothing to roll back. The rule is
+per request: a ragged batch that mixes a prefill with short requests still fills the window
+for the short ones.
 
 Because slot W-1 is the committed state, `initial_state` may also be given with that leading
 window, `[W, batch_size, num_heads_v, head_size_v, head_size_qk]`, in which case the operator

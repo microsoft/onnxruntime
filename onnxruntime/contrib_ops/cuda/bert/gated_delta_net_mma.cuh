@@ -78,6 +78,10 @@ struct KernelParams {
   int state_checkpoints;
   int batch;
   int decay_per_key_dim_flag;
+  // Hybrid dispatch (Plan::checkpoint_tail_pass). Exactly complementary predicates on the
+  // block's own seq_len, so every row is computed by exactly one of the two launches.
+  bool skip_short_rows;  // chunked pass: leave rows that fit the checkpoint window
+  bool skip_long_rows;   // recurrent tail pass: take only those rows
 };
 
 // ---------------------------------------------------------------------------

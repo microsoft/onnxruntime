@@ -140,6 +140,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   int64_t tok_base, seq_len64;
   SequenceRange(pack.cu_seqlens, b, p.total_tokens, p.uniform_len, &tok_base, &seq_len64);
   const int seq_len = static_cast<int>(seq_len64);
+  // Uniform across the CTA: seq_len depends only on blockIdx.x.
+  if (p.skip_short_rows && seq_len <= p.state_checkpoints) return;
 
   const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
   const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
@@ -347,6 +349,7 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
   int64_t tok_base, seq_len64;
   SequenceRange(pack.cu_seqlens, b, p.total_tokens, p.uniform_len, &tok_base, &seq_len64);
   const int seq_len = static_cast<int>(seq_len64);
+  if (p.skip_long_rows && seq_len > p.state_checkpoints) return;
 
   const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
   const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
@@ -485,6 +488,8 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   int64_t tok_base, seq_len64;
   SequenceRange(pack.cu_seqlens, b, p.total_tokens, p.uniform_len, &tok_base, &seq_len64);
   const int seq_len = static_cast<int>(seq_len64);
+  // Uniform across the CTA: seq_len depends only on blockIdx.x.
+  if (p.skip_long_rows && seq_len > p.state_checkpoints) return;
 
   const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * d_k;
   const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * d_k;
@@ -604,55 +609,14 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   }
 }
 
-}  // namespace
+constexpr int kRecurrentThreads = 256;
+constexpr int kDecodeWarps = kRecurrentThreads / 32;
 
 template <typename T>
-Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
-                           float scale, int max_threads_per_block,
-                           size_t max_shared_memory_per_block, cudaStream_t stream) {
-  KernelParams p{};
-  p.total_tokens = desc.total_tokens;
-  p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
-  p.num_heads_q = desc.num_heads_q;
-  p.num_heads_k = desc.num_heads_k;
-  p.num_heads_v = desc.num_heads_v;
-  p.scale = scale;
-  p.gate_activation = desc.gate_activation;
-  p.beta_activation = desc.beta_activation;
-  p.update_rule = desc.update_rule;
-  p.qk_l2_norm = desc.qk_l2_norm;
-  p.state_checkpoints = desc.state_checkpoints;
-  p.batch = desc.batch;
-  p.decay_per_key_dim_flag = desc.decay_per_key_dim ? 1 : 0;
-
-  if (plan.engine == Engine::kChunkedSplit) {
-    return LaunchGatedDeltaNetSplit<T>(desc, plan, pack, scale, stream);
-  }
-
-  if (plan.engine == Engine::kChunked) {
-    const dim3 grid(desc.batch, desc.num_heads_v, desc.head_size_v / kDVB);
-    // BT=32 halves the [BT x BT] and per-token tiles, which is what lets the chunked
-    // engine fit devices with a 99 KB opt-in limit (SM120) instead of SM90's 227 KB.
-    if (plan.chunk_size == 32) {
-      static std::once_flag once32;
-      ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128, 32>,
-                                                plan.smem_bytes, once32));
-      GatedDeltaNetChunkedKernel<T, 128, 128, 32>
-          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
-    } else {
-      static std::once_flag once64;
-      ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128, 64>,
-                                                plan.smem_bytes, once64));
-      GatedDeltaNetChunkedKernel<T, 128, 128, 64>
-          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
-    }
-    return CUDA_CALL(cudaGetLastError());
-  }
-
-  constexpr int kRecurrentThreads = 256;
-  constexpr int kDecodeWarps = kRecurrentThreads / 32;
-
-  if (plan.warp_specialized) {
+Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const VariantPack<T>& pack,
+                       const KernelParams& p, size_t max_shared_memory_per_block,
+                       cudaStream_t stream) {
+  if (warp_specialized) {
     const dim3 grid(desc.batch, desc.num_heads_v,
                     (desc.head_size_v + kDecodeWarps - 1) / kDecodeWarps);
     const dim3 block(32, kDecodeWarps, 1);
@@ -683,8 +647,68 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
   const dim3 grid(desc.batch, desc.num_heads_v, 1);
   GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>
       <<<grid, kRecurrentThreads, smem, stream>>>(pack, p, desc.head_size_qk, desc.head_size_v);
-  (void)max_threads_per_block;
   return CUDA_CALL(cudaGetLastError());
+}
+
+}  // namespace
+
+template <typename T>
+Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
+                           float scale, int max_threads_per_block,
+                           size_t max_shared_memory_per_block, cudaStream_t stream) {
+  KernelParams p{};
+  p.total_tokens = desc.total_tokens;
+  p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
+  p.num_heads_q = desc.num_heads_q;
+  p.num_heads_k = desc.num_heads_k;
+  p.num_heads_v = desc.num_heads_v;
+  p.scale = scale;
+  p.gate_activation = desc.gate_activation;
+  p.beta_activation = desc.beta_activation;
+  p.update_rule = desc.update_rule;
+  p.qk_l2_norm = desc.qk_l2_norm;
+  p.state_checkpoints = desc.state_checkpoints;
+  p.batch = desc.batch;
+  p.decay_per_key_dim_flag = desc.decay_per_key_dim ? 1 : 0;
+
+  if (plan.engine == Engine::kChunkedSplit) {
+    return LaunchGatedDeltaNetSplit<T>(desc, plan, pack, scale, stream);
+  }
+
+  if (plan.engine == Engine::kChunked) {
+    p.skip_short_rows = plan.checkpoint_tail_pass;
+    const dim3 grid(desc.batch, desc.num_heads_v, desc.head_size_v / kDVB);
+    // BT=32 halves the [BT x BT] and per-token tiles, which is what lets the chunked
+    // engine fit devices with a 99 KB opt-in limit (SM120) instead of SM90's 227 KB.
+    if (plan.chunk_size == 32) {
+      static std::once_flag once32;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128, 32>,
+                                                plan.smem_bytes, once32));
+      GatedDeltaNetChunkedKernel<T, 128, 128, 32>
+          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+    } else {
+      static std::once_flag once64;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmemOnce(GatedDeltaNetChunkedKernel<T, 128, 128, 64>,
+                                                plan.smem_bytes, once64));
+      GatedDeltaNetChunkedKernel<T, 128, 128, 64>
+          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+    }
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+    if (!plan.checkpoint_tail_pass) return Status::OK();
+
+    // The rows the pass above skipped, on the only engine that emits a checkpoint series.
+    // Same stream, and the two row sets are disjoint, so the merged result is deterministic.
+    // The chunked engine only accepts head_size_qk == head_size_v == 128, so the warp
+    // kernel is always the right shape here.
+    p.skip_short_rows = false;
+    p.skip_long_rows = true;
+    return LaunchRecurrent<T>(desc, /*warp_specialized=*/true, pack, p,
+                              max_shared_memory_per_block, stream);
+  }
+
+  (void)max_threads_per_block;
+  return LaunchRecurrent<T>(desc, plan.warp_specialized, pack, p, max_shared_memory_per_block,
+                            stream);
 }
 
 template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const VariantPack<float>&,

@@ -95,6 +95,11 @@ struct Plan {
   // Recurrent engine only: one warp per v-column with lanes spanning K, instead of one CTA
   // per v-head with the state in shared memory.
   bool warp_specialized = false;
+  // Chunked engine only. A ragged batch that asks for a checkpoint window mixes long prefill
+  // rows with short decode rows; the chunked engine cannot emit a checkpoint series. When set,
+  // the chunked launch skips rows that fit the window and a second recurrent launch picks them
+  // up, so a single prefill no longer costs the whole batch its checkpoints.
+  bool checkpoint_tail_pass = false;
   size_t smem_bytes = 0;          // chunked / split-scan kernel
   size_t smem_bytes_prepare = 0;  // split-prepare kernel
   size_t workspace_bytes = 0;
@@ -162,6 +167,12 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
       desc.state_checkpoints > 0 &&
       desc.total_tokens <= static_cast<int64_t>(desc.state_checkpoints) * batch;
 
+  // The predicate above is batch-wide, so one long row would otherwise deny every other row
+  // its checkpoints. A ragged batch that clears it may still hold rows short enough to roll
+  // back, and those are peeled off into a second recurrent launch.
+  const bool wants_tail_pass =
+      desc.state_checkpoints > 0 && desc.ragged && !needs_checkpoints;
+
   // Below the crossover the chunked engine still pays for a full chunk, so a handful of
   // tokens costs the same as 64. Measured crossover on H200 at the Qwen3.8 geometry is
   // ~30 tokens (chunked 46.5 us at T=1 against 17.9 us for a sequential recurrence).
@@ -211,9 +222,14 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
     const bool fused_underfills = sm_count > 0 && wave_efficiency < 0.85;
     const bool long_enough_to_pipeline = longest_seq >= 2 * bt;
 
-    const bool want_split = desc.preferred_engine == Engine::kChunkedSplit ||
-                            (desc.preferred_engine != Engine::kChunked && fused_underfills &&
-                             long_enough_to_pipeline);
+    // Only the fused kernel carries the per-row skip the tail pass needs, so a batch that
+    // wants one takes it even where the split engine would otherwise win. An explicit
+    // kChunkedSplit override then fails the caller's engine assertion rather than silently
+    // dropping the checkpoints.
+    const bool want_split = !wants_tail_pass &&
+                            (desc.preferred_engine == Engine::kChunkedSplit ||
+                             (desc.preferred_engine != Engine::kChunked && fused_underfills &&
+                              long_enough_to_pipeline));
     if (want_split) {
       const size_t prep = SplitPrepareSmemBytes(bt, desc.head_size_qk, desc.head_size_v);
       // Narrow v-blocks only pay off once the state-independent work has been hoisted out
@@ -268,6 +284,7 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
         plan.smem_bytes = bytes;
         plan.engine = Engine::kChunked;
         plan.workspace_bytes = 0;  // the state never leaves shared memory
+        plan.checkpoint_tail_pass = wants_tail_pass;
         plan.supported = true;
         return plan;
       }

@@ -39,6 +39,10 @@ struct Options {
   // When set, initial_state carries this leading window and final_state is left unbound, so
   // the committed state has to travel through the last checkpoint slot.
   int state_window = 0;
+  // A ragged batch mixing a prefill with short requests leaves the prefill row's window
+  // unspecified, so the whole checkpoint tensor cannot be compared. The caller checks the
+  // rows it cares about from the fetches instead.
+  bool checkpoints_partially_specified = false;
 };
 
 struct Inputs {
@@ -218,7 +222,7 @@ void AddCommonAttrs(OpTester& t, const Options& o) {
 // With rank4 the leading token axis is spelled [batch, sequence] instead of [total_tokens];
 // the buffers are byte-identical, only the declared shapes differ.
 void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_tol,
-             float state_tol, bool rank4 = false) {
+             float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
   std::vector<float> ref_out, ref_state, ref_ckpt;
   Reference(g, o, in, &ref_out, &ref_state, &ref_ckpt);
 
@@ -283,14 +287,16 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
                           state_tol);
   }
   if (o.state_checkpoints > 0) {
+    const float ckpt_tol = o.checkpoints_partially_specified ? 1e9f : state_tol;
     test.AddOutput<float>("checkpoints",
                           {o.state_checkpoints, g.batch, g.hv, g.dv, g.dk}, ref_ckpt, false,
-                          state_tol, state_tol);
+                          ckpt_tol, ckpt_tol);
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  if (fetches != nullptr) *fetches = test.GetFetches();
 }
 
 constexpr int kDim = 128;  // the chunked engine is specialised for head_size 128
@@ -479,6 +485,44 @@ TEST(GatedDeltaNetTest, WindowedStateChunkedPrefillCommitsLastSlot) {
   o.state_window = 1;
   o.state_checkpoints = 1;
   RunCase(g, o, MakeInputs(g, 53), 3e-2f, 3e-2f);
+}
+
+// Hybrid dispatch. A ragged batch that mixes one prefill with short requests is long enough
+// overall to take the chunked engine, which emits no checkpoint series -- so the short rows
+// used to lose the window they need to roll a draft back. They must instead be peeled off
+// into the recurrent engine while the prefill row still runs chunked.
+TEST(GatedDeltaNetTest, Ragged_MixedPrefillAndDecodeKeepsShortRowCheckpoints) {
+  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  constexpr int kWindow = 4;
+  Geometry g{260, 3, 1, 2, kDim, kDim};
+  Options o;
+  o.state_checkpoints = kWindow;
+  o.checkpoints_partially_specified = true;
+  Inputs in = MakeInputs(g, 59);
+  in.cu_seqlens = {0, 256, 257, 260};  // prefill, single decode token, 3-token verify
+
+  std::vector<float> ref_out, ref_state, ref_ckpt;
+  Reference(g, o, in, &ref_out, &ref_state, &ref_ckpt);
+
+  // output and final_state cover every row and are checked by RunCase at the usual tolerance.
+  std::vector<OrtValue> fetches;
+  RunCase(g, o, in, 3e-2f, 3e-2f, /*rank4=*/false, &fetches);
+
+  ASSERT_EQ(fetches.size(), 3u);
+  const float* ckpt = fetches[2].Get<Tensor>().Data<float>();
+  const size_t row = static_cast<size_t>(g.hv) * g.dv * g.dk;
+  const size_t slot = static_cast<size_t>(g.batch) * row;
+  for (int b = 0; b < g.batch; ++b) {
+    const int len = in.cu_seqlens[b + 1] - in.cu_seqlens[b];
+    if (len > kWindow) continue;  // a prefill row has nothing to roll back
+    for (int s = kWindow - len; s < kWindow; ++s) {
+      for (size_t i = 0; i < row; ++i) {
+        const size_t idx = static_cast<size_t>(s) * slot + static_cast<size_t>(b) * row + i;
+        ASSERT_NEAR(ckpt[idx], ref_ckpt[idx], 3e-2f)
+            << "row " << b << " slot " << s << " element " << i;
+      }
+    }
+  }
 }
 
 // initial_state and final_state may be the same allocation. Feeding a run's state output
@@ -761,6 +805,47 @@ TEST(GatedDeltaNetPlanTest, SplitEngineIsTwoCtasPerSmAndBoundedWorkspace) {
   const gdn::Plan blackwell = gdn::SelectPlan(d, 128, 101376);
   EXPECT_TRUE(blackwell.supported);
   EXPECT_EQ(blackwell.engine, gdn::Engine::kChunked);
+}
+
+// A ragged batch that asks for a checkpoint window but is long enough overall to take the
+// chunked engine still holds rows short enough to roll back. Those rows are peeled into a
+// second recurrent launch, which only the fused kernel can express -- so the split engine is
+// declined for the duration.
+TEST(GatedDeltaNetPlanTest, RaggedCheckpointBatchTakesTheFusedEngineWithATailPass) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor d{};
+  d.total_tokens = 1024;
+  d.batch = 1;
+  d.num_heads_q = 16;
+  d.num_heads_k = 16;
+  d.num_heads_v = 48;
+  d.head_size_qk = 128;
+  d.head_size_v = 128;
+  d.chunk_size = 64;
+  d.io_type = gdn::IoType::kFloat16;
+  d.sm_major = 9;
+
+  // Without a window the heuristic is free to pick the split engine at this batch.
+  EXPECT_EQ(gdn::SelectPlan(d, 132, 232448).engine, gdn::Engine::kChunkedSplit);
+  EXPECT_FALSE(gdn::SelectPlan(d, 132, 232448).checkpoint_tail_pass);
+
+  d.state_checkpoints = 8;
+  d.ragged = true;
+  const gdn::Plan mixed = gdn::SelectPlan(d, 132, 232448);
+  EXPECT_EQ(mixed.engine, gdn::Engine::kChunked);
+  EXPECT_TRUE(mixed.checkpoint_tail_pass);
+
+  // Uniform packing has no short rows to carve out.
+  d.ragged = false;
+  EXPECT_FALSE(gdn::SelectPlan(d, 132, 232448).checkpoint_tail_pass);
+
+  // A batch that fits the window entirely already runs recurrent, which emits the series.
+  d.ragged = true;
+  d.batch = 4;
+  d.total_tokens = 8;
+  const gdn::Plan all_short = gdn::SelectPlan(d, 132, 232448);
+  EXPECT_EQ(all_short.engine, gdn::Engine::kRecurrent);
+  EXPECT_FALSE(all_short.checkpoint_tail_pass);
 }
 
 }  // namespace test
