@@ -20,11 +20,11 @@
 extern "C" {
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetSyncCount();
 EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSyncCount();
-EXPORT_SYMBOL void ExampleEpTestHooks_ResetUserProvidedOutputQuery();
-EXPORT_SYMBOL int ExampleEpTestHooks_GetUserProvidedOutputQueryResult();
-EXPORT_SYMBOL int ExampleEpTestHooks_GetUserProvidedOutputBadIndexRejected();
+EXPORT_SYMBOL void ExampleEpTestHooks_ResetPreallocatedOutputQuery();
+EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputQueryResult();
+EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected();
 }
 
 // Internal to the library; not exported.
-void RecordUserProvidedOutputQueryResult(int has_user_provided_output);
-void RecordUserProvidedOutputBadIndexRejected(int rejected);
+void RecordPreallocatedOutputQueryResult(int has_preallocated_output);
+void RecordPreallocatedOutputBadIndexRejected(int rejected);

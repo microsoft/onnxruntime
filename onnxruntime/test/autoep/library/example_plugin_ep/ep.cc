@@ -97,36 +97,36 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
       throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
     }
 
-    // Prefer writing straight into the caller's buffer when Run/IoBinding supplied one, avoiding an
-    // allocation. ORT does not check the buffer against this run's computed shape on this path, so
-    // validate element type and count before touching it and fall back to GetOutput() on a mismatch.
-    OrtValue* user_provided_output = nullptr;
-    RETURN_IF_ERROR(ort_api.KernelContext_GetUserProvidedOutput(kernel_ctx, 0, &user_provided_output));
-    RecordUserProvidedOutputQueryResult(user_provided_output != nullptr ? 1 : 0);
+    // Prefer writing straight into an already-allocated output, avoiding an allocation. The query does not
+    // validate the buffer against this run's computed shape, so validate element type and shape before touching it
+    // and fall back to GetOutput() on a mismatch.
+    OrtValue* preallocated_output = nullptr;
+    RETURN_IF_ERROR(ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, 0, &preallocated_output));
+    RecordPreallocatedOutputQueryResult(preallocated_output != nullptr ? 1 : 0);
 
     // An out-of-range index must fail without touching the out parameter. Recorded rather than
     // enforced here so the assertion lives with the tests.
     {
       OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
       OrtValue* sentinel = sentinel_value;
-      OrtStatus* status = ort_api.KernelContext_GetUserProvidedOutput(kernel_ctx, num_outputs, &sentinel);
-      RecordUserProvidedOutputBadIndexRejected(status != nullptr && sentinel == sentinel_value ? 1 : 0);
+      OrtStatus* status = ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, num_outputs, &sentinel);
+      RecordPreallocatedOutputBadIndexRejected(status != nullptr && sentinel == sentinel_value ? 1 : 0);
       ort_api.ReleaseStatus(status);
     }
 
-    if (user_provided_output != nullptr) {
-      Ort::ConstValue output_value{user_provided_output};
+    if (preallocated_output != nullptr) {
+      Ort::ConstValue output_value{preallocated_output};
       auto type_and_shape = output_value.GetTensorTypeAndShapeInfo();
       if (type_and_shape.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
           type_and_shape.GetShape() != shape0) {
-        user_provided_output = nullptr;
+        preallocated_output = nullptr;
       }
     }
 
     float* output_data = nullptr;
-    if (user_provided_output != nullptr) {
+    if (preallocated_output != nullptr) {
       void* raw_output_data = nullptr;
-      RETURN_IF_ERROR(ort_api.GetTensorMutableData(user_provided_output, &raw_output_data));
+      RETURN_IF_ERROR(ort_api.GetTensorMutableData(preallocated_output, &raw_output_data));
       output_data = static_cast<float*>(raw_output_data);
     } else {
       output_data = kernel_context.GetOutput(0, shape0).GetTensorMutableData<float>();

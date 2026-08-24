@@ -75,9 +75,6 @@ void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
 
   if (!fetches.empty()) {
     fetch_mlvalue_idxs_.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
-    // Must be cleared alongside fetch_mlvalue_idxs_, else indices from the previous fetch set
-    // stay marked as caller-provided while ORT now owns them.
-    user_provided_output_idxs_.clear();
 
     auto num_fetches = fetch_mlvalue_idxs_.size();
 
@@ -87,9 +84,6 @@ void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
       ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
 
       all_values_[ort_value_idx] = fetches[idx];
-      if (fetches[idx].IsAllocated()) {
-        user_provided_output_idxs_.push_back(ort_value_idx);
-      }
 
       // Copy the initializer if it is a fetch entry.
       auto entry = initializers.find(ort_value_idx);
@@ -141,11 +135,6 @@ const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
 
 OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
   return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
-}
-
-bool IExecutionFrame::IsUserProvidedOutput(int ort_value_idx) const {
-  return std::find(user_provided_output_idxs_.begin(), user_provided_output_idxs_.end(), ort_value_idx) !=
-         user_provided_output_idxs_.end();
 }
 
 // TO DO: make it thread-safe
@@ -279,7 +268,6 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
 
   // 1. resize the all_value_ vector
   all_values_.resize(all_values_size_);
-  user_provided_output_idxs_.clear();
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -288,9 +276,6 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
     for (size_t idx = 0; idx < num_fetches; ++idx) {
       int ort_value_idx = fetch_mlvalue_idxs_[idx];
       all_values_[ort_value_idx] = fetches[idx];
-      if (fetches[idx].IsAllocated()) {
-        user_provided_output_idxs_.push_back(ort_value_idx);
-      }
     }
   }
 

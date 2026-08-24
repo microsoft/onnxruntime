@@ -195,7 +195,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   });
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetUserProvidedOutput, _In_ const OrtKernelContext* context,
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context,
                     _In_ size_t output_index, _Outptr_result_maybenull_ OrtValue** output) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     if (context == nullptr || output == nullptr) {
@@ -207,7 +207,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetUserProvidedOutput, _In_ const Ort
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output_index is out of range");
     }
 
-    *output = reinterpret_cast<OrtValue*>(ctx->GetUserProvidedOutputMLValue(onnxruntime::narrow<int>(output_index)));
+    *output = reinterpret_cast<OrtValue*>(ctx->GetPreallocatedOutputMLValue(onnxruntime::narrow<int>(output_index)));
     return nullptr;
   });
 };

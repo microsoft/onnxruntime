@@ -378,13 +378,13 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
-enum class UserOutputBinding { kRunFetches,
-                               kIoBinding };
+enum class PreallocatedOutputBinding { kRunFetches,
+                                       kIoBinding };
 
 // Runs mul_1.onnx with a caller-allocated output buffer, supplied either directly to Run() or via
 // IoBinding. Both paths must land the result in `output_data` itself, not a copy.
-void RunMulModelWithPluginEpUsingUserProvidedOutput(const Ort::SessionOptions& session_options,
-                                                    UserOutputBinding binding) {
+void RunMulModelWithPluginEpUsingPreallocatedOutput(const Ort::SessionOptions& session_options,
+                                                    PreallocatedOutputBinding binding) {
   Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -397,7 +397,7 @@ void RunMulModelWithPluginEpUsingUserProvidedOutput(const Ort::SessionOptions& s
   Ort::Value output = Ort::Value::CreateTensor<float>(
       output_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
 
-  if (binding == UserOutputBinding::kRunFetches) {
+  if (binding == PreallocatedOutputBinding::kRunFetches) {
     const char* input_names[] = {"X"};
     const char* output_names[] = {"Y"};
     session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, &output, 1);
@@ -528,7 +528,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
 }
 
 // Registers the example EP, appends it to session options, and loads its test hooks.
-static void SetUpUserProvidedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
+static void SetUpPreallocatedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
                                         Ort::SessionOptions& session_options,
                                         Utils::LoadExampleEpHooksPtr& example_ep_hooks) {
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -538,49 +538,49 @@ static void SetUpUserProvidedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
-  ASSERT_NE(example_ep_hooks->reset_user_provided_output_query, nullptr);
-  ASSERT_NE(example_ep_hooks->get_user_provided_output_query_result, nullptr);
-  ASSERT_NE(example_ep_hooks->get_user_provided_output_bad_index_rejected, nullptr);
-  example_ep_hooks->reset_user_provided_output_query();
+  ASSERT_NE(example_ep_hooks->reset_preallocated_output_query, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_query_result, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_bad_index_rejected, nullptr);
+  example_ep_hooks->reset_preallocated_output_query();
 }
 
-TEST(OrtEpLibrary, PluginEp_KernelContextUserProvidedOutput_Run) {
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_Run) {
   RegisteredEpDeviceUniquePtr example_ep;
   Ort::SessionOptions session_options;
   Utils::LoadExampleEpHooksPtr example_ep_hooks;
-  ASSERT_NO_FATAL_FAILURE(SetUpUserProvidedOutputTest(example_ep, session_options, example_ep_hooks));
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
 
   ASSERT_NO_FATAL_FAILURE(
-      RunMulModelWithPluginEpUsingUserProvidedOutput(session_options, UserOutputBinding::kRunFetches));
-  ASSERT_EQ(example_ep_hooks->get_user_provided_output_query_result(), 1);
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kRunFetches));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
   // Out-of-range output index rejected without disturbing the out parameter.
-  ASSERT_EQ(example_ep_hooks->get_user_provided_output_bad_index_rejected(), 1);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
 }
 
-TEST(OrtEpLibrary, PluginEp_KernelContextUserProvidedOutput_IoBinding) {
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_IoBinding) {
   RegisteredEpDeviceUniquePtr example_ep;
   Ort::SessionOptions session_options;
   Utils::LoadExampleEpHooksPtr example_ep_hooks;
-  ASSERT_NO_FATAL_FAILURE(SetUpUserProvidedOutputTest(example_ep, session_options, example_ep_hooks));
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
 
   ASSERT_NO_FATAL_FAILURE(
-      RunMulModelWithPluginEpUsingUserProvidedOutput(session_options, UserOutputBinding::kIoBinding));
-  ASSERT_EQ(example_ep_hooks->get_user_provided_output_query_result(), 1);
-  ASSERT_EQ(example_ep_hooks->get_user_provided_output_bad_index_rejected(), 1);
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kIoBinding));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
 }
 
-TEST(OrtEpLibrary, PluginEp_KernelContextUserProvidedOutput_NotProvided) {
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_NotPreallocated) {
   RegisteredEpDeviceUniquePtr example_ep;
   Ort::SessionOptions session_options;
   Utils::LoadExampleEpHooksPtr example_ep_hooks;
-  ASSERT_NO_FATAL_FAILURE(SetUpUserProvidedOutputTest(example_ep, session_options, example_ep_hooks));
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
 
   ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(session_options));
-  ASSERT_EQ(example_ep_hooks->get_user_provided_output_query_result(), 0);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
 
-  example_ep_hooks->reset_user_provided_output_query();
+  example_ep_hooks->reset_preallocated_output_query();
   ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEpUsingIOBinding(session_options));
-  ASSERT_EQ(example_ep_hooks->get_user_provided_output_query_result(), 0);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -2036,9 +2036,9 @@ TEST(OrtEpLibrary, PluginEp_Sync) {
   ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
 }
 
-TEST(OrtApi, KernelContextGetUserProvidedOutputContract) {
+TEST(OrtApi, KernelContextGetPreallocatedOutputContract) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  ASSERT_NE(api->KernelContext_GetUserProvidedOutput, nullptr);
+  ASSERT_NE(api->KernelContext_GetPreallocatedOutput, nullptr);
 
   auto expect_rejected = [&](OrtStatus* status) {
     ASSERT_NE(status, nullptr);
@@ -2050,10 +2050,10 @@ TEST(OrtApi, KernelContextGetUserProvidedOutputContract) {
   // Null arguments are rejected, and a failed call leaves the out parameter untouched.
   OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
   OrtValue* sentinel = sentinel_value;
-  expect_rejected(api->KernelContext_GetUserProvidedOutput(nullptr, 0, &sentinel));
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, &sentinel));
   EXPECT_EQ(sentinel, sentinel_value);
 
-  expect_rejected(api->KernelContext_GetUserProvidedOutput(nullptr, 0, nullptr));
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, nullptr));
 }
 }  // namespace test
 }  // namespace onnxruntime

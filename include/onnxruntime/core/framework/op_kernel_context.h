@@ -194,7 +194,7 @@ class OpKernelContext {
   virtual const OrtValue* GetInputMLValue(int index) const;
   virtual const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
-  OrtValue* GetUserProvidedOutputMLValue(int index) const;
+  OrtValue* GetPreallocatedOutputMLValue(int index) const;
 
 #ifdef ENABLE_ATEN
   Status SetOutputMLValue(int index, const OrtValue& ort_value);

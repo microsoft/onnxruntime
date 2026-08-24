@@ -2876,9 +2876,9 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int
   return UnownedValue(out);
 }
 
-inline UnownedValue KernelContext::GetUserProvidedOutput(size_t index) const {
+inline UnownedValue KernelContext::GetPreallocatedOutput(size_t index) const {
   OrtValue* out = nullptr;
-  Ort::ThrowOnError(GetApi().KernelContext_GetUserProvidedOutput(ctx_, index, &out));
+  Ort::ThrowOnError(GetApi().KernelContext_GetPreallocatedOutput(ctx_, index, &out));
   return UnownedValue(out);
 }
 
