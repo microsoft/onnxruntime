@@ -26,6 +26,14 @@ describe('#UnitTest# - install utility downloads', () => {
         response.writeHead(307, { Location: '/package.bin' }).end();
         return;
       }
+      if (request.url === '/redirect-loop') {
+        response.writeHead(302, { Location: '/redirect-loop' }).end();
+        return;
+      }
+      if (request.url === '/redirect-malformed') {
+        response.writeHead(302, { Location: 'http://[invalid' }).end();
+        return;
+      }
       if (request.url === '/metadata.json') {
         response.writeHead(200, { 'Content-Type': 'application/json' }).end('{"version":"test"}');
         return;
@@ -59,5 +67,13 @@ describe('#UnitTest# - install utility downloads', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('rejects when the redirect limit is exceeded', async () => {
+    await assert.rejects(downloadJson(`${baseUrl}/redirect-loop`), /Too many redirects/);
+  });
+
+  it('rejects malformed redirect locations', async () => {
+    await assert.rejects(downloadJson(`${baseUrl}/redirect-malformed`), /Invalid URL/);
   });
 });

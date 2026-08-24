@@ -41,7 +41,15 @@ function requestWithRedirects(url, redirectCount = 0) {
           return;
         }
 
-        requestWithRedirects(new URL(location, parsedUrl).toString(), redirectCount + 1).then(resolve, reject);
+        let redirectUrl;
+        try {
+          redirectUrl = new URL(location, parsedUrl).toString();
+        } catch (err) {
+          reject(err);
+          return;
+        }
+
+        requestWithRedirects(redirectUrl, redirectCount + 1).then(resolve, reject);
       })
       .on('error', reject);
   });
