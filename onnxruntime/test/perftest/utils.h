@@ -35,25 +35,20 @@ void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& te
 
 void ListEpDevices(const Ort::Env& env);
 
-// Appends the plugin EP devices selected by the test config to the session options.
-// Returns the list of OrtEpDevice instances that were added to the session.
+// Returns the OrtEpDevice instances that were added to the session.
 std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
                                                                Ort::SessionOptions& session_options,
                                                                const PerformanceTestConfig& test_config);
 
 bool UsesNvidiaDevice(Ort::Env& env, const PerformanceTestConfig& test_config);
 
-// An allocator selected for a plugin EP device, along with whether its memory can be written to
-// directly from the host (e.g. CPU or pinned/shared memory), or whether it is device-only memory
-// (e.g. plain GPU memory) that requires a device data transfer to populate from the host.
 struct PluginEpAllocatorSelection {
   Ort::UnownedAllocator allocator;
   bool is_host_accessible = false;
 };
 
-// Selects an allocator to use for input/output buffers when running with plugin EP devices.
-// Preference order: the EP device's default (device) allocator, then its host accessible allocator,
-// then std::nullopt to indicate the caller should fall back to the CPU allocator.
+// Preference order: default (device) allocator, then host accessible allocator, then nullopt
+// (caller falls back to the CPU allocator).
 std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
                                                                const std::vector<Ort::ConstEpDevice>& ep_devices);
 

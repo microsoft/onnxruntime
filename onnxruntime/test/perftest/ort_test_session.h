@@ -20,16 +20,7 @@ class OnnxRuntimeTestSession : public TestSession {
   OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config,
                          const TestModelInfo& m);
 
-  void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override {
-    if (test_inputs_.size() < test_data_id + 1) {
-      test_inputs_.resize(test_data_id + 1);
-    }
-    if (test_inputs_.at(test_data_id).size() == 0) {
-      for (int i = 0; i < input_length_; i++)
-        test_inputs_[test_data_id].emplace_back(nullptr);
-    }
-    test_inputs_[test_data_id][input_id] = std::move(value);
-  }
+  void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override;
 
   bool PopulateGeneratedInputTestData(int32_t seed);
   bool PopulateGeneratedMultiShapeInputTestData(
@@ -50,6 +41,13 @@ class OnnxRuntimeTestSession : public TestSession {
   void CreateAndStoreGeneratedInput(size_t test_data_id, size_t input_idx,
                                     const std::vector<int64_t>& dims,
                                     ONNXTensorElementDataType element_type, int32_t seed);
+
+  // Copies value into allocator_'s memory if a plugin EP allocator was selected. Strings and
+  // non-tensor values can't live in device memory, so those are returned unchanged.
+  Ort::Value StageInputForPluginEpAllocator(Ort::Value&& value);
+
+  // Stores an already-staged value; used to avoid double-staging in CreateAndStoreGeneratedInput.
+  void StoreTestData(size_t test_data_id, size_t input_id, Ort::Value&& value);
 
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;

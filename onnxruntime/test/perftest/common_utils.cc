@@ -206,8 +206,7 @@ std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
 
 std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
                                                                const std::vector<Ort::ConstEpDevice>& ep_devices) {
-  // If more than one EP device was appended to the session, there's no single unambiguous device
-  // allocator to pick, so fall back to the CPU allocator.
+  // More than one device appended means no single unambiguous allocator to pick.
   if (ep_devices.size() != 1) {
     fprintf(stdout, "[Plugin EP] %d EP devices appended. Using the CPU allocator.\n",
             static_cast<int>(ep_devices.size()));
@@ -216,9 +215,6 @@ std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
 
   const Ort::ConstEpDevice& ep_device = ep_devices[0];
 
-  // Prefer the EP device's default (device) allocator. Its memory is not guaranteed to be
-  // writable from the host (e.g. plain GPU memory), so callers must stage host data through it
-  // using a device data transfer rather than writing to it directly.
   Ort::ConstMemoryInfo default_mem_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
   if (default_mem_info) {
     Ort::UnownedAllocator allocator = env.GetSharedAllocator(default_mem_info);
@@ -228,7 +224,6 @@ std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
     }
   }
 
-  // Fall back to the EP device's host accessible allocator (e.g. pinned memory) if available.
   Ort::ConstMemoryInfo host_accessible_mem_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_HOST_ACCESSIBLE);
   if (host_accessible_mem_info) {
     Ort::UnownedAllocator allocator = env.GetSharedAllocator(host_accessible_mem_info);
@@ -238,7 +233,6 @@ std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
     }
   }
 
-  // No device or host accessible allocator available. The caller falls back to the CPU allocator.
   return std::nullopt;
 }
 
