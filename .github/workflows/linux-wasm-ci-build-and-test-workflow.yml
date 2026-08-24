@@ -73,36 +73,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Ensure a Chromium browser is available for WASM tests
-        if: ${{ inputs.build_config == 'Debug' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          chrome_bin=""
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome_bin="$(command -v "$candidate")"
-              break
-            fi
-          done
-
-          if [[ -z "$chrome_bin" ]]; then
-            sudo apt-get update
-            sudo apt-get install --no-install-recommends -y ca-certificates curl
-            chrome_deb="$(mktemp --suffix=.deb)"
-            trap 'rm -f "$chrome_deb"' EXIT
-            curl --fail --silent --show-error --location \
-              --output "$chrome_deb" \
-              https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-            sudo apt-get install --no-install-recommends -y "$chrome_deb"
-            chrome_bin="$(command -v google-chrome)"
-          fi
-
-          test -x "$chrome_bin"
-          echo "CHROME_BIN=$chrome_bin" >> "$GITHUB_ENV"
-          "$chrome_bin" --version
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
