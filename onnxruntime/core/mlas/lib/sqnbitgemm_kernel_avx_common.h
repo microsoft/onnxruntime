@@ -19,11 +19,10 @@ constexpr size_t MLAS_PACK_MIN_BLKS_PER_CHUNK = 32;
 // "n" columns, forcing ChunkCount up to approach MaxThreads creates many tiny
 // tasks whose thread-pool dispatch overhead dominates the (small) amount of
 // real work, making packing *slower* than the fixed MLAS_PACK_BLKS_PER_CHUNK
-// chunking (see PR discussion; measured up to ~9x slower for N=1 at 96
-// threads). We therefore only rebalance for N at or above this threshold,
-// which covers the reviewer's motivating narrow-N-but-not-trivial case (e.g.
-// per-head/group projections) while leaving smaller N and the already-tuned
-// large-N path untouched.
+// chunking. Benchmarks with 96 threads measured an approximately 9x slowdown
+// for N=1. We therefore only rebalance for N at or above this threshold,
+// preserving parallelism for narrow projection matrices while leaving smaller
+// N and the already-tuned large-N path untouched.
 constexpr size_t MLAS_PACK_REBALANCE_MIN_N = 32;
 
 // Picks a chunk size (in units of blocks or subblocks, depending on caller) for
