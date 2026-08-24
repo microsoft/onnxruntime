@@ -16,6 +16,14 @@
 
 namespace {
 
+bool HasKleidiAISme2() {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)
+  return ArmKleidiAI::UseSME2;
+#else
+  return false;
+#endif
+}
+
 void RunPublicSgemm(CBLAS_TRANSPOSE trans_b,
                     bool packed,
                     size_t m,
@@ -63,6 +71,10 @@ void ForEachRhsLayoutAndPacking(Verify verify) {
 }
 
 TEST(SGemmPublicApi, BetaZeroDoesNotReadC) {
+  if (!HasKleidiAISme2()) {
+    GTEST_SKIP() << "This test validates the KleidiAI SME2 SGEMM path.";
+  }
+
   constexpr size_t M = 33;
   constexpr size_t N = 65;
   constexpr size_t K = 31;
@@ -80,6 +92,10 @@ TEST(SGemmPublicApi, BetaZeroDoesNotReadC) {
 }
 
 TEST(SGemmPublicApi, AlphaZeroDoesNotReadInputs) {
+  if (!HasKleidiAISme2()) {
+    GTEST_SKIP() << "This test validates the KleidiAI SME2 SGEMM path.";
+  }
+
   constexpr size_t M = 33;
   constexpr size_t N = 65;
   constexpr size_t K = 31;
@@ -98,6 +114,10 @@ TEST(SGemmPublicApi, AlphaZeroDoesNotReadInputs) {
 }
 
 TEST(SGemmPublicApi, InfiniteResultsAreNotClamped) {
+  if (!HasKleidiAISme2()) {
+    GTEST_SKIP() << "This test validates the KleidiAI SME2 SGEMM path.";
+  }
+
   constexpr size_t M = 33;
   constexpr size_t N = 65;
   constexpr size_t K = 1;
@@ -123,13 +143,9 @@ TEST(SGemmPublicApi, InfiniteResultsAreNotClamped) {
 }
 
 TEST(SGemmPublicApi, MixedPackedAndUnpackedBatchSme2) {
-#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI)
-  if (!ArmKleidiAI::UseSME2) {
-    GTEST_SKIP() << "Mixed KleidiAI SGEMM packing is exercised only by the SME2 path.";
+  if (!HasKleidiAISme2()) {
+    GTEST_SKIP() << "This test validates the KleidiAI SME2 SGEMM path.";
   }
-#else
-  GTEST_SKIP() << "Mixed KleidiAI SGEMM packing requires an ARM64 SME2 build.";
-#endif
 
   constexpr size_t M = 3;
   constexpr size_t N = 513;

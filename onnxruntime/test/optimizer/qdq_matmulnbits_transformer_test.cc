@@ -1098,6 +1098,8 @@ void RunDQMatMulPerTensorWithBlockSize(const std::vector<int64_t>& input1_shape,
 
   std::function<void(SessionOptions&)> add_session_options_fn =
       [block_size_option](SessionOptions& sess_opts) {
+        // Keep this graph-transformation test independent of architecture-specific matmul reduction order.
+        std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1");
         std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "0");
         std::ignore = sess_opts.config_options.AddConfigEntry(
             kOrtSessionOptionsQDQMatMulNBitsBlockSize,
