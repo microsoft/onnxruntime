@@ -399,12 +399,38 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
+  // BufferManager reports misuse by throwing (ORT_ENFORCE) rather than by returning a Status: an
+  // aliased src/dst pair, an undersized destination and a still-mapped buffer all throw. This
+  // callback is invoked across the C ABI and is therefore noexcept, so letting the exception escape
+  // would terminate the process instead of surfacing an error. Convert any throw to an OrtStatus.
   static OrtStatus* ORT_API_CALL CopyTensorsImpl(
       OrtDataTransferImpl* this_ptr,
       const OrtValue** src_tensors,
       OrtValue** dst_tensors,
-      OrtSyncStream** /*streams*/,
+      OrtSyncStream** streams,
       size_t num_tensors) noexcept {
+    OrtStatus* result = nullptr;
+    ORT_TRY {
+      result = CopyTensorsOrThrow(this_ptr, src_tensors, dst_tensors, streams, num_tensors);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        result = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      result = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Unknown exception during WebGPU CopyTensors.");
+    }
+    return result;
+  }
+
+  // Body of CopyTensorsImpl. May throw; the caller is responsible for converting.
+  static OrtStatus* CopyTensorsOrThrow(
+      OrtDataTransferImpl* this_ptr,
+      const OrtValue** src_tensors,
+      OrtValue** dst_tensors,
+      OrtSyncStream** /*streams*/,
+      size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {

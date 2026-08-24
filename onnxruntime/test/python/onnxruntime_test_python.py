@@ -2518,6 +2518,52 @@ class TestInferenceSession(unittest.TestCase):
         del held
         gc.collect()
 
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_copy_tensors_misuse_raises_instead_of_terminating(self):
+        """Misusing copy_tensors on WebGPU buffers must raise, not kill the process.
+
+        BufferManager::MemCpy reports misuse with ORT_ENFORCE, which throws. The shared data
+        transfer reaches it through WebGpuDataTransferImpl::CopyTensorsImpl, a noexcept C ABI
+        callback, so before the fix the exception escaped a noexcept frame and std::terminate took
+        the process down with no message. That was unreachable while copy_tensors rejected every
+        WebGPU OrtValue outright; allowing the supported copies exposes it, so it is pinned here.
+        """
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        large = session.create_ortvalue_from_numpy(np.zeros((64, 64), dtype=np.float32), "webgpu")
+        small = session.create_ortvalue_from_shape_and_type([2, 2], np.float32, "webgpu")
+
+        # Aliased source and destination: WebGPU forbids a self copy.
+        with self.assertRaisesRegex(RuntimeError, "must be different"):
+            onnxrt.copy_tensors([large], [large])
+
+        # Destination too small to receive the source.
+        with self.assertRaisesRegex(RuntimeError, "must have enough space"):
+            onnxrt.copy_tensors([large], [small])
+
+        # The session is still usable: the failures were reported, not fatal.
+        input_metadata = session.get_inputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        gpu_input = session.create_ortvalue_from_numpy(input_value, "webgpu")
+        gpu_copy = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
+        onnxrt.copy_tensors([gpu_input], [gpu_copy])
+        np.testing.assert_allclose(gpu_copy.numpy(), input_value)
+
     def test_memory_arena_shrinkage(self):
         if (
             platform.architecture()[0] == "32bit"
