@@ -37,8 +37,9 @@ The proposed solution has four parts:
    digests for the contracts the plugin was built against. An entry is identified by
    domain, operator name, opset version, and a generated ABI digest. ORT and the
    plugin agree on an operator only when that entry matches exactly.
-3. Require bounded version ranges once a `com.microsoft` operator has more than one
-   schema. Kernel lookup must match the node's resolved schema `since_version`, not
+3. Preserve kernel lookup's exact-start semantics for open-ended registrations and
+   require an explicit bounded range when one kernel intentionally supports multiple
+   schema versions. Lookup must match the node's resolved schema `since_version`, not
    merely the domain or operator name.
 4. Gate every EP-specific contrib-op fusion on both the negotiated operator digest
    and an exact target-kernel lookup. If support is unknown, the fusion does not run.
@@ -483,12 +484,14 @@ opset setter is required. A plugin must use those values when doing its own
 
 ### Explicit ranges
 
-For ORT-owned private domains, specifically `com.microsoft`, kernel registration must
-reject an open-ended kernel range once the operator has more than one schema. New
-CUDA plugin contrib registrations should be exact by default:
+`KernelRegistry` treats an open-ended `SinceVersion(v)` registration as an exact match
+for `v`, because a future schema version may change the contract. That form remains
+safe when a `com.microsoft` operator gains another schema. New CUDA plugin contrib
+registrations should continue to be exact by default:
 
 ```cpp
-// Plugin build for kMSDomain only:
+// Both forms match only schema version 1.
+SinceVersion(1)
 SinceVersion(1, 1)
 ```
 
@@ -503,11 +506,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     GroupQueryAttention, kMSDomain, 2, /* type and builder */, GqaV2Kernel);
 ```
 
-The second registration must also be bounded to `[2, 2]` by the plugin adapter. If one
-kernel class safely handles both contracts, it may be registered twice or explicitly
-for `[1, 2]`; the declaration is intentional either way.
+If one kernel class safely handles both contracts, it may be registered twice or
+explicitly for `[1, 2]`; the multi-version declaration is intentional either way.
 
-### Scope of the bounded-range rule
+### Scope of the version-range rule
 
 The rule applies to `com.microsoft` only. It does not change normal ONNX-domain kernel
 conventions, where ranges already follow published ONNX schema versions and often
@@ -524,32 +526,25 @@ only if their schemas are ORT-private.
 
 ### In-tree EP kernels
 
-The same hazard exists inside a single static build and must be fixed at the same
-time. An in-tree contrib kernel registered as open-ended `SinceVersion(1)` will match
-a node that core resolved as `since_version == 2` as soon as the first operator is
-versioned. There is no ABI boundary involved; the kernel simply claims a contract it
-was not written for.
+The same version discipline applies inside a single static build. An in-tree contrib
+kernel registered as open-ended `SinceVersion(1)` remains an exact v1 match after a v2
+schema is added; it does not silently claim v2. Each EP must add a v2 registration
+only if its kernel implements the new contract.
 
-Therefore:
-
-- Versioning an operator requires bounding every existing in-tree kernel for that
-  operator to the versions it actually implements, across CPU, CUDA, ROCm, DML,
-  WebGPU, JS, and QNN.
-- CI must reject a new open-ended `kMSDomain` kernel registration for any operator
-  that has more than one registered schema version.
-
-Because an audit of every existing `kMSDomain` registration is large, the practical
-rule is per-operator: an operator may keep its open-ended registrations until it gains
-a second schema version, at which point bounding all of its kernels is part of the
-versioning change. The [decision checklist](#decision-checklist-for-future-contrib-changes)
-enforces this at review time.
+Therefore, versioning an operator requires adding registrations for every new schema
+version that an in-tree EP implements, across CPU, CUDA, ROCm, DML, WebGPU, JS, and
+QNN. Existing open-ended registrations remain exact matches for their start versions.
+A kernel that intentionally supports several schema versions must declare a bounded
+range covering those versions. The
+[decision checklist](#decision-checklist-for-future-contrib-changes) enforces this at
+review time.
 
 ### Core validation
 
 When importing a plugin kernel registry, ORT validates each kernel in `com.microsoft`:
 
-1. `start_version <= end_version`. An open-ended range is invalid once the operator
-   has more than one registered schema version.
+1. `start_version <= end_version`. An open-ended range is validated as the exact
+   start version, matching `KernelRegistry` lookup semantics.
 2. A range wholly newer than the core's domain maximum is ignored, not treated as a
    plugin error. For a range that overlaps the core's supported versions, only that
    core-visible intersection is validated.
@@ -722,9 +717,10 @@ release from the day they are introduced.
    missing-callback handling permissive.
 2. **Plugin adoption:** make the example plugin and CUDA plugin publish digests; add
    old/new core-plugin matrix tests.
-3. **Kernel hardening:** make CUDA plugin contrib registrations bounded and add CI that
-   rejects open-ended ranges for any `com.microsoft` operator with more than one
-   schema version, for in-tree EPs as well as plugins.
+3. **Kernel hardening:** verify CUDA plugin contrib registrations follow exact-start
+   lookup semantics and add CI that requires an explicit bounded range whenever one
+   kernel claims multiple `com.microsoft` schema versions, for in-tree EPs as well as
+   plugins.
 4. **Version-bump plumbing:** centralize the current and last-released
    `com.microsoft` versions (see [Domain version](#domain-version)), raise the domain
    maximum safely when the first post-release contract change opens a new opset, add
@@ -805,8 +801,8 @@ quarantined.
 
 ### Kernel tests
 
-- Reject or filter an open-ended plugin kernel for a `com.microsoft` operator with
-  more than one schema.
+- Preserve an open-ended v1 plugin kernel as an exact v1 match after the operator
+  gains a v2 schema, without making it eligible for v2.
 - Verify a `[1,1]` kernel does not match a GQA-2 node.
 - Verify a `[2,2]` kernel does not match a GQA-1 node.
 - Verify the same holds for in-tree CPU and CUDA GQA kernels in a static build.
@@ -847,7 +843,7 @@ contracts:
   `tensor(int32)` added to the type constraint.
 
 CUDA0 has no API-30 callback and an open-ended v1 kernel registration. CUDA1 publishes
-the OP1 digest and has a bounded `[1,1]` kernel. CUDA2 publishes both OP1 and OP2
+the OP1 digest and also has an open-ended exact-v1 kernel. CUDA2 publishes both OP1 and OP2
 digests and retains bounded `[1,1]` and `[2,2]` kernels. "Fallback" below means the
 CUDA plugin does not have an eligible kernel; another EP may execute the node if it
 has an implementation.
@@ -964,9 +960,9 @@ Before merging a contrib-op contract change:
    is not a change to an existing contract and does not by itself require a bump.
 2. Is the old schema definition still present and digest-identical to the checked-in
    manifest entry?
-3. Are every EP's old and new kernel ranges explicit and truthful, for in-tree EPs as
-   well as plugins? Once an operator has two schema versions, no kernel for it may be
-   open-ended.
+3. Are every EP's old and new kernel ranges truthful, for in-tree EPs as well as
+   plugins? An open-ended registration is an exact start-version match; a kernel that
+   intentionally supports multiple schema versions must use an explicit bounded range.
 4. Does every optimizer that creates the op request the exact new version and verify
    target-EP support?
 5. Can a graph with an explicit older domain import remain unchanged, or is a version

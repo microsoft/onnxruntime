@@ -318,26 +318,9 @@ static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
       // into schemas supplied by a newer plugin build.
       int compatibility_end_version = std::min(end_version, core_max_version);
       if (end_version == INT_MAX) {
-        // KernelRegistry intentionally treats an open-ended registration as an
-        // exact start-version match. Preserve existing contrib registrations
-        // while an operator has one schema, but require an explicit range as
-        // soon as that operator gains another contract.
-        int distinct_schema_version = 0;
-        for (int version = domain_version->second.first; version <= domain_version->second.second; ++version) {
-          const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(
-              kernel_def.OpName(), version, kernel_def.Domain());
-          if (schema == nullptr) {
-            continue;
-          }
-
-          if (distinct_schema_version == 0) {
-            distinct_schema_version = schema->since_version();
-          } else {
-            ORT_RETURN_IF(distinct_schema_version != schema->since_version(),
-                          "Plugin EP has an open-ended com.microsoft kernel range for versioned operator ",
-                          kernel_def.OpName(), ": [", start_version, ", INT_MAX].");
-          }
-        }
+        // KernelRegistry treats an open-ended registration as an exact match
+        // for its start version. Keep that behavior when a newer core adds
+        // another schema so an older plugin retains its compatible kernel.
         compatibility_end_version = start_version;
       }
 

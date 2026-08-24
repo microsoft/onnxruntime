@@ -441,7 +441,9 @@ TEST(PluginEpSchemaCompatibilityTest, VersionedContribSchemaCompatibilityMatrix)
   };
   const std::array<PluginVariant, 3> plugins = {{
       {"CUDA0", 29, {}, {1}, true},
-      {"CUDA1", 30, {1}, {1}, false},
+      // Existing contrib registrations use the open-ended form, which the
+      // kernel registry treats as an exact match for the start version.
+      {"CUDA1", 30, {1}, {1}, true},
       // A v2 plugin retains its v1 contract and kernel for old models and cores.
       {"CUDA2", 30, {1, 2}, {1, 2}, false},
   }};
