@@ -466,7 +466,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     xqa_candidate =
         device_prop.major >= 8 &&
         parameters.softcap == 0.0f &&
-        (parameters.head_size == 64 || parameters.head_size == 128) &&
+        (parameters.head_size == 64 || parameters.head_size == 128 || parameters.head_size == 256) &&
         (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
         (parameters.block_size % kXqaTokensPerPage) == 0 &&
         is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
