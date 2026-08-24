@@ -1861,7 +1861,8 @@ struct OrtApi {
 
   /** \brief Clears the terminate flag
    *
-   * Used so the OrtRunOptions instance can be used in a new OrtApi::Run call without it instantly terminating
+   * Used so the OrtRunOptions instance can be used in a new OrtApi::Run call without it instantly terminating.
+   * This does not revoke termination from Run calls that already observed a terminate request.
    *
    * \param[in] options
    *
