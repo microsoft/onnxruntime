@@ -269,5 +269,36 @@ TEST(ScatterNDOpTest, ScatterND_empty_indices) {
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
+TEST(ScatterNDOpTest, ScatterND_zero_index_depth_updates_entire_tensor) {
+  OpTester test("ScatterND", 18);
+  test.AddInput<float>("data", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("indices", {1, 0}, {});
+  test.AddInput<float>("updates", {1, 2, 3}, {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f});
+  test.AddOutput<float>("output", {2, 3}, {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ScatterNDOpTest, ScatterND_zero_index_depth_adds_multiple_updates) {
+  OpTester test("ScatterND", 18);
+  test.AddAttribute("reduction", "add");
+  test.AddInput<float>("data", {2}, {1.0f, 2.0f});
+  test.AddInput<int64_t>("indices", {2, 0}, {});
+  test.AddInput<float>("updates", {2, 2}, {10.0f, 20.0f, 100.0f, 200.0f});
+  test.AddOutput<float>("output", {2}, {111.0f, 222.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ScatterNDOpTest, ScatterND_zero_index_depth_empty_data) {
+  OpTester test("ScatterND", 18);
+  test.AddInput<float>("data", {0, 3}, {});
+  test.AddInput<int64_t>("indices", {1, 0}, {});
+  test.AddInput<float>("updates", {1, 0, 3}, {});
+  test.AddOutput<float>("output", {0, 3}, {});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

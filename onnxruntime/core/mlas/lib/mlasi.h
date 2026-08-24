@@ -1360,7 +1360,30 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
+//
+// AVX-512 accelerated NCHW<->NCHWc reorder block helpers (block size 16).
+// Declared unconditionally for AMD64; only invoked when NchwcBlockSize == 16.
+//
+void
+MLASCALL
+MlasReorderInputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderOutputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t OutputSize
+    );
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -1487,6 +1510,10 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
+#if defined(MLAS_USE_SVE)
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmlaSve;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmlaSve;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchRvv;
@@ -1603,6 +1630,7 @@ extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 struct MLAS_LINEAR_ATTENTION_DISPATCH;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.

@@ -130,6 +130,7 @@ stages:
           -p ${{ parameters.docker_python_exe_path }}
           -v ${{ parameters.cuda_version }}
           -a "${{ parameters.cmake_cuda_archs }}"
+          -h "${{ parameters.arch }}"
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build CUDA Plugin (Python ${{ parameters.python_version }}, ${{ parameters.arch }}, CUDA ${{ parameters.cuda_version }})'
         env:

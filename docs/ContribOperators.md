@@ -7299,6 +7299,8 @@ No versioning maintained for experimental ops.
   The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
   and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
   and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+  segment_ids, segment_embedding, segment_embedding_scale, and segment_embedding_zero_point must either all be provided or all
+  be omitted.
   If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.
 
 #### Version
@@ -7317,13 +7319,13 @@ No versioning maintained for experimental ops.
 <dt><tt>input_ids</tt> : T1</dt>
 <dd>2D words IDs with shape (batch_size, sequence_length)</dd>
 <dt><tt>segment_ids</tt> (optional) : T1</dt>
-<dd>2D segment IDs with shape (batch_size, sequence_length)</dd>
+<dd>2D segment IDs with shape (batch_size, sequence_length). Part of the all-or-none segment input group.</dd>
 <dt><tt>word_embedding_quant</tt> : T2</dt>
 <dd>2D with shape (,hidden_size)</dd>
 <dt><tt>position_embedding_quant</tt> : T2</dt>
 <dd>2D with shape (, hidden_size)</dd>
 <dt><tt>segment_embedding</tt> (optional) : T2</dt>
-<dd>2D with shape (, hidden_size)</dd>
+<dd>2D with shape (, hidden_size). Part of the all-or-none segment input group.</dd>
 <dt><tt>gamma_quant</tt> : T2</dt>
 <dd>1D gamma tensor for layer normalization with shape (hidden_size)</dd>
 <dt><tt>beta_quant</tt> : T2</dt>
@@ -7335,7 +7337,7 @@ No versioning maintained for experimental ops.
 <dt><tt>position_embedding_scale</tt> : T</dt>
 <dd>Scale for position embeddings</dd>
 <dt><tt>segment_embedding_scale</tt> (optional) : T</dt>
-<dd>Scale for segment embeddings</dd>
+<dd>Scale for segment embeddings. Part of the all-or-none segment input group.</dd>
 <dt><tt>gamma_scale</tt> : T</dt>
 <dd>Scale for 1D gamma tensor</dd>
 <dt><tt>beta_scale</tt> : T</dt>
@@ -7345,7 +7347,7 @@ No versioning maintained for experimental ops.
 <dt><tt>position_embedding_zero_point</tt> : T2</dt>
 <dd>Zero point for position embeddings</dd>
 <dt><tt>segment_embedding_zero_point</tt> (optional) : T2</dt>
-<dd>Zero Point for segment embeddings</dd>
+<dd>Zero Point for segment embeddings. Part of the all-or-none segment input group.</dd>
 <dt><tt>gamma_zero_point</tt> : T2</dt>
 <dd>Zero Point for 1D gamma tensor</dd>
 <dt><tt>beta_zero_point</tt> : T2</dt>
