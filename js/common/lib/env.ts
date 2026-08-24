@@ -226,16 +226,32 @@ export declare namespace Env {
     /**
      * Set or get the GPU device for WebGPU.
      *
-     * There are 3 valid scenarios of accessing this property:
-     * - Set a value before the first WebGPU inference session is created. The value will be used by the WebGPU backend
-     * to perform calculations. If the value is not a `GPUDevice` object, an error will be thrown.
-     * - Get the value before the first WebGPU inference session is created. This will try to create a new GPUDevice
-     * instance. Returns a `Promise` that resolves to a `GPUDevice` object.
-     * - Get the value after the first WebGPU inference session is created. Returns a resolved `Promise` to the
-     * `GPUDevice` object used by the WebGPU backend.
+     * Set this property before the first WebGPU inference session is created to use an application-created device.
+     * All WebGPU sessions and the environment shared allocator use this device. The device cannot be replaced after
+     * the WebGPU backend starts initializing.
+     *
+     * Reading this property does not create a device. It returns the configured application device before
+     * initialization, `undefined` if no device has been configured, and the effective device after initialization.
+     * An application-created device cannot be used when {@link WebAssemblyFlags.proxy} is enabled because WebGPU
+     * objects cannot be transferred to the proxy worker.
+     *
+     * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
      */
-    get device(): Promise<TryGetGlobalType<'GPUDevice'>>;
+    get device(): TryGetGlobalType<'GPUDevice'> | undefined;
     set device(value: TryGetGlobalType<'GPUDevice'>);
+    /**
+     * Features required by the application on the environment WebGPU device.
+     *
+     * When ONNX Runtime creates the device, these features are combined with its internally selected features. Device
+     * creation fails if the selected adapter does not support one of them. For an application-created device, ONNX
+     * Runtime validates that every requested feature is already enabled.
+     *
+     * Values are `GPUFeatureName` strings defined by the WebGPU specification. This property must be set before the
+     * first WebGPU inference session is created.
+     *
+     * @defaultValue `[]`
+     */
+    requiredFeatures?: readonly string[];
     /**
      * Set or get whether validate input content.
      *

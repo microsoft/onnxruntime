@@ -74,6 +74,41 @@ DawnPlatform& GetDawnPlatform() {
 }  // namespace
 #endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 
+wgpu::FeatureName ParseWebGpuFeatureName(std::string_view feature) {
+  static constexpr std::pair<std::string_view, wgpu::FeatureName> kFeatureNames[] = {
+      {"core-features-and-limits", wgpu::FeatureName::CoreFeaturesAndLimits},
+      {"depth-clip-control", wgpu::FeatureName::DepthClipControl},
+      {"depth32float-stencil8", wgpu::FeatureName::Depth32FloatStencil8},
+      {"texture-compression-bc", wgpu::FeatureName::TextureCompressionBC},
+      {"texture-compression-bc-sliced-3d", wgpu::FeatureName::TextureCompressionBCSliced3D},
+      {"texture-compression-etc2", wgpu::FeatureName::TextureCompressionETC2},
+      {"texture-compression-astc", wgpu::FeatureName::TextureCompressionASTC},
+      {"texture-compression-astc-sliced-3d", wgpu::FeatureName::TextureCompressionASTCSliced3D},
+      {"timestamp-query", wgpu::FeatureName::TimestampQuery},
+      {"indirect-first-instance", wgpu::FeatureName::IndirectFirstInstance},
+      {"shader-f16", wgpu::FeatureName::ShaderF16},
+      {"rg11b10ufloat-renderable", wgpu::FeatureName::RG11B10UfloatRenderable},
+      {"bgra8unorm-storage", wgpu::FeatureName::BGRA8UnormStorage},
+      {"float32-filterable", wgpu::FeatureName::Float32Filterable},
+      {"float32-blendable", wgpu::FeatureName::Float32Blendable},
+      {"clip-distances", wgpu::FeatureName::ClipDistances},
+      {"dual-source-blending", wgpu::FeatureName::DualSourceBlending},
+      {"subgroups", wgpu::FeatureName::Subgroups},
+      {"texture-formats-tier1", wgpu::FeatureName::TextureFormatsTier1},
+      {"texture-formats-tier2", wgpu::FeatureName::TextureFormatsTier2},
+      {"primitive-index", wgpu::FeatureName::PrimitiveIndex},
+      {"texture-component-swizzle", wgpu::FeatureName::TextureComponentSwizzle},
+      {"subgroup-size-control", wgpu::FeatureName::SubgroupSizeControl},
+      {"unorm16-texture-formats", wgpu::FeatureName::Unorm16TextureFormats},
+      {"multi-draw-indirect", wgpu::FeatureName::MultiDrawIndirect},
+  };
+
+  const auto entry = std::find_if(std::begin(kFeatureNames), std::end(kFeatureNames),
+                                  [feature](const auto& candidate) { return candidate.first == feature; });
+  ORT_ENFORCE(entry != std::end(kFeatureNames), "Unknown WebGPU required feature: ", feature, ".");
+  return entry->second;
+}
+
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
@@ -155,6 +190,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
+      for (const auto& feature_name : config.required_features) {
+        const auto feature = ParseWebGpuFeatureName(feature_name);
+        ORT_ENFORCE(adapter.HasFeature(feature),
+                    "Required WebGPU feature is not supported by the selected adapter: ", feature_name, ".");
+        if (std::find(required_features.begin(), required_features.end(), feature) == required_features.end()) {
+          required_features.push_back(feature);
+        }
+      }
       if (!required_features.empty()) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
@@ -227,6 +270,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     Device().GetFeatures(&supported_features);
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       device_features_.insert(supported_features.features[i]);
+    }
+    for (const auto& feature_name : config.required_features) {
+      ORT_ENFORCE(DeviceHasFeature(ParseWebGpuFeatureName(feature_name)),
+                  "The application-created WebGPU device does not have required feature: ", feature_name, ".");
     }
     // cache adapter info
 #if !defined(__wasm__)
@@ -1189,11 +1236,93 @@ std::once_flag WebGpuContextFactory::init_default_flag_;
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 WGPUInstance WebGpuContextFactory::default_instance_ = nullptr;
+WGPUDevice WebGpuContextFactory::default_device_ = nullptr;
+std::vector<std::string> WebGpuContextFactory::default_required_features_;
+bool WebGpuContextFactory::default_context_configured_ = false;
+
+bool ConfigureDefaultContext(WGPUInstance instance,
+                             WGPUDevice device,
+                             const char* required_features,
+                             std::string& error_message) {
+  std::vector<std::string> features;
+  if (required_features != nullptr && required_features[0] != '\0') {
+    std::string_view remaining{required_features};
+    while (!remaining.empty()) {
+      const size_t separator = remaining.find(',');
+      const std::string_view feature = remaining.substr(0, separator);
+      if (feature.empty()) {
+        error_message = "WebGPU required feature names must not be empty.";
+        return false;
+      }
+      if (std::find(features.begin(), features.end(), feature) == features.end()) {
+        features.emplace_back(feature);
+      }
+      if (separator == std::string_view::npos) {
+        break;
+      }
+      if (separator + 1 == remaining.size()) {
+        error_message = "WebGPU required feature names must not be empty.";
+        return false;
+      }
+      remaining.remove_prefix(separator + 1);
+    }
+  }
+
+  auto status = WebGpuContextFactory::ConfigureDefaultContext(instance, device, std::move(features));
+  if (!status.IsOK()) {
+    error_message = status.ErrorMessage();
+    return false;
+  }
+  return true;
+}
+
+Status WebGpuContextFactory::ConfigureDefaultContext(WGPUInstance instance,
+                                                     WGPUDevice device,
+                                                     std::vector<std::string> required_features) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  ORT_RETURN_IF((instance == nullptr) != (device == nullptr),
+                "The default WebGPU instance and device must either both be set or both be null.");
+  ORT_RETURN_IF(contexts_ != nullptr && contexts_->find(0) != contexts_->end(),
+                "The default WebGPU device has already been initialized and cannot be replaced.");
+
+  if (default_context_configured_) {
+    ORT_RETURN_IF(default_required_features_ != required_features,
+                  "The default WebGPU required features have already been configured.");
+    ORT_RETURN_IF(default_device_ != nullptr && device != nullptr,
+                  "The default WebGPU device has already been configured.");
+  }
+
+  if (device != nullptr && default_device_ == nullptr) {
+    if (default_instance_ != nullptr) {
+      wgpuInstanceRelease(default_instance_);
+    }
+    default_instance_ = instance;
+    default_device_ = device;
+  }
+  default_required_features_ = std::move(required_features);
+  default_context_configured_ = true;
+  return Status::OK();
+}
+
+WGPUInstance CreateWebGpuInstance() {
+  wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
+  wgpu::InstanceDescriptor instance_desc{};
+  instance_desc.requiredFeatures = required_instance_features;
+  instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+  dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
+  dawn_instance_desc.platform = &GetDawnPlatform();
+  instance_desc.nextInChain = &dawn_instance_desc;
+#endif
+  return wgpu::CreateInstance(&instance_desc).MoveToCHandle();
+}
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
-  WGPUInstance instance = config.instance;
-  WGPUDevice device = config.device;
+  WebGpuContextConfig effective_config = config;
+  WGPUInstance instance = effective_config.instance;
+  WGPUDevice device = effective_config.device;
 
   std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
@@ -1222,17 +1351,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (default_instance_ == nullptr) {
-    // Create wgpu::Instance
-    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
-    wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.requiredFeatures = required_instance_features;
-    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
-#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
-    dawn_instance_desc.platform = &GetDawnPlatform();
-    instance_desc.nextInChain = &dawn_instance_desc;
-#endif
-    default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
+    default_instance_ = CreateWebGpuInstance();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
   }
@@ -1243,6 +1362,15 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
     instance = default_instance_;
+    device = default_device_;
+    effective_config.instance = instance;
+    effective_config.device = device;
+    effective_config.required_features = default_required_features_;
+    // The web binding configures one device for the lifetime of its OrtEnv. Other native callers retain the existing
+    // per-factory preserveDevice behavior.
+    if (default_context_configured_) {
+      effective_config.preserve_device = true;
+    }
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
     ORT_ENFORCE(instance != nullptr && device != nullptr,
@@ -1259,10 +1387,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     GSL_SUPPRESS(r.11)
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
-                                                                    config.validation_mode,
-                                                                    config.validation_mode_explicitly_set,
-                                                                    config.preserve_device,
-                                                                    config.max_storage_buffer_binding_size));
+                                                                    effective_config.validation_mode,
+                                                                    effective_config.validation_mode_explicitly_set,
+                                                                    effective_config.preserve_device,
+                                                                    effective_config.max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
@@ -1275,7 +1403,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   // if this was the first (and only) reference, so we don't leave a zombie context in the map
   // that would later deadlock during Cleanup().
   ORT_TRY {
-    it->second.context->Initialize(config);
+    it->second.context->Initialize(effective_config);
   }
   ORT_CATCH(...) {
     if (--it->second.ref_count == 0) {
@@ -1317,10 +1445,17 @@ void WebGpuContextFactory::Cleanup() {
     contexts_ = nullptr;
   }
 
+  if (default_device_ != nullptr) {
+    wgpuDeviceRelease(default_device_);
+    default_device_ = nullptr;
+  }
+
   if (default_instance_ != nullptr) {
     wgpuInstanceRelease(default_instance_);
     default_instance_ = nullptr;
   }
+  default_required_features_.clear();
+  default_context_configured_ = false;
 }
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {

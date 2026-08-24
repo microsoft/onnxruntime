@@ -6,6 +6,8 @@ import type { InferenceSession } from 'onnxruntime-common';
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-utils';
 
+let didWarnWebGpuSessionDeviceDeprecated = false;
+
 const getGraphOptimzationLevel = (graphOptimizationLevel: string | unknown): number => {
   switch (graphOptimizationLevel) {
     case 'disabled':
@@ -109,6 +111,14 @@ const setExecutionProviders = async (
             if (webgpuOptions.device) {
               if (typeof GPUDevice !== 'undefined' && webgpuOptions.device instanceof GPUDevice) {
                 customDevice = webgpuOptions.device;
+                if (!didWarnWebGpuSessionDeviceDeprecated) {
+                  // eslint-disable-next-line no-console
+                  console.warn(
+                    'The WebGPU execution provider `device` option is deprecated. ' +
+                      'Set `ort.env.webgpu.device` before creating a session instead.',
+                  );
+                  didWarnWebGpuSessionDeviceDeprecated = true;
+                }
               } else {
                 throw new Error('Invalid GPU device set in WebGPU EP options.');
               }
@@ -156,12 +166,8 @@ const setExecutionProviders = async (
             }
           }
 
-          const info = getInstance().webgpuRegisterDevice!(customDevice);
-          if (info) {
-            const [deviceId, instanceHandle, deviceHandle] = info;
-            appendEpOption(epOptions, 'deviceId', deviceId.toString(), allocs);
-            appendEpOption(epOptions, 'webgpuInstance', instanceHandle.toString(), allocs);
-            appendEpOption(epOptions, 'webgpuDevice', deviceHandle.toString(), allocs);
+          if (getInstance().webgpuRegisterDevice!(customDevice) !== 0) {
+            checkLastError("Can't configure the default WebGPU device.");
           }
         } else {
           epName = 'JS';

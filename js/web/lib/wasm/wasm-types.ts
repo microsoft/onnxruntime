@@ -139,10 +139,12 @@ export declare namespace JSEP {
 
 export declare namespace WebGpu {
   export interface Module {
-    webgpuInit(setDefaultDevice: (device: GPUDevice) => void): void;
-    webgpuRegisterDevice(
-      device?: GPUDevice,
-    ): undefined | [deviceId: number, instanceHandle: number, deviceHandle: number];
+    webgpuInit(
+      device: GPUDevice | undefined,
+      requiredFeatures: readonly string[],
+      setDefaultDevice: (device: GPUDevice) => void,
+    ): number;
+    webgpuRegisterDevice(device?: GPUDevice): number;
     webgpuOnCreateSession(sessionHandle: number): void;
     webgpuOnReleaseSession(sessionHandle: number): void;
     webgpuRegisterBuffer(buffer: GPUBuffer, sessionHandle: number, bufferHandle?: number): number;
@@ -340,6 +342,9 @@ export declare namespace WebNN {
 
 export interface OrtInferenceAPIs {
   _OrtInit(numThreads: number, loggingLevel: number): number;
+
+  _OrtCreateWebGpuInstance(): number;
+  _OrtConfigureWebGpuDefaultContext(instance: number, device: number, requiredFeatures: number): number;
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): number;
 

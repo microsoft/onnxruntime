@@ -119,6 +119,13 @@ struct WebGpuBufferCacheConfig {
   ConfigEntry default_entry{BufferCacheMode::Disabled, {}};
 };
 
+wgpu::FeatureName ParseWebGpuFeatureName(std::string_view feature);
+WGPUInstance CreateWebGpuInstance();
+bool ConfigureDefaultContext(WGPUInstance instance,
+                             WGPUDevice device,
+                             const char* required_features,
+                             std::string& error_message);
+
 /// <summary>
 /// Represents the configuration options for creating a WebGpuContext.
 /// </summary>
@@ -143,6 +150,7 @@ struct WebGpuContextConfig {
 #endif
   };
   bool enable_robustness_explicitly_set{false};
+  std::vector<std::string> required_features;
   bool preserve_device{false};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
@@ -180,6 +188,14 @@ class WebGpuContextFactory {
   static WebGpuContext& CreateContext(const WebGpuContextConfig& config);
 
   /// <summary>
+  /// Configure the environment-wide default context before it is created. The instance and device must either both be
+  /// null (an ORT-created device) or both be non-null (an application-created device).
+  /// </summary>
+  static Status ConfigureDefaultContext(WGPUInstance instance,
+                                        WGPUDevice device,
+                                        std::vector<std::string> required_features);
+
+  /// <summary>
   /// Get the WebGPU context for the specified context ID. Throw if not present.
   /// </summary>
   static WebGpuContext& GetContext(int context_id);
@@ -211,6 +227,9 @@ class WebGpuContextFactory {
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
   static WGPUInstance default_instance_;
+  static WGPUDevice default_device_;
+  static std::vector<std::string> default_required_features_;
+  static bool default_context_configured_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.

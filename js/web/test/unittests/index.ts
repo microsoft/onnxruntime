@@ -11,6 +11,7 @@ if (typeof window !== 'undefined') {
   require('./backends/webgl/test-matmul-packed');
 }
 
+require('./backends/webgpu/test-env-device');
 require('./backends/wasm/test-model-metadata');
 
 require('./pool-output-shape');

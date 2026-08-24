@@ -197,12 +197,13 @@ Phase 0 is the pre-work, in three parts:
      (`webgpu_context.h`) defaults to `WGPUPowerPreference_HighPerformance`. Left alone, the flip would move
      users who never expressed a preference onto a discrete GPU, so the wiring needs a behavior-preserving
      default.
-   - **`adapter` / `forceFallbackAdapter`** — both are `@deprecated` in `js/common/lib/env.ts`, which names
-     `env.webgpu.device` as the replacement. That pointer is wrong: `env.webgpu.device` is output-only — both
-     paths write it after init and neither reads it. Custom devices go through the per-session option instead,
-     `executionProviders: [{ name: 'webgpu', device }]`, which `session-options.ts` already registers via
-     `webgpuRegisterDevice`. Document `adapter` / `forceFallbackAdapter` as no-ops on the native path, and fix
-     the `env.webgpu.device` doc comment.
+   - **`adapter` / `forceFallbackAdapter`** — both are `@deprecated` in `js/common/lib/env.ts`; use
+     `env.webgpu.device` to configure an application-created device instead. The native WebGPU EP imports that device
+     as environment context 0, so every session and the environment shared allocator use the same device. The legacy
+     per-session `device` option remains as a deprecated compatibility path and promotes the first supplied device to
+     the environment default. A different device is rejected; multi-device web environments are not supported.
+     `env.webgpu.requiredFeatures` is combined with ORT's requirements when ORT creates the device, and is validated
+     against an application-created device.
    - Drop the now-dead `navigator.gpu.requestAdapter()` call on the native path once nothing consumes its result.
 5. **Profiling.** `env.webgpu.profiling.ondata` is a JSEP-only mechanism: a per-dispatch JavaScript callback
    receiving `kernelId` / `kernelType` / `kernelName` / `programName`, timestamps and input/output tensor metadata
@@ -324,7 +325,7 @@ the deletion commit.
 | Default bundle silently narrows its operator/type surface (reduced-size build args) | High if unaddressed | Measure builds A/B/C and resolve before the flip (§7) |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
 | Proxy / IO-binding / WebNN unexercised in the native-WebGPU build in CI | Unknown | Validate before flip (§8) |
-| Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired with a behavior-preserving default when unset; `adapter` / `forceFallbackAdapter` documented as no-ops, custom devices directed to the per-session `device` option — release gate (§8.4, §9) |
+| Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired with a behavior-preserving default when unset; application-created devices use the environment-wide `env.webgpu.device` setting — release gate (§8.4, §9) |
 | `env.webgpu.profiling.ondata` has no native equivalent | Low | Documented as JSEP-only; native profiling wiring is a Phase 2 prerequisite (§8.5, §10.1) |
 | Windows/ADO produces no WebGPU-EP WASM build | Medium | Add a `BuildWebGPU` leg to `win-wasm-ci.yml` before Phase 2 (§8.6) |
 | `post-webnn.js` linkage changes for WebNN once JSEP is removed | Medium | WebNN smoke test on the Phase 2 build, not just a compile check (§10.3) |
