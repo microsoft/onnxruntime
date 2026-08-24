@@ -99,6 +99,24 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       req_adapter_options.backendType = static_cast<wgpu::BackendType>(config.backend_type);
       req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(config.power_preference);
 
+#if defined(_WIN32)
+      struct RequestAdapterOptionsLuid : wgpu::ChainedStruct {
+        uint32_t low_part;
+        int32_t high_part;
+      };
+      RequestAdapterOptionsLuid luid_options{};
+      if (config.adapter_luid.has_value()) {
+        ORT_ENFORCE(config.backend_type == static_cast<int>(WGPUBackendType_D3D12),
+                    "WebGPU adapter LUID selection is only supported by the D3D12 backend.");
+        luid_options.sType = wgpu::SType::RequestAdapterOptionsLUID;
+        luid_options.low_part = static_cast<uint32_t>(*config.adapter_luid);
+        luid_options.high_part = static_cast<int32_t>(*config.adapter_luid >> 32);
+        req_adapter_options.nextInChain = &luid_options;
+      }
+#else
+      ORT_ENFORCE(!config.adapter_luid.has_value(), "WebGPU adapter LUID selection is only supported on Windows.");
+#endif
+
 #if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
 
@@ -106,6 +124,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
       adapter_toggles_desc.enabledToggles = enabled_adapter_toggles.data();
 
+      adapter_toggles_desc.nextInChain = req_adapter_options.nextInChain;
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
@@ -235,6 +254,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
 #endif
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
+    if (config.adapter_vendor_id.has_value()) {
+      ORT_ENFORCE(adapter_info_.vendorID == *config.adapter_vendor_id,
+                  "WebGPU adapter vendor mismatch. Expected ", *config.adapter_vendor_id,
+                  ", got ", adapter_info_.vendorID, ".");
+    }
+    if (config.adapter_device_id.has_value()) {
+      ORT_ENFORCE(adapter_info_.deviceID == *config.adapter_device_id,
+                  "WebGPU adapter device mismatch. Expected ", *config.adapter_device_id,
+                  ", got ", adapter_info_.deviceID, ".");
+    }
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -1243,6 +1272,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
     instance = default_instance_;
+  } else if (config.adapter_luid.has_value()) {
+    ORT_ENFORCE(instance == nullptr && device == nullptr,
+                "A WebGPU context selected by adapter LUID cannot also use a custom instance or device.");
+    instance = default_instance_;
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
     ORT_ENFORCE(instance != nullptr && device != nullptr,
@@ -1259,11 +1292,16 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     GSL_SUPPRESS(r.11)
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
+                                                                    config.adapter_luid,
                                                                     config.validation_mode,
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
+  } else if (config.adapter_luid.has_value()) {
+    ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
+                    it->second.context->adapter_luid_ == config.adapter_luid,
+                "WebGPU EP context ID ", context_id, " is already bound to a different adapter LUID.");
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
                     it->second.context->device_.Get() == device,
@@ -1295,6 +1333,15 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   return *it->second.context;
+}
+
+void WebGpuContextFactory::RetainContext(int context_id) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU contexts have not been initialized or have been cleaned up.");
+  auto it = contexts_->find(context_id);
+  ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
+  ++it->second.ref_count;
 }
 
 void WebGpuContextFactory::ReleaseContext(int context_id) {
