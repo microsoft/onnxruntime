@@ -76,11 +76,11 @@ __global__ void AddBiasKernel(T* __restrict__ y, const T* __restrict__ bias, int
 // Number of warps (= output columns) per thread block in the GEMV.
 constexpr int kGemvWarpsPerBlock = 8;
 
-// Largest M each sub-path accepts. The mma kernel unrolls 4 tiles of the mma's 8-row N extent and
-// streams the packed weight once for all of them, so a speculative step that packs several tokens
-// per request stays on it. The scalar kernel instead splits M across gridDim.y and re-reads the
-// weight per row tile, which loses to the dequantize + cuBLAS path well before 32 rows.
-constexpr int kFp4MmaGemvMaxM = 32;
+// Largest M each sub-path accepts. One mma launch unrolls 4 tiles of the mma's 8-row N extent.
+// Larger speculative batches are split into two launches so they keep the same per-row arithmetic
+// instead of switching to the dequantize + cuBLAS path.
+constexpr int kFp4MmaGemvTileM = 32;
+constexpr int kFp4MmaGemvMaxM = 64;
 constexpr int kFp4ScalarGemvMaxM = 8;
 
 // Largest M tile the GEMV will fold into a single block. M is at most kGemvMaxM (8) at the
@@ -933,6 +933,21 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   ORT_RETURN_IF_NOT(k % 32 == 0, "MatMulBlockQuantizedFp4Weight GEMV requires K divisible by 32, got ", k, ".");
   const int k_blocks = (k + block_size - 1) / block_size;
 
+  if (m > kFp4MmaGemvTileM) {
+    ORT_RETURN_IF_NOT(device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvMaxM && Fp4GemvMmaEnabled(),
+                      "MatMulBlockQuantizedFp4Weight GEMV supports M above ", kFp4MmaGemvTileM,
+                      " only on the mma sub-path, got M=", m, ".");
+    const size_t element_size = is_bf16 ? sizeof(nv_bfloat16) : sizeof(half);
+    ORT_RETURN_IF_ERROR(LaunchMatMulBlockQuantizedFp4WeightGemv(
+        y, a, b_packed, weight_scale, weight_scale_2, bias, kFp4MmaGemvTileM, n, k,
+        block_size, is_bf16, device_prop, stream));
+    return LaunchMatMulBlockQuantizedFp4WeightGemv(
+        static_cast<uint8_t*>(y) + static_cast<size_t>(kFp4MmaGemvTileM) * n * element_size,
+        static_cast<const uint8_t*>(a) + static_cast<size_t>(kFp4MmaGemvTileM) * k * element_size,
+        b_packed, weight_scale, weight_scale_2, bias, m - kFp4MmaGemvTileM, n, k,
+        block_size, is_bf16, device_prop, stream);
+  }
+
   // Tensor-core sub-path: needs mma.m16n8k16 (SM80+), a whole number of 128-element K windows,
   // and M within the mma's 8-row N extent times the number of M tiles the kernel unrolls.
   //
@@ -941,7 +956,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // 2t and 2t + 1 of those two columns. Rows past MTiles * 8 have nowhere to live, so the scalar
   // GEMV takes over -- and that one re-reads the packed weight once per row tile, which is why the
   // cap below is much lower without the mma.
-  if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvMaxM && Fp4GemvMmaEnabled()) {
+  if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
     const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k, device_prop.multiProcessorCount);
     const int cols_per_block = 16 * cfg.col_tiles;
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);

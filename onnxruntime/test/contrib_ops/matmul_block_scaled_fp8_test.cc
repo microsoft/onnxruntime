@@ -322,9 +322,9 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
   static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};  // exact in FP16
   for (const Case& c : cases) {
     const int64_t k_blocks = c.k / c.block_size;
-    // 1-8 use one row tile, 9-16 two and 17-32 four; the odd values leave a partial tile whose
-    // masked rows must not be written.
-    for (const int64_t m : {1, 3, 4, 8, 9, 16, 17, 32}) {
+    // 1-8 use one row tile, 9-16 two and 17-32 four. M=33 and 64 exercise a partial and full
+    // second launch, respectively; odd values leave masked rows that must not be written.
+    for (const int64_t m : {1, 3, 4, 8, 9, 16, 17, 32, 33, 64}) {
       // Periods 3 (weight) and 4 (activation) are coprime, so no (row, col) pair sums to zero by
       // symmetry. Even so the signed terms cancel heavily, so the scales are kept in [0.25, 0.75]
       // rather than scaled down: every product is a multiple of 1/8 and the reference stays exact
@@ -522,7 +522,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   }
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FP8_DEQUANT_SCRATCH_MIB", "1"}}};
 
-  constexpr int64_t m = 40;  // past the GEMV's row tiles, so the dequant + cuBLAS path runs
+  constexpr int64_t m = 65;  // past the chunked GEMV limit, so the dequant + cuBLAS path runs
   constexpr int64_t n = 769;
   constexpr int64_t k = 4096;
   constexpr int64_t block_size = 128;

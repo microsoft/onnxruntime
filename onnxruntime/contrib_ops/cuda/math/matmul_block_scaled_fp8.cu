@@ -697,10 +697,11 @@ bool Fp8GemvMmaEnabled() {
   return enabled;
 }
 
-// Largest M each sub-path accepts. The mma kernel unrolls 4 tiles of the mma's 8-row N extent and
-// streams the FP8 weight once for all of them. The FMA kernel instead splits M across gridDim.y and
-// re-reads the weight per row tile, which loses to the dequantize + cuBLAS path well before 32.
-constexpr int kFp8MmaGemvMaxM = 32;
+// Largest M each sub-path accepts. One mma launch unrolls 4 tiles of the mma's 8-row N extent.
+// Larger speculative batches are split into two launches so they keep the same per-row arithmetic
+// instead of switching to the dequantize + cuBLAS path.
+constexpr int kFp8MmaGemvTileM = 32;
+constexpr int kFp8MmaGemvMaxM = 64;
 constexpr int kFp8ScalarGemvMaxM = 8;
 
 }  // namespace
@@ -870,6 +871,22 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   const int k_blocks = (k + block_size - 1) / block_size;
   const auto* b = reinterpret_cast<const __nv_fp8_e4m3*>(b_fp8);
 
+  if (m > kFp8MmaGemvTileM) {
+    ORT_RETURN_IF_NOT(device_prop.major >= 8 && k % 64 == 0 && k >= 256 &&
+                          block_size % 64 == 0 && m <= kFp8MmaGemvMaxM && Fp8GemvMmaEnabled(),
+                      "MatMulBlockQuantizedFp8Weight GEMV supports M above ", kFp8MmaGemvTileM,
+                      " only on the mma sub-path, got M=", m, ".");
+    const size_t element_size = is_bf16 ? sizeof(__nv_bfloat16) : sizeof(half);
+    ORT_RETURN_IF_ERROR(LaunchMatMulBlockScaledFp8Gemv(
+        y, a, b_fp8, weight_scale, bias, act_scale, kFp8MmaGemvTileM, n, k, block_size,
+        is_bf16, device_prop, stream));
+    return LaunchMatMulBlockScaledFp8Gemv(
+        static_cast<uint8_t*>(y) + static_cast<size_t>(kFp8MmaGemvTileM) * n * element_size,
+        static_cast<const uint8_t*>(a) + static_cast<size_t>(kFp8MmaGemvTileM) * k * element_size,
+        b_fp8, weight_scale, bias, act_scale, m - kFp8MmaGemvTileM, n, k, block_size,
+        is_bf16, device_prop, stream);
+  }
+
   // Tensor-core path (SM80+). Beats the FMA kernel at every M on H200: 1.06-1.23x at M == 1 and
   // 1.4-1.87x at M == 4, where the FMA kernel is ALU bound. Needs 64-element K windows, and at
   // least 4 of them so KSplit warps have something to do.
@@ -878,7 +895,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   // activation row g + 8 * mt, covers weight columns 16 * blockIdx.x + g and + 8, and stores output
   // rows 2t and 2t + 1 of those two columns. MTiles such groups share one pass over the weight, so
   // M is capped at 8 * MTiles; past that the rows have nowhere to live.
-  if (device_prop.major >= 8 && m <= kFp8MmaGemvMaxM && k % 64 == 0 && k >= 256 &&
+  if (device_prop.major >= 8 && m <= kFp8MmaGemvTileM && k % 64 == 0 && k >= 256 &&
       block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
     const int windows = k / 64;
     int k_split = (n >= 8192) ? 8 : 16;  // wide N already fills the grid, so fewer warps per block

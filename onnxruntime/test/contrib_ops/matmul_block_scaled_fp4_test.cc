@@ -449,7 +449,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeRowTiledBf16) {
 }
 
 // Exercises the tensor-core GEMV sub-path (mma.m16n8k16), which the launcher selects on SM80+
-// when K is a multiple of 128 and M <= 8. None of the tests above reach it (they use K = 32/64).
+// when K is a multiple of 128. None of the tests above reach it (they use K = 32/64).
 //
 // That path permutes the K axis so every lane's loads are contiguous, and folds the per-block
 // E4M3 scale into the decoded weight instead of flushing the accumulator per block. A K
@@ -535,9 +535,9 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesFp16) {
   }
 
   for (const auto& shape : kMmaShapes) {
-    // 1-8 use one row tile, 9-16 two and 17-32 four; the odd values leave a partial tile whose
-    // masked rows must not be written.
-    for (int m_val : {1, 3, 4, 8, 9, 16, 17, 32}) {
+    // 1-8 use one row tile, 9-16 two and 17-32 four. M=33 and 64 exercise a partial and full
+    // second launch, respectively; odd values leave masked rows that must not be written.
+    for (int m_val : {1, 3, 4, 8, 9, 16, 17, 32, 33, 64}) {
       const int64_t m = m_val;
       const int64_t n = shape.n;
       const int64_t k = shape.k;
@@ -572,7 +572,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
   constexpr int64_t n = 512;
   constexpr int64_t k = 256;
 
-  for (int m_val : {1, 4, 8, 16, 32}) {
+  for (int m_val : {1, 4, 8, 16, 32, 33, 64}) {
     const int64_t m = m_val;
     SCOPED_TRACE("M = " + std::to_string(m));
 

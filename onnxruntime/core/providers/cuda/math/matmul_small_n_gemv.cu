@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace cuda {
 namespace {
 
-constexpr int kMaxM = 8;
+constexpr int kRowsPerLaunch = 8;
+constexpr int kMaxM = 64;
 constexpr int kMaxN = 1024;
 constexpr int kMinK = 128;
 constexpr int kThreads = 256;
@@ -111,7 +112,8 @@ int SmallNGemvSplitK(int n, int k) {
 }
 
 size_t SmallNGemvWorkspaceElements(int m, int n, int k) {
-  return static_cast<size_t>(SmallNGemvSplitK(n, k)) * m * n;
+  const int rows = m < kRowsPerLaunch ? m : kRowsPerLaunch;
+  return static_cast<size_t>(SmallNGemvSplitK(n, k)) * rows * n;
 }
 
 size_t SmallNGemvCounterElements(int n) {
@@ -129,26 +131,48 @@ bool CanUseSmallNGemv(int64_t m, int64_t n, int64_t k, const void* a, const void
 Status LaunchSmallNGemv(cudaStream_t stream, const half* a, const half* b, half* c,
                         int m, int n, int k, float* ws, unsigned int* counter) {
   const int split_k = SmallNGemvSplitK(n, k);
-  switch (m) {
-    case 1:
-      return Launch<1>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 2:
-      return Launch<2>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 3:
-      return Launch<3>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 4:
-      return Launch<4>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 5:
-      return Launch<5>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 6:
-      return Launch<6>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 7:
-      return Launch<7>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 8:
-      return Launch<8>(stream, a, b, c, n, k, ws, counter, split_k);
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SmallNGemv: unsupported M ", m);
+  for (int row = 0; row < m; row += kRowsPerLaunch) {
+    const int rows = (m - row < kRowsPerLaunch) ? m - row : kRowsPerLaunch;
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+        counter, 0, SmallNGemvCounterElements(n) * sizeof(unsigned int), stream));
+    switch (rows) {
+      case 1:
+        ORT_RETURN_IF_ERROR(Launch<1>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 2:
+        ORT_RETURN_IF_ERROR(Launch<2>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 3:
+        ORT_RETURN_IF_ERROR(Launch<3>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 4:
+        ORT_RETURN_IF_ERROR(Launch<4>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 5:
+        ORT_RETURN_IF_ERROR(Launch<5>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 6:
+        ORT_RETURN_IF_ERROR(Launch<6>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 7:
+        ORT_RETURN_IF_ERROR(Launch<7>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      case 8:
+        ORT_RETURN_IF_ERROR(Launch<8>(stream, a + static_cast<size_t>(row) * k, b,
+                                     c + static_cast<size_t>(row) * n, n, k, ws, counter, split_k));
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SmallNGemv: unsupported row chunk ", rows);
+    }
   }
+  return Status::OK();
 }
 
 }  // namespace cuda
