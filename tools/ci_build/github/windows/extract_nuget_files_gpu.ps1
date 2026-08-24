@@ -53,7 +53,7 @@ Copy-Item -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuge
 # Install protoc via dotnet.
 $protocInstallDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build"
 dotnet new console
-dotnet add package Google.Protobuf.Tools --version 3.21.12 --package-directory $protocInstallDir
+dotnet add package Google.Protobuf.Tools --version 3.33.6 --package-directory $protocInstallDir
 if ($LASTEXITCODE -ne 0) {
     throw "Error adding Google.Protobuf.Tools package. Exit code: $LASTEXITCODE"
 }

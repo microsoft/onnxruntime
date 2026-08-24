@@ -1,6 +1,7 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <cctype>
 #include <string>
 #include <fstream>
 #include <vector>
@@ -243,10 +244,18 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
         shared_context->Deserialize(ss);
       }
     } else {
-      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(session_context.GetOutputModelPath(),
-                                                         std::filesystem::path(ep_cache_context)));
-      std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
-      if (ep_context_path.extension() != ".xml") {
+      const std::filesystem::path cache_context_path{ep_cache_context};
+      // Compare the extension case-insensitively so that ".XML", ".Xml", etc. are also treated as XML.
+      std::string extension = cache_context_path.extension().string();
+      std::transform(extension.begin(), extension.end(), extension.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      const bool is_xml = (extension == ".xml");
+      const std::filesystem::path& validation_base_path = is_xml
+                                                              ? session_context.GetModelPath()
+                                                              : session_context.GetOutputModelPath();
+      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path, cache_context_path));
+      const std::filesystem::path ep_context_path = validation_base_path.parent_path() / cache_context_path;
+      if (!is_xml) {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
         shared_context->Deserialize();
       }

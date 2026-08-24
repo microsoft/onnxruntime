@@ -1729,5 +1729,365 @@ TEST(ConvTransposeTest, ConvTranspose_OutputPaddingExceedsStride) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
+// Test that an inconsistent explicit output_shape is rejected (output_shape too large
+// relative to input spatial dimensions causes a pad/buffer size mismatch).
+TEST(ConvTransposeTest, ConvTranspose_InconsistentOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // Input: 1x1x3x3, kernel 3x3, stride 1, no dilation.
+  // Natural output without padding = (3-1)*1 + 3 = 5.
+  // Setting output_shape to 100x100 is inconsistent.
+  test.AddAttribute("output_shape", std::vector<int64_t>{100, 100});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  // Exclude compiling EPs (TRT, QNN) that reject unsupported configs at partition time,
+  // DML which has its own validation, and CUDA/WebGPU which share ComputePadsAndOutputShape
+  // but may not be available in all builds.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that output_shape=0 is rejected.
+TEST(ConvTransposeTest, ConvTranspose_ZeroOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("output_shape", std::vector<int64_t>{0, 0});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output size must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that an inconsistent 1D explicit output_shape is rejected.
+TEST(ConvTransposeTest, ConvTranspose_1D_InconsistentOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // Input: 1x1x5, kernel_shape=3, stride=2, dilation=1.
+  // Natural (no-pad) output = (5-1)*2 + 3 = 11. output_shape=50 is way too large.
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("output_shape", std::vector<int64_t>{50});
+  test.AddInput<float>("X", {1, 1, 5}, std::vector<float>(5, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that an inconsistent 3D explicit output_shape is rejected.
+TEST(ConvTransposeTest, ConvTranspose_3D_InconsistentOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // Input: 1x1x2x2x2, kernel 2x2x2, stride 1, dilation 1.
+  // Natural output = (2-1)*1 + 2 = 3 per dim. output_shape=10x10x10 is too large.
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2});
+  test.AddAttribute("output_shape", std::vector<int64_t>{10, 10, 10});
+  test.AddInput<float>("X", {1, 1, 2, 2, 2}, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("W", {1, 1, 2, 2, 2}, std::vector<float>(8, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  // CUDA/WebGPU don't support 3D ConvTranspose in most builds.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that a valid 3D explicit output_shape with non-trivial padding works correctly.
+TEST(ConvTransposeTest, ConvTranspose_3D_ValidOutputShape) {
+  ConvTransposeOpAttributes attrs = {
+      std::vector<int64_t>{2, 2, 2},           // kernel_shape
+      {},                                      // output_padding
+      std::vector<int64_t>{3, 3, 3},           // output_shape (natural no-pad output for 2x2x2 input, k=2, s=1)
+      std::vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1, 1},           // strides
+      std::vector<int64_t>{1, 1, 1},           // dilations
+      1,                                       // group
+      "NOTSET"                                 // auto_pad
+  };
+  // Input 1x1x2x2x2 with all ones, kernel 1x1x2x2x2 with all ones.
+  // Output should be 1x1x3x3x3. Each output voxel sums overlapping kernel positions.
+  std::vector<float> X(8, 1.0f);
+  std::vector<float> W(8, 1.0f);
+  std::vector<int64_t> X_shape = {1, 1, 2, 2, 2};
+  std::vector<int64_t> W_shape = {1, 1, 2, 2, 2};
+  std::vector<int64_t> Y_shape = {1, 1, 3, 3, 3};
+  // Corner=1, edge=2, face=4, center=8 (same as conv input for unit kernel).
+  std::vector<float> expected_vals = {
+      1.0f, 2.0f, 1.0f, 2.0f, 4.0f, 2.0f, 1.0f, 2.0f, 1.0f,
+      2.0f, 4.0f, 2.0f, 4.0f, 8.0f, 4.0f, 2.0f, 4.0f, 2.0f,
+      1.0f, 2.0f, 1.0f, 2.0f, 4.0f, 2.0f, 1.0f, 2.0f, 1.0f};
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kCudaExecutionProvider,
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider,
+                       kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test group > 1 with explicit output_shape.
+TEST(ConvTransposeTest, ConvTranspose_2D_Group2_OutputShape) {
+  ConvTransposeOpAttributes attrs = {
+      std::vector<int64_t>{3, 3},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{5, 5},        // output_shape: natural unpadded output for in=3, k=3, s=1
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      2,                                 // group
+      "NOTSET"                           // auto_pad
+  };
+  // X: 1x2x3x3 (2 input channels, group=2, so 1 channel per group)
+  // W: 2x1x3x3 (C=2, M/group=1, so output channels = 1*2 = 2)
+  std::vector<float> X(18, 1.0f);
+  std::vector<float> W(18, 1.0f);
+  std::vector<int64_t> X_shape = {1, 2, 3, 3};
+  std::vector<int64_t> W_shape = {2, 1, 3, 3};
+  std::vector<int64_t> Y_shape = {1, 2, 5, 5};
+  // Each group produces a 5x5 output. With all-ones input (3x3) and all-ones kernel (3x3),
+  // it's the correlation of two 3x3 boxes producing the expected pattern.
+  std::vector<float> expected_vals = {
+      1.0f, 2.0f, 3.0f, 2.0f, 1.0f,
+      2.0f, 4.0f, 6.0f, 4.0f, 2.0f,
+      3.0f, 6.0f, 9.0f, 6.0f, 3.0f,
+      2.0f, 4.0f, 6.0f, 4.0f, 2.0f,
+      1.0f, 2.0f, 3.0f, 2.0f, 1.0f,
+      // Second group — identical
+      1.0f, 2.0f, 3.0f, 2.0f, 1.0f,
+      2.0f, 4.0f, 6.0f, 4.0f, 2.0f,
+      3.0f, 6.0f, 9.0f, 6.0f, 3.0f,
+      2.0f, 4.0f, 6.0f, 4.0f, 2.0f,
+      1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kQnnExecutionProvider,
+                       kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider});
+}
+
+// Test with larger batch size and explicit output_shape.
+TEST(ConvTransposeTest, ConvTranspose_2D_LargeBatch_OutputShape) {
+  ConvTransposeOpAttributes attrs = {
+      std::vector<int64_t>{2, 2},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{3, 3},        // output_shape: (2-1)*1+2 = 3
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
+  };
+  // X: 4x1x2x2 (batch=4), W: 1x1x2x2
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<int64_t> X_shape = {4, 1, 2, 2};
+  std::vector<int64_t> W_shape = {1, 1, 2, 2};
+  std::vector<int64_t> Y_shape = {4, 1, 3, 3};
+  // Each batch image: ConvTranspose of 2x2 ones with 2x2 ones kernel → 3x3
+  std::vector<float> single_output = {1.0f, 2.0f, 1.0f,
+                                      2.0f, 4.0f, 2.0f,
+                                      1.0f, 2.0f, 1.0f};
+  std::vector<float> expected_vals;
+  for (int b = 0; b < 4; ++b) {
+    expected_vals.insert(expected_vals.end(), single_output.begin(), single_output.end());
+  }
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kQnnExecutionProvider, kCudaNHWCExecutionProvider});
+}
+
+// Test that output_shape slightly larger than the natural maximum is caught (boundary case).
+// Natural output = (3-1)*2 + 3 = 7. output_shape=9 requires negative padding and produces
+// derived_in = (9-3)/2+1 = 4 != in_size=3. (output_shape=8 happens to pass due to integer
+// division truncation: (8-3)/2+1 = 3 = in_size, so we use 9 for the true boundary.)
+TEST(ConvTransposeTest, ConvTranspose_2D_Stride2_BoundaryOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("output_shape", std::vector<int64_t>{9, 9});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that inconsistent output_shape with non-unit stride is caught.
+TEST(ConvTransposeTest, ConvTranspose_2D_Stride2_InconsistentOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // Input: 1x1x3x3, kernel 3x3, stride 2, dilation 1.
+  // Natural output = (3-1)*2 + 3 = 7. output_shape=20x20 is too large.
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("output_shape", std::vector<int64_t>{20, 20});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that inconsistent output_shape with dilation > 1 is caught.
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_InconsistentOutputShape) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // Input: 1x1x3x3, kernel 3x3, stride 1, dilation 2.
+  // dkernel = (3-1)*2+1 = 5. Natural output = (3-1)*1 + 5 = 7.
+  // output_shape=30x30 is too large.
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
+  test.AddAttribute("output_shape", std::vector<int64_t>{30, 30});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test output_shape that is slightly smaller than natural (requiring positive padding).
+// This is the normal legitimate use case for output_shape.
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_RequiringPadding) {
+  ConvTransposeOpAttributes attrs = {
+      std::vector<int64_t>{3, 3},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{3, 3},        // output_shape: smaller than natural (5), so pads will be added
+      std::vector<int64_t>{0, 0, 0, 0},  // pads (will be overwritten by computed pads)
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
+  };
+  // Input 1x1x3x3 all ones, kernel 1x1x3x3 all ones.
+  // Natural output = 5x5. With output_shape=3x3, total_pad = (3-1)*1+(3-1)*1+1-3 = 2 per dim.
+  // pad_head=1, pad_tail=1 (NOTSET → pad more on head).
+  // The result is the center 3x3 of the natural 5x5 output.
+  std::vector<float> X(9, 1.0f);
+  std::vector<float> W(9, 1.0f);
+  std::vector<int64_t> X_shape = {1, 1, 3, 3};
+  std::vector<int64_t> W_shape = {1, 1, 3, 3};
+  std::vector<int64_t> Y_shape = {1, 1, 3, 3};
+  // Full 5x5 output would be: corner=1,edge=2,center area=3-9.
+  // With pad=1 on each side, we take center 3x3 of the 5x5 output, which equals:
+  // The center 3x3 of ConvTranspose(ones_3x3, ones_3x3, no padding).
+  // Full result: 1 2 3 2 1 / 2 4 6 4 2 / 3 6 9 6 3 / 2 4 6 4 2 / 1 2 3 2 1
+  // Center 3x3: 4 6 4 / 6 9 6 / 4 6 4
+  std::vector<float> expected_vals = {4.0f, 6.0f, 4.0f,
+                                      6.0f, 9.0f, 6.0f,
+                                      4.0f, 6.0f, 4.0f};
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kQnnExecutionProvider,
+                       kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider});
+}
+
+// Test that output_padding >= stride on the implicit path (no output_shape) is rejected
+// when dilation > stride allows it past the adj < max(stride, dilation) pre-check.
+TEST(ConvTransposeTest, ConvTranspose_ImplicitPath_OutputPaddingExceedsStride) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // stride=2, dilation=3, kernel=3, output_padding=2.
+  // output_padding=2 < max(stride=2, dilation=3)=3, so it passes the ONNX-spec check.
+  // But adj=2 >= stride=2, causing Col2im to derive input size = in_size + 1 → OOB.
+  test.AddAttribute("strides", std::vector<int64_t>{2, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{3, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 1});
+  test.AddAttribute("output_padding", std::vector<int64_t>{2, 0});
+  test.AddInput<float>("X", {1, 1, 3, 1}, std::vector<float>(3, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 1}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test that valid output_padding < stride on the implicit path works correctly.
+// This exercises the adj term in the consistency check on the success side.
+// Reuses the ConvTranspose_2D_outputpadding_strides2 configuration which is known correct.
+TEST(ConvTransposeTest, ConvTranspose_2D_ValidOutputPadding_ConsistencyCheck) {
+  ConvTransposeOpAttributes attrs = {
+      std::vector<int64_t>{3, 3},        // kernel_shape
+      std::vector<int64_t>{1, 1},        // output_padding (adj=1 < stride=2)
+      {},                                // output_shape (implicit)
+      std::vector<int64_t>{1, 1, 1, 1},  // pads
+      std::vector<int64_t>{2, 2},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
+  };
+  std::vector<int64_t> X_shape = {1, 1, 3, 3};
+  std::vector<float> X = {0.16857791f, -0.15161794f, 0.08540368f,
+                          0.1820628f, -0.21746576f, 0.08245695f,
+                          0.1431433f, -0.43156421f, 0.30591947f};
+  std::vector<int64_t> W_shape = {1, 1, 3, 3};
+  std::vector<float> W = {-0.06230065f, 0.37932432f, -0.25388849f,
+                          0.33878803f, 0.43709868f, -0.22477469f,
+                          0.04118127f, -0.44696793f, 0.06373066f};
+  std::vector<int64_t> Y_shape = {1, 1, 6, 6};
+  std::vector<float> expected_vals = {
+      0.07368518f, -0.08925839f, -0.06627201f, 0.06301362f, 0.03732984f, -0.01919658f,
+      -0.00628807f, -0.02817563f, -0.01472169f, 0.04392925f, -0.00689478f, -0.01549204f,
+      0.07957941f, -0.11459791f, -0.09505399f, 0.07681622f, 0.03604182f, -0.01853423f,
+      -0.0270785f, -0.00680824f, -0.06650258f, 0.08004665f, 0.07918708f, -0.0724144f,
+      0.06256775f, -0.17838378f, -0.18863615f, 0.20064656f, 0.133717f, -0.06876295f,
+      -0.06398046f, -0.00864975f, 0.19289537f, -0.01490572f, -0.13673618f, 0.01949645f};
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kQnnExecutionProvider,
+                       kCudaNHWCExecutionProvider});
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+// Test that extreme attribute values causing arithmetic overflow are caught.
+// SafeInt throws on overflow; in no-exceptions builds this aborts, so skip there.
+TEST(ConvTransposeTest, ConvTranspose_OverflowInPadComputation) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // dilation = (2^62 - 1), kernel = 3: (kernel-1) * dilation = 2 * (2^62 - 1) ≈ INT64_MAX → overflows
+  // when combined with the remaining terms.
+  constexpr int64_t kLargeDilation = (static_cast<int64_t>(1) << 62) - 1;  // 4611686018427387903
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{kLargeDilation, kLargeDilation});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Integer overflow",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test overflow in explicit output_shape path: large stride and dilation combined
+// cause overflow in ComputeTotalPad.
+TEST(ConvTransposeTest, ConvTranspose_OverflowInExplicitOutputShapePath) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // stride = dilation = 2^61. (in_size-1)*stride = 2^62, (kernel-1)*dilation = 2^62.
+  // Sum ≈ 2^63 → overflows int64.
+  constexpr int64_t kLargeVal = static_cast<int64_t>(1) << 61;  // 2305843009213693952
+  test.AddAttribute("strides", std::vector<int64_t>{kLargeVal, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{kLargeVal, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("output_shape", std::vector<int64_t>{5, 5});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Integer overflow",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
 }  // namespace test
 }  // namespace onnxruntime

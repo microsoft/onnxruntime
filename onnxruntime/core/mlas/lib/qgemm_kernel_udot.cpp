@@ -72,6 +72,21 @@ MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 }
 
 template<>
+MLAS_FORCEINLINE
+int32_t
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
+    int32_t ZeroPointA,
+    bool AIsSigned
+    )
+{
+    if (AIsSigned) {
+        ZeroPointA = MLAS_GEMM_U8X8_KERNEL_UDOT::OffsetAType(ZeroPointA ^ 0x80);
+    }
+
+    return ZeroPointA;
+}
+
+template<>
 void
 MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedAType* D,
@@ -83,8 +98,25 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     bool AIsSigned
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     uint8_t PaddedMatrixAData[16];
+
+    //
+    // UDOT is an unsigned x unsigned dot product instruction, so a signed A
+    // matrix is shifted into the unsigned domain by flipping the sign bit of
+    // every real data byte (equivalent to adding 128). Padding bytes must stay
+    // literal zero so they keep contributing nothing to the dot product or to
+    // RowSumBuffer; MlasGemmQuantFixupZeroPointA applies the matching shift to
+    // ZeroPointA so the zero-point correction stays consistent.
+    //
+
+    // Four views of the same flip value, one per register width used below:
+    // the 8/4/2/1-row blocks mix uint32_t scalar loads, uint32x4_t vector
+    // loads, and byte-at-a-time tail copies, so each width needs its own
+    // pre-splatted constant.
+    const uint8_t AByteFlip = AIsSigned ? 0x80 : 0;
+    const uint8x16_t AFlipVector = vdupq_n_u8(AByteFlip);
+    const uint32x4_t AFlipVector32 = vdupq_n_u32(AIsSigned ? 0x80808080u : 0u);
+    const uint32_t AFlipWord32 = AIsSigned ? 0x80808080u : 0u;
 
     //
     // Process 8 rows of matrix A.
@@ -122,21 +154,21 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
         uint32x4_t RowSums1 = vmovq_n_u32(0);
 
         while (k >= 16) {
-            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
+            uint32x4_t v0 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a0)), AFlipVector32);
             a0 += 16;
-            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
+            uint32x4_t v1 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a1)), AFlipVector32);
             a1 += 16;
-            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
+            uint32x4_t v2 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a2)), AFlipVector32);
             a2 += 16;
-            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
+            uint32x4_t v3 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a3)), AFlipVector32);
             a3 += 16;
-            uint32x4_t v4 = vld1q_u32(reinterpret_cast<const uint32_t*>(a4));
+            uint32x4_t v4 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a4)), AFlipVector32);
             a4 += 16;
-            uint32x4_t v5 = vld1q_u32(reinterpret_cast<const uint32_t*>(a5));
+            uint32x4_t v5 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a5)), AFlipVector32);
             a5 += 16;
-            uint32x4_t v6 = vld1q_u32(reinterpret_cast<const uint32_t*>(a6));
+            uint32x4_t v6 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a6)), AFlipVector32);
             a6 += 16;
-            uint32x4_t v7 = vld1q_u32(reinterpret_cast<const uint32_t*>(a7));
+            uint32x4_t v7 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a7)), AFlipVector32);
             a7 += 16;
 
             uint32x4_t z0 = vzip1q_u32(v0, v2);
@@ -183,21 +215,21 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
         }
 
         while (k >= 4) {
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0) ^ AFlipWord32;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1) ^ AFlipWord32;
             a1 += 4;
-            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
+            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2) ^ AFlipWord32;
             a2 += 4;
-            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
+            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3) ^ AFlipWord32;
             a3 += 4;
-            uint32_t v4 = *reinterpret_cast<const uint32_t*>(a4);
+            uint32_t v4 = *reinterpret_cast<const uint32_t*>(a4) ^ AFlipWord32;
             a4 += 4;
-            uint32_t v5 = *reinterpret_cast<const uint32_t*>(a5);
+            uint32_t v5 = *reinterpret_cast<const uint32_t*>(a5) ^ AFlipWord32;
             a5 += 4;
-            uint32_t v6 = *reinterpret_cast<const uint32_t*>(a6);
+            uint32_t v6 = *reinterpret_cast<const uint32_t*>(a6) ^ AFlipWord32;
             a6 += 4;
-            uint32_t v7 = *reinterpret_cast<const uint32_t*>(a7);
+            uint32_t v7 = *reinterpret_cast<const uint32_t*>(a7) ^ AFlipWord32;
             a7 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -226,14 +258,14 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
             vst1q_u8(&d[16], vmovq_n_u8(0));
 
             while (k > 0) {
-                d[0] = *a0++;
-                d[4] = *a1++;
-                d[8] = *a2++;
-                d[12] = *a3++;
-                d[16] = *a4++;
-                d[20] = *a5++;
-                d[24] = *a6++;
-                d[28] = *a7++;
+                d[0] = (*a0++) ^ AByteFlip;
+                d[4] = (*a1++) ^ AByteFlip;
+                d[8] = (*a2++) ^ AByteFlip;
+                d[12] = (*a3++) ^ AByteFlip;
+                d[16] = (*a4++) ^ AByteFlip;
+                d[20] = (*a5++) ^ AByteFlip;
+                d[24] = (*a6++) ^ AByteFlip;
+                d[28] = (*a7++) ^ AByteFlip;
                 d += 1;
                 k -= 1;
             }
@@ -286,13 +318,13 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
         while (k >= 16) {
 
-            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
+            uint32x4_t v0 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a0)), AFlipVector32);
             a0 += 16;
-            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
+            uint32x4_t v1 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a1)), AFlipVector32);
             a1 += 16;
-            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
+            uint32x4_t v2 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a2)), AFlipVector32);
             a2 += 16;
-            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
+            uint32x4_t v3 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a3)), AFlipVector32);
             a3 += 16;
 
             uint32x4_t z0 = vzip1q_u32(v0, v2);
@@ -321,13 +353,13 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
         while (k >= 4) {
 
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0) ^ AFlipWord32;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1) ^ AFlipWord32;
             a1 += 4;
-            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
+            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2) ^ AFlipWord32;
             a2 += 4;
-            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
+            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3) ^ AFlipWord32;
             a3 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -353,10 +385,10 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
             while (k > 0) {
 
-                d[0] = *a0++;
-                d[4] = *a1++;
-                d[8] = *a2++;
-                d[12] = *a3++;
+                d[0] = (*a0++) ^ AByteFlip;
+                d[4] = (*a1++) ^ AByteFlip;
+                d[8] = (*a2++) ^ AByteFlip;
+                d[12] = (*a3++) ^ AByteFlip;
 
                 d += 1;
                 k -= 1;
@@ -409,9 +441,9 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
         while (k >= 4) {
 
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0) ^ AFlipWord32;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1) ^ AFlipWord32;
             a1 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -435,8 +467,8 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
             while (k > 0) {
 
-                d[0] = *a0++;
-                d[4] = *a1++;
+                d[0] = (*a0++) ^ AByteFlip;
+                d[4] = (*a1++) ^ AByteFlip;
 
                 d += 1;
                 k -= 1;
@@ -486,7 +518,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
         while (k >= 16) {
 
-            uint8x16_t v = vld1q_u8(a);
+            uint8x16_t v = veorq_u8(vld1q_u8(a), AFlipVector);
             a += 16;
 
             vst1q_u8(D, v);
@@ -506,7 +538,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
             vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
 
             for (size_t kk = 0; kk < k; kk++) {
-                PaddedMatrixAData[kk] = a[kk];
+                PaddedMatrixAData[kk] = a[kk] ^ AByteFlip;
             }
 
             uint8x16_t v = vld1q_u8(PaddedMatrixAData);

@@ -13,6 +13,9 @@
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#if !defined(__wasm__)
+#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
+#endif
 
 namespace onnxruntime {
 namespace webgpu {
@@ -120,6 +123,25 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   }
   bool has_bias = context.InputCount() > 2;
 
+#if !defined(__wasm__)
+  // Lazily create the subgroup-matrix implementation (with a vendor-specific tiling
+  // policy) on the first Compute call. PrePack is only invoked for constant
+  // initializers, so it cannot be relied on when B is a runtime tensor (e.g. batched
+  // matmul). Creating it here guarantees the subgroup-matrix path is considered for every
+  // MatMul. std::call_once makes the one-time init safe against concurrent Compute
+  // calls on this shared kernel.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixMatMulImpl(*this, context);
+  });
+  if (impl_) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+#endif
+
   if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
 
     const uint32_t m = narrow<uint32_t>(helper.M());  // left matrix first dimension
@@ -139,10 +161,12 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
     TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
 
-    MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias};
+    // Standalone MatMul uses channels first notation, which indexes bias as bias[row + i].
+    constexpr bool is_channels_last = false;
+    MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias, is_channels_last};
 
     program
-        .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+        .CacheHint(Activation().CacheKey(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
 
@@ -155,6 +179,8 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
         .SetDispatchGroupSize(CeilDiv(output_size, 64u))
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
+    // Supply the reserved activation slots last; definitions and values are matched by index.
+    AppendActivationUniformsData(Activation(), program);
 
     return context.RunProgram(program);
   }
@@ -285,7 +311,7 @@ Status ComputeMatMul(ComputeContext* context,
 
   MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
   matmul_program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
+      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
@@ -293,6 +319,8 @@ Status ComputeMatMul(ComputeContext* context,
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddOutput(std::move(output));
+  // Activation uniforms must remain last because definitions and values are matched by index.
+  AppendActivationUniformsData(activation, matmul_program);
 
   if (use_bias_in_matmul) {
     auto bias_components = is_channels_last ? components : 1;

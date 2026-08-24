@@ -1671,30 +1671,29 @@ TEST(ConvTest, Conv2D_ZeroDilation_Dml) {
       .RunWithConfig();
 }
 
-// Bias tensor with fewer elements than output channels causes an OOB read.
-// Validate that the kernel rejects a mismatched bias shape.
-TEST(ConvTest, Conv2D_BiasSizeMismatch) {
-  ConvOpAndTestAttributes attrs = {
-      "",                                // auto_pad
-      std::vector<int64_t>{1, 1},        // dilations
-      1,                                 // group
-      std::vector<int64_t>{1, 1},        // kernel_shape
-      std::vector<int64_t>{0, 0, 0, 0},  // pads
-      std::vector<int64_t>{1, 1},        // strides
-      {}                                 // excluded EPs
-  };
+TEST(ConvTest, Conv2D_InvalidBiasSize) {
+  OpTester test("Conv", 22);
+  test.AddInput<float>("X", {1, 1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {4, 1, 1, 1}, std::vector<float>(4, 0.0f));
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, std::vector<float>(4, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias must be a 1D tensor of size output_channels")
+      .RunWithConfig();
+}
 
-  // W has M=4 output channels, but B has only 1 element.
-  std::vector<float> X = {1.0f};
-  std::vector<int64_t> X_shape = {1, 1, 1, 1};
-  std::vector<float> W(4, 0.0f);
-  std::vector<int64_t> W_shape = {4, 1, 1, 1};
-  std::vector<float> B = {0.0f};
-  std::vector<int64_t> B_shape = {1};
-  std::vector<int64_t> Y_shape = {1, 4, 1, 1};
-
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, {0.f, 0.f, 0.f, 0.f}, Y_shape,
-             false, std::nullopt, OpTester::ExpectResult::kExpectFailure, "Bias must be 1D");
+TEST(ConvTest, Conv2D_InvalidBiasRank) {
+  OpTester test("Conv", 22);
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {1, 1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {4, 1, 1, 1}, std::vector<float>(4, 0.0f));
+  test.AddInput<float>("B", {1, 4}, std::vector<float>(4, 0.0f));
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, std::vector<float>(4, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias must be a 1D tensor of size output_channels")
+      .RunWithConfig();
 }
 
 }  // namespace test

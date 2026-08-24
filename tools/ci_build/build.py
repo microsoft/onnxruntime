@@ -267,7 +267,8 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-
+    if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
+        vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 
     folder_name_parts = []
@@ -320,6 +321,42 @@ def generate_vcpkg_install_options(build_dir, args):
     return vcpkg_install_options
 
 
+def get_msvc_spectre_lib_dir(args):
+    """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
+    target architecture, or None if it cannot be located.
+
+    The /Qspectre compile flag only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+    CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that get linked into the
+    binaries also need to be the Spectre-mitigated variants, otherwise BinSkim BA2024
+    (EnableSpectreMitigations) still fails. Those variants ship in the "C++ Spectre-mitigated libs"
+    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>.
+    """
+    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
+    if not vctools_dir:
+        return None
+    if args.arm:
+        arch = "arm"
+    elif args.arm64:
+        arch = "arm64"
+    elif args.arm64ec:
+        arch = "arm64ec"
+    elif args.x86:
+        arch = "x86"
+    else:
+        # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
+        # falling back to x64 which is what the official Windows release packages use.
+        arch = os.environ.get("VSCMD_ARG_TGT_ARCH", "x64")
+    spectre_dir = Path(vctools_dir) / "lib" / "spectre" / arch
+    if spectre_dir.is_dir():
+        return str(spectre_dir)
+    # Some toolsets do not ship a dedicated arm64ec folder; those reuse the arm64 Spectre libraries.
+    if args.arm64ec:
+        fallback = Path(vctools_dir) / "lib" / "spectre" / "arm64"
+        if fallback.is_dir():
+            return str(fallback)
+    return None
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -355,11 +392,13 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
+
+    # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
+    cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
             "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-            "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
 
@@ -608,7 +647,11 @@ def generate_build_tree(
             )
         elif args.android:
             generate_android_triplets(
-                build_dir, configs, args.android_cpp_shared, args.android_api, args.use_full_protobuf
+                build_dir,
+                configs,
+                args.android_cpp_shared,
+                args.android_api,
+                args.use_full_protobuf,
             )
         elif is_windows():
             generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
@@ -618,10 +661,10 @@ def generate_build_tree(
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
+            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.use_telemetry)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
+            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.use_telemetry)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
@@ -1069,7 +1112,7 @@ def generate_build_tree(
     cmake_args += cmake_extra_args
 
     # ADO pipelines will store the pipeline build number
-    # (e.g. 191101-2300.1.master) and source version in environment
+    # (e.g. 20260615.4) and source version in environment
     # variables. If present, use these values to define the
     # WinML/ORT DLL versions.
     build_number = os.getenv("Build_BuildNumber")  # noqa: SIM112
@@ -1077,31 +1120,31 @@ def generate_build_tree(
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
-            YY = build_matches.group(2)  # noqa: N806
             MM = build_matches.group(3)  # noqa: N806
             DD = build_matches.group(4)  # noqa: N806
 
-            # Get ORT major and minor number
+            # Get ORT major, minor, and patch number
             with open(os.path.join(source_dir, "VERSION_NUMBER")) as f:
                 first_line = f.readline()
-                ort_version_matches = re.match(r"(\d+).(\d+)", first_line)
+                ort_version_matches = re.match(r"(\d+)\.(\d+)\.(\d+)", first_line)
                 if not ort_version_matches:
-                    raise BuildError("Couldn't read version from VERSION_FILE")
+                    raise BuildError("Couldn't read version from VERSION_NUMBER")
                 ort_major = ort_version_matches.group(1)
                 ort_minor = ort_version_matches.group(2)
-                # Example (BuildNumber: 191101-2300.1.master,
-                # SourceVersion: 0bce7ae6755c792eda558e5d27ded701707dc404)
+                ort_patch = ort_version_matches.group(3)
+                # Example (VERSION_NUMBER: 1.27.0, BuildNumber: 20260615.4,
+                # SourceVersion: 8f0278c77bf44b0cc83c098c6c722b92a36ac4b5)
                 # MajorPart = 1
-                # MinorPart = 0
-                # BuildPart = 1911
-                # PrivatePart = 123
-                # String = 191101-2300.1.master.0bce7ae
+                # MinorPart = 27
+                # BuildPart = 0
+                # PrivatePart = 615
+                # String = 1.27.0.20260615.4.8f0278c
                 cmake_args += [
                     f"-DVERSION_MAJOR_PART={ort_major}",
                     f"-DVERSION_MINOR_PART={ort_minor}",
-                    f"-DVERSION_BUILD_PART={YY}",
+                    f"-DVERSION_BUILD_PART={ort_patch}",
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
-                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
+                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{ort_patch}.{build_number}.{source_version[0:7]}",
                 ]
 
     for config in configs:
@@ -1137,6 +1180,22 @@ def generate_build_tree(
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if not args.enable_address_sanitizer:
                     cflags += ["/Qspectre"]
+                    # /Qspectre only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+                    # CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that are
+                    # linked into the binaries also have to be the Spectre-mitigated variants,
+                    # otherwise BinSkim BA2024 (EnableSpectreMitigations) still fails. Prepend the
+                    # Spectre lib directory to the linker search path so those libraries are
+                    # resolved ahead of the default (non-mitigated) CRT libraries.
+                    spectre_lib_dir = get_msvc_spectre_lib_dir(args)
+                    if spectre_lib_dir is not None:
+                        ldflags = [f'/LIBPATH:"{spectre_lib_dir}"', *ldflags]
+                    else:
+                        log.warning(
+                            "Could not locate the MSVC Spectre-mitigated CRT/STL libraries. The "
+                            "resulting binaries may fail BinSkim BA2024 (EnableSpectreMitigations). "
+                            "Install the 'C++ Spectre-mitigated libs' component from the Visual "
+                            "Studio installer and build from a Developer Command Prompt."
+                        )
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
@@ -1822,7 +1881,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.disable_contrib_ops:
                     run_subprocess(
-                        [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
+                        [sys.executable, "-m", "unittest", "discover", "-s", "quantization", "-v"],
+                        cwd=cwd,
+                        dll_path=dll_path,
                     )
 
                     if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (

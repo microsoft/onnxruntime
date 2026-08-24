@@ -190,6 +190,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
   Sync = SyncImpl;                                                            // optional. can be nullptr
   GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;                        // optional. can be nullptr
+  GetWeightlessSupport = GetWeightlessSupportImpl;                            // weightless support
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -201,6 +202,13 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const ExampleEp*>(this_ptr);
   return ep->name_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_ptr*/,
+                                                            OrtWeightlessSupport* support) noexcept {
+  *support = OrtWeightlessSupport_ALL;
+  return nullptr;
 }
 
 bool ExampleEp::CopiesConstantInitializers() const {
@@ -424,9 +432,11 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
         // This example only exercises the load-side read flow (callback first, file fallback otherwise) to show how
         // an EP retrieves EPContext binary data during compile. A real EP would consume `ep_context_data` (e.g.,
-        // initialize a kernel/engine from it); here it is intentionally read and then discarded.
-        std::vector<char> ep_context_data;
-        RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextDataWithFileFallback(
+        // initialize a kernel/engine from it via ep_context_data.data()/size()); here it is intentionally read and
+        // then discarded. ReadEpContextData returns an owning EpContextData buffer that adopts the callback-provided
+        // memory instead of copying it.
+        ep_context_data_utils::EpContextData ep_context_data;
+        RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
             ep->ort_api, ep->ep_context_config_.get(), ep_cache_context.c_str(), ort_graphs[0],
             ep_context_data));
       }

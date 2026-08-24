@@ -36,7 +36,9 @@ Status HandleAutoPad(const std::vector<int64_t> input_shape,
 //
 
 // Copy an onnx initializer data to a coreml weight
-Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, const ONNX_NAMESPACE::TensorProto& tensor);
+Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                          const ONNX_NAMESPACE::TensorProto& tensor,
+                          const ModelBuilder& model_builder);
 
 // Copy the float array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const float> data);

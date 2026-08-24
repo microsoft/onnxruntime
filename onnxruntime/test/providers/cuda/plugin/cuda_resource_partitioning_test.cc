@@ -45,7 +45,7 @@ constexpr const char* kResourcePartitioningRegistrationName = "CudaPluginResourc
 
 // Resolve the CUDA plugin EP shared library path.
 std::filesystem::path GetCudaPluginLibraryPath() {
-  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda_plugin"));
+  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
 }
 
 // RAII handle that registers/unregisters the CUDA plugin EP library.
@@ -86,7 +86,7 @@ class ScopedCudaPluginRegistration {
 Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   auto ep_devices = env.GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (strcmp(device.EpName(), kCudaPluginExecutionProvider) == 0) {
+    if (strcmp(device.EpName(), kCudaExecutionProviderPluginAlias) == 0) {
       return device;
     }
   }
@@ -352,7 +352,7 @@ TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
   size_t baseline_plugin_count = 0;
   LoadAndVerifyPartitioning(model, /*budget_kb=*/0, [&](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
-      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+      if (node.GetExecutionProviderType() == kCudaExecutionProviderPluginAlias) {
         ++baseline_plugin_count;
       }
     }
@@ -364,7 +364,7 @@ TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
   size_t constrained_plugin_count = 0;
   LoadAndVerifyPartitioning(model, /*budget_kb=*/10, [&](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
-      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+      if (node.GetExecutionProviderType() == kCudaExecutionProviderPluginAlias) {
         ++constrained_plugin_count;
       }
     }
@@ -392,7 +392,7 @@ TEST_F(CudaPluginPartitioningTest, NoExplicitLimit_DeviceMemoryUsedAsThreshold) 
   size_t device_threshold_plugin_count = 0;
   LoadAndVerifyPartitioningWithConfig(model, ",", [&](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
-      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+      if (node.GetExecutionProviderType() == kCudaExecutionProviderPluginAlias) {
         ++device_threshold_plugin_count;
       }
     }
@@ -415,7 +415,7 @@ TEST_F(CudaPluginPartitioningTest, NoExplicitLimit_MatchesNoBudgetBaseline) {
   size_t no_budget_count = 0;
   LoadAndVerifyPartitioning(model, /*budget_kb=*/0, [&](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
-      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+      if (node.GetExecutionProviderType() == kCudaExecutionProviderPluginAlias) {
         ++no_budget_count;
       }
     }
@@ -427,7 +427,7 @@ TEST_F(CudaPluginPartitioningTest, NoExplicitLimit_MatchesNoBudgetBaseline) {
   size_t device_threshold_count = 0;
   LoadAndVerifyPartitioningWithConfig(model, ",", [&](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
-      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+      if (node.GetExecutionProviderType() == kCudaExecutionProviderPluginAlias) {
         ++device_threshold_count;
       }
     }

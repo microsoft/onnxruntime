@@ -18,6 +18,7 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
 #include "core/providers/cuda/cuda_mempool_arena.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef USE_CUDA_MINIMAL
@@ -39,6 +40,10 @@
 #endif
 
 #include "core/providers/cuda/cuda_stream_handle.h"
+
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
+#endif
 
 using namespace onnxruntime::common;
 
@@ -223,18 +228,19 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaPinnedAllocator(const CUDAAllocato
   return CreateAllocator(pinned_memory_info);
 }
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
-                                                          ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
-                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream,
+                                                          const CUDAExecutionProviderInfo& info) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 #ifndef USE_CUDA_MINIMAL
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
-  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
-  LOGS_DEFAULT(INFO) << "cuDNN version: " << cudnnGetVersion();
+  if (info.enable_cudnn && cuda::CudnnLibrary::Get().Available()) {
+    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    LOGS_DEFAULT(INFO) << "cuDNN version: " << cudnnGetVersion();
+  }
 #endif
   cuda_graph_.SetStream(stream);
 }
@@ -243,7 +249,9 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 #ifndef USE_CUDA_MINIMAL
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_)));
-  ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
+  if (cudnn_handle_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
+  }
 #endif
 }
 
@@ -446,8 +454,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
-                                                   info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1658,6 +1665,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDom
 // Opset 22.
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, LpNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, LpNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, BFloat16, LpNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, double, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, AveragePool);
@@ -2949,6 +2957,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       // Opset 22
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, LpNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, LpNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, BFloat16, LpNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, double, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, AveragePool)>,
@@ -3524,6 +3533,29 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     } else {
       auto* node = graph.GetNode(node_index);
       auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+      // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
+      // kernel-independent workspace estimate for MatMulNBits. For this pilot it is log-only and
+      // does NOT change the budget number used by the accept/reject decision below (see the issue's
+      // "Open decision" (a)); it proves the estimate is available and correct at this pipeline stage.
+      if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
+        const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
+        const auto& input_defs = node->InputDefs();
+        const TensorShape* input_a_shape =
+            inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
+                ? nullptr
+                : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
+        const auto ws = input_a_shape != nullptr
+                            ? contrib::cuda::EstimateMatMulNBitsWorkspace(
+                                  *node, input_a_shape->GetDims(), GetDeviceProp())
+                            : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
+        if (ws.has_value()) {
+          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name() << ": " << *ws << " bytes";
+        }
+      }
+#endif
+
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)

@@ -6,37 +6,54 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/shader_variable.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_CONCAT_VERSIONED_KERNEL(start, end)            \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                          \
-      Concat,                                                 \
-      kOnnxDomain,                                            \
-      start,                                                  \
-      end,                                                    \
-      kWebGpuExecutionProvider,                               \
-      (*KernelDefBuilder::Create())                           \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
-      Concat);
+// Concat is a pure data-movement op: elements are copied, never interpreted in shader arithmetic,
+// so enabling int64 is safe. int64 (stored as vec2<u32>) is copied losslessly via the raw
+// storage-word path in AppendAssignOutputDataFunction, preserving the full 64-bit value instead of
+// the truncating i32 value type used by arithmetic kernels.
+KernelCreateInfo CreateConcatVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
 
-#define WEBGPU_CONCAT_KERNEL(version)                         \
-  ONNX_OPERATOR_KERNEL_EX(                                    \
-      Concat,                                                 \
-      kOnnxDomain,                                            \
-      version,                                                \
-      kWebGpuExecutionProvider,                               \
-      (*KernelDefBuilder::Create())                           \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
-      Concat);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Concat>(info);
+    return Status::OK();
+  };
 
-WEBGPU_CONCAT_VERSIONED_KERNEL(1, 3)
-WEBGPU_CONCAT_VERSIONED_KERNEL(4, 10)
-WEBGPU_CONCAT_VERSIONED_KERNEL(11, 12)
-WEBGPU_CONCAT_KERNEL(13)
+  return {
+      KernelDefBuilder()
+          .SetName("Concat")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(start_version, end_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", std::move(type_constraints))
+          .Build(),
+      kernel_create_fn};
+}
+
+KernelCreateInfo CreateConcatKernelInfo(int since_version, bool enable_int64) {
+  std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Concat>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Concat")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(since_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", std::move(type_constraints))
+          .Build(),
+      kernel_create_fn};
+}
 
 void AppendCalculateInputIndexFunction(OStringStream& os, size_t input_count) {
   os << "fn calculate_input_index(global_idx: u32) -> u32 {\n"
@@ -49,7 +66,7 @@ void AppendCalculateInputIndexFunction(OStringStream& os, size_t input_count) {
      << "}\n";
 }
 
-void AppendAssignOutputDataFunction(OStringStream& os, gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output, size_t axis, size_t input_count) {
+void AppendAssignOutputDataFunction(OStringStream& os, gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output, size_t axis, size_t input_count, bool is_int64) {
   os << "fn assign_output_data(global_idx: u32, input_index: u32) {\n";
   for (size_t i = 0; i < inputs.size(); ++i) {
     if (i == 0) {
@@ -62,9 +79,17 @@ void AppendAssignOutputDataFunction(OStringStream& os, gsl::span<const ShaderVar
     std::string offset = GetElementAt("uniforms.offsets", "input_index", input_count);
     std::string concat_axis_offset = GetElementAt("uniforms.sizes_in_concat_axis", std::to_string(i), input_count);
     std::string output_indices_axis = "output_indices" + (inputs[i]->Rank() > 1 ? "[" + std::to_string(axis) + "]" : "");
-    os << "     var output_indices = " << inputs[i]->OffsetToIndices("global_idx - " + offset) << ";\n"
-       << "     " << output_indices_axis << " += " << concat_axis_offset << ";\n"
-       << "     " << output.SetByIndices("output_indices", inputs[i]->GetByOffset("global_idx - " + offset)) << "\n";
+    std::string input_offset = "global_idx - " + offset;
+    os << "     var output_indices = " << inputs[i]->OffsetToIndices(input_offset) << ";\n"
+       << "     " << output_indices_axis << " += " << concat_axis_offset << ";\n";
+    if (is_int64) {
+      // int64 is stored as vec2<u32>. Copy the raw storage bits so the full 64-bit value is
+      // preserved; the value-type accessors would truncate it to i32.
+      os << "     let output_offset = " << output.IndicesToOffset("output_indices") << ";\n"
+         << "     " << output.SetByOffset("output_offset", inputs[i]->GetByOffset(input_offset, /*use_storage_type=*/true), /*use_storage_type=*/true) << "\n";
+    } else {
+      os << "     " << output.SetByIndices("output_indices", inputs[i]->GetByOffset(input_offset)) << "\n";
+    }
   }
   os << "  }\n"
         "}\n";
@@ -80,7 +105,7 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   AppendCalculateInputIndexFunction(shader.AdditionalImplementation(), input_count);
-  AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output, axis_, input_count);
+  AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output, axis_, input_count, is_int64_);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let input_index = calculate_input_index(global_idx);\n"
@@ -105,12 +130,13 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
 
   uint32_t axis = static_cast<uint32_t>(prepare.axis);
   uint32_t max_inputs_per_concat = context.DeviceLimits().maxStorageBuffersPerShaderStage - 1;
+  bool is_int64 = prepare.output_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
 
   uint32_t input_index = 0;
   uint32_t cumulative_size_in_concat_axis = 0;
 
   while (input_index < input_count) {
-    ConcatProgram program{axis};
+    ConcatProgram program{axis, is_int64};
     uint32_t num_inputs_this_concat = std::min(max_inputs_per_concat, input_count - input_index);
 
     std::vector<uint32_t> offsets;

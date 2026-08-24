@@ -3,6 +3,7 @@
 
 #include "cuda_stream_plugin.h"
 #include "cuda_ep_factory.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include <atomic>
 #include <mutex>
 #include <shared_mutex>
@@ -39,11 +40,12 @@ std::atomic<uint64_t>& GetStreamMapGeneration() {
 // CudaSyncStream
 // ---------------------------------------------------------------------------
 
-CudaSyncStream::CudaSyncStream(CudaEpFactory& factory, int device_id,
+CudaSyncStream::CudaSyncStream(CudaEpFactory& factory, int device_id, bool enable_cudnn,
                                const OrtEp* /*ep*/)
     : OrtSyncStreamImpl{},
       factory_(factory),
-      device_id_(device_id) {
+      device_id_(device_id),
+      enable_cudnn_(enable_cudnn) {
   ort_version_supported = ORT_API_VERSION;
   GetHandle = GetHandleImpl;
   CreateNotification = CreateNotificationImpl;
@@ -124,10 +126,10 @@ OrtStatus* CudaSyncStream::InitHandles() {
   if (status.IsOK()) {
     status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
   }
-  if (status.IsOK()) {
+  if (status.IsOK() && enable_cudnn_ && onnxruntime::cuda::CudnnLibrary::Get().Available()) {
     status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
   }
-  if (status.IsOK()) {
+  if (status.IsOK() && cudnn_handle_ != nullptr) {
     status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
   }
   if (status.IsOK()) {
@@ -192,10 +194,10 @@ OrtStatus* CudaSyncStream::InitHandlesWithUserStream(cudaStream_t user_stream) {
   if (status.IsOK()) {
     status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
   }
-  if (status.IsOK()) {
+  if (status.IsOK() && enable_cudnn_ && onnxruntime::cuda::CudnnLibrary::Get().Available()) {
     status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
   }
-  if (status.IsOK()) {
+  if (status.IsOK() && cudnn_handle_ != nullptr) {
     status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
   }
   if (status.IsOK()) {
