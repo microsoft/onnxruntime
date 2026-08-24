@@ -792,7 +792,7 @@ TEST(MatMulNBits, ParallelPrepack) {
   const auto distinct_weight = make_quantized_initializer(1);
 
   auto add_matmul = [&](NodeArg* weight, NodeArg* scales) {
-    NodeArg* output = builder.MakeOutput<float>({M, N});
+    NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{M, N});
     Node& node = builder.AddNode("MatMulNBits", {input, weight, scales}, {output}, kMSDomain);
     node.AddAttribute("K", K);
     node.AddAttribute("N", N);
