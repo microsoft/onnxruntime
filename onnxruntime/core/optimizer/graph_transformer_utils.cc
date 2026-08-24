@@ -361,6 +361,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                      onnxruntime::kAclExecutionProvider,
                                                                      onnxruntime::kCudaExecutionProvider,
                                                                      onnxruntime::kDmlExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                            onnxruntime::kAclExecutionProvider,
+                                                                            onnxruntime::kCudaExecutionProvider,
+                                                                            onnxruntime::kDmlExecutionProvider,
+                                                                            onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
                                                                                onnxruntime::kAclExecutionProvider,
                                                                                onnxruntime::kCudaExecutionProvider,
@@ -413,7 +418,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_acl_js_webgpu_eps));
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_eps, level));
+      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));
@@ -421,7 +426,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_webgpu_eps));
       transformers.emplace_back(
           std::make_unique<GroupQueryAttentionFusion>(cuda_eps, node_kernel_support_checker));
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,

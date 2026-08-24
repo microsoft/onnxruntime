@@ -563,6 +563,22 @@ if (onnxruntime_USE_ARM_NEON_NCHWC)
 endif()
 
 if(onnxruntime_USE_SVE)
+  # ABI flags that EVERY SVE translation unit must carry.
+  #
+  # x18 is the AArch64 platform register: Windows ARM64 reserves it for the TEB,
+  # Darwin reserves it, and Linux shadow-call-stack builds use it. MLAS freezes
+  # SVE kernels into machine code that ships unchanged on every platform
+  # (aarch64/*_sve_asm.S), so an SVE TU that allocates x18 corrupts the TEB once
+  # those bytes run on Windows (observed: 0xC0000005 writing 0x250 inside ntdll).
+  # Saving/restoring x18 around the kernel is NOT a fix -- the OS may rewrite it
+  # at any context switch.
+  #
+  # Keep in sync with sve/gen_sve_asm.py, which applies the same flag when
+  # regenerating and hard-fails if x18 survives into a frozen section. The flag
+  # must also be on the non-frozen build of the same sources, or the ASM=OFF and
+  # ASM=ON paths would be built from differently-compiled code.
+  set(ORT_SVE_ABI_FLAGS "-ffixed-x18")
+
   if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
     check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
     if(HAS_ARM64_SVE)
@@ -1530,12 +1546,6 @@ if (onnxruntime_USE_CUDA)
     add_definitions("-DENABLE_FP4")
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
     if(onnxruntime_USE_FP4_QMOE)
-      if(MSVC AND ("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR
-                   "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG))
-        message(FATAL_ERROR
-          "onnxruntime_USE_FP4_QMOE with SM120/SM121 is not supported on MSVC: native sm_120a "
-          "compilation fails in CUDA/CCCL tcgen05 headers. Use a non-MSVC build for native FP4 QMoE.")
-      endif()
       add_definitions("-DUSE_FP4_QMOE")
       message(STATUS "CUDA FP4 QMoE kernels enabled")
     endif()
