@@ -4,9 +4,9 @@
 
 
 # -*- coding: UTF-8 -*-
-import unittest
 import os
 import tempfile
+import unittest
 
 import numpy as np
 import onnx

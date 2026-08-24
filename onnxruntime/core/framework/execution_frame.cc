@@ -286,8 +286,33 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
   // A non-empty fetches vector will overwrite the actual weight in all_values_[ort_value_idx] if we did this earlier.
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
+#if !defined(DISABLE_SPARSE_TENSORS)
+  const auto initialize_sparse_tensor = [&](const Tensor& src, OrtValue& dest) {
+    if (!dest.IsAllocated()) {
+      auto p_tensor = std::make_unique<SparseTensor>();
+      auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
+      dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+    }
+
+    // Initializers are converted to dense tensors while the graph is loaded, so
+    // materialize them as COO sparse tensors when they enter the execution frame.
+    AllocatorPtr allocator = GetAllocator(src.Location().device);
+    constexpr bool has_linear_coo_index = true;
+    ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
+                                                            cpu_allocator, allocator, has_linear_coo_index,
+                                                            *dest.GetMutable<SparseTensor>()));
+  };
+#endif
   for (const auto& entry : initializers) {
     int ort_value_index = entry.first;
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    std::string name;
+    ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
+    const bool is_sparse_initializer = is_initializer_sparse_func(name);
+#else
+    ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
+#endif
 
     // If the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
     //  so it can be returned to the caller.
@@ -300,29 +325,13 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
     //    - update optimizers to not convert something to an initializer that is a graph output
     //      (e.g. constant folding)
     if (IsOutput(ort_value_index)) {
-      std::string name;
-      ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
       const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
       OrtValue& dest = all_values_[ort_value_index];
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-      const bool is_sparse_initializer = is_initializer_sparse_func(name);
       if (is_sparse_initializer) {
-        if (!dest.IsAllocated()) {
-          auto p_tensor = std::make_unique<SparseTensor>();
-          auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
-          dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-        }
-
-        // Outputting Coo format because initializers are Constant nodes, and they are converted to dense.
-        AllocatorPtr allocator = GetAllocator(src.Location().device);
-        constexpr bool has_linear_coo_index = true;
-        ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
-                                                                cpu_allocator, allocator, has_linear_coo_index,
-                                                                *dest.GetMutable<SparseTensor>()));
+        initialize_sparse_tensor(src, dest);
       } else {
-#else
-      ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
 #endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
@@ -336,7 +345,15 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
       }
 #endif
     } else {
-      all_values_[ort_value_index] = entry.second;
+#if !defined(DISABLE_SPARSE_TENSORS)
+      if (is_sparse_initializer) {
+        initialize_sparse_tensor(entry.second.Get<Tensor>(), all_values_[ort_value_index]);
+      } else {
+#endif
+        all_values_[ort_value_index] = entry.second;
+#if !defined(DISABLE_SPARSE_TENSORS)
+      }
+#endif
     }
   }
 
