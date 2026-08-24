@@ -31,7 +31,8 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"dim_inner", ProgramUniformVariableDataType::Uint32});
+                                          {"dim_inner", ProgramUniformVariableDataType::Uint32},
+                                          WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
   const Activation activation_;

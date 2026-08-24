@@ -88,7 +88,8 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"K", ProgramUniformVariableDataType::Uint32});
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
   const Activation activation_;

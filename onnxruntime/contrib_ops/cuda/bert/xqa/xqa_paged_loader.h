@@ -26,7 +26,7 @@ constexpr int kXqaTokensPerPage = 128;
 // Paged-KV XQA decode launcher. Unlike LaunchXQAKernel (contiguous per-request cache) this reads
 // K and V from a shared block pool addressed through a page table.
 //
-// Preconditions: one query token per sequence, head_size in {64, 128}, group_size in
+// Preconditions: one query token per sequence, head_size in {64, 128, 256}, group_size in
 // {4, 6, 8, 16, 32}, quantized (INT8/FP8) cache, block_size % kXqaTokensPerPage == 0.
 Status LaunchXQAPagedKernel(
     const cudaDeviceProp& device_prop,
