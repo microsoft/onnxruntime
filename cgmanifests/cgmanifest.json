@@ -18,7 +18,7 @@
         "maven": {
           "GroupId": "com.google.protobuf",
           "ArtifactId": "protobuf-java",
-          "Version": "3.25.5"
+          "Version": "4.33.6"
         },
         "DevelopmentDependency": true
       }
