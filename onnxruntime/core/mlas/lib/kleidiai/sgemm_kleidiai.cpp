@@ -297,17 +297,16 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
                        const MLAS_SGEMM_DATA_PARAMS* Data,
                        size_t BatchSize,
                        MLAS_THREADPOOL* ThreadPool) {
-    const bool b_is_packed = Data[0].BIsPacked;
-    for (size_t batch = 1; batch < BatchSize; ++batch) {
-        if (Data[batch].BIsPacked != b_is_packed) {
-            return false;
-        }
+    bool has_unpacked_b = false;
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+        has_unpacked_b |= !Data[batch].BIsPacked;
     }
 
     // Both source orientations produce the same p4vsx1 packed layout. Packed
     // MLAS calls do not preserve the source TransB value, so use one canonical
-    // packer contract for offsets and strides during execution.
-    if (b_is_packed) {
+    // packer contract when every B is already packed. If any B is raw, retain
+    // TransB so those entries are packed from the correct source orientation.
+    if (!has_unpacked_b) {
         TransB = CblasNoTrans;
     }
 
@@ -348,12 +347,12 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
     size_t lhs_buffer_size = 0;
     size_t rhs_buffer_size = 0;
     if (MlasMultiplyOverflowsSizeT(lhs_packed_size, BatchSize, &lhs_buffer_size) ||
-        (!b_is_packed && MlasMultiplyOverflowsSizeT(rhs_packed_size, BatchSize, &rhs_buffer_size))) {
+        (has_unpacked_b && MlasMultiplyOverflowsSizeT(rhs_packed_size, BatchSize, &rhs_buffer_size))) {
         return false;
     }
 
     size_t packing_iterations = BatchSize;
-    if (!b_is_packed && MlasMultiplyOverflowsSizeT(BatchSize, size_t{2}, &packing_iterations)) {
+    if (has_unpacked_b && MlasMultiplyOverflowsSizeT(BatchSize, size_t{2}, &packing_iterations)) {
         return false;
     }
     if (packing_iterations > static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max())) {
@@ -420,24 +419,24 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
     }
 
     g_kai_tls.lhs_packed.resize(lhs_buffer_size);
-    if (!b_is_packed) {
+    if (has_unpacked_b) {
         g_kai_tls.rhs_packed.resize(rhs_buffer_size);
         g_kai_tls.bias_zero.assign(N, 0.0f);
     }
 
     std::byte* const lhs_packed_data = g_kai_tls.lhs_packed.data();
-    std::byte* const rhs_packed_data = b_is_packed ? nullptr : g_kai_tls.rhs_packed.data();
-    const float* const bias_zero = b_is_packed ? nullptr : g_kai_tls.bias_zero.data();
+    std::byte* const rhs_packed_data = has_unpacked_b ? g_kai_tls.rhs_packed.data() : nullptr;
+    const float* const bias_zero = has_unpacked_b ? g_kai_tls.bias_zero.data() : nullptr;
 
     MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(packing_iterations), [&](ptrdiff_t tid) {
-        const size_t batch_idx = b_is_packed ? static_cast<size_t>(tid) : static_cast<size_t>(tid >> 1);
-        if (b_is_packed || (tid & 0x1)) {
+        const size_t batch_idx = has_unpacked_b ? static_cast<size_t>(tid >> 1) : static_cast<size_t>(tid);
+        if (!has_unpacked_b || (tid & 0x1)) {
             PackSme2A(M,
                       K,
                       Data[batch_idx].A,
                       Data[batch_idx].lda,
                       lhs_packed_data + lhs_packed_size * batch_idx);
-        } else {
+        } else if (!Data[batch_idx].BIsPacked) {
             PackSme2B(TransB,
                       N,
                       K,
@@ -468,7 +467,7 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
             &kSme2PackRhsConfig, &rhs_index, &rhs_packed_stride);
 
         const auto* lhs_tile = lhs_packed_data + lhs_packed_size * batch_idx + lhs_offset;
-        const std::byte* rhs_base = b_is_packed
+        const std::byte* rhs_base = Data[batch_idx].BIsPacked
             ? reinterpret_cast<const std::byte*>(Data[batch_idx].B)
             : rhs_packed_data + rhs_packed_size * batch_idx;
         const auto* rhs_tile = rhs_base + rhs_offset;
