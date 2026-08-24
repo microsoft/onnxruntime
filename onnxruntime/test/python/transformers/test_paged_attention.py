@@ -278,6 +278,8 @@ def create_paged_attention_graph(
     # qk_norm_epsilon is only needed when QK-Norm is exercised.
     if config.use_qk_norm:
         node_attrs["qk_norm_epsilon"] = config.qk_norm_epsilon
+    if not getattr(config, "is_causal", True):
+        node_attrs["is_causal"] = 0
 
     nodes = [
         helper.make_node(
@@ -929,14 +931,18 @@ def parity_check_paged_attention(
         slot_mapping = derive_slot_mapping(config, past_seqlens, new_seqlens, cum_seqlens, block_table)
 
     # Set window size for local / causal
+    is_causal = getattr(config, "is_causal", True)
+    # A non-causal query block attends to everything on its right too, so the reference asks for a
+    # right window wide enough to never mask (construct_local_mask clamps it to seqlen_k).
+    right_window_size = 0 if is_causal else config.total_sequence_length
     window_size = (-1, -1)
     left_window_size = -1
     if config.local:
         left_window_size = random.randint(1, config.total_sequence_length - 1)  # random.randint is inclusive
-        window_size = (left_window_size, 0)
+        window_size = (left_window_size, right_window_size)
     else:
         left_window_size = -1
-        window_size = (-1, 0)
+        window_size = (-1, right_window_size) if is_causal else (-1, -1)
 
     # Apply rotary embedding for reference implementation
     if config.rotary:
@@ -1001,7 +1007,7 @@ def parity_check_paged_attention(
         key_padding_mask,
         0.0,
         None,
-        causal=True,
+        causal=is_causal,
         window_size=window_size,
         softcap=config.softcap,
         head_sink=head_sink,
@@ -1473,6 +1479,40 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         # so any batch beyond 256 sequences got silently wrong KV offsets.
         config = self._config(batch_size=300, sequence_length=4, total_sequence_length=64)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    # ---- is_causal ---------------------------------------------------------------------
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_non_causal(self):
+        # A block drafter submits its whole query block at once and every row must see the rest of
+        # the block, so the mask is unbounded on the right.
+        parity_check_paged_attention(self._config(is_causal=False), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_non_causal_local_window(self):
+        # local_window_size still bounds the mask on the left when the causal bound is removed.
+        parity_check_paged_attention(self._config(is_causal=False, local=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_non_causal_with_rotary_and_packed(self):
+        config = self._config(is_causal=False, rotary=True, packed=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_non_causal_rejected_without_flash_attention(self):
+        # The CUTLASS and paged-decode kernels hard-code a causal mask, so asking for is_causal=0
+        # on a backend that cannot express it has to fail loudly instead of returning a causal result.
+        with self.assertRaises(Exception) as ctx:
+            parity_check_paged_attention(
+                self._config(is_causal=False),
+                rtol=5e-3,
+                atol=5e-3,
+                sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+            )
+        self.assertIn("is_causal=0 requires the FlashAttention backend", str(ctx.exception))
 
 
 # -----------------------------------------------------------------------------

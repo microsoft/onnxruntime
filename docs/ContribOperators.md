@@ -4466,6 +4466,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>is_causal</tt> : int</dt>
+<dd>Whether the attention mask is causal (bottom-right aligned). Default value is 1. Set to 0 for a block drafter whose query tokens attend to each other bidirectionally; local_window_size then bounds the mask on the left only.</dd>
 <dt><tt>k_cache_dtype</tt> : string</dt>
 <dd>Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' (the default) means the cache tensor's own element type is also the logical type. 'float16', 'bfloat16', 'int8' and 'float8e4m3fn' name that same type explicitly and must agree with the tensor. 'int4' and 'float4e2m1' name sub-byte types packed two per byte into a uint8 cache, where the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i occupies the low-order bits of byte i. Every value is a signed, zero-symmetric type: quantization uses a scale with no zero point, so unsigned logical types are not expressible.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>

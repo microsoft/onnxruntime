@@ -1563,6 +1563,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("is_causal",
+              "Whether the attention mask is causal (bottom-right aligned). Default value is 1. "
+              "Set to 0 for a block drafter whose query tokens attend to each other bidirectionally; "
+              "local_window_size then bounds the mask on the left only.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("do_rotary",
               "Whether to use rotary position embedding. Default value is 0.",
               AttributeProto::INT,
