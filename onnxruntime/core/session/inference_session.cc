@@ -4374,10 +4374,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
     }
 
     for (const auto* input : graph.GetInputs()) {
+#if !defined(DISABLE_OPTIONAL_TYPE)
       const auto* type_proto = input->TypeAsProto();
-      if (type_proto == nullptr || !type_proto->has_optional_type()) {
-        required_input_names.push_back(input->Name());
+      if (type_proto != nullptr && type_proto->has_optional_type()) {
+        continue;
       }
+#endif
+      required_input_names.push_back(input->Name());
     }
 
     input_def_map_.swap(input_defs);

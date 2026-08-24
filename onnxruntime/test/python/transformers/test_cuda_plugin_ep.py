@@ -790,8 +790,9 @@ class TestCudaPluginEP(unittest.TestCase):
                 f"Assignments: {_format_assignment_summary(assignment_info)}",
             )
 
+            # Bypass the Python wrapper's equivalent validation to exercise native session validation.
             with self.assertRaisesRegex(InvalidArgument, "Missing Input: B"):
-                sess.run(None, {"A": np.random.rand(3, 2).astype(np.float32)})
+                sess._sess.run(["Y"], {"A": np.random.rand(3, 2).astype(np.float32)}, None)
         finally:
             if os.path.exists(model_path):
                 os.remove(model_path)
