@@ -127,7 +127,7 @@ cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory 
 # encoder models. Turning this OFF drops ~14MB of embedded cubin data; attention falls back to
 # flash / memory efficient / cuDNN / unfused kernels.
 cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
-option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
+cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
@@ -563,6 +563,22 @@ if (onnxruntime_USE_ARM_NEON_NCHWC)
 endif()
 
 if(onnxruntime_USE_SVE)
+  # ABI flags that EVERY SVE translation unit must carry.
+  #
+  # x18 is the AArch64 platform register: Windows ARM64 reserves it for the TEB,
+  # Darwin reserves it, and Linux shadow-call-stack builds use it. MLAS freezes
+  # SVE kernels into machine code that ships unchanged on every platform
+  # (aarch64/*_sve_asm.S), so an SVE TU that allocates x18 corrupts the TEB once
+  # those bytes run on Windows (observed: 0xC0000005 writing 0x250 inside ntdll).
+  # Saving/restoring x18 around the kernel is NOT a fix -- the OS may rewrite it
+  # at any context switch.
+  #
+  # Keep in sync with sve/gen_sve_asm.py, which applies the same flag when
+  # regenerating and hard-fails if x18 survives into a frozen section. The flag
+  # must also be on the non-frozen build of the same sources, or the ASM=OFF and
+  # ASM=ON paths would be built from differently-compiled code.
+  set(ORT_SVE_ABI_FLAGS "-ffixed-x18")
+
   if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
     check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
     if(HAS_ARM64_SVE)
@@ -571,6 +587,11 @@ if(onnxruntime_USE_SVE)
       message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
       set(onnxruntime_USE_SVE OFF)
     endif()
+  elseif(WIN32 AND onnxruntime_target_platform STREQUAL "ARM64")
+    # The SVE elementwise kernels ship as portable machine-code assembly
+    # (hex-encoded instruction words assembled by armasm64), so no compiler
+    # SVE support is needed; the kernels are runtime-gated on HasArmSve().
+    message(STATUS "SVE enabled via portable machine-code kernels.")
   else()
     message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
     set(onnxruntime_USE_SVE OFF)
@@ -1525,12 +1546,6 @@ if (onnxruntime_USE_CUDA)
     add_definitions("-DENABLE_FP4")
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
     if(onnxruntime_USE_FP4_QMOE)
-      if(MSVC AND ("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR
-                   "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG))
-        message(FATAL_ERROR
-          "onnxruntime_USE_FP4_QMOE with SM120/SM121 is not supported on MSVC: native sm_120a "
-          "compilation fails in CUDA/CCCL tcgen05 headers. Use a non-MSVC build for native FP4 QMoE.")
-      endif()
       add_definitions("-DUSE_FP4_QMOE")
       message(STATUS "CUDA FP4 QMoE kernels enabled")
     endif()
@@ -1929,18 +1944,27 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_USE_VCPKG)
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
       string(APPEND PROJECT_CONFIG_CONTENT
         "find_dependency(MSTelemetry CONFIG)\n\
         ")
     endif()
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE AND NOT onnxruntime_USE_VCPKG AND NOT onnxruntime_BUILD_SHARED_LIB)
-      # FetchContent static non-Apple telemetry ships mat plus bundled sqlite3/zlib archives in this
-      # package, but mat still links system libcurl and pthreads; the consumer must re-find them.
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(CURL)\n\
-        find_dependency(Threads)\n\
-        ")
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
+       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
+       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
+       AND NOT onnxruntime_BUILD_SHARED_LIB)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # The embedded curl archive uses the platform Threads target for its resolver.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(Threads)\n\
+          ")
+      else()
+        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(CURL)\n\
+          find_dependency(Threads)\n\
+          ")
+      endif()
     endif()
   endif()
 

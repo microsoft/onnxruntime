@@ -57,8 +57,8 @@ static bool IsNodeValidForFusion(const Graph& graph,
                                  const Node& node,
                                  const onnxruntime::MLDataType tensor_type,
                                  const onnxruntime::MLDataType output_type) {
-  // Node must have initialized tensor
-  if (!(graph.IsInitializedTensor(node.InputDefs()[0]->Name()))) return false;
+  // Node input must be a constant initializer. Initializers that are also graph inputs can be overridden.
+  if (graph_utils::GetConstantInitializer(graph, node.InputDefs()[0]->Name()) == nullptr) return false;
 
   // Initialzed tensor must be of tensor_type
   if (!(DataTypeImpl::TypeFromProto(*(node.InputDefs()[0]->TypeAsProto())) == tensor_type)) return false;
