@@ -680,10 +680,13 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
 struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
-  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
-                                                                                ep_api{*ort_api_in.GetEpApi()},
-                                                                                default_logger{default_logger_in},
-                                                                                data_transfer_impl{ort_api_in} {
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in)
+      : OrtEpFactory{},
+        ort_api{ort_api_in},
+        ep_api{*ort_api_in.GetEpApi()},
+        default_logger{default_logger_in},
+        data_transfer_impl{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;

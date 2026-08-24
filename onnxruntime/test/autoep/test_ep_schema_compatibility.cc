@@ -69,6 +69,9 @@ struct TestEp : OrtEp {
   const KernelRegistry& kernel_registry_;
 };
 
+constexpr const char* kSchemaExperimentProvider = "SchemaCompatibilityTestEP";
+
+#if !defined(DISABLE_CONTRIB_OPS)
 OrtEpOperatorCompatibilityInfo MakeGqaEntry() {
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(
       "GroupQueryAttention", 1, kMSDomain);
@@ -84,7 +87,6 @@ OrtEpOperatorCompatibilityInfo MakeGqaEntry() {
 }
 
 constexpr const char* kSchemaExperimentOp = "PluginSchemaCompatibilityExperiment";
-constexpr const char* kSchemaExperimentProvider = "SchemaCompatibilityTestEP";
 
 ONNX_NAMESPACE::OpSchema MakeSchemaExperimentOp(int since_version, bool use_v2_contract) {
   ONNX_NAMESPACE::OpSchema schema(kSchemaExperimentOp, __FILE__, __LINE__);
@@ -265,6 +267,7 @@ bool RegistryHasSchemaExperimentKernel(const KernelRegistry& registry, int versi
              .IsOK() &&
          kernel != nullptr;
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(PluginEpSchemaCompatibilityTest, MissingCallbackIsPermissiveDuringTransition) {
   TestFactory factory;
@@ -278,6 +281,7 @@ TEST(PluginEpSchemaCompatibilityTest, MissingCallbackIsPermissiveDuringTransitio
   EXPECT_TRUE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 999));
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST(PluginEpSchemaCompatibilityTest, AcceptsMatchingEntryAndQuarantinesMismatch) {
   TestFactory factory;
   factory.entries.push_back(MakeGqaEntry());
@@ -306,6 +310,7 @@ TEST(PluginEpSchemaCompatibilityTest, QuarantinesDuplicateEntry) {
   ASSERT_TRUE(compatibility->IsNegotiated());
   EXPECT_FALSE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(PluginEpSchemaCompatibilityTest, MissingEntryDoesNotAffectStandardOnnxDomain) {
   TestFactory factory;
@@ -318,6 +323,36 @@ TEST(PluginEpSchemaCompatibilityTest, MissingEntryDoesNotAffectStandardOnnxDomai
   EXPECT_TRUE(compatibility->IsCompatible(kOnnxDomain, "Add", 14));
 }
 
+#if defined(DISABLE_CONTRIB_OPS)
+TEST(PluginEpSchemaCompatibilityTest, FiltersPublishedContribKernelWhenSchemasAreDisabled) {
+  TestFactory factory;
+  factory.entries.push_back(
+      OrtEpOperatorCompatibilityInfo{kMSDomain, "GroupQueryAttention", 1, {}});
+
+  std::shared_ptr<const PluginEpSchemaCompatibility> compatibility;
+  ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
+      factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
+  ASSERT_TRUE(compatibility->IsNegotiated());
+  EXPECT_FALSE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
+
+  KernelRegistry source_registry;
+  auto kernel = KernelDefBuilder()
+                    .SetName("GroupQueryAttention")
+                    .SetDomain(kMSDomain)
+                    .SinceVersion(1, 1)
+                    .Provider(kSchemaExperimentProvider)
+                    .Build();
+  ASSERT_STATUS_OK(source_registry.Register(
+      KernelCreateInfo(std::move(kernel), KernelCreateFn{})));
+
+  TestEp ep{source_registry};
+  std::shared_ptr<KernelRegistry> effective_registry;
+  ASSERT_STATUS_OK(GetPluginEpKernelRegistry(
+      ep, *compatibility, DefaultLoggingManager().DefaultLogger(), effective_registry));
+  ASSERT_NE(effective_registry, nullptr);
+  EXPECT_TRUE(effective_registry->GetKernelCreateMap().empty());
+}
+#else
 TEST(PluginEpSchemaCompatibilityTest, AcceptsPublishedMSDomainManifest) {
   const auto& domain_versions = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
   const auto ms_domain_range = domain_versions.Map().find(kMSDomain);
@@ -545,6 +580,7 @@ TEST(PluginEpSchemaCompatibilityTest, SameVersionContractChangeIsQuarantined) {
   ASSERT_NE(effective_registry, nullptr);
   EXPECT_TRUE(RegistryHasSchemaExperimentKernel(*effective_registry, 1));
 }
+#endif  // defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace
 }  // namespace onnxruntime::test

@@ -2766,6 +2766,10 @@ typedef struct OrtEpOperatorCompatibilityInfo {
 
 /**
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
+ *
+ * Implementations must zero-initialize the entire structure before assigning supported fields. This keeps optional
+ * function pointers, including fields appended by newer API versions, null unless the implementation provides them.
+ *
  * \since Version 1.22.
  */
 struct OrtEpFactory {

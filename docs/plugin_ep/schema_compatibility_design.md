@@ -408,9 +408,12 @@ The rule is:
   to the operators the plugin actually reported. Core never hashes operators nobody
   asked about, so an operator that a reduced build did not register simply has no core
   entry and is reported as unavailable rather than as a mismatch.
-- CI asserts that the runtime-computed digests of a full build equal the checked-in
-  manifest, so an in-place schema edit fails the build unless the manifest is
-  regenerated, and regenerating an existing entry fails the historical-digest check.
+- CI asserts that the runtime-computed digests of the default inference build equal
+  the checked-in inference-plugin manifest, so an in-place schema edit fails the build
+  unless the manifest is regenerated, and regenerating an existing entry fails the
+  historical-digest check. Feature builds may register additional private schemas;
+  every published manifest entry must still match, but unreported feature-specific
+  schemas do not make the inference-plugin manifest invalid.
 
 Manifest generation and validation must use the finalized schemas from the live
 registry. Hashing the raw objects returned by an opset's `ForEachSchema()` is not

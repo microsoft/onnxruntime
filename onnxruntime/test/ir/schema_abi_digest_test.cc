@@ -62,6 +62,16 @@ TEST(SchemaAbiDigestTest, ChangesWhenExecutionContractChanges) {
   EXPECT_NE(Digest(baseline), Digest(different_default));
 }
 
+#if defined(DISABLE_CONTRIB_OPS)
+TEST(SchemaAbiDigestTest, MSManifestSchemasAreUnavailableWhenContribOpsAreDisabled) {
+  for (const auto& entry : contrib::kMSDomainSchemaAbiManifest) {
+    EXPECT_EQ(ONNX_NAMESPACE::OpSchemaRegistry::Schema(
+                  entry.op_type, entry.since_version, entry.domain),
+              nullptr)
+        << entry.op_type << "@" << entry.since_version;
+  }
+}
+#else
 TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
   auto schemas = ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
   schemas.erase(std::remove_if(schemas.begin(), schemas.end(), [](const auto& schema) {
@@ -69,9 +79,14 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
                 }),
                 schemas.end());
 
+#if !defined(ENABLE_TRAINING_OPS) && !defined(ORT_USE_NCCL)
+  // The checked-in manifest is the inference plugin catalog. Training and NCCL
+  // builds register additional com.microsoft schemas that the plugin does not
+  // claim and therefore are not required to appear in this manifest.
   constexpr size_t manifest_size = sizeof(contrib::kMSDomainSchemaAbiManifest) /
                                    sizeof(contrib::kMSDomainSchemaAbiManifest[0]);
   ASSERT_EQ(schemas.size(), manifest_size);
+#endif
 
   using SchemaKey = std::tuple<std::string, std::string, int>;
   std::set<SchemaKey> manifest_keys;
@@ -91,12 +106,15 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
         << " changed without regenerating the com.microsoft schema ABI manifest";
   }
 
+#if !defined(ENABLE_TRAINING_OPS) && !defined(ORT_USE_NCCL)
   for (const auto& schema : schemas) {
     EXPECT_NE(manifest_keys.find(SchemaKey{kMSDomain, schema.Name(), schema.since_version()}),
               manifest_keys.end())
         << "Missing manifest entry: " << schema.Name() << "@" << schema.since_version();
   }
+#endif
 }
+#endif  // defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace
 }  // namespace onnxruntime::test
