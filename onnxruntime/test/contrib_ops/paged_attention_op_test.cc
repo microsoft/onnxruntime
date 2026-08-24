@@ -818,6 +818,39 @@ TEST(PagedAttention, Cuda_AttentionMetadataShape2CompatibilityAndDispatchBounds)
   EXPECT_NE(debug_output.find("EffectiveKvLengthBound=256"), std::string::npos) << debug_output;
 }
 
+TEST(PagedAttention, Cuda_XqaInt8CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 16;
+  c.max_num_blocks_per_seq = 8;
+  c.past_seqlen = 2047;
+  c.int8_cache = true;
+  c.attention_metadata = {1, 2048, 2048};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
 TEST(PagedAttention, Cuda_AttentionMetadataValidation) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
