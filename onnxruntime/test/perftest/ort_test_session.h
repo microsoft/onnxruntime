@@ -71,6 +71,9 @@ class OnnxRuntimeTestSession : public TestSession {
   std::string provider_name_;
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
   const std::unordered_map<std::string, std::string>& run_config_entries_;
+  Ort::Env& env_;
+  bool requires_input_staging_ = false;
+  bool has_plugin_ep_allocator_ = false;
   bool has_dynamic_output_shapes_ = false;
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
