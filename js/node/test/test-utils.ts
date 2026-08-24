@@ -3,7 +3,7 @@
 
 import assert from 'assert';
 import * as fs from 'fs-extra';
-import { parse as parseJsonc } from 'jsonc-parser';
+import { ParseError, parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
 
@@ -18,8 +18,14 @@ export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'js/test/data/node');
 export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.input0.json'));
 export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.output0.json'));
 
-function readJsoncFileSync<T>(filePath: string): T {
-  return parseJsonc(fs.readFileSync(filePath, 'utf8')) as T;
+export function readJsoncFileSync<T>(filePath: string): T {
+  const errors: ParseError[] = [];
+  const result = parseJsonc(fs.readFileSync(filePath, 'utf8'), errors, { allowTrailingComma: true });
+  if (errors.length > 0) {
+    const details = errors.map((error) => `${printParseErrorCode(error.error)} at offset ${error.offset}`).join(', ');
+    throw new Error(`Failed to parse JSONC file ${filePath}: ${details}`);
+  }
+  return result as T;
 }
 
 const BACKEND_TEST_SERIES_FILTERS: { [name: string]: Array<string | [string, string]> } = readJsoncFileSync(
