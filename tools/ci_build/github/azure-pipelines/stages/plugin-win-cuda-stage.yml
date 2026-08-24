@@ -70,6 +70,7 @@ stages:
           hostArchitecture: Arm64
           demands:
             - Agent.Version -equals 4.264.2
+            - ImageOverride -equals onnxruntime-Win2025-arm64
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
@@ -149,10 +150,7 @@ stages:
           displayName: 'Add CUDA to PATH'
 
       - ${{ else }}:
-        # The win-arm64 agents (onnxruntime-qnn-windows-vs-2022-arm64) do not have the Azure
-        # CLI installed, so the AzureCLI@2 task cannot be used here (it fails with "Azure CLI
-        # 2.x is not installed on this machine"). azcopy is on PATH and can read this storage
-        # account directly, matching the QNN SDK download in
+        # Use azcopy directly for win-arm64, matching the QNN SDK download in
         # templates/jobs/download_win_qnn_sdk.yml.
         - powershell: |
             azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/win-arm64/v${{ parameters.arm64_cuda_version }} "$(Agent.TempDirectory)"
@@ -343,6 +341,7 @@ stages:
           hostArchitecture: Arm64
           demands:
             - Agent.Version -equals 4.264.2
+            - ImageOverride -equals onnxruntime-Win2025-arm64
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
