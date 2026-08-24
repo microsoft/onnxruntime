@@ -591,12 +591,11 @@ TEST(LoraAdapterTest, CudaPluginRunCopiesMappedValues) {
   session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, Ort::KeyValuePairs{});
   Ort::Session session(*ort_env, ORT_TSTR("testdata/lora/two_params_lora_model.onnx"), session_options);
   auto input_devices = session.GetEpDeviceForInputs();
-  ASSERT_EQ(input_devices.size(), 3U);
-  for (size_t i = 1; i < input_devices.size(); ++i) {
-    ASSERT_NE(input_devices[i], nullptr);
-    EXPECT_EQ(std::string_view{input_devices[i].EpName()},
-              dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName);
-  }
+  // LoRA parameters are overridable initializers, so only input_x is included in the session input devices.
+  ASSERT_EQ(input_devices.size(), 1U);
+  ASSERT_NE(input_devices[0], nullptr);
+  EXPECT_EQ(std::string_view{input_devices[0].EpName()},
+            dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName);
 
   Ort::RunOptions run_options;
   run_options.AddActiveLoraAdapter(adapter);
