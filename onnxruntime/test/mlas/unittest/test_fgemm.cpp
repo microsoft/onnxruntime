@@ -230,6 +230,72 @@ TEST(SGemmPublicApi, MixedPackedAndUnpackedBatchSme2) {
   }
 }
 
+TEST(SGemmPublicApi, MixedAlphaZeroDoesNotReadInputsSme2) {
+  if (!HasKleidiAISme2()) {
+    GTEST_SKIP() << "This test validates the KleidiAI SME2 SGEMM path.";
+  }
+
+  constexpr size_t M = 3;
+  constexpr size_t N = 65;
+  constexpr size_t K = 7;
+
+  for (CBLAS_TRANSPOSE trans_b : {CblasNoTrans, CblasTrans}) {
+    const size_t ldb = trans_b == CblasNoTrans ? N : K;
+    for (size_t zero_index : {size_t{0}, size_t{1}}) {
+      for (bool zero_is_packed : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "TransB=" << static_cast<int>(trans_b)
+                                        << " zero_index=" << zero_index
+                                        << " zero_is_packed=" << zero_is_packed);
+
+        const size_t active_index = 1 - zero_index;
+        const size_t packed_index = zero_is_packed ? zero_index : active_index;
+        std::vector<float> a(M * K, 2.0f);
+        std::vector<float> b(K * N, 0.5f);
+        std::array<std::vector<float>, 2> c;
+        c[zero_index].assign(M * N, 4.0f);
+        c[active_index].assign(M * N, 0.0f);
+
+        const size_t packed_b_size = MlasGemmPackBSize(CblasNoTrans, trans_b, N, K, nullptr);
+        ASSERT_GT(packed_b_size, 0u);
+        std::vector<uint8_t> packed_b(packed_b_size);
+        MlasGemmPackB(CblasNoTrans, trans_b, N, K, b.data(), ldb, packed_b.data(), nullptr);
+
+        std::array<MLAS_SGEMM_DATA_PARAMS, 2> data{};
+        for (size_t batch = 0; batch < data.size(); ++batch) {
+          const bool is_zero = batch == zero_index;
+          const bool is_packed = batch == packed_index;
+          data[batch].A = nullptr;
+          data[batch].lda = K;
+          data[batch].B = nullptr;
+          if (!is_zero) {
+            data[batch].A = a.data();
+            data[batch].B = is_packed
+                                ? reinterpret_cast<const float*>(packed_b.data())
+                                : b.data();
+          }
+          data[batch].ldb = ldb;
+          data[batch].C = c[batch].data();
+          data[batch].ldc = N;
+          data[batch].alpha = is_zero ? 0.0f : 1.0f;
+          data[batch].beta = is_zero ? -0.5f : 0.0f;
+          data[batch].BIsPacked = is_packed;
+        }
+
+        EXPECT_NO_THROW(
+            MlasGemmBatch(
+                CblasNoTrans, trans_b, M, N, K, data.data(), data.size(), GetMlasThreadPool(), nullptr));
+
+        for (float value : c[zero_index]) {
+          EXPECT_FLOAT_EQ(value, -2.0f);
+        }
+        for (float value : c[active_index]) {
+          EXPECT_FLOAT_EQ(value, 7.0f);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 static size_t FGemmRegistLongExecute() {

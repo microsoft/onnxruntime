@@ -299,7 +299,7 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
                        MLAS_THREADPOOL* ThreadPool) {
     bool has_unpacked_b = false;
     for (size_t batch = 0; batch < BatchSize; ++batch) {
-        has_unpacked_b |= !Data[batch].BIsPacked;
+        has_unpacked_b |= Data[batch].alpha != 0.0f && !Data[batch].BIsPacked;
     }
 
     // Both source orientations produce the same p4vsx1 packed layout. Packed
@@ -430,6 +430,10 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
 
     MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(packing_iterations), [&](ptrdiff_t tid) {
         const size_t batch_idx = has_unpacked_b ? static_cast<size_t>(tid >> 1) : static_cast<size_t>(tid);
+        if (Data[batch_idx].alpha == 0.0f) {
+            return;
+        }
+
         if (!has_unpacked_b || (tid & 0x1)) {
             PackSme2A(M,
                       K,
@@ -458,6 +462,14 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
         const size_t start_n = n_idx * n_step;
         const size_t tile_m = std::min(m_step, M - start_m);
         const size_t tile_n = std::min(n_step, N - start_n);
+        const float alpha = Data[batch_idx].alpha;
+        const float beta = Data[batch_idx].beta;
+        float* const dst_tile = Data[batch_idx].C + start_m * Data[batch_idx].ldc + start_n;
+
+        if (alpha == 0.0f) {
+            ApplyBetaToC(dst_tile, Data[batch_idx].ldc, tile_m, tile_n, beta);
+            return;
+        }
 
         const kai_matmul_pack_lhs_uker_lhs_packed_dim_args lhs_index{start_m, 0};
         const kai_matmul_pack_rhs_uker_rhs_packed_dim_args rhs_index{start_n, 0};
@@ -471,10 +483,6 @@ bool MlasGemmBatchSme2(CBLAS_TRANSPOSE TransB,
             ? reinterpret_cast<const std::byte*>(Data[batch_idx].B)
             : rhs_packed_data + rhs_packed_size * batch_idx;
         const auto* rhs_tile = rhs_base + rhs_offset;
-        float* const dst_tile = Data[batch_idx].C + start_m * Data[batch_idx].ldc + start_n;
-
-        const float alpha = Data[batch_idx].alpha;
-        const float beta = Data[batch_idx].beta;
         const bool direct_to_c = alpha == 1.0f && beta == 0.0f;
 
         float* output = dst_tile;
