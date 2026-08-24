@@ -7055,7 +7055,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Static number of per-request prefix states to expose. Checkpoint j is the state after local token j when that token exists. Unwritten slots are unspecified. Valid range is [0, 8].</dd>
 </dl>
 
-#### Inputs (5 - 5)
+#### Inputs
 
 <dl>
 <dt><tt>input</tt> : T</dt>
