@@ -3,7 +3,9 @@
 
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "contrib_ops/webgpu/bert/causal_conv_with_state.h"
-#include "contrib_ops/webgpu/bert/engram_ops.h"
+#include "contrib_ops/webgpu/bert/engram_gate.h"
+#include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
+#include "contrib_ops/webgpu/bert/short_conv.h"
 #include "contrib_ops/webgpu/bert/gated_add.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
 #include "contrib_ops/webgpu/bert/linear_attention.h"
