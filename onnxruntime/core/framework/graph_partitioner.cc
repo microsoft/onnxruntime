@@ -1550,6 +1550,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   ORT_UNUSED_PARAMETER(func_mgr);
   ORT_UNUSED_PARAMETER(transform_layout_function);
   ORT_UNUSED_PARAMETER(debug_graph_fn);
+  ORT_UNUSED_PARAMETER(ep_context_data_read_callback_registered);
   PartitionParams partition_params{
       std::ref(graph),
       std::cref(check_load_cancellation_fn),
