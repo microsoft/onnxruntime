@@ -261,6 +261,14 @@ static const char* const kOrtSessionOptionsAvx2PrecisionMode = "session.x64quant
 static const char* const kOrtSessionOptionsConfigMinimalBuildOptimizations =
     "optimization.minimal_build_optimizations";
 
+/// <summary>
+/// Set to "1" to enable replay of saved runtime optimizations from an ORT format model.
+/// Saved runtime optimizations contain graph rewrite instructions and must only be enabled for trusted models.
+/// The default is "0".
+/// </summary>
+static const char* const kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations =
+    "session.enable_saved_runtime_optimizations";
+
 // Note: The options specific to an EP should be specified prior to appending that EP to the session options object in
 // order for them to take effect.
 
@@ -526,6 +534,15 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // "0" or unset uses the MLAS default heuristic, intended for typical workloads.
 // This option exists for perf experimentation; the default may be retuned in future ORT releases.
 static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.kleidiai.conv_igemm_max_work";
+
+// Power-user tuning option for the MLAS NCHWc pointwise (1x1) convolution algorithm.
+// Controls the maximum number of input channels accumulated per kernel invocation before
+// intermediate results are flushed to the output tensor. Values are rounded up to a multiple
+// of the NCHWc block size. Larger values reduce output read/write round trips for deep-input
+// convolutions at the cost of a larger cache working set.
+// "0" or unset uses the MLAS default (128).
+// This option exists for perf experimentation; the default may be retuned in future releases.
+static const char* const kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch = "mlas.nchwc_pointwise_conv_max_input_channel_batch";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

@@ -17,6 +17,13 @@ Safety checks (the generator aborts if any fails):
   * no adrp/adr (page-relative addressing of data), no bl/blr (calls),
     and no PC-relative literal-pool loads -- every input must arrive via
     the argument registers/stack so the code is position-independent;
+  * no platform-reserved registers (RESERVED_REGS): x18 is the AArch64
+    platform register -- Windows ARM64 reserves it for the TEB, Darwin
+    reserves it, and Linux shadow-call-stack builds use it. Frozen bytes
+    ship on every platform, so code that allocates x18 corrupts the TEB on
+    Windows (observed: 0xC0000005 writing to 0x250 from inside ntdll).
+    A save/restore wrapper is NOT a fix -- the OS may rewrite x18 at any
+    context switch. -ffixed-x18 is applied by default (see DEFAULT_CFLAGS);
   * the section contains only 4-byte instruction words (no embedded data).
 
 Example (QGEMM svmmla kernels):
@@ -24,7 +31,6 @@ Example (QGEMM svmmla kernels):
       --src sve/qgemm_mmla_sve_impl.cpp \
       --out aarch64/qgemm_mmla_sve_asm.S \
       --march armv8.2-a+sve+i8mm \
-      --define MLAS_SVE_QGEMM_TILE_12X8=1 --define MLAS_SVE_QGEMM_TILE_8X12=1 \
       --symbols MlasGemmS8S8KernelSmmlaSveImpl,MlasGemmU8X8KernelUmmlaSveImpl \
       --module qgemm_mmla_sve
 """
@@ -39,6 +45,12 @@ import tempfile
 INSN_RE = re.compile(r"^\s*([0-9a-f]+):\s+([0-9a-f]{8})\s+(.*)$")
 FORBIDDEN_MNEMONIC_RE = re.compile(r"^(adrp|adr|bl|blr)\s")
 LITERAL_LOAD_RE = re.compile(r"^ldr\s+[^,]+,\s+0x[0-9a-f]+\s*$")
+
+# Registers no frozen function may touch, and the compiler flag that keeps the
+# compiler off them. Extend both together if another platform reserves more.
+RESERVED_REGS = ("x18",)
+RESERVED_REG_RE = re.compile(r"\b[wx]18\b")
+DEFAULT_CFLAGS = ("-ffixed-x18",)
 
 
 def run(cmd):
@@ -92,6 +104,14 @@ def extract_functions(obj, symbols, allow_missing=False):
             sys.exit(f"forbidden instruction in {current}: {disasm}")
         if LITERAL_LOAD_RE.match(disasm):
             sys.exit(f"literal-pool load in {current}: {disasm}")
+        if RESERVED_REG_RE.search(disasm):
+            sys.exit(
+                f"platform-reserved register in {current}: {disasm}\n"
+                f"  frozen bytes ship on every platform and {'/'.join(RESERVED_REGS)} is "
+                f"reserved (Windows TEB, Darwin, Linux shadow-call-stack).\n"
+                f"  compile with {' '.join(DEFAULT_CFLAGS)} (applied by default; do not "
+                f"override it away)."
+            )
         functions[current].append((word, disasm))
     missing = [s for s in symbols if s not in functions]
     if missing and not allow_missing:
@@ -143,6 +163,7 @@ def emit(functions, symbols, module, src, out_path):
         lines.append(f"    KAI_ASM_GLOBAL({sym})")
         lines.append(f"    KAI_ASM_FUNCTION_TYPE({sym})")
         lines.append(f"KAI_ASM_FUNCTION_LABEL({sym})")
+        lines.append("    KAI_ASM_BTI_C")
         for word, disasm in functions[sym]:
             lines.append(f"    KAI_ASM_INST(0x{word})  // {disasm}")
         lines.append(f"    KAI_ASM_FUNCTION_END({sym})")
@@ -160,12 +181,29 @@ def main():
     )
     ap.add_argument("--out", required=True)
     ap.add_argument("--march", required=True)
-    ap.add_argument("--opt", default="O3", help="optimization level (O2/O3)")
+    # Default matches how ORT actually builds these sources (RelWithDebInfo is
+    # -O2). Freezing at -O3 measured 7-8% SLOWER at M == 1 on X925 -- the
+    # single-row path has too little work to absorb -O3's extra unrolling --
+    # while being flat at M > 1, so -O2 is both the consistent and the faster
+    # choice. Re-measure before changing it.
+    ap.add_argument("--opt", default="O2", help="optimization level (O2/O3)")
     ap.add_argument("--include", action="append", default=[], help="extra -I directory; repeatable")
     ap.add_argument("--define", action="append", default=[])
     ap.add_argument("--symbols", required=True)
     ap.add_argument("--module", required=True)
     ap.add_argument("--cxx", default="g++")
+    ap.add_argument(
+        "--cflag",
+        action="append",
+        default=[],
+        help="extra compiler flag; repeatable. Added on top of DEFAULT_CFLAGS",
+    )
+    ap.add_argument(
+        "--no-default-cflags",
+        action="store_true",
+        help=f"drop DEFAULT_CFLAGS ({' '.join(DEFAULT_CFLAGS)}). For testing the "
+        "reserved-register check only -- a real regeneration without them will abort.",
+    )
     args = ap.parse_args()
 
     symbols = args.symbols.split(",")
@@ -185,6 +223,9 @@ def main():
             ]
             cmd += [f"-I{d}" for d in args.include]
             cmd += [f"-D{d}" for d in args.define]
+            if not args.no_default_cflags:
+                cmd += list(DEFAULT_CFLAGS)
+            cmd += args.cflag
             cmd += ["-c", "-o", obj, src]
             run(cmd)
             wanted = [s for s in symbols if s not in functions]
