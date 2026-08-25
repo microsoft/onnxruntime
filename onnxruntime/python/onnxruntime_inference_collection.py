@@ -506,29 +506,6 @@ class Session:
             ortvalue = self._sess.create_ortvalue_from_shape_and_type(shape, element_type, device)
         return OrtValue(ortvalue, session=self._sess)
 
-    def create_ortvalue_from_numpy(
-        self,
-        numpy_obj: np.ndarray,
-        device_type: str,
-        device_id: int = 0,
-        vendor_id: int | OrtDeviceVendorId = -1,
-    ) -> OrtValue:
-        """
-        Create a session-scoped device OrtValue and copy a NumPy tensor into it.
-
-        The OrtValue must only be updated or bound through the session that created it.
-        Non-contiguous NumPy inputs are copied into contiguous host memory before upload.
-        """
-        if not isinstance(numpy_obj, np.ndarray):
-            raise TypeError("numpy_obj must be a numpy.ndarray.")
-        if not numpy_obj.flags.c_contiguous:
-            numpy_obj = np.ascontiguousarray(numpy_obj)
-        ortvalue = self.create_ortvalue_from_shape_and_type(
-            numpy_obj.shape, numpy_obj.dtype, device_type, device_id, vendor_id
-        )
-        ortvalue.update_inplace(numpy_obj)
-        return ortvalue
-
     def release_captured_graph(self, graph_annotation_id: int = 0) -> None:
         """Release a captured graph and unpin its IOBinding.
 
@@ -1606,12 +1583,7 @@ class OrtValue:
             if self._session is not None and data._session is not None and data._session is not self._session:
                 raise ValueError("Session-scoped OrtValues must originate from the same session.")
 
-            # Use an owning session's transfer manager; session-less values use shared transfers.
-            session = self._session if self._session is not None else data._session
-            if session is not None:
-                session.update_ortvalue_inplace(self._ortvalue, data._ortvalue)
-            else:
-                self._ortvalue.update_inplace(data._ortvalue)
+            self._ortvalue.update_inplace(data._ortvalue)
             return
 
         if not isinstance(data, np.ndarray):
@@ -1621,10 +1593,7 @@ class OrtValue:
         if not data.flags.c_contiguous:
             data = np.ascontiguousarray(data)
 
-        if self._session is not None:
-            self._session.update_ortvalue_inplace(self._ortvalue, data)
-        else:
-            self._ortvalue.update_inplace(data)
+        self._ortvalue.update_inplace(data)
 
 
 _DEFAULT_WEBGPU_CONTEXT_ID = 0
@@ -1647,9 +1616,10 @@ def _has_foreign_webgpu_context(
     session with no WebGPU EP.
 
     TODO: this can only attribute a value that carries session provenance, because every WebGPU
-    allocation reports OrtDevice(GPU, VendorIds::NONE, 0) regardless of its context. Replace this
-    with a device-level check once WebGPU allocations carry their real context id, which would also
-    let the data transfer itself reject the copy instead of relying on this Python-side guard.
+    allocation reports OrtDevice(GPU, VendorIds::NONE, 0) regardless of its context. Supporting a
+    custom external WebGPU context requires the shared allocator and its data transfer to retain and
+    use that external device instead of resolving WebGpuContextFactory::DefaultContext(), which
+    would also let the transfer itself reject the copy instead of relying on this Python-side guard.
     """
     for value in values:
         if not value._is_webgpu_buffer or value._session is None:

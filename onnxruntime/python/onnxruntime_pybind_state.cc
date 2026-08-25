@@ -114,43 +114,6 @@ std::unique_ptr<OrtValue> CreateSessionOrtValue(PyInferenceSession* session,
   return ort_value;
 }
 
-void CopySessionOrtValue(PyInferenceSession* session, OrtValue& destination, const OrtValue& source) {
-  if (!destination.IsTensor() || !source.IsTensor()) {
-    throw std::runtime_error("Inplace update of OrtValues is only supported for Tensors");
-  }
-
-  const auto& source_tensor = source.Get<Tensor>();
-  auto* destination_tensor = destination.GetMutable<Tensor>();
-  const auto& source_location = source_tensor.Location();
-  const auto& destination_location = destination_tensor->Location();
-  const bool source_is_webgpu = source_location.name == WEBGPU_BUFFER;
-  const bool destination_is_webgpu = destination_location.name == WEBGPU_BUFFER;
-
-  if (source_location.device.Type() == OrtDevice::GPU &&
-      destination_location.device.Type() == OrtDevice::GPU &&
-      source_is_webgpu != destination_is_webgpu) {
-    throw std::runtime_error("WebGPU OrtValues cannot be copied to or from another GPU provider");
-  }
-
-  if (destination_tensor->DataType() != source_tensor.DataType()) {
-    throw std::runtime_error("The source and destination OrtValues must have the same data type");
-  }
-
-  if (destination_tensor->Shape().Size() != source_tensor.Shape().Size()) {
-    throw std::runtime_error("The source and destination OrtValues must have the same size");
-  }
-
-  py::gil_scoped_release release;
-  ORT_THROW_IF_ERROR(session->GetSessionHandle()->GetDataTransferManager().CopyTensor(
-      source_tensor, *destination_tensor));
-}
-
-void UpdateSessionOrtValue(PyInferenceSession* session, OrtValue& destination, const py::array& source) {
-  OrtValue source_value;
-  CreateGenericMLValue(nullptr, GetAllocator(), "", source, &source_value, true);
-  CopySessionOrtValue(session, destination, source_value);
-}
-
 struct AdaptedProviderOptions {
   std::vector<std::string> keys;
   std::vector<std::string> values;
@@ -3078,8 +3041,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         py::gil_scoped_release release;
         return CreateSessionOrtValue(sess, shape, OnnxTypeToOnnxRuntimeTensorType(onnx_element_type), device); }, py::keep_alive<0, 1>())
-      .def("update_ortvalue_inplace", [](PyInferenceSession* sess, OrtValue& destination, const py::array& source) { UpdateSessionOrtValue(sess, destination, source); })
-      .def("update_ortvalue_inplace", [](PyInferenceSession* sess, OrtValue& destination, const OrtValue& source) { CopySessionOrtValue(sess, destination, source); })
       .def("release_captured_graph", [](PyInferenceSession* sess, int graph_annotation_id) {
         py::gil_scoped_release release;
         OrtPybindThrowIfError(sess->GetSessionHandle()->ReleaseCapturedGraph(graph_annotation_id)); })

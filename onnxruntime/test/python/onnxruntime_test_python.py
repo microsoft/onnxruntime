@@ -63,6 +63,22 @@ available_providers_without_tvm_and_tensorrt = [
 ]
 
 
+def device_ortvalue_from_numpy(session, array, device_type, device_id=0, vendor_id=-1):
+    """Allocate a device OrtValue from the session allocator and upload host data into it.
+
+    This is the supported composition: allocate with Session.create_ortvalue_from_shape_and_type,
+    then upload with the environment-level onnxruntime.copy_tensors. For the default WebGPU context
+    the session allocator and the environment data transfer both resolve context 0.
+    """
+    if not array.flags.c_contiguous:
+        array = np.ascontiguousarray(array)
+    device_value = session.create_ortvalue_from_shape_and_type(
+        array.shape, array.dtype, device_type, device_id, vendor_id
+    )
+    onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(array)], [device_value])
+    return device_value
+
+
 class TestInferenceSession(unittest.TestCase):
     def run_model(self, session_object, run_options):
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -1891,40 +1907,23 @@ class TestInferenceSession(unittest.TestCase):
             )
 
     def test_session_scoped_cpu_ortvalue(self):
+        """A session allocator value is usable only with the session that created it.
+
+        Population goes through onnxruntime.copy_tensors rather than a session-specific update path,
+        so this covers allocation and provenance only; the copy itself is covered by the WebGPU
+        graph-capture flow, where a device data transfer is always registered.
+        """
         session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         input_metadata = session.get_inputs()[0]
         input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
-        noncontiguous_input = input_value[..., ::-1]
-        session_value = session.create_ortvalue_from_numpy(noncontiguous_input, "cpu")
+
+        session_value = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
         self.assertFalse(session_value._is_webgpu_buffer)
-        np.testing.assert_array_equal(session_value.numpy(), noncontiguous_input)
-
-        updated_noncontiguous_input = (input_value + 10)[..., ::-1]
-        session_value.update_inplace(updated_noncontiguous_input)
-        np.testing.assert_array_equal(session_value.numpy(), updated_noncontiguous_input)
-
-        ortvalue_update_input = input_value + 20
-        session_value.update_inplace(session.create_ortvalue_from_numpy(ortvalue_update_input, "cpu"))
-        np.testing.assert_array_equal(session_value.numpy(), ortvalue_update_input)
-        ortvalue_update_expected = session.run(None, {input_metadata.name: ortvalue_update_input})[0]
-        np.testing.assert_array_equal(
-            session.run(None, {input_metadata.name: session_value})[0],
-            ortvalue_update_expected,
-        )
-        np.testing.assert_array_equal(
-            session.run_with_ort_values(None, {input_metadata.name: session_value})[0].numpy(),
-            ortvalue_update_expected,
-        )
-        # copy_tensors no longer rejects a value merely for being session-scoped. It can still fail
-        # here for an unrelated pre-existing reason: the environment DataTransferManager has no
-        # CPU-to-CPU entry. What matters is that our guard is not what rejects it.
-        try:
-            onnxrt.copy_tensors([session_value], [session_value])
-        except (ValueError, RuntimeError) as error:
-            self.assertNotIn("WebGPU", str(error))
+        self.assertIs(session_value._session, session._sess)
+        self.assertEqual(session_value.shape(), list(input_metadata.shape))
 
         other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
-        other_session_value = other_session.create_ortvalue_from_numpy(input_value, "cpu")
+        other_session_value = other_session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
         with self.assertRaisesRegex(ValueError, "same session"):
             session_value.update_inplace(other_session_value)
         with self.assertRaisesRegex(ValueError, "session that created it"):
@@ -1937,7 +1936,7 @@ class TestInferenceSession(unittest.TestCase):
             other_session.run_with_iobinding(session.io_binding())
 
         reset_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
-        stale_value = reset_session.create_ortvalue_from_numpy(input_value, "cpu")
+        stale_value = reset_session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
         stale_binding = reset_session.io_binding()
         reset_session.set_providers(["CPUExecutionProvider"])
         with self.assertRaisesRegex(ValueError, "session that created it"):
@@ -1945,8 +1944,13 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "session that created it"):
             reset_session.run_with_iobinding(stale_binding)
 
-        scalar_value = session.create_ortvalue_from_numpy(np.array(1.0, dtype=np.float32), "cpu")
+        scalar_value = session.create_ortvalue_from_shape_and_type([], np.float32, "cpu")
         self.assertEqual(scalar_value.shape(), [])
+        # A plain run with host inputs is unaffected by any of the above.
+        np.testing.assert_array_equal(
+            session.run(None, {input_metadata.name: input_value})[0],
+            session.run(None, {input_metadata.name: input_value})[0],
+        )
 
     def test_is_webgpu_buffer_is_read_only(self):
         """OrtValue._is_webgpu_buffer must always come from the native value and never be settable.
@@ -1978,8 +1982,8 @@ class TestInferenceSession(unittest.TestCase):
 
         # Copy CPU storage so in-place updates remain isolated.
         unowned = onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy())
-        owned = session.create_ortvalue_from_numpy(input_value, "cpu")
-        foreign = other_session.create_ortvalue_from_numpy(input_value, "cpu")
+        owned = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
+        foreign = other_session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
 
         # Shared-allocator and locally owned values are both accepted.
         session._validate_ortvalue_ownership([unowned, owned])
@@ -2203,11 +2207,15 @@ class TestInferenceSession(unittest.TestCase):
         input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
         reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
 
-        gpu_input = session.create_ortvalue_from_numpy(input_value, "webgpu")
+        # Step 1: allocate fixed device tensors from the session allocator.
+        gpu_input = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
         gpu_output = session.create_ortvalue_from_shape_and_type(output_metadata.shape, np.float32, "webgpu")
+        # Step 2: upload the host input with the environment-level copy_tensors.
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(input_value)], [gpu_input])
         self.assertTrue(gpu_input._is_webgpu_buffer)
         self.assertEqual(gpu_input.device_name(), "webgpu")
-        gpu_alias_input = session.create_ortvalue_from_numpy(
+        gpu_alias_input = device_ortvalue_from_numpy(
+            session,
             input_value,
             "gpu",
             vendor_id=onnxrt.OrtDeviceVendorId.NONE,
@@ -2252,21 +2260,19 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
             global_cpu_input.update_inplace(gpu_input)
         # Shared-allocator WebGPU values have no session owner but remain bindable.
-        shared_provenance_source = session.create_ortvalue_from_numpy(input_value, "webgpu")
+        shared_provenance_source = device_ortvalue_from_numpy(session, input_value, "webgpu")
         unowned_webgpu_input = onnxrt.OrtValue(shared_provenance_source._get_c_value())
         self.assertIsNone(unowned_webgpu_input._session)
         self.assertTrue(unowned_webgpu_input._is_webgpu_buffer)
         scratch_webgpu_value = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
-        scratch_webgpu_value.update_inplace(unowned_webgpu_input)
-        unowned_webgpu_input.update_inplace(scratch_webgpu_value)
+        onnxrt.copy_tensors([unowned_webgpu_input], [scratch_webgpu_value])
+        onnxrt.copy_tensors([scratch_webgpu_value], [unowned_webgpu_input])
         unsafe_io_binding.bind_ortvalue_input(input_metadata.name, unowned_webgpu_input)
         unsafe_io_binding.clear_binding_inputs()
 
-        # Host upload may be unavailable, but ownership must not be the reason.
-        try:
-            unowned_webgpu_input.update_inplace(input_value)
-        except (ValueError, RuntimeError) as error:
-            self.assertNotIn("retain the session", str(error))
+        # Host upload into a shared-allocator device value goes through copy_tensors.
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(input_value)], [unowned_webgpu_input])
+        np.testing.assert_allclose(unowned_webgpu_input.numpy(), input_value)
 
         # WebGPU -> CPU readback through the shared data transfer is supported for the default context.
         onnxrt.copy_tensors([unowned_webgpu_input], [global_cpu_input])
@@ -2332,10 +2338,10 @@ class TestInferenceSession(unittest.TestCase):
         del vector_outputs
 
         updated_input = input_value + 10.0
-        gpu_input.update_inplace(updated_input)
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(updated_input)], [gpu_input])
         updated_expected = reference_session.run(None, {input_metadata.name: updated_input})[0]
-        alternate_gpu_output = session.create_ortvalue_from_numpy(
-            np.zeros(output_metadata.shape, dtype=np.float32), "webgpu"
+        alternate_gpu_output = device_ortvalue_from_numpy(
+            session, np.zeros(output_metadata.shape, dtype=np.float32), "webgpu"
         )
         alternate_io_binding = session.io_binding()
         alternate_io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
@@ -2360,7 +2366,7 @@ class TestInferenceSession(unittest.TestCase):
         )
 
         ortvalue_update_input = input_value + 20.0
-        gpu_input.update_inplace(session.create_ortvalue_from_numpy(ortvalue_update_input, "webgpu"))
+        onnxrt.copy_tensors([device_ortvalue_from_numpy(session, ortvalue_update_input, "webgpu")], [gpu_input])
         ortvalue_update_expected = reference_session.run(None, {input_metadata.name: ortvalue_update_input})[0]
         np.testing.assert_allclose(run_and_copy_output(session, io_binding), ortvalue_update_expected)
 
@@ -2373,7 +2379,7 @@ class TestInferenceSession(unittest.TestCase):
             ortvalue_update_expected,
         )
         repeated_capture_input = input_value + 30.0
-        gpu_input.update_inplace(repeated_capture_input)
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(repeated_capture_input)], [gpu_input])
         repeated_capture_expected = reference_session.run(None, {input_metadata.name: repeated_capture_input})[0]
         np.testing.assert_allclose(
             run_and_copy_output(session, io_binding, graph_one_run_options),
@@ -2386,7 +2392,7 @@ class TestInferenceSession(unittest.TestCase):
         no_capture_run_options.add_run_config_entry("gpu_graph_id", "-1")
         for offset in (40.0, 50.0):
             uncaptured_input = input_value + offset
-            gpu_input.update_inplace(uncaptured_input)
+            onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(uncaptured_input)], [gpu_input])
             np.testing.assert_allclose(
                 run_and_copy_output(session, io_binding, no_capture_run_options),
                 reference_session.run(None, {input_metadata.name: uncaptured_input})[0],
@@ -2437,7 +2443,7 @@ class TestInferenceSession(unittest.TestCase):
             io_binding = current_session.io_binding()
             io_binding.bind_ortvalue_input(
                 input_metadata.name,
-                current_session.create_ortvalue_from_numpy(input_value, "webgpu"),
+                device_ortvalue_from_numpy(current_session, input_value, "webgpu"),
             )
             io_binding.bind_ortvalue_output(
                 output_metadata.name,
@@ -2545,7 +2551,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.skipTest(str(error))
             raise
 
-        large = session.create_ortvalue_from_numpy(np.zeros((64, 64), dtype=np.float32), "webgpu")
+        large = device_ortvalue_from_numpy(session, np.zeros((64, 64), dtype=np.float32), "webgpu")
         small = session.create_ortvalue_from_shape_and_type([2, 2], np.float32, "webgpu")
 
         # Aliased source and destination: WebGPU forbids a self copy.
@@ -2559,7 +2565,7 @@ class TestInferenceSession(unittest.TestCase):
         # The session is still usable: the failures were reported, not fatal.
         input_metadata = session.get_inputs()[0]
         input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
-        gpu_input = session.create_ortvalue_from_numpy(input_value, "webgpu")
+        gpu_input = device_ortvalue_from_numpy(session, input_value, "webgpu")
         gpu_copy = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
         onnxrt.copy_tensors([gpu_input], [gpu_copy])
         np.testing.assert_allclose(gpu_copy.numpy(), input_value)

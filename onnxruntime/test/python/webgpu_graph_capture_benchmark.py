@@ -125,7 +125,8 @@ def main() -> None:
         expected_shape = static_shape(metadata.name, metadata.shape)
         if list(host_input.shape) != expected_shape:
             raise ValueError(f"Input {metadata.name} has shape {host_input.shape}; expected {expected_shape}")
-        device_input = session.create_ortvalue_from_numpy(host_input, "webgpu")
+        device_input = session.create_ortvalue_from_shape_and_type(expected_shape, host_input.dtype, "webgpu")
+        ort.copy_tensors([ort.OrtValue.ortvalue_from_numpy(host_input)], [device_input])
         io_binding.bind_ortvalue_input(metadata.name, device_input)
         host_inputs[metadata.name] = host_input
         device_inputs[metadata.name] = device_input
@@ -151,7 +152,7 @@ def main() -> None:
         start = time.perf_counter()
         if include_input_copies:
             for name, device_input in device_inputs.items():
-                device_input.update_inplace(host_inputs[name])
+                ort.copy_tensors([ort.OrtValue.ortvalue_from_numpy(host_inputs[name])], [device_input])
         session.run_with_iobinding(io_binding)
         outputs = io_binding.copy_outputs_to_cpu()
         return (time.perf_counter() - start) * 1000.0, outputs
