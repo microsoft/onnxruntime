@@ -446,8 +446,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   if (!parameters.is_causal && !use_flash_attention) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention: is_causal=0 requires the FlashAttention backend (sm>=80, fp16/bf16, "
-                           "unquantized cache, head_size ",
+                           "PagedAttention: is_causal=0 requires the FlashAttention backend, but the current "
+                           "configuration is not eligible (head_size ",
                            parameters.head_size, ", block_size ", parameters.block_size, ").");
   }
 

@@ -843,6 +843,7 @@ def parity_check_paged_attention(
     atol=1e-3,
     sdpa_kernel=0,
     new_seqlens_override=None,
+    local_window_size_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -938,7 +939,12 @@ def parity_check_paged_attention(
     window_size = (-1, -1)
     left_window_size = -1
     if config.local:
-        left_window_size = random.randint(1, config.total_sequence_length - 1)  # random.randint is inclusive
+        left_window_size = (
+            local_window_size_override
+            if local_window_size_override is not None
+            else random.randint(1, config.total_sequence_length - 1)
+        )
+        assert 0 < left_window_size < config.total_sequence_length
         window_size = (left_window_size, right_window_size)
     else:
         left_window_size = -1
@@ -1491,7 +1497,14 @@ class TestPagedAttentionFeatures(unittest.TestCase):
     @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
     def test_non_causal_local_window(self):
         # local_window_size still bounds the mask on the left when the causal bound is removed.
-        parity_check_paged_attention(self._config(is_causal=False, local=True), rtol=5e-3, atol=5e-3)
+        config = self._config(is_causal=False, local=True)
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.full((config.batch_size,), config.sequence_length, dtype=torch.int32),
+            local_window_size_override=4,
+        )
 
     @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
     def test_non_causal_with_rotary_and_packed(self):
@@ -1580,6 +1593,15 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
     @parameterized.expand(paged_attention_test_cases_webgpu())
     def test_paged_attention_webgpu(self, _, config):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_non_causal_rejected(self):
+        config = Config(
+            1, 4, 32, 2, 1, 32, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider"
+        )
+        config.is_causal = False
+        with self.assertRaises(Exception) as ctx:
+            parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+        self.assertIn("PagedAttention (WebGPU): is_causal=0 is not supported yet", str(ctx.exception))
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
