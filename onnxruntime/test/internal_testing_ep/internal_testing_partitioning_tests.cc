@@ -34,6 +34,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#include <limits>
 #include <queue>
 
 using namespace ONNX_NAMESPACE;
@@ -52,6 +53,26 @@ using namespace onnxruntime::internal_testing_ep;
 // (Conv, LogSoftmax) and core framework utilities, so they are intentionally not
 // guarded by DISABLE_CONTRIB_OPS and provide regression coverage in contrib-disabled builds.
 namespace {
+
+constexpr size_t kNhwcSurvivorWorkspaceBytes = 700 * 1024;
+constexpr size_t kNhwcDroppedWorkspaceBytes = 50 * 1024;
+constexpr size_t kNhwcPass2OnlyWorkspaceBytes = 350 * 1024;
+
+Level1MemoryEstimate GetNhwcAccountingTestEstimate(const std::string& op_type) {
+  if (op_type == "Conv") {
+    return {/*runtime_workspace_bytes=*/kNhwcSurvivorWorkspaceBytes,
+            /*persistent_prepack_bytes=*/102,
+            /*temporary_prepack_bytes=*/103};
+  }
+  if (op_type == "Relu") {
+    return {/*runtime_workspace_bytes=*/kNhwcPass2OnlyWorkspaceBytes,
+            /*persistent_prepack_bytes=*/302,
+            /*temporary_prepack_bytes=*/303};
+  }
+  return {/*runtime_workspace_bytes=*/kNhwcDroppedWorkspaceBytes,
+          /*persistent_prepack_bytes=*/202,
+          /*temporary_prepack_bytes=*/203};
+}
 
 class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
  public:
@@ -142,10 +163,9 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 // It reports kCudaExecutionProvider as its type so that the SizeBasedResourceAccountant
 // (which CreateAccountants registers under kCudaExecutionProvider) is wired to it,
 // mirroring the real in-tree CUDA EP. Like the CUDA EP, it attaches accounting costs
-// only to first-pass (newly claimed) capabilities. Second-pass survivors are already
-// tagged with this EP and take the "previously assigned" branch, so they carry no
-// cost and rely on the partitioner's deferred commit (using the captured first-pass
-// costs) for their budget. Dropped nodes therefore never leak budget.
+// only to newly claimed capabilities. Second-pass survivors are already tagged with
+// this EP and carry no new cost; they rely on the partitioner's provisional reservation.
+// Dropped nodes therefore never leak budget.
 class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
  public:
   AccountingNhwcTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {
@@ -180,6 +200,15 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
     };
 
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    size_t consumed_memory = 0;
+    size_t memory_threshold = std::numeric_limits<size_t>::max();
+    if (resource_accountant != nullptr) {
+      consumed_memory = std::get<size_t>(resource_accountant->GetConsumedAmount());
+      if (const auto threshold = resource_accountant->GetThreshold(); threshold.has_value()) {
+        memory_threshold = std::get<size_t>(*threshold);
+      }
+    }
+
     for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
       const Node* node = graph_viewer.GetNode(node_index);
       if (node == nullptr) {
@@ -188,13 +217,15 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
 
       const bool is_conv = node->OpType() == "Conv";
       const bool is_log_softmax = node->OpType() == "LogSoftmax";
-      if (!is_conv && !is_log_softmax) {
+      const bool is_relu = node->OpType() == "Relu";
+      if (!is_conv && !is_log_softmax && !is_relu) {
         continue;
       }
 
       // Drop LogSoftmax on the second pass to model the EP releasing a node that
-      // it tentatively claimed on the first pass.
-      if (second_pass && is_log_softmax) {
+      // it tentatively claimed on the first pass. Relu models a node that becomes
+      // claimable only in pass 2.
+      if ((second_pass && is_log_softmax) || (!second_pass && is_relu)) {
         continue;
       }
 
@@ -218,22 +249,25 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
         capability->sub_graph->SetAccountant(resource_accountant);
         for (auto cost_node_index : capability->sub_graph->nodes) {
           const Node* cost_node = graph_viewer.GetNode(cost_node_index);
-          const Level1MemoryEstimate estimate =
-              cost_node->OpType() == "Conv"
-                  ? Level1MemoryEstimate{
-                        /*runtime_workspace_bytes=*/101,
-                        /*persistent_prepack_bytes=*/102,
-                        /*temporary_prepack_bytes=*/103}
-                  : Level1MemoryEstimate{
-                        /*runtime_workspace_bytes=*/201,
-                        /*persistent_prepack_bytes=*/202,
-                        /*temporary_prepack_bytes=*/203};
-          capability->sub_graph->AppendNodeCost(
-              resource_accountant->ComputeResourceCount(*cost_node, estimate));
+          const ResourceCount cost = resource_accountant->ComputeResourceCount(
+              *cost_node, GetNhwcAccountingTestEstimate(cost_node->OpType()));
+          const size_t cost_bytes = std::get<size_t>(cost);
+          if (consumed_memory > memory_threshold ||
+              cost_bytes > memory_threshold - consumed_memory) {
+            resource_accountant->SetStopAssignment();
+            capability.reset();
+            break;
+          }
+          consumed_memory += cost_bytes;
+          capability->sub_graph->AppendNodeCost(cost);
         }
       }
 
-      capabilities.push_back(std::move(capability));
+      if (capability != nullptr) {
+        capabilities.push_back(std::move(capability));
+      } else {
+        break;
+      }
     }
 
     return capabilities;
@@ -418,11 +452,12 @@ TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
 // Validates that the resource accountant is updated correctly across the NHWC two-pass
 // partitioning flow: a node tentatively claimed on the first pass but dropped on the
 // second pass must NOT consume budget (no phantom), while a node that survives must be
-// committed exactly once (no double-count). This guards the fix where first-pass NHWC
-// tags are tentative and budget is committed only for second-pass survivors.
-TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
+// committed exactly once (no double-count). A pass-2-only node must be evaluated against
+// the provisional cost of pass-1 survivors, so independently fitting passes cannot exceed
+// the combined budget.
+TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admission) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
-  Model model("NhwcTwoPassAccountingCommitsOnlySurvivors",
+  Model model("NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admission",
               false,
               ModelMetaData(),
               PathString(),
@@ -438,10 +473,12 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
   auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* relu_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
 
   builder.AddConvNode(input, weights, conv_output);
-  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  builder.AddNode("Relu", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{relu_output});
+  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{relu_output}, std::vector<NodeArg*>{output});
   builder.SetGraphOutputs();
 
   ASSERT_STATUS_OK(graph.Resolve());
@@ -456,7 +493,7 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   // Build a fresh ad-hoc accountant (no stats file) via the real factory.
   auto make_accountant = [](std::optional<ResourceAccountantMap>& acc_map) -> IResourceAccountant* {
     ConfigOptions config;
-    // Large memory limit so nothing is offloaded; empty stats file => ad-hoc cost mode.
+    // Large memory limit so reference costs are always available; empty stats file => ad-hoc mode.
     EXPECT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
     EXPECT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
     EXPECT_TRUE(acc_map.has_value());
@@ -466,37 +503,46 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
 
   // Reference per-node costs computed independently on fresh accountants.
   const Node* conv_node = nullptr;
+  const Node* relu_node = nullptr;
   const Node* log_softmax_node = nullptr;
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "Conv") {
       conv_node = &node;
+    } else if (node.OpType() == "Relu") {
+      relu_node = &node;
     } else if (node.OpType() == "LogSoftmax") {
       log_softmax_node = &node;
     }
   }
   ASSERT_NE(conv_node, nullptr);
+  ASSERT_NE(relu_node, nullptr);
   ASSERT_NE(log_softmax_node, nullptr);
 
   std::optional<ResourceAccountantMap> ref_conv_map;
+  std::optional<ResourceAccountantMap> ref_relu_map;
   std::optional<ResourceAccountantMap> ref_ls_map;
   IResourceAccountant* ref_conv_acc = make_accountant(ref_conv_map);
+  IResourceAccountant* ref_relu_acc = make_accountant(ref_relu_map);
   IResourceAccountant* ref_ls_acc = make_accountant(ref_ls_map);
   ASSERT_NE(ref_conv_acc, nullptr);
+  ASSERT_NE(ref_relu_acc, nullptr);
   ASSERT_NE(ref_ls_acc, nullptr);
-  const Level1MemoryEstimate conv_estimate{
-      /*runtime_workspace_bytes=*/101,
-      /*persistent_prepack_bytes=*/102,
-      /*temporary_prepack_bytes=*/103};
-  const Level1MemoryEstimate log_softmax_estimate{
-      /*runtime_workspace_bytes=*/201,
-      /*persistent_prepack_bytes=*/202,
-      /*temporary_prepack_bytes=*/203};
+  const Level1MemoryEstimate conv_estimate = GetNhwcAccountingTestEstimate("Conv");
+  const Level1MemoryEstimate relu_estimate = GetNhwcAccountingTestEstimate("Relu");
+  const Level1MemoryEstimate log_softmax_estimate = GetNhwcAccountingTestEstimate("LogSoftmax");
   const size_t expected_conv_cost =
       get_size(ref_conv_acc->ComputeResourceCount(*conv_node, conv_estimate));
+  const size_t expected_relu_cost =
+      get_size(ref_relu_acc->ComputeResourceCount(*relu_node, relu_estimate));
   const size_t expected_log_softmax_cost =
       get_size(ref_ls_acc->ComputeResourceCount(*log_softmax_node, log_softmax_estimate));
   ASSERT_GT(expected_conv_cost, 0u);
+  ASSERT_GT(expected_relu_cost, 0u);
   ASSERT_GT(expected_log_softmax_cost, 0u);
+  constexpr size_t kBudgetBytes = 1000 * 1024;
+  ASSERT_LT(expected_conv_cost + expected_log_softmax_cost, kBudgetBytes);
+  ASSERT_LT(expected_relu_cost, kBudgetBytes);
+  ASSERT_GT(expected_conv_cost + expected_relu_cost, kBudgetBytes);
 
   // Drive partitioning directly with the accounting-aware NHWC EP. The accountant is
   // created internally by GraphPartitioner from the config option below (keyed to
@@ -513,7 +559,7 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
 
   SessionOptions sess_options;
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
 
   // Capture the accountant's consumed amount when the survivor partition is assigned.
   // on_partition_assignment_fn runs after GetCapabilityForEP completes (and therefore
@@ -523,9 +569,17 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   std::optional<size_t> observed_persistent_prepack;
   std::optional<size_t> observed_temporary_prepack;
   std::optional<WorkspaceEstimateSourceCounts> observed_source_counts;
+  bool pass2_only_relu_assigned = false;
   OnPartitionAssignmentFunction on_assignment =
-      [&](const Graph&, const ComputeCapability&, const std::string& assigned_ep_type) {
+      [&](const Graph& assignment_graph, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
         if (assigned_ep_type == kCudaExecutionProvider && ep_raw->observed_accountant() != nullptr) {
+          for (NodeIndex node_index : capability.sub_graph->nodes) {
+            const Node* assigned_node = assignment_graph.GetNode(node_index);
+            if (assigned_node != nullptr && assigned_node->OpType() == "Relu") {
+              pass2_only_relu_assigned = true;
+            }
+          }
           observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
           observed_workspace = ep_raw->observed_accountant()->GetCommittedWorkspaceEstimate();
           observed_persistent_prepack =
@@ -566,6 +620,8 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   // LogSoftmax was dropped on the second pass: its cost must not leak (no phantom budget).
   EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
       << "Dropped LogSoftmax must not consume budget.";
+  EXPECT_FALSE(pass2_only_relu_assigned)
+      << "Pass-2-only Relu must be rejected because its cost plus the Conv survivor exceeds the budget.";
   ASSERT_TRUE(observed_workspace.has_value());
   ASSERT_TRUE(observed_persistent_prepack.has_value());
   ASSERT_TRUE(observed_temporary_prepack.has_value());

@@ -394,6 +394,14 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           }
         }
       }
+
+      // Provisionally reserve every pass-1 cost before the second GetCapability call. Pass 2 may
+      // introduce newly claimable nodes, and its admission decisions must include the cost of
+      // pass-1 survivors. Nodes that do not survive pass 2 are rolled back below.
+      for (const auto& [node_index, cost] : pass1_node_costs) {
+        ORT_UNUSED_PARAMETER(node_index);
+        params.resource_accountant->AddConsumedAmount(cost);
+      }
     }
 
     // Keep pass-1 EP assignments through the second GetCapability call so that EPs can
@@ -460,12 +468,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       }
     }
 
-    // Commit resource-accountant budget for pass-1 tentatively-tagged nodes that survived
-    // the second pass (still claimed by this EP). Pass-1 deliberately deferred this commit
-    // (TryAssignNodes skipped accounting) so that nodes dropped in the loop above never
-    // leak phantom budget into later accounting decisions. New nodes introduced for the
-    // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
-    // their partitions are placed, so they are intentionally excluded here.
+    // Finalize the provisional pass-1 reservations. Remove costs for nodes dropped in pass 2;
+    // survivor costs remain reserved and therefore are not added again. New nodes introduced for
+    // pass 2 carry their own costs and are accounted normally when their partitions are placed.
     //
     // Only the consumed total and captured workspace estimate are adjusted here. Per-node
     // initializer tracking from CommitResourcesForNode is intentionally not replayed. The
@@ -477,20 +482,24 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // never be exceeded.
     if (params.resource_accountant != nullptr) {
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it == pass1_node_costs.end()) {
+          continue;
+        }
+
         if (pass2_node_indices.count(node_index) == 0) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
           continue;
         }
         const auto* node = graph.GetNode(node_index);
         if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
           continue;
         }
-        auto cost_it = pass1_node_costs.find(node_index);
-        if (cost_it != pass1_node_costs.end()) {
-          params.resource_accountant->AddConsumedAmount(cost_it->second);
-          auto workspace_it = pass1_workspace_estimates.find(node_index);
-          if (workspace_it != pass1_workspace_estimates.end()) {
-            params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
-          }
+
+        auto workspace_it = pass1_workspace_estimates.find(node_index);
+        if (workspace_it != pass1_workspace_estimates.end()) {
+          params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
         }
       }
     }

@@ -213,8 +213,19 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     const int requested_profile_max_m =
         profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
                           : profile_m.back();
-    const int profile_max_m = onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+    int profile_max_m = onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
         requested_profile_max_m, onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+    if (m.has_value()) {
+      const int runtime_profile_m =
+          onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+              SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+      profile_max_m = std::max(profile_max_m, runtime_profile_m);
+    } else {
+      // A dynamic M can lazily profile any bucket at runtime. Reserve the largest supported bucket
+      // so capacity admission cannot accept a node whose later lazy-profile allocation exceeds the
+      // partition-time estimate.
+      profile_max_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+    }
 
     const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
     const auto profiler_runner_workspace =
