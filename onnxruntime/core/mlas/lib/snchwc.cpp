@@ -31,13 +31,7 @@ namespace {
 bool
 MlasNchwcGetEnvironmentVariable(const char* Name, char* Buffer, size_t BufferSize)
 {
-    //
-    // Both paths below index Buffer[BufferSize - 1], which would underflow for
-    // an empty buffer.
-    //
-
-    assert(BufferSize > 0);
-
+ORT_ENFORCE(BufferSize > 0);
 #if defined(_MSC_VER)
     size_t Length = 0;
 
@@ -684,6 +678,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         assert(BlockSize > 0);
 
         const size_t Wanted = static_cast<size_t>(WorkBlock->tids) * Target;
+        ORT_ENFORCE(BlockSize > 0);
         const size_t Blocks = OutputChannels / BlockSize;
 
         size_t Size = MaximumFilterSetSize;
@@ -2229,3 +2224,4 @@ MlasPoolAverageIncludePadFloatKernel(
 }
 
 #endif
+
