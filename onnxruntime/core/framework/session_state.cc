@@ -769,7 +769,10 @@ Status SessionState::PrepackConstantInitializedTensors(
   // suppress their own temporary pool when doing so avoids real oversubscription. This also covers
   // the case where the session pool exists but has size 1 (GetThreadPool() == nullptr): the outer
   // dispatch then falls back to sequential and the kernel's own pool should still run.
-  ORT_RETURN_IF_ERROR(sess_options_.config_options.AddConfigEntry(
+  // sess_options_ is a `const SessionOptions&` here, but the referenced object is owned (non-const)
+  // by the InferenceSession that created this SessionState, and this write happens single-threaded
+  // before any node's PrePack() runs, so it cannot race with the concurrent reads performed later.
+  ORT_RETURN_IF_ERROR(const_cast<SessionOptions&>(sess_options_).config_options.AddConfigEntry(
       kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
 
   if (should_cache_prepacked_weights_for_shared_initializers) {
