@@ -151,8 +151,8 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
   const bool apply_silu = activation_ == "silu" || activation_ == "swish";
   const int64_t total = batch_size * sequence_length * channels;
 
-  ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total),
+  ThreadPool::TryParallelFor(
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total), static_cast<double>(kernel_size * hidden_size),
       [&](ptrdiff_t begin, ptrdiff_t end) {
         for (int64_t linear = begin; linear < end; ++linear) {
           const int64_t c = linear % hidden_size;
@@ -181,8 +181,7 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
           }
           output_data[linear] = static_cast<T>(apply_silu ? SiluFloat(sum) : sum);
         }
-      },
-      0);
+      });
 
   return Status::OK();
 }
@@ -228,8 +227,8 @@ Status NgramHashMapping<T>::Compute(OpKernelContext* context) const {
   T* output_data = output->MutableData<T>();
 
   const int64_t total = batch_size * sequence_length;
-  ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total),
+  ThreadPool::TryParallelFor(
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total), static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
       [&](ptrdiff_t begin, ptrdiff_t end) {
         for (int64_t linear = begin; linear < end; ++linear) {
           const int64_t t = linear % sequence_length;
@@ -254,8 +253,7 @@ Status NgramHashMapping<T>::Compute(OpKernelContext* context) const {
             }
           }
         }
-      },
-      0);
+      });
 
   return Status::OK();
 }
@@ -322,8 +320,8 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
   T* output_data = output->MutableData<T>();
 
   const int64_t rows = batch_size * sequence_length * hc_mult;
-  ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows),
+  ThreadPool::TryParallelFor(
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows), static_cast<double>(hidden_size * embedding_size),
       [&](ptrdiff_t begin, ptrdiff_t end) {
         std::vector<float> key(static_cast<size_t>(hidden_size));
         std::vector<float> value(static_cast<size_t>(hidden_size));
@@ -376,8 +374,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
             output_row[c] = static_cast<T>(gate * value[static_cast<size_t>(c)]);
           }
         }
-      },
-      0);
+      });
 
   return Status::OK();
 }
