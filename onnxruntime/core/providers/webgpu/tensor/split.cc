@@ -75,7 +75,7 @@ Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status SplitContiguousVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  std::vector<const ShaderVariableHelper*> outputs;
+  InlinedVector<const ShaderVariableHelper*> outputs;
   outputs.reserve(segment_vector_sizes_.size());
   for (size_t i = 0; i < segment_vector_sizes_.size(); ++i) {
     outputs.push_back(
