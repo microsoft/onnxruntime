@@ -178,15 +178,17 @@ Each routing record contains:
 | `input_token_hash` | Stable identifier for joining CPU and CUDA iterations with identical token inputs. |
 | `token_index`, `layer_id` | Position of the routing decision in the generated sequence. |
 | `expert_ids`, `router_weights` | Ordered top-k experts and their router weights. |
-| `resident_experts` | Placement snapshot used by this inference. |
+| `execution_device_id` | Device that executed the expert; `-1` denotes CPU and non-negative values denote CUDA device IDs. |
+| `resident_experts` | Placement snapshot including `(layer_id, expert_id, cuda_device_id, slot_id)` tuples. |
 | `cache_hit` | Whether each selected expert executed on CUDA. |
 | `admitted`, `evicted` | Placement changes decided after the routing update. |
 | `moe_completed_ns`, `copy_enqueued_ns`, `copy_ready_ns` | MoE completion, copy interval, and readiness before the next token. |
-| `copy_bytes`, `copy_duration_ns` | Host-to-device traffic caused by cache changes. |
+| `copy_source_device_id`, `copy_destination_device_id` | Transfer endpoints; CPU is identified by `-1`. |
+| `copy_bytes`, `copy_duration_ns` | Host-to-device or future peer-to-peer traffic caused by cache changes. |
 | `iteration_duration_us` | Complete `model_run` duration, including all non-MoE work. |
 | `cpu_duration_ns`, `cuda_duration_ns` | MoE execution time split by device when the cache is implemented. |
 
-Run metadata records the model revision, ONNX Runtime and `onnxruntime-genai` versions, CUDA version, GPU and CPU models, capacity, policy parameters, random seed, warm-up length, and benchmark configuration. Prompts and generated text are not logged by default; stable request identifiers are sufficient for joins when explicitly required.
+Run metadata records the model revision, ONNX Runtime and `onnxruntime-genai` versions, CUDA version, GPU and CPU models, visible CUDA device IDs and topology, capacity, policy parameters, random seed, warm-up length, and benchmark configuration. Prompts and generated text are not logged by default; stable request identifiers are sufficient for joins when explicitly required.
 
 ## Benchmarks and simulation
 
@@ -313,6 +315,7 @@ Every persistent change is delivered through one of the following pull requests.
 - Reuse `profiling::Profiler` and its JSON serializer; do not add an independent logging path.
 - Extend `model_run` events with iteration indices, request identifiers, and concrete model-input dimensions.
 - Add correlated MoE profiler events containing the selected experts, router weights, and MoE completion timestamp needed to determine the earliest legal copy time.
+- Record execution, cache-slot, and transfer endpoint device IDs so the trace format remains usable for the multi-GPU study.
 - Record complete iteration time for CPU and CUDA, including non-MoE work.
 - Reject the statistics flag when profiling output is not enabled.
 - Test the disabled path, JSON schema, sequence reset detection inputs, event correlation, and explicit overflow behavior.
@@ -405,6 +408,30 @@ This is not a planned pull request or a requirement for completing the implement
 - Compare raw sampled outputs with compact deterministic projections to quantify trace size, logging overhead, and predictive accuracy.
 - Simulate prefetching driven by the predictor and include late copies, unused copies, and predictor cost.
 - If this research is pursued, document its results separately and propose implementation work only when it improves the PR 7 baseline.
+
+## Going further: multiple CUDA devices
+
+The initial implementation remains limited to one CUDA device, but the same trace-first plan can be extended to several CUDA devices installed in one machine. Every expert still has one canonical CPU copy. Each CUDA device owns an independent bounded cache containing copies of selected experts.
+
+PR 1 already makes the trace schema forward-compatible by recording execution devices, cache-slot devices, transfer endpoints, and visible-device topology. This does not add multi-GPU behavior to the main implementation.
+
+The multi-device study should distinguish two use cases:
+
+- **Independent request placement:** each request runs on one CUDA device and uses only that device's expert cache.
+- **Cross-device expert execution:** one request may dispatch experts to several CUDA devices and must transfer activations and outputs between them.
+
+The first mode extends the single-device cache directly. The second requires explicit modeling of PCIe or NVLink topology, peer-to-peer availability, activation-transfer cost, synchronization, and output aggregation. It must not be assumed beneficial merely because aggregate CUDA memory increases.
+
+Extend the study in the same order:
+
+1. Measure CPU-to-device and device-to-device bandwidth and latency for every relevant pair.
+2. Replay the existing traces with one capacity and cache state per CUDA device.
+3. Compare replicated, statically sharded, and adaptive expert placement.
+4. Include device assignment in every hit, miss, admission, eviction, and transfer.
+5. Estimate end-to-end iteration time including activation movement, expert computation, weight copies, and synchronization.
+6. Implement multi-device dispatch only if the simulator improves the best single-device result.
+
+A future configuration may generalize `session.moe_cuda_expert_capacity` to a per-device capacity map while preserving the existing single-device option. Cache identity then becomes `(cuda_device_id, slot_id)`, and one expert may have copies on zero, one, or several CUDA devices while its CPU weights remain permanently resident.
 
 ## Decision criteria
 
