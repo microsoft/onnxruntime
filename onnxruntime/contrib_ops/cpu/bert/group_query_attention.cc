@@ -287,6 +287,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "kv_quant_group_size must divide head_size; got group_size ", oscar_group_size,
                   " head_size ", hs);
     oscar_num_groups = hs / oscar_group_size;
+    ORT_RETURN_IF(oscar_num_groups > kOscar2BitMaxGroups,
+                  "PER_GROUP 2-bit requires head_size / kv_quant_group_size <= ", kOscar2BitMaxGroups,
+                  "; got ", oscar_num_groups, " groups (head_size ", hs, ", group_size ", oscar_group_size, ")");
     const int meta_bytes = kv_quant_meta_fp16_ ? static_cast<int>(sizeof(uint16_t)) : static_cast<int>(sizeof(float));
     kv_cache_extra_bits = oscar_num_groups * 2 * meta_bytes * 8;
   }
@@ -668,9 +671,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         }
 
         const int hp_window = kv_quant_sink_ + kv_quant_recent_;
-        // OSCAR spectral rotations (optional): per-kv-head [kv_num_heads, head_size, head_size].
-        const float* oscar_r_k_data = oscar_rotation_k != nullptr ? oscar_rotation_k->Data<float>() : nullptr;
-        const float* oscar_r_v_data = oscar_rotation_v != nullptr ? oscar_rotation_v->Data<float>() : nullptr;
 
         // Half -> float for a raw Q/K/V/head_sink buffer (identity when T == float).
         auto bridge_in = [&](const T* src, size_t count, BufferUniquePtr& owner) -> const float* {
@@ -704,6 +704,37 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         const float* k_f = bridge_in(k_data_q, kv_count, k_owner);
         const float* v_f = bridge_in(v_data_q, kv_count, v_owner);
         const float* head_sink_f = bridge_in(head_sink_data, static_cast<size_t>(num_heads_), hs_owner);
+
+        // OSCAR spectral rotations (optional): per-kv-head [kv_num_heads, head_size, head_size].
+        // These inputs are constrained to T in the schema, so an fp16 graph supplies MLFloat16
+        // matrices; validate the shape and bridge to float like Q/K/V before the float codec
+        // consumes them (calling Data<float>() directly would throw a type mismatch, and an
+        // unchecked shape would let a short initializer be over-read).
+        auto bridge_rotation = [&](const Tensor* rot, const char* name, BufferUniquePtr& owner,
+                                   const float*& out) -> Status {
+          out = nullptr;
+          if (rot == nullptr) {
+            return Status::OK();
+          }
+          const auto& dims = rot->Shape().GetDims();
+          ORT_RETURN_IF(dims.size() != 3 ||
+                            dims[0] != static_cast<int64_t>(kv_num_heads_) ||
+                            dims[1] != static_cast<int64_t>(head_size) ||
+                            dims[2] != static_cast<int64_t>(head_size),
+                        "GQA CPU: ", name,
+                        " must have shape [kv_num_heads, head_size, head_size] = [",
+                        kv_num_heads_, ", ", head_size, ", ", head_size, "]");
+          const size_t count = static_cast<size_t>(kv_num_heads_) *
+                               static_cast<size_t>(head_size) * static_cast<size_t>(head_size);
+          out = bridge_in(rot->Data<T>(), count, owner);
+          return Status::OK();
+        };
+
+        BufferUniquePtr r_k_owner, r_v_owner;
+        const float* oscar_r_k_data = nullptr;
+        const float* oscar_r_v_data = nullptr;
+        ORT_RETURN_IF_ERROR(bridge_rotation(oscar_rotation_k, "oscar_rotation_k", r_k_owner, oscar_r_k_data));
+        ORT_RETURN_IF_ERROR(bridge_rotation(oscar_rotation_v, "oscar_rotation_v", r_v_owner, oscar_r_v_data));
 
         // The float kernels write a float output; convert back to T afterwards when T != float.
         OrtValue out_f_value;

@@ -529,6 +529,16 @@ Status CheckOutputs(const T* output_qk, int qk_output) {
                            "qk_output attribute was configured but output buffer was not provided");
   }
 
+  // Enforce the reverse direction too. Shape inference cannot reliably tell an empty "" output_qk
+  // placeholder from a real connection once later optional outputs (present_hp_*) follow it, so its
+  // attribute/connection checks degrade to no-ops in that case. Here the actual output pointer is
+  // available: a connected output_qk buffer with the attribute left at NO_OUTPUT would be allocated
+  // but never written, so reject it.
+  if (qk_output == static_cast<int>(QKOutputType::NO_OUTPUT) && output_qk != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "output_qk buffer was provided but qk_output attribute was not configured");
+  }
+
   return Status::OK();
 }
 

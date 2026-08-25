@@ -2243,6 +2243,112 @@ def run_oscar2bit_mixed_rot_identity_test(
     )
 
 
+def run_oscar2bit_mixed_rot_decode_test(
+    batch_size,
+    prompt_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    sink,
+    recent,
+    k_rho=1.0,
+    v_rho=1.0,
+    atol=2e-3,
+):
+    """Incremental-decode parity WITH the OSCAR spectral rotation: prompt then one decode step,
+    feeding present + present_hp AND both rotation matrices back into the next step. Unlike the
+    prompt-only rotation tests, this exercises reuse of the already-rotated 2-bit history plus the
+    rotation of the recent token that ages into the 2-bit cache when the window slides -- the
+    stateful BuildMixedHeadCache branches the prompt-only tests never reach."""
+    np.random.seed(11)
+    hidden_size = num_heads * head_size
+    kv_hidden_size = kv_num_heads * head_size
+    s = prompt_len
+    phs = oscar2bit_packed_head_size(head_size, group_size)
+    hp_prompt_len = min(s, sink + recent)
+    hp_decode_len = min(s + 1, sink + recent)
+
+    r_k = _make_rotation(kv_num_heads, head_size, seed=1)
+    r_v = _make_rotation(kv_num_heads, head_size, seed=2)
+
+    q1 = np.random.uniform(-0.5, 0.5, (batch_size, s, hidden_size)).astype(np.float32)
+    k1 = np.random.uniform(-0.5, 0.5, (batch_size, s, kv_hidden_size)).astype(np.float32)
+    v1 = np.random.uniform(-0.5, 0.5, (batch_size, s, kv_hidden_size)).astype(np.float32)
+    hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=np.float32)
+
+    # Step 1: prompt. Build the rotated 2-bit history + FP sink/recent window in one call.
+    model1 = create_oscar2bit_mixed_rot_gqa_graph(
+        batch_size, s, s, s, 0, hp_prompt_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho
+    )
+    sess1 = _mixed_session(model1, sink, recent)
+    out1 = sess1.run(
+        None,
+        {
+            "query": q1,
+            "key": k1,
+            "value": v1,
+            "past_key": np.zeros((batch_size, kv_num_heads, s, phs), dtype=np.uint8),
+            "past_value": np.zeros((batch_size, kv_num_heads, s, phs), dtype=np.uint8),
+            "seqlens_k": np.array([s - 1] * batch_size, dtype=np.int32),
+            "total_sequence_length": np.array([s], dtype=np.int32),
+            "past_hp_key": hp_empty,
+            "past_hp_value": hp_empty.copy(),
+            "oscar_rotation_k": r_k,
+            "oscar_rotation_v": r_v,
+        },
+    )
+    present_k, present_v, present_hp_k, present_hp_v = out1[1], out1[2], out1[3], out1[4]
+
+    q2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, hidden_size)).astype(np.float32)
+    k2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, kv_hidden_size)).astype(np.float32)
+    v2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, kv_hidden_size)).astype(np.float32)
+
+    # Step 2: decode. Feed present + present_hp back as past + past_hp, with the same rotations.
+    model2 = create_oscar2bit_mixed_rot_gqa_graph(
+        batch_size, 1, s, s + 1, hp_prompt_len, hp_decode_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho
+    )
+    sess2 = _mixed_session(model2, sink, recent)
+    out_ort = sess2.run(
+        None,
+        {
+            "query": q2,
+            "key": k2,
+            "value": v2,
+            "past_key": present_k,
+            "past_value": present_v,
+            "seqlens_k": np.array([s] * batch_size, dtype=np.int32),
+            "total_sequence_length": np.array([s + 1], dtype=np.int32),
+            "past_hp_key": present_hp_k,
+            "past_hp_value": present_hp_v,
+            "oscar_rotation_k": r_k,
+            "oscar_rotation_v": r_v,
+        },
+    )[0]
+
+    # Reference: build the full (s + 1) rotated/quantized cache once and read the last (decode)
+    # query. Re-quantizing an aged-out recent token is deterministic, so the prompt-then-decode
+    # cache equals a single fixed s+1 partition -- attention is causal and per-query independent.
+    q_full = np.concatenate([q1, q2], axis=1)
+    k_full = np.concatenate([k1, k2], axis=1)
+    v_full = np.concatenate([v1, v2], axis=1)
+    k_bnsh = k_full.reshape(batch_size, s + 1, kv_num_heads, head_size).transpose(0, 2, 1, 3)
+    v_bnsh = v_full.reshape(batch_size, s + 1, kv_num_heads, head_size).transpose(0, 2, 1, 3)
+    out_ref = _canonical_mixed_rot_reference(
+        q_full, k_bnsh, v_bnsh, r_k, r_v, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho, sink, recent
+    )[:, -1:, :]
+
+    if np.any(np.isnan(out_ort)):
+        raise AssertionError("NaN in output (mixed 2-bit rotated decode)")
+    np.testing.assert_allclose(
+        out_ort,
+        out_ref,
+        atol=atol,
+        rtol=0.1,
+        err_msg=f"mixed 2-bit rotated decode mismatch (sink={sink}, recent={recent}, group_size={group_size})",
+    )
+
+
 class TestGQACPUQuantizedKVOscar2BitMixed(unittest.TestCase):
     """CPU GroupQueryAttention: OSCAR 2-bit KV cache with the mixed-precision sink/recent window."""
 
@@ -2334,6 +2440,16 @@ class TestGQACPUQuantizedKVOscar2BitRotation(unittest.TestCase):
 
     def test_rotation_two_groups(self):
         run_oscar2bit_mixed_rot_prompt_test(1, 16, 2, 2, 32, 16, sink=2, recent=4)
+
+    def test_rotation_decode_step(self):
+        """Decode after a prompt, feeding present/present_hp + both rotations into the next step."""
+        run_oscar2bit_mixed_rot_decode_test(1, 10, 2, 2, 128, 64, sink=2, recent=4)
+
+    def test_rotation_decode_gqa_rho(self):
+        run_oscar2bit_mixed_rot_decode_test(2, 12, 4, 2, 128, 64, sink=4, recent=4, k_rho=0.96, v_rho=0.92)
+
+    def test_rotation_decode_two_groups(self):
+        run_oscar2bit_mixed_rot_decode_test(1, 12, 2, 2, 32, 16, sink=2, recent=4)
 
 
 if __name__ == "__main__":

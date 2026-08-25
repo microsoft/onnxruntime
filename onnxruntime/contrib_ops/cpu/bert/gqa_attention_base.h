@@ -86,6 +86,12 @@ inline const uint8_t* ConcatQuantStateChunkGQA(
 // magnitude-percentile clip (rho). Dequant: x = code * scale + zero.
 constexpr int kOscar2BitQMax = 3;
 
+// Upper bound on the number of per-group scale/zero entries in one packed row. num_groups
+// equals head_size / kv_quant_group_size, so with the smallest group size (1) it equals
+// head_size. The dequant path reads metadata into fixed-size stack buffers of this size, so
+// the kernel rejects configurations that would exceed it (see group_query_attention.cc).
+constexpr int kOscar2BitMaxGroups = 512;
+
 // Per-group scale/zero metadata is stored either as fp32 (default) or fp16 (meta_fp16),
 // trading a little precision for a smaller cache row (48B -> 40B at head_size=128, 2 groups).
 inline size_t Oscar2BitPackedRowBytes(int head_size, int num_groups, bool meta_fp16) {
@@ -181,10 +187,9 @@ inline void Oscar2BitQuantizeRow(const float* src, uint8_t* dst, int head_size,
 inline void Oscar2BitDequantizeRow(const uint8_t* src, float* dst, int head_size,
                                    int group_size, int num_groups, bool meta_fp16) {
   const int packed_bytes = head_size / 4;
-  constexpr int kMaxGroups = 512;
-  float scales[kMaxGroups];
-  float zeros[kMaxGroups];
-  const int ng = std::min(num_groups, kMaxGroups);
+  float scales[kOscar2BitMaxGroups];
+  float zeros[kOscar2BitMaxGroups];
+  const int ng = std::min(num_groups, kOscar2BitMaxGroups);
   if (meta_fp16) {
     const uint8_t* sptr = src + packed_bytes;
     const uint8_t* zptr = sptr + static_cast<size_t>(num_groups) * sizeof(uint16_t);
