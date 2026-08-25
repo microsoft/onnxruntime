@@ -51,7 +51,14 @@ struct QNNProviderFactory : IExecutionProviderFactory {
       }
     }
 
-    auto qnn_ep = std::make_unique<QNNExecutionProvider>(provider_options, &config_options);
+    epctx::EpContextDataCallbacks ep_context_data_callbacks;
+    session_options.GetEpContextDataCallbacks(&ep_context_data_callbacks.read_func,
+                                              &ep_context_data_callbacks.read_state,
+                                              &ep_context_data_callbacks.read_max_data_size,
+                                              &ep_context_data_callbacks.write_func,
+                                              &ep_context_data_callbacks.write_state);
+    auto qnn_ep = std::make_unique<QNNExecutionProvider>(provider_options, &config_options,
+                                                         ep_context_data_callbacks);
     qnn_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return qnn_ep;
   }
