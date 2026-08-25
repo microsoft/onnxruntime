@@ -7,6 +7,8 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+#include <algorithm>
+
 #include "contrib_ops/cuda/bert/kernel_helper.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
@@ -16,6 +18,8 @@ namespace cuda {
 
 namespace {
 
+// One block per (token, g) row. The gate is a scalar for the whole row, so it is reduced once by the
+// block and then applied to every output channel, instead of being recomputed by each channel.
 template <typename T>
 __global__ void EngramGateKernel(
     const T* embeddings,
@@ -27,47 +31,55 @@ __global__ void EngramGateKernel(
     const T* key_norm_scale,
     const T* query_norm_scale,
     T* output,
-    int64_t total,
+    int64_t rows,
     int64_t hc_mult,
     int64_t hidden_size,
     int64_t embedding_size,
     float epsilon) {
-  for (int64_t linear = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-       linear < total;
-       linear += static_cast<int64_t>(gridDim.x) * blockDim.x) {
-    const int64_t c = linear % hidden_size;
-    const int64_t g = (linear / hidden_size) % hc_mult;
-    const int64_t token = linear / (hc_mult * hidden_size);
+  extern __shared__ float shared[];
+
+  for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
+    const int64_t g = row % hc_mult;
+    const int64_t token = row / hc_mult;
     const T* embedding_row = embeddings + token * embedding_size;
-    const T* hidden_row = hidden_states + (token * hc_mult + g) * hidden_size;
+    const T* hidden_row = hidden_states + row * hidden_size;
+    const T* key_weight_g = key_weight + g * embedding_size * hidden_size;
+    const T* key_scale_g = key_norm_scale + g * hidden_size;
+    const T* query_scale_g = query_norm_scale + g * hidden_size;
+    const T* key_bias_g = key_bias == nullptr ? nullptr : key_bias + g * hidden_size;
 
     float key_sum_sq = 0.0f;
     float query_sum_sq = 0.0f;
     float dot_numerator = 0.0f;
-    float value = value_bias == nullptr ? 0.0f : to_float<T>(value_bias[c]);
 
-    for (int64_t i = 0; i < embedding_size; ++i) {
-      value += to_float<T>(embedding_row[i]) * to_float<T>(value_weight[i * hidden_size + c]);
-    }
-
-    for (int64_t d = 0; d < hidden_size; ++d) {
-      float key = key_bias == nullptr ? 0.0f : to_float<T>(key_bias[g * hidden_size + d]);
+    for (int64_t d = threadIdx.x; d < hidden_size; d += blockDim.x) {
+      float key = key_bias_g == nullptr ? 0.0f : to_float<T>(key_bias_g[d]);
       for (int64_t e = 0; e < embedding_size; ++e) {
-        key += to_float<T>(embedding_row[e]) *
-               to_float<T>(key_weight[(g * embedding_size + e) * hidden_size + d]);
+        key += to_float<T>(embedding_row[e]) * to_float<T>(key_weight_g[e * hidden_size + d]);
       }
       const float query = to_float<T>(hidden_row[d]);
       key_sum_sq += key * key;
       query_sum_sq += query * query;
-      dot_numerator += key * to_float<T>(key_norm_scale[g * hidden_size + d]) *
-                       query * to_float<T>(query_norm_scale[g * hidden_size + d]);
+      dot_numerator += key * to_float<T>(key_scale_g[d]) * query * to_float<T>(query_scale_g[d]);
     }
+
+    key_sum_sq = kernel_helper::BlockSum(key_sum_sq, shared);
+    query_sum_sq = kernel_helper::BlockSum(query_sum_sq, shared);
+    dot_numerator = kernel_helper::BlockSum(dot_numerator, shared);
 
     const float key_inv_rms = rsqrtf(key_sum_sq / static_cast<float>(hidden_size) + epsilon);
     const float query_inv_rms = rsqrtf(query_sum_sq / static_cast<float>(hidden_size) + epsilon);
     const float dot = dot_numerator * key_inv_rms * query_inv_rms / sqrtf(static_cast<float>(hidden_size));
-    const float gate_arg = copysignf(sqrtf(fmaxf(fabsf(dot), 1.0e-6f)), dot);
-    output[linear] = from_float<T>(kernel_helper::SigmoidFloat(gate_arg) * value);
+    const float gate = kernel_helper::SigmoidFloat(kernel_helper::EngramGateArg(dot));
+
+    T* output_row = output + row * hidden_size;
+    for (int64_t c = threadIdx.x; c < hidden_size; c += blockDim.x) {
+      float value = value_bias == nullptr ? 0.0f : to_float<T>(value_bias[c]);
+      for (int64_t e = 0; e < embedding_size; ++e) {
+        value += to_float<T>(embedding_row[e]) * to_float<T>(value_weight[e * hidden_size + c]);
+      }
+      output_row[c] = from_float<T>(gate * value);
+    }
   }
 }
 
@@ -91,13 +103,15 @@ Status LaunchEngramGateKernel(
     int64_t hidden_size,
     int64_t embedding_size,
     float epsilon) {
-  const int64_t total = batch_size * sequence_length * hc_mult * hidden_size;
-  if (total == 0) {
+  const int64_t rows = batch_size * sequence_length * hc_mult;
+  if (rows == 0 || hidden_size == 0) {
     return Status::OK();
   }
-  EngramGateKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
+  const int blocks = static_cast<int>(std::min(rows, kernel_helper::kMaxGridDimX));
+  const size_t shared_bytes = static_cast<size_t>(kernel_helper::kThreads) * sizeof(float);
+  EngramGateKernel<T><<<blocks, kernel_helper::kThreads, shared_bytes, stream>>>(
       embeddings, hidden_states, key_weight, key_bias, value_weight, value_bias, key_norm_scale,
-      query_norm_scale, output, total, hc_mult, hidden_size, embedding_size, epsilon);
+      query_norm_scale, output, rows, hc_mult, hidden_size, embedding_size, epsilon);
   return CUDA_CALL(cudaGetLastError());
 }
 

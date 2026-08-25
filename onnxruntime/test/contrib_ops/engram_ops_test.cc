@@ -7,9 +7,13 @@
 #include <type_traits>
 #include <vector>
 
+#include <memory>
+
 #include "gtest/gtest.h"
+#include "core/framework/execution_provider.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -28,9 +32,39 @@ template <typename T>
 std::vector<T> ToTensorType(const std::vector<float>& data) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
     return ToFloat16(data);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(data);
   } else {
     return data;
   }
+}
+
+// Runs the tester on CUDA only for BFloat16, otherwise on the default set of execution providers.
+// Returns false if the required execution provider is unavailable so the caller can skip.
+template <typename T>
+bool RunOnSupportedProviders(OpTester& test) {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (cuda_ep == nullptr) {
+      return false;
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(cuda_ep));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  } else {
+    test.Run();
+  }
+  return true;
+}
+
+// Reference for the gate pre-activation, sign(dot) * sqrt(max(abs(dot), 1e-6)).
+// std::copysign is deliberately avoided: it maps a zero dot product to +sqrt(1e-6) instead of zero.
+float GateArg(float dot) {
+  if (dot == 0.0f) {
+    return 0.0f;
+  }
+  const float magnitude = std::sqrt(std::max(std::abs(dot), 1.0e-6f));
+  return dot < 0.0f ? -magnitude : magnitude;
 }
 
 template <typename T>
@@ -69,7 +103,9 @@ void RunShortConvTest(float tolerance) {
   test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
   test.AddOptionalInputEdge<T>();
   test.AddOutput<T>("output", {1, 2, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
-  test.Run();
+  if (!RunOnSupportedProviders<T>(test)) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
 }
 
 template <typename T>
@@ -87,7 +123,7 @@ void RunEngramGateTest(float tolerance) {
   const float key_inv = 1.0f / std::sqrt((key0 * key0 + key1 * key1) / 2.0f + epsilon);
   const float query_inv = 1.0f / std::sqrt((3.0f * 3.0f + 4.0f * 4.0f) / 2.0f + epsilon);
   const float dot = (key0 * key_inv * 3.0f * query_inv + key1 * key_inv * 4.0f * query_inv) / std::sqrt(2.0f);
-  const float gate = Sigmoid(std::copysign(std::sqrt(std::max(std::abs(dot), 1.0e-6f)), dot));
+  const float gate = Sigmoid(GateArg(dot));
   const std::vector<float> expected{gate * (1.0f * 1.0f + 2.0f * 0.5f),
                                     gate * (1.0f * -1.0f + 2.0f * 0.25f)};
 
@@ -102,25 +138,37 @@ void RunEngramGateTest(float tolerance) {
   test.AddInput<T>("key_norm_scale", {1, 2}, ToTensorType<T>(key_scale));
   test.AddInput<T>("query_norm_scale", {1, 2}, ToTensorType<T>(query_scale));
   test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
+  if (!RunOnSupportedProviders<T>(test)) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+}
+
+template <typename T>
+void RunNGramHashMappingTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 2);
+  test.AddAttribute<int64_t>("pad_id", 9);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOutput<T>("hash_ids", {1, 4, 4},
+                    {84, 84, 98, 96,
+                     11, 11, 39, 37,
+                     3, 3, 48, 48,
+                     3, 3, 71, 71});
   test.Run();
 }
 
 }  // namespace
 
 TEST(EngramOpsTest, NGramHashMappingInt64) {
-  OpTester test("NGramHashMapping", 1, kMSDomain);
-  test.AddAttribute<int64_t>("max_ngram_size", 3);
-  test.AddAttribute<int64_t>("n_head_per_ngram", 2);
-  test.AddAttribute<int64_t>("pad_id", 9);
-  test.AddInput<int64_t>("input_ids", {1, 4}, {3, 4, 5, 6});
-  test.AddInput<int64_t>("multipliers", {3}, {11, 13, 17});
-  test.AddInput<int64_t>("vocab_sizes", {4}, {101, 103, 107, 109});
-  test.AddOutput<int64_t>("hash_ids", {1, 4, 4},
-                          {84, 84, 98, 96,
-                           11, 11, 39, 37,
-                           3, 3, 48, 48,
-                           3, 3, 71, 71});
-  test.Run();
+  RunNGramHashMappingTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
+TEST(EngramOpsTest, NGramHashMappingInt32) {
+  RunNGramHashMappingTest<int32_t>();
 }
 
 TEST(EngramOpsTest, ShortConvFloat) {
@@ -137,6 +185,40 @@ TEST(EngramOpsTest, EngramGateFloat) {
 
 TEST(EngramOpsTest, EngramGateFloat16) {
   RunEngramGateTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, ShortConvBFloat16) {
+  RunShortConvTest<BFloat16>(2e-2f);
+}
+
+TEST(EngramOpsTest, EngramGateBFloat16) {
+  RunEngramGateTest<BFloat16>(2e-2f);
+}
+
+// A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make
+// the dot product vanish, which would silently become sigmoid(sqrt(1e-6)) if copysign were used.
+TEST(EngramOpsTest, EngramGateZeroDotProduct) {
+  constexpr float epsilon = 1.0e-5f;
+  // key = embeddings * key_weight = (1, 0); query = hidden_states = (0, 1), so the dot product is 0.
+  const std::vector<float> embeddings{1.0f, 0.0f};
+  const std::vector<float> hidden_states{0.0f, 1.0f};
+  const std::vector<float> key_weight{1.0f, 0.0f, 0.0f, 1.0f};
+  const std::vector<float> value_weight{1.0f, -1.0f, 0.5f, 0.25f};
+  const std::vector<float> unit_scale{1.0f, 1.0f};
+  const std::vector<float> expected{0.5f * 1.0f, 0.5f * -1.0f};
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<float>("embeddings", {1, 1, 2}, embeddings);
+  test.AddInput<float>("hidden_states", {1, 1, 1, 2}, hidden_states);
+  test.AddInput<float>("key_weight", {1, 2, 2}, key_weight);
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("value_weight", {2, 2}, value_weight);
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("key_norm_scale", {1, 2}, unit_scale);
+  test.AddInput<float>("query_norm_scale", {1, 2}, unit_scale);
+  test.AddOutput<float>("output", {1, 1, 1, 2}, expected, false, 1e-5f, 1e-5f);
+  test.Run();
 }
 
 }  // namespace test

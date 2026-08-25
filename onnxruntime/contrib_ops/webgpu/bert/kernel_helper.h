@@ -26,6 +26,13 @@ constexpr std::string_view kSiluWgsl =
     "  return x * stable_sigmoid(x);\n"
     "}\n";
 
+// Engram gate pre-activation: sign(dot) * sqrt(max(abs(dot), 1e-6)). WGSL sign() already maps zero
+// to zero, so a zero dot product yields a zero argument (and therefore a gate of exactly 0.5).
+constexpr std::string_view kEngramGateArgWgsl =
+    "fn engram_gate_arg(dot_value: f32) -> f32 {\n"
+    "  return sign(dot_value) * sqrt(max(abs(dot_value), 0.000001));\n"
+    "}\n";
+
 // Euclidean modulo: the result always has the sign of `mod_value`, which must be positive.
 constexpr std::string_view kPositiveModWgsl =
     "fn positive_mod(value: i32, mod_value: i32) -> i32 {\n"

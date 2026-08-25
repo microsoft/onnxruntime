@@ -23,7 +23,11 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     EngramGate);
 
-Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+namespace {
+constexpr uint32_t kGateWorkgroupSize = 64;
+}  // namespace
+
+Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& embeddings = shader.AddInput("embeddings", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& hidden_states = shader.AddInput("hidden_states", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& key_weight = shader.AddInput("key_weight", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -31,40 +35,30 @@ Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_key_bias_) {
     key_bias = &shader.AddInput("key_bias", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
-  const auto& value_weight = shader.AddInput("value_weight", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  const ShaderVariableHelper* value_bias = nullptr;
-  if (has_value_bias_) {
-    value_bias = &shader.AddInput("value_bias", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  }
   const auto& key_norm_scale = shader.AddInput("key_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& query_norm_scale = shader.AddInput("query_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& gate = shader.AddOutput("gate", ShaderUsage::UseUniform);
 
-  shader.AdditionalImplementation() << kernel_helper::kStableSigmoidWgsl;
+  shader.AdditionalImplementation()
+      << kernel_helper::kStableSigmoidWgsl << kernel_helper::kEngramGateArgWgsl
+      << "var<workgroup> key_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
+      << "var<workgroup> query_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
+      << "var<workgroup> dot_partials: array<f32, " << kGateWorkgroupSize << ">;\n";
 
   shader.MainFunctionBody()
-      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
-      << "  let c = global_idx % uniforms.hidden_size;\n"
-      << "  let g = (global_idx / uniforms.hidden_size) % uniforms.hc_mult;\n"
-      << "  let token = global_idx / (uniforms.hc_mult * uniforms.hidden_size);\n"
+      << "  let row = workgroup_idx;\n"
+      << "  if (row >= uniforms.rows) { return; }\n"
+      << "  let g = row % uniforms.hc_mult;\n"
+      << "  let token = row / uniforms.hc_mult;\n"
       << "  let embedding_base = token * uniforms.embedding_size;\n"
-      << "  let hidden_base = (token * uniforms.hc_mult + g) * uniforms.hidden_size;\n";
-  if (has_value_bias_) {
-    shader.MainFunctionBody() << "  var value = f32(" << value_bias->GetByOffset("c") << ");\n";
-  } else {
-    shader.MainFunctionBody() << "  var value = 0.0;\n";
-  }
-  shader.MainFunctionBody()
-      << "  for (var e = 0u; e < uniforms.embedding_size; e++) {\n"
-      << "    value += f32(" << embeddings.GetByOffset("embedding_base + e") << ") * f32("
-      << value_weight.GetByOffset("e * uniforms.hidden_size + c") << ");\n"
-      << "  }\n"
+      << "  let hidden_base = row * uniforms.hidden_size;\n"
+      << "  let scale_base = g * uniforms.hidden_size;\n"
       << "  var key_sum_sq = 0.0;\n"
       << "  var query_sum_sq = 0.0;\n"
       << "  var dot_numerator = 0.0;\n"
-      << "  for (var d = 0u; d < uniforms.hidden_size; d++) {\n";
+      << "  for (var d = local_idx; d < uniforms.hidden_size; d += " << kGateWorkgroupSize << "u) {\n";
   if (has_key_bias_) {
-    shader.MainFunctionBody() << "    var key = f32(" << key_bias->GetByOffset("g * uniforms.hidden_size + d") << ");\n";
+    shader.MainFunctionBody() << "    var key = f32(" << key_bias->GetByOffset("scale_base + d") << ");\n";
   } else {
     shader.MainFunctionBody() << "    var key = 0.0;\n";
   }
@@ -76,14 +70,57 @@ Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    let query = f32(" << hidden_states.GetByOffset("hidden_base + d") << ");\n"
       << "    key_sum_sq += key * key;\n"
       << "    query_sum_sq += query * query;\n"
-      << "    dot_numerator += key * f32(" << key_norm_scale.GetByOffset("g * uniforms.hidden_size + d")
-      << ") * query * f32(" << query_norm_scale.GetByOffset("g * uniforms.hidden_size + d") << ");\n"
+      << "    dot_numerator += key * f32(" << key_norm_scale.GetByOffset("scale_base + d")
+      << ") * query * f32(" << query_norm_scale.GetByOffset("scale_base + d") << ");\n"
       << "  }\n"
-      << "  let key_inv_rms = inverseSqrt(key_sum_sq / f32(uniforms.hidden_size) + uniforms.epsilon);\n"
-      << "  let query_inv_rms = inverseSqrt(query_sum_sq / f32(uniforms.hidden_size) + uniforms.epsilon);\n"
-      << "  let dot = dot_numerator * key_inv_rms * query_inv_rms / sqrt(f32(uniforms.hidden_size));\n"
-      << "  let gate_arg = sign(dot) * sqrt(max(abs(dot), 0.000001));\n"
-      << "  " << output.SetByOffset("global_idx", "output_element_t(stable_sigmoid(gate_arg) * value)") << "\n";
+      << "  key_partials[local_idx] = key_sum_sq;\n"
+      << "  query_partials[local_idx] = query_sum_sq;\n"
+      << "  dot_partials[local_idx] = dot_numerator;\n"
+      << "  workgroupBarrier();\n"
+      << "  for (var stride = " << (kGateWorkgroupSize / 2) << "u; stride > 0u; stride >>= 1u) {\n"
+      << "    if (local_idx < stride) {\n"
+      << "      key_partials[local_idx] += key_partials[local_idx + stride];\n"
+      << "      query_partials[local_idx] += query_partials[local_idx + stride];\n"
+      << "      dot_partials[local_idx] += dot_partials[local_idx + stride];\n"
+      << "    }\n"
+      << "    workgroupBarrier();\n"
+      << "  }\n"
+      << "  if (local_idx == 0u) {\n"
+      << "    let key_inv_rms = inverseSqrt(key_partials[0] / f32(uniforms.hidden_size) + uniforms.epsilon);\n"
+      << "    let query_inv_rms = inverseSqrt(query_partials[0] / f32(uniforms.hidden_size) + uniforms.epsilon);\n"
+      << "    let dot_value = dot_partials[0] * key_inv_rms * query_inv_rms / sqrt(f32(uniforms.hidden_size));\n"
+      << "    " << gate.SetByOffset("row", "stable_sigmoid(engram_gate_arg(dot_value))") << "\n"
+      << "  }\n";
+  return Status::OK();
+}
+
+Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& embeddings = shader.AddInput("embeddings", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& value_weight = shader.AddInput("value_weight", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* value_bias = nullptr;
+  if (has_value_bias_) {
+    value_bias = &shader.AddInput("value_bias", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  }
+  const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
+      << "  let c = global_idx % uniforms.hidden_size;\n"
+      << "  let row = global_idx / uniforms.hidden_size;\n"
+      << "  let token = row / uniforms.hc_mult;\n"
+      << "  let embedding_base = token * uniforms.embedding_size;\n";
+  if (has_value_bias_) {
+    shader.MainFunctionBody() << "  var value = f32(" << value_bias->GetByOffset("c") << ");\n";
+  } else {
+    shader.MainFunctionBody() << "  var value = 0.0;\n";
+  }
+  shader.MainFunctionBody()
+      << "  for (var e = 0u; e < uniforms.embedding_size; e++) {\n"
+      << "    value += f32(" << embeddings.GetByOffset("embedding_base + e") << ") * f32("
+      << value_weight.GetByOffset("e * uniforms.hidden_size + c") << ");\n"
+      << "  }\n"
+      << "  " << output.SetByOffset("global_idx", "output_element_t(" + gate.GetByOffset("row") + " * value)") << "\n";
   return Status::OK();
 }
 
@@ -135,27 +172,44 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
   if (total == 0) {
     return Status::OK();
   }
-  EngramGateProgram program{key_bias != nullptr, value_bias != nullptr};
-  program.CacheHint(key_bias != nullptr, value_bias != nullptr)
+  // First pass: one scalar gate per (token, g) row.
+  const int64_t rows = batch_size * sequence_length * hc_mult;
+  Tensor gate = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({rows}));
+  EngramGateScalarProgram gate_program{key_bias != nullptr};
+  gate_program.CacheHint(key_bias != nullptr)
       .AddInputs({{embeddings, ProgramTensorMetadataDependency::Type},
                   {hidden_states, ProgramTensorMetadataDependency::Type},
                   {key_weight, ProgramTensorMetadataDependency::Type}});
   if (key_bias != nullptr) {
-    program.AddInput({key_bias, ProgramTensorMetadataDependency::Type});
+    gate_program.AddInput({key_bias, ProgramTensorMetadataDependency::Type});
   }
-  program.AddInput({value_weight, ProgramTensorMetadataDependency::Type});
+  gate_program.AddInputs({{key_norm_scale, ProgramTensorMetadataDependency::Type},
+                          {query_norm_scale, ProgramTensorMetadataDependency::Type}})
+      .AddOutput({&gate, ProgramTensorMetadataDependency::None})
+      .SetWorkgroupSize(kGateWorkgroupSize)
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(rows)},
+                            {onnxruntime::narrow<uint32_t>(hc_mult)},
+                            {onnxruntime::narrow<uint32_t>(hidden_size)},
+                            {onnxruntime::narrow<uint32_t>(embedding_size)},
+                            {epsilon_}});
+  ORT_RETURN_IF_ERROR(context.RunProgram(gate_program));
+
+  // Second pass: apply the shared gate to the value projection for every output channel.
+  EngramGateProgram program{value_bias != nullptr};
+  program.CacheHint(value_bias != nullptr)
+      .AddInputs({{embeddings, ProgramTensorMetadataDependency::Type},
+                  {value_weight, ProgramTensorMetadataDependency::Type}});
   if (value_bias != nullptr) {
     program.AddInput({value_bias, ProgramTensorMetadataDependency::Type});
   }
-  program.AddInputs({{key_norm_scale, ProgramTensorMetadataDependency::Type},
-                     {query_norm_scale, ProgramTensorMetadataDependency::Type}})
+  program.AddInput({&gate, ProgramTensorMetadataDependency::Type})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_size)},
-                            {onnxruntime::narrow<uint32_t>(embedding_size)},
-                            {epsilon_}});
+                            {onnxruntime::narrow<uint32_t>(embedding_size)}});
   return context.RunProgram(program);
 }
 

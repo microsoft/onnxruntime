@@ -23,10 +23,42 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     ShortConv);
 
+namespace {
+constexpr uint32_t kRmsWorkgroupSize = 64;
+}  // namespace
+
+Status ShortConvInvRmsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& inv_rms = shader.AddOutput("inv_rms", ShaderUsage::UseUniform);
+
+  shader.AdditionalImplementation() << "var<workgroup> row_partials: array<f32, " << kRmsWorkgroupSize << ">;\n";
+
+  shader.MainFunctionBody()
+      << "  let row = workgroup_idx;\n"
+      << "  if (row >= uniforms.rows) { return; }\n"
+      << "  let row_base = row * uniforms.hidden_size;\n"
+      << "  var sum_sq = 0.0;\n"
+      << "  for (var i = local_idx; i < uniforms.hidden_size; i += " << kRmsWorkgroupSize << "u) {\n"
+      << "    let v = f32(" << input.GetByOffset("row_base + i") << ");\n"
+      << "    sum_sq += v * v;\n"
+      << "  }\n"
+      << "  row_partials[local_idx] = sum_sq;\n"
+      << "  workgroupBarrier();\n"
+      << "  for (var stride = " << (kRmsWorkgroupSize / 2) << "u; stride > 0u; stride >>= 1u) {\n"
+      << "    if (local_idx < stride) { row_partials[local_idx] += row_partials[local_idx + stride]; }\n"
+      << "    workgroupBarrier();\n"
+      << "  }\n"
+      << "  if (local_idx == 0u) {\n"
+      << "    " << inv_rms.SetByOffset("row", "inverseSqrt(row_partials[0] / f32(uniforms.hidden_size) + uniforms.epsilon)") << "\n"
+      << "  }\n";
+  return Status::OK();
+}
+
 Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& weight = shader.AddInput("weight", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& norm_scale = shader.AddInput("norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& inv_rms = shader.AddInput("inv_rms", ShaderUsage::UseUniform);
   const ShaderVariableHelper* bias = nullptr;
   if (has_bias_) {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -42,7 +74,8 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let g = (global_idx / uniforms.hidden_size) % uniforms.hc_mult;\n"
       << "  let t = (global_idx / channels) % uniforms.sequence_length;\n"
       << "  let b = global_idx / (uniforms.sequence_length * channels);\n"
-      << "  let flat_channel = g * uniforms.hidden_size + c;\n";
+      << "  let flat_channel = g * uniforms.hidden_size + c;\n"
+      << "  let scale = f32(" << norm_scale.GetByOffset("flat_channel") << ");\n";
   if (has_bias_) {
     shader.MainFunctionBody() << "  var sum = f32(" << bias->GetByOffset("flat_channel") << ");\n";
   } else {
@@ -53,15 +86,9 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    let offset = (uniforms.kernel_size - 1u - k) * uniforms.dilation;\n"
       << "    if (t >= offset) {\n"
       << "      let source_t = t - offset;\n"
-      << "      let row_base = ((b * uniforms.sequence_length + source_t) * uniforms.hc_mult + g) * uniforms.hidden_size;\n"
-      << "      var sum_sq = 0.0;\n"
-      << "      for (var i = 0u; i < uniforms.hidden_size; i++) {\n"
-      << "        let v = f32(" << input.GetByOffset("row_base + i") << ");\n"
-      << "        sum_sq += v * v;\n"
-      << "      }\n"
-      << "      let inv_rms = inverseSqrt(sum_sq / f32(uniforms.hidden_size) + uniforms.epsilon);\n"
-      << "      let normed = f32(" << input.GetByOffset("row_base + c") << ") * inv_rms * f32("
-      << norm_scale.GetByOffset("g * uniforms.hidden_size + c") << ");\n"
+      << "      let source_row = (b * uniforms.sequence_length + source_t) * uniforms.hc_mult + g;\n"
+      << "      let normed = f32(" << input.GetByOffset("source_row * uniforms.hidden_size + c") << ") * "
+      << inv_rms.GetByOffset("source_row") << " * scale;\n"
       << "      sum += normed * f32(" << weight.GetByOffset("flat_channel * uniforms.kernel_size + k") << ");\n"
       << "    }\n"
       << "  }\n";
@@ -110,11 +137,25 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // First pass: one inverse-RMS value per (batch, sequence, hc_mult) row.
+  const int64_t rows = batch_size * sequence_length * hc_mult;
+  Tensor inv_rms = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({rows}));
+  ShortConvInvRmsProgram inv_rms_program;
+  inv_rms_program.AddInput({input, ProgramTensorMetadataDependency::Type})
+      .AddOutput({&inv_rms, ProgramTensorMetadataDependency::None})
+      .SetWorkgroupSize(kRmsWorkgroupSize)
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(rows)},
+                            {onnxruntime::narrow<uint32_t>(hidden_size)},
+                            {epsilon_}});
+  ORT_RETURN_IF_ERROR(context.RunProgram(inv_rms_program));
+
   ShortConvProgram program{bias != nullptr, activation_ == "silu" || activation_ == "swish"};
   program.CacheHint(bias != nullptr, activation_)
       .AddInputs({{input, ProgramTensorMetadataDependency::Type},
                   {weight, ProgramTensorMetadataDependency::Type},
-                  {norm_scale, ProgramTensorMetadataDependency::Type}});
+                  {norm_scale, ProgramTensorMetadataDependency::Type},
+                  {&inv_rms, ProgramTensorMetadataDependency::Type}});
   if (bias != nullptr) {
     program.AddInput({bias, ProgramTensorMetadataDependency::Type});
   }
@@ -125,8 +166,7 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_size)},
                             {onnxruntime::narrow<uint32_t>(weight_shape[2])},
-                            {onnxruntime::narrow<uint32_t>(dilation_)},
-                            {epsilon_}});
+                            {onnxruntime::narrow<uint32_t>(dilation_)}});
   return context.RunProgram(program);
 }
 

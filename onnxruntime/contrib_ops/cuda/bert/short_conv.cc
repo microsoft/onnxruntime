@@ -73,12 +73,17 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   Tensor* output = context->Output(0, input_shape);
+  // Scratch buffer holding one inverse-RMS value per (batch, sequence, hc_mult) row so that the
+  // reduction is not repeated for every output channel and convolution tap.
+  const int64_t rows = batch_size * sequence_length * hc_mult;
+  auto inv_rms = GetScratchBuffer<float>(static_cast<size_t>(rows), context->GetComputeStream());
   return LaunchShortConvKernel<CudaT>(
       Stream(context),
       reinterpret_cast<const CudaT*>(input->Data<T>()),
       reinterpret_cast<const CudaT*>(weight->Data<T>()),
       reinterpret_cast<const CudaT*>(norm_scale->Data<T>()),
       bias == nullptr ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>()),
+      inv_rms.get(),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
       batch_size,
       sequence_length,

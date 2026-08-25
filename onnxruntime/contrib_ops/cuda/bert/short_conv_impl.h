@@ -17,6 +17,7 @@ Status LaunchShortConvKernel(
     const T* weight,
     const T* norm_scale,
     const T* bias,
+    float* inv_rms_workspace,
     T* output,
     int64_t batch_size,
     int64_t sequence_length,

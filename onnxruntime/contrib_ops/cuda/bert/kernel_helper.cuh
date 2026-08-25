@@ -21,6 +21,23 @@ inline int GridSize(int64_t count) {
   return static_cast<int>(std::min(blocks, kMaxGridDimX));
 }
 
+// Sums `value` across all threads of the block and returns the total to every thread.
+// `shared` must point to at least blockDim.x floats of shared memory, and blockDim.x must be a
+// power of two. All threads of the block must call this.
+__device__ __forceinline__ float BlockSum(float value, float* shared) {
+  shared[threadIdx.x] = value;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      shared[threadIdx.x] += shared[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float total = shared[0];
+  __syncthreads();
+  return total;
+}
+
 // Numerically stable logistic function.
 __device__ __forceinline__ float SigmoidFloat(float x) {
   return x > 0.0f ? 1.0f / (1.0f + expf(-x)) : expf(x) / (1.0f + expf(x));
@@ -28,6 +45,17 @@ __device__ __forceinline__ float SigmoidFloat(float x) {
 
 __device__ __forceinline__ float SiluFloat(float x) {
   return x * SigmoidFloat(x);
+}
+
+// Engram gate pre-activation: sign(dot) * sqrt(max(abs(dot), 1e-6)).
+// copysignf cannot be used here because it maps a zero dot product to +sqrt(1e-6) instead of zero,
+// which would disagree with the schema formula and with the other execution providers.
+__device__ __forceinline__ float EngramGateArg(float dot) {
+  if (dot == 0.0f) {
+    return 0.0f;
+  }
+  const float magnitude = sqrtf(fmaxf(fabsf(dot), 1.0e-6f));
+  return dot < 0.0f ? -magnitude : magnitude;
 }
 
 // Euclidean modulo: the result always has the sign of `mod`, which must be positive.

@@ -23,6 +23,17 @@ inline float SiluFloat(float x) {
   return x * SigmoidFloat(x);
 }
 
+// Engram gate pre-activation: sign(dot) * sqrt(max(abs(dot), 1e-6)).
+// std::copysign cannot be used here because it maps a zero dot product to +sqrt(1e-6) instead of
+// zero, which would disagree with the schema formula and with the other execution providers.
+inline float EngramGateArg(float dot) {
+  if (dot == 0.0f) {
+    return 0.0f;
+  }
+  const float magnitude = std::sqrt(std::max(std::abs(dot), 1.0e-6f));
+  return dot < 0.0f ? -magnitude : magnitude;
+}
+
 // Euclidean modulo: the result always has the sign of `mod`, which must be positive.
 template <typename T>
 inline T PositiveMod(T value, T mod) {

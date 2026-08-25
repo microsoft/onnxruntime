@@ -140,7 +140,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
             dot += normed_key * normed_query;
           }
           dot /= std::sqrt(static_cast<float>(hidden_size));
-          const float gate_arg = std::copysign(std::sqrt(std::max(std::abs(dot), 1.0e-6f)), dot);
+          const float gate_arg = kernel_helper::EngramGateArg(dot);
           const float gate = kernel_helper::SigmoidFloat(gate_arg);
 
           T* output_row = output_data + row * hidden_size;
