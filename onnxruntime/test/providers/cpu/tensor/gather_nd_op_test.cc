@@ -443,6 +443,10 @@ TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_error) {
 }
 
 TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  GTEST_SKIP() << "This test validates the built-in CUDA EP session diagnostic, not the dynamic plugin adapter.";
+#endif
+
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
