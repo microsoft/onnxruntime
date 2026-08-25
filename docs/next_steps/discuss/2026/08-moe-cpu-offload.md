@@ -9,7 +9,7 @@ Determine which expert-placement strategy is worth implementing for Qwen 3.6 and
 
 The eventual operator must execute models whose expert weights do not all fit in GPU memory. CPU memory keeps the canonical copy of every expert. A bounded number of experts are also cached on CUDA without removing their CPU copy, so an evicted expert remains immediately available to the CPU path.
 
-The initial adaptive policy counts how often each expert is selected. During each autoregressive inference step, experts used by the router have their counters incremented as soon as the routing decision is available. Experts with the largest counters become candidates for CUDA residency. When that decision changes the cache, the corresponding CPU weights are copied to CUDA immediately. The transfer should overlap the remainder of the current token computation and finish before the same layer processes the next token.
+The initial adaptive policy counts how often each expert is selected. During each autoregressive inference step, experts used by the router have their counters incremented as soon as the routing decision is available. Experts with the largest counters become candidates for CUDA residency. The current MoE invocation first completes using the immutable placement snapshot: CUDA-resident experts run on CUDA and every other expert runs from its permanent CPU weights. Only after that MoE invocation completes are newly selected expert weights copied asynchronously from CPU to CUDA. The transfer overlaps subsequent model computation and should finish before the same layer processes the next token.
 
 This approach is close to the activation-aware caching explored by [MoE-Infinity](https://arxiv.org/abs/2401.14361). The goal here is to test the cheapest useful model-agnostic policy: integer counters, bounded ranking, and asynchronous copies triggered by observed routing. It requires no predictor training, model-specific calibration, historical request database, or prior knowledge of important experts.
 
@@ -56,10 +56,11 @@ The operator receives the fixed CUDA expert capacity from the session configurat
 
 - A cache hit dispatches the token to the CUDA expert in its assigned slot.
 - A cache miss executes the current token from the CPU weights.
-- If the policy admits the missed expert, its CPU weights are copied immediately to a reserved slot on a dedicated transfer stream.
+- After the complete MoE invocation finishes, the policy compares the most frequent experts with the resident set.
+- If the policy admits a non-resident expert, its permanent CPU weights are copied to a reserved slot on a dedicated transfer stream.
 - A slot cannot be reused until all CUDA work referencing its previous expert has completed.
 
-The cache manager must not block the current token merely to make an expert resident. CPU fallback and the host-to-device copy may read the same immutable CPU weights concurrently. If the destination slot is still in use, the transfer stream waits for the previous expert's completion event before starting the copy.
+The cache manager must not block the current token merely to make an expert resident. It never moves or removes CPU weights: every expert remains executable on CPU before, during, and after CUDA residency. A host-to-device copy starts only after the current MoE invocation has finished. If the destination slot is still in use, the transfer stream waits for the previous expert's completion event before starting the copy.
 
 An expert is `loading` while its copy is in flight. Before the next token reaches that MoE layer, the manager queries the transfer-completion event:
 
@@ -72,16 +73,17 @@ The intended timeline is:
 ```text
 token t, layer L router selects expert E
     -> increment count(L, E)
-    -> admit E and reserve a CUDA slot if required by the policy
-    -> enqueue the CPU-to-CUDA weight copy immediately
-    -> execute the current miss on CPU while the copy progresses
+    -> compute the desired resident set without changing the current mapping
+    -> execute the complete MoE using CUDA hits and CPU misses
+    -> after the MoE completes, reserve a CUDA slot for E if required
+    -> enqueue the CPU-to-CUDA weight copy asynchronously
     -> finish the remaining layers of token t
 token t+1, before layer L
     -> publish E if the copy event is complete
     -> execute E on CUDA on a hit, otherwise use CPU without blocking
 ```
 
-This gives the copy an overlap window from the routing decision at layer `L` for token `t` until layer `L` is reached for token `t + 1`. A synchronous transfer mode is retained only for correctness tests and transfer-cost calibration.
+This gives the copy an overlap window from completion of layer `L`'s MoE for token `t` until layer `L` is reached for token `t + 1`. The simulator must use this shorter, implementable window rather than assuming that transfer starts at the routing decision. A synchronous transfer mode is retained only for correctness tests and transfer-cost calibration.
 
 ## Operator strategy
 
@@ -110,7 +112,7 @@ count_t(e) = count_{t-1}(e) + uses_t(e)
 
 The manager admits the most frequently used experts until capacity is reached. Replacement occurs only when a non-resident expert has a strictly higher score than the least-used resident expert. `(layer_id, expert_id)` ordering breaks ties deterministically.
 
-Admission reserves a slot and immediately enqueues the copy. Residency changes only after the copy event completes, so kernels already in flight retain their immutable mapping snapshot. Counters and residency are session state; they can be reset before each benchmark repetition, exported with logs, and optionally initialized from a previous trace.
+Admission is decided from the updated counters but does not affect the current MoE invocation. After that invocation completes, admission reserves a slot and enqueues the asynchronous copy. Residency changes only after the copy event completes, so kernels already in flight retain their immutable mapping snapshot. Counters and residency are session state; they can be reset before each benchmark repetition, exported with logs, and optionally initialized from a previous trace.
 
 After measuring cumulative placement, evaluate:
 
@@ -179,7 +181,7 @@ Each routing record contains:
 | `resident_experts` | Placement snapshot used by this inference. |
 | `cache_hit` | Whether each selected expert executed on CUDA. |
 | `admitted`, `evicted` | Placement changes decided after the routing update. |
-| `copy_enqueued_ns`, `copy_ready_ns` | Copy interval and readiness before the next token. |
+| `moe_completed_ns`, `copy_enqueued_ns`, `copy_ready_ns` | MoE completion, copy interval, and readiness before the next token. |
 | `copy_bytes`, `copy_duration_ns` | Host-to-device traffic caused by cache changes. |
 | `iteration_duration_us` | Complete `model_run` duration, including all non-MoE work. |
 | `cpu_duration_ns`, `cuda_duration_ns` | MoE execution time split by device when the cache is implemented. |
@@ -292,7 +294,8 @@ Tests must cover:
 - repeated hits without additional copies;
 - eviction without releasing or modifying CPU weights;
 - CPU fallback while an asynchronous copy is in flight;
-- immediate copy enqueue when an update reserves a slot;
+- no cache copy before the current MoE invocation completes;
+- asynchronous copy enqueue immediately after MoE completion when an update reserves a slot;
 - publication before the next token when the copy completes;
 - non-blocking fallback when a copy misses the next-token deadline;
 - safe slot reuse after CUDA completion;
@@ -309,7 +312,7 @@ Every persistent change is delivered through one of the following pull requests.
 - Add the `session.enable_moe_expert_statistics` session configuration entry, disabled by default.
 - Reuse `profiling::Profiler` and its JSON serializer; do not add an independent logging path.
 - Extend `model_run` events with iteration indices, request identifiers, and concrete model-input dimensions.
-- Add correlated MoE profiler events containing the selected experts and router weights.
+- Add correlated MoE profiler events containing the selected experts, router weights, and MoE completion timestamp needed to determine the earliest legal copy time.
 - Record complete iteration time for CPU and CUDA, including non-MoE work.
 - Reject the statistics flag when profiling output is not enabled.
 - Test the disabled path, JSON schema, sequence reset detection inputs, event correlation, and explicit overflow behavior.
@@ -346,6 +349,7 @@ This step changes no repository files. Any script correction discovered during t
 - Add the offline cache simulator and policy implementations for hindsight static, cumulative LFU, LRU, decayed or windowed LFU, and the offline optimal bound.
 - Process the 1,000-prompt CPU and CUDA traces with the checked-in scripts.
 - Simulate hybrid execution against both routing traces and the paired canonical replay.
+- Model every cache transfer as starting after the corresponding MoE invocation completes.
 - Sweep CUDA capacity and history length using the measured timing and routing data.
 - Commit aggregate tables and figures, excluding raw prompt content and oversized traces.
 - Add the measured results and conclusions to this next-step document.
@@ -369,13 +373,17 @@ This step changes no repository files. Any script correction discovered during t
 - Verify that prepacking and memory planning retain canonical weights on CPU without allocating all expert weights on CUDA.
 - Extend the existing CUDA `MoE`/`QMoE` implementation with hybrid dispatch and shared CPU expert-compute helpers.
 - Use an internal graph-transformer-inserted `MoEWithCPUOffload` operator only if the existing input-memory contract makes the schema-preserving approach infeasible.
-- Add persistent CPU weights, fixed-capacity CUDA slots, immutable mapping snapshots, and deterministic admission and eviction.
-- Add immediate asynchronous copies, completion events, next-token publication, and non-blocking CPU fallback.
+- Keep every expert's canonical weights permanently resident and executable on CPU, regardless of CUDA residency.
+- Add fixed-capacity CUDA slots containing copies only, immutable mapping snapshots, and deterministic admission and eviction.
+- After each MoE invocation completes, compare the most frequent experts with CUDA residency and enqueue any required copies asynchronously.
+- Add completion events, next-token publication, and non-blocking CPU fallback.
 - Cover capacity, concurrency, transfer, eviction, and fallback behavior with tests.
 
 ### PR 6: fused Qwen 3.6 MoE integration
 
 - Integrate the cache manager with the fused Qwen 3.6 CUDA MoE operator.
+- Preserve a permanent CPU copy of every expert and use CUDA slots only as disposable cache copies.
+- Execute all non-resident experts on CPU for the current MoE invocation, then schedule cache updates after that invocation completes.
 - Add mixed CPU/CUDA expert dispatch and numerical correctness tests.
 - Add end-to-end bounded-memory tests for zero, partial, and full CUDA capacity.
 
