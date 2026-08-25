@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -35,6 +36,14 @@
 #include "core/session/utils.h"
 #include "core/common/profiler_common.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
+
+struct OrtEpContextConfig {
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* write_state = nullptr;
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  size_t read_max_data_size = std::numeric_limits<size_t>::max();
+};
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
@@ -80,6 +89,59 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
+}
+
+ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_ OrtEpContextConfig** config) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(session_options == nullptr, ORT_INVALID_ARGUMENT, "OrtSessionOptions is NULL");
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "Output OrtEpContextConfig is NULL");
+
+  auto ep_context_config = std::make_unique<OrtEpContextConfig>();
+  if (const auto* write_config = session_options->value.ep_context_gen_options.TryGetEpContextDataWriteFunc()) {
+    ep_context_config->write_func = write_config->write_func;
+    ep_context_config->write_state = write_config->state;
+  }
+
+  ep_context_config->read_func = session_options->value.ep_context_data_read_func;
+  ep_context_config->read_state = session_options->value.ep_context_data_read_state;
+  ep_context_config->read_max_data_size = session_options->value.ep_context_data_read_max_size;
+  *config = ep_context_config.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config) {
+  delete config;
+}
+
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
+                    _Out_ size_t* max_data_size) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
+  ORT_API_RETURN_IF(max_data_size == nullptr, ORT_INVALID_ARGUMENT, "Output max_data_size is NULL");
+
+  *read_func = config->read_func;
+  *state = config->read_func != nullptr ? config->read_state : nullptr;
+  *max_data_size = config->read_max_data_size;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "Output write_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
+
+  *write_func = config->write_func;
+  *state = config->write_func != nullptr ? config->write_state : nullptr;
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
@@ -1299,6 +1361,11 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
     // End of Version 29 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::SessionOptionsGetEpContextConfig,
+    &OrtExecutionProviderApi::ReleaseEpContextConfig,
+    &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
+    &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

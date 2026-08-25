@@ -1335,6 +1335,13 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
+    OrtWriteNamedBufferFunc write_func, void* state) {
+  Ort::ThrowOnError(
+      GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
     bool embed_ep_context_in_model) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
@@ -1363,6 +1370,27 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
 inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessEnabled(this->p_, use_weightless));
   return *this;
+}
+
+inline EpContextConfig::EpContextConfig(const SessionOptions& session_options)
+    : EpContextConfig{session_options.GetConst()} {}
+
+inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
+  ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
+}
+
+inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+  size_t ignored_max_data_size = 0;
+  GetReadFunc(read_func, state, ignored_max_data_size);
+}
+
+inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state,
+                                         size_t& max_data_size) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state, &max_data_size));
+}
+
+inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
 }
 
 namespace detail {
@@ -1524,6 +1552,20 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::Add(OrtCustomOpDomain* cust
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key, config_value));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
+    OrtReadNamedBufferFunc read_func, void* state, size_t max_data_size) {
+  OrtEpContextDataReadOptions options{ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION, max_data_size};
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, &options));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::ClearEpContextDataReadFunc() {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, nullptr, nullptr, nullptr));
   return *this;
 }
 

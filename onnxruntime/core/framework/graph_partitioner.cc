@@ -70,6 +70,8 @@ struct PartitionParams {
   std::reference_wrapper<int> fused_node_unique_id;
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
+  bool ep_context_data_read_callback_registered;
+  bool ep_context_data_write_callback_required;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::reference_wrapper<const OnPartitionAssignmentFunction> on_partition_assignment_fn;
   LayeringIndex* layering_index;
@@ -657,6 +659,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
                                            bool disable_model_compile,
+                                           bool ep_context_data_read_callback_registered,
+                                           bool ep_context_data_write_callback_required,
                                            LayeringIndex* layering_index) {  // Added arg
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -676,6 +680,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant,
                                                        graph_optimizer_registry, disable_model_compile,
+                                                       ep_context_data_read_callback_registered,
+                                                       ep_context_data_write_callback_required,
                                                        layering_index));  // Pass through
     }
   }
@@ -782,6 +788,22 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     return false;
   };
 
+  auto graph_viewer_has_external_ep_context_node = [](const GraphViewer& graph_viewer) -> bool {
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.OpType() != "EPContext") {
+        continue;
+      }
+
+      const auto& attributes = node.GetAttributes();
+      const auto embed_mode = attributes.find("embed_mode");
+      if (embed_mode != attributes.end() && embed_mode->second.i() == 0) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
   // even with single node, EP might still want to compile it.
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
@@ -810,6 +832,32 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
         viewers.push_back(std::move(graph_viewer));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
+      }
+
+      uint32_t required_ep_context_data_support = OrtEpContextDataSupportFlags_NONE;
+      if (ep_context_data_write_callback_required) {
+        required_ep_context_data_support |= OrtEpContextDataSupportFlags_WRITE;
+      }
+
+      if (ep_context_data_read_callback_registered &&
+          std::any_of(viewers.cbegin(), viewers.cend(),
+                      [&](const std::unique_ptr<GraphViewer>& viewer) {
+                        return graph_viewer_has_external_ep_context_node(*viewer);
+                      })) {
+        required_ep_context_data_support |= OrtEpContextDataSupportFlags_READ;
+      }
+
+      if (required_ep_context_data_support != OrtEpContextDataSupportFlags_NONE) {
+        uint32_t supported_flags = OrtEpContextDataSupportFlags_NONE;
+        ORT_RETURN_IF_ERROR(current_ep.GetEpContextDataSupport(supported_flags));
+        ORT_RETURN_IF((required_ep_context_data_support & OrtEpContextDataSupportFlags_READ) != 0 &&
+                          (supported_flags & OrtEpContextDataSupportFlags_READ) == 0,
+                      "EP '", type,
+                      "' does not support the registered EPContext data read callback.");
+        ORT_RETURN_IF((required_ep_context_data_support & OrtEpContextDataSupportFlags_WRITE) != 0 &&
+                          (supported_flags & OrtEpContextDataSupportFlags_WRITE) == 0,
+                      "EP '", type,
+                      "' does not support the registered EPContext data write callback.");
       }
 
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_and_viewers, node_compute_funcs));
@@ -1240,6 +1288,8 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
                                                        disable_model_compile,
+                                                       partition_params.ep_context_data_read_callback_registered,
+                                                       partition_params.ep_context_data_write_callback_required,
                                                        partition_params.layering_index));  // Pass param
     }
 
@@ -1455,6 +1505,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
+                                   bool ep_context_data_read_callback_registered,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -1477,6 +1528,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   // we make sure each fused node name is unique across the entire model for clarity
   int fused_node_unique_id = 0;
+  const bool ep_context_data_write_callback_required =
+      ep_context_gen_options.enable && !ep_context_gen_options.embed_ep_context_in_model &&
+      ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr;
 
   PartitionParams partition_params{
       std::ref(graph),
@@ -1486,6 +1540,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
       std::cref(debug_graph_fn),
+      ep_context_data_read_callback_registered,
+      ep_context_data_write_callback_required,
       std::cref(on_partition_assignment_fn_),
       layering_index};
 

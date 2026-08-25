@@ -25,6 +25,10 @@ struct OrtSessionOptions {
 
   const onnxruntime::ConfigOptions& GetConfigOptions() const noexcept;
 
+  void GetEpContextDataCallbacks(_Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** read_state,
+                                 _Out_ size_t* read_max_data_size,
+                                 _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** write_state) const noexcept;
+
   // Adds the given provider options to the session config options using an EP-specific key prefix.
   // Most EPs use "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>".
   onnxruntime::Status AddProviderOptionsToConfigOptions(

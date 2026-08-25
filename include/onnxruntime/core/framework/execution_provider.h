@@ -467,6 +467,12 @@ class IExecutionProvider {
     return nullptr;
   }
 
+  /** Returns support for application-managed external EPContext data. */
+  virtual Status GetEpContextDataSupport(uint32_t& supported_flags) const {
+    supported_flags = OrtEpContextDataSupportFlags_NONE;
+    return Status::OK();
+  }
+
  private:
   const std::string type_;
 

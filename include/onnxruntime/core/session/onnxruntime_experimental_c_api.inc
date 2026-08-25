@@ -330,6 +330,10 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateSession,
  * \param[in] state Opaque state passed to read_func. Can be NULL. Ignored when read_func is NULL.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \deprecated Use OrtApi::SessionOptionsSetEpContextDataReadFunc with finite OrtEpContextDataReadOptions. This V28
+ *             shim retains its legacy unbounded read limit, is supported through 1.31, and is eligible for removal
+ *             in 1.32.
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataReadFunc,
                      _Inout_ OrtSessionOptions* options, _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state)
@@ -362,6 +366,9 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataRea
  * \param[in] state Opaque state passed to write_func. Can be NULL. Ignored when write_func is NULL.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \deprecated Use OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc. This V28 shim is supported
+ *             through 1.31 and is eligible for removal in 1.32.
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc,
                      _In_ OrtModelCompilationOptions* model_compile_options,
@@ -381,6 +388,9 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtCompileApi_ModelCompilationOptions_Set
  * \param[out] config The extracted OrtEpContextConfig.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \deprecated Use OrtEpApi::SessionOptionsGetEpContextConfig. This V28 shim is supported through 1.31 and is eligible
+ *             for removal in 1.32.
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_SessionOptions_GetEpContextConfig,
                      _In_ const OrtSessionOptions* session_options, _Outptr_ OrtEpContextConfig** config)
@@ -388,6 +398,9 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_SessionOptions_GetEpContextConfi
 /** \brief Release an OrtEpContextConfig instance.
  *
  * \param[in] config The OrtEpContextConfig instance to release. May be NULL.
+ *
+ * \deprecated Use OrtEpApi::ReleaseEpContextConfig. This V28 shim is supported through 1.31 and is eligible for
+ *             removal in 1.32.
  */
 ORT_EXPERIMENTAL_API(28, void, OrtEpApi_ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config)
 
@@ -403,6 +416,9 @@ ORT_EXPERIMENTAL_API(28, void, OrtEpApi_ReleaseEpContextConfig, _Frees_ptr_opt_ 
  * \param[out] state Opaque state pointer passed to read_func, or NULL if none was registered.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \deprecated Use OrtEpApi::EpContextConfigGetEpContextDataReadFunc. This V28 shim is supported through 1.31 and is
+ *             eligible for removal in 1.32.
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_EpContextConfig_GetEpContextDataReadFunc,
                      _In_ const OrtEpContextConfig* config, _Out_ OrtReadNamedBufferFunc* read_func,
@@ -420,6 +436,9 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_EpContextConfig_GetEpContextData
  * \param[out] state Opaque state pointer passed to write_func, or NULL if none was registered.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \deprecated Use OrtEpApi::EpContextConfigGetEpContextDataWriteFunc. This V28 shim is supported through 1.31 and is
+ *             eligible for removal in 1.32.
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc,
                      _In_ const OrtEpContextConfig* config, _Out_ OrtWriteNamedBufferFunc* write_func,

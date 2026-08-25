@@ -4,12 +4,11 @@
 #pragma once
 
 #include <filesystem>
+#include <limits>
 #include <variant>
 #include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
-// Needed for OrtWriteNamedBufferFunc (used by EpContextDataWriteFuncHolder below). This include can be removed
-// once the experimental EPContext data callback APIs are promoted to the stable C API.
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 namespace epctx {
@@ -36,6 +35,17 @@ struct BufferWriteFuncHolder {
 struct EpContextDataWriteFuncHolder {
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* state = nullptr;
+};
+
+/// <summary>
+/// Non-owning copy of the application callbacks and states used for external EPContext binary data.
+/// </summary>
+struct EpContextDataCallbacks {
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  size_t read_max_data_size = std::numeric_limits<size_t>::max();
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* write_state = nullptr;
 };
 
 /// <summary>

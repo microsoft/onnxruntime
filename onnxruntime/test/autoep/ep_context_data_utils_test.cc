@@ -19,7 +19,6 @@
 
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_cxx_api.h"
 
 #include "test/autoep/ep_context_data_callbacks.h"
 #include "test/autoep/library/ep_context_data_utils.h"
@@ -549,6 +548,34 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataLeavesOutputEmptyOnCallba
   EXPECT_EQ(read_callback_state.read_file_name, "failing_after_alloc_context.bin");
   EXPECT_TRUE(owned.empty());
   EXPECT_EQ(owned.size(), 0u);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataRejectsOversizedPayloads) {
+  const auto& api = Ort::GetApi();
+
+  EpContextDataCallbackState callback_state;
+  callback_state.payload = {'t', 'o', 'o', '-', 'l', 'a', 'r', 'g', 'e'};
+  ep_context_data_utils::EpContextData callback_owned;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
+                           api, LoadEpContextDataCallback, &callback_state, "oversized_callback.bin", nullptr,
+                           callback_owned, nullptr, callback_state.payload.size() - 1),
+                       ORT_INVALID_ARGUMENT, "callback data exceeds the configured maximum size");
+  EXPECT_TRUE(callback_owned.empty());
+
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_oversized_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+  const std::filesystem::path data_path = test_dir / "oversized_file.bin";
+  std::string data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(
+      api, data_file_name.c_str(), nullptr, callback_state.payload.data(), callback_state.payload.size()));
+
+  ep_context_data_utils::EpContextData file_owned;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
+                           api, static_cast<OrtReadNamedBufferFunc>(nullptr), nullptr, data_file_name.c_str(), nullptr,
+                           file_owned, nullptr, callback_state.payload.size() - 1),
+                       ORT_INVALID_ARGUMENT, "file exceeds the configured maximum size");
+  EXPECT_TRUE(file_owned.empty());
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataUsesCallerSuppliedAllocator) {

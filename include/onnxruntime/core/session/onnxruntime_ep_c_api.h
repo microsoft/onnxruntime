@@ -2103,6 +2103,63 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
+
+  /** \brief Copy the EPContext callback configuration from session options into an owned handle.
+   *
+   * An EP should call this during OrtEpFactory::CreateEp and retain the returned handle for as long as its Compile
+   * implementation may need the callbacks. The handle owns copies of the function and state pointers, but it does
+   * not own the application-provided state itself. On failure, `*config` is not modified.
+   *
+   * \param[in] session_options Session options supplied to OrtEpFactory::CreateEp.
+   * \param[out] config Non-null handle that must be released with ReleaseEpContextConfig.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextConfig** config);
+
+  /** \brief Release an OrtEpContextConfig handle. May be called with NULL.
+   *
+   * \since Version 1.30.
+   */
+  ORT_CLASS_RELEASE(EpContextConfig);
+
+  /** \brief Get the EPContext data read callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL. The returned state is application-owned and remains
+   * subject to the lifetime and synchronization requirements documented by SessionOptionsSetEpContextDataReadFunc.
+   *
+   * \param[in] config EPContext configuration handle.
+   * \param[out] read_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   * \param[out] max_data_size Snapshotted maximum callback payload size in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
+                  _Out_ size_t* max_data_size);
+
+  /** \brief Get the EPContext data write callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL. The returned state is application-owned and remains
+   * subject to the lifetime and synchronization requirements documented by
+   * ModelCompilationOptions_SetEpContextDataWriteFunc.
+   *
+   * \param[in] config EPContext configuration handle.
+   * \param[out] write_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
 };
 
 /**
@@ -2708,6 +2765,29 @@ struct OrtEp {
    * \since Version 1.29.
    */
   ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
+
+  /** \brief Query support for application-managed external EPContext data.
+   *
+   * The EP sets `supported_flags` to a bitwise combination of OrtEpContextDataSupportFlags values. READ means the EP
+   * uses the application's OrtReadNamedBufferFunc for external EPContext data assigned to it. WRITE means the EP uses
+   * the application's OrtWriteNamedBufferFunc when generating external EPContext data. An EP may reject a
+   * provider-specific external format that cannot use the callback, but it must do so before filesystem I/O. A
+   * callback failure must be returned to ORT without falling back to filesystem I/O.
+   *
+   * These flags cover provider-owned EPContext artifacts only. They do not describe temporary files that an EP's
+   * backend or driver may create internally.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] supported_flags The supported OrtEpContextDataSupportFlags values.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not support
+   *       application-managed external EPContext data.
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(GetEpContextDataSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_flags);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
