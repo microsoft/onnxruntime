@@ -757,18 +757,52 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   };
 
+  auto has_constant_initializer_input = [this](const Node& node) {
+    for (const auto* input_def : node.InputDefs()) {
+      if (!input_def->Exists()) {
+        continue;
+      }
+
+      const std::string& input_name = input_def->Name();
+      const SessionState* st = this;
+      do {
+        int ort_value_idx;
+        if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK() &&
+            st->constant_initialized_tensors_.count(ort_value_idx) != 0) {
+          return true;
+        }
+
+        if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
+          break;
+        }
+        st = st->Parent();
+      } while (st);
+    }
+
+    return false;
+  };
+
   bool should_cache_prepacked_weights_for_shared_initializers = (prepacked_weights_container_ != nullptr);
 
-  const bool enable_parallel_prepack =
-      !should_cache_prepacked_weights_for_shared_initializers &&
+  InlinedVector<const Node*> parallel_prepack_nodes;
+  InlinedHashSet<NodeIndex> parallel_prepack_node_indices;
+  if (!should_cache_prepacked_weights_for_shared_initializers &&
       GetThreadPool() != nullptr &&
-      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1";
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1") {
+    for (auto& node : GetGraphViewer().Nodes()) {
+      if (node.GetExecutionProviderType() == kCpuExecutionProvider && has_constant_initializer_input(node)) {
+        parallel_prepack_nodes.push_back(&node);
+        parallel_prepack_node_indices.insert(node.Index());
+      }
+    }
+  }
+
+  const bool enable_parallel_prepack = parallel_prepack_nodes.size() > 1;
 
   // Let kernels (e.g. MatMulNBits's LUT GEMM temporary pool) see whether this session is actually
   // dispatching prepacking in parallel, rather than just the raw requested option, so they only
-  // suppress their own temporary pool when doing so avoids real oversubscription. This also covers
-  // the case where the session pool exists but has size 1 (GetThreadPool() == nullptr): the outer
-  // dispatch then falls back to sequential and the kernel's own pool should still run.
+  // suppress their own temporary pool when doing so avoids real oversubscription. This also preserves
+  // the kernel's own pool when fewer than two CPU prepack jobs can overlap.
   // sess_options_ is a `const SessionOptions&` here, but the referenced object is owned (non-const)
   // by the InferenceSession that created this SessionState, and this write happens single-threaded
   // before any node's PrePack() runs, so it cannot race with the concurrent reads performed later.
@@ -800,19 +834,26 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   }
 
-  // Parallel path: fan out the per-node work (dominated by kernel->PrePack(), which reads and
-  // repacks each node's constant initializer) across the intra-op thread pool. Collect node
-  // pointers up front so we have random access for TrySimpleParallelFor.
+  // Parallel path: fan out the per-node CPU work (dominated by kernel->PrePack(), which reads and
+  // repacks each node's constant initializer) across the intra-op thread pool. EPs that do not
+  // advertise concurrent kernel execution are left on the sequential path.
   LOGS(logger_, INFO) << "Pre-packing constant initializers using the intra-op thread pool.";
-  InlinedVector<const Node*> nodes;
   for (auto& node : GetGraphViewer().Nodes()) {
-    nodes.push_back(&node);
+    if (parallel_prepack_node_indices.count(node.Index()) != 0) {
+      continue;
+    }
+
+    if (sess_options_.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Weight pre-packing was canceled due to user request.");
+    }
+    ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false));
   }
 
-  std::vector<Status> statuses(nodes.size());
+  std::vector<Status> statuses(parallel_prepack_nodes.size());
   std::atomic<bool> cancellation_requested{false};
   concurrency::ThreadPool::TrySimpleParallelFor(
-      GetThreadPool(), static_cast<std::ptrdiff_t>(nodes.size()),
+      GetThreadPool(), static_cast<std::ptrdiff_t>(parallel_prepack_nodes.size()),
       [&](std::ptrdiff_t i) {
         if (sess_options_.IsLoadCancellationFlagSet()) {
           cancellation_requested = true;
@@ -821,27 +862,27 @@ Status SessionState::PrepackConstantInitializedTensors(
 
         Status& status = statuses[static_cast<size_t>(i)];
         ORT_TRY {
-          status = process_node(*nodes[static_cast<size_t>(i)],
+          status = process_node(*parallel_prepack_nodes[static_cast<size_t>(i)],
                                 /*should_cache*/ false, /*guard_bookkeeping*/ true);
         }
         ORT_CATCH(const OnnxRuntimeException& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
             status = Status(ex.Category(), ex.Code(),
                             MakeString("Exception while pre-packing node '",
-                                       nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what()));
+                                       parallel_prepack_nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what()));
           });
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
             status = ORT_MAKE_STATUS(
                 ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception while pre-packing node '",
-                nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what());
+                parallel_prepack_nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what());
           });
         }
         ORT_CATCH(...) {
           status = ORT_MAKE_STATUS(
               ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception while pre-packing node '",
-              nodes[static_cast<size_t>(i)]->Name(), "'.");
+              parallel_prepack_nodes[static_cast<size_t>(i)]->Name(), "'.");
         }
       });
 

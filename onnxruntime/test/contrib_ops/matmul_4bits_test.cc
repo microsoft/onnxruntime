@@ -761,9 +761,9 @@ TEST(MatMulNBits, ParallelPrepack) {
   constexpr int64_t k_blocks = K / block_size;
   constexpr int64_t blob_size = block_size * QBits / 8;
 
-  if (!MlasIsQNBitGemmAvailable(QBits, block_size, SQNBIT_CompFp32) &&
-      !MlasIsQNBitGemmAvailable(QBits, block_size, SQNBIT_CompInt8)) {
-    GTEST_SKIP() << "No QNBit GEMM implementation is available.";
+  if (!MlasIsLutGemmAvailable(static_cast<size_t>(N), static_cast<size_t>(K), QBits,
+                              static_cast<size_t>(block_size))) {
+    GTEST_SKIP() << "LUT GEMM implementation is not available.";
   }
 
   RandomValueGenerator random{1234};
@@ -813,6 +813,7 @@ TEST(MatMulNBits, ParallelPrepack) {
   auto run_model = [&](bool parallel, std::vector<OrtValue>& fetches, size_t& prepack_count) {
     SessionOptions session_options;
     session_options.intra_op_param.thread_pool_size = 4;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
     if (parallel) {
       ASSERT_STATUS_OK(
           session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
