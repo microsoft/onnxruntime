@@ -561,6 +561,12 @@ Node::EdgeEnd::EdgeEnd(const Node& node) noexcept
     : EdgeEnd(node, INT_MAX, INT_MAX) {
 }
 
+void Node::AddControlEdgeBetweenNodes(Node& src_node, Node& dst_node) {
+  src_node.relationships_.output_edges.emplace(dst_node);
+  dst_node.relationships_.input_edges.emplace(src_node);
+  dst_node.relationships_.control_inputs.insert(src_node.Name());
+}
+
 Node::NodeConstIterator::NodeConstIterator(EdgeConstIterator p_iter) {
   m_iter = p_iter;
 }
@@ -894,7 +900,8 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
                 "input index: ", fbs_node_edges.node_index(), " is not the same as this node's index:", index_);
 
   auto add_edges = [this, &graph](const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
-                                  const std::string& edge_description, bool input_edges) -> Status {
+                                  bool input_edges) -> Status {
+    const char* edge_description = input_edges ? "input edge" : "output edge";
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", edge_description);
@@ -917,9 +924,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
                       "Node::LoadEdgesFromOrtFormat, ", edge_description,
                       " has an invalid control-edge slot pair. Invalid ORT format model.");
         if (is_control_edge) {
-          src_node.relationships_.output_edges.emplace(dst_node);
-          dst_node.relationships_.input_edges.emplace(src_node);
-          dst_node.relationships_.control_inputs.insert(src_node.Name());
+          AddControlEdgeBetweenNodes(src_node, dst_node);
           continue;
         }
 
@@ -951,8 +956,8 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.input_edges(), "input edges", true));
-  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.output_edges(), "output edges", false));
+  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.input_edges(), true));
+  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.output_edges(), false));
 
   return Status::OK();
 }
@@ -5030,11 +5035,7 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
     return false;
   }
 
-  GSL_SUPPRESS(es.84) {  // ignoring return from insert()
-    nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index]));
-    nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index]));
-    nodes_[dst_node_index]->MutableRelationships().control_inputs.insert(nodes_[src_node_index]->Name());
-  }
+  Node::AddControlEdgeBetweenNodes(*nodes_[src_node_index], *nodes_[dst_node_index]);
 
   return true;
 }

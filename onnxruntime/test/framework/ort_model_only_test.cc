@@ -361,6 +361,18 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
   }
 }
 
+TEST(OrtModelTest, RejectsAsymmetricControlEdgeSlots) {
+  for (const bool input_edge : {true, false}) {
+    for (const auto [src_arg_index, dst_arg_index] :
+         {std::pair{INT_MAX, 0}, std::pair{0, INT_MAX}}) {
+      const auto status = LoadOrtBuffer(
+          BuildOrtModelWithEdgeSlots(src_arg_index, dst_arg_index, input_edge));
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("invalid control-edge slot pair"));
+    }
+  }
+}
+
 TEST(OrtModelTest, RejectsMultipleProducersForOneDestinationSlot) {
   const auto status = LoadOrtBuffer(BuildOrtModelWithConflictingEdgeProducers());
   ASSERT_FALSE(status.IsOK());

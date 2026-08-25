@@ -598,6 +598,8 @@ class Node {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
+  static void AddControlEdgeBetweenNodes(Node& src_node, Node& dst_node);
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   void Init(std::string_view name,
             std::string_view op_type,
