@@ -90,6 +90,7 @@ struct TestOptions {
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
+  bool scales_are_initializers{true};
   bool zero_points_are_initializers{true};
   bool has_g_idx{false};
   bool has_bias{false};
@@ -114,6 +115,7 @@ struct TestOptions {
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
             << ", zp_is_4bit:" << opts.zp_is_4bit
+            << ", scales_are_initializers:" << opts.scales_are_initializers
             << ", zero_points_are_initializers:" << opts.zero_points_are_initializers
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
@@ -208,11 +210,11 @@ void RunTest(const TestOptions& opts,
                                         : std::vector<int64_t>{N, k_blocks};
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddInput<T1>("scales", scales_shape, scales, true);
+    test.AddInput<T1>("scales", scales_shape, scales, opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddInput<T1>("scales", scales_shape, FloatsToMLFloat16s(scales), true);
+    test.AddInput<T1>("scales", scales_shape, FloatsToMLFloat16s(scales), opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddInput<T1>("scales", scales_shape, FloatsToBFloat16s(scales), true);
+    test.AddInput<T1>("scales", scales_shape, FloatsToBFloat16s(scales), opts.scales_are_initializers);
   }
 
   if (opts.has_zero_point) {
@@ -687,6 +689,49 @@ TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
                                      /*has_zero_point*/ true, /*has_bias*/ false,
                                      PrepackSharingMode::kAddInitializer);
   opts.M = 1;
+  RunTest<float>(opts);
+}
+
+// Uses a KleidiAI-compatible symmetric Q4 CompInt8 shape. Runtime scales cannot be embedded during
+// PrePack(B), so the kernel must decline B packing and use the runtime scales through the unpacked path.
+TEST(MatMulNBits, DynamicScales_SymmetricCompInt8) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, false, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
+  TestOptions opts{};
+  opts.M = 1;
+  opts.N = 288;
+  opts.K = 1024;
+  opts.block_size = 128;
+  opts.accuracy_level = 4;
+  opts.scales_are_initializers = false;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest<float>(opts);
+  RunTest<MLFloat16>(opts);
+}
+
+// A runtime-scale node must not adopt a shared KleidiAI B buffer whose packed bytes contain scales
+// from another node or session.
+TEST(MatMulNBits, SharedPrepackedWeights_DynamicScales_SymmetricCompInt8) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, false, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
+  auto opts = MakeSharingTestOptions(288, 1024, /*block_size*/ 128, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ false, /*has_bias*/ false,
+                                     PrepackSharingMode::kAddInitializerExpectNoPrepack);
+  opts.M = 1;
+  opts.scales_are_initializers = false;
   RunTest<float>(opts);
 }
 

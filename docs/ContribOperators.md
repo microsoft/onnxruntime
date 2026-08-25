@@ -122,6 +122,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
@@ -2688,7 +2689,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention with KV Cache Quantization Support.
   
-  This operator implements causal grouped-query attention with past state (KV cache) support.
+  This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
   
   **Cache Format:**
@@ -2714,6 +2715,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>causal</tt> : int</dt>
+<dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
@@ -2723,7 +2726,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
-<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>
@@ -4530,7 +4533,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
 <dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
 <dt><tt>attention_metadata</tt> (optional) : S</dt>
-<dd>1D tensor with shape (2) holding [max_query_len_bound, max_kv_len_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. The op can otherwise obtain these only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The values are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
+<dd>1D tensor with shape (2) or (3) holding [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. max_kv_len_lower_bound is a replay-wide lower bound on the largest per-sequence KV length in the batch and 0 means 'unknown'. It is a provider-neutral performance hint; omitting it preserves the shape-(2) contract and disables optimizations that require a lower bound unless the op reads exact lengths back from the device. The op can otherwise obtain the upper bounds only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The upper bounds are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -7004,6 +7007,90 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
+
+  Stateful causal depthwise convolution over a packed, token-major batch of variable-length
+  sequences (CUDA only).
+  
+  input and output have shape (total_tokens, channels). cumulative_sequence_length is a
+  device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
+  [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
+  at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
+  (channels). The convolution never reads across a sequence boundary.
+  
+  initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+  the committed raw activation samples immediately preceding this call. final_state has the same
+  shape and type and is fully written with the state after each sequence's final token. State
+  uses the activation type because it stores raw samples, not accumulated convolution values.
+  initial_state and final_state may use the same allocation. Such in-place execution is
+  transaction-safe only when the whole operator call is unconditionally committed; a caller that
+  may select a prefix or roll back must preserve initial_state and commit one of the separately
+  produced states instead.
+  
+  When requested, prefix_states has shape
+  (max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
+  after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
+  unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
+  This output lets a transactional caller commit any produced prefix without rerunning the
+  convolution.
+  
+  For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
+  cumulative_sequence_length[batch_size] == total_tokens, and its local range
+  0 <= start < end <= total_tokens before accessing input, state, output, or checkpoints.
+  Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
+  This device-side containment is not a synchronous validation or rejection mechanism.
+  
+  The optional activation attribute supports none, SiLU, and Swish.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>max_checkpoints</tt> : int</dt>
+<dd>Static number of per-request prefix states to expose. Checkpoint j is the state after local token j when that token exists. Unwritten slots are unspecified. Valid range is [0, 8].</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Token-major packed input with shape (total_tokens, channels).</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>Depthwise convolution kernel with shape (channels, 1, kernel_size).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
+<dt><tt>initial_state</tt> : T</dt>
+<dd>Required committed carry state with shape (batch_size, channels, kernel_size - 1).</dd>
+</dl>
+
+#### Outputs (2 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Token-major convolution output with the same shape as input.</dd>
+<dt><tt>final_state</tt> : T</dt>
+<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, kernel_size - 1).</dd>
+<dt><tt>prefix_states</tt> (optional) : T</dt>
+<dd>Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, kernel_size - 1). Unwritten slots are unspecified.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.WhisperBeamSearch"></a><a name="com.microsoft.whisperbeamsearch">**com.microsoft.WhisperBeamSearch**</a>
 
   Beam Search for whisper model, especially with cross_qk features etc.
@@ -7212,6 +7299,8 @@ No versioning maintained for experimental ops.
   The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
   and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
   and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+  segment_ids, segment_embedding, segment_embedding_scale, and segment_embedding_zero_point must either all be provided or all
+  be omitted.
   If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.
 
 #### Version
@@ -7230,13 +7319,13 @@ No versioning maintained for experimental ops.
 <dt><tt>input_ids</tt> : T1</dt>
 <dd>2D words IDs with shape (batch_size, sequence_length)</dd>
 <dt><tt>segment_ids</tt> (optional) : T1</dt>
-<dd>2D segment IDs with shape (batch_size, sequence_length)</dd>
+<dd>2D segment IDs with shape (batch_size, sequence_length). Part of the all-or-none segment input group.</dd>
 <dt><tt>word_embedding_quant</tt> : T2</dt>
 <dd>2D with shape (,hidden_size)</dd>
 <dt><tt>position_embedding_quant</tt> : T2</dt>
 <dd>2D with shape (, hidden_size)</dd>
 <dt><tt>segment_embedding</tt> (optional) : T2</dt>
-<dd>2D with shape (, hidden_size)</dd>
+<dd>2D with shape (, hidden_size). Part of the all-or-none segment input group.</dd>
 <dt><tt>gamma_quant</tt> : T2</dt>
 <dd>1D gamma tensor for layer normalization with shape (hidden_size)</dd>
 <dt><tt>beta_quant</tt> : T2</dt>
@@ -7248,7 +7337,7 @@ No versioning maintained for experimental ops.
 <dt><tt>position_embedding_scale</tt> : T</dt>
 <dd>Scale for position embeddings</dd>
 <dt><tt>segment_embedding_scale</tt> (optional) : T</dt>
-<dd>Scale for segment embeddings</dd>
+<dd>Scale for segment embeddings. Part of the all-or-none segment input group.</dd>
 <dt><tt>gamma_scale</tt> : T</dt>
 <dd>Scale for 1D gamma tensor</dd>
 <dt><tt>beta_scale</tt> : T</dt>
@@ -7258,7 +7347,7 @@ No versioning maintained for experimental ops.
 <dt><tt>position_embedding_zero_point</tt> : T2</dt>
 <dd>Zero point for position embeddings</dd>
 <dt><tt>segment_embedding_zero_point</tt> (optional) : T2</dt>
-<dd>Zero Point for segment embeddings</dd>
+<dd>Zero Point for segment embeddings. Part of the all-or-none segment input group.</dd>
 <dt><tt>gamma_zero_point</tt> : T2</dt>
 <dd>Zero Point for 1D gamma tensor</dd>
 <dt><tt>beta_zero_point</tt> : T2</dt>
@@ -7284,5 +7373,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
