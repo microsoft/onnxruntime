@@ -2185,6 +2185,10 @@ class TestInferenceSession(unittest.TestCase):
         )
         np.testing.assert_allclose(fetches[0].numpy(), expected, rtol=1e-5, atol=1e-5)
 
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
     def test_webgpu_graph_capture_session_ortvalues(self):
         so = onnxrt.SessionOptions()
         so.enable_mem_pattern = False
