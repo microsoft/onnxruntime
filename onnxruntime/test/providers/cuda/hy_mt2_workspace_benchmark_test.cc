@@ -12,6 +12,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <numeric>
@@ -22,6 +23,10 @@
 #include <vector>
 
 #include <cuda_runtime_api.h>
+#include <dxgi1_4.h>
+#include <wrl/client.h>
+
+#pragma comment(lib, "dxgi.lib")
 
 #include "core/common/path_string.h"
 #include "core/framework/allocator.h"
@@ -38,6 +43,8 @@
 namespace onnxruntime {
 namespace test {
 namespace {
+
+using Microsoft::WRL::ComPtr;
 
 constexpr int64_t kSequenceLength = 64;
 constexpr int64_t kPastSequenceLength = 1;
@@ -128,6 +135,112 @@ class CudaMemorySampler {
   std::atomic<bool> stop_{false};
   std::atomic<size_t> peak_used_bytes_{0};
   std::atomic<int> error_{static_cast<int>(cudaSuccess)};
+  std::thread worker_;
+};
+
+ComPtr<IDXGIAdapter3> GetDxgiAdapterForCudaDevice(int device_id) {
+  cudaDeviceProp device_properties{};
+  const cudaError_t properties_result =
+      cudaGetDeviceProperties(&device_properties, device_id);
+  ORT_ENFORCE(properties_result == cudaSuccess,
+              "cudaGetDeviceProperties failed for CUDA device ", device_id,
+              ": ", cudaGetErrorString(properties_result));
+  static_assert(sizeof(device_properties.luid) == sizeof(LUID));
+
+  ComPtr<IDXGIFactory1> factory;
+  ORT_ENFORCE(SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))),
+              "Failed to create a DXGI factory for WDDM memory sampling.");
+
+  for (UINT adapter_index = 0;; ++adapter_index) {
+    ComPtr<IDXGIAdapter1> adapter;
+    const HRESULT enum_result = factory->EnumAdapters1(adapter_index, &adapter);
+    if (enum_result == DXGI_ERROR_NOT_FOUND) {
+      break;
+    }
+    ORT_ENFORCE(SUCCEEDED(enum_result), "Failed to enumerate DXGI adapter ", adapter_index,
+                " for WDDM memory sampling. HRESULT=", enum_result);
+
+    DXGI_ADAPTER_DESC1 description{};
+    ORT_ENFORCE(SUCCEEDED(adapter->GetDesc1(&description)),
+                "Failed to query DXGI adapter ", adapter_index, ".");
+    if (std::memcmp(device_properties.luid, &description.AdapterLuid, sizeof(LUID)) != 0) {
+      continue;
+    }
+
+    ComPtr<IDXGIAdapter3> adapter3;
+    ORT_ENFORCE(SUCCEEDED(adapter.As(&adapter3)),
+                "CUDA device ", device_id, " does not expose IDXGIAdapter3.");
+    return adapter3;
+  }
+
+  ORT_THROW("No DXGI adapter matched CUDA device ", device_id,
+            " LUID for WDDM memory sampling.");
+}
+
+size_t GetWddmLocalUsageBytes(IDXGIAdapter3* adapter) {
+  ORT_ENFORCE(adapter != nullptr);
+  DXGI_QUERY_VIDEO_MEMORY_INFO memory_info{};
+  const HRESULT result = adapter->QueryVideoMemoryInfo(
+      0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory_info);
+  ORT_ENFORCE(SUCCEEDED(result),
+              "IDXGIAdapter3::QueryVideoMemoryInfo failed. HRESULT=", result);
+  return static_cast<size_t>(memory_info.CurrentUsage);
+}
+
+class WddmMemorySampler {
+ public:
+  explicit WddmMemorySampler(ComPtr<IDXGIAdapter3> adapter)
+      : adapter_(std::move(adapter)) {
+    ORT_ENFORCE(adapter_ != nullptr);
+    peak_used_bytes_.store(
+        GetWddmLocalUsageBytes(adapter_.Get()), std::memory_order_relaxed);
+
+    worker_ = std::thread([this]() {
+      while (!stop_.load(std::memory_order_relaxed)) {
+        DXGI_QUERY_VIDEO_MEMORY_INFO memory_info{};
+        const HRESULT result = adapter_->QueryVideoMemoryInfo(
+            0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory_info);
+        if (FAILED(result)) {
+          error_.store(result, std::memory_order_relaxed);
+          return;
+        }
+
+        const size_t used_bytes = static_cast<size_t>(memory_info.CurrentUsage);
+        size_t peak = peak_used_bytes_.load(std::memory_order_relaxed);
+        while (used_bytes > peak &&
+               !peak_used_bytes_.compare_exchange_weak(
+                   peak, used_bytes, std::memory_order_relaxed)) {
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+    });
+  }
+
+  ~WddmMemorySampler() {
+    Stop();
+  }
+
+  void Stop() {
+    stop_.store(true, std::memory_order_relaxed);
+    if (worker_.joinable()) {
+      worker_.join();
+    }
+  }
+
+  size_t PeakUsedBytes() const {
+    return peak_used_bytes_.load(std::memory_order_relaxed);
+  }
+
+  HRESULT Error() const {
+    return error_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  ComPtr<IDXGIAdapter3> adapter_;
+  std::atomic<bool> stop_{false};
+  std::atomic<size_t> peak_used_bytes_{0};
+  std::atomic<HRESULT> error_{S_OK};
   std::thread worker_;
 };
 
@@ -224,6 +337,9 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_EQ(cudaFree(nullptr), cudaSuccess);
   const std::optional<size_t> baseline_used_bytes = GetCudaUsedMemoryBytes();
   ASSERT_TRUE(baseline_used_bytes.has_value());
+  ComPtr<IDXGIAdapter3> dxgi_adapter = GetDxgiAdapterForCudaDevice(0);
+  const size_t wddm_baseline_local_bytes =
+      GetWddmLocalUsageBytes(dxgi_adapter.Get());
 
   const std::string enable_workspace_preallocation =
       GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_PREALLOCATION", "0");
@@ -257,6 +373,7 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
   using Clock = std::chrono::steady_clock;
   CudaMemorySampler initialization_memory_sampler(0);
+  WddmMemorySampler initialization_wddm_sampler(dxgi_adapter);
   const auto initialize_start = Clock::now();
 
   OrtCUDAProviderOptionsV2 cuda_options{};
@@ -274,9 +391,13 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
   const auto initialize_end = Clock::now();
   initialization_memory_sampler.Stop();
+  initialization_wddm_sampler.Stop();
   ASSERT_EQ(initialization_memory_sampler.Error(), cudaSuccess);
+  ASSERT_TRUE(SUCCEEDED(initialization_wddm_sampler.Error()));
   const std::optional<size_t> after_initialize_used_bytes = GetCudaUsedMemoryBytes();
   ASSERT_TRUE(after_initialize_used_bytes.has_value());
+  const size_t wddm_after_initialize_local_bytes =
+      GetWddmLocalUsageBytes(dxgi_adapter.Get());
 
   size_t matmul_nbits_nodes = 0;
   size_t cuda_matmul_nbits_nodes = 0;
@@ -363,18 +484,23 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   IArena* cuda_arena = IArena::SafeArenaCast(cuda_allocator.get());
   ASSERT_NE(cuda_arena, nullptr);
   ASSERT_STATUS_OK(cuda_arena->Shrink());
+  const size_t wddm_before_inference_local_bytes =
+      GetWddmLocalUsageBytes(dxgi_adapter.Get());
   AllocatorStats before_memory_measurement;
   cuda_allocator->GetStats(&before_memory_measurement);
 
   constexpr int kMemoryMeasurementRuns = 3;
   CudaMemorySampler inference_memory_sampler(0);
+  WddmMemorySampler inference_wddm_sampler(dxgi_adapter);
   for (int i = 0; i < kMemoryMeasurementRuns; ++i) {
     fetches.clear();
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
   ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
   inference_memory_sampler.Stop();
+  inference_wddm_sampler.Stop();
   ASSERT_EQ(inference_memory_sampler.Error(), cudaSuccess);
+  ASSERT_TRUE(SUCCEEDED(inference_wddm_sampler.Error()));
   AllocatorStats after_memory_measurement;
   cuda_allocator->GetStats(&after_memory_measurement);
   const int64_t measurement_new_arena_bytes =
@@ -420,6 +546,10 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   };
   const size_t initialization_peak_bytes = initialization_memory_sampler.PeakUsedBytes();
   const size_t inference_peak_bytes = inference_memory_sampler.PeakUsedBytes();
+  const size_t wddm_initialization_peak_local_bytes =
+      initialization_wddm_sampler.PeakUsedBytes();
+  const size_t wddm_inference_peak_local_bytes =
+      inference_wddm_sampler.PeakUsedBytes();
 
   std::cout << "[ MODEL WORKSPACE BENCHMARK ]"
             << " model=" << profile.name
@@ -447,6 +577,23 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << to_mib(inference_peak_bytes)
             << " inference_peak_delta_mib="
             << to_mib(delta_from_baseline(inference_peak_bytes))
+            << " wddm_baseline_local_mib=" << to_mib(wddm_baseline_local_bytes)
+            << " wddm_initialization_peak_local_mib="
+            << to_mib(wddm_initialization_peak_local_bytes)
+            << " wddm_initialization_peak_delta_mib="
+            << to_mib(wddm_initialization_peak_local_bytes -
+                      std::min(wddm_initialization_peak_local_bytes,
+                               wddm_baseline_local_bytes))
+            << " wddm_post_initialize_local_mib="
+            << to_mib(wddm_after_initialize_local_bytes)
+            << " wddm_pre_inference_local_mib="
+            << to_mib(wddm_before_inference_local_bytes)
+            << " wddm_inference_peak_local_mib="
+            << to_mib(wddm_inference_peak_local_bytes)
+            << " wddm_inference_peak_delta_mib="
+            << to_mib(wddm_inference_peak_local_bytes -
+                      std::min(wddm_inference_peak_local_bytes,
+                               wddm_before_inference_local_bytes))
             << " measurement_new_arena_bytes=" << measurement_new_arena_bytes
             << " arena_bytes_in_use=" << allocator_stats.bytes_in_use
             << " arena_total_allocated_bytes=" << allocator_stats.total_allocated_bytes
