@@ -2306,7 +2306,18 @@ def run_oscar2bit_mixed_rot_decode_test(
 
     # Step 2: decode. Feed present + present_hp back as past + past_hp, with the same rotations.
     model2 = create_oscar2bit_mixed_rot_gqa_graph(
-        batch_size, 1, s, s + 1, hp_prompt_len, hp_decode_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho
+        batch_size,
+        1,
+        s,
+        s + 1,
+        hp_prompt_len,
+        hp_decode_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        k_rho,
+        v_rho,
     )
     sess2 = _mixed_session(model2, sink, recent)
     out_ort = sess2.run(
