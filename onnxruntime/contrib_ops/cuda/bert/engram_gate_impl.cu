@@ -6,9 +6,8 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <algorithm>
-#include <limits>
 
+#include "contrib_ops/cuda/bert/kernel_helper.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -16,18 +15,6 @@ namespace contrib {
 namespace cuda {
 
 namespace {
-
-constexpr int kThreads = 256;
-constexpr int64_t kMaxGridDimX = 65535;
-
-inline int GridSize(int64_t count) {
-  const int64_t blocks = (count + kThreads - 1) / kThreads;
-  return static_cast<int>(std::min(blocks, kMaxGridDimX));
-}
-
-__device__ __forceinline__ float SigmoidFloat(float x) {
-  return x > 0.0f ? 1.0f / (1.0f + expf(-x)) : expf(x) / (1.0f + expf(x));
-}
 
 template <typename T>
 __global__ void EngramGateKernel(
@@ -80,7 +67,7 @@ __global__ void EngramGateKernel(
     const float query_inv_rms = rsqrtf(query_sum_sq / static_cast<float>(hidden_size) + epsilon);
     const float dot = dot_numerator * key_inv_rms * query_inv_rms / sqrtf(static_cast<float>(hidden_size));
     const float gate_arg = copysignf(sqrtf(fmaxf(fabsf(dot), 1.0e-6f)), dot);
-    output[linear] = from_float<T>(SigmoidFloat(gate_arg) * value);
+    output[linear] = from_float<T>(kernel_helper::SigmoidFloat(gate_arg) * value);
   }
 }
 
@@ -108,7 +95,7 @@ Status LaunchEngramGateKernel(
   if (total == 0) {
     return Status::OK();
   }
-  EngramGateKernel<T><<<GridSize(total), kThreads, 0, stream>>>(
+  EngramGateKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
       embeddings, hidden_states, key_weight, key_bias, value_weight, value_bias, key_norm_scale,
       query_norm_scale, output, total, hc_mult, hidden_size, embedding_size, epsilon);
   return CUDA_CALL(cudaGetLastError());

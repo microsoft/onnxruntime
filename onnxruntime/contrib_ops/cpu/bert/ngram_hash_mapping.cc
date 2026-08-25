@@ -5,8 +5,8 @@
 
 #include <cstdint>
 #include <limits>
-#include <type_traits>
 
+#include "contrib_ops/cpu/bert/kernel_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -30,25 +30,6 @@ REGISTER_NGRAM_HASH_TYPED(int32_t)
 REGISTER_NGRAM_HASH_TYPED(int64_t)
 
 #undef REGISTER_NGRAM_HASH_TYPED
-
-namespace {
-
-template <typename T>
-T PositiveMod(T value, T mod) {
-  T result = value % mod;
-  if (result < 0) {
-    result += mod;
-  }
-  return result;
-}
-
-template <typename T>
-T WrappedMultiply(T a, T b) {
-  using UnsignedT = typename std::make_unsigned<T>::type;
-  return static_cast<T>(static_cast<UnsignedT>(a) * static_cast<UnsignedT>(b));
-}
-
-}  // namespace
 
 template <typename T>
 NgramHashMapping<T>::NgramHashMapping(const OpKernelInfo& info) : OpKernel(info) {
@@ -105,7 +86,7 @@ Status NgramHashMapping<T>::Compute(OpKernelContext* context) const {
             for (int64_t k = 0; k < n; ++k) {
               const int64_t source_t = t - k;
               const T token = source_t < 0 ? pad_id_ : input_data[input_base + source_t];
-              const T product = WrappedMultiply(token, multiplier_data[k]);
+              const T product = kernel_helper::WrappedMultiply(token, multiplier_data[k]);
               mix = k == 0 ? product : static_cast<T>(mix ^ product);
             }
 
@@ -113,7 +94,7 @@ Status NgramHashMapping<T>::Compute(OpKernelContext* context) const {
             for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
               const int64_t out_h = ngram_offset + h;
               const T mod = vocab_data[out_h];
-              output_data[output_base + out_h] = mod <= 0 ? T{} : PositiveMod(mix, mod);
+              output_data[output_base + out_h] = mod <= 0 ? T{} : kernel_helper::PositiveMod(mix, mod);
             }
           }
         }

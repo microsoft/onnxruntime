@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/short_conv.h"
 
+#include "contrib_ops/webgpu/bert/kernel_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -32,12 +33,7 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  shader.AdditionalImplementation()
-      << "fn stable_sigmoid(x: f32) -> f32 {\n"
-      << "  if (x > 0.0) { return 1.0 / (1.0 + exp(-x)); }\n"
-      << "  let e = exp(x);\n"
-      << "  return e / (1.0 + e);\n"
-      << "}\n";
+  shader.AdditionalImplementation() << kernel_helper::kStableSigmoidWgsl << kernel_helper::kSiluWgsl;
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
@@ -70,7 +66,7 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    }\n"
       << "  }\n";
   if (apply_silu_) {
-    shader.MainFunctionBody() << "  sum = sum * stable_sigmoid(sum);\n";
+    shader.MainFunctionBody() << "  sum = silu(sum);\n";
   }
   shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "output_element_t(sum)") << "\n";
   return Status::OK();

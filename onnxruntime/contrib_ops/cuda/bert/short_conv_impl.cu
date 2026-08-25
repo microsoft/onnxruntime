@@ -6,9 +6,8 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <algorithm>
-#include <limits>
 
+#include "contrib_ops/cuda/bert/kernel_helper.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -16,22 +15,6 @@ namespace contrib {
 namespace cuda {
 
 namespace {
-
-constexpr int kThreads = 256;
-constexpr int64_t kMaxGridDimX = 65535;
-
-inline int GridSize(int64_t count) {
-  const int64_t blocks = (count + kThreads - 1) / kThreads;
-  return static_cast<int>(std::min(blocks, kMaxGridDimX));
-}
-
-__device__ __forceinline__ float SigmoidFloat(float x) {
-  return x > 0.0f ? 1.0f / (1.0f + expf(-x)) : expf(x) / (1.0f + expf(x));
-}
-
-__device__ __forceinline__ float SiluFloat(float x) {
-  return x * SigmoidFloat(x);
-}
 
 template <typename T>
 __global__ void ShortConvKernel(
@@ -76,7 +59,7 @@ __global__ void ShortConvKernel(
                            to_float<T>(norm_scale[g * hidden_size + c]);
       sum += normed * to_float<T>(weight[flat_channel * kernel_size + k]);
     }
-    output[linear] = from_float<T>(apply_silu ? SiluFloat(sum) : sum);
+    output[linear] = from_float<T>(apply_silu ? kernel_helper::SiluFloat(sum) : sum);
   }
 }
 
@@ -102,7 +85,7 @@ Status LaunchShortConvKernel(
   if (total == 0) {
     return Status::OK();
   }
-  ShortConvKernel<T><<<GridSize(total), kThreads, 0, stream>>>(
+  ShortConvKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
       input, weight, norm_scale, bias, output, total, sequence_length, hc_mult, hidden_size,
       kernel_size, dilation, epsilon, apply_silu);
   return CUDA_CALL(cudaGetLastError());

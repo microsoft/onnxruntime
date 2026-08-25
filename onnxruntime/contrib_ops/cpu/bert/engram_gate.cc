@@ -7,6 +7,7 @@
 #include <cmath>
 #include <vector>
 
+#include "contrib_ops/cpu/bert/kernel_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -27,20 +28,9 @@ namespace contrib {
       EngramGate<T>);
 
 REGISTER_ENGRAM_GATE_TYPED(float)
+REGISTER_ENGRAM_GATE_TYPED(MLFloat16)
 
 #undef REGISTER_ENGRAM_GATE_TYPED
-
-namespace {
-
-inline float SigmoidFloat(float x) {
-  if (x > 0.0f) {
-    return 1.0f / (1.0f + std::exp(-x));
-  }
-  const float exp_x = std::exp(x);
-  return exp_x / (1.0f + exp_x);
-}
-
-}  // namespace
 
 template <typename T>
 EngramGate<T>::EngramGate(const OpKernelInfo& info) : OpKernel(info) {
@@ -151,7 +141,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
           }
           dot /= std::sqrt(static_cast<float>(hidden_size));
           const float gate_arg = std::copysign(std::sqrt(std::max(std::abs(dot), 1.0e-6f)), dot);
-          const float gate = SigmoidFloat(gate_arg);
+          const float gate = kernel_helper::SigmoidFloat(gate_arg);
 
           T* output_row = output_data + row * hidden_size;
           for (int64_t c = 0; c < hidden_size; ++c) {
@@ -164,6 +154,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
 }
 
 template class EngramGate<float>;
+template class EngramGate<MLFloat16>;
 
 }  // namespace contrib
 }  // namespace onnxruntime

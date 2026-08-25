@@ -31,6 +31,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.DynamicTimeWarping">com.microsoft.DynamicTimeWarping</a>
   * <a href="#com.microsoft.EPContext">com.microsoft.EPContext</a>
   * <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
+  * <a href="#com.microsoft.EngramGate">com.microsoft.EngramGate</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
@@ -71,6 +72,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
+  * <a href="#com.microsoft.NgramHashMapping">com.microsoft.NgramHashMapping</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcFusedConv">com.microsoft.NhwcFusedConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
@@ -110,6 +112,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
+  * <a href="#com.microsoft.ShortConv">com.microsoft.ShortConv</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -1768,6 +1771,68 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output integer tensors types</dd>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output float tensors types.</dd>
+</dl>
+
+
+### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
+
+  Fuses the Engram gate/value projection block.
+  
+  The op consumes flattened n-gram embeddings, hidden states in
+  (batch_size, sequence_length, hc_mult, hidden_size) layout, per-hyper-connection key projection
+  weights, a shared value projection, and RMSNorm scales. It computes the Engram gate:
+  
+  gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
+  dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
+  
+  The output is gate * value_projection(embeddings), broadcast across hidden_size for each
+  hyper-connection. A following ShortConv plus Add represents the final Engram residual
+  value + short_conv(value).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>embeddings</tt> : T</dt>
+<dd>Flattened Engram embeddings with shape (batch_size, sequence_length, embedding_size).</dd>
+<dt><tt>hidden_states</tt> : T</dt>
+<dd>Hidden states with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>key_weight</tt> : T</dt>
+<dd>Per-hyper-connection key projection weights with shape (hc_mult, embedding_size, hidden_size).</dd>
+<dt><tt>key_bias</tt> (optional) : T</dt>
+<dd>Optional per-hyper-connection key projection bias with shape (hc_mult, hidden_size).</dd>
+<dt><tt>value_weight</tt> : T</dt>
+<dd>Shared value projection weight with shape (embedding_size, hidden_size).</dd>
+<dt><tt>value_bias</tt> (optional) : T</dt>
+<dd>Optional shared value projection bias with shape (hidden_size).</dd>
+<dt><tt>key_norm_scale</tt> : T</dt>
+<dd>RMSNorm scale for key projections with shape (hc_mult, hidden_size).</dd>
+<dt><tt>query_norm_scale</tt> : T</dt>
+<dd>RMSNorm scale for hidden-state queries with shape (hc_mult, hidden_size).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
 
@@ -4078,6 +4143,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.NgramHashMapping"></a><a name="com.microsoft.ngramhashmapping">**com.microsoft.NgramHashMapping**</a>
+
+  Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
+  
+  For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
+  sequence with pad_id, and computes
+  mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
+  For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
+  The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
+  heads for n=2 first, then n=3, and so on.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int (required)</dt>
+<dd>Maximum n-gram order. Must be at least 2.</dd>
+<dt><tt>n_head_per_ngram</tt> : int (required)</dt>
+<dd>Number of hash heads emitted for each n-gram order.</dd>
+<dt><tt>pad_id</tt> : int (required)</dt>
+<dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input_ids</tt> : M</dt>
+<dd>Compressed tokenizer ids with shape (batch_size, sequence_length).</dd>
+<dt><tt>multipliers</tt> : M</dt>
+<dd>Per-shift odd multipliers with shape (max_ngram_size).</dd>
+<dt><tt>vocab_sizes</tt> : M</dt>
+<dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>hash_ids</tt> : M</dt>
+<dd>Hash ids with shape (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.NhwcConv"></a><a name="com.microsoft.nhwcconv">**com.microsoft.NhwcConv**</a>
 
 #### Version
@@ -6351,6 +6468,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.ShortConv"></a><a name="com.microsoft.shortconv">**com.microsoft.ShortConv**</a>
+
+  Fuses the Engram ShortConv block over input shape (batch_size, sequence_length, hc_mult, hidden_size).
+  
+  For each (batch, token, hyper-connection) row, the op first applies RMS normalization over hidden_size:
+  normed = input * norm_scale * rsqrt(mean(input * input) + epsilon).
+  
+  It then flattens hc_mult and hidden_size into depthwise convolution channels and applies a causal
+  1D convolution with optional dilation along the sequence axis. The output is cropped to sequence_length,
+  optionally passed through SiLU/Swish, and returned in (batch_size, sequence_length, hc_mult, hidden_size)
+  layout. The convolution weight layout is (hc_mult * hidden_size, 1, kernel_size).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'silu'.</dd>
+<dt><tt>dilation</tt> : int</dt>
+<dd>Causal convolution dilation along the sequence axis. Default is 1.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>Depthwise convolution kernel with shape (hc_mult * hidden_size, 1, kernel_size).</dd>
+<dt><tt>norm_scale</tt> : T</dt>
+<dd>RMSNorm scale with shape (hc_mult, hidden_size).</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional convolution bias with shape (hc_mult * hidden_size).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Output tensor with the same shape as input.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
 

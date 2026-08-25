@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
 
+#include "contrib_ops/webgpu/bert/kernel_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -28,6 +29,8 @@ Status NgramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
+  shader.AdditionalImplementation() << kernel_helper::kPositiveModWgsl;
+
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
       << "  let num_heads = (uniforms.max_ngram_size - 1u) * uniforms.n_head_per_ngram;\n"
@@ -51,8 +54,7 @@ Status NgramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "      let mod_value = " << vocab_sizes.GetByOffset("out_h") << ";\n"
       << "      var result = 0i;\n"
       << "      if (mod_value > 0i) {\n"
-      << "        result = mix % mod_value;\n"
-      << "        if (result < 0i) { result += mod_value; }\n"
+      << "        result = positive_mod(mix, mod_value);\n"
       << "      }\n"
       << "      " << output.SetByOffset("output_base + out_h", "result") << "\n"
       << "    }\n"

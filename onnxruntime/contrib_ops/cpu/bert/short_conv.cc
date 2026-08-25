@@ -5,6 +5,7 @@
 
 #include <cmath>
 
+#include "contrib_ops/cpu/bert/kernel_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -25,24 +26,9 @@ namespace contrib {
       ShortConv<T>);
 
 REGISTER_SHORT_CONV_TYPED(float)
+REGISTER_SHORT_CONV_TYPED(MLFloat16)
 
 #undef REGISTER_SHORT_CONV_TYPED
-
-namespace {
-
-inline float SigmoidFloat(float x) {
-  if (x > 0.0f) {
-    return 1.0f / (1.0f + std::exp(-x));
-  }
-  const float exp_x = std::exp(x);
-  return exp_x / (1.0f + exp_x);
-}
-
-inline float SiluFloat(float x) {
-  return x * SigmoidFloat(x);
-}
-
-}  // namespace
 
 template <typename T>
 ShortConv<T>::ShortConv(const OpKernelInfo& info) : OpKernel(info) {
@@ -129,7 +115,7 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
                                  static_cast<float>(scale_data[g * hidden_size + c]);
             sum += normed * static_cast<float>(weight_data[flat_channel * kernel_size + k]);
           }
-          output_data[linear] = static_cast<T>(apply_silu ? SiluFloat(sum) : sum);
+          output_data[linear] = static_cast<T>(apply_silu ? kernel_helper::SiluFloat(sum) : sum);
         }
       });
 
@@ -137,6 +123,7 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
 }
 
 template class ShortConv<float>;
+template class ShortConv<MLFloat16>;
 
 }  // namespace contrib
 }  // namespace onnxruntime

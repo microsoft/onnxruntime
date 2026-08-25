@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/engram_gate.h"
 
+#include "contrib_ops/webgpu/bert/kernel_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -39,12 +40,7 @@ Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query_norm_scale = shader.AddInput("query_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  shader.AdditionalImplementation()
-      << "fn stable_sigmoid(x: f32) -> f32 {\n"
-      << "  if (x > 0.0) { return 1.0 / (1.0 + exp(-x)); }\n"
-      << "  let e = exp(x);\n"
-      << "  return e / (1.0 + e);\n"
-      << "}\n";
+  shader.AdditionalImplementation() << kernel_helper::kStableSigmoidWgsl;
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")

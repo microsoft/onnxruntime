@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include <type_traits>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -22,25 +23,17 @@ float Sigmoid(float x) {
   return exp_x / (1.0f + exp_x);
 }
 
-}  // namespace
-
-TEST(EngramOpsTest, NgramHashMappingInt64) {
-  OpTester test("NgramHashMapping", 1, kMSDomain);
-  test.AddAttribute<int64_t>("max_ngram_size", 3);
-  test.AddAttribute<int64_t>("n_head_per_ngram", 2);
-  test.AddAttribute<int64_t>("pad_id", 9);
-  test.AddInput<int64_t>("input_ids", {1, 4}, {3, 4, 5, 6});
-  test.AddInput<int64_t>("multipliers", {3}, {11, 13, 17});
-  test.AddInput<int64_t>("vocab_sizes", {4}, {101, 103, 107, 109});
-  test.AddOutput<int64_t>("hash_ids", {1, 4, 4},
-                          {84, 84, 98, 96,
-                           11, 11, 39, 37,
-                           3, 3, 48, 48,
-                           3, 3, 71, 71});
-  test.Run();
+template <typename T>
+std::vector<T> ToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(data);
+  } else {
+    return data;
+  }
 }
 
-TEST(EngramOpsTest, ShortConvFloat) {
+template <typename T>
+void RunShortConvTest(float tolerance) {
   constexpr float epsilon = 1.0e-5f;
   const std::vector<float> input{1.0f, 2.0f, 3.0f, 4.0f};
   const std::vector<float> scale{1.0f, 2.0f};
@@ -70,15 +63,16 @@ TEST(EngramOpsTest, ShortConvFloat) {
   test.AddAttribute<int64_t>("dilation", 1);
   test.AddAttribute<float>("epsilon", epsilon);
   test.AddAttribute<std::string>("activation", "silu");
-  test.AddInput<float>("input", {1, 2, 1, 2}, input);
-  test.AddInput<float>("weight", {2, 1, 2}, weight);
-  test.AddInput<float>("norm_scale", {1, 2}, scale);
-  test.AddOptionalInputEdge<float>();
-  test.AddOutput<float>("output", {1, 2, 1, 2}, expected);
+  test.AddInput<T>("input", {1, 2, 1, 2}, ToTensorType<T>(input));
+  test.AddInput<T>("weight", {2, 1, 2}, ToTensorType<T>(weight));
+  test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("output", {1, 2, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
   test.Run();
 }
 
-TEST(EngramOpsTest, EngramGateFloat) {
+template <typename T>
+void RunEngramGateTest(float tolerance) {
   constexpr float epsilon = 1.0e-5f;
   const std::vector<float> embeddings{1.0f, 2.0f};
   const std::vector<float> hidden_states{3.0f, 4.0f};
@@ -98,16 +92,50 @@ TEST(EngramOpsTest, EngramGateFloat) {
 
   OpTester test("EngramGate", 1, kMSDomain);
   test.AddAttribute<float>("epsilon", epsilon);
-  test.AddInput<float>("embeddings", {1, 1, 2}, embeddings);
-  test.AddInput<float>("hidden_states", {1, 1, 1, 2}, hidden_states);
-  test.AddInput<float>("key_weight", {1, 2, 2}, key_weight);
-  test.AddOptionalInputEdge<float>();
-  test.AddInput<float>("value_weight", {2, 2}, value_weight);
-  test.AddOptionalInputEdge<float>();
-  test.AddInput<float>("key_norm_scale", {1, 2}, key_scale);
-  test.AddInput<float>("query_norm_scale", {1, 2}, query_scale);
-  test.AddOutput<float>("output", {1, 1, 1, 2}, expected);
+  test.AddInput<T>("embeddings", {1, 1, 2}, ToTensorType<T>(embeddings));
+  test.AddInput<T>("hidden_states", {1, 1, 1, 2}, ToTensorType<T>(hidden_states));
+  test.AddInput<T>("key_weight", {1, 2, 2}, ToTensorType<T>(key_weight));
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("value_weight", {2, 2}, ToTensorType<T>(value_weight));
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("key_norm_scale", {1, 2}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {1, 2}, ToTensorType<T>(query_scale));
+  test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
   test.Run();
+}
+
+}  // namespace
+
+TEST(EngramOpsTest, NgramHashMappingInt64) {
+  OpTester test("NgramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 2);
+  test.AddAttribute<int64_t>("pad_id", 9);
+  test.AddInput<int64_t>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<int64_t>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<int64_t>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOutput<int64_t>("hash_ids", {1, 4, 4},
+                          {84, 84, 98, 96,
+                           11, 11, 39, 37,
+                           3, 3, 48, 48,
+                           3, 3, 71, 71});
+  test.Run();
+}
+
+TEST(EngramOpsTest, ShortConvFloat) {
+  RunShortConvTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, ShortConvFloat16) {
+  RunShortConvTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateFloat) {
+  RunEngramGateTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateFloat16) {
+  RunEngramGateTest<MLFloat16>(2e-3f);
 }
 
 }  // namespace test
