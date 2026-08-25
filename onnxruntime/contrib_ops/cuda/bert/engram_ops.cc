@@ -14,15 +14,15 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-#define REGISTER_FLOAT_KERNEL_TYPED(Op, T)                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
-      Op,                                                          \
-      kMSDomain,                                                   \
-      1,                                                           \
-      T,                                                           \
-      kCudaExecutionProvider,                                      \
-      (*KernelDefBuilder::Create())                                \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
+#define REGISTER_FLOAT_KERNEL_TYPED(Op, T)                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Op,                                                         \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Op<T>);
 
 REGISTER_FLOAT_KERNEL_TYPED(ShortConv, float)

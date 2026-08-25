@@ -17,15 +17,15 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_SHORT_CONV_TYPED(T)                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
-      ShortConv,                                                   \
-      kMSDomain,                                                   \
-      1,                                                           \
-      T,                                                           \
-      kCpuExecutionProvider,                                       \
-      KernelDefBuilder()                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
+#define REGISTER_SHORT_CONV_TYPED(T)                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      ShortConv,                                                  \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ShortConv<T>);
 
 REGISTER_SHORT_CONV_TYPED(float)
@@ -48,15 +48,15 @@ REGISTER_NGRAM_HASH_TYPED(int64_t)
 
 #undef REGISTER_NGRAM_HASH_TYPED
 
-#define REGISTER_ENGRAM_GATE_TYPED(T)                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
-      EngramGate,                                                  \
-      kMSDomain,                                                   \
-      1,                                                           \
-      T,                                                           \
-      kCpuExecutionProvider,                                       \
-      KernelDefBuilder()                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
+#define REGISTER_ENGRAM_GATE_TYPED(T)                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      EngramGate,                                                 \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       EngramGate<T>);
 
 REGISTER_ENGRAM_GATE_TYPED(float)
