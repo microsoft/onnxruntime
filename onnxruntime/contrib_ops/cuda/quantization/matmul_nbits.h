@@ -103,7 +103,7 @@ inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) 
 // prepacked weight (weight_prepacked != 0) forces the fpA_intB path on regardless of the option.
 bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
-                             int64_t weight_prepacked, bool has_g_idx,
+                             int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option);
 
 // Level 1 partition-time workspace estimate for a MatMulNBits node, callable during GetCapability()
@@ -187,7 +187,7 @@ class MatMulNBits final : public CudaKernel {
       // constructor and the Level-1 EstimateMatMulNBitsWorkspace estimate can never disagree.
       const bool fpa_intb_eligible = CheckFpAIntBEligibility(
           onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
-          weight_prepacked_, has_g_idx_, sm_, fpa_intb_option);
+          weight_prepacked_, has_zero_points_, has_g_idx_, has_bias_, sm_, fpa_intb_option);
       // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
       // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
       // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
@@ -201,7 +201,7 @@ class MatMulNBits final : public CudaKernel {
         } else if constexpr (std::is_same<T, BFloat16>::value) {
           cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
         }
-        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 
@@ -221,9 +221,19 @@ class MatMulNBits final : public CudaKernel {
       }
 
       if (prepacked) {
+#if USE_FPA_INTB_GEMM_SM80_ONLY
+        ORT_ENFORCE(has_fpA_intB_gemm_,
+                    "This compact fpA_intB build supports prepacked weights only for FP16 activations, "
+                    "INT4 or INT8 weights, block_size=32, scale-only quantization without bias or g_idx, "
+                    "the SM80 weight layout (weight_prepacked=1), and compute capability 8.0 or later. Got bits=",
+                    nbits_, ", block_size=", block_size_, ", N=", N_, ", K=", K_,
+                    ", weight_prepacked=", weight_prepacked_, ", zero_points=", has_zero_points_,
+                    ", g_idx=", has_g_idx_, ", bias=", has_bias_, ", sm=", sm_);
+#else
         ORT_ENFORCE(has_fpA_intB_gemm_,
                     "weight_prepacked requires the fpA_intB path, but it is unsupported for this node "
                     "(check bits, block_size, N/K alignment, g_idx, and compute capability >= 7.5)");
+#endif
         ORT_ENFORCE(weight_prepacked_ == RequiredWeightPrepackedFormat(),
                     "weight_prepacked=", weight_prepacked_, " does not match the format required by the selected fpA_intB kernel: ",
                     RequiredWeightPrepackedFormat());
