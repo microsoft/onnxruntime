@@ -133,6 +133,9 @@ class MatMulNBits final : public OpKernel {
                     block_size_ == 128 || block_size_ == 256,
                 "Only block sizes 16, 32, 64, 128, and 256 are supported for MatMulNBits op, got: ",
                 block_size_);
+    const Tensor* tensor_scales = nullptr;
+    has_scales_initializer_ = info.TryGetConstantInput(InputIndex::scales, &tensor_scales);
+
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
@@ -173,6 +176,7 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
 
+  bool has_scales_initializer_{false};
   bool has_zp_input_{false};  // true only when zero_points is a constant initializer available during PrePack
 
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
@@ -233,17 +237,19 @@ static const float* ConvertFloatZeroPointsForLutGemm(
 
 #if defined(MLAS_TARGET_ARM64)
 namespace {
-bool RequiresDynamicZeroPointPrepackFallback(
+bool RequiresDynamicQuantizationParameterPrepackFallback(
     size_t K, size_t nbits, size_t block_size,
-    bool has_zp_arg, bool has_zp_input,
+    bool has_scales_initializer, bool has_zp_arg, bool has_zp_input,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& backend_kernel_selector_config) {
   const auto effective_compute_type = compute_type == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type;
 
-  // KleidiAI asymmetric Q4 pack needs zero points during PrePack; dynamic zero points arrive later.
-  return has_zp_arg && !has_zp_input && nbits == 4 && effective_compute_type == SQNBIT_CompInt8 &&
+  // KleidiAI Q4 pack embeds scales and, for asymmetric weights, zero-point-derived metadata in B.
+  // Runtime inputs arrive after PrePack(B), so decline prepacking rather than create an incomplete RHS.
+  const bool has_runtime_quantization_parameter = !has_scales_initializer || (has_zp_arg && !has_zp_input);
+  return has_runtime_quantization_parameter && nbits == 4 && effective_compute_type == SQNBIT_CompInt8 &&
          MlasQNBitGemmScalesPacked(K, nbits, block_size, effective_compute_type,
-                                   true, &backend_kernel_selector_config);
+                                   has_zp_arg, &backend_kernel_selector_config);
 }
 }  // namespace
 #endif
@@ -359,8 +365,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 
 #if defined(MLAS_TARGET_ARM64)
-  if (RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
-                                              compute_type_, mlas_backend_kernel_selector_config_)) {
+  if (RequiresDynamicQuantizationParameterPrepackFallback(
+          K_, nbits_, block_size_, has_scales_initializer_, has_zp_arg_, has_zp_input_,
+          compute_type_, mlas_backend_kernel_selector_config_)) {
     return Status::OK();
   }
 #endif
@@ -750,8 +757,9 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
   }
 
 #if defined(MLAS_TARGET_ARM64)
-  if (RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
-                                              compute_type_, mlas_backend_kernel_selector_config_)) {
+  if (RequiresDynamicQuantizationParameterPrepackFallback(
+          K_, nbits_, block_size_, has_scales_initializer_, has_zp_arg_, has_zp_input_,
+          compute_type_, mlas_backend_kernel_selector_config_)) {
     return Status::OK();
   }
 #endif
@@ -867,9 +875,10 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 
   if (input_idx == InputIndex::B && !prepacked_buffers.empty()) {
 #if defined(MLAS_TARGET_ARM64)
-    ORT_RETURN_IF(RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
-                                                          compute_type_, mlas_backend_kernel_selector_config_),
-                  "MatMulNBits cannot use shared prepacked B for KleidiAI Q4 with runtime zero_points. ",
+    ORT_RETURN_IF(RequiresDynamicQuantizationParameterPrepackFallback(
+                      K_, nbits_, block_size_, has_scales_initializer_, has_zp_arg_, has_zp_input_,
+                      compute_type_, mlas_backend_kernel_selector_config_),
+                  "MatMulNBits cannot use shared prepacked B for KleidiAI Q4 with runtime scales or zero_points. ",
                   "PrePack should have declined prepacking for this node.");
 #endif
 
