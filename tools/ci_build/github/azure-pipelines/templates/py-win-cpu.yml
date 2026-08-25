@@ -29,7 +29,6 @@ jobs:
       os: windows
       hostArchitecture: Arm64
       demands:
-        - Agent.Version -equals 4.264.2
         - ImageOverride -equals onnxruntime-Win2025-arm64
   ${{ else }}:
     pool:
