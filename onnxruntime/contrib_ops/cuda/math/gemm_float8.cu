@@ -183,6 +183,24 @@ Status GemmFloat8::ComputeGemm(
     const void* p_input_c, const void* p_scale_a, const void* p_scale_b,
     const void* p_scale_y, void* p_output_y, int M, int N, int K, int lda,
     int ldb, int ldd, bool row_major_compute) const {
+#if !defined(DISABLE_FLOAT8_TYPES)
+  const bool is_fp8_output =
+      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
+      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+#else
+  constexpr bool is_fp8_output = false;
+#endif
+
+  if (is_fp8_output) {
+    ORT_RETURN_IF(has_bias &&
+                      dtype_C != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 &&
+                      dtype_C != ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+                  "FP8 output requires input C to be FLOAT16 or BFLOAT16.");
+  } else {
+    ORT_RETURN_IF(has_bias && dtype_C != dtype_Y,
+                  "Non-FP8 output requires input C and output Y to have the same type.");
+  }
+
   cudaStream_t stream = Stream(ctx);
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
@@ -204,14 +222,7 @@ Status GemmFloat8::ComputeGemm(
                                    : d_cuda_type;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-  const bool is_fp8_output =
-      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
-      dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
   if (is_fp8_output) {
-    ORT_RETURN_IF(has_bias &&
-                      c_cuda_type != CUDA_R_16F &&
-                      c_cuda_type != CUDA_R_16BF,
-                  "FP8 output requires input C to be FLOAT16 or BFLOAT16.");
     if (!has_bias) {
       c_cuda_type = CUDA_R_16F;
     }

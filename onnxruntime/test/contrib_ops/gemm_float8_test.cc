@@ -51,7 +51,7 @@ std::vector<MLFloat16> _Cvt(const std::vector<float>& tensor) {
   return fp16_data;
 }
 
-TEST(GemmFloat8OpTest, FloatWithFloat16C) {
+TEST(GemmFloat8OpTest, FloatWithFloat16CFails) {
   OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
   test.AddAttribute("transA", int64_t{0});
   test.AddAttribute("transB", int64_t{0});
@@ -65,7 +65,9 @@ TEST(GemmFloat8OpTest, FloatWithFloat16C) {
   test.AddOutput<float>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Non-FP8 output requires input C and output Y to have the same type.",
+           {}, nullptr, &execution_providers);
 }
 
 TEST(GemmFloat8OpTest, Float16) {
