@@ -2563,6 +2563,240 @@ enforced on the last spatial dimension only.
 The optional activation attribute supports fused SiLU/Swish activation.
 )DOC";
 
+constexpr const char* ShortConv_ver1_doc = R"DOC(
+Fuses the Engram ShortConv block over input shape (batch_size, sequence_length, hc_mult, hidden_size).
+
+For each (batch, token, hyper-connection) row, the op first applies RMS normalization over hidden_size:
+normed = input * norm_scale * rsqrt(mean(input * input) + epsilon).
+
+It then flattens hc_mult and hidden_size into depthwise convolution channels and applies a causal
+1D convolution with optional dilation along the sequence axis. The output is cropped to sequence_length,
+optionally passed through SiLU/Swish, and returned in (batch_size, sequence_length, hc_mult, hidden_size)
+layout. The convolution weight layout is (hc_mult * hidden_size, 1, kernel_size).
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ShortConv, 1,
+    OpSchema()
+        .SetDoc(ShortConv_ver1_doc)
+        .Attr("activation",
+              "Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'silu'.",
+              AttributeProto::STRING,
+              std::string("silu"))
+        .Attr("dilation",
+              "Causal convolution dilation along the sequence axis. Default is 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("epsilon",
+              "Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.",
+              AttributeProto::FLOAT,
+              1.0e-5f)
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "T")
+        .Input(1,
+               "weight",
+               "Depthwise convolution kernel with shape (hc_mult * hidden_size, 1, kernel_size).",
+               "T")
+        .Input(2,
+               "norm_scale",
+               "RMSNorm scale with shape (hc_mult, hidden_size).",
+               "T")
+        .Input(3,
+               "bias",
+               "Optional convolution bias with shape (hc_mult * hidden_size).",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Output tensor with the same shape as input.",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          const int64_t dilation = getAttribute(ctx, "dilation", 1);
+          if (dilation < 1) {
+            fail_shape_inference("ShortConv: dilation must be >= 1");
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 4) {
+              fail_shape_inference("ShortConv: input must have rank 4");
+            }
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& weight_shape = getInputShape(ctx, 1);
+            if (weight_shape.dim_size() != 3) {
+              fail_shape_inference("ShortConv: weight must have rank 3");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& norm_scale_shape = getInputShape(ctx, 2);
+            if (norm_scale_shape.dim_size() != 2) {
+              fail_shape_inference("ShortConv: norm_scale must have rank 2");
+            }
+          }
+        }));
+
+constexpr const char* NgramHashMapping_ver1_doc = R"DOC(
+Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
+
+For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
+sequence with pad_id, and computes
+mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
+For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
+The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
+heads for n=2 first, then n=3, and so on.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    NgramHashMapping, 1,
+    OpSchema()
+        .SetDoc(NgramHashMapping_ver1_doc)
+        .Attr("max_ngram_size",
+              "Maximum n-gram order. Must be at least 2.",
+              AttributeProto::INT)
+        .Attr("n_head_per_ngram",
+              "Number of hash heads emitted for each n-gram order.",
+              AttributeProto::INT)
+        .Attr("pad_id",
+              "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.",
+              AttributeProto::INT)
+        .Input(0,
+               "input_ids",
+               "Compressed tokenizer ids with shape (batch_size, sequence_length).",
+               "M")
+        .Input(1,
+               "multipliers",
+               "Per-shift odd multipliers with shape (max_ngram_size).",
+               "M")
+        .Input(2,
+               "vocab_sizes",
+               "Per-output-head prime vocabulary sizes with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram).",
+               "M")
+        .Output(0,
+                "hash_ids",
+                "Hash ids with shape (batch_size, sequence_length, "
+                "(max_ngram_size - 1) * n_head_per_ngram).",
+                "M")
+        .TypeConstraint("M",
+                        {"tensor(int32)", "tensor(int64)"},
+                        "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
+          const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          if (max_ngram_size < 2) {
+            fail_shape_inference("NgramHashMapping: max_ngram_size must be at least 2");
+          }
+          if (n_head_per_ngram < 1) {
+            fail_shape_inference("NgramHashMapping: n_head_per_ngram must be positive");
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 2) {
+              fail_shape_inference("NgramHashMapping: input_ids must have rank 2");
+            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = input_shape.dim(0);
+            *output_shape.add_dim() = input_shape.dim(1);
+            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            updateOutputShape(ctx, 0, output_shape);
+          }
+        }));
+
+constexpr const char* EngramGate_ver1_doc = R"DOC(
+Fuses the Engram gate/value projection block.
+
+The op consumes flattened n-gram embeddings, hidden states in
+(batch_size, sequence_length, hc_mult, hidden_size) layout, per-hyper-connection key projection
+weights, a shared value projection, and RMSNorm scales. It computes the Engram gate:
+
+gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
+dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
+
+The output is gate * value_projection(embeddings), broadcast across hidden_size for each
+hyper-connection. A following ShortConv plus Add represents the final Engram residual
+value + short_conv(value).
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    EngramGate, 1,
+    OpSchema()
+        .SetDoc(EngramGate_ver1_doc)
+        .Attr("epsilon",
+              "Epsilon used by both RMS normalization steps. Default is 1e-5.",
+              AttributeProto::FLOAT,
+              1.0e-5f)
+        .Input(0,
+               "embeddings",
+               "Flattened Engram embeddings with shape (batch_size, sequence_length, embedding_size).",
+               "T")
+        .Input(1,
+               "hidden_states",
+               "Hidden states with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "T")
+        .Input(2,
+               "key_weight",
+               "Per-hyper-connection key projection weights with shape "
+               "(hc_mult, embedding_size, hidden_size).",
+               "T")
+        .Input(3,
+               "key_bias",
+               "Optional per-hyper-connection key projection bias with shape (hc_mult, hidden_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "value_weight",
+               "Shared value projection weight with shape (embedding_size, hidden_size).",
+               "T")
+        .Input(5,
+               "value_bias",
+               "Optional shared value projection bias with shape (hidden_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "key_norm_scale",
+               "RMSNorm scale for key projections with shape (hc_mult, hidden_size).",
+               "T")
+        .Input(7,
+               "query_norm_scale",
+               "RMSNorm scale for hidden-state queries with shape (hc_mult, hidden_size).",
+               "T")
+        .Output(0,
+                "output",
+                "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& embeddings_shape = getInputShape(ctx, 0);
+            if (embeddings_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: embeddings must have rank 3");
+            }
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& hidden_shape = getInputShape(ctx, 1);
+            if (hidden_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: hidden_states must have rank 4");
+            }
+            propagateShapeFromInputToOutput(ctx, 1, 0);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     CausalConvWithState, 1,
     OpSchema()
