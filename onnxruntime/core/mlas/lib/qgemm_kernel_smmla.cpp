@@ -27,7 +27,7 @@ Abstract:
 // there instead. Both spellings compile to the same instructions.
 //
 
-MLAS_FORCEINLINE
+static MLAS_FORCEINLINE
 int32x2_t
 MlasGemmS8S8PairFromLanes02Smmla(int32x4_t Vector)
 {
