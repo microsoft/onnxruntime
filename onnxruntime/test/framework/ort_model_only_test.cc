@@ -100,20 +100,23 @@ std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t d
                                                 bool include_reciprocal_edge = false) {
   return BuildOrtModelBuffer([&](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "input", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
     std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("input")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
         builder.CreateSharedString(mismatched_args ? "z" : "x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
     std::vector<int32_t> empty_arg_counts;
+    std::vector<int32_t> source_arg_counts{1};
     std::vector<int32_t> destination_arg_counts{1};
     std::vector<flatbuffers::Offset<fbs::Node>> nodes{
-        fbs::CreateNodeDirect(builder, "source", "", "", 1, 0, "Constant",
-                              fbs::NodeType::Primitive, nullptr, &empty_args, &source_outputs,
-                              nullptr, &empty_arg_counts, &empty_args),
+        fbs::CreateNodeDirect(builder, "source", "", "", 1, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
+                              nullptr, &source_arg_counts, &empty_args),
         fbs::CreateNodeDirect(builder, "destination", "", "", 1, 1, "Identity",
                               fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
                               nullptr, &destination_arg_counts, &empty_args)};
@@ -126,25 +129,32 @@ std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t d
       node_edges.push_back(input_edge ? fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges)
                                       : fbs::CreateNodeEdgeDirect(builder, 1, &input_edges));
     }
-    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 2, &node_edges);
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("input")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
+    return fbs::CreateGraphDirect(
+        builder, nullptr, &node_args, &nodes, 2, &node_edges, &graph_inputs, &graph_outputs);
   });
 }
 
 std::vector<uint8_t> BuildOrtModelWithConflictingEdgeProducers() {
   return BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "input_0", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "input_1", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
         fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
     std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
     std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{builder.CreateSharedString("x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
-    std::vector<int32_t> empty_arg_counts;
+    std::vector<int32_t> source_arg_counts{1};
     std::vector<int32_t> destination_arg_counts{1};
     auto make_source = [&](const char* name, uint32_t index) {
-      return fbs::CreateNodeDirect(builder, name, "", "", 1, index, "Constant",
-                                   fbs::NodeType::Primitive, nullptr, &empty_args, &source_outputs,
-                                   nullptr, &empty_arg_counts, &empty_args);
+      std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{
+          builder.CreateSharedString(index == 0 ? "input_0" : "input_1")};
+      return fbs::CreateNodeDirect(builder, name, "", "", 1, index, "Identity",
+                                   fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
+                                   nullptr, &source_arg_counts, &empty_args);
     };
     std::vector<flatbuffers::Offset<fbs::Node>> nodes{
         make_source("source_0", 0), make_source("source_1", 1),
@@ -154,7 +164,11 @@ std::vector<uint8_t> BuildOrtModelWithConflictingEdgeProducers() {
     std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, 0, 0), fbs::EdgeEnd(1, 0, 0)};
     std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
         fbs::CreateNodeEdgeDirect(builder, 2, &input_edges)};
-    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 3, &node_edges);
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{
+        builder.CreateSharedString("input_0"), builder.CreateSharedString("input_1")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
+    return fbs::CreateGraphDirect(
+        builder, nullptr, &node_args, &nodes, 3, &node_edges, &graph_inputs, &graph_outputs);
   });
 }
 
