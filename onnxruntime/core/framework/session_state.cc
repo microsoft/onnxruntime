@@ -489,7 +489,15 @@ Status SessionState::PrepackConstantInitializedTensors(
   // touches that node's own kernel instance and a node-local scratch PrePackedWeights object.
   std::mutex commit_mutex;
 
-  auto process_node = [this, &constant_initializers_use_count, &initializers_to_share_map, &commit_mutex](
+  // On the parallel path, erasing a fully-consumed constant initializer from
+  // SessionState::constant_initialized_tensors_ while another node's PrePack() concurrently reads that same
+  // map (e.g. via OpKernelInfo::TryGetConstantInput(), which is unguarded) is undefined behavior even though
+  // the two operations target different keys. Defer the actual erase() calls until every parallel task has
+  // joined below, where they can run single-threaded.
+  InlinedVector<std::pair<SessionState*, int>> pending_erasures;
+
+  auto process_node = [this, &constant_initializers_use_count, &initializers_to_share_map, &commit_mutex,
+                       &pending_erasures](
                           const Node& node, bool should_cache_prepacked_weights_for_shared_initializers,
                           bool guard_bookkeeping) -> Status {
     auto kernel = GetMutableKernel(node.Index());
@@ -721,8 +729,14 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                 if (constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                   // release the constant initialized tensor
-                  st->initialized_tensors_.erase(ort_value_idx);
-                  constant_initialized_tensors.erase(ort_value_idx);
+                  if (guard_bookkeeping) {
+                    // Defer the erase() calls to after the parallel tasks have joined; see the comment on
+                    // pending_erasures above.
+                    pending_erasures.emplace_back(st, ort_value_idx);
+                  } else {
+                    st->initialized_tensors_.erase(ort_value_idx);
+                    constant_initialized_tensors.erase(ort_value_idx);
+                  }
                 }
               }
             }
@@ -745,6 +759,19 @@ Status SessionState::PrepackConstantInitializedTensors(
 
   bool should_cache_prepacked_weights_for_shared_initializers = (prepacked_weights_container_ != nullptr);
 
+  const bool enable_parallel_prepack =
+      !should_cache_prepacked_weights_for_shared_initializers &&
+      GetThreadPool() != nullptr &&
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1";
+
+  // Let kernels (e.g. MatMulNBits's LUT GEMM temporary pool) see whether this session is actually
+  // dispatching prepacking in parallel, rather than just the raw requested option, so they only
+  // suppress their own temporary pool when doing so avoids real oversubscription. This also covers
+  // the case where the session pool exists but has size 1 (GetThreadPool() == nullptr): the outer
+  // dispatch then falls back to sequential and the kernel's own pool should still run.
+  ORT_RETURN_IF_ERROR(sess_options_.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
+
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
     // and writes pre-packed weights to the container
@@ -758,10 +785,6 @@ Status SessionState::PrepackConstantInitializedTensors(
     }
     return Status::OK();
   }
-
-  const bool enable_parallel_prepack =
-      GetThreadPool() != nullptr &&
-      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1";
 
   if (!enable_parallel_prepack) {
     for (auto& node : GetGraphViewer().Nodes()) {
@@ -819,7 +842,16 @@ Status SessionState::PrepackConstantInitializedTensors(
         }
       });
 
-  if (cancellation_requested) {
+  // All parallel tasks have joined; it is now safe to perform the deferred erasures single-threaded.
+  for (const auto& [st, ort_value_idx] : pending_erasures) {
+    st->initialized_tensors_.erase(ort_value_idx);
+    st->constant_initialized_tensors_.erase(ort_value_idx);
+  }
+
+  // A worker's initial cancellation check can pass before the flag is set, letting it spend a long time
+  // inside PrePack() while cancellation_requested stays false. Recheck the shared flag directly now that
+  // every task has joined, instead of relying solely on what individual workers observed.
+  if (cancellation_requested || sess_options_.IsLoadCancellationFlagSet()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                            "Weight pre-packing was canceled due to user request.");
   }
