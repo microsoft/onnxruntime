@@ -46,6 +46,8 @@ The design must address:
 
 The facility must be generic and validated with at least one non-WebGPU test plugin where practical.
 
+The detailed design is in [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
+
 ## Process-global ownership and teardown
 
 Static registration removes the dynamic-library unload boundary. The current WebGPU plugin cleanup path cannot be
@@ -176,5 +178,6 @@ The first five packages can proceed largely in parallel. Legacy-path removal wai
 
 ## Open questions
 
-- Should static factories be registered before environment creation or through environment construction options?
+- Resolved: neither. ORT core registers static factories during `OrtEnv` creation, after the environment is
+  constructed and published. See [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
 - What is the stable representation of JavaScript-owned WebGPU objects at the C API boundary?

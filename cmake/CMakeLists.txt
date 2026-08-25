@@ -176,6 +176,7 @@ option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternat
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP shared library using EP API adapters" OFF)
+option(onnxruntime_WEBGPU_STATIC_PLUGIN "Build the WebGPU plugin EP into the ORT binary instead of a separate shared library. Requires onnxruntime_USE_EP_API_ADAPTERS." OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
@@ -438,6 +439,25 @@ endif()
 # Building plugin EPs that depend on EP API adapters.
 if(onnxruntime_USE_EP_API_ADAPTERS)
   add_compile_definitions(ORT_USE_EP_API_ADAPTERS=1)
+endif()
+
+# The WebGPU plugin EP can either be a separate shared library or be linked into the ORT binary. In the latter case
+# ORT core registers it at OrtEnv creation time instead of the application loading it by path.
+if(onnxruntime_WEBGPU_STATIC_PLUGIN)
+  if(NOT onnxruntime_USE_WEBGPU)
+    message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON requires onnxruntime_USE_WEBGPU=ON.")
+  endif()
+  if(NOT onnxruntime_USE_EP_API_ADAPTERS)
+    message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON requires onnxruntime_USE_EP_API_ADAPTERS=ON.")
+  endif()
+  add_compile_definitions(ORT_WEBGPU_STATIC_PLUGIN=1)
+endif()
+
+# True when the WebGPU EP is compiled into the ORT binary rather than built as a separate shared library.
+if(onnxruntime_USE_WEBGPU AND (NOT onnxruntime_USE_EP_API_ADAPTERS OR onnxruntime_WEBGPU_STATIC_PLUGIN))
+  set(onnxruntime_WEBGPU_LINKED_INTO_HOST ON)
+else()
+  set(onnxruntime_WEBGPU_LINKED_INTO_HOST OFF)
 endif()
 
 # General C# properties

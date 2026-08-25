@@ -80,7 +80,9 @@ struct OrtEnv {
   // tracking active users. It is set to nullptr when the last reference is released
   // (and not shutting down).
   static OrtEnv* p_instance_;
-  static std::mutex m_;
+  // Recursive because statically linked plugin EPs are registered while this mutex is held, and a plugin EP may
+  // call an OrtEnv API (e.g. OrtEpApi::GetEnvConfigEntries) from OrtEpFactory::GetSupportedDevices.
+  static std::recursive_mutex m_;
   static int ref_count_;
 
   std::unique_ptr<onnxruntime::Environment> value_;

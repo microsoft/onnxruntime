@@ -22,6 +22,7 @@
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
 #include "core/session/plugin_ep/ep_library_provider_bridge.h"
+#include "core/session/plugin_ep/ep_static_plugins.h"
 #include "core/session/ort_apis.h"
 #include "core/session/utils.h"
 
@@ -638,6 +639,17 @@ Status Environment::CreateAndRegisterInternalEps() {
     ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(internal_library_ptr->RegistrationName(),
                                                          std::move(ep_library),
                                                          {&internal_library_ptr->GetInternalFactory()}));
+  }
+
+  return Status::OK();
+}
+
+Status Environment::CreateAndRegisterStaticPluginEps() {
+  // Note: intentionally does not take mutex_. See the declaration in environment.h for why.
+  auto static_plugin_ep_libraries = CreateStaticPluginEpLibraries();
+  for (auto& ep_library : static_plugin_ep_libraries) {
+    const std::string registration_name = ep_library->RegistrationName();
+    ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(registration_name, std::move(ep_library)));
   }
 
   return Status::OK();

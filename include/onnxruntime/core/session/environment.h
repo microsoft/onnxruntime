@@ -140,6 +140,20 @@ class Environment {
   Status RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path);
   Status UnregisterExecutionProviderLibrary(const std::string& registration_name);
 
+  /**
+   * Register the plugin execution providers that are statically linked into the ORT binary.
+   *
+   * This must be called after the OrtEnv singleton that owns this Environment has been published, because a
+   * statically linked plugin EP uses the public ORT API, and any OrtEnv API it calls must be able to find the
+   * instance. See docs/design/webgpu_ep_extraction/plugin_boundary_and_web_integration/
+   * static_plugin_ep_registration_design.md.
+   *
+   * Note: this does not take mutex_. It is safe because the caller holds the OrtEnv creation mutex, so no other
+   * thread can obtain a reference to this Environment yet. Taking mutex_ here would deadlock if a plugin EP called
+   * an Environment API from its OrtEpFactory::GetSupportedDevices implementation.
+   */
+  Status CreateAndRegisterStaticPluginEps();
+
   // convert an OrtEpFactory* to EpFactoryInternal* if possible.
   EpFactoryInternal* GetEpFactoryInternal(OrtEpFactory* factory) const {
     // we're comparing pointers so the reinterpret_cast should be safe
