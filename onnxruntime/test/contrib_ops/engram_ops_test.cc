@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -106,8 +107,8 @@ void RunEngramGateTest(float tolerance) {
 
 }  // namespace
 
-TEST(EngramOpsTest, NgramHashMappingInt64) {
-  OpTester test("NgramHashMapping", 1, kMSDomain);
+TEST(EngramOpsTest, NGramHashMappingInt64) {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
   test.AddAttribute<int64_t>("max_ngram_size", 3);
   test.AddAttribute<int64_t>("n_head_per_ngram", 2);
   test.AddAttribute<int64_t>("pad_id", 9);

@@ -15,15 +15,15 @@ namespace contrib {
 namespace webgpu {
 
 ONNX_OPERATOR_KERNEL_EX(
-    NgramHashMapping,
+    NGramHashMapping,
     kMSDomain,
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
-    NgramHashMapping);
+    NGramHashMapping);
 
-Status NgramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
   const auto& multipliers = shader.AddInput("multipliers", ShaderUsage::UseUniform);
   const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
@@ -62,7 +62,7 @@ Status NgramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-NgramHashMapping::NgramHashMapping(const OpKernelInfo& info) : WebGpuKernel(info) {
+NGramHashMapping::NGramHashMapping(const OpKernelInfo& info) : WebGpuKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("max_ngram_size", &max_ngram_size_).IsOK(),
               "max_ngram_size attribute is required");
   ORT_ENFORCE(info.GetAttr<int64_t>("n_head_per_ngram", &n_head_per_ngram_).IsOK(),
@@ -71,10 +71,10 @@ NgramHashMapping::NgramHashMapping(const OpKernelInfo& info) : WebGpuKernel(info
   ORT_ENFORCE(max_ngram_size_ >= 2, "max_ngram_size must be at least 2");
   ORT_ENFORCE(n_head_per_ngram_ >= 1, "n_head_per_ngram must be positive");
   ORT_ENFORCE(pad_id_ >= std::numeric_limits<int32_t>::min() && pad_id_ <= std::numeric_limits<int32_t>::max(),
-              "WebGPU NgramHashMapping only supports int32 ids");
+              "WebGPU NGramHashMapping only supports int32 ids");
 }
 
-Status NgramHashMapping::ComputeInternal(ComputeContext& context) const {
+Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   const auto* input_ids = context.Input(0);
   const auto* multipliers = context.Input(1);
   const auto* vocab_sizes = context.Input(2);
@@ -91,7 +91,7 @@ Status NgramHashMapping::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  NgramHashMappingProgram program;
+  NGramHashMappingProgram program;
   program.AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
                      {multipliers, ProgramTensorMetadataDependency::None},
                      {vocab_sizes, ProgramTensorMetadataDependency::None}})

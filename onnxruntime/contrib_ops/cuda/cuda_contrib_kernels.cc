@@ -168,8 +168,8 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EngramGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NgramHashMapping);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NgramHashMapping);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NGramHashMapping);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NGramHashMapping);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ShortConv);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ShortConv);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ShortConv);
@@ -464,8 +464,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EngramGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NgramHashMapping)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NgramHashMapping)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NGramHashMapping)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NGramHashMapping)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ShortConv)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ShortConv)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ShortConv)>,

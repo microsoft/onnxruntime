@@ -10,9 +10,9 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-class NgramHashMapping final : public OpKernel {
+class NGramHashMapping final : public OpKernel {
  public:
-  explicit NgramHashMapping(const OpKernelInfo& info);
+  explicit NGramHashMapping(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
  private:

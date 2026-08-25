@@ -11,9 +11,9 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class NgramHashMapping final : public onnxruntime::cuda::CudaKernel {
+class NGramHashMapping final : public onnxruntime::cuda::CudaKernel {
  public:
-  explicit NgramHashMapping(const OpKernelInfo& info);
+  explicit NGramHashMapping(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:

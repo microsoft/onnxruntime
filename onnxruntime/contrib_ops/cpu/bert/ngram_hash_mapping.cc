@@ -17,14 +17,14 @@ namespace contrib {
 
 #define REGISTER_NGRAM_HASH_TYPED(T)                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      NgramHashMapping,                                           \
+      NGramHashMapping,                                           \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<T>()), \
-      NgramHashMapping<T>);
+      NGramHashMapping<T>);
 
 REGISTER_NGRAM_HASH_TYPED(int32_t)
 REGISTER_NGRAM_HASH_TYPED(int64_t)
@@ -32,7 +32,7 @@ REGISTER_NGRAM_HASH_TYPED(int64_t)
 #undef REGISTER_NGRAM_HASH_TYPED
 
 template <typename T>
-NgramHashMapping<T>::NgramHashMapping(const OpKernelInfo& info) : OpKernel(info) {
+NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : OpKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("max_ngram_size", &max_ngram_size_).IsOK(),
               "max_ngram_size attribute is required");
   ORT_ENFORCE(info.GetAttr<int64_t>("n_head_per_ngram", &n_head_per_ngram_).IsOK(),
@@ -48,7 +48,7 @@ NgramHashMapping<T>::NgramHashMapping(const OpKernelInfo& info) : OpKernel(info)
 }
 
 template <typename T>
-Status NgramHashMapping<T>::Compute(OpKernelContext* context) const {
+Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
@@ -103,8 +103,8 @@ Status NgramHashMapping<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-template class NgramHashMapping<int32_t>;
-template class NgramHashMapping<int64_t>;
+template class NGramHashMapping<int32_t>;
+template class NGramHashMapping<int64_t>;
 
 }  // namespace contrib
 }  // namespace onnxruntime

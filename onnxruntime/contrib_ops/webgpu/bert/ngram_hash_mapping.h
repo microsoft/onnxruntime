@@ -12,9 +12,9 @@ namespace webgpu {
 
 using onnxruntime::webgpu::ComputeContext;
 
-class NgramHashMappingProgram final : public Program<NgramHashMappingProgram> {
+class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
  public:
-  NgramHashMappingProgram() : Program{"NgramHashMapping"} {}
+  NGramHashMappingProgram() : Program{"NGramHashMapping"} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -23,9 +23,9 @@ class NgramHashMappingProgram final : public Program<NgramHashMappingProgram> {
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 };
 
-class NgramHashMapping final : public WebGpuKernel {
+class NGramHashMapping final : public WebGpuKernel {
  public:
-  explicit NgramHashMapping(const OpKernelInfo& info);
+  explicit NGramHashMapping(const OpKernelInfo& info);
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:

@@ -17,7 +17,7 @@ namespace cuda {
 namespace {
 
 template <typename T>
-__global__ void NgramHashMappingKernel(
+__global__ void NGramHashMappingKernel(
     const T* input_ids,
     const T* multipliers,
     const T* vocab_sizes,
@@ -58,7 +58,7 @@ __global__ void NgramHashMappingKernel(
 }  // namespace
 
 template <typename T>
-Status LaunchNgramHashMappingKernel(
+Status LaunchNGramHashMappingKernel(
     cudaStream_t stream,
     const T* input_ids,
     const T* multipliers,
@@ -73,14 +73,14 @@ Status LaunchNgramHashMappingKernel(
   if (total == 0) {
     return Status::OK();
   }
-  NgramHashMappingKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
+  NGramHashMappingKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
       input_ids, multipliers, vocab_sizes, output, total, sequence_length, max_ngram_size,
       n_head_per_ngram, pad_id);
   return CUDA_CALL(cudaGetLastError());
 }
 
-template Status LaunchNgramHashMappingKernel<int32_t>(cudaStream_t, const int32_t*, const int32_t*, const int32_t*, int32_t*, int64_t, int64_t, int64_t, int64_t, int32_t);
-template Status LaunchNgramHashMappingKernel<int64_t>(cudaStream_t, const int64_t*, const int64_t*, const int64_t*, int64_t*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status LaunchNGramHashMappingKernel<int32_t>(cudaStream_t, const int32_t*, const int32_t*, const int32_t*, int32_t*, int64_t, int64_t, int64_t, int64_t, int32_t);
+template Status LaunchNGramHashMappingKernel<int64_t>(cudaStream_t, const int64_t*, const int64_t*, const int64_t*, int64_t*, int64_t, int64_t, int64_t, int64_t, int64_t);
 
 }  // namespace cuda
 }  // namespace contrib

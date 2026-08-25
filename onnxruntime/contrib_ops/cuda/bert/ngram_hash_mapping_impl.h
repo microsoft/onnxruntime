@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-Status LaunchNgramHashMappingKernel(
+Status LaunchNGramHashMappingKernel(
     cudaStream_t stream,
     const T* input_ids,
     const T* multipliers,

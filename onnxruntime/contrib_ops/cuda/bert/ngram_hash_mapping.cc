@@ -15,14 +15,14 @@ using namespace onnxruntime::cuda;
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      NgramHashMapping,                                           \
+      NGramHashMapping,                                           \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<T>()), \
-      NgramHashMapping<T>);
+      NGramHashMapping<T>);
 
 REGISTER_KERNEL_TYPED(int32_t)
 REGISTER_KERNEL_TYPED(int64_t)
@@ -30,7 +30,7 @@ REGISTER_KERNEL_TYPED(int64_t)
 #undef REGISTER_KERNEL_TYPED
 
 template <typename T>
-NgramHashMapping<T>::NgramHashMapping(const OpKernelInfo& info) : CudaKernel(info) {
+NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("max_ngram_size", &max_ngram_size_).IsOK(),
               "max_ngram_size attribute is required");
   ORT_ENFORCE(info.GetAttr<int64_t>("n_head_per_ngram", &n_head_per_ngram_).IsOK(),
@@ -46,7 +46,7 @@ NgramHashMapping<T>::NgramHashMapping(const OpKernelInfo& info) : CudaKernel(inf
 }
 
 template <typename T>
-Status NgramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
+Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
@@ -62,7 +62,7 @@ Status NgramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
   Tensor* output = context->Output(0, TensorShape({batch_size, sequence_length, num_heads}));
-  return LaunchNgramHashMappingKernel<T>(
+  return LaunchNGramHashMappingKernel<T>(
       Stream(context),
       input_ids->Data<T>(),
       multipliers->Data<T>(),
@@ -75,8 +75,8 @@ Status NgramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
       pad_id_);
 }
 
-template class NgramHashMapping<int32_t>;
-template class NgramHashMapping<int64_t>;
+template class NGramHashMapping<int32_t>;
+template class NGramHashMapping<int64_t>;
 
 }  // namespace cuda
 }  // namespace contrib

@@ -2644,7 +2644,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
-constexpr const char* NgramHashMapping_ver1_doc = R"DOC(
+constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
 Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
 
 For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
@@ -2656,9 +2656,9 @@ heads for n=2 first, then n=3, and so on.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    NgramHashMapping, 1,
+    NGramHashMapping, 1,
     OpSchema()
-        .SetDoc(NgramHashMapping_ver1_doc)
+        .SetDoc(NGramHashMapping_ver1_doc)
         .Attr("max_ngram_size",
               "Maximum n-gram order. Must be at least 2.",
               AttributeProto::INT)
@@ -2695,16 +2695,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
           if (max_ngram_size < 2) {
-            fail_shape_inference("NgramHashMapping: max_ngram_size must be at least 2");
+            fail_shape_inference("NGramHashMapping: max_ngram_size must be at least 2");
           }
           if (n_head_per_ngram < 1) {
-            fail_shape_inference("NgramHashMapping: n_head_per_ngram must be positive");
+            fail_shape_inference("NGramHashMapping: n_head_per_ngram must be positive");
           }
 
           if (hasInputShape(ctx, 0)) {
             const auto& input_shape = getInputShape(ctx, 0);
             if (input_shape.dim_size() != 2) {
-              fail_shape_inference("NgramHashMapping: input_ids must have rank 2");
+              fail_shape_inference("NGramHashMapping: input_ids must have rank 2");
             }
             TensorShapeProto output_shape;
             *output_shape.add_dim() = input_shape.dim(0);
