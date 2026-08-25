@@ -87,9 +87,11 @@ struct TestOptions {
   int64_t accuracy_level{0};
 
   bool disable_cpu_ep_fallback{false};
+  bool force_fp32{false};
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
+  bool scales_are_initializers{true};
   bool zero_points_are_initializers{true};
   bool has_g_idx{false};
   bool has_bias{false};
@@ -208,11 +210,11 @@ void RunTest(const TestOptions& opts,
                                         : std::vector<int64_t>{N, k_blocks};
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddInput<T1>("scales", scales_shape, scales, true);
+    test.AddInput<T1>("scales", scales_shape, scales, opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddInput<T1>("scales", scales_shape, FloatsToMLFloat16s(scales), true);
+    test.AddInput<T1>("scales", scales_shape, FloatsToMLFloat16s(scales), opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddInput<T1>("scales", scales_shape, FloatsToBFloat16s(scales), true);
+    test.AddInput<T1>("scales", scales_shape, FloatsToBFloat16s(scales), opts.scales_are_initializers);
   }
 
   if (opts.has_zero_point) {
@@ -292,18 +294,26 @@ void RunTest(const TestOptions& opts,
   if (opts.prepack_sharing_mode.has_value()) {
     // Pre-packed weight sharing is a CPU-EP-only feature; the helper runs the model on the CPU EP
     // in two sessions and validates the sharing counters.
-    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals);
+    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals,
+                                opts.force_fp32);
     return;
   }
 
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
+  } else if (opts.force_fp32) {
+    test.ConfigEp(DefaultCpuExecutionProvider());
   }
 
-  if (opts.disable_cpu_ep_fallback) {
+  if (opts.disable_cpu_ep_fallback || opts.force_fp32) {
     SessionOptions session_options;
     session_options.use_per_session_threads = false;
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    if (opts.disable_cpu_ep_fallback) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    }
+    if (opts.force_fp32) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32, "1"));
+    }
     test.Config(session_options);
   }
 
@@ -472,6 +482,48 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
+}
+
+TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  TestOptions opts{};
+  opts.N = 256;
+  opts.K = 256;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+  opts.M = 1;
+  RunTest<float>(opts);
+  opts.batch_count = 4;
+  opts.M = 64;
+  RunTest<float>(opts);
+#endif
+}
+
+TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32DynamicMetadata) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  TestOptions opts{};
+  opts.M = 256;
+  opts.N = 64;
+  opts.K = 64;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+
+  opts.scales_are_initializers = false;
+  RunTest<float>(opts);
+
+  opts.scales_are_initializers = true;
+  opts.has_zero_point = true;
+  opts.zero_points_are_initializers = false;
+  RunTest<float>(opts);
+#endif
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -688,6 +740,20 @@ TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
                                      PrepackSharingMode::kAddInitializer);
   opts.M = 1;
   RunTest<float>(opts);
+}
+
+TEST(MatMulNBits, SharedPrepackedWeights_ForceFp32) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  auto opts = MakeSharingTestOptions(64, 64, /*block_size*/ 32, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ true,
+                                     PrepackSharingMode::kAddInitializer);
+  opts.M = 256;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+  RunTest<float>(opts);
+#endif
 }
 
 // Uses a KleidiAI-compatible Q4 CompInt8 shape. Runtime zero points must not reuse a B pack
