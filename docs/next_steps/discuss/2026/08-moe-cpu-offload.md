@@ -1,0 +1,407 @@
+# Adaptive CUDA expert offloading for Qwen 3.6 MoE
+
+**Status:** Discussion  
+**Date:** 2026-08
+
+## Objective
+
+Determine which expert-placement strategy is worth implementing for Qwen 3.6 and other Mixture-of-Experts (MoE) models before implementing a CUDA cache. The first deliverable is an expert-routing logger, followed by measured traces and an offline cache simulator. Only the strategy selected from those simulations will be implemented in the CUDA operator.
+
+The eventual operator must execute models whose expert weights do not all fit in GPU memory. CPU memory keeps the canonical copy of every expert. A bounded number of experts are also cached on CUDA without removing their CPU copy, so an evicted expert remains immediately available to the CPU path.
+
+The initial adaptive policy counts how often each expert is selected. During each autoregressive inference step, experts used by the router have their counters incremented as soon as the routing decision is available. Experts with the largest counters become candidates for CUDA residency. When that decision changes the cache, the corresponding CPU weights are copied to CUDA immediately. The transfer should overlap the remainder of the current token computation and finish before the same layer processes the next token.
+
+This approach is close to the activation-aware caching explored by [MoE-Infinity](https://arxiv.org/abs/2401.14361). The goal here is to test the cheapest useful model-agnostic policy: integer counters, bounded ranking, and asynchronous copies triggered by observed routing. It requires no predictor training, model-specific calibration, historical request database, or prior knowledge of important experts.
+
+## Scope
+
+The initial work targets the Qwen 3.6 MoE graph and its top-k routing pattern. Expert identity is the pair `(layer_id, expert_id)` because experts from different layers do not share weights or statistics.
+
+The investigation proceeds in this order:
+
+- Add opt-in logging of complete expert-selection sequences.
+- Collect reproducible routing traces before implementing a cache.
+- Build an offline simulator for static and cumulative adaptive placement.
+- Sweep the number of experts allowed on CUDA.
+- Review the literature and evaluate better policies against the traces.
+- Implement the selected strategy, including the fused CUDA MoE operator, persistent CPU weights, fixed-capacity CUDA slots, and CPU fallback.
+
+Training, router-logit changes, and expert-weight quantization are outside the initial implementation. The operator must preserve model output within the tolerance of the existing CPU or ONNX Runtime implementation.
+
+## Memory and execution model
+
+Each expert has one permanent CPU allocation. The CUDA cache owns `gpu_expert_capacity` slots, where one slot stores all weights required to execute one expert. CPU weights are never moved or released when an expert is copied to a slot.
+
+Ultimately, `gpu_expert_capacity` should be derived from the CUDA memory budget, the memory already used by the model and runtime, and the size of one expert slot. The required reliable available-memory information is not currently exposed at the point where the cache is configured. Automatic sizing is therefore deferred.
+
+For the initial implementation, capacity is fixed with the following session configuration entry:
+
+```text
+session.moe_cuda_expert_capacity=<non-negative integer>
+```
+
+When the option is absent, expert offloading is disabled and the existing CPU or CUDA `MoE`/`QMoE` implementation remains unchanged. Setting it to `0` explicitly enables hybrid mode with no CUDA-resident experts, which exercises CPU fallback. A positive value creates exactly that many CUDA slots. Values larger than the model's total expert count are rejected. The selected value is recorded in every trace and result. Benchmarks set it explicitly for each capacity sweep; the runtime must not silently infer or reduce it.
+
+```text
+CPU expert weights (canonical, always resident)
+    expert 0 ---------------------------+
+    expert 1 --------------+            |
+    ...                    | copy       | copy
+    expert N -------+      v            v
+                    |  CUDA slot 0   CUDA slot 1  ...  CUDA slot C-1
+                    +-> CPU fallback
+```
+
+The operator receives the fixed CUDA expert capacity from the session configuration, not from a placement policy. Cache policy, counters, and transfers belong to a runtime cache manager. The execution path receives an immutable snapshot of the current expert-to-slot mapping:
+
+- A cache hit dispatches the token to the CUDA expert in its assigned slot.
+- A cache miss executes the current token from the CPU weights.
+- If the policy admits the missed expert, its CPU weights are copied immediately to a reserved slot on a dedicated transfer stream.
+- A slot cannot be reused until all CUDA work referencing its previous expert has completed.
+
+The cache manager must not block the current token merely to make an expert resident. CPU fallback and the host-to-device copy may read the same immutable CPU weights concurrently. If the destination slot is still in use, the transfer stream waits for the previous expert's completion event before starting the copy.
+
+An expert is `loading` while its copy is in flight. Before the next token reaches that MoE layer, the manager queries the transfer-completion event:
+
+- If complete, publish the new mapping and use CUDA.
+- If incomplete, keep the mapping unavailable and use CPU fallback without waiting.
+- Publish the slot in the first subsequent mapping snapshot after completion.
+
+The intended timeline is:
+
+```text
+token t, layer L router selects expert E
+    -> increment count(L, E)
+    -> admit E and reserve a CUDA slot if required by the policy
+    -> enqueue the CPU-to-CUDA weight copy immediately
+    -> execute the current miss on CPU while the copy progresses
+    -> finish the remaining layers of token t
+token t+1, before layer L
+    -> publish E if the copy event is complete
+    -> execute E on CUDA on a hit, otherwise use CPU without blocking
+```
+
+This gives the copy an overlap window from the routing decision at layer `L` for token `t` until layer `L` is reached for token `t + 1`. A synchronous transfer mode is retained only for correctness tests and transfer-cost calibration.
+
+## Operator strategy
+
+ONNX Runtime already provides `com.microsoft::MoE` and `com.microsoft::QMoE` kernels for both the CPU and CUDA execution providers. The initial implementation should extend these existing operators instead of adding a public operator whose contract is tied to two devices.
+
+An ORT graph node is assigned to one execution provider; an operator is not jointly owned by the CPU and CUDA EPs. In hybrid mode, the node remains assigned to the CUDA EP. Its CUDA kernel owns the expert cache, keeps the canonical expert weights in CPU memory, launches cached experts on CUDA, and invokes shared CPU MoE computation for misses. CPU execution is therefore an internal fallback path, not a second EP assignment.
+
+This approach preserves the existing operator schema and exported models:
+
+- when `session.moe_cuda_expert_capacity` is absent, current CPU and CUDA behavior is unchanged;
+- when the option is present, the CUDA kernel selects the hybrid implementation;
+- CPU and CUDA implementations share routing validation and expert-compute helpers instead of duplicating numerical logic;
+- placement policy and cache state remain runtime concerns rather than ONNX attributes.
+
+PR 5 must first verify that initializer prepacking and ORT's memory planner can retain the canonical expert weights on CPU without also materializing every expert on CUDA. If that cannot be done without changing the existing kernel's input-memory contract or regressing its normal CUDA path, the fallback is an internal experimental `MoEWithCPUOffload` contrib operator inserted by an ORT graph transformer only when the session option is present. It must reuse the existing `MoE`/`QMoE` schema semantics and kernels and must not become the exported model contract unless the experiment proves that a separate operator is necessary.
+
+## Placement strategies
+
+### Cumulative adaptive placement
+
+For each layer and expert, update the cumulative count as soon as routing completes:
+
+```text
+count_t(e) = count_{t-1}(e) + uses_t(e)
+```
+
+The manager admits the most frequently used experts until capacity is reached. Replacement occurs only when a non-resident expert has a strictly higher score than the least-used resident expert. `(layer_id, expert_id)` ordering breaks ties deterministically.
+
+Admission reserves a slot and immediately enqueues the copy. Residency changes only after the copy event completes, so kernels already in flight retain their immutable mapping snapshot. Counters and residency are session state; they can be reset before each benchmark repetition, exported with logs, and optionally initialized from a previous trace.
+
+After measuring cumulative placement, evaluate:
+
+- exponentially decayed frequency;
+- sliding-window LFU;
+- LRU or frequency-plus-recency scoring;
+- separate budgets and counters per MoE layer;
+- transition-aware prefetching based on recent expert sequences;
+- prompt- or workload-conditioned placement.
+
+### Hindsight-static baseline
+
+The primary static baseline uses the same CUDA capacity, CPU fallback, kernels, tensor types, batch size, and transfer accounting as the adaptive strategy. It is computed *a posteriori* from the benchmark under evaluation:
+
+1. Run the benchmark with expert-sequence logging enabled.
+2. Aggregate all uses of every `(layer_id, expert_id)`.
+3. Select the `gpu_expert_capacity` most frequently used experts, breaking ties deterministically.
+4. Replay the trace with exactly those experts resident.
+5. Keep the placement unchanged for the complete trace.
+
+This gives static placement complete knowledge of the future trace and no in-run transfer cost, making it an intentionally strong, optimistic baseline. A cold static placement using the first experts in deterministic order may be reported as a sanity check, but it is not the decision baseline.
+
+## Expert-sequence logging
+
+Expert-statistics collection is disabled by default. It is enabled only when the following session configuration entry is set:
+
+```text
+session.enable_moe_expert_statistics=1
+```
+
+The default value is `0`. When it is `0`, the routing path must not allocate statistics buffers, collect expert identifiers, or add measurable synchronization overhead. The evaluation script exposes the same setting as `--enable-moe-expert-statistics`.
+
+The implementation reuses ONNX Runtime's built-in `profiling::Profiler` and its Chrome trace JSON output instead of introducing another logging subsystem. ORT profiling already:
+
+- writes a JSON timeline when `SessionOptions.enable_profiling` is enabled;
+- records a `model_run` session event covering the complete `InferenceSession::Run`;
+- records per-node durations and `input_type_shape`/`output_type_shape` arguments;
+- bounds the in-memory event collection and reports an explicit error when the event limit is reached.
+
+`session.enable_moe_expert_statistics=1` requires ORT profiling to be enabled. Session initialization must reject the configuration if the statistics flag is on but no profile output is configured; it must not silently discard the requested data. The evaluation script enables both settings and selects the JSON output prefix.
+
+The existing `model_run` event is extended with:
+
+- `iteration_index`, monotonically increasing within the session;
+- `input_shapes`, containing the concrete dimensions of every model input for that iteration;
+- `input_token_hash`, a stable hash used to align identical CPU and CUDA iterations without storing tokens;
+- `request_id`, a stable identifier that does not expose prompt text.
+
+Its existing `dur` value is the wall-clock duration of the complete iteration, not only the MoE nodes. CPU and CUDA measurements use the normal synchronized `Run` behavior so this duration includes completion of the selected execution provider's work.
+
+Input dimensions are required even when `request_id` is present. During autoregressive generation the sequence-length dimension normally increases; a decrease relative to the previous iteration marks the transition to the next sequence. The analysis script validates this boundary against `request_id` and reports inconsistent traces.
+
+MoE routing decisions are added as profiler events correlated with `iteration_index`. No separate JSONL or Parquet writer is added.
+
+A later output-prediction study extends these events with sampled MoE outputs. This extension remains behind `session.enable_moe_expert_statistics=1` and is disabled unless an explicit sampling configuration is provided. It records the source `(iteration_index, token_index, layer_id)`, output shape and type, and either the sampled output vector or a documented deterministic projection. It must not emit every full activation by default because that would make the JSON traces impractically large.
+
+Each routing record contains:
+
+| Field | Meaning |
+|---|---|
+| `run_id`, `request_id`, `iteration_index` | Reproducible benchmark, sequence, and iteration identifiers. |
+| `input_shapes` | Concrete model-input dimensions for detecting sequence growth and reset. |
+| `input_token_hash` | Stable identifier for joining CPU and CUDA iterations with identical token inputs. |
+| `token_index`, `layer_id` | Position of the routing decision in the generated sequence. |
+| `expert_ids`, `router_weights` | Ordered top-k experts and their router weights. |
+| `resident_experts` | Placement snapshot used by this inference. |
+| `cache_hit` | Whether each selected expert executed on CUDA. |
+| `admitted`, `evicted` | Placement changes decided after the routing update. |
+| `copy_enqueued_ns`, `copy_ready_ns` | Copy interval and readiness before the next token. |
+| `copy_bytes`, `copy_duration_ns` | Host-to-device traffic caused by cache changes. |
+| `iteration_duration_us` | Complete `model_run` duration, including all non-MoE work. |
+| `cpu_duration_ns`, `cuda_duration_ns` | MoE execution time split by device when the cache is implemented. |
+
+Run metadata records the model revision, ONNX Runtime and `onnxruntime-genai` versions, CUDA version, GPU and CPU models, capacity, policy parameters, random seed, warm-up length, and benchmark configuration. Prompts and generated text are not logged by default; stable request identifiers are sufficient for joins when explicitly required.
+
+## Benchmarks and simulation
+
+Evaluate the model on a fixed set of 1,000 prompts using `onnxruntime-genai`. The evaluation driver must use the `onnxruntime-genai` generation API rather than a custom token-generation loop around `InferenceSession`. Run exactly the same prompts and generation limits once with CUDA and once with CPU. Pin and record the `onnxruntime-genai` revision, model configuration, provider configuration, tokenizer, sampling parameters, and random seed. The prompt set should contain long single-request generations and heterogeneous conversational or instruction prompts so the traces expose different routing-locality patterns.
+
+For every prompt and execution provider, record:
+
+- complete per-iteration `model_run` time and, where available, per-expert execution time;
+- the concrete dimensions of every input for every iteration;
+- the complete ordered sequence of selected `(layer_id, expert_id)` pairs;
+- router weights and generated-token counts;
+- all metadata required to reproduce and compare the CPU and CUDA runs.
+
+Trace collection does not require an adaptive cache. Running the 1,000-prompt evaluation is the only activity in this plan that is not delivered through a pull request. The raw traces remain evaluation artifacts. All scripts used to process them, all aggregate results, and every update to this document are committed to the repository through pull requests.
+
+The simulator replays every trace with hindsight-static and cumulative adaptive placement. It sweeps `gpu_expert_capacity` from zero to all experts, with dense sampling at small capacities and representative larger capacities. Both strategies receive the same trace, capacity, expert sizes, and measured transfer-cost model.
+
+Report:
+
+- expert-frequency distributions and complete routing sequences;
+- simulated cache-hit rate per layer and overall;
+- host-to-device bytes, transfer count, and copies completed before the next token;
+- admissions, evictions, and CPU fallbacks;
+- estimated latency and throughput from measured execution and transfer costs;
+- the capacity required by each strategy to reach a target hit rate;
+- sensitivity to copy and execution costs.
+
+After implementation, add time to first token, inter-token latency, throughput, peak CPU and CUDA memory, and output agreement. Report kernel-only timing separately; it is not the decision metric.
+
+## Sequence analysis
+
+Analyze the traces before implementing a cache policy:
+
+- expert-frequency concentration and capacity required for a target coverage;
+- frequency drift across requests and generation phases;
+- run lengths, reuse distance, and achievable LRU and LFU hit rates;
+- per-layer differences in expert popularity;
+- first- and higher-order transitions between selected experts;
+- correlation between router weight and near-future reuse;
+- an offline optimal cache trace as an upper bound.
+
+Compare cumulative counts with request resets, sliding windows, and exponential decay. Select policy parameters on a trace prefix and evaluate them on held-out tokens and workloads.
+
+### Mixing CPU and CUDA measurements
+
+A checked-in script combines the CPU and CUDA measurements to estimate hybrid execution. For each expert decision, it applies the measured CPU cost to a simulated miss, the measured CUDA cost to a hit, and the measured host-to-device cost to an admission. It then compares the resulting estimated iteration time with the CPU-only and CUDA-only baselines.
+
+CPU and CUDA may generate slightly different responses from the same prompt. Once a generated token differs, subsequent model inputs, routing decisions, and expert sequences may also differ, so records must not be joined only by prompt and iteration index.
+
+The evaluation and mixing scripts therefore:
+
+- record a stable hash of the complete token input for every iteration, without storing prompt text;
+- join CPU and CUDA iterations only when `request_id`, input dimensions, and input-token hash all match;
+- record the first divergent iteration for each prompt and stop paired comparisons after that point;
+- report generated-token and expert-selection agreement before divergence;
+- simulate the hybrid policy independently on the complete CPU and CUDA routing traces;
+- report both simulation results rather than presenting one merged trace when expert choices differ.
+
+For a directly paired CPU/CUDA cost comparison, the evaluation script also supports deterministic replay of one canonical generated-token sequence on both execution providers. Free-running generation remains the end-to-end correctness measurement; canonical replay isolates execution-provider timing from autoregressive output divergence.
+
+A separate predictive analysis measures:
+
+- `P(expert_n | expert_{n-1})` and mutual information between adjacent layers;
+- prediction accuracy and copy lead time for inter-layer prefetching;
+- the relation between experts in layer `n` and the top-1 token predicted from layer `n - 1`;
+- the ability to predict the next selected expert from the current MoE output;
+- the additional gain of token prediction over expert correlation alone.
+
+The intermediate top-1 token requires an extra projection through final normalization and the language-model head. Log it only on sampled tokens or compute it offline, and exclude its cost from policy timing.
+
+Output-based prediction treats two targets separately:
+
+- the expert selected by the next MoE layer for the same token;
+- the expert selected by the same MoE layer for the next token.
+
+Train candidate predictors on a trace prefix and evaluate them on held-out requests. Report prediction accuracy, copy lead time, transfer waste from incorrect predictions, predictor runtime, and incremental gain over expert-transition statistics alone.
+
+## Literature-informed candidates
+
+No replacement policy dominates across all MoE models, workloads, capacities, and hardware. Published work does consistently indicate that routing contains exploitable structure and that transfer scheduling matters at least as much as replacement policy.
+
+| Work | Implication for this plan |
+|---|---|
+| [Fast Inference of Mixture-of-Experts Language Models with Offloading](https://arxiv.org/abs/2312.17238) | Include recency as a baseline and measure consecutive-token locality. |
+| [MoE-Infinity](https://arxiv.org/abs/2401.14361) | Compare the proposed cheap online counters with activation-aware historical trace matching and prefetching. |
+| [Fiddler](https://arxiv.org/abs/2402.07033) | Model CPU execution as a credible non-blocking miss path, not every miss as a mandatory weight-transfer stall. |
+| [SiDA-MoE](https://arxiv.org/abs/2310.18859) | Evaluate distinct workloads because expert popularity may be input-dependent. |
+| [Pre-gated MoE](https://arxiv.org/abs/2308.12066) | Model when predictions become available and whether transfers finish before the target layer. |
+| [ExFlow](https://arxiv.org/abs/2401.08383) | Preserve layer ordering and evaluate conditional transitions. |
+| [ProMoE](https://arxiv.org/abs/2410.22134) | Consider chunked and cancellable copies; include predictor training and runtime costs. |
+| [HOBBIT](https://arxiv.org/abs/2411.01433) | Evaluate multiple time scales; keep mixed-precision fallback outside the exact-weight experiment. |
+| [Klotski](https://arxiv.org/abs/2502.06888) | Keep multi-request throughput results separate from single-request token latency. |
+| [HybriMoE](https://arxiv.org/abs/2504.05897) | Consider impact-aware scoring based on miss cost and expected reuse. |
+
+The minimum simulation set is hindsight static, cumulative LFU, LRU, decayed or windowed LFU, and an offline optimal bound. Inter-layer transition prediction and impact-aware scoring are the first advanced candidates. Refresh the literature review before implementation and distinguish preprints from peer-reviewed results.
+
+## Correctness and concurrency
+
+The cache manager owns all mutable state and exposes a mapping snapshot for one inference. Concurrent requests may share immutable CPU weights but must not mutate a session cache without synchronization. The initial implementation serializes placement updates; later parallel execution may use versioned snapshots and per-slot events.
+
+Tests must cover:
+
+- zero, partial, and full CUDA capacity;
+- deterministic admission and eviction, including ties;
+- repeated hits without additional copies;
+- eviction without releasing or modifying CPU weights;
+- CPU fallback while an asynchronous copy is in flight;
+- immediate copy enqueue when an update reserves a slot;
+- publication before the next token when the copy completes;
+- non-blocking fallback when a copy misses the next-token deadline;
+- safe slot reuse after CUDA completion;
+- counter reset, export, and replay;
+- complete logs and explicit buffer-overflow errors;
+- numerical agreement for mixed CPU/CUDA expert execution.
+
+## Pull request plan
+
+Every persistent change is delivered through one of the following pull requests. The only work outside a pull request is executing the model evaluation to produce raw measurements.
+
+### PR 1: expert-routing instrumentation
+
+- Add the `session.enable_moe_expert_statistics` session configuration entry, disabled by default.
+- Reuse `profiling::Profiler` and its JSON serializer; do not add an independent logging path.
+- Extend `model_run` events with iteration indices, request identifiers, and concrete model-input dimensions.
+- Add correlated MoE profiler events containing the selected experts and router weights.
+- Record complete iteration time for CPU and CUDA, including non-MoE work.
+- Reject the statistics flag when profiling output is not enabled.
+- Test the disabled path, JSON schema, sequence reset detection inputs, event correlation, and explicit overflow behavior.
+
+### PR 2: reproducible evaluation and statistical-analysis scripts
+
+- Add an `onnxruntime-genai` script that runs a fixed set of 1,000 prompts with identical generation settings on CPU and CUDA and passes `--enable-moe-expert-statistics`.
+- Pin and validate the supported `onnxruntime-genai` revision and record its generation and provider configurations in every run.
+- Add checked-in scripts that validate, normalize, and join the CPU and CUDA traces.
+- Detect sequence boundaries from decreases in the sequence-length input dimension and validate them against request identifiers.
+- Add input-token hashes, divergence detection, and canonical-sequence replay.
+- Add a script that mixes measured CPU execution, CUDA execution, and transfer costs to estimate hybrid execution.
+- Compute expert frequencies, per-layer distributions, reuse distance, transitions, full-iteration timing summaries, and CPU/CUDA comparisons.
+- Add small synthetic fixtures and tests so the analysis is reproducible without the full evaluation artifacts.
+- Document the exact commands, inputs, outputs, model revision, and hardware metadata.
+
+**PRs 1 and 2 are independent deliverables and remain useful even if the offloading simulations fail.**
+They provide reusable MoE routing instrumentation, reproducible `onnxruntime-genai` evaluation, CPU/CUDA comparison, and statistical-analysis
+tooling for testing other placement, scheduling, prefetching, quantization, or kernel ideas.
+They must not depend on the cache implementation introduced by later PRs.
+
+### Model evaluation outside a PR
+
+After PRs 1 and 2 are merged:
+
+1. Use the checked-in `onnxruntime-genai` driver to run the model on the fixed 1,000 prompts with CUDA.
+2. Use the same driver to run the model on the same 1,000 prompts with CPU.
+3. Preserve the raw timing and expert-selection traces as evaluation artifacts.
+
+This step changes no repository files. Any script correction discovered during the run is submitted as an update to PR 2 or as a follow-up PR before the data is accepted.
+
+### PR 3: trace analysis, simulator, and measured results
+
+- Add the offline cache simulator and policy implementations for hindsight static, cumulative LFU, LRU, decayed or windowed LFU, and the offline optimal bound.
+- Process the 1,000-prompt CPU and CUDA traces with the checked-in scripts.
+- Simulate hybrid execution against both routing traces and the paired canonical replay.
+- Sweep CUDA capacity and history length using the measured timing and routing data.
+- Commit aggregate tables and figures, excluding raw prompt content and oversized traces.
+- Add the measured results and conclusions to this next-step document.
+- Select adaptive placement if it is better or equivalent to hindsight static; otherwise select model-specific static placement.
+
+### PR 4: predictive-strategy analysis, if justified
+
+**Start PR 4 only if the PR 3 simulations produce a positive result and show that hybrid CPU/CUDA execution improves a measured baseline otherwise determine a different strategy based on the data.**
+
+- Extend logging with sampled top-1 tokens from intermediate layers if required.
+- Add adjacent-layer expert and token/expert correlation analyses.
+- Simulate inter-layer prefetching on held-out traces, including copy lead time.
+- Refresh the literature review and add relevant predictive policies.
+- Update this document with results and select a predictive policy only if it consistently improves the PR 3 candidate.
+
+### PR 5: runtime cache manager
+
+- Implement only the selected placement policy.
+- Add and validate the optional `session.moe_cuda_expert_capacity` option; absence preserves current behavior and explicit `0` tests CPU-only fallback.
+  *This decision should be made on the estimation of the memory consumption but there is not such thing right now.*
+- Verify that prepacking and memory planning retain canonical weights on CPU without allocating all expert weights on CUDA.
+- Extend the existing CUDA `MoE`/`QMoE` implementation with hybrid dispatch and shared CPU expert-compute helpers.
+- Use an internal graph-transformer-inserted `MoEWithCPUOffload` operator only if the existing input-memory contract makes the schema-preserving approach infeasible.
+- Add persistent CPU weights, fixed-capacity CUDA slots, immutable mapping snapshots, and deterministic admission and eviction.
+- Add immediate asynchronous copies, completion events, next-token publication, and non-blocking CPU fallback.
+- Cover capacity, concurrency, transfer, eviction, and fallback behavior with tests.
+
+### PR 6: fused Qwen 3.6 MoE integration
+
+- Integrate the cache manager with the fused Qwen 3.6 CUDA MoE operator.
+- Add mixed CPU/CUDA expert dispatch and numerical correctness tests.
+- Add end-to-end bounded-memory tests for zero, partial, and full CUDA capacity.
+
+### PR 7: end-to-end results
+
+- Use measurements produced by repeating the out-of-PR CPU and CUDA evaluation against the completed implementation.
+- Compare measured behavior with the PR 3 simulation.
+- Add time to first token, inter-token latency, throughput, memory, transfer, hit-rate, and output-agreement results.
+- Update this document with the final conclusion and move it to the appropriate next-step status.
+
+## Going further: per-expert limits and MoE-output prediction
+
+This is not a planned pull request or a requirement for completing the implementation. It describes possible follow-up research after PR 7 establishes a correct end-to-end baseline.
+
+- Study whether one global cache policy should be supplemented by limits keyed by `(layer_id, expert_id)`.
+- Keep the global CUDA memory capacity as a hard safety bound while evaluating per-expert admission, retention, or replacement limits derived from expert size, copy cost, CPU cost, CUDA speedup, and observed reuse.
+- Extend the existing profiler-based JSON logging with explicitly sampled MoE outputs, including their source iteration, token, layer, shape, and type.
+- Add checked-in scripts that predict the next-layer expert and the same-layer next-token expert from those outputs.
+- Compare raw sampled outputs with compact deterministic projections to quantify trace size, logging overhead, and predictive accuracy.
+- Simulate prefetching driven by the predictor and include late copies, unused copies, and predictor cost.
+- If this research is pursued, document its results separately and propose implementation work only when it improves the PR 7 baseline.
+
+## Decision criteria
+
+The investigation succeeds first by producing trustworthy traces and enough evidence to choose a placement strategy before implementing it. Cumulative adaptive placement is competitive when it is better than or equivalent to hindsight-static placement, within a predefined uncertainty margin, across both benchmark classes and the useful capacity range. Its primary advantage is portability: it does not require a different expert set for each model.
+
+If adaptive placement is worse, expert residency must be profiled per model or workload unless the literature review identifies a better generic policy. Final success requires a correct bounded-memory MoE operator whose measured end-to-end behavior confirms the simulation for the selected strategy.
+
+A negative result ends the cache implementation plan but does not invalidate PRs 1 and 2. Their logging and analysis infrastructure is retained as the common experimental foundation for future MoE investigations.
