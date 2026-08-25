@@ -17,7 +17,27 @@ describeWebGpu('#UnitTest# - WebGPU environment device', () => {
   it('uses an application-created device for inference and GPU tensors', async () => {
     const adapter = await navigator.gpu.requestAdapter();
     expect(adapter).not.to.equal(null);
-    const device = await adapter!.requestDevice();
+    const requiredFeatures = [
+      'chromium-experimental-timestamp-query-inside-passes',
+      'timestamp-query',
+      'shader-f16',
+      'subgroups',
+      'subgroup-size-control',
+    ].filter((feature) => adapter!.features.has(feature as GPUFeatureName)) as GPUFeatureName[];
+    const device = await adapter!.requestDevice({
+      // The device is environment-wide, so keep the capabilities used by subsequent WebGPU tests.
+      requiredFeatures,
+      requiredLimits: {
+        maxComputeWorkgroupStorageSize: adapter!.limits.maxComputeWorkgroupStorageSize,
+        maxComputeWorkgroupsPerDimension: adapter!.limits.maxComputeWorkgroupsPerDimension,
+        maxStorageBufferBindingSize: adapter!.limits.maxStorageBufferBindingSize,
+        maxBufferSize: adapter!.limits.maxBufferSize,
+        maxComputeInvocationsPerWorkgroup: adapter!.limits.maxComputeInvocationsPerWorkgroup,
+        maxComputeWorkgroupSizeX: adapter!.limits.maxComputeWorkgroupSizeX,
+        maxComputeWorkgroupSizeY: adapter!.limits.maxComputeWorkgroupSizeY,
+        maxComputeWorkgroupSizeZ: adapter!.limits.maxComputeWorkgroupSizeZ,
+      },
+    });
 
     ort.env.webgpu.device = device;
     expect(ort.env.webgpu.device).to.equal(device);
