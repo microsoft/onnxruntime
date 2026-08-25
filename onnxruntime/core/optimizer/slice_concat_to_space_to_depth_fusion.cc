@@ -350,8 +350,8 @@ bool TryMatchSliceChain(Graph& graph,
   chain.nodes.clear();
   chain.root_input = nullptr;
 
-  std::array<bool, 4> axis_strided{false, false, false, false};
-  std::array<int64_t, 4> axis_offset{0, 0, 0, 0};
+  std::array<bool, 4> axis_strided{};
+  std::array<int64_t, 4> axis_offset{};
 
   Node* node = GetMutableInputProducerNode(graph, concat, input_index);
   const Node* consumer = &concat;

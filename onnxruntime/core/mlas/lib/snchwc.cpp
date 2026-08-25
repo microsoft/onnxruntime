@@ -17,18 +17,27 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <cassert>
 #include <cstdlib>
 #include <cstring>
+
+namespace {
 
 //
 // Reads an environment variable into a caller supplied buffer. MSVC rejects
 // getenv outright, so the secure variant is used there.
 //
 
-static
 bool
 MlasNchwcGetEnvironmentVariable(const char* Name, char* Buffer, size_t BufferSize)
 {
+    //
+    // Both paths below index Buffer[BufferSize - 1], which would underflow for
+    // an empty buffer.
+    //
+
+    assert(BufferSize > 0);
+
 #if defined(_MSC_VER)
     size_t Length = 0;
 
@@ -59,7 +68,6 @@ MlasNchwcGetEnvironmentVariable(const char* Name, char* Buffer, size_t BufferSiz
 // as a variable when measuring.
 //
 
-static
 bool
 MlasNchwcUseBalancedFilterSets(void)
 {
@@ -83,23 +91,24 @@ MlasNchwcUseBalancedFilterSets(void)
 // output with few filter sets can leave threads idle. Disabled by default.
 //
 
-static
 size_t
 MlasNchwcFilterSetTarget(void)
 {
-    static const size_t Target = []() -> size_t {
+    static const size_t Target = []() {
         char Buffer[16];
 
         if (!MlasNchwcGetEnvironmentVariable("MLAS_NCHWC_FSS_TARGET", Buffer, sizeof(Buffer))) {
-            return 0;
+            return size_t{0};
         }
 
         const int Parsed = std::atoi(Buffer);
-        return (Parsed > 0) ? static_cast<size_t>(Parsed) : 0;
+        return (Parsed > 0) ? static_cast<size_t>(Parsed) : size_t{0};
     }();
 
     return Target;
 }
+
+}  // namespace
 
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
@@ -666,6 +675,13 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         if (Target == 0 || WorkBlock->tids <= 1) {
             return MaximumFilterSetSize;
         }
+
+        //
+        // MlasNchwcGetBlockSize() returns one rather than zero on platforms
+        // without NCHWc support, precisely so this division is always safe.
+        //
+
+        assert(BlockSize > 0);
 
         const size_t Wanted = static_cast<size_t>(WorkBlock->tids) * Target;
         const size_t Blocks = OutputChannels / BlockSize;
