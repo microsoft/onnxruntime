@@ -18,8 +18,16 @@ parameters:
 
 - name: cuda_version
   type: string
-  displayName: 'CUDA version. Windows Only.'
+  displayName: 'CUDA version for Windows and Linux x86_64.'
   default: '12.8'
+  values:
+   - 12.8
+   - 13.0
+   - 13.3
+
+- name: linux_aarch64_cuda_version
+  type: string
+  displayName: 'CUDA version for Linux aarch64.'
   values:
    - 12.8
    - 13.0
@@ -97,8 +105,8 @@ parameters:
   default: []
 
 stages:
-    # Use separated cudnn folder for CUDA 13.0 on Windows.
-    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+    # Use a separate cuDNN folder for CUDA 13 on Windows.
+    - ${{ if startsWith(parameters.cuda_version, '13.') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
         - template: py-win-gpu-stage.yml
           parameters:
@@ -150,7 +158,7 @@ stages:
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: ${{ parameters.cuda_version }}
+          cuda_version: ${{ parameters.linux_aarch64_cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_linux_aarch64_cuda_archs }}
           docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
           python_version: ${{ config.python_version }}

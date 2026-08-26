@@ -27,6 +27,7 @@ parameters:
   values:
    - 12.8
    - 13.0
+   - 13.3
 
 - name: trt_version_override
   type: string

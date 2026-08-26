@@ -10,6 +10,7 @@ parameters:
     default: '12.8'
     values:
       - 13.0
+      - 13.3
       - 12.8
   - name: CudnnFolder
     type: string
@@ -30,7 +31,7 @@ steps:
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)
 
-    # Since CUDA 13.0, CUDA DLLs are  in bin\x64 folder instead of bin folder for Windows.
+    # Since CUDA 13, CUDA DLLs are in bin\x64 instead of bin on Windows.
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin\x64;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
       displayName: 'Append CUDA SDK Directory to PATH'
@@ -42,7 +43,7 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
-    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    - ${{ if startsWith(parameters.CudaVersion, '13.') }}:
       - task: AzureCLI@2
         displayName: 'Download CUDNN ${{ parameters.CudnnFolder }}'
         inputs:
