@@ -1579,7 +1579,9 @@ Status PagedXqaDecodeAttention(
 #else
       false;
 #endif
-  const XqaQuantType kv_quant_type = kIsFp8Cache ? XqaQuantType::kFp8 : XqaQuantType::kInt8;
+  constexpr bool kIsInt8Cache = std::is_same<TCACHE, int8_t>::value;
+  const XqaQuantType kv_quant_type =
+      kIsFp8Cache ? XqaQuantType::kFp8 : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
   ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
       device_prop, stream,
       reinterpret_cast<const void*>(query),
