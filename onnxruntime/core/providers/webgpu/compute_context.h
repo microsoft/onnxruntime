@@ -104,7 +104,7 @@ class ComputeContextBase {
   }
 
   //
-  // Get the KV cache quantization bits (0 = disabled, 4 = 4-bit).
+  // Get the KV cache quantization bits (0 = disabled, 4 or 8 = index width).
   //
   inline uint32_t KvCacheQuantizationBits() const {
     return ep_.KvCacheQuantizationBits();

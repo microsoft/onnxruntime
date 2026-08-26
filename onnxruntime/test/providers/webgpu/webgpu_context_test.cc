@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -35,6 +36,12 @@ using namespace webgpu::options;
 ConfigOptions RobustnessOptions(const char* value) {
   ConfigOptions options;
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kEnableRobustness, value));
+  return options;
+}
+
+ConfigOptions KvCacheQuantizationOptions(const char* value) {
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kKvCacheQuantizationBits, value));
   return options;
 }
 
@@ -267,6 +274,19 @@ TEST(WebGpuContextTest, EnableRobustnessUsesBuildDefault) {
 
 TEST(WebGpuContextTest, EnableRobustnessRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(RobustnessOptions("true")), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, KvCacheQuantizationAcceptsSupportedBitWidths) {
+  for (const auto& [value, expected_bits] :
+       std::array<std::pair<const char*, uint32_t>, 3>{{{"0", 0}, {"4", 4}, {"8", 8}}}) {
+    auto ep = WebGpuProviderFactoryCreator::Create(KvCacheQuantizationOptions(value))->CreateProvider();
+    ASSERT_NE(ep, nullptr);
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider*>(ep.get())->KvCacheQuantizationBits(), expected_bits);
+  }
+}
+
+TEST(WebGpuContextTest, KvCacheQuantizationRejectsInvalidValue) {
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(KvCacheQuantizationOptions("3")), OnnxRuntimeException);
 }
 
 TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {

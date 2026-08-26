@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param bit_width
 #param compressed_head_size_u32
 #param has_attention_bias
 #param is_unidirectional
@@ -9,7 +10,7 @@
 #param sub_tile_count
 #param tile_size
 #param tile_size_k_vec
-#param turbo_quant
+#param kv_cache_quantization
 #param use_indirect_dispatch
 #param use_seqlen_k
 #param use_seqlens_q
@@ -17,9 +18,11 @@
 
 #use .getByOffset .getByIndices .setByOffset
 
-#if turbo_quant
+#if kv_cache_quantization
+#if bit_width == 4
 #include "bert/turbo_quant_common.wgsl.template"
-#include "bert/turbo_quant_dequant.wgsl.template"
+#endif
+#include "bert/kv_cache_quantization_dequant.wgsl.template"
 const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 const COMPRESSED_HEAD_U32_WITHOUT_SCALE : u32 = COMPRESSED_HEAD_U32 - 1u;
 #endif
@@ -36,12 +39,14 @@ const COMPRESSED_HEAD_U32_WITHOUT_SCALE : u32 = COMPRESSED_HEAD_U32 - 1u;
 //
 // The VxReduce shader performs the final rescaling across tiles.
 
-#if turbo_quant
-// TQ: preload all Q vec4s and centroid LUT into shared memory.
+#if kv_cache_quantization
+// Quantized KV cache: preload all Q vec4s into shared memory.
 var<workgroup> all_q: array<array<q_value_t, v_head_size_vec>, m_tile>;
-var<workgroup> tq_k_scales: array<f32, tile_size>;
-var<workgroup> tq_v_scales: array<f32, tile_size>;
+var<workgroup> kv_cache_k_scales: array<f32, tile_size>;
+var<workgroup> kv_cache_v_scales: array<f32, tile_size>;
+#if bit_width == 4
 var<workgroup> tq_lut: array<f32, 16>;
+#endif
 #else
 var<workgroup> tile_q: array<array<q_value_t, tile_size_k_vec>, m_tile>;
 // Precomputed paged-KV base offset per row of the tile (non-TQ path).
@@ -115,19 +120,20 @@ $MAIN {
   let total_sequence_length = global_total_sequence_length;
   #endif
 
-#if turbo_quant
+#if kv_cache_quantization
   let kv_head_offset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * COMPRESSED_HEAD_U32;
 
-  // Preload centroid LUT.
+#if bit_width == 4
   if (local_idx < 16u) {
     tq_lut[local_idx] = TQ_CENTROIDS[local_idx];
   }
+#endif
 
   // Preload K scales for this tile.
   if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
     let scale_base = kv_head_offset + (total_seq_offset + local_idx) * COMPRESSED_HEAD_U32;
-    tq_k_scales[local_idx] = bitcast<f32>(present_key[scale_base]);
-    tq_v_scales[local_idx] = bitcast<f32>(present_value[scale_base]);
+    kv_cache_k_scales[local_idx] = bitcast<f32>(present_key[scale_base]);
+    kv_cache_v_scales[local_idx] = bitcast<f32>(present_value[scale_base]);
   }
 
   // Preload all Q into shared memory.
@@ -151,7 +157,7 @@ $MAIN {
   // ============================================================
   // Phase 1 (TQ): QK^T with dequantized K from packed u32
   // ============================================================
-  // Each thread processes one u32 word per iteration (8 nibbles → 2 vec4 dot products).
+  // Each thread processes one u32 word per iteration.
   for (var kw: u32 = 0u; kw < COMPRESSED_HEAD_U32_WITHOUT_SCALE; kw += tile_size_k_vec) {
     let word_idx = kw + local_col;
     if (word_idx < COMPRESSED_HEAD_U32_WITHOUT_SCALE) {
@@ -160,12 +166,13 @@ $MAIN {
         if (seq_idx < total_sequence_length) {
           let base = kv_head_offset + seq_idx * COMPRESSED_HEAD_U32;
           let packed = present_key[base + 1u + word_idx];
-          let k_lo = tq_unpack_nibbles(packed);
-          let k_hi = tq_unpack_nibbles(packed >> 16u);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
-            let mq_lo = all_q[m][word_idx * 2u];
-            let mq_hi = all_q[m][word_idx * 2u + 1u];
-            inner_qk_values[m][row_offset + local_row][local_col] += dot(k_lo, mq_lo) + dot(k_hi, mq_hi);
+            for (var vec = 0u; vec < KV_CACHE_QUANT_VEC4S_PER_WORD; vec++) {
+              let k_vec =
+                  kv_cache_quant_unpack_vec4(packed >> (vec * 4u * KV_CACHE_QUANT_BITS));
+              let q_vec = all_q[m][word_idx * KV_CACHE_QUANT_VEC4S_PER_WORD + vec];
+              inner_qk_values[m][row_offset + local_row][local_col] += dot(k_vec, q_vec);
+            }
           }
         }
       }
@@ -260,9 +267,9 @@ $MAIN {
       for (var i = 0u; i < tile_size_k_vec; i++) {
         sum += inner_qk_values[m][local_idx][i];
       }
-#if turbo_quant
-      // Apply the deferred scale (L2 norm factored out of the inner loop).
-      sum *= q_element_t(tq_k_scales[local_idx]);
+#if kv_cache_quantization
+      // Apply the per-vector scale after the inner loop.
+      sum *= q_element_t(kv_cache_k_scales[local_idx]);
 #endif
 
       sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx);
@@ -305,7 +312,7 @@ $MAIN {
   }
   workgroupBarrier();
 
-#if turbo_quant
+#if kv_cache_quantization
   // TQ V multiply: dequantize V from packed u32 on the fly.
   for (var k: u32 = 0u; k < v_head_size_vec; k += tile_size_k_vec) {
     for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
@@ -318,12 +325,14 @@ $MAIN {
         let seq_idx = total_seq_offset + row_offset + local_row;
         if (seq_idx < total_sequence_length) {
           let elem_base = (k + local_col) * 4u;
-          let tq_word_idx = elem_base >> 3u;
+          let quantized_word_idx = elem_base / KV_CACHE_QUANT_ELEMENTS_PER_WORD;
           let base = kv_head_offset + seq_idx * COMPRESSED_HEAD_U32;
-          let scale = tq_v_scales[row_offset + local_row];
-          let packed = present_value[base + 1u + tq_word_idx];
-          let tq_shift = (elem_base & 4u) << 2u;
-          let v_val = tq_unpack_nibbles(packed >> tq_shift) * q_element_t(scale);
+          let scale = kv_cache_v_scales[row_offset + local_row];
+          let packed = present_value[base + 1u + quantized_word_idx];
+          let quantized_shift =
+              (elem_base % KV_CACHE_QUANT_ELEMENTS_PER_WORD) * KV_CACHE_QUANT_BITS;
+          let v_val =
+              kv_cache_quant_unpack_vec4(packed >> quantized_shift) * q_element_t(scale);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             qkv_values[m][local_row][local_col] += v_val * tile_qk[m][row_offset + local_row];
           }
