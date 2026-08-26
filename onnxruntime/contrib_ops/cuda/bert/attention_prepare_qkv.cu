@@ -432,9 +432,9 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
       assert(data.IsUnfused());
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.query, data.q));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, kv_num_heads,
                                          max_threads_per_block, false, data.key, data.k));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, kv_num_heads,
                                          max_threads_per_block, false, data.value, data.v));
       data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }

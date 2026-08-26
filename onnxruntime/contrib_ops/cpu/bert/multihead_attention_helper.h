@@ -108,12 +108,14 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, int num_heads, 
     v_head_size = kv_v_hidden_size / kv_num_heads;
     v_hidden_size = v_head_size * num_heads;
   } else {  // key_dims.size() == 4
-    if (value->Shape() != key->Shape() ||
-        static_cast<int>(key_dims[1]) != kv_num_heads ||
+    if (static_cast<int>(key_dims[1]) != kv_num_heads ||
+        static_cast<int>(value_dims[1]) != kv_num_heads ||
+        key_dims[2] != value_dims[2] ||
         static_cast<int>(key_dims[3]) != head_size) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'key' and 'value' shall have same shape (batch_size, kv_num_heads, kv_sequence_length, head_size)");
+          "Input 'key' and 'value' shall have shape "
+          "(batch_size, kv_num_heads, kv_sequence_length, head_size or v_head_size)");
     }
 
     qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
@@ -452,6 +454,11 @@ Status CheckInputs(const T* query,
 
     if (qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H && bias != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when packed kv is used");
+    }
+
+    if (qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && bias != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'bias' shall be empty when key and value are 4-D BNSH tensors");
     }
   }
 
