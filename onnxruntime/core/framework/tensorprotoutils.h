@@ -672,6 +672,19 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
 Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
                                        const std::filesystem::path& external_data_path);
 
+/// <summary>
+/// On Windows, converts `path` to an absolute extended-length path ("\\?\") so Win32 path parsing is
+/// disabled and a reserved DOS device name (CON, NUL, COM1-9, ...) is treated as a literal file instead
+/// of being opened as a device. Use it on caller-controlled paths before opening. On non-Windows,
+/// or for an empty path, the path is copied through unchanged.
+///
+/// `sanitized_path` may alias `path` (e.g. SanitizeFilePath(p, p)).
+/// </summary>
+/// <param name="path">The file path to sanitize.</param>
+/// <param name="sanitized_path">Receives a path that is safe to open. May alias `path`.</param>
+/// <returns>The function will fail if `path` cannot be made absolute.</returns>
+Status SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path);
+
 #endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {

@@ -1305,6 +1305,10 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::ValidateExternalDataPathFromDir(model_dir, external_data_path);
   }
 
+  Status Utils__SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) override {
+    return onnxruntime::utils::SanitizeFilePath(path, sanitized_path);
+  }
+
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,

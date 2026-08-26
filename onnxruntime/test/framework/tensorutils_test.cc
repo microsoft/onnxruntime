@@ -726,6 +726,67 @@ TEST(TensorProtoUtilsTest, ConstantTensorProtoWithExternalData) {
   TestConstantNodeConversionWithExternalData<double>(TensorProto_DataType_DOUBLE);
 }
 
+#ifdef _WIN32
+TEST(TensorProtoUtilsTest, SanitizeFilePathAddsExtendedPrefix) {
+  // Empty path passes through unchanged.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath({}, out));
+    EXPECT_TRUE(out.empty());
+  }
+
+  // A drive-absolute path gets the "\\?\" prefix and is otherwise left intact. A reserved device
+  // name in the final component (NUL) is thereby treated as a literal file, not the device.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"C:\\dir\\NUL"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\NUL"));
+  }
+
+  // A bare relative device name is made absolute against the current directory and prefixed,
+  // so it can no longer resolve to the device.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"NUL"}, out));
+    EXPECT_EQ(out.native().rfind(L"\\\\?\\", 0), 0u);
+    EXPECT_EQ(out.filename().native(), std::wstring(L"NUL"));
+  }
+
+  // A UNC path uses the "\\?\UNC\" form rather than a malformed "\\?\\\server\share".
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"\\\\server\\share\\blob.bin"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\UNC\\server\\share\\blob.bin"));
+  }
+
+  // Already-extended paths are returned unchanged, for both drive and UNC forms.
+  {
+    std::filesystem::path out;
+    const std::wstring already = L"\\\\?\\C:\\dir\\blob.bin";
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already}, out));
+    EXPECT_EQ(out.native(), already);
+
+    std::filesystem::path out_unc;
+    const std::wstring already_unc = L"\\\\?\\UNC\\server\\share\\blob.bin";
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already_unc}, out_unc));
+    EXPECT_EQ(out_unc.native(), already_unc);
+  }
+
+  // The output may alias the input.
+  {
+    std::filesystem::path p{L"C:\\dir\\blob.bin"};
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(p, p));
+    EXPECT_EQ(p.native(), std::wstring(L"\\\\?\\C:\\dir\\blob.bin"));
+  }
+}
+#else
+TEST(TensorProtoUtilsTest, SanitizeFilePathIsPassthroughOnNonWindows) {
+  std::filesystem::path out;
+  ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{"some/relative/NUL"}, out));
+  EXPECT_EQ(out, std::filesystem::path{"some/relative/NUL"});
+}
+#endif
+
 // Test fixture for creating temporary directories and files for path validation tests.
 class PathValidationTest : public ::testing::Test {
  protected:

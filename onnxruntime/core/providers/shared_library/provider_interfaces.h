@@ -1008,6 +1008,7 @@ struct ProviderHost {
                                                  const std::filesystem::path& external_data_path) = 0;
   virtual Status Utils__ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
                                                         const std::filesystem::path& external_data_path) = 0;
+  virtual Status Utils__SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) = 0;
 
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
