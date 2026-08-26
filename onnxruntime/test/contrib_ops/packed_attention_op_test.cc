@@ -177,12 +177,37 @@ static void RunPackedAttentionRouteTest(PackedAttentionRoute route) {
   constexpr int kHeadSize = kHiddenSize / kNumHeads;
   static_assert(kTokenCount < kBatchSize * kSequenceLength);
 
-  const std::vector<float> input_data(kTokenCount * kHiddenSize, 0.0f);
-  const std::vector<float> weight_data(kHiddenSize * 3 * kHiddenSize, 0.0f);
-  const std::vector<float> bias_data(3 * kHiddenSize, 0.0f);
+  // Each token has input [1, x, 0, ...]. The block projection produces
+  // Q=x+0.25, K=1, and V=2x-0.75 in every head coordinate. Since K is
+  // constant within each sequence, attention is uniform: the one-token
+  // sequence returns 1.25 and the two-token sequence averages 3.25 and 7.25.
+  const std::vector<float> token_values{1.0f, 2.0f, 4.0f};
+  std::vector<float> input_data(kTokenCount * kHiddenSize, 0.0f);
+  std::vector<float> weight_data(kHiddenSize * 3 * kHiddenSize, 0.0f);
+  std::vector<float> bias_data(3 * kHiddenSize, 0.0f);
+  std::vector<float> output_data(kTokenCount * kHiddenSize);
+  const std::vector<float> expected_token_values{1.25f, 5.25f, 5.25f};
+
+  for (int token = 0; token < kTokenCount; ++token) {
+    input_data[token * kHiddenSize] = 1.0f;
+    input_data[token * kHiddenSize + 1] = token_values[token];
+    for (int hidden = 0; hidden < kHiddenSize; ++hidden) {
+      output_data[token * kHiddenSize + hidden] = expected_token_values[token];
+    }
+  }
+
+  constexpr int kProjectionSize = 3 * kHiddenSize;
+  for (int hidden = 0; hidden < kHiddenSize; ++hidden) {
+    weight_data[kProjectionSize + hidden] = 1.0f;
+    weight_data[kHiddenSize + hidden] = 0.5f;
+    weight_data[kProjectionSize + 2 * kHiddenSize + hidden] = 2.0f;
+    bias_data[hidden] = 0.25f;
+    bias_data[kHiddenSize + hidden] = 0.5f;
+    bias_data[2 * kHiddenSize + hidden] = -0.75f;
+  }
+
   const std::vector<int32_t> token_offset{0, 2, 3, 1};
   const std::vector<int32_t> cumulative_sequence_length{0, 1, 3};
-  const std::vector<float> output_data(kTokenCount * kHiddenSize, 0.0f);
 
   if (route == PackedAttentionRoute::Trt) {
     if (!IsTrtFusedAttentionRouteObservable(kHeadSize, kSequenceLength)) {
@@ -293,6 +318,31 @@ TEST(PackedAttentionTest, PackedRouteObservedMemoryEfficientWithPadding) {
 
 TEST(PackedAttentionTest, PackedRouteObservedUnfusedWithPadding) {
   RunPackedAttentionRouteTest(PackedAttentionRoute::Unfused);
+}
+
+TEST(PackedAttentionTest, EmptyTokensAndSequence_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedAttention empty-output test requires a CUDA device.";
+  }
+
+  constexpr int kBatchSize = 2;
+  constexpr int kHiddenSize = 32;
+  constexpr int kNumHeads = 2;
+
+  OpTester tester("PackedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", kNumHeads);
+  tester.AddInput<float>("input", {0, kHiddenSize}, {});
+  tester.AddInput<float>("weight", {kHiddenSize, 3 * kHiddenSize},
+                         std::vector<float>(kHiddenSize * 3 * kHiddenSize, 1.0f));
+  tester.AddInput<float>("bias", {3 * kHiddenSize},
+                         std::vector<float>(3 * kHiddenSize, 0.5f));
+  tester.AddInput<int32_t>("token_offset", {kBatchSize, 0}, {});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {kBatchSize + 1}, {0, 0, 0});
+  tester.AddOutput<float>("output", {0, kHiddenSize}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(PackedAttentionTest, NoPack) {

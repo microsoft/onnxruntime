@@ -190,6 +190,10 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
+  if (output->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   auto& device_prop = this->GetDeviceProp();
   MHARunner* fused_runner = this->GetFusedRunner(device_prop, attention_bias != nullptr, parameters);
 

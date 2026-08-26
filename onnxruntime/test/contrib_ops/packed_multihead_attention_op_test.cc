@@ -381,6 +381,31 @@ static void RunPackedMultiHeadAttentionTest(
   }
 }
 
+TEST(PackedMultiHeadAttentionTest, EmptyTokensAndSequence_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedMultiHeadAttention empty-output test requires a CUDA device.";
+  }
+
+  constexpr int kBatchSize = 2;
+  constexpr int kNumHeads = 2;
+  constexpr int kHeadSize = 16;
+  constexpr int kHiddenSize = kNumHeads * kHeadSize;
+
+  OpTester tester("PackedMultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", kNumHeads);
+  tester.AddInput<float>("query", {0, kNumHeads, 3, kHeadSize}, {});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<int32_t>("token_offset", {kBatchSize, 0}, {});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {kBatchSize + 1}, {0, 0, 0});
+  tester.AddOutput<float>("output", {0, kHiddenSize}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding_NoBias_trt) {
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);

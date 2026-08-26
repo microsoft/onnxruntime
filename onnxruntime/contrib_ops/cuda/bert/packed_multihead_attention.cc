@@ -129,6 +129,10 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
+  if (output->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   auto& device_prop = this->GetDeviceProp();
 
   bool use_flash_attention = false;
