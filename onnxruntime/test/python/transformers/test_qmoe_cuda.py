@@ -3367,7 +3367,7 @@ class TestQMoEFractionalZeroPoint(unittest.TestCase):
     def _silu(x):
         return x / (1.0 + numpy.exp(-x))
 
-    def _run_case(self, offset=1.5, hidden=256, inter=256, block=64):
+    def _run_case(self, offset=1.5, hidden=256, inter=256, block=64, disable_prepacking=False):
         if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
             self.skipTest("CUDA EP not available")
         bits = 2
@@ -3465,7 +3465,13 @@ class TestQMoEFractionalZeroPoint(unittest.TestCase):
         model = helper.make_model(
             graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
         )
-        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+        sess_opts = onnxruntime.SessionOptions()
+        if disable_prepacking:
+            # Force the live-scale fallback branch in ComputeInternal: with prepacking disabled the
+            # constant bias is not built at PrePack time (PrePackConstantBiasFromScales is skipped),
+            # so the fractional-center bias must be computed on the fly from the live fc*_scales.
+            sess_opts.add_session_config_entry("session.disable_prepacking", "1")
+        sess = onnxruntime.InferenceSession(model.SerializeToString(), sess_opts, providers=["CUDAExecutionProvider"])
         out = sess.run(None, {"input": inp.astype(numpy.float16), "router_probs": numpy.ones((1, 1), numpy.float16)})[
             0
         ][0].astype(numpy.float32)
@@ -3474,6 +3480,11 @@ class TestQMoEFractionalZeroPoint(unittest.TestCase):
 
     def test_fractional_zp_1p5(self):
         self._run_case(1.5)
+
+    def test_fractional_zp_1p5_live_scales(self):
+        # Same fractional-center reference, but with prepacking disabled so the on-the-fly
+        # (live-scale) bias branch in ComputeInternal is exercised instead of the PrePack path.
+        self._run_case(1.5, disable_prepacking=True)
 
 
 if __name__ == "__main__":

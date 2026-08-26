@@ -355,8 +355,9 @@ class CudaQuantizer:
             return qweight, scales
 
         if int(bits) == 2:
-            # No CUTLASS mixed-input GEMM exists for 2-bit; the CUDA QMoE kernel consumes the raw
-            # [N, K/4] storage via its dequant fallback, so prepacking is unsupported.
+            # This offline packer has no 2-bit CUTLASS layout implementation; the CUDA QMoE kernel
+            # consumes the raw [N, K/4] storage and performs the fused int2 mixed-input GEMM's layout
+            # transform in its own PrePack, so offline prepacking here is unsupported.
             raise ValueError("QMoE 2-bit weights cannot be CUTLASS-prepacked; use prepack=False (raw storage).")
 
         n, k = weights.shape
@@ -568,8 +569,9 @@ class CudaQuantizer:
         bits = int(bits)
         block_size = int(block_size)
         if bits == 2:
-            # No CUTLASS mixed-input GEMM exists for 2-bit; the CUDA QMoE kernel consumes the raw
-            # [N, K/4] storage via its dequant fallback, so prepacking is unsupported.
+            # This offline packer has no 2-bit CUTLASS layout implementation; the CUDA QMoE kernel
+            # consumes the raw [N, K/4] storage and performs the fused int2 mixed-input GEMM's layout
+            # transform in its own PrePack, so offline prepacking here is unsupported.
             raise ValueError("QMoE 2-bit weights cannot be CUTLASS-prepacked; use the raw blockwise quantizer.")
         n, k = weights.shape
         pack = 8 // bits

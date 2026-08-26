@@ -683,6 +683,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool has_any_zero_point = (fc1_zeros != nullptr || fc2_zeros != nullptr ||
                                    packed_fc1_bias_ != nullptr || packed_fc2_bias_ != nullptr);
 
+  // Packed per-group int2 zero_points are not supported (see PrePackComputeBias). The conversion
+  // kernels only understand the 8-bit and packed-int4 zero-point layouts, so an int2 zeros tensor
+  // (four 2-bit values per byte) would be misinterpreted here, yielding an undersized bias buffer
+  // and corrupt output. The int2 path only supports the fractional ``zero_point_offset`` attribute.
+  // Test the raw zeros inputs (not packed_fc*_bias_, which the legitimate int2 zero_point_offset
+  // path populates via PrePackConstantBiasFromScales). This guards the disable_prepacking path
+  // where PrePackComputeBias -- which also rejects int2 zeros -- never ran.
+  if (expert_weight_bits_ == 2 && (fc1_zeros != nullptr || fc2_zeros != nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "QMoE with expert_weight_bits=2 does not support fc*_zero_points inputs. "
+                           "Use the 'zero_point_offset' attribute for fractional/asymmetric int2 "
+                           "zero-points instead.");
+  }
+
   // Row-wise quantization path does not support asymmetric zero-points in QMoE.
   // QuantParams::Int only carries scales (no zero/bias tensor).
   if (block_size_ <= 0 && has_any_zero_point) {
@@ -2678,6 +2692,14 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
 void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                               const IAllocatorUniquePtr<void>& packed_scale,
                               IAllocatorUniquePtr<void>& packed_bias, bool& is_packed) {
+  // Packed per-group int2 zero_points are not supported. The int2 fused path only supports the
+  // fractional ``zero_point_offset`` attribute, not packed uint8 fc*_zero_points (whose int2 layout
+  // packs four 2-bit values per byte). The conversion kernels below only understand the 8-bit and
+  // packed-int4 (LaunchQMoEScaledZP4BitBatched) layouts, so an int2 zeros tensor would be
+  // misinterpreted, producing an undersized/mis-strided bias buffer and corrupt output. Reject it.
+  ORT_ENFORCE(expert_weight_bits_ != 2,
+              "QMoE with expert_weight_bits=2 does not support fc*_zero_points inputs. Use the "
+              "'zero_point_offset' attribute for fractional/asymmetric int2 zero-points instead.");
   if ((expert_weight_bits_ == 4) && !packed_scale) {
     return;
   }

@@ -1471,7 +1471,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu, geglu and identity. "
+              "geglu is the GELU-gated linear unit (a gated activation like swiglu but using gelu as "
+              "the gate). Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -1532,9 +1534,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Attr("zero_point_offset",
-              "Only meaningful when quant_type='int' and block_size > 0 and no integer "
-              "fc*_zero_points are provided. A single fractional zero-point applied uniformly to "
-              "every weight code: dequant = (code - zero_point_offset) * scale. Enables balanced "
+              "CUDA execution provider only; other execution providers (CPU, WebGPU) reject a "
+              "non-default value. Only meaningful when quant_type='int' and block_size > 0 and no "
+              "integer fc*_zero_points are provided. A single fractional zero-point applied uniformly "
+              "to every weight code: dequant = (code - zero_point_offset) * scale. Enables balanced "
               "asymmetric schemes whose zero-point is not integer-representable (e.g. the 1.5 "
               "midpoint of a 2-bit checkpoint, giving codes {0,1,2,3} -> {-1.5,-0.5,0.5,1.5}*scale). "
               "When omitted, symmetric quantization centered on 2^(expert_weight_bits-1) is used.",
