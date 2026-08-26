@@ -436,5 +436,202 @@ TEST(EngramOpsTest, EngramGateZeroDotProduct) {
   test.Run();
 }
 
+  test.AddInput<float>("hidden_states", {1, 1, 1, 2}, hidden_states);
+  test.AddInput<float>("key_weight", {1, 2, 2}, key_weight);
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("value_weight", {2, 2}, value_weight);
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("key_norm_scale", {1, 2}, unit_scale);
+  test.AddInput<float>("query_norm_scale", {1, 2}, unit_scale);
+  test.AddOutput<float>("output", {1, 1, 1, 2}, expected, false, 1e-5f, 1e-5f);
+  test.Run();
+}
+
+// ShortConvWithState: Stateful dilated depthwise conv with branchwise RMSNorm.
+// Tests the key invariant: ShortConv(full_seq) == concat(ShortConvWithState(one_token_steps)).
+template <typename T>
+void RunShortConvWithStateTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr float epsilon = 1.0e-5f;
+  constexpr int64_t kernel_size = 2;
+  constexpr int64_t dilation = 1;
+  constexpr int64_t state_len = dilation * (kernel_size - 1);  // 1
+
+  // Input: [B=1, S=2, hc_mult=1, H=2]
+  const std::vector<float> input{1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<float> scale{1.0f, 2.0f};
+  const std::vector<float> weight{0.25f, 0.5f, 0.75f, -0.5f};
+
+  // Compute the reference: normalize each row, then do causal conv + silu.
+  // Row 0: [1, 2], inv_rms = 1/sqrt((1+4)/2 + eps)
+  // Row 1: [3, 4], inv_rms = 1/sqrt((9+16)/2 + eps)
+  std::vector<float> normed(4);
+  for (int64_t t = 0; t < 2; ++t) {
+    float sum_sq = input[t * 2] * input[t * 2] + input[t * 2 + 1] * input[t * 2 + 1];
+    float inv_rms = 1.0f / std::sqrt(sum_sq / 2.0f + epsilon);
+    for (int64_t c = 0; c < 2; ++c) {
+      normed[t * 2 + c] = input[t * 2 + c] * inv_rms * scale[c];
+    }
+  }
+  std::vector<float> expected(4);
+  for (int64_t t = 0; t < 2; ++t) {
+    for (int64_t c = 0; c < 2; ++c) {
+      float sum = 0.0f;
+      // k=0: source_t = t - (K-1-0)*dilation = t-1
+      if (t > 0) {
+        sum += normed[(t - 1) * 2 + c] * weight[c * kernel_size + 0];
+      }
+      // k=1: source_t = t
+      sum += normed[t * 2 + c] * weight[c * kernel_size + 1];
+      expected[t * 2 + c] = sum * Sigmoid(sum);
+    }
+  }
+
+  // Full-sequence test (no past state).
+  {
+    OpTester test("ShortConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("dilation", dilation);
+    test.AddAttribute<float>("epsilon", epsilon);
+    test.AddAttribute<std::string>("activation", "silu");
+    test.AddAttribute<int64_t>("kernel_size", kernel_size);
+    test.AddInput<T>("input", {1, 2, 1, 2}, ToTensorType<T>(input));
+    test.AddOptionalInputEdge<T>();  // no past_state
+    test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
+    test.AddInput<T>("weight", {2, 1, 2}, ToTensorType<T>(weight));
+    test.AddOptionalInputEdge<T>();  // no bias
+    test.AddOutput<T>("output", {1, 2, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
+
+    // present_state: last state_len normed values per channel. state_len=1, so it's normed[t=1].
+    // present_state shape: [B=1, C=2, state_len=1]
+    std::vector<float> expected_state{normed[2], normed[3]};  // normed at t=1 for c=0, c=1
+    test.AddOutput<T>("present_state", {1, 2, 1}, ToTensorType<T>(expected_state), false, tolerance, tolerance);
+    RunOnSupportedProviders<T>(test);
+  }
+
+  // Token-by-token decode test: step 0 (no past), then step 1 (with past state from step 0).
+  // Step 0: input = [1, 2], no past_state
+  {
+    std::vector<float> step0_input{1.0f, 2.0f};
+    std::vector<float> step0_expected{expected[0], expected[1]};
+    std::vector<float> step0_state{normed[0], normed[1]};
+
+    OpTester test("ShortConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("dilation", dilation);
+    test.AddAttribute<float>("epsilon", epsilon);
+    test.AddAttribute<std::string>("activation", "silu");
+    test.AddAttribute<int64_t>("kernel_size", kernel_size);
+    test.AddInput<T>("input", {1, 1, 1, 2}, ToTensorType<T>(step0_input));
+    test.AddOptionalInputEdge<T>();
+    test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
+    test.AddInput<T>("weight", {2, 1, 2}, ToTensorType<T>(weight));
+    test.AddOptionalInputEdge<T>();
+    test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(step0_expected), false, tolerance, tolerance);
+    test.AddOutput<T>("present_state", {1, 2, 1}, ToTensorType<T>(step0_state), false, tolerance, tolerance);
+    RunOnSupportedProviders<T>(test);
+  }
+
+  // Step 1: input = [3, 4], past_state = normed values from step 0
+  {
+    std::vector<float> step1_input{3.0f, 4.0f};
+    std::vector<float> step1_past{normed[0], normed[1]};
+    std::vector<float> step1_expected{expected[2], expected[3]};
+    std::vector<float> step1_state{normed[2], normed[3]};
+
+    OpTester test("ShortConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("dilation", dilation);
+    test.AddAttribute<float>("epsilon", epsilon);
+    test.AddAttribute<std::string>("activation", "silu");
+    test.AddAttribute<int64_t>("kernel_size", kernel_size);
+    test.AddInput<T>("input", {1, 1, 1, 2}, ToTensorType<T>(step1_input));
+    test.AddInput<T>("past_state", {1, 2, 1}, ToTensorType<T>(step1_past));
+    test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
+    test.AddInput<T>("weight", {2, 1, 2}, ToTensorType<T>(weight));
+    test.AddOptionalInputEdge<T>();
+    test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(step1_expected), false, tolerance, tolerance);
+    test.AddOutput<T>("present_state", {1, 2, 1}, ToTensorType<T>(step1_state), false, tolerance, tolerance);
+    RunOnSupportedProviders<T>(test);
+  }
+}
+
+// ShortConvWithState with dilation > 1 (matching Qwen4-Exp's typical ngram_size=3 dilation).
+template <typename T>
+void RunShortConvWithStateDilatedTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr float epsilon = 1.0e-5f;
+  constexpr int64_t kernel_size = 2;
+  constexpr int64_t dilation = 3;
+  constexpr int64_t state_len = dilation * (kernel_size - 1);  // 3
+
+  // Input: [B=1, S=4, hc_mult=1, H=1] — single channel for simplicity.
+  const std::vector<float> input{1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<float> scale{1.0f};
+  const std::vector<float> weight{0.5f, 1.0f};  // [C=1, 1, K=2]
+
+  // Normalize: with H=1, RMSNorm(x) = x * 1/sqrt(x^2 + eps) * scale = sign(x) * scale (approx for large |x|)
+  // More precisely: normed = x / sqrt(x^2 + eps) * 1.0
+  std::vector<float> normed(4);
+  for (int64_t t = 0; t < 4; ++t) {
+    float x = input[t];
+    normed[t] = x / std::sqrt(x * x + epsilon) * scale[0];
+  }
+
+  // Conv with dilation=3, K=2: for output at time t,
+  // k=0: source = t - (2-1-0)*3 = t - 3
+  // k=1: source = t
+  std::vector<float> expected(4);
+  for (int64_t t = 0; t < 4; ++t) {
+    float sum = 0.0f;
+    int64_t src0 = t - 3;
+    if (src0 >= 0) {
+      sum += normed[src0] * weight[0];
+    }
+    sum += normed[t] * weight[1];
+    expected[t] = sum * Sigmoid(sum);  // SiLU
+  }
+
+  OpTester test("ShortConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("dilation", dilation);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute<std::string>("activation", "silu");
+  test.AddAttribute<int64_t>("kernel_size", kernel_size);
+  test.AddInput<T>("input", {1, 4, 1, 1}, ToTensorType<T>(input));
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("norm_scale", {1, 1}, ToTensorType<T>(scale));
+  test.AddInput<T>("weight", {1, 1, 2}, ToTensorType<T>(weight));
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("output", {1, 4, 1, 1}, ToTensorType<T>(expected), false, tolerance, tolerance);
+
+  // present_state: last 3 normed values (state_len = 3)
+  std::vector<float> expected_state{normed[1], normed[2], normed[3]};
+  test.AddOutput<T>("present_state", {1, 1, 3}, ToTensorType<T>(expected_state), false, tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
+}  // namespace
+
+TEST(EngramOpsTest, ShortConvWithStateFloat) {
+  RunShortConvWithStateTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, ShortConvWithStateFloat16) {
+  RunShortConvWithStateTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, ShortConvWithStateBFloat16) {
+  RunShortConvWithStateTest<BFloat16>(2e-2f);
+}
+
+TEST(EngramOpsTest, ShortConvWithStateDilatedFloat) {
+  RunShortConvWithStateDilatedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, ShortConvWithStateDilatedFloat16) {
+  RunShortConvWithStateDilatedTest<MLFloat16>(2e-3f);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

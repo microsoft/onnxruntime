@@ -232,6 +232,7 @@ class SymbolicShapeInference:
             "RemovePadding": self._infer_RemovePadding,
             "RestorePadding": self._infer_RestorePadding,
             "RotaryEmbedding": self._infer_RotaryEmbedding,
+            "ShortConvWithState": self._infer_ShortConvWithState,
             "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipGroupNorm": self._infer_SkipGroupNorm,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
@@ -2630,6 +2631,27 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node, 0, 0)
         if len(node.output) > 1:
             self._propagate_shape_and_type(node, 0, 1)
+
+    def _infer_ShortConvWithState(self, node):  # noqa: N802
+        # output[0] has the same shape as input[0]
+        self._propagate_shape_and_type(node, 0, 0)
+        # output[1] = present_state: (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1))
+        input_shape = self._get_shape(node, 0)
+        if input_shape is not None and len(input_shape) == 4:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            dilation = get_attribute(node, "dilation", 1)
+            kernel_size = get_attribute(node, "kernel_size", 4)
+            state_len = dilation * (kernel_size - 1)
+            batch = input_shape[0]
+            hc_mult = input_shape[2]
+            hidden = input_shape[3]
+            if isinstance(hc_mult, int) and isinstance(hidden, int):
+                channels = hc_mult * hidden
+            else:
+                channels = f"{hc_mult}*{hidden}" if not isinstance(hc_mult, int) or not isinstance(hidden, int) else hc_mult * hidden
+            present_shape = [batch, channels, state_len]
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
 
     def _infer_BiasSplitGelu(self, node):  # noqa: N802
         input_shape = self._get_shape(node, 0)

@@ -2686,6 +2686,123 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* ShortConvWithState_ver1_doc = R"DOC(
+Stateful variant of ShortConv for autoregressive decode. Fuses branchwise RMS normalization with
+a dilated depthwise causal 1D convolution, maintaining an explicit past/present state buffer across
+inference steps.
+
+For each (batch, token, hyper-connection) row, the op first applies RMS normalization over hidden_size:
+normed = input * norm_scale * rsqrt(mean(input * input) + epsilon).
+
+It then constructs a combined timeline [past_state, normed_current] and applies a causal 1D convolution
+with dilation along the sequence axis. The output is optionally passed through SiLU/Swish.
+
+The present_state output contains the last dilation*(kernel_size-1) normalized timesteps from the
+combined timeline, suitable for feeding back as past_state in the next step.
+
+Required test invariant: for any sequence,
+ShortConv(full_sequence) == concat(ShortConvWithState(one_token_steps))
+within dtype-appropriate tolerance.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ShortConvWithState, 1,
+    OpSchema()
+        .SetDoc(ShortConvWithState_ver1_doc)
+        .Attr("activation",
+              "Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'silu'.",
+              AttributeProto::STRING,
+              std::string("silu"))
+        .Attr("dilation",
+              "Causal convolution dilation along the sequence axis. Default is 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("epsilon",
+              "Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.",
+              AttributeProto::FLOAT,
+              1.0e-5f)
+        .Attr("kernel_size",
+              "Convolution kernel size. Default is 4.",
+              AttributeProto::INT,
+              static_cast<int64_t>(4))
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "T")
+        .Input(1,
+               "past_state",
+               "Previous convolution state with shape (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1)). "
+               "Contains normalized values from previous timesteps.",
+               "T",
+               OpSchema::Optional)
+        .Input(2,
+               "norm_scale",
+               "RMSNorm scale with shape (hc_mult, hidden_size).",
+               "T")
+        .Input(3,
+               "weight",
+               "Depthwise convolution kernel with shape (hc_mult * hidden_size, 1, kernel_size).",
+               "T")
+        .Input(4,
+               "bias",
+               "Optional convolution bias with shape (hc_mult * hidden_size).",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Output tensor with the same shape as input.",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated convolution state with shape (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1)).",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          const int64_t dilation = getAttribute(ctx, "dilation", 1);
+          if (dilation < 1) {
+            fail_shape_inference("ShortConvWithState: dilation must be >= 1");
+          }
+          const int64_t kernel_size = getAttribute(ctx, "kernel_size", 4);
+          if (kernel_size < 1) {
+            fail_shape_inference("ShortConvWithState: kernel_size must be >= 1");
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 4) {
+              fail_shape_inference("ShortConvWithState: input must have rank 4");
+            }
+            // Infer present_state shape: (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1))
+            auto* present_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+            *present_shape->add_dim() = input_shape.dim(0);  // batch_size
+            if (input_shape.dim(2).has_dim_value() && input_shape.dim(3).has_dim_value()) {
+              present_shape->add_dim()->set_dim_value(
+                  input_shape.dim(2).dim_value() * input_shape.dim(3).dim_value());
+            } else {
+              present_shape->add_dim();
+            }
+            present_shape->add_dim()->set_dim_value(dilation * (kernel_size - 1));
+          }
+          if (hasInputShape(ctx, 3)) {
+            const auto& weight_shape = getInputShape(ctx, 3);
+            if (weight_shape.dim_size() != 3) {
+              fail_shape_inference("ShortConvWithState: weight must have rank 3");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& norm_scale_shape = getInputShape(ctx, 2);
+            if (norm_scale_shape.dim_size() != 2) {
+              fail_shape_inference("ShortConvWithState: norm_scale must have rank 2");
+            }
+          }
+        }));
+
 constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
 Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
 

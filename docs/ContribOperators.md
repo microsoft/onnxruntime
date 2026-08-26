@@ -113,6 +113,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ShortConv">com.microsoft.ShortConv</a>
+  * <a href="#com.microsoft.ShortConvWithState">com.microsoft.ShortConvWithState</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -6540,6 +6541,74 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Output tensor with the same shape as input.</dd>
 <dt><tt>present_state</tt> (optional) : T</dt>
 <dd>Normed convolution input for the trailing (kernel_size - 1) * dilation positions of past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Feed this back as past_state on the next call.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ShortConvWithState"></a><a name="com.microsoft.shortconvwithstate">**com.microsoft.ShortConvWithState**</a>
+
+  Stateful variant of ShortConv for autoregressive decode. Fuses branchwise RMS normalization with
+  a dilated depthwise causal 1D convolution, maintaining an explicit past/present state buffer across
+  inference steps.
+
+  For each (batch, token, hyper-connection) row, the op first applies RMS normalization over hidden_size:
+  normed = input * norm_scale * rsqrt(mean(input * input) + epsilon).
+
+  It then constructs a combined timeline [past_state, normed_current] and applies a causal 1D convolution
+  with dilation along the sequence axis. The output is optionally passed through SiLU/Swish.
+
+  The present_state output contains the last dilation*(kernel_size-1) normalized timesteps from the
+  combined timeline, suitable for feeding back as past_state in the next step.
+
+  Required test invariant: for any sequence,
+  ShortConv(full_sequence) == concat(ShortConvWithState(one_token_steps))
+  within dtype-appropriate tolerance.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'silu'.</dd>
+<dt><tt>dilation</tt> : int</dt>
+<dd>Causal convolution dilation along the sequence axis. Default is 1.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.</dd>
+<dt><tt>kernel_size</tt> : int</dt>
+<dd>Convolution kernel size. Default is 4.</dd>
+</dl>
+
+#### Inputs (3 - 5)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>past_state</tt> (optional) : T</dt>
+<dd>Previous convolution state with shape (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1)). Contains normalized values from previous timesteps.</dd>
+<dt><tt>norm_scale</tt> : T</dt>
+<dd>RMSNorm scale with shape (hc_mult, hidden_size).</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>Depthwise convolution kernel with shape (hc_mult * hidden_size, 1, kernel_size).</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional convolution bias with shape (hc_mult * hidden_size).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Output tensor with the same shape as input.</dd>
+<dt><tt>present_state</tt> : T</dt>
+<dd>Updated convolution state with shape (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1)).</dd>
 </dl>
 
 #### Type Constraints
