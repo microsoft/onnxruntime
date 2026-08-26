@@ -4981,7 +4981,7 @@ static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 4
 static_assert(offsetof(OrtApi, KernelContext_GetSyncStream) / sizeof(void*) == 423, "Size of version 28 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.29.0",
+static_assert(std::string_view(ORT_VERSION) == "1.29.1",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
