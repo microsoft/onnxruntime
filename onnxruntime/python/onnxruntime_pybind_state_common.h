@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <unordered_map>
 
 #include "core/common/logging/logging.h"
@@ -222,32 +223,71 @@ extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
 
+struct PyEpContextDataReadRegistration;
+struct PyEpSelectionRegistration;
+
 #if !defined(ORT_MINIMAL_BUILD)
 using PyEpSelectionDelegate =
     std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
                                                   const std::map<std::string, std::string>& model_metadata,
                                                   const std::map<std::string, std::string>& runtime_metadata,
                                                   size_t max_selections)>;
+
+struct PyEpSelectionRegistration {
+  PyEpSelectionDelegate delegate;
+};
 #endif
 
 // Thin wrapper over internal C OrtSessionOptions to store additional state.
 struct PySessionOptions : public OrtSessionOptions {
-#if !defined(ORT_MINIMAL_BUILD)
-  // Callback function from Python application that allows the user to specify custom EP selection logic.
-  PyEpSelectionDelegate py_ep_selection_delegate;
-#endif  // !defined(ORT_MINIMAL_BUILD)
+  mutable std::mutex py_callback_mutex;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration;
 };
+
+struct PySessionOptionsSnapshot {
+  OrtSessionOptions options;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration;
+};
+
+inline PySessionOptionsSnapshot CreatePySessionOptionsSnapshot(const PySessionOptions& session_options) {
+  std::lock_guard<std::mutex> lock{session_options.py_callback_mutex};
+  PySessionOptionsSnapshot snapshot{
+      static_cast<const OrtSessionOptions&>(session_options),
+      session_options.py_ep_selection_registration,
+      session_options.py_ep_context_data_read_registration};
+
+  if (snapshot.py_ep_selection_registration) {
+    snapshot.options.value.ep_selection_policy.state = snapshot.py_ep_selection_registration.get();
+  }
+
+  if (snapshot.py_ep_context_data_read_registration) {
+    snapshot.options.value.ep_context_data_read_state = snapshot.py_ep_context_data_read_registration.get();
+  }
+
+  return snapshot;
+}
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  PyInferenceSession(OrtEnv& env, const PySessionOptions& so)
-      : session_options_(so) {
+  PyInferenceSession(OrtEnv& env, const OrtSessionOptions& so,
+                     std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration,
+                     std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration)
+      : py_ep_selection_registration_(std::move(py_ep_selection_registration)),
+        py_ep_context_data_read_registration_(std::move(py_ep_context_data_read_registration)),
+        session_options_(so) {
     sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment());
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(OrtEnv& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
-      : session_options_(so) {
+  PyInferenceSession(OrtEnv& env, const OrtSessionOptions& so,
+                     std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration,
+                     std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration,
+                     const std::string& arg, bool is_arg_file_name)
+      : py_ep_selection_registration_(std::move(py_ep_selection_registration)),
+        py_ep_context_data_read_registration_(std::move(py_ep_context_data_read_registration)),
+        session_options_(so) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
       sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment(), arg);
@@ -279,6 +319,26 @@ struct PyInferenceSession {
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
+  const std::shared_ptr<PyEpSelectionRegistration>& GetEpSelectionRegistration() const {
+    return py_ep_selection_registration_;
+  }
+
+  const std::shared_ptr<PyEpContextDataReadRegistration>& GetEpContextDataReadRegistration() const {
+    return py_ep_context_data_read_registration_;
+  }
+
+  Status BeginInitialization() {
+    std::lock_guard<std::mutex> lock{initialization_mutex_};
+    ORT_RETURN_IF(initialization_in_progress_, "Session initialization is already in progress.");
+    initialization_in_progress_ = true;
+    return Status::OK();
+  }
+
+  void EndInitialization() noexcept {
+    std::lock_guard<std::mutex> lock{initialization_mutex_};
+    initialization_in_progress_ = false;
+  }
+
   virtual ~PyInferenceSession() = default;
 
  protected:
@@ -287,8 +347,12 @@ struct PyInferenceSession {
   }
 
  private:
-  std::unique_ptr<InferenceSession> sess_;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration_;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration_;
   OrtSessionOptions session_options_;
+  std::mutex initialization_mutex_;
+  bool initialization_in_progress_{false};
+  std::unique_ptr<InferenceSession> sess_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {

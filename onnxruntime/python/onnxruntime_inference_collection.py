@@ -866,6 +866,21 @@ class ModelCompiler:
             output_model_path = os.fspath(output_model_path)
         self._model_compiler.compile_to_file(output_model_path)
 
+    def set_ep_context_data_write_func(self, write_func: Callable[[str, C.OrtEpContextData], None]) -> None:
+        """
+        Registers a callback that receives external EPContext data during compilation.
+
+        The ``OrtEpContextData`` view is valid only during the callback. Read large payloads in chunks with
+        ``data.read(offset, length)``. ORT may invoke the callback concurrently, so synchronize shared state.
+
+        :param write_func: Callback receiving the logical data name and a bounded data view.
+        """
+        self._model_compiler.set_ep_context_data_write_func(write_func)
+
+    def clear_ep_context_data_write_func(self) -> None:
+        """Clears a previously registered external EPContext data write callback."""
+        self._model_compiler.clear_ep_context_data_write_func()
+
     def compile_to_bytes(self) -> bytes:
         """
         Compiles to bytes representing the serialized compiled ONNX model.

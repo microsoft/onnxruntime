@@ -77,6 +77,9 @@ from onnxruntime.capi import onnxruntime_validation
 if import_capi_exception:
     raise import_capi_exception
 
+with contextlib.suppress(ImportError):
+    from onnxruntime.capi._pybind_state import OrtEpContextData, OrtEpContextDataBuffer  # noqa: F401
+
 from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401
     InferenceSession,  # noqa: F401
