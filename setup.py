@@ -792,6 +792,7 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
+
 def save_build_and_package_info(package_name, version_number, cuda_version, qnn_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
     from onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
