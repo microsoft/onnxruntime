@@ -138,10 +138,14 @@ stages:
       pool:
         name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
     ${{ else }}:
       pool:
         name: ${{ parameters.ort_build_pool_name }}
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
     ${{ else }}:

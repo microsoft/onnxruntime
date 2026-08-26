@@ -23,6 +23,8 @@ stages:
       ${{ else }}:
         name: onnxruntime-Win2022-VS2022-webgpu-A10
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
     steps:
     - checkout: self
       clean: true
@@ -73,6 +75,8 @@ stages:
       pool:
         name: onnxruntime-Win2022-VS2022-webgpu-A10
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
       variables:
         WebGpuTestProject: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj'
       steps:

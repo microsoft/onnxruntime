@@ -119,6 +119,8 @@ stages:
       clean: all
     pool:
       name: 'onnxruntime-Win2022-GPU-A10'
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
     variables:
       CUDA_MODULE_LOADING: 'LAZY'
       GRADLE_OPTS: '-Dorg.gradle.daemon=false'

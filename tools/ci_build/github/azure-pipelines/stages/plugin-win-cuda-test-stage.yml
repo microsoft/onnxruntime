@@ -9,6 +9,8 @@ stages:
     pool:
       name: onnxruntime-Win2022-GPU-A10
       os: windows
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
     variables:
     - template: ../templates/common-variables.yml
     steps:
@@ -96,6 +98,8 @@ stages:
     pool:
       name: onnxruntime-Win2022-GPU-A10
       os: windows
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
     variables:
     - template: ../templates/common-variables.yml
     - name: CudaTestProject

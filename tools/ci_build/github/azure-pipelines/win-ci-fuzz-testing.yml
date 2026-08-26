@@ -1,6 +1,9 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+  pool:
+    name: 'onnxruntime-Win-CPU-VS2022-Latest'
+    demands:
+    - ImageOverride -equals onnxruntime-win2025-nvme-x64
   strategy:
     maxParallel: 2
     matrix:

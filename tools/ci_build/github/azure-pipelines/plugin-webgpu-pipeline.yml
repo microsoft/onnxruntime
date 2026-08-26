@@ -94,6 +94,8 @@ extends:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
 
     stages:
       # Validate parameter combinations
@@ -107,6 +109,8 @@ extends:
             pool:
               name: 'onnxruntime-Win-CPU-VS2022-Latest'
               os: windows
+              demands:
+              - ImageOverride -equals onnxruntime-win2025-nvme-x64
             steps:
             - checkout: none
             - script: |

@@ -51,6 +51,8 @@ stages:
       pool:
         name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
       templateContext:
         sdl:
           codeSignValidation:
@@ -192,6 +194,8 @@ stages:
       pool:
         name: ${{parameters.MACHINE_POOL}}
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
       templateContext:
         inputs:
         - input: pipelineArtifact

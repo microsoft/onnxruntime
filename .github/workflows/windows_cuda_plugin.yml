@@ -21,6 +21,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-vs2022-latest",
+        "1ES.ImageOverride=onnxruntime-win2025-nvme-x64",
         "JobId=windows-cuda-plugin-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 210
@@ -133,6 +134,7 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "1ES.ImageOverride=onnxruntime-win2025-nvme-x64",
       "JobId=windows-cuda-plugin-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     ]
     steps:

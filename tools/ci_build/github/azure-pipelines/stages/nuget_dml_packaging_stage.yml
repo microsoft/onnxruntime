@@ -16,6 +16,8 @@ stages:
     pool:
       name: 'onnxruntime-Win2022-GPU-dml-A10'
       os: windows
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
     templateContext:
       inputs:
       - input: pipelineArtifact

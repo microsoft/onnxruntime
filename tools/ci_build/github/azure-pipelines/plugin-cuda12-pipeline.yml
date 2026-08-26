@@ -88,6 +88,8 @@ extends:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
 
     stages:
     - ${{ if eq(variables['invalidBuildTypeConfig'], 'True') }}:
@@ -100,6 +102,8 @@ extends:
           pool:
             name: 'onnxruntime-Win-CPU-VS2022-Latest'
             os: windows
+            demands:
+            - ImageOverride -equals onnxruntime-win2025-nvme-x64
           steps:
           - checkout: none
           - script: |

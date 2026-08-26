@@ -3,6 +3,7 @@ parameters:
   ArtifactSuffix: ''
   SpecificArtifact: false
   BuildId: ''
+  PoolDemands: ''
 
 stages:
 - stage: NuGet_Test_Android
@@ -12,7 +13,10 @@ stages:
   - job:  NuGet_Test_Android
     workspace:
       clean: all
-    pool: "${{ parameters.AgentPool }}"
+    pool:
+      name: "${{ parameters.AgentPool }}"
+      ${{ if ne(parameters.PoolDemands, '') }}:
+        demands: ${{ parameters.PoolDemands }}
 
     variables:
     - name: OnnxRuntimeBuildDirectory
