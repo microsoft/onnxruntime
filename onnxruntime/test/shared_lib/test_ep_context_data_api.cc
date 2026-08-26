@@ -20,8 +20,6 @@
 
 namespace {
 
-constexpr size_t kEpContextApiTestMaxDataSize = size_t{1} << 20;
-
 void ExpectFailureOrtStatus(OrtStatus* status_ptr, OrtErrorCode expected_code, const char* expected_message) {
   Ort::Status status{status_ptr};
   ASSERT_NE(status_ptr, nullptr) << "Expected a failure status, but the API returned nullptr (OK).";
@@ -93,6 +91,8 @@ OrtStatus* ORT_API_CALL EpContextWriteCallback(void* state, const char* file_nam
 }  // namespace
 
 #if !defined(ORT_MINIMAL_BUILD)
+constexpr size_t kEpContextApiTestMaxDataSize = size_t{1} << 20;
+
 TEST(EpContextDataApiTest, ReadFuncIsReturnedByEpApi) {
   Ort::SessionOptions session_options;
 
