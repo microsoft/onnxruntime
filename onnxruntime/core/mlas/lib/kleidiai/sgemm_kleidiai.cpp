@@ -16,10 +16,6 @@
 
 #include "kai_ukernel_interface.h"
 
-#include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
-#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
-#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
-
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffers {
     std::vector<float> output_tile;
@@ -286,6 +282,9 @@ ArmKleidiAI::MlasGemvBatch(
             // Temporary buffer for output row
             g_kai_tls.output_tile.resize(rhs_shape);
 
+            KLEIDIAI_KERNEL_LOG(sgemm_gemv.name
+                                << " M=1 N=" << rhs_shape << " K=" << K);
+
             // Run specialized 1xN-by-K kernel
             sgemm_gemv.ukernel.run_matmul(
                 1,                                          // Value of 1 for M == 1 and this value represents N when N == 1 case
@@ -348,10 +347,10 @@ Return Value:
     size_t bytes = 0;
     switch (TransB) {
         case CblasNoTrans:
-            bytes = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
+            bytes = sgemm_gemm.ukernel.GetRhsPackedSize(KaiF32RhsLayout::KxN, N, K);
             break;
         case CblasTrans:
-            bytes = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
+            bytes = sgemm_gemm.ukernel.GetRhsPackedSize(KaiF32RhsLayout::NxK, N, K);
             break;
         default:
             KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransB is neither CblasNoTrans nor CblasTrans, returning 0.");
@@ -409,24 +408,23 @@ Return Value:
     }
 
     if (TransA == CblasNoTrans) {
-
-        const size_t nr = sgemm_gemm.ukernel.get_nr();
-        const size_t kr = sgemm_gemm.ukernel.get_kr();
-        const size_t sr = sgemm_gemm.ukernel.get_sr();
-
         // Ensure size and zero the used span.
         g_kai_tls.bias_zero.resize(N, 0.0f);
 
         switch (TransB) {
             case CblasNoTrans:
-            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme Groups=1"
-                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
-                kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, g_kai_tls.bias_zero.data(), nullptr, PackedB, 0, nullptr);
+                KLEIDIAI_KERNEL_LOG(sgemm_gemm.ukernel.GetRhsPackerName(KaiF32RhsLayout::KxN)
+                                    << " N=" << N << " K=" << K
+                                    << " rhs_stride_row=" << ldb * sizeof(float));
+                sgemm_gemm.ukernel.PackRhs(KaiF32RhsLayout::KxN, N, K, B, ldb,
+                                           g_kai_tls.bias_zero.data(), PackedB);
                 break;
             case CblasTrans:
-            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme Groups=1"
-                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
-                kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, g_kai_tls.bias_zero.data(), nullptr, PackedB, 0, nullptr);
+                KLEIDIAI_KERNEL_LOG(sgemm_gemm.ukernel.GetRhsPackerName(KaiF32RhsLayout::NxK)
+                                    << " N=" << N << " K=" << K
+                                    << " rhs_stride_row=" << ldb * sizeof(float));
+                sgemm_gemm.ukernel.PackRhs(KaiF32RhsLayout::NxK, N, K, B, ldb,
+                                           g_kai_tls.bias_zero.data(), PackedB);
                 break;
             default:
             KLEIDIAI_DEBUG_LOG("MlasGemmPackB TransB is neither CblasNoTrans nor CblasTrans, falling back to MLAS.");
@@ -532,14 +530,10 @@ Return Value:
         return false;
     }
 
-    const size_t mr = sgemm_gemm.ukernel.get_mr();
-    const size_t kr = sgemm_gemm.ukernel.get_kr();
-    const size_t sr = sgemm_gemm.ukernel.get_sr();
-
     size_t LhsPackedStride = 0;
     std::byte* LhsPackedData = nullptr;
 
-    LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr);
+    LhsPackedStride = sgemm_gemm.ukernel.GetLhsPackedSize(M, K);
 
     size_t lhs_resize = 0;
     if(MlasMultiplyOverflowsSizeT(LhsPackedStride, BatchSize, &lhs_resize))
@@ -560,9 +554,9 @@ Return Value:
         // We have already decided the matmul variant we are using, before having values for M,N,K
         MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
             std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
-            KLEIDIAI_KERNEL_LOG("kai_run_lhs_pack_f32p2vlx1_f32_sme"
-                                    << " M=" << M << " K=" << K << " mr=" << mr << " kr=" << kr << " sr=" << sr);
-            kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
+            KLEIDIAI_KERNEL_LOG(sgemm_gemm.ukernel.GetLhsPackerName()
+                                << " M=" << M << " K=" << K);
+            sgemm_gemm.ukernel.PackLhs(M, K, Data[batch_idx].A, Data[batch_idx].lda, LhsPackedPtr);
         });
     } else {
         // Multithread pack lhs and rhs
@@ -581,7 +575,9 @@ Return Value:
             if (batch_idx & 0x1) {
                 batch_idx >>= 1;
                 std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
-                kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
+                KLEIDIAI_KERNEL_LOG(sgemm_gemm.ukernel.GetLhsPackerName()
+                                    << " M=" << M << " K=" << K);
+                sgemm_gemm.ukernel.PackLhs(M, K, Data[batch_idx].A, Data[batch_idx].lda, LhsPackedPtr);
             } else {
                 batch_idx >>= 1;
                 std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
