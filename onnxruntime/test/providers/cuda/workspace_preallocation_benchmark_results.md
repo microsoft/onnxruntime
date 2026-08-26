@@ -7,10 +7,20 @@ run-scoped static workspace preallocation for CUDA `MatMulNBits`. The preallocat
 path declares each kernel's workspace and includes its lifetime in ORT's activation
 memory pattern.
 
+These results cover **prefill only**, not token-by-token decode. Each run processes
+64 new tokens with a one-token KV cache, which selects the fpA-intB GEMM path whose
+CUTLASS workspace is targeted by this feature. Ordinary batch-1 decode processes
+one new token and typically selects the workspace-free GEMV path, so the latency
+changes reported here should not be interpreted as decode improvements.
+
 ## Methodology
 
 - Build: Release
-- Input: batch 1, sequence length 64, past sequence length 1
+- Workload: synthetic cached prefill
+- Input IDs: batch 1, 64 new tokens, all set to the model's BOS token
+- Attention mask: shape `[1, 65]`, all valid tokens
+- Past key/value cache: one zero-filled token per layer
+- Output: logits for all 64 new tokens
 - `ep.cuda.fpa_intb_gemm`: enabled
 - Runtime prepacking: enabled
 - Device allocator for initializers: disabled
@@ -19,6 +29,10 @@ memory pattern.
 - Memory-measurement runs: 3
 - Timed runs: 30
 - Baseline and preallocated configurations ran in separate fresh processes.
+
+Warmup, memory-measurement, and timed iterations all reuse the same feeds. Present
+key/value outputs are not fed into the next iteration, so the benchmark does not
+simulate a growing KV cache or an autoregressive generation loop.
 
 | GPU | Compute capability | CUDA toolkit | Driver |
 |---|---:|---:|---:|
