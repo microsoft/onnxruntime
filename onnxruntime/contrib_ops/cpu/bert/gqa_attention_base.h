@@ -82,8 +82,11 @@ inline const uint8_t* ConcatQuantStateChunkGQA(
 //   [ head_size/4 packed code bytes | num_groups scales | num_groups zeros ]
 // Scales/zeros are fp32 by default, or fp16 when meta_fp16 is set (smaller cache row).
 // Codes are 0..q_max (q_max = 3, 4 levels), packed 4-per-byte as c0|c1<<2|c2<<4|c3<<6.
-// Per group g: scale = (gmax - gmin)/q_max, zero = gmin, computed after an optional
-// magnitude-percentile clip (rho). Dequant: x = code * scale + zero.
+// Before quantizing, an optional clip is applied per row over the full head_size (matching
+// OSCAR): the threshold is |x| sorted and indexed at int(rho * head_size), clamped to
+// [0, head_size - 1]. rho <= 0 disables the clip; rho >= 1 selects the row max (a no-op
+// clip). Per group g (after clipping): scale = (gmax - gmin)/q_max, zero = gmin.
+// Dequant: x = code * scale + zero.
 constexpr int kOscar2BitQMax = 3;
 
 // Upper bound on the number of per-group scale/zero entries in one packed row. num_groups
@@ -99,20 +102,27 @@ inline size_t Oscar2BitPackedRowBytes(int head_size, int num_groups, bool meta_f
   return static_cast<size_t>(head_size) / 4 + static_cast<size_t>(num_groups) * 2 * meta_elem;
 }
 
-// torch.quantile(|x|, rho) with linear interpolation over a group of length n.
-inline float Oscar2BitPercentileAbs(const float* x, int n, float rho) {
-  std::vector<float> a(n);
+// OSCAR per-row clip threshold (see _clip_index / _ref_threshold in the reference):
+// sort |x| over the full row of length n and pick the value at the discrete index
+// idx = int(rho * n), clamped to [0, n - 1]. rho <= 0 disables the clip (returns +inf).
+// Unlike torch.quantile there is no linear interpolation between order statistics.
+inline float Oscar2BitClipThreshold(const float* x, int n, float rho) {
+  if (!(rho > 0.0f)) {
+    return std::numeric_limits<float>::infinity();
+  }
+  std::vector<float> a(static_cast<size_t>(n));
   for (int i = 0; i < n; ++i) {
-    a[i] = std::fabs(x[i]);
+    a[static_cast<size_t>(i)] = std::fabs(x[i]);
   }
   std::sort(a.begin(), a.end());
-  const float pos = rho * static_cast<float>(n - 1);
-  const int lo = static_cast<int>(std::floor(pos));
-  if (lo >= n - 1) {
-    return a[n - 1];
+  int idx = static_cast<int>(rho * static_cast<float>(n));
+  if (idx >= n) {
+    idx = n - 1;
   }
-  const float frac = pos - static_cast<float>(lo);
-  return a[lo] + frac * (a[lo + 1] - a[lo]);
+  if (idx < 0) {
+    idx = 0;
+  }
+  return a[static_cast<size_t>(idx)];
 }
 
 // Quantize one FP32 row of head_size channels into the packed 2-bit row at dst.
@@ -123,15 +133,14 @@ inline void Oscar2BitQuantizeRow(const float* src, uint8_t* dst, int head_size,
   std::vector<float> scales(static_cast<size_t>(num_groups));
   std::vector<float> zeros(static_cast<size_t>(num_groups));
 
+  // OSCAR clips per row over the full head_size (on the rotated row) before the per-group
+  // asymmetric quantization, so the threshold is shared by every group in this row.
+  const float tau = Oscar2BitClipThreshold(src, head_size, rho);
+
   for (int g = 0; g < num_groups; ++g) {
     const int base = g * group_size;
     const int gs = std::min(group_size, head_size - base);
     const float* gp = src + base;
-
-    float tau = std::numeric_limits<float>::infinity();
-    if (rho < 1.0f) {
-      tau = Oscar2BitPercentileAbs(gp, gs, rho);
-    }
 
     float gmin = std::numeric_limits<float>::infinity();
     float gmax = -std::numeric_limits<float>::infinity();

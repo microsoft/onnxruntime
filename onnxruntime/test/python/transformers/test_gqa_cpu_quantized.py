@@ -123,23 +123,29 @@ def oscar2bit_packed_head_size(head_size, group_size, meta_fp16=False):
     return head_size // 4 + num_groups * 2 * meta_bytes
 
 
-def _oscar2bit_percentile_abs(group_vals, rho):
-    """torch.quantile(|x|, rho) with linear interpolation over one group."""
-    a = np.sort(np.abs(group_vals.astype(np.float32)))
+def _oscar2bit_clip_threshold(row_vals, rho):
+    """OSCAR per-row clip threshold: sort |x| over the full row and pick the value at the
+    discrete index int(rho * n), clamped to [0, n - 1]. rho <= 0 disables the clip.
+    Matches _clip_index / _ref_threshold in the OSCAR reference (no interpolation)."""
+    if rho <= 0.0:
+        return np.inf
+    a = np.sort(np.abs(row_vals.astype(np.float32)))
     n = a.shape[0]
-    pos = rho * (n - 1)
-    lo = int(np.floor(pos))
-    if lo >= n - 1:
-        return float(a[-1])
-    frac = pos - lo
-    return float(a[lo] + frac * (a[lo + 1] - a[lo]))
+    idx = int(rho * n)
+    if idx >= n:
+        idx = n - 1
+    if idx < 0:
+        idx = 0
+    return float(a[idx])
 
 
 def quantize_dequantize_oscar2bit(data_bnsh, group_size, rho, meta_fp16=False):
     """Replicate the C++ OSCAR 2-bit per-group asymmetric codec (quantize+dequantize).
 
-    Per group (contiguous head_size/group_size channels of a token row):
-      * optional clip tau = quantile(|x|, rho) (skipped when rho >= 1.0),
+    Per token row:
+      * optional clip tau = |row| sorted, indexed at int(rho * head_size) over the full row
+        (rho <= 0 disables it; rho >= 1 selects the row max, a no-op clip),
+    Per group (contiguous head_size/group_size channels, after the shared row clip):
       * scale = (max - min) / 3, zero = min (over the clipped values),
       * code  = round((clip(x) - min) / scale) clamped to [0, 3],
       * dequant = code * scale + min.
@@ -157,10 +163,11 @@ def quantize_dequantize_oscar2bit(data_bnsh, group_size, rho, meta_fp16=False):
             for si in range(s):
                 row = x[bi, ni, si]
                 drow = out[bi, ni, si]
+                # OSCAR clips per row over the full head_size before groupwise quant.
+                tau = _oscar2bit_clip_threshold(row, rho)
                 for g in range(num_groups):
                     base = g * group_size
                     gp = row[base : base + group_size]
-                    tau = _oscar2bit_percentile_abs(gp, rho) if rho < 1.0 else np.inf
                     clipped = np.clip(gp, -tau, tau)
                     gmin = float(clipped.min())
                     gmax = float(clipped.max())
