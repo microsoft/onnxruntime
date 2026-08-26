@@ -284,10 +284,11 @@ struct PagedAttentionData {
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
 
-  // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T; with
-  // params.num_splits <= 1 (which mha_varlen_fwd never overrides) the varlen layout is
-  // [num_heads, token_count].
+  // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T.
   float* softmax_lse = nullptr;
+  float* flash_softmax_lse_accum = nullptr;
+  float* flash_out_accum = nullptr;
+  int flash_num_splits = 0;
   int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
 
   // Fused op buffers

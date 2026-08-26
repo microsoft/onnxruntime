@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <tuple>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
@@ -24,6 +25,8 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+constexpr int kFlashSplitKvMinSequenceLength = 512;
 
 #define REGISTER_KERNEL_TYPED(T, TCACHE)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
@@ -375,9 +378,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> gathered_value_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
 
-  // 'attention_metadata' supplies replay-wide *upper bounds* on the per-sequence query and KV
-  // lengths (docs/contrib_ops/cuda/paged_attention.md section 4.7). Bounds are all the backends
-  // need from the host: they only select the kernel, size launch dimensions and size workspaces.
+  // 'attention_metadata' supplies replay-wide upper bounds on the per-sequence query and KV
+  // lengths, plus an optional replay-wide lower bound on the largest KV length
+  // (docs/contrib_ops/cuda/paged_attention.md section 4.7). Bounds are all the backends need from
+  // the host: they only select the kernel, size launch dimensions and size workspaces.
   // Every per-sequence length that enters a mask is re-read from device memory by the kernel
   // itself, which is what keeps a captured graph correct as the sequences grow.
   //
@@ -389,14 +393,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool has_metadata_bounds = attention_metadata != nullptr;
   int max_query_len_bound = parameters.token_count;
   int max_kv_len_bound = max_kv_len_capacity;
+  int max_kv_len_lower_bound = 0;
   if (has_metadata_bounds) {
     const int* metadata = attention_metadata->Data<int>();
     const int metadata_query_bound = metadata[0];
     const int metadata_kv_bound = metadata[1];
-    if (metadata_query_bound < 0 || metadata_kv_bound < 0) {
+    const int metadata_kv_lower_bound =
+        attention_metadata->Shape().Size() == 3 ? metadata[2] : 0;
+    if (metadata_query_bound < 0 || metadata_kv_bound < 0 || metadata_kv_lower_bound < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "PagedAttention: 'attention_metadata' entries must be non-negative, got [",
-                             metadata_query_bound, ", ", metadata_kv_bound, "]. Use 0 for 'unknown'.");
+                             metadata_query_bound, ", ", metadata_kv_bound, ", ",
+                             metadata_kv_lower_bound, "]. Use 0 for 'unknown'.");
     }
     // Clamp each bound to the static limit it can never exceed, so an over-large (or unknown)
     // bound degrades to the same sizing we would use with no metadata at all.
@@ -406,6 +414,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     if (metadata_kv_bound > 0 && metadata_kv_bound < max_kv_len_bound) {
       max_kv_len_bound = metadata_kv_bound;
     }
+    if (metadata_kv_lower_bound > max_kv_len_bound) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention: attention_metadata max_kv_len_lower_bound (",
+                             metadata_kv_lower_bound, ") must not exceed max_kv_len_bound (",
+                             max_kv_len_bound, ").");
+    }
+    max_kv_len_lower_bound = metadata_kv_lower_bound;
   }
 
   // Backend selection from static shapes alone.
@@ -451,7 +466,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     xqa_candidate =
         device_prop.major >= 8 &&
         parameters.softcap == 0.0f &&
-        (parameters.head_size == 64 || parameters.head_size == 128) &&
+        (parameters.head_size == 64 || parameters.head_size == 128 || parameters.head_size == 256) &&
         (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
         (parameters.block_size % kXqaTokensPerPage) == 0 &&
         is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
@@ -510,6 +525,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       }
     }
     total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
+    max_kv_len_lower_bound = max_kv_len;
     if (total_kv_tokens <= 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "PagedAttention: total_kv_tokens is not positive (", total_kv_tokens,
@@ -582,6 +598,34 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+
+  int flash_num_splits = 0;
+  IAllocatorUniquePtr<void> flash_softmax_lse_accum_buffer;
+  IAllocatorUniquePtr<void> flash_out_accum_buffer;
+#if USE_FLASH_ATTENTION
+  const bool use_flash_split_kv =
+      use_flash_attention &&
+      parameters.token_count == parameters.batch_size &&
+      max_query_len == 1 &&
+      !parameters.use_smooth_softmax &&
+      parameters.local_window_size <= 0;
+  if (use_flash_split_kv) {
+    // The combine kernel costs more than it saves for short decode contexts, even when a high
+    // query-head count makes the occupancy heuristic select two splits. The upper bound sizes the
+    // workspaces, while the replay-wide lower bound proves splitting is worthwhile on every replay.
+    if (max_kv_len_lower_bound > kFlashSplitKvMinSequenceLength) {
+      const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
+          onnxruntime::flash::get_num_splits_and_buffer_sizes(
+              parameters.batch_size, 1, max_kv_len, parameters.num_heads,
+              parameters.head_size, device_prop.multiProcessorCount);
+      flash_num_splits = static_cast<int>(num_splits);
+      flash_softmax_lse_accum_buffer =
+          GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+      flash_out_accum_buffer =
+          GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
+    }
+  }
+#endif
 
   if (needs_dense_kv) {
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
@@ -662,7 +706,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     debug_info.use_decoder_attention = use_paged_decode && !use_xqa_decode;
-    if (use_paged_decode && !use_xqa_decode) {
+    if (use_flash_attention) {
+      debug_info.num_splits = std::max(1, flash_num_splits);
+    } else if (use_paged_decode && !use_xqa_decode) {
       debug_info.num_splits = num_splits;
     }
     debug_info.gqa_group_size = parameters.num_heads / parameters.kv_num_heads;
@@ -706,6 +752,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     // FlashAttention always writes fp32 log-sum-exp, independent of T.
     data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
   }
+  data.flash_num_splits = flash_num_splits;
+  data.flash_softmax_lse_accum = reinterpret_cast<float*>(flash_softmax_lse_accum_buffer.get());
+  data.flash_out_accum = reinterpret_cast<float*>(flash_out_accum_buffer.get());
+  data.max_kv_len = max_kv_len;
   if (workspace_buffer != nullptr) {
     data.workspace_buffer = reinterpret_cast<CudaT*>(workspace_buffer.get());
   }
@@ -718,7 +768,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.gathered_key = reinterpret_cast<CudaT*>(gathered_key_buffer.get());
     data.gathered_value = reinterpret_cast<CudaT*>(gathered_value_buffer.get());
     data.total_kv_tokens = total_kv_tokens;
-    data.max_kv_len = max_kv_len;
   }
   if (use_paged_decode && !use_xqa_decode) {
     data.decode_partial_out = reinterpret_cast<float*>(decode_partial_out_buffer.get());
