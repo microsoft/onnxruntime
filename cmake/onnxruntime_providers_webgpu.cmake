@@ -166,6 +166,15 @@
     target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
       "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
     )
+
+    # Suppress -Werror=maybe-uninitialized. The EP adapter types are defined entirely inline in headers,
+    # so GCC sees through the failure and exception paths of accessors like OpKernelInfo::GetAttr<> and
+    # falsely warns about values that are only read once the call has succeeded. It also produces false
+    # positives deep inside absl::InlinedVector for locals that are always constructed.
+    # This mirrors the same suppression on the CUDA plugin EP target.
+    target_compile_options(onnxruntime_providers_webgpu PRIVATE
+      $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU>>:-Wno-maybe-uninitialized>
+    )
   endif()
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
