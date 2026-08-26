@@ -103,3 +103,14 @@ void
 MlasLinearAttentionProcessHead(
     const MLAS_LINEAR_ATTENTION_WORK* Work
 );
+
+//
+// NEON kernel. Declared so the SVE driver can hand back the shapes it declines:
+// the dispatch structure has a single slot, so installing the SVE dispatch
+// replaces the NEON one, and falling through to the portable kernel instead
+// would regress every declined shape.
+//
+void
+MlasLinearAttentionProcessHeadNeon(
+    const MLAS_LINEAR_ATTENTION_WORK* Work
+);
