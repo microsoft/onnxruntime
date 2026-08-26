@@ -1798,21 +1798,23 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
 
   Fuses the Engram gate.
-  
+
   The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
   the hidden-state queries in the same layout, an already projected value in
   (batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
   RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
   provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
   projection is computed once per token instead of once per hyper-connection.
-  
+
   It computes the Engram gate:
-  
+
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
-  
-  The output is gate * value, broadcast across the hyper-connections. The final Engram residual
-  value + short_conv(value) is then expressed with RMSNorm, CausalConvWithState and Add.
+
+  The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
+  output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
+  CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
+  RMSNorm, CausalConvWithState and Add.
 
 #### Version
 
@@ -1825,7 +1827,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 6)
 
 <dl>
 <dt><tt>key</tt> : T</dt>
@@ -1838,13 +1840,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>RMSNorm scale for keys with shape (hc_mult, hidden_size).</dd>
 <dt><tt>query_norm_scale</tt> : T</dt>
 <dd>RMSNorm scale for queries with shape (hc_mult, hidden_size).</dd>
+<dt><tt>conv_norm_scale</tt> (optional) : T</dt>
+<dd>Optional RMSNorm scale for the gated value, with shape (hc_mult, hidden_size). Required when gated_value_normed is requested.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>gated_value_normed</tt> (optional) : T</dt>
+<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
 </dl>
 
 #### Type Constraints

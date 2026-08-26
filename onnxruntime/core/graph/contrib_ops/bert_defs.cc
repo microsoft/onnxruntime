@@ -2747,8 +2747,10 @@ It computes the Engram gate:
 gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
 dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
 
-The output is gate * value, broadcast across the hyper-connections. The final Engram residual
-value + short_conv(value) is then expressed with RMSNorm, CausalConvWithState and Add.
+The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
+output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
+CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
+RMSNorm, CausalConvWithState and Add.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2780,15 +2782,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "query_norm_scale",
                "RMSNorm scale for queries with shape (hc_mult, hidden_size).",
                "T")
+        .Input(5,
+               "conv_norm_scale",
+               "Optional RMSNorm scale for the gated value, with shape (hc_mult, hidden_size). Required "
+               "when gated_value_normed is requested.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                 "T")
+        .Output(1,
+                "gated_value_normed",
+                "Optional RMS-normalized gated value tensor with shape "
+                "(batch_size, sequence_length, hc_mult, hidden_size).",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
 
           if (hasInputShape(ctx, 0)) {
             const auto& key_shape = getInputShape(ctx, 0);
@@ -2796,6 +2813,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("EngramGate: key must have rank 4");
             }
             propagateShapeFromInputToOutput(ctx, 0, 0);
+            if (ctx.getNumOutputs() > 1) {
+              propagateShapeFromInputToOutput(ctx, 0, 1);
+            }
           }
           if (hasInputShape(ctx, 1)) {
             const auto& query_shape = getInputShape(ctx, 1);

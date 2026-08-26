@@ -36,6 +36,18 @@ class EngramGateProgram final : public Program<EngramGateProgram> {
                                           {"hidden_vec_size", ProgramUniformVariableDataType::Uint32});
 };
 
+// Applies a branchwise RMSNorm to gated_value (one hidden_size slice per hyper-connection branch)
+// to produce gated_value_normed, one workgroup per (token, g) row.
+class EngramGateNormProgram final : public Program<EngramGateNormProgram> {
+ public:
+  EngramGateNormProgram() : Program{"EngramGateNorm"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
+                                          {"hc_mult", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"epsilon", ProgramUniformVariableDataType::Float32});
+};
+
 class EngramGate final : public WebGpuKernel {
  public:
   explicit EngramGate(const OpKernelInfo& info);
