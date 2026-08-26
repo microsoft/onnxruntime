@@ -26,6 +26,8 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
         public IntPtr ModelCompilationOptions_SetOutputModelWriteFunc;
         public IntPtr ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc;
         public IntPtr ModelCompilationOptions_SetInputModel;
+        public IntPtr ModelCompilationOptions_SetWeightlessEnabled;
+        public IntPtr ModelCompilationOptions_SetEpContextDataWriteFunc;
     }
 
     internal class NativeMethods
@@ -143,15 +145,25 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
             IntPtr /* const OrtModel* */ inputModel);
         public DOrtModelCompilationOptions_SetInputModel OrtModelCompilationOptions_SetInputModel;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtWriteNamedBufferDelegate(
+            IntPtr /* void* */ state,
+            IntPtr /* const char* */ name,
+            IntPtr /* const void* */ buffer,
+            UIntPtr /* size_t */ bufferSize);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetEpContextDataWriteFunc(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            IntPtr /* DOrtWriteNamedBufferDelegate */ writeFunc,
+            IntPtr /* void* */ state);
+        public DOrtModelCompilationOptions_SetEpContextDataWriteFunc
+            OrtModelCompilationOptions_SetEpContextDataWriteFunc;
+
         internal NativeMethods(OnnxRuntime.NativeMethods.DOrtGetCompileApi getCompileApi)
         {
-
-#if NETSTANDARD2_0
             IntPtr compileApiPtr = getCompileApi();
             _compileApi = (OrtCompileApi)Marshal.PtrToStructure(compileApiPtr, typeof(OrtCompileApi));
-#else
-            _compileApi = (OrtCompileApi)getCompileApi();
-#endif
 
             OrtReleaseModelCompilationOptions =
                 (DOrtReleaseModelCompilationOptions)Marshal.GetDelegateForFunctionPointer(
@@ -228,6 +240,11 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
                 (DOrtModelCompilationOptions_SetInputModel)Marshal.GetDelegateForFunctionPointer(
                     _compileApi.ModelCompilationOptions_SetInputModel,
                     typeof(DOrtModelCompilationOptions_SetInputModel));
+
+            OrtModelCompilationOptions_SetEpContextDataWriteFunc =
+                (DOrtModelCompilationOptions_SetEpContextDataWriteFunc)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetEpContextDataWriteFunc,
+                    typeof(DOrtModelCompilationOptions_SetEpContextDataWriteFunc));
 
         }
     }

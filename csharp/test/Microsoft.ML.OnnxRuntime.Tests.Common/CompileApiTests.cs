@@ -9,6 +9,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests;
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Xunit;
 
@@ -207,6 +208,237 @@ public class CompileApiTests
                 // This file is created by ORT, so we delete it manually in finally block.
                 File.Delete(outputModelFilePath);
             }
+        }
+    }
+
+    [Fact]
+    public void EpContextDataCallbackValidation()
+    {
+        Assert.Equal(IntPtr.Size * 426, Marshal.SizeOf<OrtApi>());
+        Assert.Equal(IntPtr.Size * 17, Marshal.SizeOf<CompileApi.OrtCompileApi>());
+
+        using var sessionOptions = new SessionOptions();
+        Assert.Throws<ArgumentNullException>(() => sessionOptions.SetEpContextDataReadDelegate(null, 1024));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sessionOptions.SetEpContextDataReadDelegate((_, _) => { }, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sessionOptions.SetEpContextDataReadDelegate((_, _) => { }, ulong.MaxValue));
+        if (UIntPtr.Size == 4)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                sessionOptions.SetEpContextDataReadDelegate((_, _) => { }, uint.MaxValue));
+        }
+
+        sessionOptions.SetEpContextDataReadDelegate((_, output) => output.Allocate(0), 1024);
+        using var compileOptions = new OrtModelCompilationOptions(sessionOptions);
+        sessionOptions.ClearEpContextDataReadDelegate();
+        sessionOptions.Dispose();
+
+        Assert.Throws<ArgumentNullException>(() => compileOptions.SetEpContextDataWriteDelegate(null));
+        compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+        compileOptions.ClearEpContextDataWriteDelegate();
+    }
+
+    [SkippableFact]
+    public void ExternalEpContextDataUsesCallbacks()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "The example plugin EP integration artifact is available only in the Windows C# test build.");
+
+        string libraryPath = Path.Combine(Directory.GetCurrentDirectory(), "example_plugin_ep.dll");
+        Assert.True(File.Exists(libraryPath), $"Expected library {libraryPath} does not exist.");
+
+        const string epName = "csharp_ep_context";
+        const string modelName = "csharp_ep_context.onnx";
+        byte[] inputModel = TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx");
+        byte[] contextPayload = null;
+        string contextName = null;
+        OrtEpContextData retainedWriteData = null;
+        OrtEpContextDataBuffer retainedReadBuffer = null;
+        int writeCount = 0;
+        int readCount = 0;
+
+        ortEnvInstance.RegisterExecutionProviderLibrary(epName, libraryPath);
+        try
+        {
+            OrtEpDevice epDevice = ortEnvInstance.GetEpDevices().Single(device => device.EpName == epName);
+
+            using (var failureSessionOptions = new SessionOptions())
+            {
+                failureSessionOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+                using var failureCompileOptions = new OrtModelCompilationOptions(failureSessionOptions);
+                failureCompileOptions.SetInputModelFromBuffer(inputModel);
+                failureCompileOptions.SetOutputModelPath(modelName);
+                failureCompileOptions.SetEpContextEmbedMode(false);
+                failureCompileOptions.SetEpContextBinaryInformation("./", modelName);
+                failureCompileOptions.SetEpContextDataWriteDelegate((_, _) =>
+                    throw new InvalidOperationException("synthetic C# EPContext write failure"));
+
+                var exception = Assert.Throws<OnnxRuntimeException>(() => failureCompileOptions.CompileModel());
+                Assert.Contains("synthetic C# EPContext write failure", exception.Message);
+                Assert.False(File.Exists(modelName));
+            }
+
+            byte[] compiledModel;
+            using (var compileSessionOptions = new SessionOptions())
+            {
+                compileSessionOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+                using var compileOptions = new OrtModelCompilationOptions(compileSessionOptions);
+                compileOptions.SetInputModelFromBuffer(inputModel);
+                compileOptions.SetEpContextEmbedMode(false);
+                compileOptions.SetEpContextBinaryInformation("./", modelName);
+                compileOptions.SetEpContextDataWriteDelegate((name, data) =>
+                {
+                    ++writeCount;
+                    contextName = name;
+                    retainedWriteData = data;
+                    contextPayload = data.GetSpan().ToArray();
+                });
+
+                IntPtr modelBuffer = IntPtr.Zero;
+                UIntPtr modelBufferSize = UIntPtr.Zero;
+                OrtAllocator allocator = OrtAllocator.DefaultInstance;
+                compileOptions.SetOutputModelBuffer(allocator, ref modelBuffer, ref modelBufferSize);
+                try
+                {
+                    compileOptions.CompileModel();
+                    compiledModel = new byte[checked((int)modelBufferSize.ToUInt64())];
+                    Marshal.Copy(modelBuffer, compiledModel, 0, compiledModel.Length);
+                }
+                finally
+                {
+                    if (modelBuffer != IntPtr.Zero)
+                    {
+                        allocator.FreeMemory(modelBuffer);
+                    }
+                }
+            }
+
+            Assert.Equal(1, writeCount);
+            Assert.False(string.IsNullOrEmpty(contextName));
+            Assert.NotEmpty(contextPayload);
+            Assert.False(File.Exists(contextName));
+            Assert.Throws<ObjectDisposedException>(() => retainedWriteData.GetSpan());
+
+            int compileReadCount = 0;
+            var sourceCompileOptions = new SessionOptions();
+            sourceCompileOptions.SetEpContextDataReadDelegate((name, output) =>
+            {
+                ++compileReadCount;
+                Assert.Equal(contextName, name);
+                contextPayload.CopyTo(output.Allocate(contextPayload.Length));
+            }, (ulong)contextPayload.Length);
+            sourceCompileOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+            using (var retainedCompileOptions = new OrtModelCompilationOptions(sourceCompileOptions))
+            {
+                sourceCompileOptions.ClearEpContextDataReadDelegate();
+                sourceCompileOptions.Dispose();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+
+                retainedCompileOptions.SetInputModelFromBuffer(compiledModel);
+                IntPtr recompiledModelBuffer = IntPtr.Zero;
+                UIntPtr recompiledModelBufferSize = UIntPtr.Zero;
+                OrtAllocator allocator = OrtAllocator.DefaultInstance;
+                retainedCompileOptions.SetOutputModelBuffer(
+                    allocator, ref recompiledModelBuffer, ref recompiledModelBufferSize);
+                try
+                {
+                    retainedCompileOptions.CompileModel();
+                    Assert.NotEqual(IntPtr.Zero, recompiledModelBuffer);
+                    Assert.NotEqual(UIntPtr.Zero, recompiledModelBufferSize);
+                }
+                finally
+                {
+                    if (recompiledModelBuffer != IntPtr.Zero)
+                    {
+                        allocator.FreeMemory(recompiledModelBuffer);
+                    }
+                }
+            }
+            Assert.Equal(1, compileReadCount);
+            Assert.False(File.Exists(contextName));
+
+            using (var missingOutputLoadOptions = new SessionOptions())
+            {
+                missingOutputLoadOptions.SetEpContextDataReadDelegate((_, _) => { },
+                    (ulong)contextPayload.Length);
+                missingOutputLoadOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+                var exception = Assert.Throws<OnnxRuntimeException>(() =>
+                    new InferenceSession(compiledModel, missingOutputLoadOptions));
+                Assert.Contains("must allocate its output buffer", exception.Message);
+                Assert.False(File.Exists(contextName));
+            }
+
+            using (var oversizedLoadOptions = new SessionOptions())
+            {
+                oversizedLoadOptions.SetEpContextDataReadDelegate((_, output) =>
+                    output.Allocate(contextPayload.Length + 1),
+                    (ulong)contextPayload.Length);
+                oversizedLoadOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+                var exception = Assert.Throws<OnnxRuntimeException>(() =>
+                    new InferenceSession(compiledModel, oversizedLoadOptions));
+                Assert.Contains("[ErrorCode:InvalidArgument]", exception.Message);
+                Assert.Contains("configured maximum size", exception.Message);
+                Assert.False(File.Exists(contextName));
+            }
+
+            using (var failureLoadOptions = new SessionOptions())
+            {
+                failureLoadOptions.SetEpContextDataReadDelegate((_, _) =>
+                    throw new InvalidOperationException("synthetic C# EPContext read failure"),
+                    (ulong)contextPayload.Length);
+                failureLoadOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+                var exception = Assert.Throws<OnnxRuntimeException>(() =>
+                    new InferenceSession(compiledModel, failureLoadOptions));
+                Assert.Contains("synthetic C# EPContext read failure", exception.Message);
+                Assert.False(File.Exists(contextName));
+            }
+
+            var loadOptions = new SessionOptions();
+            InferenceSession session = null;
+            try
+            {
+                loadOptions.SetEpContextDataReadDelegate((name, output) =>
+                {
+                    ++readCount;
+                    Assert.Equal(contextName, name);
+                    retainedReadBuffer = output;
+                    contextPayload.CopyTo(output.Allocate(contextPayload.Length));
+                }, (ulong)contextPayload.Length);
+                loadOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+
+                session = new InferenceSession(compiledModel, loadOptions);
+                Assert.NotNull(session);
+                Assert.Throws<ObjectDisposedException>(() => retainedReadBuffer.GetSpan());
+
+                // The native session owns a snapshot of the callback state. Clearing and disposing the source
+                // SessionOptions must not release that state before the native session is destroyed.
+                loadOptions.ClearEpContextDataReadDelegate();
+                loadOptions.Dispose();
+                session.Dispose();
+                session = null;
+            }
+            finally
+            {
+                session?.Dispose();
+                loadOptions.Dispose();
+            }
+
+            Assert.Equal(1, readCount);
+            Assert.False(File.Exists(contextName));
+        }
+        finally
+        {
+            if (contextName != null && File.Exists(contextName))
+            {
+                File.Delete(contextName);
+            }
+            if (File.Exists(modelName))
+            {
+                File.Delete(modelName);
+            }
+            ortEnvInstance.UnregisterExecutionProviderLibrary(epName);
         }
     }
 
