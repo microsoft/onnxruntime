@@ -26,10 +26,11 @@ void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
                                 const ShaderVariableHelper* bias,
                                 bool c_is_scalar);
 
+// Emits `mm_write` for Split-K pass 1: stores this split's partial tile to its own slot of the
+// `partials` scratch buffer. The generated function takes an extra `splitIndex` argument.
 void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
                                    const ShaderVariableHelper& output,
-                                   bool is_gemm,
-                                   ProgramVariableDataType output_variable_type);
+                                   bool is_gemm);
 
 // The two following functions are used to generate shader code for vec4 and scalar.
 // It is used in GEMM, Matmul, and Conv.

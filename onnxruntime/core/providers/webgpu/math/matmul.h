@@ -21,13 +21,22 @@ Status ComputeMatMul(ComputeContext* context, const Activation& activation, std:
                      const TensorShape& input_a_reshape = TensorShape(),
                      const TensorShape& input_b_reshape = TensorShape());
 
-MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+// Builds pass 2 of the deterministic two-pass Split-K reduction: sums `splits` partial slots per
+// output element in a fixed index order, applies bias (or `beta * C` for GEMM) and any fused
+// activation, and writes `output`.
+//
+// `output_shape` is the intermediate output shape whose last dimension is expressed in components.
+MatMulSplitKReduceProgram CreateMatMulSplitKReduceProgram(
+    const Tensor& partials,
     const Tensor* bias,
     Tensor* output,
     bool is_gemm,
+    const Activation& activation,
     float beta,
     uint32_t output_components,
+    uint32_t bias_components,
     const TensorShape& output_shape,
+    uint32_t splits,
     uint32_t batch_size = 1);
 
 class MatMul final : public WebGpuKernel {

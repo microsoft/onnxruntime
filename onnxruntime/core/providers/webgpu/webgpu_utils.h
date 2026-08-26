@@ -100,6 +100,10 @@ inline Tensor CreateTensorView(const Tensor& tensor, MLDataType new_data_type, c
 
 /**
  * Configuration for Split-K optimization (Conv|MatMul).
+ *
+ * Split-K is implemented as a deterministic two-pass reduction: each split writes its partial sum to
+ * its own slot of a scratch buffer, and a second pass sums the slots in a fixed index order. It uses
+ * no atomics, so the result is bit-reproducible for a given build.
  */
 class SplitKConfig {
  public:
@@ -119,6 +123,10 @@ class SplitKConfig {
 
   uint32_t GetMaxDimInnerWithSplitK() const;
 
+  // Populates the discrete/high-EU-count threshold table. Shared by the NVIDIA branch and by the
+  // `ORT_WEBGPU_SPLIT_K=on` test override, which must produce a usable config on any adapter.
+  void SetDefaultThresholds();
+
   struct ConfigAtRange {
     ConfigAtRange(uint32_t max_dim_inner, double rate);
     uint32_t max_dim_inner_with_rate = 0;
@@ -128,20 +136,20 @@ class SplitKConfig {
 };
 
 /**
- * Generates WGSL (WebGPU Shading Language) code for performing an atomic add operation
- * on a non-integer value (e.g., floating-point) in a shader.
+ * Returns the number of Split-K partial-sum slots needed for an output of `out_elems` elements.
  *
- * Since WGSL natively supports atomic operations only on integer types, this function
- * generates code that emulates atomic addition for non-integer types using a compare-and-swap loop.
+ * The scratch buffer is laid out split-major, `[splits][out_elems]`, so that pass-1 writes keep the
+ * addresses and coalescing the single-output path had, and the reduction's reads stay coalesced within
+ * each split it visits.
  *
- * @param output        A reference to the ShaderVariableHelper representing the atomic variable
- *                      to be updated. This encapsulates the variable's name and access logic.
- * @param offset        The offset or index within the atomic variable where the operation is applied.
- * @param output_type   The WGSL type of the value being added (e.g., "f32").
- * @param add_value     The expression or variable representing the value to add.
- * @return              A string containing the generated WGSL code for the atomic add operation.
+ * Size bound: `UseSplitK` gates on `dim_a_outer * dim_b_outer * batch_size <= rate * dim_inner`, and
+ * `splits = ceil(dim_inner / split_dim_inner)`, so the scratch never exceeds
+ * `ceil(dim_inner / 256) * rate * dim_inner` elements. The worst cell of the threshold table
+ * (`dim_inner = 4096`, `rate = 16`) is 1,048,576 elements, i.e. 4 MB at f32 and 2 MB at f16.
  */
-std::string GenerateAtomicAddNonIntegerCode(const ShaderVariableHelper& output, const std::string& offset, const std::string& output_type, const std::string& add_value);
+inline uint64_t SplitKScratchElements(uint64_t splits, uint64_t out_elems) {
+  return splits * out_elems;
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime
