@@ -273,13 +273,43 @@ Verified on Windows with `--use_webgpu static_plugin`, Debug:
   `InferenceSessionTests.WebGpuVirtualDeviceRejectedWithoutCompileOnly` pass, which covers session creation and EP
   instantiation end to end through the public V2 API on the static plugin path.
 
-Not yet verified locally: operator execution. The development machine is a virtual machine with no real GPU, so only
-the virtual WebGPU device is surfaced and non-compile-only sessions are rejected up front. This was confirmed to be a
-property of the host rather than of static linking by building the shared library plugin configuration
-(`--use_webgpu shared_lib`) on the same host and running the same tests: it passes and fails exactly the same set
-(`WebGpuVirtualDeviceCompileOnlyEndToEnd` and `WebGpuVirtualDeviceRejectedWithoutCompileOnly` pass;
+Operator execution was initially not verifiable locally: the original development machine was a virtual machine with
+no real GPU, so only the virtual WebGPU device was surfaced and non-compile-only sessions were rejected up front. This
+was confirmed to be a property of the host rather than of static linking by building the shared library plugin
+configuration (`--use_webgpu shared_lib`) on the same host and running the same tests: it passed and failed exactly
+the same set (`WebGpuVirtualDeviceCompileOnlyEndToEnd` and `WebGpuVirtualDeviceRejectedWithoutCompileOnly` pass;
 `WebGpuCompileOnlySkipsFinalization` and `TestStrictShapeInference` fail with the identical virtual-device rejection
-message). Operator coverage on either plugin path requires a host with a GPU.
+message).
+
+This gap has since been closed on a machine with a real GPU (NVIDIA RTX 5060 Ti). The `static_plugin` and internal-EP
+configurations were built from the same tree, RelWithDebInfo, differing only in the EP path, and their test results
+compared:
+
+- `onnxruntime_provider_test`: 0 failures in both. **Across the 5894 tests common to both builds there were zero
+  status differences.**
+- `onnxruntime_test_all`: 1965 passed in both, no differences. All three `InferenceSessionTests.WebGpu*` pass on the
+  static plugin build, including `WebGpuCompileOnlySkipsFinalization`, confirming its earlier failure was indeed a
+  property of the GPU-less host.
+
+### Known test coverage difference on the plugin path
+
+`cmake/onnxruntime_unittests.cmake` gates the `test/providers/webgpu/*` sources on
+`onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS`, so those tests are **absent** from any adapter
+build, including `static_plugin`. They are white-box tests that include internal WebGPU EP headers and therefore
+cannot compile against the adapter boundary by construction.
+
+Of the 44 tests this excludes, 16 are `DISABLED_` and never run, and most of the rest assert on EP internals
+(`WebGpuContextTest`, `ActivationCacheKeyTest`). However, 12 of them — `HardSwish_WebGPU` and `MatMul2BitsWebGpu` —
+are genuine operator tests, and they currently run **only** on the internal EP path. This is a known coverage gap of
+the plugin path. Closing it would mean rewriting them as EP-agnostic operator tests so both paths execute them; that
+is deliberately left out of this change to keep it focused.
+
+Separately, the `InferenceSessionTests.WebGpu*` virtual-device tests are deliberately *paired* rather than shared
+between the two builds, since each drives a different factory. `WebGpuVirtualDeviceCompileOnlyEndToEnd` and
+`WebGpuVirtualDeviceRejectedWithoutCompileOnly` are the plugin-build counterparts of `WebGpuEpFactoryVirtualDevice`
+and `WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly`. Only `WebGpuCompileOnlyUsesNoOpAllocator` has no
+counterpart, because it asserts an internal allocator *type* through `dynamic_cast`, which is inherently
+unobservable across the ABI boundary.
 
 The shared library plugin configuration was also re-verified after the D7 change, since `include/onnxruntime/ep/api.h`
 is shared with the CUDA plugin EP. It builds, and `onnxruntime_providers_webgpu.dll` still exports exactly the
@@ -300,6 +330,17 @@ The first run of the Linux job surfaced `-Werror=maybe-uninitialized` errors. Th
 attribute accessors inline in the header, so GCC can see their failure and exception paths, whereas the in-tree
 `OpKernelInfo` hides them behind an out-of-line definition. Any value that is only read when the attribute lookup
 succeeded must be value-initialized.
+
+More generally, this job is the first time the EP adapters have ever been compiled with GCC, and it has surfaced
+several successive batches of `-Werror` diagnostics — including false positives inside `absl::InlinedVector` and, in
+optimized builds, `-Werror=array-bounds` on `std::string` concatenation chains that the adapter headers cause to be
+inlined more aggressively. Because ninja stops at the first failure and reports only the targets already in flight,
+**each CI run reveals just one batch**. When touching this configuration, enumerate the full set locally in a single
+pass — an AlmaLinux 8 container with `gcc-toolset-14` reproduces the CI compiler exactly — rather than discovering
+them one CI round trip at a time. Fixes that are correct on their own merits are applied at the source; irreducible
+false positives use a suppression scoped to the `onnxruntime_providers_webgpu` target, GCC only, and conditional on
+`onnxruntime_USE_EP_API_ADAPTERS`, so non-adapter builds stay strict. This mirrors what the CUDA plugin EP does in
+`cmake/onnxruntime_providers_cuda_plugin.cmake`.
 
 ## Resolution of workstream open questions
 
