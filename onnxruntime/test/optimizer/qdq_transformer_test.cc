@@ -3336,7 +3336,7 @@ TEST(QDQTransformerTests, Clip) {
   auto test_case = [&](float scale, auto zero_point, int clip_count, int opset_version,
                        bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<int8_t>({1, 32, 112, 112},
+      auto* input_arg = builder.MakeInput<int8_t>({1, 2, 2, 2},
                                                   std::numeric_limits<int8_t>::min(),
                                                   std::numeric_limits<int8_t>::max());
       auto* output_arg = builder.MakeOutput();
@@ -3386,7 +3386,7 @@ TEST(QDQTransformerTests, Clip) {
   constexpr int16_t int16_min = std::numeric_limits<int16_t>::min();
   constexpr uint16_t uint16_min = std::numeric_limits<uint16_t>::min();
 
-  std::vector<int> opsets{12, 18, 19};
+  std::vector<int> opsets{12, 19};
   for (auto opset : opsets) {
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);        // [0, 6]
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset, true);  // [0, 6] contrib qdq

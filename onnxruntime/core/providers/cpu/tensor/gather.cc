@@ -30,6 +30,19 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                          Gather, Input, 1);
+
+namespace gather_internal {
+
+ptrdiff_t GetGatherCopyWorkCount(int64_t num_batches, int64_t num_indices) {
+  return SafeInt<ptrdiff_t>(num_batches) * num_indices;
+}
+
+GatherCopyIndex GetGatherCopyIndex(ptrdiff_t index, int64_t num_indices) {
+  return {static_cast<int64_t>(index / num_indices), static_cast<int64_t>(index % num_indices)};
+}
+
+}  // namespace gather_internal
+
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
     1,
@@ -76,8 +89,9 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
   }
 
   auto lambda = [&](ptrdiff_t index) {
-    const int64_t batch = static_cast<int64_t>(index / N);
-    const int64_t i = static_cast<int64_t>(index % N);
+    const auto gather_index = gather_internal::GetGatherCopyIndex(index, N);
+    const int64_t batch = gather_index.batch;
+    const int64_t i = gather_index.index;
 
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
@@ -95,7 +109,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
   };
 
   concurrency::ThreadPool::TryParallelFor(
-      tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size),
+      tp, gather_internal::GetGatherCopyWorkCount(M, N), static_cast<double>(block_size),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {
         for (ptrdiff_t index = first; index < last; ++index) {
           lambda(index);

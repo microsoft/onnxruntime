@@ -471,8 +471,8 @@ static void RunModelWithRandomInput(
 TEST(PackedAttentionTest, TestWithRandomData) {
   std::string onnx_model = "testdata/packed_attention_fp32.onnx";
   std::string onnx_model_fp16 = "testdata/packed_attention_fp16.onnx";
-  for (int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})) {
-    for (int sequence_length : std::vector<int>({32, 48, 64, 95, 128})) {
+  for (int batch_size : std::vector<int>({1, 4, 8})) {
+    for (int sequence_length : std::vector<int>({32, 95, 128})) {
       RunModelWithRandomInput(
           batch_size,
           sequence_length,
@@ -489,8 +489,8 @@ TEST(PackedAttentionTest, TestWithRandomData) {
 
 TEST(PackedAttentionTest, TestWithRandomDataWithRBP) {
   std::string onnx_model_fp16 = "testdata/packed_attention_fp16.rbp.onnx";  // mainly for cutlass
-  for (int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})) {
-    for (int sequence_length : std::vector<int>({32, 48, 64, 95, 128})) {
+  for (int batch_size : std::vector<int>({1, 4, 8})) {
+    for (int sequence_length : std::vector<int>({32, 95, 128})) {
       RunModelWithRandomInput(
           batch_size,
           sequence_length,

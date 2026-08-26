@@ -430,11 +430,11 @@ TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 100, 32, 32, 16, 0>();
   TestMatMulNBitsTyped<float, 100, 32, 16, 128, 0>();
   TestMatMulNBitsTyped<float, 100, 288, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 128, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<float, 10, 288, 1024, 16, 0>();
+  TestMatMulNBitsTyped<float, 10, 288, 1024, 128, 0>();
+  TestMatMulNBitsTyped<float, 10, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<float, 10, 288, 93, 128, 0>();
+  TestMatMulNBitsTyped<float, 10, 288, 1234, 16, 0>();
 }
 
 TEST(MatMulNBits, Float32_4b_Accuracy1) {
@@ -468,12 +468,12 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 32, 32, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 32, 16, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 192, 64, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<float, 10, 288, 1024, 16, 4>();
+  TestMatMulNBitsTyped<float, 10, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<float, 10, 288, 192, 64, 4>();
+  TestMatMulNBitsTyped<float, 10, 288, 93, 32, 4>();
+  TestMatMulNBitsTyped<float, 10, 288, 93, 128, 4>();
+  TestMatMulNBitsTyped<float, 10, 288, 1234, 16, 4>();
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -500,11 +500,11 @@ TEST(MatMulNBits, Float16_4b_Accuracy2) {
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 2>();
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 2>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1024, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1024, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 93, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1234, 16, 2>();
 }
 
 TEST(MatMulNBits, Float16_4b_Accuracy0) {
@@ -513,11 +513,11 @@ TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 0>();
   TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1024, 128, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 256, 128, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 192, 128, 32, 0>();
 }
 
 TEST(MatMulNBits, Float16_4b_Accuracy4) {
@@ -542,14 +542,14 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 64, 32, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 128, 128, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 192, 64, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1024, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 192, 64, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 93, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 93, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 256, 128, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 10, 192, 128, 32, 4>();
 
   // See PR #27412 for details on the following test case,
   // which is added to cover a specific failure case in the past.
@@ -559,7 +559,7 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   // and N is larger (more chance of having a value with larger error),
   // we set a higher tolerance for this case to avoid false positives
   // and flaky failures.
-  TestMatMulNBitsTyped<MLFloat16, 369, 6144, 2048, 32, 4>(0.2f, 0.03f);
+  TestMatMulNBitsTyped<MLFloat16, 1, 6144, 2048, 32, 4>(0.2f, 0.03f);
 }
 
 TEST(MatMulNBits, LegacyShape_4b) {

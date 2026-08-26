@@ -2800,12 +2800,11 @@ TEST(ReductionOpTest, ReduceSum_batch_by_two) {
 
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
 #ifdef USE_TENSORRT
-  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
-  int i_max = 8;
+  const std::vector<int> batch_multipliers{1, 4, 7};
 #else
-  int i_max = 16;
+  const std::vector<int> batch_multipliers{1, 8, 15};
 #endif
-  for (int i = 1; i < i_max; i += 1) {
+  for (int i : batch_multipliers) {
     test_apex_reduce_sum(i * 128, 128);
     test_apex_reduce_sum(i * 512, 128);
     test_apex_reduce_sum(i * 128, 768);

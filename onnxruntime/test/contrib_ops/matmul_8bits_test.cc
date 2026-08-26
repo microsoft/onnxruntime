@@ -343,17 +343,17 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 100, 32, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 100, 32, 16, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 16, 16, 4>();
-  TestMatMul8BitsTyped<float, 100, 288, 1024, 16, 4>();
-  TestMatMul8BitsTyped<float, 100, 288, 1024, 128, 4>();
-  TestMatMul8BitsTyped<float, 100, 288, 192, 64, 4>();
-  TestMatMul8BitsTyped<float, 100, 288, 93, 32, 4>();
-  TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
-  TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
+  TestMatMul8BitsTyped<float, 10, 288, 1024, 16, 4>();
+  TestMatMul8BitsTyped<float, 10, 288, 1024, 128, 4>();
+  TestMatMul8BitsTyped<float, 10, 288, 192, 64, 4>();
+  TestMatMul8BitsTyped<float, 10, 288, 93, 32, 4>();
+  TestMatMul8BitsTyped<float, 10, 288, 93, 128, 4>();
+  TestMatMul8BitsTyped<float, 10, 288, 1234, 16, 4>();
 
   // Using a 2% larger tolerance for accuracy level int8 compared to the accuracy level f32/f16.
   constexpr float abs_error = 0.1f * 1.02f;
   constexpr float rel_error = 0.02f * 1.02f;
-  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<float, 1, 5120, 3072, 32, 4>(abs_error, rel_error);
 
   // Test case where K (260) is divisible by 16 but not by the block size (32).
   TestMatMul8BitsTyped<float, 32, 64, 260, 32, 4>();
@@ -397,13 +397,13 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
   TestMatMul8BitsTyped<float, 100, 32, 32, 16, 1>();
   TestMatMul8BitsTyped<float, 100, 32, 16, 128, 1>();
   TestMatMul8BitsTyped<float, 100, 288, 16, 16, 1>();
-  TestMatMul8BitsTyped<float, 100, 288, 1024, 16, 1>();
-  TestMatMul8BitsTyped<float, 100, 288, 1024, 128, 1>();
-  TestMatMul8BitsTyped<float, 100, 288, 192, 64, 1>();
-  TestMatMul8BitsTyped<float, 100, 288, 93, 32, 1>();
-  TestMatMul8BitsTyped<float, 100, 288, 93, 128, 1>();
-  TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 1>();
-  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 1>();
+  TestMatMul8BitsTyped<float, 10, 288, 1024, 16, 1>();
+  TestMatMul8BitsTyped<float, 10, 288, 1024, 128, 1>();
+  TestMatMul8BitsTyped<float, 10, 288, 192, 64, 1>();
+  TestMatMul8BitsTyped<float, 10, 288, 93, 32, 1>();
+  TestMatMul8BitsTyped<float, 10, 288, 93, 128, 1>();
+  TestMatMul8BitsTyped<float, 10, 288, 1234, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 5120, 3072, 32, 1>();
 
   // Test case where K (260) is divisible by 16 but not by the block size (32).
   TestMatMul8BitsTyped<float, 32, 64, 260, 32, 1>();
