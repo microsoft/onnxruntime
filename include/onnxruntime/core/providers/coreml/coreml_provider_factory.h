@@ -41,17 +41,17 @@ enum COREMLFlags {
   COREML_FLAG_LAST = COREML_FLAG_USE_CPU_AND_GPU,
 };
 
-// Set the MLComputeUnits provider option to one of the kCoremlComputeUnits_* values below. Each value maps to
-// the corresponding Core ML compute-unit mode
+// Set the MLComputeUnits provider option to one of the kCoremlProviderOption_MLComputeUnits_* values below.
+// Each value maps to the corresponding Core ML compute-unit mode
 // (https://developer.apple.com/documentation/coreml/mlcomputeunits).
 // Use these values with SessionOptionsAppendExecutionProvider or SessionOptionsAppendExecutionProvider_V2.
 // The legacy CoreML-specific OrtSessionOptionsAppendExecutionProvider_CoreML API uses a COREMLFlags bitmask
 // instead.
 // MLComputeUnitsCPUAndNeuralEngine requires Core ML 6 (iOS 16 / macOS 13) and is unavailable on earlier systems.
-static const char* const kCoremlComputeUnits_CPUAndNeuralEngine = "CPUAndNeuralEngine";
-static const char* const kCoremlComputeUnits_CPUAndGPU = "CPUAndGPU";
-static const char* const kCoremlComputeUnits_CPUOnly = "CPUOnly";
-static const char* const kCoremlComputeUnits_ALL = "ALL";
+static const char* const kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine = "CPUAndNeuralEngine";
+static const char* const kCoremlProviderOption_MLComputeUnits_CPUAndGPU = "CPUAndGPU";
+static const char* const kCoremlProviderOption_MLComputeUnits_CPUOnly = "CPUOnly";
+static const char* const kCoremlProviderOption_MLComputeUnits_ALL = "ALL";
 static const char* const kCoremlProviderOption_MLComputeUnits = "MLComputeUnits";
 static const char* const kCoremlProviderOption_ModelFormat = "ModelFormat";
 // same as COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES

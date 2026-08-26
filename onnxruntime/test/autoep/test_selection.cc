@@ -521,7 +521,8 @@ TEST(AutoEpSelection, CoreMLEPMultipleDevicesBothReachTheFactory) {
   ep_devices.emplace_back(coreml_devices.npu);
   ep_devices.emplace_back(coreml_devices.gpu);
 
-  for (const char* compute_units : {kCoremlComputeUnits_CPUAndGPU, kCoremlComputeUnits_CPUAndNeuralEngine}) {
+  for (const char* compute_units : {kCoremlProviderOption_MLComputeUnits_CPUAndGPU,
+                                    kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine}) {
     SCOPED_TRACE(compute_units);
 
     Ort::KeyValuePairs ep_options;
@@ -643,7 +644,8 @@ TEST(AutoEpSelection, CoreMLLegacySessionReportsFirstAdvertisedEpDevice) {
 
   Ort::SessionOptions session_options;
   session_options.AppendExecutionProvider(
-      kCoreMLExecutionProvider, {{kCoremlProviderOption_MLComputeUnits, kCoremlComputeUnits_CPUOnly}});
+      kCoreMLExecutionProvider,
+      {{kCoremlProviderOption_MLComputeUnits, kCoremlProviderOption_MLComputeUnits_CPUOnly}});
   Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
 
   const OrtApi* c_api = &Ort::GetApi();

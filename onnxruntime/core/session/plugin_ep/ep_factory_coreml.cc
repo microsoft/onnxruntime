@@ -213,9 +213,9 @@ OrtStatus* CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(
   const auto compute_units_it = options.find(kCoremlProviderOption_MLComputeUnits);
   if (compute_units_it == options.end()) {
     options[kCoremlProviderOption_MLComputeUnits] =
-        (num_npu > 0 && num_gpu > 0) ? kCoremlComputeUnits_ALL
-        : num_npu > 0                ? kCoremlComputeUnits_CPUAndNeuralEngine
-                                     : kCoremlComputeUnits_CPUAndGPU;
+        (num_npu > 0 && num_gpu > 0) ? kCoremlProviderOption_MLComputeUnits_ALL
+        : num_npu > 0                ? kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine
+                                     : kCoremlProviderOption_MLComputeUnits_CPUAndGPU;
     return nullptr;
   }
 
@@ -226,9 +226,11 @@ OrtStatus* CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(
   // the classification below accordingly.
   const std::string& compute_units = compute_units_it->second;
   const bool enables_npu =
-      compute_units == kCoremlComputeUnits_CPUAndNeuralEngine || compute_units == kCoremlComputeUnits_ALL;
+      compute_units == kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine ||
+      compute_units == kCoremlProviderOption_MLComputeUnits_ALL;
   const bool enables_gpu =
-      compute_units == kCoremlComputeUnits_CPUAndGPU || compute_units == kCoremlComputeUnits_ALL;
+      compute_units == kCoremlProviderOption_MLComputeUnits_CPUAndGPU ||
+      compute_units == kCoremlProviderOption_MLComputeUnits_ALL;
 
   if ((enables_npu && num_npu == 0) || (enables_gpu && num_gpu == 0)) {
     const std::string message = MakeString("MLComputeUnits value '", compute_units,
