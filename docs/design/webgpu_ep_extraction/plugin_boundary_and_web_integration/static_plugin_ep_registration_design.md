@@ -273,8 +273,8 @@ Verified on Windows with `--use_webgpu static_plugin`, Debug:
   `InferenceSessionTests.WebGpuVirtualDeviceRejectedWithoutCompileOnly` pass, which covers session creation and EP
   instantiation end to end through the public V2 API on the static plugin path.
 
-Not yet verified: operator execution. The development machine is a virtual machine with no real GPU, so only the
-virtual WebGPU device is surfaced and non-compile-only sessions are rejected up front. This was confirmed to be a
+Not yet verified locally: operator execution. The development machine is a virtual machine with no real GPU, so only
+the virtual WebGPU device is surfaced and non-compile-only sessions are rejected up front. This was confirmed to be a
 property of the host rather than of static linking by building the shared library plugin configuration
 (`--use_webgpu shared_lib`) on the same host and running the same tests: it passes and fails exactly the same set
 (`WebGpuVirtualDeviceCompileOnlyEndToEnd` and `WebGpuVirtualDeviceRejectedWithoutCompileOnly` pass;
@@ -284,6 +284,22 @@ message). Operator coverage on either plugin path requires a host with a GPU.
 The shared library plugin configuration was also re-verified after the D7 change, since `include/onnxruntime/ep/api.h`
 is shared with the CUDA plugin EP. It builds, and `onnxruntime_providers_webgpu.dll` still exports exactly the
 unprefixed `CreateEpFactories` and `ReleaseEpFactory` required by `EpLibraryPlugin::Load`, per D2.
+
+### CI coverage
+
+No pre-existing CI leg built this configuration, since both new CMake options default to `OFF`. Two jobs were added:
+
+- `webgpu_static_plugin_build_x64_RelWithDebInfo` in `.github/workflows/windows_webgpu.yml`, which builds and runs the
+  tests on a GPU-equipped pool. This closes the operator execution gap above. Note that it must not set
+  `onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON`, which is incompatible with `onnxruntime_USE_EP_API_ADAPTERS`.
+- `build-linux-webgpu-static-plugin-x64-release` in `.github/workflows/linux_webgpu.yml`, build only, mirroring its
+  sibling job. This is the only GCC coverage of the EP adapters, and the only coverage of the `onnxruntime_python.cmake`
+  change, hence `--build_wheel` is kept.
+
+The first run of the Linux job surfaced `-Werror=maybe-uninitialized` errors. The EP adapter `OpKernelInfo` defines its
+attribute accessors inline in the header, so GCC can see their failure and exception paths, whereas the in-tree
+`OpKernelInfo` hides them behind an out-of-line definition. Any value that is only read when the attribute lookup
+succeeded must be value-initialized.
 
 ## Resolution of workstream open questions
 
