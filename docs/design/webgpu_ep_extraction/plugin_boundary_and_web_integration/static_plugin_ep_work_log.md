@@ -30,7 +30,7 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Shared library plugin build (`--use_webgpu shared_lib`) | Green in CI, no regression from D2/D7 |
 | CUDA plugin EP (shares `include/onnxruntime/ep/*`) | Green in CI |
 | Operator-level validation on a real GPU | **Done — no behavioural difference**, see [Testing](#testing) |
-| Linux/GCC build (`--use_webgpu static_plugin`) | **Red** — third `-Werror` batch (`array-bounds`), see [GCC](#gcc-and-werror) |
+| Linux/GCC build (`--use_webgpu static_plugin`) | `array-bounds` fixed at the source; verified locally under GCC 14, **not yet confirmed in CI** — see [GCC](#gcc-and-werror) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
 | Emscripten / ORT Web | Not yet exercised — see [Open items](#open-items) |
 | PR | Not opened yet |
@@ -326,7 +326,7 @@ local GCC build (or a throwaway dispatch with `--compile_no_warning_as_error`) t
   source. Handled by applying the same `-Wno-maybe-uninitialized` suppression the CUDA plugin EP uses, scoped
   to the `onnxruntime_providers_webgpu` target, GCC only, and only when `onnxruntime_USE_EP_API_ADAPTERS` is on
   so that non-adapter builds stay strict.
-- Batch 3, in run `33009901327`, **still unfixed**: `-Werror=array-bounds`, a *different* warning class, at
+- Batch 3, in run `33009901327`, **fixed at the source**: `-Werror=array-bounds`, a *different* warning class, at
   `onnxruntime/contrib_ops/webgpu/quantization/matmul_nbits_mlp.cc:47` in `EmitGateActivationExpr`:
 
   ```
@@ -339,14 +339,66 @@ local GCC build (or a throwaway dispatch with `--compile_no_warning_as_error`) t
   the batch-2 `-Wno-maybe-uninitialized` suppression **is** working — it is present on the failing command line
   and the batch-2 files compiled clean. The file is pre-existing (added by PR #28280, `88ca23fcd5`), not authored
   by this branch; the adapters PCH pulls in `include/onnxruntime/ep/adapters.h`, which changes inlining and is
-  why only the adapters config trips it. Fix not yet chosen: rewrite at the source (e.g. ORT's `MakeString`, or
-  reserve + append) versus extending the existing target-scoped suppression with `-Wno-array-bounds`.
+  why only the adapters config trips it. Fixed by building the expression with ORT's `MakeString` instead of a
+  `std::string` concat chain — a single-site source fix, preferred over extending the target-scoped suppression
+  with `-Wno-array-bounds`, which would have blinded the whole provider to a genuinely useful warning.
+
+### The complete GCC 14 warning inventory
+
+The batch-at-a-time discovery loop was finally closed by enumerating **every** warning in one pass: a full
+container build with `--compile_no_warning_as_error`, then grouping the log by warning class. The result:
+
+| Warning class | Count | Where |
+| --- | --- | --- |
+| `-Wattributes` | 276 | Dawn generated code (`dawn_proc.cpp`) |
+| `-Wunused-parameter` | 55 | ONNX (`onnx/defs/**`) |
+| `-Wdangling-pointer=` | 3 | Dawn / Tint |
+| `-Wchanges-meaning` | 3 | Dawn (`SystemEvent.h`) |
+| `-Wstringop-overflow=` | 2 | flatbuffers (`reflection.cpp`) |
+| `-Warray-bounds=` | **1** | **ORT — `matmul_nbits_mlp.cc:47`** |
+| `-Wstringop-overread` | 1 | telemetry (`sqlite3_retail.c`) |
+
+**Exactly one warning in the whole build is attributable to ORT's own source**, and it is the batch-3 failure.
+Everything else is third-party, in targets that do not compile with `-Werror`. So there is no batch 4: fixing
+this one site is expected to turn the leg green.
+
+### Reproducing the CI compiler locally
+
+Worth the setup cost — it turns a ~28 minute CI round trip per batch into a local loop, and it is the only way
+to enumerate all batches at once.
+
+The CI base image (`onnxruntimebuildcache.azurecr.io/.../cpu_x64_almalinux8_gcc14`) requires ACR auth and is
+**not pullable**. An equivalent image is easy to build, and reproduces the compiler exactly
+(GCC 14.2.1 20250110, Red Hat) — `almalinux:8` + `epel-release` + `gcc-toolset-14` + `python3.11`, with
+`cmake ninja packaging numpy setuptools wheel` from pip. Notes:
+
+- **Python 3.11 is required, not the distro's 3.9** — `tools/ci_build/build_args.py` uses a `match` statement
+  (3.10+). CI itself uses `/opt/python/cp310-cp310/bin`.
+- `--allow_running_as_root` is required inside the container.
+- **No X11 dev packages are needed**, because `cmake/external/onnxruntime_external_deps.cmake` sets
+  `DAWN_USE_X11 OFF` unconditionally. This is what keeps the image minimal.
+- Clone into the WSL native filesystem, not `/mnt/d` — building over the 9p mount is crippling. Only
+  `cmake/external/onnx` and `cmake/external/libprotobuf-mutator` need initialising for a native Linux build.
+
+To re-check a single file without paying for a whole build, override `CXX_FLAGS` on the generated makefile
+rule, which lets you promote warnings back to errors against an existing build tree:
+
+```bash
+FLAGS=$(sed -n 's/^CXX_FLAGS = //p' CMakeFiles/onnxruntime_providers_webgpu.dir/flags.make)
+make -f CMakeFiles/onnxruntime_providers_webgpu.dir/build.make \
+     CMakeFiles/onnxruntime_providers_webgpu.dir/src/<path>/matmul_nbits_mlp.cc.o \
+     CXX_FLAGS="$FLAGS -Werror"
+```
+
+Always run the **negative control** — rebuild the unfixed source through the same harness and confirm it still
+errors. Otherwise a harness that silently fails to exercise the warning looks exactly like a successful fix.
 
 ## Open items
 
-1. **Fix the Linux leg.** It is currently red on a third `-Werror` batch (`array-bounds`); see
-   [GCC](#gcc-and-werror). Enumerate the *full* remaining warning list with a local GCC build rather than
-   discovering one batch per CI round trip. Dispatch a fresh run rather than re-running an old one.
+1. **Fix the Linux leg.** The batch-3 `array-bounds` break is fixed at the source, and a local GCC 14 build
+   confirms it is the *only* ORT-owned warning in the whole build (see
+   [The complete GCC 14 warning inventory](#the-complete-gcc-14-warning-inventory)), so no further batches are
+   expected. Not yet confirmed by CI — dispatch a fresh run rather than re-running an old one.
 2. ~~**Operator-level validation on a real GPU.**~~ **Done** — see [Results on a real GPU](#results-on-a-real-gpu).
    No behavioural difference. Remaining sub-item: decide whether to close the 12-test
    `HardSwish_WebGPU` / `MatMul2BitsWebGpu` coverage gap on the plugin path, or document it as known.

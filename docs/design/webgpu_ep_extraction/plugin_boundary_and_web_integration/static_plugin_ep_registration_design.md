@@ -342,6 +342,17 @@ false positives use a suppression scoped to the `onnxruntime_providers_webgpu` t
 `onnxruntime_USE_EP_API_ADAPTERS`, so non-adapter builds stay strict. This mirrors what the CUDA plugin EP does in
 `cmake/onnxruntime_providers_cuda_plugin.cmake`.
 
+That full local enumeration has since been done, and it is worth recording what it found: of the ~340 warnings GCC 14
+emits across the whole `static_plugin` build, **exactly one is attributable to ORT's own source** — the
+`-Warray-bounds` false positive in `contrib_ops/webgpu/quantization/matmul_nbits_mlp.cc`, fixed by building the
+expression with `MakeString` instead of a `std::string` concat chain. Everything else lives in Dawn, ONNX,
+flatbuffers, or the telemetry dependency, in targets that do not use `-Werror`. The practical lesson is that the
+adapters do not make ORT's code broadly warning-prone; they perturb inlining at a small number of specific sites,
+so a targeted source fix is almost always available and preferable to a blanket target-wide suppression.
+
+When validating such a fix locally, always rebuild the *unfixed* source through the same harness first and confirm it
+still errors. A harness that silently fails to exercise the warning is indistinguishable from a successful fix.
+
 ## Resolution of workstream open questions
 
 > Should static factories be registered before environment creation or through environment construction options?
