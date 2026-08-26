@@ -88,11 +88,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   }
 
-  auto lambda = [&](ptrdiff_t index) {
-    const auto gather_index = gather_internal::GetGatherCopyIndex(index, N);
-    const int64_t batch = gather_index.batch;
-    const int64_t i = gather_index.index;
-
+  auto lambda = [&](int64_t batch, int64_t i) {
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
     Tin idx = indices_data[i];
@@ -110,10 +106,8 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 
   concurrency::ThreadPool::TryParallelFor(
       tp, gather_internal::GetGatherCopyWorkCount(M, N), static_cast<double>(block_size),
-      [&lambda](ptrdiff_t first, ptrdiff_t last) {
-        for (ptrdiff_t index = first; index < last; ++index) {
-          lambda(index);
-        }
+      [&lambda, N](ptrdiff_t first, ptrdiff_t last) {
+        gather_internal::ForEachGatherCopyIndex(first, last, N, lambda);
       });
 
   return Status::OK();

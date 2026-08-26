@@ -22,6 +22,14 @@ struct GatherCopyIndex {
 ptrdiff_t GetGatherCopyWorkCount(int64_t num_batches, int64_t num_indices);
 GatherCopyIndex GetGatherCopyIndex(ptrdiff_t index, int64_t num_indices);
 
+template <typename Callback>
+void ForEachGatherCopyIndex(ptrdiff_t first, ptrdiff_t last, int64_t num_indices, const Callback& callback) {
+  for (ptrdiff_t index = first; index < last; ++index) {
+    const auto gather_index = GetGatherCopyIndex(index, num_indices);
+    callback(gather_index.batch, gather_index.index);
+  }
+}
+
 }  // namespace gather_internal
 
 class Gather : public OpKernel, public GatherBase {

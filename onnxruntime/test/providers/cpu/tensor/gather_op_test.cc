@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include <limits>
+
 #include "core/providers/cpu/tensor/gather.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -354,9 +356,18 @@ TEST(GatherOpTest, Gather_overflow_check) {
   const ptrdiff_t work_count = gather_internal::GetGatherCopyWorkCount(dim_val, dim_val);
   ASSERT_GT(work_count, std::numeric_limits<int32_t>::max());
 
-  const auto last_index = gather_internal::GetGatherCopyIndex(work_count - 1, dim_val);
-  EXPECT_EQ(last_index.batch, dim_val - 1);
-  EXPECT_EQ(last_index.index, dim_val - 1);
+  std::vector<gather_internal::GatherCopyIndex> visited_indices;
+  gather_internal::ForEachGatherCopyIndex(
+      work_count - 2, work_count, dim_val,
+      [&visited_indices](int64_t batch, int64_t index) {
+        visited_indices.push_back({batch, index});
+      });
+
+  ASSERT_EQ(visited_indices.size(), 2);
+  EXPECT_EQ(visited_indices[0].batch, dim_val - 1);
+  EXPECT_EQ(visited_indices[0].index, dim_val - 2);
+  EXPECT_EQ(visited_indices[1].batch, dim_val - 1);
+  EXPECT_EQ(visited_indices[1].index, dim_val - 1);
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
