@@ -31,7 +31,7 @@ fn kv_cache_dequant_vec4(
   let word_idx = elem_base / KV_CACHE_QUANT_ELEMENTS_PER_WORD;
   let packed = (*kv_cache)[base + 1u + word_idx];
   let shift = (elem_base % KV_CACHE_QUANT_ELEMENTS_PER_WORD) * KV_CACHE_QUANT_BITS;
-  return kv_cache_quant_unpack_vec4(packed >> shift) * q_element_t(scale);
+  return kv_cache_quant_dequant_vec4(packed >> shift, scale);
 }
 #endif
 

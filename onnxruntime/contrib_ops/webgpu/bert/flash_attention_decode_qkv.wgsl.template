@@ -50,7 +50,11 @@ var<workgroup> tq_lut: array<f32, 16>;
 #else
 var<workgroup> tile_q: array<array<q_value_t, tile_size_k_vec>, m_tile>;
 #endif
+#if kv_cache_quantization
+var<workgroup> inner_qk_values: array<array<array<f32, tile_size_k_vec>, tile_size>, m_tile>;
+#else
 var<workgroup> inner_qk_values: array<array<array<q_element_t, tile_size_k_vec>, tile_size>, m_tile>;
+#endif
 var<workgroup> tile_qk: array<array<q_element_t, tile_size>, m_tile>;
 var<workgroup> tile_output: array<array<q_value_t, v_head_size_vec>, m_tile>;
 var<workgroup> qkv_values: array<array<array<q_value_t, tile_size_k_vec>, sub_tile_count>, m_tile>;
@@ -156,10 +160,12 @@ $MAIN {
           let packed = present_key[base + 1u + word_idx];
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             for (var vec = 0u; vec < KV_CACHE_QUANT_VEC4S_PER_WORD; vec++) {
-              let k_vec =
-                  kv_cache_quant_unpack_vec4(packed >> (vec * 4u * KV_CACHE_QUANT_BITS));
+              let k_vec = kv_cache_quant_dequant_vec4(
+                  packed >> (vec * 4u * KV_CACHE_QUANT_BITS),
+                  kv_cache_k_scales[row_offset + local_row]);
               let q_vec = all_q[m][word_idx * KV_CACHE_QUANT_VEC4S_PER_WORD + vec];
-              inner_qk_values[m][row_offset + local_row][local_col] += dot(k_vec, q_vec);
+              inner_qk_values[m][row_offset + local_row][local_col] +=
+                  dot(vec4<f32>(k_vec), vec4<f32>(q_vec));
             }
           }
         }
@@ -235,22 +241,34 @@ $MAIN {
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     let q_idx = q_base + m;
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+#if kv_cache_quantization
+      var sum = f32(0);
+#else
       var sum = q_element_t(0);
+#endif
       for (var i = 0u; i < tile_size_k_vec; i++) {
         sum += inner_qk_values[m][local_idx][i];
       }
-#if kv_cache_quantization
-      // Apply the per-vector scale after the inner loop.
-      sum *= q_element_t(kv_cache_k_scales[local_idx]);
-#endif
 
-      sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx);
+#if kv_cache_quantization
+      sum += f32(loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx));
+#else
+      sum += loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx);
+#endif
 #if is_unidirectional
       if (total_seq_offset + local_idx > past_sequence_length + q_idx) {
+#if kv_cache_quantization
+        sum = f32(-3.4028234663852886e+38f);
+#else
         sum = q_element_t(-65504.0f);
+#endif
       }
 #endif
+#if kv_cache_quantization
+      tile_qk[m][local_idx] = q_element_t(sum);
+#else
       tile_qk[m][local_idx] = sum;
+#endif
     }
     workgroupBarrier();
 
@@ -303,8 +321,7 @@ $MAIN {
           let packed = present_value[base + 1u + quantized_word_idx];
           let quantized_shift =
               (elem_base % KV_CACHE_QUANT_ELEMENTS_PER_WORD) * KV_CACHE_QUANT_BITS;
-          let v_val =
-              kv_cache_quant_unpack_vec4(packed >> quantized_shift) * q_element_t(scale);
+          let v_val = kv_cache_quant_dequant_vec4(packed >> quantized_shift, scale);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             qkv_values[m][local_row][local_col] += v_val * tile_qk[m][row_offset + local_row];
           }

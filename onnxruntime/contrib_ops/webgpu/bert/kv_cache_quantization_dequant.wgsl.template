@@ -25,3 +25,7 @@ fn kv_cache_quant_unpack_vec4(packed: u32) -> q_value_t {
   return q_value_t(signed_values);
 #endif
 }
+
+fn kv_cache_quant_dequant_vec4(packed: u32, scale: f32) -> q_value_t {
+  return q_value_t(vec4<f32>(kv_cache_quant_unpack_vec4(packed)) * scale);
+}
