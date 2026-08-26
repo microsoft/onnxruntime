@@ -302,6 +302,74 @@ void RunNGramHashMappingNegativeIdsTest() {
   test.Run();
 }
 
+
+// Verifies head_offsets is applied as a fixed additive offset after the modulo, per output head.
+template <typename T>
+void RunNGramHashMappingHeadOffsetsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("head_offsets", {4}, {1000, 2000, 3000, 4000});
+  test.AddOutput<T>("hash_ids", {1, 4, 4},
+                    {1084, 2084, 3098, 4096,
+                     1011, 2011, 3039, 4037,
+                     1003, 2003, 3048, 4048,
+                     1003, 2003, 3071, 4071});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// Verifies reset_on_eos substitutes eos_token_id for shifts crossing an EOS boundary.
+template <typename T>
+void RunNGramHashMappingEosResetTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 9, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {9});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {84, 102,
+                     68, 15,
+                     66, 13,
+                     3, 51});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// Verifies segment_ids resets causal history at packed-sequence boundaries within input_ids.
+template <typename T>
+void RunNGramHashMappingSegmentIdsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<int32_t>("segment_ids", {1, 4}, {0, 0, 1, 1});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {33, 33,
+                     11, 11,
+                     55, 55,
+                     3, 3});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
 // A non-positive head vocabulary size has no meaningful modulo. The CPU kernel rejects it rather
 // than silently emitting a constant hash id of 0 for that head.
 template <typename T>
@@ -611,6 +679,31 @@ TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt64) {
 // past_ids/present_ids shaders any execution coverage at all.
 TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt32) {
   RunNGramHashMappingChunkedTest<int32_t>();
+}
+
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt64) {
+  RunNGramHashMappingHeadOffsetsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt32) {
+  RunNGramHashMappingHeadOffsetsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt64) {
+  RunNGramHashMappingEosResetTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt32) {
+  RunNGramHashMappingEosResetTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt64) {
+  RunNGramHashMappingSegmentIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt32) {
+  RunNGramHashMappingSegmentIdsTest<int32_t>();
 }
 
 TEST(EngramOpsTest, NGramHashMappingNegativeIdsInt64) {

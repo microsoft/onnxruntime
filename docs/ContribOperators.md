@@ -4276,24 +4276,33 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NGramHashMapping"></a><a name="com.microsoft.ngramhashmapping">**com.microsoft.NGramHashMapping**</a>
 
   Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
-  
+
   For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
   sequence with pad_id, and computes
   mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
   For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
   The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
   heads for n=2 first, then n=3, and so on.
-  
+
   An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
   across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
   those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
   (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
-  Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
-  and running it over consecutive chunks while threading present_ids into past_ids produce identical
-  hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
-  past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
-  only when the whole operator call is unconditionally committed; a caller that may select a prefix or
-  roll back must preserve past_ids.
+  Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
+  Running the op once over a full sequence and running it over consecutive chunks while threading
+  present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
+  pad_id, or eos_token_id when it is provided.
+
+  Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
+
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries: any shifted position at or before the most recent EOS strictly before the current
+    position is replaced with eos_token_id instead of the real token.
+  - segment_ids, when provided, additionally resets causal history at any position whose segment id
+    differs from the immediately preceding position's segment id within input_ids. Segment boundaries
+    are not checked against past_ids history.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+    vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
 
 #### Version
 
@@ -4308,19 +4317,27 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of hash heads emitted for each n-gram order.</dd>
 <dt><tt>pad_id</tt> : int (required)</dt>
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.</dd>
+<dt><tt>reset_on_eos</tt> : int</dt>
+<dd>When non-zero and the eos_token_id input is provided, reset causal n-gram history at EOS boundaries as described in the op doc. Default is 0 (disabled), which preserves the original pad_id-only behavior.</dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (3 - 7)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
 <dd>Compressed tokenizer ids with shape (batch_size, sequence_length).</dd>
 <dt><tt>multipliers</tt> : M</dt>
-<dd>Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
+<dd>Per-shift hash multipliers with shape at least (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
 <dt><tt>past_ids</tt> (optional) : M</dt>
-<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id.</dd>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id, or eos_token_id when provided.</dd>
+<dt><tt>head_offsets</tt> (optional) : M</dt>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.</dd>
+<dt><tt>eos_token_id</tt> (optional) : M</dt>
+<dd>Optional scalar end-of-sequence token id, same type as input_ids. Required for reset_on_eos to take effect and for EOS-based substitution of unavailable prior context; see the op doc.</dd>
+<dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
+<dd>Optional per-token segment id with shape (batch_size, sequence_length), used to reset causal history at packed-sequence boundaries within input_ids.</dd>
 </dl>
 
 #### Outputs (1 - 2)
