@@ -848,6 +848,10 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   // shared_ort_allocators_.
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
+    if (!replace_existing) {
+      return Status::OK();
+    }
+
     shared_ort_allocators_.erase(it);
   }
 
