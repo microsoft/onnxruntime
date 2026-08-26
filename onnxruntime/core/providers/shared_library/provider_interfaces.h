@@ -1008,7 +1008,6 @@ struct ProviderHost {
                                                  const std::filesystem::path& external_data_path) = 0;
   virtual Status Utils__ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
                                                         const std::filesystem::path& external_data_path) = 0;
-  virtual Status Utils__SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) = 0;
 
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
@@ -1423,6 +1422,8 @@ struct ProviderHost {
   virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
+
+  virtual Status Utils__SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

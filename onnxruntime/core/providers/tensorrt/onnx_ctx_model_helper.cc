@@ -233,9 +233,6 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     auto engine_cache_path = ctx_model_dir.append(cache_path);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
 
-    // Sanitize the path before opening.
-    ORT_RETURN_IF_ERROR(utils::SanitizeFilePath(engine_cache_path, engine_cache_path));
-
     // If it's a weight-stripped engine cache, it needs to be refitted even though the refit flag is not enabled
     if (!weight_stripped_engine_refit_) {
       weight_stripped_engine_refit_ = IsWeightStrippedEngineCache(engine_cache_path);
@@ -250,6 +247,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
         weight_stripped_engine_refit_ = false;
       }
     }
+
+    // Sanitize the path before opening.
+    ORT_RETURN_IF_ERROR(utils::SanitizeFilePath(engine_cache_path, engine_cache_path));
 
     if (!std::filesystem::exists(engine_cache_path)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,

@@ -601,9 +601,13 @@ Status SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path
     absolute_path = path;
   } else {
     const std::filesystem::path cwd = std::filesystem::current_path(ec);
-    ORT_RETURN_IF(ec, "Failed to resolve the current working directory to sanitize path: '",
-                  path, "', error: ", ec.message());
+    ORT_RETURN_IF(ec, "Failed to resolve the current working directory to sanitize path: ",
+                  path, ", error: ", ec.message());
     absolute_path = cwd / path;
+    // A drive-relative path (e.g. "C:blob.bin") stays relative when its drive differs from the current directory's
+    // drive, and cannot be resolved without invoking the Win32 path parsing.
+    ORT_RETURN_IF(!absolute_path.is_absolute(),
+                  "The path is not fully qualified (e.g. a drive-relative path): ", path);
   }
   absolute_path = absolute_path.lexically_normal();
   absolute_path.make_preferred();

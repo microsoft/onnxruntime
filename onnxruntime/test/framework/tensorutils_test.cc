@@ -743,6 +743,18 @@ TEST(TensorProtoUtilsTest, SanitizeFilePathAddsExtendedPrefix) {
     EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\NUL"));
   }
 
+  // Forward slashes are normalized to backslashes.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"C:/dir/blob.bin"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\blob.bin"));
+  }
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"C:\\dir/sub\\blob.bin"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\sub\\blob.bin"));
+  }
+
   // A bare relative device name is made absolute against the current directory and prefixed,
   // so it can no longer resolve to the device.
   {
@@ -765,11 +777,12 @@ TEST(TensorProtoUtilsTest, SanitizeFilePathAddsExtendedPrefix) {
     const std::wstring already = L"\\\\?\\C:\\dir\\blob.bin";
     ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already}, out));
     EXPECT_EQ(out.native(), already);
-
-    std::filesystem::path out_unc;
-    const std::wstring already_unc = L"\\\\?\\UNC\\server\\share\\blob.bin";
-    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already_unc}, out_unc));
-    EXPECT_EQ(out_unc.native(), already_unc);
+  }
+  {
+    std::filesystem::path out;
+    const std::wstring already = L"\\\\?\\UNC\\server\\share\\blob.bin";
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already}, out));
+    EXPECT_EQ(out.native(), already);
   }
 
   // The output may alias the input.
@@ -777,6 +790,20 @@ TEST(TensorProtoUtilsTest, SanitizeFilePathAddsExtendedPrefix) {
     std::filesystem::path p{L"C:\\dir\\blob.bin"};
     ASSERT_STATUS_OK(utils::SanitizeFilePath(p, p));
     EXPECT_EQ(p.native(), std::wstring(L"\\\\?\\C:\\dir\\blob.bin"));
+  }
+
+  // A drive-relative path (drive letter with no root directory) cannot be fully qualified without
+  // Win32 path parsing, so it is rejected rather than turned into a malformed "\\?\<drive>:cache.bin".
+  {
+    // Use a drive letter different from the current directory's drive, otherwise cwd/path would
+    // resolve it to an absolute path (a same-drive "C:foo" becomes "<cwd>\foo"). A cross-drive
+    // drive-relative path stays relative, which is the case we want to exercise.
+    const std::wstring cwd_root = std::filesystem::current_path().root_name().native();
+    const wchar_t cur_drive = cwd_root.empty() ? L'C' : cwd_root[0];
+    const wchar_t other_drive = (cur_drive == L'Z' || cur_drive == L'z') ? L'Y' : L'Z';
+    const std::filesystem::path drive_relative = std::wstring(1, other_drive) + L":cache.bin";
+    std::filesystem::path out;
+    EXPECT_FALSE(utils::SanitizeFilePath(drive_relative, out).IsOK());
   }
 }
 #else
