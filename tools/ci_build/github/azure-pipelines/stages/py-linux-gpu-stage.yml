@@ -32,6 +32,10 @@ parameters:
   type: string
   default: ''
 
+- name: trt_major_version
+  type: string
+  default: ''
+
 - name: cmake_cuda_archs
   type: string
   default: ''
@@ -90,6 +94,11 @@ stages:
         ${{ else }}:
           value: ''
       - template: ../templates/common-variables.yml
+      - name: trt_major_version_build_arg
+        ${{ if ne(parameters.trt_major_version, '') }}:
+          value: '--build-arg TRT_MAJOR_VERSION=${{ parameters.trt_major_version }}'
+        ${{ else }}:
+          value: ''
       - name: trt_version
         ${{ if ne(parameters.trt_version_override, '') }}:
           value: ${{ parameters.trt_version_override }}
@@ -119,7 +128,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
-          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} $(trt_major_version_build_arg) --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
 
