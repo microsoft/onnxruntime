@@ -7,15 +7,71 @@
 - **Related roadmap:** [Future Directions: Constrained Environment Partitioning](future_directions_constrained_env.md)
 - **Current user documentation:** [Partitioning with Annotations and Memory Constraints](PartitioningWithAnnotationsAndMemoryConstraints.md)
 - **CUDA workspace inventory:** [CUDA Kernel Workspace Inventory](cuda_kernel_workspace_inventory.md)
-- **Level-2 verification branch:** [`chilo/level2-workspace-verification`](https://github.com/microsoft/onnxruntime/tree/chilo/level2-workspace-verification)
-- **Static preallocation branch:** [`chilo/static-workspace-preallocation`](https://github.com/microsoft/onnxruntime/tree/chilo/static-workspace-preallocation)
-- **Static preallocation draft PR:** [#32071](https://github.com/microsoft/onnxruntime/pull/32071)
+- **Meeting summary:** [Workspace-Aware Memory Optimization](workspace_estimation_and_preallocation_summary.md)
 
 This document records the proposed policy for combining profile-guided workspace
 measurements, pre-partition workspace estimation, and post-assignment workspace
-declarations. The branches above implement narrow pilots described in the implementation
+declarations. The PRs below implement narrow pilots described in the implementation
 status sections below. The remaining sections describe the broader target design and must
 not be read as fully implemented behavior.
+
+## End-to-End Architecture
+
+Workspace estimation and preallocation form one staged contract:
+
+```text
+Maximum-shape hints
+        |
+        v
+Level 1 estimate during GetCapability()
+        |
+        v
+Partitioning reservation and EP assignment
+        |
+        v
+Level 2 declaration after kernel creation and prepacking
+        |
+        v
+Verify Level 2 against the partitioning reservation
+        |
+        v
+Activation-aware workspace preallocation
+        |
+        v
+Runtime bounds check and dynamic fallback
+```
+
+### Implementation status
+
+| Stage | Responsibility | Timing | Pilot |
+|---|---|---|---|
+| Planning shapes | Infer estimation-only shapes without changing runtime input constraints | Before partitioning | [#31613](https://github.com/microsoft/onnxruntime/pull/31613), merged |
+| Level 1 | Estimate workspace for budgeting and `GetCapability()` decisions | Before kernel creation | [#31962](https://github.com/microsoft/onnxruntime/pull/31962) |
+| Level 2 | Declare kernel workspace and verify the partitioning reservation | After kernel creation and prepacking | [#32189](https://github.com/microsoft/onnxruntime/pull/32189) |
+| Preallocation | Pack workspace with non-overlapping activations | Runtime memory-pattern planning | [#32071](https://github.com/microsoft/onnxruntime/pull/32071) |
+
+These changes are a stacked implementation: Level 2 consumes the reservation selected by
+Level 1, and preallocation consumes the declaration produced by Level 2. The PRs retain
+dynamic allocation fallbacks so unsupported or unresolved kernels preserve existing
+behavior.
+
+### Level 1 and Level 2 contract
+
+| Property | Level 1 | Level 2 |
+|---|---|---|
+| Primary question | Can the candidate partition fit? | What does the constructed kernel require? |
+| Primary use | Partitioning and memory-budget decisions | Verification and allocation planning |
+| Available information | Node, planning shapes, EP and device state | Kernel, prepacked weights, selected algorithm |
+| Expected precision | Conservative estimate | More precise declaration |
+| Can affect initial EP assignment? | Yes | No; kernel creation occurs after assignment |
+| Missing information | Use a compatible profile or fallback estimate | Retain dynamic workspace allocation |
+| Excess requirement | N/A | Warn or fail in strict mode when Level 2 exceeds the Level-1 reservation |
+
+Level 1 and Level 2 are not competing estimators. Level 1 makes the pre-assignment budget
+decision; Level 2 validates that decision with kernel-specific information and supplies the
+contract used by the memory planner. Runtime validation remains necessary because a
+declaration can be unavailable, a runtime request can exceed the declared slot, or a
+compatible memory pattern may not exist.
 
 ## Motivation
 
@@ -303,7 +359,8 @@ runtime fallback.
 
 ### Implemented Level-2 verification pilot
 
-The `chilo/level2-workspace-verification` branch adds post-assignment verification:
+Draft PR [#32189](https://github.com/microsoft/onnxruntime/pull/32189) adds
+post-assignment verification:
 
 - accepted workspace selections are retained per graph identity and node index after
   partitioning;
@@ -353,7 +410,8 @@ memory-pattern integration in commit
 [`725f01f695`](https://github.com/microsoft/onnxruntime/commit/725f01f695232a41017433f6dc6c09e4747c4ea3).
 The reviewable stacked change is draft PR
 [#32071](https://github.com/microsoft/onnxruntime/pull/32071), based on
-`chilo/level2-workspace-verification`.
+the Level-2 verification change in
+[#32189](https://github.com/microsoft/onnxruntime/pull/32189).
 The existing opt-in key is retained:
 
 ```text
@@ -755,8 +813,9 @@ Pilot status: implemented on draft PR
 - Verify Level 2 against Level 1 and profiling.
 - Retain current runtime allocation behavior.
 
-Pilot status: implemented on `chilo/level2-workspace-verification`. Verification compares
-Level 2 with the resolved reservation used for partitioning; separate profile compatibility
+Pilot status: implemented in draft PR
+[#32189](https://github.com/microsoft/onnxruntime/pull/32189). Verification compares Level 2
+with the resolved reservation used for partitioning; separate profile compatibility
 validation remains future work.
 
 ### Phase 3: Static preallocation
