@@ -1379,6 +1379,32 @@ inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
   ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
 }
 
+inline EpContextConfig::EpContextConfig(EpContextConfig&& other) noexcept
+    : Base{other.release()} {
+}
+
+inline EpContextConfig& EpContextConfig::operator=(EpContextConfig&& other) noexcept {
+  if (this != &other) {
+    reset();
+    this->p_ = other.release();
+  }
+
+  return *this;
+}
+
+inline OrtEpContextConfig* EpContextConfig::release() noexcept {
+  auto* config = this->p_;
+  this->p_ = nullptr;
+  return config;
+}
+
+inline void EpContextConfig::reset() noexcept {
+  if (this->p_ != nullptr) {
+    GetEpApi().ReleaseEpContextConfig(this->p_);
+  }
+  this->p_ = nullptr;
+}
+
 inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
   size_t ignored_max_data_size = 0;
   GetReadFunc(read_func, state, ignored_max_data_size);

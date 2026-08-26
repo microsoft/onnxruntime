@@ -109,7 +109,66 @@ namespace Experimental {
 //
 
 // Supported through 1.31 and eligible for removal in 1.32.
-using EpContextConfig [[deprecated("Use Ort::EpContextConfig")]] = Ort::EpContextConfig;
+class [[deprecated("Use Ort::EpContextConfig")]] EpContextConfig {
+ public:
+  explicit EpContextConfig(std::nullptr_t) noexcept {}
+
+  explicit EpContextConfig(const SessionOptions& session_options) : EpContextConfig{session_options.GetConst()} {}
+
+  explicit EpContextConfig(ConstSessionOptions session_options) {
+    const OrtApi* api = &GetApi();
+    Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(api);
+    auto* get_config = Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(api);
+    ThrowOnError(get_config(static_cast<const OrtSessionOptions*>(session_options), &config_));
+  }
+
+  EpContextConfig(EpContextConfig&& other) noexcept : config_{other.config_} { other.config_ = nullptr; }
+
+  EpContextConfig& operator=(EpContextConfig&& other) noexcept {
+    if (this != &other) {
+      reset();
+      config_ = other.config_;
+      other.config_ = nullptr;
+    }
+    return *this;
+  }
+
+  EpContextConfig(const EpContextConfig&) = delete;
+  EpContextConfig& operator=(const EpContextConfig&) = delete;
+
+  ~EpContextConfig() { reset(); }
+
+  OrtEpContextConfig* get() const noexcept { return config_; }
+  explicit operator bool() const noexcept { return config_ != nullptr; }
+
+  OrtEpContextConfig* release() noexcept {
+    OrtEpContextConfig* released = config_;
+    config_ = nullptr;
+    return released;
+  }
+
+  void reset() noexcept {
+    if (config_ != nullptr) {
+      if (auto* release_fn = Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&GetApi())) {
+        release_fn(config_);
+      }
+      config_ = nullptr;
+    }
+  }
+
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+    auto* get_read_func = Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_FnOrThrow(&GetApi());
+    ThrowOnError(get_read_func(config_, &read_func, &state));
+  }
+
+  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
+    auto* get_write_func = Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_FnOrThrow(&GetApi());
+    ThrowOnError(get_write_func(config_, &write_func, &state));
+  }
+
+ private:
+  OrtEpContextConfig* config_ = nullptr;
+};
 
 }  // namespace Experimental
 }  // namespace Ort

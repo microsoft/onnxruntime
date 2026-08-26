@@ -728,12 +728,29 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // filter out the ComputeCapability instances that do not need compiling so we have a std::vector that's 1:1 with
   // nodes_to_compile.
   std::vector<std::unique_ptr<ComputeCapability>> capabilities_to_compile;
+  bool accepted_external_ep_context_capability = false;
+  InlinedHashSet<std::string> accepted_node_names;
   capabilities_to_compile.reserve(std::count_if(capabilities.cbegin(), capabilities.cend(),
                                                 [](const std::unique_ptr<ComputeCapability>& entry) {
                                                   return entry != nullptr &&
                                                          entry->sub_graph != nullptr &&
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
+
+  auto indexed_sub_graph_has_external_ep_context_node = [&graph](const IndexedSubGraph& indexed_sub_graph) {
+    return std::any_of(indexed_sub_graph.nodes.cbegin(), indexed_sub_graph.nodes.cend(),
+                       [&graph](NodeIndex node_index) {
+                         const auto* node = graph.GetNode(node_index);
+                         if (node == nullptr || node->Domain() != kMSDomain || node->OpType() != "EPContext") {
+                           return false;
+                         }
+
+                         const auto& attributes = node->GetAttributes();
+                         const auto embed_mode = attributes.find("embed_mode");
+                         return embed_mode != attributes.end() && embed_mode->second.i() == 0;
+                       });
+  };
+
   for (auto& capability : capabilities) {
     // The <provider> can run a fused <sub_graph> in the <graph>.
     // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
@@ -756,6 +773,14 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = nullptr;
     if (sub_graph_available_for_assignment) {
+      accepted_external_ep_context_capability |=
+          indexed_sub_graph_has_external_ep_context_node(*capability->sub_graph);
+      for (const auto node_index : capability->sub_graph->nodes) {
+        if (const auto* node = graph.GetNode(node_index); node != nullptr) {
+          accepted_node_names.insert(node->Name());
+        }
+      }
+
       if (on_partition_assignment_fn) {
         // Call custom function provided by owner of GraphPartitioner whenever a subgraph is assigned to an EP.
         // This can be used, for example, to collect partitioning information.
@@ -766,6 +791,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
 
     if (n != nullptr) {
+      accepted_node_names.insert(n->Name());
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type, logger)) {
         nodes_to_compile.push_back(n);
@@ -778,6 +804,39 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
+  bool accepted_ep_context_node_produced = false;
+  if (ep_context_data_write_callback_required && nodes_to_compile.empty()) {
+    const auto ep_context_nodes = current_ep.GetEpContextNodes();
+    accepted_ep_context_node_produced =
+        std::any_of(ep_context_nodes.cbegin(), ep_context_nodes.cend(),
+                    [&accepted_node_names](const Node* node) {
+                      return node != nullptr && accepted_node_names.contains(node->Name());
+                    });
+  }
+
+  uint32_t required_ep_context_data_support = OrtEpContextDataSupportFlags_NONE;
+  if (ep_context_data_write_callback_required &&
+      (!nodes_to_compile.empty() || accepted_ep_context_node_produced)) {
+    required_ep_context_data_support |= OrtEpContextDataSupportFlags_WRITE;
+  }
+
+  if (ep_context_data_read_callback_registered && accepted_external_ep_context_capability) {
+    required_ep_context_data_support |= OrtEpContextDataSupportFlags_READ;
+  }
+
+  if (required_ep_context_data_support != OrtEpContextDataSupportFlags_NONE) {
+    uint32_t supported_flags = OrtEpContextDataSupportFlags_NONE;
+    ORT_RETURN_IF_ERROR(current_ep.GetEpContextDataSupport(supported_flags));
+    ORT_RETURN_IF((required_ep_context_data_support & OrtEpContextDataSupportFlags_READ) != 0 &&
+                      (supported_flags & OrtEpContextDataSupportFlags_READ) == 0,
+                  "EP '", type,
+                  "' does not support the registered EPContext data read callback.");
+    ORT_RETURN_IF((required_ep_context_data_support & OrtEpContextDataSupportFlags_WRITE) != 0 &&
+                      (supported_flags & OrtEpContextDataSupportFlags_WRITE) == 0,
+                  "EP '", type,
+                  "' does not support the registered EPContext data write callback.");
+  }
+
   // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
   auto graph_viewer_has_non_compiled_node = [](const GraphViewer& graph_viewer) -> bool {
     for (const auto& node : graph_viewer.Nodes()) {
@@ -785,22 +844,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         return true;
       }
     }
-    return false;
-  };
-
-  auto graph_viewer_has_external_ep_context_node = [](const GraphViewer& graph_viewer) -> bool {
-    for (const auto& node : graph_viewer.Nodes()) {
-      if (node.OpType() != "EPContext") {
-        continue;
-      }
-
-      const auto& attributes = node.GetAttributes();
-      const auto embed_mode = attributes.find("embed_mode");
-      if (embed_mode != attributes.end() && embed_mode->second.i() == 0) {
-        return true;
-      }
-    }
-
     return false;
   };
 
@@ -832,32 +875,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
         viewers.push_back(std::move(graph_viewer));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
-      }
-
-      uint32_t required_ep_context_data_support = OrtEpContextDataSupportFlags_NONE;
-      if (ep_context_data_write_callback_required) {
-        required_ep_context_data_support |= OrtEpContextDataSupportFlags_WRITE;
-      }
-
-      if (ep_context_data_read_callback_registered &&
-          std::any_of(viewers.cbegin(), viewers.cend(),
-                      [&](const std::unique_ptr<GraphViewer>& viewer) {
-                        return graph_viewer_has_external_ep_context_node(*viewer);
-                      })) {
-        required_ep_context_data_support |= OrtEpContextDataSupportFlags_READ;
-      }
-
-      if (required_ep_context_data_support != OrtEpContextDataSupportFlags_NONE) {
-        uint32_t supported_flags = OrtEpContextDataSupportFlags_NONE;
-        ORT_RETURN_IF_ERROR(current_ep.GetEpContextDataSupport(supported_flags));
-        ORT_RETURN_IF((required_ep_context_data_support & OrtEpContextDataSupportFlags_READ) != 0 &&
-                          (supported_flags & OrtEpContextDataSupportFlags_READ) == 0,
-                      "EP '", type,
-                      "' does not support the registered EPContext data read callback.");
-        ORT_RETURN_IF((required_ep_context_data_support & OrtEpContextDataSupportFlags_WRITE) != 0 &&
-                          (supported_flags & OrtEpContextDataSupportFlags_WRITE) == 0,
-                      "EP '", type,
-                      "' does not support the registered EPContext data write callback.");
       }
 
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_and_viewers, node_compute_funcs));

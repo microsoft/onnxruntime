@@ -5,6 +5,8 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "core/session/onnxruntime_c_api.h"
@@ -90,6 +92,7 @@ OrtStatus* ORT_API_CALL EpContextWriteCallback(void* state, const char* file_nam
 
 }  // namespace
 
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(EpContextDataApiTest, ReadFuncIsReturnedByEpApi) {
   Ort::SessionOptions session_options;
 
@@ -299,6 +302,7 @@ TEST(EpContextDataApiTest, ReadFuncCanBeCleared) {
   EXPECT_EQ(read_state, nullptr);
   EXPECT_EQ(max_data_size, std::numeric_limits<size_t>::max());
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(EpContextDataApiTest, WriteFuncCanBeSetOnModelCompilationOptions) {
@@ -352,6 +356,7 @@ TEST(EpContextDataApiTest, WriteFuncCanBeUsedWithEpContextBinaryInformation) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(EpContextDataApiTest, ReturnedReadFuncAllowsEmptyPayloads) {
   Ort::SessionOptions session_options;
 
@@ -378,6 +383,7 @@ TEST(EpContextDataApiTest, ReturnedReadFuncAllowsEmptyPayloads) {
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, 0U);
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(EpContextDataApiTest, ReadCallbackRejectsOversizedArtifactBeforeAllocation) {
   EpContextReadCallbackState callback_state;
@@ -394,6 +400,61 @@ TEST(EpContextDataApiTest, ReadCallbackRejectsOversizedArtifactBeforeAllocation)
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, callback_state.payload.size());
 }
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
+TEST(EpContextDataApiTest, ExperimentalCxxWrapperRetainsLifecycleApi) {
+  static_assert(std::is_same_v<decltype(std::declval<Ort::Experimental::EpContextConfig&>().reset()), void>);
+  static_assert(noexcept(std::declval<Ort::Experimental::EpContextConfig&>().release()));
+
+  const auto& ort_api = Ort::GetApi();
+  auto* experimental_set_read =
+      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
+  Ort::SessionOptions session_options;
+  EpContextReadCallbackState callback_state{};
+  ASSERT_ORTSTATUS_OK(experimental_set_read(session_options, EpContextReadCallback, &callback_state));
+
+  Ort::Experimental::EpContextConfig config{session_options};
+  const auto* config_handle = config.get();
+  config = std::move(config);
+  EXPECT_EQ(config.get(), config_handle);
+
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  config.GetReadFunc(read_func, read_state);
+  EXPECT_EQ(read_func, EpContextReadCallback);
+  EXPECT_EQ(read_state, &callback_state);
+
+  config.reset();
+  EXPECT_FALSE(config);
+  EXPECT_EQ(config.release(), nullptr);
+}
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(EpContextDataApiTest, StableCxxWrapperHandlesSelfMove) {
+  Ort::SessionOptions session_options;
+  Ort::EpContextConfig config{session_options};
+  const auto* config_handle = config.get();
+
+  config = std::move(config);
+  EXPECT_EQ(config.get(), config_handle);
+
+  config.reset();
+  EXPECT_FALSE(config);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(EpContextDataApiTest, ExperimentalV28NamesForwardToStableTransport) {
   const auto& ort_api = Ort::GetApi();

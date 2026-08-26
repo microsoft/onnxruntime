@@ -658,7 +658,11 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
-ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
+inline void OrtRelease(OrtEpContextConfig* ptr) {
+  if (ptr != nullptr) {
+    GetEpApi().ReleaseEpContextConfig(ptr);
+  }
+}
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -1758,9 +1762,13 @@ struct EpContextConfig : detail::Base<OrtEpContextConfig> {
   explicit EpContextConfig(std::nullptr_t) noexcept {}
   explicit EpContextConfig(const SessionOptions& session_options);
   explicit EpContextConfig(ConstSessionOptions session_options);
+  EpContextConfig(EpContextConfig&& other) noexcept;
+  EpContextConfig& operator=(EpContextConfig&& other) noexcept;
 
   OrtEpContextConfig* get() const noexcept { return this->p_; }
   explicit operator bool() const noexcept { return this->p_ != nullptr; }
+  OrtEpContextConfig* release() noexcept;
+  void reset() noexcept;
 
   [[deprecated("Use GetReadFunc(read_func, state, max_data_size)")]]
   void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
