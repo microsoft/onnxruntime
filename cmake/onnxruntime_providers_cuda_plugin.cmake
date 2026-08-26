@@ -235,6 +235,8 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
+      # Protobuf uses offsetof on MessageLite, which is intentionally non-standard-layout.
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=1427>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
@@ -245,12 +247,21 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     endif()
 endif()
 
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND MSVC)
+if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+  # CUDA 13 diagnoses qualified friend declarations in Abseil and Protobuf as 970-D,
+  # and Protobuf's always_inline template redeclaration as 2189-D.
+  list(APPEND _cuda_plugin_shared_compile_options
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=970>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2189>"
+  )
+
+  if (MSVC)
     # Suppress unrecognized __pragma warnings emitted from CUDA headers in device code.
     list(APPEND _cuda_plugin_shared_compile_options
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>"
     )
   endif()
+endif()
 
 if (MSVC)
     list(APPEND _cuda_plugin_shared_compile_options

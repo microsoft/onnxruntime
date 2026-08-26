@@ -563,6 +563,22 @@ if (onnxruntime_USE_ARM_NEON_NCHWC)
 endif()
 
 if(onnxruntime_USE_SVE)
+  # ABI flags that EVERY SVE translation unit must carry.
+  #
+  # x18 is the AArch64 platform register: Windows ARM64 reserves it for the TEB,
+  # Darwin reserves it, and Linux shadow-call-stack builds use it. MLAS freezes
+  # SVE kernels into machine code that ships unchanged on every platform
+  # (aarch64/*_sve_asm.S), so an SVE TU that allocates x18 corrupts the TEB once
+  # those bytes run on Windows (observed: 0xC0000005 writing 0x250 inside ntdll).
+  # Saving/restoring x18 around the kernel is NOT a fix -- the OS may rewrite it
+  # at any context switch.
+  #
+  # Keep in sync with sve/gen_sve_asm.py, which applies the same flag when
+  # regenerating and hard-fails if x18 survives into a frozen section. The flag
+  # must also be on the non-frozen build of the same sources, or the ASM=OFF and
+  # ASM=ON paths would be built from differently-compiled code.
+  set(ORT_SVE_ABI_FLAGS "-ffixed-x18")
+
   if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
     check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
     if(HAS_ARM64_SVE)
@@ -1515,6 +1531,26 @@ if (onnxruntime_USE_CUDA)
     file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()
   find_package(CUDAToolkit REQUIRED)
+
+  if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
+          AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+    foreach(_cuda_include_dir IN LISTS CUDAToolkit_INCLUDE_DIRS)
+      set(_clusterlaunchcontrol_header
+          "${_cuda_include_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+      if(EXISTS "${_clusterlaunchcontrol_header}")
+        # CUDA 12.9 uses Windows's 32-bit long for PTX 64-bit operands. Shadow the toolkit
+        # header with the longlong2 correction shipped by newer CCCL releases.
+        set(_cuda_12_9_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cuda_12_9_fix")
+        ort_patch_cuda_12_9_clusterlaunchcontrol_header(
+          "${_clusterlaunchcontrol_header}"
+          "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+        if(EXISTS "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+          include_directories(BEFORE "${_cuda_12_9_fix_dir}")
+        endif()
+        break()
+      endif()
+    endforeach()
+  endif()
 
   # Note: The minimum required CUDA version is greater than 11.8.
   add_definitions("-DENABLE_BF16")
