@@ -215,23 +215,50 @@
       "expirationDate": "2027-02-06 11:23:42Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2026-08-20 11:23:42Z"
     },
-    "579eeeaac92e059f52d0c5f56feed04ec75076c839d5edfe1e9cbdbda3480f82": {
-      "signature": "579eeeaac92e059f52d0c5f56feed04ec75076c839d5edfe1e9cbdbda3480f82",
+    "f7bb4e9f08f10bfd7cf3461c2477d0cbaa6b9275aa258c6f5ab5274d27f0df22": {
+      "signature": "f7bb4e9f08f10bfd7cf3461c2477d0cbaa6b9275aa258c6f5ab5274d27f0df22",
       "alternativeSignatures": [
-        "929e05868205e740fbf7ef9683dace5940a4358e2a43f9620ce22fcb80b07cec",
-        "a862a457d75aefe2e4541689c65548d1f35b70af67c3188d5860cf30bb1b5dd8",
-        "1ec2c0978efbdc7ced383bf66fddded183dd92a49624444595683e129724bca7"
+        "dec89daa98725558758a3c5bb987d246413ba65c43d35e933c982e49e70c83eb"
       ],
-      "target": "onnxruntime/capi/onnxruntime.dll",
-      "uriBaseId": "file:///N:/_work/1/a/",
+      "target": "file:///N:/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime.dll",
       "memberOf": [
         "default"
       ],
       "tool": "binskim",
       "ruleId": "BA2007",
-      "createdDate": "2026-08-26 01:39:59Z",
-      "expirationDate": "2027-02-12 02:34:48Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 02:34:48Z"
+      "createdDate": "2026-08-26 09:37:16Z",
+      "expirationDate": "2027-02-12 10:32:35Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 10:32:35Z"
+    },
+    "67ebac3fb9322d3860806b2aaa0376c16581131ca42fbf31e6bcf000b224c733": {
+      "signature": "67ebac3fb9322d3860806b2aaa0376c16581131ca42fbf31e6bcf000b224c733",
+      "alternativeSignatures": [
+        "66f37c5af5fb77ee1e225dc2819019817f9c9c3f5957b5141254a606c17b65e4"
+      ],
+      "target": "file:///N:/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_autoep_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-08-26 09:37:16Z",
+      "expirationDate": "2027-02-12 10:32:35Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 10:32:35Z"
+    },
+    "783af79fa4bd4c485defbfedb60605bf88ab8683a4e0fd8d10869c3688db0202": {
+      "signature": "783af79fa4bd4c485defbfedb60605bf88ab8683a4e0fd8d10869c3688db0202",
+      "alternativeSignatures": [
+        "c7842ceb0febad6d30b481252b3dd594a1d4b6fdef7aaa73395bc2d9521c5033"
+      ],
+      "target": "file:///N:/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_ep_graph_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-08-26 09:37:16Z",
+      "expirationDate": "2027-02-12 10:32:35Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 10:32:35Z"
     }
   }
 }
