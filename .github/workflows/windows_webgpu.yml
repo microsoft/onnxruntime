@@ -138,6 +138,29 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
+      # SplitKConfig only enables Split-K on Intel adapters, so the run above takes the non-Split-K
+      # path on this pool. Rerun the Split-K tests with the override on, and confirm from the shader
+      # dump that the reduction dispatched: the tests pass either way, so running them is not by
+      # itself evidence that they exercised Split-K.
+      - name: Run Split-K tests with the path forced on
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        env:
+          ORT_WEBGPU_SPLIT_K: "on"
+        run: |
+          $dump = Join-Path $PWD "splitk_shader_dump.log"
+          # The dump is opened in append mode, so a stale file would be a false positive.
+          Remove-Item $dump -ErrorAction SilentlyContinue
+          $env:ORT_WEBGPU_EP_SHADER_DUMP_FILE = $dump
+          .\onnxruntime_provider_test.exe "--gtest_filter=MatMul_SplitK.*:Gemm_SplitK.*"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Split-K tests failed with exit code $LASTEXITCODE."
+          }
+          if (-not (Test-Path $dump) -or
+              -not (Select-String -Path $dump -Pattern 'MatMul_Split_K_Reduce' -SimpleMatch -Quiet)) {
+            throw "MatMul_Split_K_Reduce never dispatched, so the tests did not exercise Split-K."
+          }
+
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
