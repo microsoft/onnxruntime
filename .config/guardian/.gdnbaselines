@@ -229,27 +229,9 @@
       ],
       "tool": "binskim",
       "ruleId": "BA2007",
-      "createdDate": "2026-08-26 12:31:02Z",
-      "expirationDate": "2027-02-12 13:29:11Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 13:29:11Z"
-    },
-    "792f9cc36607bd286310cea4f657875dc05a5af3fff529c94837145b65ffa4d9": {
-      "signature": "792f9cc36607bd286310cea4f657875dc05a5af3fff529c94837145b65ffa4d9",
-      "alternativeSignatures": [
-        "8b1da668e46822e988401fefe831dfa5a368caed8ebe206db8a33712ab8884c0",
-        "1c3fb9b9486411c58d0b04c666efdd267e4500193a43344732a9a0c97e39601d",
-        "3782b1a1813f3d0c2c3d35ac354e158fd61e6b84adebd73e1b5dca491b366719"
-      ],
-      "target": "onnxruntime/capi/onnxruntime_providers_tensorrt.dll",
-      "uriBaseId": "file:///N:/_work/1/a/",
-      "memberOf": [
-        "default"
-      ],
-      "tool": "binskim",
-      "ruleId": "BA2007",
-      "createdDate": "2026-08-26 12:31:02Z",
-      "expirationDate": "2027-02-12 13:29:11Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 13:29:11Z"
+      "createdDate": "2026-08-26 13:20:10Z",
+      "expirationDate": "2027-02-12 13:53:17Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 13:53:17Z"
     }
   }
 }
