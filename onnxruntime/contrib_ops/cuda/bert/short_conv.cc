@@ -76,7 +76,7 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
   // Scratch buffer holding one inverse-RMS value per (batch, sequence, hc_mult) row so that the
   // reduction is not repeated for every output channel and convolution tap.
   const int64_t rows = batch_size * sequence_length * hc_mult;
-  auto inv_rms = GetScratchBuffer<float>(static_cast<size_t>(rows), context->GetComputeStream());
+  auto inv_rms = GetScratchBuffer<float>(static_cast<size_t>(rows), GetComputeStream(context));
   return LaunchShortConvKernel<CudaT>(
       Stream(context),
       reinterpret_cast<const CudaT*>(input->Data<T>()),

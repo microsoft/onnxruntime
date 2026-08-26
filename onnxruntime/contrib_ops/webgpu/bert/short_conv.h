@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 // Computes one inverse-RMS value per (batch, sequence, hc_mult) row. One workgroup handles one row so

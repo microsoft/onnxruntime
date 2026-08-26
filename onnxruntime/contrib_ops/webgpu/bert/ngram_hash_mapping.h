@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {

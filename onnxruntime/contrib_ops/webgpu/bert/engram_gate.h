@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 // Computes the scalar gate for each (token, g) row. The gate does not depend on the output channel,

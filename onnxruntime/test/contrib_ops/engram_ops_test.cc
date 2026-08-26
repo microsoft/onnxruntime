@@ -39,22 +39,27 @@ std::vector<T> ToTensorType(const std::vector<float>& data) {
   }
 }
 
-// Runs the tester on CUDA only for BFloat16, otherwise on the default set of execution providers.
-// Returns false if the required execution provider is unavailable so the caller can skip.
+// Returns false when the execution provider required by T is unavailable. This must be checked before
+// an OpTester is constructed: BaseTester's destructor traps when a tester is destroyed without running.
 template <typename T>
-bool RunOnSupportedProviders(OpTester& test) {
+bool IsTypeSupported() {
   if constexpr (std::is_same_v<T, BFloat16>) {
-    auto cuda_ep = DefaultCudaExecutionProvider();
-    if (cuda_ep == nullptr) {
-      return false;
-    }
+    return DefaultCudaExecutionProvider() != nullptr;
+  } else {
+    return true;
+  }
+}
+
+// Runs the tester on CUDA only for BFloat16, otherwise on the default set of execution providers.
+template <typename T>
+void RunOnSupportedProviders(OpTester& test) {
+  if constexpr (std::is_same_v<T, BFloat16>) {
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
-    providers.push_back(std::move(cuda_ep));
+    providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   } else {
     test.Run();
   }
-  return true;
 }
 
 // Reference for the gate pre-activation, sign(dot) * sqrt(max(abs(dot), 1e-6)).
@@ -69,6 +74,9 @@ float GateArg(float dot) {
 
 template <typename T>
 void RunShortConvTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
   constexpr float epsilon = 1.0e-5f;
   const std::vector<float> input{1.0f, 2.0f, 3.0f, 4.0f};
   const std::vector<float> scale{1.0f, 2.0f};
@@ -103,13 +111,14 @@ void RunShortConvTest(float tolerance) {
   test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
   test.AddOptionalInputEdge<T>();
   test.AddOutput<T>("output", {1, 2, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
-  if (!RunOnSupportedProviders<T>(test)) {
-    GTEST_SKIP() << "No execution provider available for this type";
-  }
+  RunOnSupportedProviders<T>(test);
 }
 
 template <typename T>
 void RunEngramGateTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
   constexpr float epsilon = 1.0e-5f;
   const std::vector<float> embeddings{1.0f, 2.0f};
   const std::vector<float> hidden_states{3.0f, 4.0f};
@@ -138,9 +147,7 @@ void RunEngramGateTest(float tolerance) {
   test.AddInput<T>("key_norm_scale", {1, 2}, ToTensorType<T>(key_scale));
   test.AddInput<T>("query_norm_scale", {1, 2}, ToTensorType<T>(query_scale));
   test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
-  if (!RunOnSupportedProviders<T>(test)) {
-    GTEST_SKIP() << "No execution provider available for this type";
-  }
+  RunOnSupportedProviders<T>(test);
 }
 
 template <typename T>
