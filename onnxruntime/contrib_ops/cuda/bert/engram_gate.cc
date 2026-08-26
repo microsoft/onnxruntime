@@ -45,6 +45,7 @@ Status EngramGate<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value_bias = context->Input<Tensor>(5);
   const Tensor* key_norm_scale = context->Input<Tensor>(6);
   const Tensor* query_norm_scale = context->Input<Tensor>(7);
+  const Tensor* conv_norm_scale = context->Input<Tensor>(8);
 
   const TensorShape& embeddings_shape = embeddings->Shape();
   const TensorShape& hidden_shape = hidden_states->Shape();
@@ -75,8 +76,15 @@ Status EngramGate<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(value_bias->Shape() == TensorShape({hidden_size}),
                       "value_bias must have shape (hidden_size)");
   }
+  if (conv_norm_scale != nullptr) {
+    ORT_RETURN_IF_NOT(conv_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
+                      "conv_norm_scale must have shape (hc_mult, hidden_size)");
+  }
 
   Tensor* output = context->Output(0, hidden_shape);
+  Tensor* output_normed = context->OutputCount() > 1 ? context->Output(1, hidden_shape) : nullptr;
+  ORT_RETURN_IF_NOT(output_normed == nullptr || conv_norm_scale != nullptr,
+                    "conv_norm_scale is required to produce the gated_value_normed output");
   return LaunchEngramGateKernel<CudaT>(
       Stream(context),
       reinterpret_cast<const CudaT*>(embeddings->Data<T>()),
@@ -87,7 +95,9 @@ Status EngramGate<T>::ComputeInternal(OpKernelContext* context) const {
       value_bias == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value_bias->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_scale->Data<T>()),
       reinterpret_cast<const CudaT*>(query_norm_scale->Data<T>()),
+      conv_norm_scale == nullptr ? nullptr : reinterpret_cast<const CudaT*>(conv_norm_scale->Data<T>()),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
+      output_normed == nullptr ? nullptr : reinterpret_cast<CudaT*>(output_normed->MutableData<T>()),
       batch_size,
       sequence_length,
       hc_mult,

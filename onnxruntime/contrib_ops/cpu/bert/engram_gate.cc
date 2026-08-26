@@ -47,6 +47,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
   const Tensor* value_bias = context->Input<Tensor>(5);
   const Tensor* key_norm_scale = context->Input<Tensor>(6);
   const Tensor* query_norm_scale = context->Input<Tensor>(7);
+  const Tensor* conv_norm_scale = context->Input<Tensor>(8);
 
   const TensorShape& embeddings_shape = embeddings->Shape();
   const TensorShape& hidden_shape = hidden_states->Shape();
@@ -77,8 +78,15 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(value_bias->Shape() == TensorShape({hidden_size}),
                       "value_bias must have shape (hidden_size)");
   }
+  if (conv_norm_scale != nullptr) {
+    ORT_RETURN_IF_NOT(conv_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
+                      "conv_norm_scale must have shape (hc_mult, hidden_size)");
+  }
 
   Tensor* output = context->Output(0, hidden_shape);
+  Tensor* output_normed = context->OutputCount() > 1 ? context->Output(1, hidden_shape) : nullptr;
+  ORT_RETURN_IF_NOT(output_normed == nullptr || conv_norm_scale != nullptr,
+                    "conv_norm_scale is required to produce the gated_value_normed output");
   if (hidden_shape.Size() == 0) {
     return Status::OK();
   }
@@ -91,7 +99,9 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
   const T* value_bias_data = value_bias == nullptr ? nullptr : value_bias->Data<T>();
   const T* key_scale_data = key_norm_scale->Data<T>();
   const T* query_scale_data = query_norm_scale->Data<T>();
+  const T* conv_scale_data = conv_norm_scale == nullptr ? nullptr : conv_norm_scale->Data<T>();
   T* output_data = output->MutableData<T>();
+  T* output_normed_data = output_normed == nullptr ? nullptr : output_normed->MutableData<T>();
 
   const int64_t rows = batch_size * sequence_length * hc_mult;
   ThreadPool::TryParallelFor(
@@ -144,8 +154,21 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
           const float gate = kernel_helper::SigmoidFloat(gate_arg);
 
           T* output_row = output_data + row * hidden_size;
+          float gated_sum_sq = 0.0f;
           for (int64_t c = 0; c < hidden_size; ++c) {
-            output_row[c] = static_cast<T>(gate * value[static_cast<size_t>(c)]);
+            const float gated_value = gate * value[static_cast<size_t>(c)];
+            gated_sum_sq += gated_value * gated_value;
+            output_row[c] = static_cast<T>(gated_value);
+          }
+
+          if (output_normed_data != nullptr) {
+            const float normed_inv_rms =
+                1.0f / std::sqrt(gated_sum_sq / static_cast<float>(hidden_size) + epsilon_);
+            T* output_normed_row = output_normed_data + row * hidden_size;
+            for (int64_t c = 0; c < hidden_size; ++c) {
+              output_normed_row[c] = static_cast<T>(static_cast<float>(output_row[c]) * normed_inv_rms *
+                                                    static_cast<float>(conv_scale_data[g * hidden_size + c]));
+            }
           }
         }
       });

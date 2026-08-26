@@ -30,7 +30,9 @@ __global__ void EngramGateKernel(
     const T* value_bias,
     const T* key_norm_scale,
     const T* query_norm_scale,
+    const T* conv_norm_scale,
     T* output,
+    T* output_normed,
     int64_t rows,
     int64_t hc_mult,
     int64_t hidden_size,
@@ -73,12 +75,26 @@ __global__ void EngramGateKernel(
     const float gate = kernel_helper::SigmoidFloat(kernel_helper::EngramGateArg(dot));
 
     T* output_row = output + row * hidden_size;
+    float gated_sum_sq = 0.0f;
     for (int64_t c = threadIdx.x; c < hidden_size; c += blockDim.x) {
       float value = value_bias == nullptr ? 0.0f : to_float<T>(value_bias[c]);
       for (int64_t e = 0; e < embedding_size; ++e) {
         value += to_float<T>(embedding_row[e]) * to_float<T>(value_weight[e * hidden_size + c]);
       }
-      output_row[c] = from_float<T>(gate * value);
+      const float gated_value = gate * value;
+      gated_sum_sq += gated_value * gated_value;
+      output_row[c] = from_float<T>(gated_value);
+    }
+
+    if (output_normed != nullptr) {
+      gated_sum_sq = kernel_helper::BlockSum(gated_sum_sq, shared);
+      const float normed_inv_rms = rsqrtf(gated_sum_sq / static_cast<float>(hidden_size) + epsilon);
+      const T* conv_scale_g = conv_norm_scale + g * hidden_size;
+      T* output_normed_row = output_normed + row * hidden_size;
+      for (int64_t c = threadIdx.x; c < hidden_size; c += blockDim.x) {
+        output_normed_row[c] =
+            from_float<T>(to_float<T>(output_row[c]) * normed_inv_rms * to_float<T>(conv_scale_g[c]));
+      }
     }
   }
 }
@@ -96,7 +112,9 @@ Status LaunchEngramGateKernel(
     const T* value_bias,
     const T* key_norm_scale,
     const T* query_norm_scale,
+    const T* conv_norm_scale,
     T* output,
+    T* output_normed,
     int64_t batch_size,
     int64_t sequence_length,
     int64_t hc_mult,
@@ -111,13 +129,13 @@ Status LaunchEngramGateKernel(
   const size_t shared_bytes = static_cast<size_t>(kernel_helper::kThreads) * sizeof(float);
   EngramGateKernel<T><<<blocks, kernel_helper::kThreads, shared_bytes, stream>>>(
       embeddings, hidden_states, key_weight, key_bias, value_weight, value_bias, key_norm_scale,
-      query_norm_scale, output, rows, hc_mult, hidden_size, embedding_size, epsilon);
+      query_norm_scale, conv_norm_scale, output, output_normed, rows, hc_mult, hidden_size, embedding_size, epsilon);
   return CUDA_CALL(cudaGetLastError());
 }
 
-template Status LaunchEngramGateKernel<float>(cudaStream_t, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, float*, int64_t, int64_t, int64_t, int64_t, int64_t, float);
-template Status LaunchEngramGateKernel<half>(cudaStream_t, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, half*, int64_t, int64_t, int64_t, int64_t, int64_t, float);
-template Status LaunchEngramGateKernel<__nv_bfloat16>(cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, int64_t, int64_t, int64_t, int64_t, int64_t, float);
+template Status LaunchEngramGateKernel<float>(cudaStream_t, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, float*, float*, int64_t, int64_t, int64_t, int64_t, int64_t, float);
+template Status LaunchEngramGateKernel<half>(cudaStream_t, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, half*, half*, int64_t, int64_t, int64_t, int64_t, int64_t, float);
+template Status LaunchEngramGateKernel<__nv_bfloat16>(cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*, int64_t, int64_t, int64_t, int64_t, int64_t, float);
 
 }  // namespace cuda
 }  // namespace contrib

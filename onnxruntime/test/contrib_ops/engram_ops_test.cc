@@ -150,6 +150,89 @@ void RunEngramGateTest(float tolerance) {
   RunOnSupportedProviders<T>(test);
 }
 
+// Verifies gated_value_normed: RMSNorm is applied independently to each hyper-connection branch
+// (each hidden_size-sized slice), not over the concatenated hc_mult * hidden_size dimension. Uses
+// hc_mult = 2 with different key/query/conv norm scales per branch so a bug that normalizes over
+// the flattened (hc_mult * hidden_size) axis instead of per-branch would produce different values.
+template <typename T>
+void RunEngramGateNormedTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr float epsilon = 1.0e-5f;
+  constexpr int64_t hc_mult = 2;
+  constexpr int64_t hidden_size = 2;
+  const std::vector<float> embeddings{1.0f, 2.0f};
+  const std::vector<float> hidden_states{3.0f, 4.0f, -1.0f, 2.0f};
+  const std::vector<float> key_weight{0.5f, 1.0f, -0.25f, 0.75f,
+                                      0.2f, -0.3f, 0.4f, 0.1f};
+  const std::vector<float> value_weight{1.0f, -1.0f, 0.5f, 0.25f};
+  const std::vector<float> key_scale{1.0f, 1.0f, 1.5f, 0.5f};
+  const std::vector<float> query_scale{1.0f, 1.0f, 1.0f, 2.0f};
+  const std::vector<float> conv_scale{1.0f, 2.0f, 0.5f, 1.0f};
+
+  std::vector<float> value(hidden_size);
+  for (int64_t c = 0; c < hidden_size; ++c) {
+    value[c] = embeddings[0] * value_weight[c] + embeddings[1] * value_weight[hidden_size + c];
+  }
+
+  std::vector<float> gated_value(hc_mult * hidden_size);
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    std::vector<float> key(hidden_size);
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      key[c] = embeddings[0] * key_weight[(g * 2 + 0) * hidden_size + c] +
+              embeddings[1] * key_weight[(g * 2 + 1) * hidden_size + c];
+    }
+    float key_sum_sq = key[0] * key[0] + key[1] * key[1];
+    float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden_size) + epsilon);
+    float query_sum_sq = hidden_states[g * hidden_size] * hidden_states[g * hidden_size] +
+                         hidden_states[g * hidden_size + 1] * hidden_states[g * hidden_size + 1];
+    float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(hidden_size) + epsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      float nk = key[c] * key_inv * key_scale[g * hidden_size + c];
+      float nq = hidden_states[g * hidden_size + c] * query_inv * query_scale[g * hidden_size + c];
+      dot += nk * nq;
+    }
+    dot /= std::sqrt(static_cast<float>(hidden_size));
+    float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      gated_value[g * hidden_size + c] = gate * value[c];
+    }
+  }
+
+  std::vector<float> expected_normed(hc_mult * hidden_size);
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      float v = gated_value[g * hidden_size + c];
+      sum_sq += v * v;
+    }
+    float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon);
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      expected_normed[g * hidden_size + c] =
+          gated_value[g * hidden_size + c] * inv_rms * conv_scale[g * hidden_size + c];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<T>("embeddings", {1, 1, 2}, ToTensorType<T>(embeddings));
+  test.AddInput<T>("hidden_states", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(hidden_states));
+  test.AddInput<T>("key_weight", {hc_mult, 2, hidden_size}, ToTensorType<T>(key_weight));
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("value_weight", {2, hidden_size}, ToTensorType<T>(value_weight));
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("key_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(query_scale));
+  test.AddInput<T>("conv_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(conv_scale));
+  test.AddOutput<T>("gated_value", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(gated_value), false, tolerance,
+                    tolerance);
+  test.AddOutput<T>("gated_value_normed", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(expected_normed), false,
+                    tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
 template <typename T>
 void RunNGramHashMappingTest() {
   OpTester test("NGramHashMapping", 1, kMSDomain);
@@ -356,6 +439,18 @@ TEST(EngramOpsTest, ShortConvBFloat16) {
 
 TEST(EngramOpsTest, EngramGateBFloat16) {
   RunEngramGateTest<BFloat16>(2e-2f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat) {
+  RunEngramGateNormedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat16) {
+  RunEngramGateNormedTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedBFloat16) {
+  RunEngramGateNormedTest<BFloat16>(2e-2f);
 }
 
 // A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make

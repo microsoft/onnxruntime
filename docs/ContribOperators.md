@@ -1785,9 +1785,15 @@ This version of the operator has been available since version 1 of the 'com.micr
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
   
-  The output is gate * value_projection(embeddings), broadcast across hidden_size for each
-  hyper-connection. A following ShortConv plus Add represents the final Engram residual
+  The `gated_value` output is gate * value_projection(embeddings), broadcast across hidden_size for
+  each hyper-connection. A following ShortConv plus Add represents the final Engram residual
   value + short_conv(value).
+  
+  When `conv_norm_scale` is provided, the op additionally emits `gated_value_normed`:
+  `RMSNorm(gated_value, conv_norm_scale, epsilon)`, applied independently per hyper-connection
+  branch (i.e. RMSNorm is computed over each hidden_size slice, not over the concatenated
+  hc_mult * hidden_size dimension). `gated_value_normed` feeds the short convolution path, while
+  `gated_value` still feeds the hyper-connection residual path.
 
 #### Version
 
@@ -1819,13 +1825,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>RMSNorm scale for key projections with shape (hc_mult, hidden_size).</dd>
 <dt><tt>query_norm_scale</tt> : T</dt>
 <dd>RMSNorm scale for hidden-state queries with shape (hc_mult, hidden_size).</dd>
+<dt><tt>conv_norm_scale</tt> (optional) : T</dt>
+<dd>Optional branchwise RMSNorm scale applied to gated_value to produce gated_value_normed, with shape (hc_mult, hidden_size). Required to emit the gated_value_normed output.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt>output</tt> : T</dt>
+<dt><tt>gated_value</tt> : T</dt>
 <dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>gated_value_normed</tt> (optional) : T</dt>
+<dd>Optional branchwise RMS-normalized gated_value, computed independently per hyper-connection branch using conv_norm_scale, with the same shape as gated_value. Only produced when conv_norm_scale is provided.</dd>
 </dl>
 
 #### Type Constraints

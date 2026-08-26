@@ -2790,9 +2790,15 @@ weights, a shared value projection, and RMSNorm scales. It computes the Engram g
 gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
 dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
 
-The output is gate * value_projection(embeddings), broadcast across hidden_size for each
-hyper-connection. A following ShortConv plus Add represents the final Engram residual
+The `gated_value` output is gate * value_projection(embeddings), broadcast across hidden_size for
+each hyper-connection. A following ShortConv plus Add represents the final Engram residual
 value + short_conv(value).
+
+When `conv_norm_scale` is provided, the op additionally emits `gated_value_normed`:
+`RMSNorm(gated_value, conv_norm_scale, epsilon)`, applied independently per hyper-connection
+branch (i.e. RMSNorm is computed over each hidden_size slice, not over the concatenated
+hc_mult * hidden_size dimension). `gated_value_normed` feeds the short convolution path, while
+`gated_value` still feeds the hyper-connection residual path.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2838,15 +2844,32 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "query_norm_scale",
                "RMSNorm scale for hidden-state queries with shape (hc_mult, hidden_size).",
                "T")
+        .Input(8,
+               "conv_norm_scale",
+               "Optional branchwise RMSNorm scale applied to gated_value to produce "
+               "gated_value_normed, with shape (hc_mult, hidden_size). Required to emit the "
+               "gated_value_normed output.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
-                "output",
+                "gated_value",
                 "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                 "T")
+        .Output(1,
+                "gated_value_normed",
+                "Optional branchwise RMS-normalized gated_value, computed independently per "
+                "hyper-connection branch using conv_norm_scale, with the same shape as "
+                "gated_value. Only produced when conv_norm_scale is provided.",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
 
           if (hasInputShape(ctx, 0)) {
             const auto& embeddings_shape = getInputShape(ctx, 0);
@@ -2860,6 +2883,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("EngramGate: hidden_states must have rank 4");
             }
             propagateShapeFromInputToOutput(ctx, 1, 0);
+            if (ctx.getNumOutputs() > 1) {
+              propagateShapeFromInputToOutput(ctx, 1, 1);
+            }
           }
         }));
 
