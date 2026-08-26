@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <algorithm>
 #include <memory>
 #include <sstream>
 #include <list>
@@ -500,6 +501,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     auto disabled_string = session_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsDisableSpecifiedOptimizers, "");
     if (!disabled_string.empty()) {
+      // The setting is documented as a comma separated list, but ';' was historically the only accepted
+      // separator. Treat ',' as a separator too so both forms work.
+      std::replace(disabled_string.begin(), disabled_string.end(), ',', ';');
       const auto disabled_list = utils::SplitString(disabled_string, ";");
       InlinedHashSet<std::string> disabled_rules_and_transformers;
       disabled_rules_and_transformers.reserve(disabled_list.size());
