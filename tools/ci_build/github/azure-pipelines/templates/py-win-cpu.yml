@@ -25,7 +25,7 @@ jobs:
 - job: Windows_py_Wheels_${{parameters.architecture}}
   ${{ if eq(parameters.architecture, 'arm64') }}:
     pool:
-      name: 'onnxruntime-native-arm64-16core'
+      name: onnxruntime-medium-arm64-scus
       os: windows
       hostArchitecture: Arm64
   ${{ else }}:

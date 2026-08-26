@@ -204,7 +204,7 @@ stages:
     previousStageName: Setup
     platform: win-arm64
     agentPool:
-      name: onnxruntime-native-arm64-16core
+      name: onnxruntime-medium-arm64-scus
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
@@ -213,7 +213,7 @@ stages:
     previousStageName: Setup
     platform: win-arm64x
     agentPool:
-      name: onnxruntime-native-arm64-16core
+      name: onnxruntime-medium-arm64-scus
 
 - template: templates/test-binary-archive-stage.yml
   parameters:

@@ -12,7 +12,6 @@ from os.path import abspath, dirname
 
 skip_doc_changes = ["web-ci-pipeline.yml"]
 skip_js_changes = [
-    "android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml",
     "android-x86_64-crosscompile-ci-pipeline.yml",
     "bigmodels-ci-pipeline.yml",
     "linux-ci-pipeline.yml",
