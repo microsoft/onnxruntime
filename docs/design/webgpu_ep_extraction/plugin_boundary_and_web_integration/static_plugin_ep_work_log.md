@@ -1,0 +1,302 @@
+# Static plugin EP registration — work log
+
+Working notes for the branch `edgchen1/webgpu_static_plugin`. This is a scratch handoff document, not a
+design document: the design and its rationale live in
+[`static_plugin_ep_registration_design.md`](./static_plugin_ep_registration_design.md), which is the
+authoritative reference for decisions D1–D7. **Delete this file before opening the PR.**
+
+The purpose of this log is to let someone pick the work up on a different machine — in particular a machine
+with a real GPU, which the original development machine did not have.
+
+## Goal
+
+Make the statically linked WebGPU EP build go through the **plugin EP** path rather than the internal-EP path,
+via a generic "static plugin EP" registration mechanism in ORT core. The same EP sources
+(`onnxruntime/core/providers/webgpu/ep/*`) then serve both a dynamically loaded plugin DLL and a build that is
+statically linked into the host. The latter is what unblocks ORT Web / Emscripten, where shared library modules
+are not possible.
+
+Whether the EP is dynamically or statically **linked** is deliberately separate from whether it is a **plugin**.
+Both linkage modes are supported.
+
+## Status
+
+The implementation is complete and committed. CI coverage was added for the new configuration, which had none.
+
+| Area | State |
+| --- | --- |
+| Implementation | Done |
+| Windows build + GPU tests (`--use_webgpu static_plugin`) | Green in CI |
+| Shared library plugin build (`--use_webgpu shared_lib`) | Green in CI, no regression from D2/D7 |
+| CUDA plugin EP (shares `include/onnxruntime/ep/*`) | Green in CI |
+| Linux/GCC build (`--use_webgpu static_plugin`) | Fix pushed, awaiting confirmation — see [GCC](#gcc-and-werrormaybe-uninitialized) |
+| Minimal build | Not yet exercised — see [Open items](#open-items) |
+| Emscripten / ORT Web | Not yet exercised — see [Open items](#open-items) |
+| PR | Not opened yet |
+
+## Branch
+
+- Branch: `edgchen1/webgpu_static_plugin`, pushed to `git@github.com:microsoft/onnxruntime.git` (not a fork —
+  this matters, because the self-hosted 1ES CI pools are not available to forks).
+- Forked from `main` at `fab4691797560a22092d9bbe8cec540b5413724b`.
+- The earlier commits on the branch (`dff9cc42bf` .. `800ad881ef`) are the WebGPU extraction planning documents
+  and are unrelated to this workstream's code. The code work starts at `2754674229`.
+
+| Commit | Summary |
+| --- | --- |
+| `2754674229` | Support registering statically linked plugin EPs, and build WebGPU EP that way |
+| `32775c305a` | Add CI jobs for the WebGPU static plugin EP build |
+| `49855f6ef7` | Fix GCC maybe-uninitialized errors in the EP adapter attribute accessors |
+| `d47f00a0a6` | Update dynamic plugin EP test config parsing tests |
+| `1980e901ec` | Record CI coverage in the static plugin EP registration design doc |
+
+## What the change consists of
+
+Read the design doc first. The short version, keyed to the decisions:
+
+- **D1** — A link-time registry in ORT core (`onnxruntime/core/session/plugin_ep/ep_static_plugins.{h,cc}`),
+  hand-written and `#if`-guarded, mirroring `EpLibraryInternal::CreateInternalEps`. Code generation from CMake
+  and a new public C API were both considered and rejected.
+- **D2** — `ORT_PLUGIN_EP_ENTRY_POINT_PREFIX` in `onnxruntime/core/providers/webgpu/ep/api.cc`. The shared
+  library build must keep exporting **unprefixed** `CreateEpFactories` / `ReleaseEpFactory`, because
+  `EpLibraryPlugin::Load` looks those up by name. The static build emits `WebGpu_`-prefixed symbols instead.
+- **D3** — No new ABI hook for process-global teardown. `ShutdownProtobufLibrary()` is compiled out unless
+  `ORT_PLUGIN_EP_OWNS_PROCESS_GLOBALS`. The legacy WebGPU cleanup block in `ort_env.cc` must stay for the
+  default internal-EP build.
+- **D4** — CMake option `onnxruntime_WEBGPU_STATIC_PLUGIN` plus the derived
+  `onnxruntime_WEBGPU_LINKED_INTO_HOST`; surfaced as `--use_webgpu static_plugin`.
+- **D5** — `ep_library_path` became optional in the dynamic plugin EP test infrastructure's
+  `InitializationConfig`, so a statically registered EP can be selected without a path to load.
+- **D6** — Publish-then-register in `ort_env.cc`, and `OrtEnv::m_` became a `std::recursive_mutex`. Registration
+  reenters the environment (`GetSupportedDevices()` → `Api().ep.GetEnvConfigEntries()` →
+  `OrtEnv::TryGetInstance()`), which self-deadlocked with a plain mutex.
+- **D7** — `ORT_PLUGIN_EP_STATICALLY_LINKED` disables the manual C++ API init in the shared
+  `include/onnxruntime/ep/api.h`. Do not try to force `ORT_API_MANUAL_INIT` on for everyone: MSVC's
+  `#pragma detect_mismatch` requires whole-binary agreement and doing so produced roughly 50 `LNK2038` errors.
+
+Files touched outside `docs/`:
+
+```
+.github/workflows/linux_webgpu.yml
+.github/workflows/windows_webgpu.yml
+cmake/CMakeLists.txt
+cmake/onnxruntime.cmake
+cmake/onnxruntime_providers_webgpu.cmake
+cmake/onnxruntime_python.cmake
+cmake/onnxruntime_unittests.cmake
+include/onnxruntime/core/session/environment.h
+include/onnxruntime/ep/adapter/op_kernel_info.h
+include/onnxruntime/ep/api.h
+onnxruntime/core/providers/webgpu/ep/api.cc
+onnxruntime/core/providers/webgpu/math/{gemm,softmax,top_k}.h
+onnxruntime/core/providers/webgpu/tensor/cast.h
+onnxruntime/core/session/environment.cc
+onnxruntime/core/session/ort_env.{h,cc}
+onnxruntime/core/session/plugin_ep/ep_library_plugin.cc
+onnxruntime/core/session/plugin_ep/ep_library_plugin_utils.{h,cc}      (new)
+onnxruntime/core/session/plugin_ep/ep_library_static_plugin.{h,cc}     (new)
+onnxruntime/core/session/plugin_ep/ep_static_plugins.{h,cc}            (new)
+onnxruntime/test/framework/dynamic_plugin_ep_test.cc
+onnxruntime/test/framework/inference_session_test.cc
+onnxruntime/test/unittest_main/test_main.cc
+onnxruntime/test/unittest_util/test_dynamic_plugin_ep.{h,cc}
+tools/ci_build/{build.py,build_args.py}
+```
+
+## Building
+
+Three WebGPU configurations exist and it is worth being able to build at least two of them, because several
+bugs in this work only appeared in one of them:
+
+```
+python tools/ci_build/build.py ... --use_webgpu                # internal EP (the default, pre-existing path)
+python tools/ci_build/build.py ... --use_webgpu shared_lib     # plugin EP in its own shared library
+python tools/ci_build/build.py ... --use_webgpu static_plugin  # plugin EP linked into the host  <-- the new one
+```
+
+`--use_webgpu static_plugin` maps to `-Donnxruntime_USE_EP_API_ADAPTERS=ON
+-Donnxruntime_WEBGPU_STATIC_PLUGIN=ON` (see `tools/ci_build/build.py`, the `--use_webgpu` handling). Both
+options default to `OFF`.
+
+`onnxruntime_USE_EP_API_ADAPTERS=ON` is **incompatible** with `onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON`
+(`cmake/CMakeLists.txt` raises a `FATAL_ERROR`). The internal-EP WebGPU CI job sets the latter; the plugin jobs
+must not.
+
+### Windows gotchas
+
+These cost real time on the original machine and are likely to recur:
+
+- **`MAX_PATH`.** Building WebGPU under a long path such as `<repo>\build\Windows` makes Dawn's DXC build fail
+  with `MSB3491`. Build into a short directory instead — `C:\b` and `C:\b2` were used for the `static_plugin`
+  and `shared_lib` configurations respectively. With the Visual Studio generator the binaries land in
+  `<build_dir>\<config>\<config>\`.
+- **CMake may not be on `PATH`.** On a Visual Studio install it is at
+  `C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin`.
+- Incremental rebuild of just the EP is much faster than a full build:
+  `cmake --build <build_dir> --config Debug --target onnxruntime_providers_webgpu --parallel`.
+
+### Verifying the D2 export contract
+
+For the **shared library** configuration, confirm the exported entry points are still unprefixed, since
+`EpLibraryPlugin::Load` resolves them by name:
+
+```
+dumpbin /exports <build_dir>\<config>\<config>\onnxruntime_providers_webgpu.dll
+```
+
+Expect exactly `CreateEpFactories` and `ReleaseEpFactory`. The `static_plugin` build should instead produce
+`WebGpu_`-prefixed symbols and no DLL.
+
+## Testing, and why a GPU machine is needed
+
+Relevant tests:
+
+- `onnxruntime_test_all --gtest_filter=InferenceSessionTests.WebGpu*` — covers registration, device
+  enumeration, and session creation end to end through the public V2 API.
+- `onnxruntime_provider_test` — WebGPU EP kernel tests.
+
+The original development machine was a **Hyper-V VM with no real GPU**. On such a host WebGPU only surfaces a
+*virtual* `OrtEpDevice`, and any session that is not compile-only is rejected up front with
+*"WebGPU EP was selected on a virtual GPU device…"*. So locally only these two pass:
+
+- `InferenceSessionTests.WebGpuVirtualDeviceCompileOnlyEndToEnd`
+- `InferenceSessionTests.WebGpuVirtualDeviceRejectedWithoutCompileOnly`
+
+and `WebGpuCompileOnlySkipsFinalization` and `TestStrictShapeInference` fail. This was proven to be a property
+of the host and not of static linking, by building `--use_webgpu shared_lib` on the same machine and observing
+the identical pass/fail set.
+
+**Consequence for whoever picks this up:** operator execution cannot be validated on a GPU-less machine at all.
+Two ways to get real coverage:
+
+1. **Use CI.** The new `webgpu_static_plugin_build_x64_RelWithDebInfo` job in `.github/workflows/windows_webgpu.yml`
+   runs on the `onnxruntime-github-Win2022-GPU-A10` pool, which is the only GPU-equipped WebGPU pool, and it
+   both builds and tests. It has passed. This is currently the primary source of operator-level truth.
+2. **Run locally on a real GPU.** Nothing in the change is GPU-vendor specific; a normal Windows machine with a
+   D3D12 or Vulkan capable GPU is enough.
+
+There is also a `webgpu-local-testing` skill in `.agents/skills/` describing how to run WebGPU tests on Linux
+without a GPU using Mesa lavapipe (software Vulkan). Note its stated limitation: any graph containing `MatMul`
+crashes lavapipe, so it only validates host-side enforcement and shape logic.
+
+### Not covered by any test yet
+
+Re-registration — register, run, unregister, re-register — is untested and is not reachable from the existing
+test binaries, because `OrtEnv` is a refcounted process singleton that the unit test main pins for the lifetime
+of the process.
+
+## CI
+
+No pre-existing leg built the `static_plugin` configuration, since both CMake options default to `OFF`. Every
+WebGPU job was either internal EP (`--use_webgpu`) or shared library plugin (`--use_webgpu shared_lib`). Two
+jobs were added:
+
+- `webgpu_static_plugin_build_x64_RelWithDebInfo` in `.github/workflows/windows_webgpu.yml` — builds **and
+  tests** on the A10 GPU pool. It deliberately omits `onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON` (incompatible,
+  see above) and deliberately drops the `--disable_rtti` / `--enable_lto` flags that the shared library job
+  carries, since those describe how the plugin ships as a DLL and here they would apply to all of ORT.
+- `build-linux-webgpu-static-plugin-x64-release` in `.github/workflows/linux_webgpu.yml` — build only, mirroring
+  its sibling job. This is the only **GCC** coverage of the EP adapters, and the only coverage of the
+  `cmake/onnxruntime_python.cmake` change, which is why `--build_wheel` is kept on it.
+
+`linux_webgpu.yml` is build-only by design; its test job is commented out with a pre-existing "currently
+failing" TODO.
+
+### Running CI on this branch
+
+The workflows only trigger automatically on `push`/`pull_request` for `main`, `rel-*`, and
+`plugin-ep-webgpu/rel-*`, so **pushing this branch triggers nothing**. Dispatch manually:
+
+```
+gh workflow run windows_webgpu.yml     --repo microsoft/onnxruntime --ref edgchen1/webgpu_static_plugin
+gh workflow run linux_webgpu.yml       --repo microsoft/onnxruntime --ref edgchen1/webgpu_static_plugin
+gh workflow run windows_cuda_plugin.yml --repo microsoft/onnxruntime --ref edgchen1/webgpu_static_plugin
+```
+
+`gh workflow run --ref <branch>` reads the workflow file **from that ref**, so jobs added on the branch do run
+even though they are not on `main` yet. This was confirmed empirically.
+
+`windows_cuda_plugin.yml` matters because the CUDA plugin EP shares `include/onnxruntime/ep/*` with WebGPU, so
+it is the regression check for the D5 and D7 changes.
+
+### Retrieving logs
+
+`gh run view --log-failed` and `gh run view --job <id> --log` both returned **zero bytes** for these runs. Use
+the REST API instead:
+
+```
+gh api repos/microsoft/onnxruntime/actions/runs/<run_id>/jobs --jq '.jobs[] | select(.conclusion=="failure") | "\(.id) \(.name)"'
+gh api repos/microsoft/onnxruntime/actions/jobs/<job_id>/logs > log.txt
+```
+
+When grepping the result, search for `FAILED:` **case-sensitively**. A case-insensitive search for "failed" or
+a search for `error:` drowns in benign CMake and Dawn feature-probe output such as
+`-- Performing Test ... - Failed`.
+
+### Run history
+
+| Run | Workflow | Result |
+| --- | --- | --- |
+| 32914301463 | ONNX Runtime WebGPU Builds | Success, all 6 jobs including the new one |
+| 32914304408 | Linux WebGPU CI | Failure — GCC `maybe-uninitialized`, batch 1 |
+| 32914307098 | CUDA Plugin Windows CI | Failure — `ParseInitializationConfigRejectsMissingRequiredFields` |
+| 32996643911 | Linux WebGPU CI | Failure — GCC `maybe-uninitialized`, batch 2 |
+| 32996646394 | CUDA Plugin Windows CI | Success |
+
+## GCC and `-Werror=maybe-uninitialized`
+
+This was the only substantial problem the new CI surfaced, and it will bite again, so it is worth understanding
+rather than pattern-matching.
+
+The EP adapter types are defined **entirely inline in headers**. The in-tree `OpKernelInfo` hides its
+accessors behind out-of-line definitions in a `.cc`, so GCC cannot see their failure and exception paths. With
+the adapters, it can — and it then warns about values that are only ever read once the call has succeeded. The
+warning is a false positive, but the build uses `-Werror`.
+
+This had never been observed before simply because the EP-adapters path had never been compiled with GCC: the
+existing Linux WebGPU CI builds the internal EP, and the shared library plugin builds are Windows/MSVC-only.
+The CUDA plugin EP hit the identical problem earlier and solved it with a target-scoped suppression in
+`cmake/onnxruntime_providers_cuda_plugin.cmake`.
+
+Two batches of failures appeared, because ninja stops early and only reports the targets that were already in
+flight — **do not assume the first batch is the complete list**.
+
+- Batch 1, fixed at the source in `49855f6ef7`: uninitialized locals that are passed by pointer and read back,
+  and the temporaries inside `GetAttrOrDefault` / `GetAttr` in `include/onnxruntime/ep/adapter/op_kernel_info.h`.
+  Value-initializing them (`T tmp{}`) is correct and worth keeping on its own merits.
+- Batch 2: false positives deep inside `absl::InlinedVector`, for `TensorShapeVector` locals in
+  `tensor/pad.cc` and `tensor/unsqueeze.h` that are always properly constructed. These cannot be fixed at the
+  source. Handled by applying the same `-Wno-maybe-uninitialized` suppression the CUDA plugin EP uses, scoped
+  to the `onnxruntime_providers_webgpu` target, GCC only, and only when `onnxruntime_USE_EP_API_ADAPTERS` is on
+  so that non-adapter builds stay strict.
+
+## Open items
+
+1. **Confirm the Linux leg is green** after the `-Wno-maybe-uninitialized` suppression. Dispatch a fresh run
+   rather than re-running an old one.
+2. **Operator-level validation on a real GPU.** The Windows CI job covers this now, but nobody has run the
+   WebGPU operator tests against the `static_plugin` build on a local GPU machine and compared the results to
+   the internal-EP build. That comparison is the strongest available evidence that routing the static build
+   through the plugin path changes no behaviour, and it is the main reason to move this work to a GPU machine.
+3. **Minimal build.** `linux_minimal_build.yml` has not been dispatched. It is the interesting one because
+   `cmake/onnxruntime_session.cmake` excludes `plugin_ep/*.*` from minimal builds, which is why the
+   registration call in `ort_env.cc` is wrapped in `#if !defined(ORT_MINIMAL_BUILD)`. The guard has been
+   inspected and looks correct but has not been exercised. Also unknown: whether any shipped ORT Web
+   configuration uses an extended-minimal build, which would exclude the plugin EP infrastructure entirely.
+4. **Emscripten / ORT Web.** This is the motivating use case for the whole change and has not been built.
+   `web.yml` exists and supports `workflow_dispatch`.
+5. **Follow-up cleanup** listed at the end of the design doc, including removing the WebGPU special cases that
+   only exist while it is still an "internal" EP.
+6. **Open the PR.**
+
+## Environment notes
+
+Specific to the original machine, but the class of problem generalises.
+
+- The working copy `C:\source\ort-webgpu-static-plugin` is a **linked git worktree** of `C:\source\onnxruntime`.
+  `.git` is therefore a *file*, not a directory. Do not write scratch files into it.
+- Linting is `lintrunner`, driven by the `ort-lint` skill. `lintrunner -a` can report "ok No lint issues" and
+  "Successfully applied all patches" in the same run, so always re-check `git status` afterwards.
+- The repository's own pre-commit hook lives in `.githooks/pre-commit` (this is not the `pre-commit` framework)
+  and is enabled with `git config core.hooksPath .githooks`. It **silently does nothing if `lintrunner` is not
+  on `PATH`**, so activate the virtual environment before committing or the commit goes through unlinted.
