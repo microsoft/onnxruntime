@@ -167,6 +167,130 @@ void RunNGramHashMappingTest() {
   test.Run();
 }
 
+// Verifies head_offsets is applied as a fixed additive offset after the modulo, per output head,
+// on top of the same base hash computation as RunNGramHashMappingTest.
+template <typename T>
+void RunNGramHashMappingHeadOffsetsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 2);
+  test.AddAttribute<int64_t>("pad_id", 9);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOptionalInputEdge<T>();  // past_tokens
+  test.AddInput<T>("head_offsets", {4}, {1000, 2000, 3000, 4000});
+  test.AddOutput<T>("hash_ids", {1, 4, 4},
+                    {1084, 2084, 3098, 4096,
+                     1011, 2011, 3039, 4037,
+                     1003, 2003, 3048, 4048,
+                     1003, 2003, 3071, 4071});
+  test.Run();
+}
+
+// Verifies reset_on_eos: an EOS token inside (or implied before, since past_tokens is absent) the
+// current chunk substitutes eos_token_id for any n-gram shift that would otherwise reach across
+// the EOS boundary into unrelated history.
+template <typename T>
+void RunNGramHashMappingEosResetTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 9, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();  // past_tokens
+  test.AddOptionalInputEdge<T>();  // head_offsets
+  test.AddInput<T>("eos_token_id", {}, {9});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {84, 102,
+                     68, 15,
+                     66, 13,
+                     3, 51});
+  test.Run();
+}
+
+// Verifies segment_ids resets causal history at packed-sequence boundaries within input_ids,
+// independent of reset_on_eos/eos_token_id.
+template <typename T>
+void RunNGramHashMappingSegmentIdsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();  // past_tokens
+  test.AddOptionalInputEdge<T>();  // head_offsets
+  test.AddOptionalInputEdge<T>();  // eos_token_id
+  test.AddInput<int32_t>("segment_ids", {1, 4}, {0, 0, 1, 1});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {33, 33,
+                     11, 11,
+                     3, 48,
+                     66, 66});
+  test.Run();
+}
+
+// Verifies past_tokens/present_tokens round-trip parity: splitting a sequence into two decode
+// chunks and threading present_tokens from the first chunk into past_tokens of the second must
+// produce the same hash_ids as running the whole sequence in a single prefill call.
+template <typename T>
+void RunNGramHashMappingPastPresentParityTest() {
+  constexpr int64_t history_length = 2;  // max_ngram_size - 1
+
+  {
+    OpTester full("NGramHashMapping", 1, kMSDomain);
+    full.AddAttribute<int64_t>("max_ngram_size", 3);
+    full.AddAttribute<int64_t>("n_head_per_ngram", 1);
+    full.AddAttribute<int64_t>("pad_id", 0);
+    full.AddInput<T>("input_ids", {1, 5}, {2, 3, 4, 5, 6});
+    full.AddInput<T>("multipliers", {3}, {11, 13, 17});
+    full.AddInput<T>("vocab_sizes", {2}, {101, 103});
+    full.AddOutput<T>("hash_ids", {1, 5, 2},
+                      {22, 22,
+                       59, 59,
+                       11, 41,
+                       3, 48,
+                       3, 71});
+    full.Run();
+  }
+
+  {
+    OpTester chunk1("NGramHashMapping", 1, kMSDomain);
+    chunk1.AddAttribute<int64_t>("max_ngram_size", 3);
+    chunk1.AddAttribute<int64_t>("n_head_per_ngram", 1);
+    chunk1.AddAttribute<int64_t>("pad_id", 0);
+    chunk1.AddInput<T>("input_ids", {1, 2}, {2, 3});
+    chunk1.AddInput<T>("multipliers", {3}, {11, 13, 17});
+    chunk1.AddInput<T>("vocab_sizes", {2}, {101, 103});
+    chunk1.AddOutput<T>("hash_ids", {1, 2, 2}, {22, 22, 59, 59});
+    chunk1.AddOutput<T>("present_tokens", {1, history_length}, {2, 3});
+    chunk1.Run();
+  }
+
+  {
+    OpTester chunk2("NGramHashMapping", 1, kMSDomain);
+    chunk2.AddAttribute<int64_t>("max_ngram_size", 3);
+    chunk2.AddAttribute<int64_t>("n_head_per_ngram", 1);
+    chunk2.AddAttribute<int64_t>("pad_id", 0);
+    chunk2.AddInput<T>("input_ids", {1, 3}, {4, 5, 6});
+    chunk2.AddInput<T>("multipliers", {3}, {11, 13, 17});
+    chunk2.AddInput<T>("vocab_sizes", {2}, {101, 103});
+    chunk2.AddInput<T>("past_tokens", {1, history_length}, {2, 3});
+    // Matches hash_ids[2:5] from the full-sequence run above.
+    chunk2.AddOutput<T>("hash_ids", {1, 3, 2},
+                        {11, 41,
+                         3, 48,
+                         3, 71});
+    chunk2.AddOutput<T>("present_tokens", {1, history_length}, {5, 6});
+    chunk2.Run();
+  }
+}
+
 }  // namespace
 
 TEST(EngramOpsTest, NGramHashMappingInt64) {
@@ -176,6 +300,38 @@ TEST(EngramOpsTest, NGramHashMappingInt64) {
 // int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
 TEST(EngramOpsTest, NGramHashMappingInt32) {
   RunNGramHashMappingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt64) {
+  RunNGramHashMappingHeadOffsetsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt32) {
+  RunNGramHashMappingHeadOffsetsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt64) {
+  RunNGramHashMappingEosResetTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt32) {
+  RunNGramHashMappingEosResetTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt64) {
+  RunNGramHashMappingSegmentIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt32) {
+  RunNGramHashMappingSegmentIdsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingPastPresentParityInt64) {
+  RunNGramHashMappingPastPresentParityTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingPastPresentParityInt32) {
+  RunNGramHashMappingPastPresentParityTest<int32_t>();
 }
 
 TEST(EngramOpsTest, ShortConvFloat) {

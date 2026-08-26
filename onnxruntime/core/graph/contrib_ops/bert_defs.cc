@@ -2653,6 +2653,26 @@ mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
 For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
 The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
 heads for n=2 first, then n=3, and so on.
+
+Optional inputs add autoregressive-decode and packed-sequence support used by Qwen4-Exp-style
+n-gram embeddings (Qwen4ExpTextNGramEmbedding):
+
+- past_tokens carries the last (max_ngram_size - 1) real token ids that precede input_ids, so a
+  decoder can call this op once per new token instead of replaying the whole prefix. When absent,
+  history before input_ids is treated as pad_id (or eos_token_id, see below), matching the
+  original prefill-only behavior.
+- present_tokens always returns the trailing (max_ngram_size - 1) real token ids (drawn from
+  past_tokens/input_ids, never substituted), to be passed as past_tokens on the next call.
+- eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at
+  EOS boundaries: any shifted position at or before the most recent EOS strictly before the
+  current position is replaced with eos_token_id instead of the real (unrelated, cross-sequence)
+  token. When past_tokens is absent and eos_token_id is provided, unavailable prior context is
+  substituted with eos_token_id rather than pad_id.
+- segment_ids, when provided, additionally resets causal history at any position whose segment id
+  differs from the immediately preceding position's segment id within the current input_ids chunk
+  (packed/segmented sequences). Segment boundaries are not checked against past_tokens history.
+- head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+  vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2666,8 +2686,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Number of hash heads emitted for each n-gram order.",
               AttributeProto::INT)
         .Attr("pad_id",
-              "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.",
+              "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence "
+              "when past_tokens and eos_token_id are both absent.",
               AttributeProto::INT)
+        .Attr("reset_on_eos",
+              "When non-zero and the eos_token_id input is provided, reset causal n-gram history at "
+              "EOS boundaries as described in the op doc. Default is 0 (disabled), which preserves "
+              "the original pad_id-only behavior.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "input_ids",
                "Compressed tokenizer ids with shape (batch_size, sequence_length).",
@@ -2681,11 +2708,42 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Per-output-head prime vocabulary sizes with shape "
                "((max_ngram_size - 1) * n_head_per_ngram).",
                "M")
+        .Input(3,
+               "past_tokens",
+               "Optional real token id history with shape (batch_size, max_ngram_size - 1) "
+               "immediately preceding input_ids, chronologically ordered (oldest first).",
+               "M",
+               OpSchema::Optional)
+        .Input(4,
+               "head_offsets",
+               "Optional per-output-head additive offset with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.",
+               "M",
+               OpSchema::Optional)
+        .Input(5,
+               "eos_token_id",
+               "Optional scalar end-of-sequence token id, same type as input_ids. Required for "
+               "reset_on_eos to take effect and for EOS-based substitution of unavailable prior "
+               "context; see the op doc.",
+               "M",
+               OpSchema::Optional)
+        .Input(6,
+               "segment_ids",
+               "Optional per-token segment id with shape (batch_size, sequence_length), used to reset "
+               "causal history at packed-sequence boundaries within input_ids.",
+               "tensor(int32)",
+               OpSchema::Optional)
         .Output(0,
                 "hash_ids",
                 "Hash ids with shape (batch_size, sequence_length, "
                 "(max_ngram_size - 1) * n_head_per_ngram).",
                 "M")
+        .Output(1,
+                "present_tokens",
+                "Optional trailing real token id history with shape (batch_size, max_ngram_size - 1), "
+                "to be passed as past_tokens on the next call.",
+                "M",
+                OpSchema::Optional)
         .TypeConstraint("M",
                         {"tensor(int32)", "tensor(int64)"},
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
@@ -2711,6 +2769,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *output_shape.add_dim() = input_shape.dim(1);
             output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
             updateOutputShape(ctx, 0, output_shape);
+
+            if (ctx.getNumOutputs() > 1) {
+              propagateElemTypeFromInputToOutput(ctx, 0, 1);
+              ONNX_NAMESPACE::TensorShapeProto present_tokens_shape;
+              *present_tokens_shape.add_dim() = input_shape.dim(0);
+              present_tokens_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+              updateOutputShape(ctx, 1, present_tokens_shape);
+            }
           }
         }));
 

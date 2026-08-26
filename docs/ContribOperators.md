@@ -4120,6 +4120,26 @@ This version of the operator has been available since version 1 of the 'com.micr
   For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
   The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
   heads for n=2 first, then n=3, and so on.
+  
+  Optional inputs add autoregressive-decode and packed-sequence support used by Qwen4-Exp-style
+  n-gram embeddings (Qwen4ExpTextNGramEmbedding):
+  
+  - past_tokens carries the last (max_ngram_size - 1) real token ids that precede input_ids, so a
+    decoder can call this op once per new token instead of replaying the whole prefix. When absent,
+    history before input_ids is treated as pad_id (or eos_token_id, see below), matching the
+    original prefill-only behavior.
+  - present_tokens always returns the trailing (max_ngram_size - 1) real token ids (drawn from
+    past_tokens/input_ids, never substituted), to be passed as past_tokens on the next call.
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at
+    EOS boundaries: any shifted position at or before the most recent EOS strictly before the
+    current position is replaced with eos_token_id instead of the real (unrelated, cross-sequence)
+    token. When past_tokens is absent and eos_token_id is provided, unavailable prior context is
+    substituted with eos_token_id rather than pad_id.
+  - segment_ids, when provided, additionally resets causal history at any position whose segment id
+    differs from the immediately preceding position's segment id within the current input_ids chunk
+    (packed/segmented sequences). Segment boundaries are not checked against past_tokens history.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+    vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
 
 #### Version
 
@@ -4133,10 +4153,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>n_head_per_ngram</tt> : int (required)</dt>
 <dd>Number of hash heads emitted for each n-gram order.</dd>
 <dt><tt>pad_id</tt> : int (required)</dt>
-<dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.</dd>
+<dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence when past_tokens and eos_token_id are both absent.</dd>
+<dt><tt>reset_on_eos</tt> : int</dt>
+<dd>When non-zero and the eos_token_id input is provided, reset causal n-gram history at EOS boundaries as described in the op doc. Default is 0 (disabled), which preserves the original pad_id-only behavior.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (3 - 7)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
@@ -4145,13 +4167,23 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Per-shift odd multipliers with shape (max_ngram_size).</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dt><tt>past_tokens</tt> (optional) : M</dt>
+<dd>Optional real token id history with shape (batch_size, max_ngram_size - 1) immediately preceding input_ids, chronologically ordered (oldest first).</dd>
+<dt><tt>head_offsets</tt> (optional) : M</dt>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.</dd>
+<dt><tt>eos_token_id</tt> (optional) : M</dt>
+<dd>Optional scalar end-of-sequence token id, same type as input_ids. Required for reset_on_eos to take effect and for EOS-based substitution of unavailable prior context; see the op doc.</dd>
+<dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
+<dd>Optional per-token segment id with shape (batch_size, sequence_length), used to reset causal history at packed-sequence boundaries within input_ids.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>hash_ids</tt> : M</dt>
 <dd>Hash ids with shape (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dt><tt>present_tokens</tt> (optional) : M</dt>
+<dd>Optional trailing real token id history with shape (batch_size, max_ngram_size - 1), to be passed as past_tokens on the next call.</dd>
 </dl>
 
 #### Type Constraints

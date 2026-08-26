@@ -43,6 +43,7 @@ NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : CudaKernel(inf
                   pad_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
               "pad_id is out of range for the input id type");
   pad_id_ = static_cast<T>(pad_id);
+  reset_on_eos_ = info.GetAttrOrDefault<int64_t>("reset_on_eos", 0);
 }
 
 template <typename T>
@@ -50,6 +51,10 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
+  const Tensor* past_tokens = context->Input<Tensor>(3);
+  const Tensor* head_offsets = context->Input<Tensor>(4);
+  const Tensor* eos_token_id = context->Input<Tensor>(5);
+  const Tensor* segment_ids = context->Input<Tensor>(6);
   const TensorShape& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
@@ -61,18 +66,44 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
+  const int64_t history_length = max_ngram_size_ - 1;
+
+  if (past_tokens != nullptr) {
+    ORT_RETURN_IF_NOT(past_tokens->Shape() == TensorShape({batch_size, history_length}),
+                      "past_tokens must have shape (batch_size, max_ngram_size - 1)");
+  }
+  if (head_offsets != nullptr) {
+    ORT_RETURN_IF_NOT(head_offsets->Shape().NumDimensions() == 1 && head_offsets->Shape()[0] == num_heads,
+                      "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+  }
+  if (eos_token_id != nullptr) {
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().Size() == 1, "eos_token_id must be a scalar");
+  }
+  if (segment_ids != nullptr) {
+    ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({batch_size, sequence_length}),
+                      "segment_ids must have shape (batch_size, sequence_length)");
+  }
+
   Tensor* output = context->Output(0, TensorShape({batch_size, sequence_length, num_heads}));
+  Tensor* present_tokens = context->Output(1, TensorShape({batch_size, history_length}));
+
   return LaunchNGramHashMappingKernel<T>(
       Stream(context),
       input_ids->Data<T>(),
       multipliers->Data<T>(),
       vocab_sizes->Data<T>(),
+      past_tokens == nullptr ? nullptr : past_tokens->Data<T>(),
+      head_offsets == nullptr ? nullptr : head_offsets->Data<T>(),
+      eos_token_id == nullptr ? nullptr : eos_token_id->Data<T>(),
+      segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>(),
       output->MutableData<T>(),
+      present_tokens == nullptr ? nullptr : present_tokens->MutableData<T>(),
       batch_size,
       sequence_length,
       max_ngram_size_,
       n_head_per_ngram_,
-      pad_id_);
+      pad_id_,
+      reset_on_eos_ != 0);
 }
 
 template class NGramHashMapping<int32_t>;
