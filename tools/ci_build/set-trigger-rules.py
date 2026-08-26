@@ -20,7 +20,6 @@ skip_js_changes = [
     "linux-gpu-tensorrt-ci-pipeline.yml",
     "linux-migraphx-ci-pipeline.yml",
     "linux-openvino-ci-pipeline.yml",
-    "linux-qnn-ci-pipeline.yml",
     "mac-ci-pipeline.yml",
     "mac-coreml-ci-pipeline.yml",
     "mac-ios-ci-pipeline.yml",
@@ -32,8 +31,6 @@ skip_js_changes = [
     "win-gpu-tensorrt-ci-pipeline.yml",
     "win-gpu-webgpu-ci-pipeline.yml",
     "win-openvino-ci-pipeline.yml",
-    "win-qnn-arm64-ci-pipeline.yml",
-    "win-qnn-ci-pipeline.yml",
 ]
 
 

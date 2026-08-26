@@ -336,9 +336,6 @@ stages:
           name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
-            - ImageOverride -equals onnxruntime-Win2025-arm64
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
