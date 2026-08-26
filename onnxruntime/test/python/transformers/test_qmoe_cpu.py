@@ -1136,9 +1136,15 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph) if self.moe_onnx_graph else None
         return self.ort_sess is not None
 
-    def parity_check(self):
+    def parity_check(self, strict=False):
         model_updated = self.recreate_onnx_model()
         if not model_updated:
+            if strict:
+                raise AssertionError(
+                    f"QMoE parity check setup failed for {self.__class__.__name__}: recreate_onnx_model() "
+                    "could not build the ONNX graph or create the ORT session (e.g. the QMoE kernel rejected "
+                    "the activation_type). The kernel was never exercised."
+                )
             return
 
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
@@ -1146,6 +1152,11 @@ class SparseMoeBlockORTHelper(nn.Module):
         ort_output = self.ort_forward(hidden_state)
 
         if ort_output is None:
+            if strict:
+                raise AssertionError(
+                    f"QMoE parity check failed for {self.__class__.__name__}: ort_forward() returned no output, "
+                    "so the QMoE kernel did not run and no comparison was performed."
+                )
             return
 
         torch_has_nan = torch.isnan(torch_output).any()
@@ -1269,15 +1280,15 @@ def with_mlas_q4_mode(test_cases):
     return expanded_cases
 
 
-def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool | None):
+def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool | None, **kwargs):
     if enable_mlas_q4_gemm is None:  # No env var
-        test_runner()
+        test_runner(**kwargs)
     else:
         env_value = "1" if enable_mlas_q4_gemm else "0"
         mode = "enabled" if enable_mlas_q4_gemm else "disabled"
         print(f"DirectQ4 mode ({ORT_USE_MLAS_Q4_GEMM_MOE}) is {mode}")
         with scoped_env_var(ORT_USE_MLAS_Q4_GEMM_MOE, env_value):
-            test_runner()
+            test_runner(**kwargs)
 
 
 class SwigluMoEBlock(SparseMoeBlockORTHelper):
@@ -1890,7 +1901,7 @@ class TestGegluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm, strict=True)
 
     @parameterized.expand(with_mlas_q4_mode(geglu_test_cases))
     def test_geglu_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
@@ -1915,7 +1926,7 @@ class TestGegluQMoECPU(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT,
             use_asymmetric_quant=True,
         )
-        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm, strict=True)
 
     @parameterized.expand(with_mlas_q4_mode(geglu_blockwise_test_cases))
     def test_geglu_qmoe_blockwise_parity_cpu(
@@ -1948,7 +1959,7 @@ class TestGegluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm, strict=True)
 
     @parameterized.expand(with_mlas_q4_mode(geglu_blockwise_test_cases))
     def test_geglu_qmoe_blockwise_asymmetric_parity_cpu(
@@ -1971,7 +1982,7 @@ class TestGegluQMoECPU(unittest.TestCase):
             block_size=block_size,
             use_asymmetric_quant=True,
         )
-        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm, strict=True)
 
 
 @unittest.skipIf(True, "Skipping QMoE CPU benchmark tests")
