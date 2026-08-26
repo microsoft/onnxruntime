@@ -3367,7 +3367,7 @@ class TestQMoEFractionalZeroPoint(unittest.TestCase):
     def _silu(x):
         return x / (1.0 + numpy.exp(-x))
 
-    def _run_case(self, offset=1.5, hidden=256, inter=256, block=64, disable_prepacking=False):
+    def _run_case(self, offset=1.5, hidden=256, inter=256, block=64, live_scales=False):
         if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
             self.skipTest("CUDA EP not available")
         bits = 2
@@ -3435,46 +3435,56 @@ class TestQMoEFractionalZeroPoint(unittest.TestCase):
             zero_point_offset=float(offset),
             domain="com.microsoft",
         )
+        s1_fp16 = s1.astype(numpy.float16).reshape(1, inter, hidden // block)
+        s2_fp16 = s2.astype(numpy.float16).reshape(1, hidden, inter // block)
+        # When ``live_scales`` is set, fc*_scales are runtime graph inputs instead of constant
+        # initializers. Weights stay initializers, so int2 PrePack still runs (int2 mandates the
+        # CUTLASS layout transform), but PrePackConstantBiasFromScales cannot consume live scales --
+        # forcing ComputeInternal to build the fractional-center bias on the fly from the live
+        # fc*_scales. Global session.disable_prepacking is NOT usable here: it would also skip the
+        # mandatory weight prepack and the kernel rejects int2 with weights_prepacked=0.
+        graph_inputs = [
+            helper.make_tensor_value_info("input", TensorProto.FLOAT16, [1, hidden]),
+            helper.make_tensor_value_info("router_probs", TensorProto.FLOAT16, [1, 1]),
+        ]
+        initializers = [
+            helper.make_tensor("fc1_experts_weights", TensorProto.UINT8, list(f1p.shape), f1p.tobytes(), raw=True),
+            helper.make_tensor("fc2_experts_weights", TensorProto.UINT8, list(f2p.shape), f2p.tobytes(), raw=True),
+        ]
+        if live_scales:
+            graph_inputs.append(
+                helper.make_tensor_value_info("fc1_scales", TensorProto.FLOAT16, [1, inter, hidden // block])
+            )
+            graph_inputs.append(
+                helper.make_tensor_value_info("fc2_scales", TensorProto.FLOAT16, [1, hidden, inter // block])
+            )
+        else:
+            initializers.append(
+                helper.make_tensor(
+                    "fc1_scales", TensorProto.FLOAT16, [1, inter, hidden // block], s1_fp16.tobytes(), raw=True
+                )
+            )
+            initializers.append(
+                helper.make_tensor(
+                    "fc2_scales", TensorProto.FLOAT16, [1, hidden, inter // block], s2_fp16.tobytes(), raw=True
+                )
+            )
         graph = helper.make_graph(
             [node],
             "g",
-            [
-                helper.make_tensor_value_info("input", TensorProto.FLOAT16, [1, hidden]),
-                helper.make_tensor_value_info("router_probs", TensorProto.FLOAT16, [1, 1]),
-            ],
+            graph_inputs,
             [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, hidden])],
-            [
-                helper.make_tensor("fc1_experts_weights", TensorProto.UINT8, list(f1p.shape), f1p.tobytes(), raw=True),
-                helper.make_tensor("fc2_experts_weights", TensorProto.UINT8, list(f2p.shape), f2p.tobytes(), raw=True),
-                helper.make_tensor(
-                    "fc1_scales",
-                    TensorProto.FLOAT16,
-                    [1, inter, hidden // block],
-                    s1.astype(numpy.float16).tobytes(),
-                    raw=True,
-                ),
-                helper.make_tensor(
-                    "fc2_scales",
-                    TensorProto.FLOAT16,
-                    [1, hidden, inter // block],
-                    s2.astype(numpy.float16).tobytes(),
-                    raw=True,
-                ),
-            ],
+            initializers,
         )
         model = helper.make_model(
             graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
         )
-        sess_opts = onnxruntime.SessionOptions()
-        if disable_prepacking:
-            # Force the live-scale fallback branch in ComputeInternal: with prepacking disabled the
-            # constant bias is not built at PrePack time (PrePackConstantBiasFromScales is skipped),
-            # so the fractional-center bias must be computed on the fly from the live fc*_scales.
-            sess_opts.add_session_config_entry("session.disable_prepacking", "1")
-        sess = onnxruntime.InferenceSession(model.SerializeToString(), sess_opts, providers=["CUDAExecutionProvider"])
-        out = sess.run(None, {"input": inp.astype(numpy.float16), "router_probs": numpy.ones((1, 1), numpy.float16)})[
-            0
-        ][0].astype(numpy.float32)
+        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+        feeds = {"input": inp.astype(numpy.float16), "router_probs": numpy.ones((1, 1), numpy.float16)}
+        if live_scales:
+            feeds["fc1_scales"] = s1_fp16
+            feeds["fc2_scales"] = s2_fp16
+        out = sess.run(None, feeds)[0][0].astype(numpy.float32)
         max_diff = float(numpy.abs(out - ref).max())
         self.assertLess(max_diff, 0.35, f"fractional-zp 2-bit max_diff {max_diff:.4f} exceeds 0.35")
 
@@ -3482,9 +3492,10 @@ class TestQMoEFractionalZeroPoint(unittest.TestCase):
         self._run_case(1.5)
 
     def test_fractional_zp_1p5_live_scales(self):
-        # Same fractional-center reference, but with prepacking disabled so the on-the-fly
-        # (live-scale) bias branch in ComputeInternal is exercised instead of the PrePack path.
-        self._run_case(1.5, disable_prepacking=True)
+        # Same fractional-center reference, but fc*_scales are live runtime inputs (not consumed by
+        # PrePack), exercising the on-the-fly (live-scale) constant-bias branch in ComputeInternal
+        # instead of the PrePack path. Weights remain initializers so int2 weight PrePack still runs.
+        self._run_case(1.5, live_scales=True)
 
 
 if __name__ == "__main__":
