@@ -279,3 +279,11 @@ stages:
             python onnx_backend_test_series.py
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
+
+        - ${{ if eq(parameters.use_tensorrt, true) }}:
+          - powershell: |
+              $ErrorActionPreference = "Stop"
+              python -c "import onnxruntime as ort; providers = ort.get_available_providers(); assert 'TensorrtExecutionProvider' in providers, providers"
+              python -m unittest onnxruntime_test_python.TestInferenceSession.test_tensorrt_inference_without_cpu_fallback
+            workingDirectory: '$(Build.sourcesDirectory)\onnxruntime\test\python'
+            displayName: 'Run TensorRT inference without CPU fallback'
