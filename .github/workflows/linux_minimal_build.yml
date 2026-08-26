@@ -33,23 +33,23 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | linux_minimal_build.yml | build_full_ort
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           # ostensibly should be able to use the same cache for most of these, but in practice the hash does not match.
           key: vcpkg-cache | linux_minimal_build.yml | build_full_ort
@@ -70,7 +70,7 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
 
       - name: Upload Test Data Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: test_data
           path: ${{ runner.temp }}/minimal_build_test_data/
@@ -91,21 +91,21 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_minimal_exceptions_disabled
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_minimal_exceptions_disabled
           path: ~/.cache/vcpkg
@@ -169,21 +169,21 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_minimal_custom_ops
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_minimal_custom_ops
           path: ~/.cache/vcpkg
@@ -222,21 +222,21 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_minimal_type_reduction
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_minimal_type_reduction
           path: ~/.cache/vcpkg
@@ -274,21 +274,21 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_minimal_globally_allowed_types
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_minimal_globally_allowed_types
           path: ~/.cache/vcpkg
@@ -327,21 +327,21 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_extended_minimal
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal
           path: ~/.cache/vcpkg
@@ -415,7 +415,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
 
@@ -437,13 +437,13 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_regular_no_optional
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_regular_no_optional
           path: ~/.cache/vcpkg
@@ -514,7 +514,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
 
@@ -536,13 +536,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_minimal_no_optional
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_minimal_no_optional
           path: ~/.cache/vcpkg
@@ -602,7 +602,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
 
@@ -630,13 +630,13 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_extended_minimal_no_optional
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal_no_optional
           path: ~/.cache/vcpkg
@@ -698,14 +698,14 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
       - name: Download Test Data Artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: test_data
           path: ${{ runner.temp }}/.test_data/
@@ -728,13 +728,13 @@ jobs:
           # Use default android-sdk-root if not specified
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: ccache | linux_minimal_build.yml | build_extended_minimal_android
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal_android
           path: ~/.cache/vcpkg
