@@ -40,6 +40,10 @@ parameters:
   type: boolean
   default: false
 
+- name: TensorRTFolder
+  type: string
+  default: ''
+
 stages:
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
     dependsOn: []
@@ -76,9 +80,11 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '12.8') }}:
+        ${{ if ne(parameters.TensorRTFolder, '') }}:
+          value: ${{ parameters.TensorRTFolder }}
+        ${{ if and(eq(parameters.TensorRTFolder, ''), eq(parameters.CudaVersion, '12.8')) }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
-        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        ${{ if and(eq(parameters.TensorRTFolder, ''), eq(parameters.CudaVersion, '13.0')) }}:
           value: ${{ variables.win_trt_folder_cuda13 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:
@@ -106,6 +112,7 @@ stages:
           ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
             DownloadCUDA: true
           DownloadTRT: ${{ parameters.use_tensorrt }}
+          TensorRTFolder: ${{ parameters.TensorRTFolder }}
 
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
@@ -213,6 +220,7 @@ stages:
             ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
               DownloadCUDA: true
             DownloadTRT: ${{ parameters.use_tensorrt }}
+            TensorRTFolder: ${{ parameters.TensorRTFolder }}
 
         - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
           env:

@@ -28,6 +28,10 @@ parameters:
    - 12.8
    - 13.0
 
+- name: trt_version_override
+  type: string
+  default: ''
+
 - name: cmake_cuda_archs
   type: string
   default: ''
@@ -87,11 +91,13 @@ stages:
           value: ''
       - template: ../templates/common-variables.yml
       - name: trt_version
-        ${{ if eq(parameters.arch, 'aarch64') }}:
+        ${{ if ne(parameters.trt_version_override, '') }}:
+          value: ${{ parameters.trt_version_override }}
+        ${{ if and(eq(parameters.trt_version_override, ''), eq(parameters.arch, 'aarch64')) }}:
           value: ${{ variables.aarch64_trt_version }}
-        ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+        ${{ if and(eq(parameters.trt_version_override, ''), ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
           value: ${{ variables.linux_trt_version_cuda13 }}
-        ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
+        ${{ if and(eq(parameters.trt_version_override, ''), ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
           value: ${{ variables.linux_trt_version_cuda12 }}
       - name: trt_download_url
         ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
