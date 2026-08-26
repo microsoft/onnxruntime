@@ -1,18 +1,24 @@
 parameters:
+- name: stage_name
+  type: string
+
+- name: arch
+  type: string
+  values:
+  - x64
+  - aarch64
+
 - name: machine_pool
   type: string
-  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: package_version
   type: string
-  default: dev
 
 - name: version_file
   type: string
 
 - name: cmake_build_type
   type: string
-  default: 'Release'
   values:
    - Debug
    - Release
@@ -21,24 +27,34 @@ parameters:
 
 - name: docker_base_image
   type: string
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1'
+
+- name: docker_repository
+  type: string
+
+- name: artifact_name
+  type: string
+
+- name: python_artifact_name
+  type: string
 
 stages:
-- stage: Linux_plugin_webgpu_x64_Build
+- stage: ${{ parameters.stage_name }}
   dependsOn: []
   jobs:
-  - job: Linux_plugin_webgpu_x64_Build
+  - job: ${{ parameters.stage_name }}
     timeoutInMinutes: 240
     workspace:
       clean: all
     pool:
       name: ${{ parameters.machine_pool }}
       os: linux
+      ${{ if eq(parameters.arch, 'aarch64') }}:
+        hostArchitecture: Arm64
     templateContext:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: webgpu_plugin_linux_x64
+        artifactName: ${{ parameters.artifact_name }}
     variables:
       - template: ../templates/common-variables.yml
     steps:
@@ -54,15 +70,17 @@ stages:
           version_file: ${{ parameters.version_file }}
 
       - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
 
       - template: ../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
+          Dockerfile: tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/shared/python/webgpu
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimewebgpuplugin
+          Repository: ${{ parameters.docker_repository }}
 
-      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i onnxruntimewebgpuplugin -c ${{ parameters.cmake_build_type }}
+      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i ${{ parameters.docker_repository }} -c ${{ parameters.cmake_build_type }}
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build WebGPU Plugin'
         env:
@@ -86,19 +104,21 @@ stages:
         displayName: 'Create version marker file'
 
   # Python package build job
-  - job: Linux_plugin_webgpu_x64_Python_Package
-    dependsOn: Linux_plugin_webgpu_x64_Build
+  - job: ${{ parameters.stage_name }}_Python_Package
+    dependsOn: ${{ parameters.stage_name }}
     timeoutInMinutes: 60
     workspace:
       clean: all
     pool:
       name: ${{ parameters.machine_pool }}
       os: linux
+      ${{ if eq(parameters.arch, 'aarch64') }}:
+        hostArchitecture: Arm64
     templateContext:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/python
-        artifactName: webgpu_plugin_python_linux_x64
+        artifactName: ${{ parameters.python_artifact_name }}
     variables:
     - template: ../templates/common-variables.yml
     steps:
@@ -114,23 +134,25 @@ stages:
         version_file: ${{ parameters.version_file }}
 
     - template: ../templates/setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: ${{ parameters.arch }}
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
+        Dockerfile: tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/shared/python/webgpu
         DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimewebgpuplugin
+        Repository: ${{ parameters.docker_repository }}
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download plugin build artifacts'
       inputs:
-        artifactName: webgpu_plugin_linux_x64
+        artifactName: ${{ parameters.artifact_name }}
         targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
 
     - script: |
         set -e -x
         $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_python_package.sh \
-          -i onnxruntimewebgpuplugin \
+          -i ${{ parameters.docker_repository }} \
           -v "$(PluginPythonPackageVersion)"
       displayName: 'Build Python wheel'
