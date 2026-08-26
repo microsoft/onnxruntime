@@ -1379,37 +1379,6 @@ inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
   ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
 }
 
-inline EpContextConfig::EpContextConfig(EpContextConfig&& other) noexcept
-    : Base{other.release()} {
-}
-
-inline EpContextConfig& EpContextConfig::operator=(EpContextConfig&& other) noexcept {
-  if (this != &other) {
-    reset();
-    this->p_ = other.release();
-  }
-
-  return *this;
-}
-
-inline OrtEpContextConfig* EpContextConfig::release() noexcept {
-  auto* config = this->p_;
-  this->p_ = nullptr;
-  return config;
-}
-
-inline void EpContextConfig::reset() noexcept {
-  if (this->p_ != nullptr) {
-    GetEpApi().ReleaseEpContextConfig(this->p_);
-  }
-  this->p_ = nullptr;
-}
-
-inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
-  size_t ignored_max_data_size = 0;
-  GetReadFunc(read_func, state, ignored_max_data_size);
-}
-
 inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state,
                                          size_t& max_data_size) const {
   ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state, &max_data_size));
@@ -1417,6 +1386,15 @@ inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void
 
 inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
   ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
+}
+
+inline EpContextDataReadOptions::EpContextDataReadOptions() {
+  ThrowOnError(GetApi().CreateEpContextDataReadOptions(&this->p_));
+}
+
+inline EpContextDataReadOptions& EpContextDataReadOptions::SetMaxDataSize(size_t max_data_size) {
+  ThrowOnError(GetApi().EpContextDataReadOptionsSetMaxDataSize(this->p_, max_data_size));
+  return *this;
 }
 
 namespace detail {
@@ -1584,8 +1562,9 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
     OrtReadNamedBufferFunc read_func, void* state, size_t max_data_size) {
-  OrtEpContextDataReadOptions options{ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION, max_data_size};
-  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, &options));
+  EpContextDataReadOptions options;
+  options.SetMaxDataSize(max_data_size);
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, options));
   return *this;
 }
 

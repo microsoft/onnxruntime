@@ -13,10 +13,6 @@
 // C++ API consumers should use the companion header, onnxruntime_experimental_cxx_api.h, which provides typed
 // accessors for the experimental API functions.
 //
-// Callback types and OrtEpContextConfig used by the deprecated V28 EPContext functions were promoted to the stable
-// API in ONNX Runtime 1.30. They are declared by onnxruntime_c_api.h, which this header includes below. New code should
-// use the stable OrtApi, OrtCompileApi, and OrtEpApi functions rather than the V28 lookup names retained here.
-//
 // IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
 // releases without notice. Anything in this file should be treated as experimental and unstable.
 //

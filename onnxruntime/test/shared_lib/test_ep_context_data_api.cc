@@ -5,13 +5,10 @@
 #include <cstring>
 #include <limits>
 #include <string>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_cxx_api.h"
 
 #include "gmock/gmock.h"
 #include "gsl/gsl"
@@ -141,28 +138,32 @@ TEST(EpContextDataApiTest, ApiRejectsInvalidArguments) {
   ExpectFailureOrtStatus(ep_api.SessionOptionsGetEpContextConfig(session_options, nullptr), ORT_INVALID_ARGUMENT,
                          "Output OrtEpContextConfig is NULL");
 
-  const OrtEpContextDataReadOptions valid_read_options{ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION,
-                                                       kEpContextApiTestMaxDataSize};
+  OrtEpContextDataReadOptions* valid_read_options = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.CreateEpContextDataReadOptions(&valid_read_options));
+  auto release_read_options =
+      gsl::finally([&]() { ort_api.ReleaseEpContextDataReadOptions(valid_read_options); });
+  ASSERT_ORTSTATUS_OK(
+      ort_api.EpContextDataReadOptionsSetMaxDataSize(valid_read_options, kEpContextApiTestMaxDataSize));
   ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             nullptr, EpContextReadCallback, nullptr, &valid_read_options),
+                             nullptr, EpContextReadCallback, nullptr, valid_read_options),
                          ORT_INVALID_ARGUMENT,
                          "'options' parameter must not be NULL");
   ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
                              session_options, EpContextReadCallback, nullptr, nullptr),
                          ORT_INVALID_ARGUMENT, "read options must be provided");
-
-  OrtEpContextDataReadOptions invalid_read_options{ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION + 1,
-                                                   kEpContextApiTestMaxDataSize};
+  ExpectFailureOrtStatus(ort_api.CreateEpContextDataReadOptions(nullptr), ORT_INVALID_ARGUMENT,
+                         "Output read_options is NULL");
+  ExpectFailureOrtStatus(
+      ort_api.EpContextDataReadOptionsSetMaxDataSize(nullptr, kEpContextApiTestMaxDataSize),
+      ORT_INVALID_ARGUMENT, "OrtEpContextDataReadOptions is NULL");
+  Ort::EpContextDataReadOptions invalid_read_options;
   ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             session_options, EpContextReadCallback, nullptr, &invalid_read_options),
-                         ORT_INVALID_ARGUMENT, "Unsupported EPContext data read options version");
-  invalid_read_options = {ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION, 0};
-  ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             session_options, EpContextReadCallback, nullptr, &invalid_read_options),
+                             session_options, EpContextReadCallback, nullptr, invalid_read_options),
                          ORT_INVALID_ARGUMENT, "max_data_size must be finite and greater than zero");
-  invalid_read_options = {ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION, std::numeric_limits<size_t>::max()};
-  ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             session_options, EpContextReadCallback, nullptr, &invalid_read_options),
+  ExpectFailureOrtStatus(ort_api.EpContextDataReadOptionsSetMaxDataSize(invalid_read_options, 0), ORT_INVALID_ARGUMENT,
+                         "max_data_size must be finite and greater than zero");
+  ExpectFailureOrtStatus(ort_api.EpContextDataReadOptionsSetMaxDataSize(
+                             invalid_read_options, std::numeric_limits<size_t>::max()),
                          ORT_INVALID_ARGUMENT, "max_data_size must be finite and greater than zero");
 
   ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetEpContextConfig(session_options, &ep_context_config));
@@ -399,103 +400,4 @@ TEST(EpContextDataApiTest, ReadCallbackRejectsOversizedArtifactBeforeAllocation)
   EXPECT_FALSE(callback_state.allocation_attempted);
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, callback_state.payload.size());
-}
-
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-
-TEST(EpContextDataApiTest, ExperimentalCxxWrapperRetainsLifecycleApi) {
-  static_assert(std::is_same_v<decltype(std::declval<Ort::Experimental::EpContextConfig&>().reset()), void>);
-  static_assert(noexcept(std::declval<Ort::Experimental::EpContextConfig&>().release()));
-
-  const auto& ort_api = Ort::GetApi();
-  auto* experimental_set_read =
-      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  Ort::SessionOptions session_options;
-  EpContextReadCallbackState callback_state{};
-  ASSERT_ORTSTATUS_OK(experimental_set_read(session_options, EpContextReadCallback, &callback_state));
-
-  Ort::Experimental::EpContextConfig config{session_options};
-  const auto* config_handle = config.get();
-  auto* config_alias = &config;
-  config = std::move(*config_alias);
-  EXPECT_EQ(config.get(), config_handle);
-
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-  config.GetReadFunc(read_func, read_state);
-  EXPECT_EQ(read_func, EpContextReadCallback);
-  EXPECT_EQ(read_state, &callback_state);
-
-  config.reset();
-  EXPECT_FALSE(config);
-  EXPECT_EQ(config.release(), nullptr);
-}
-
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD)
-TEST(EpContextDataApiTest, StableCxxWrapperHandlesSelfMove) {
-  Ort::SessionOptions session_options;
-  Ort::EpContextConfig config{session_options};
-  const auto* config_handle = config.get();
-
-  auto* config_alias = &config;
-  config = std::move(*config_alias);
-  EXPECT_EQ(config.get(), config_handle);
-
-  config.reset();
-  EXPECT_FALSE(config);
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-TEST(EpContextDataApiTest, ExperimentalV28NamesForwardToStableTransport) {
-  const auto& ort_api = Ort::GetApi();
-  auto* experimental_set_read =
-      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* experimental_get_config =
-      Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* experimental_release_config =
-      Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* experimental_get_read =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* experimental_get_write =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_FnOrThrow(&ort_api);
-
-  Ort::SessionOptions session_options;
-  EpContextReadCallbackState callback_state{};
-  ASSERT_ORTSTATUS_OK(experimental_set_read(session_options, EpContextReadCallback, &callback_state));
-
-  OrtEpContextConfig* config = nullptr;
-  ASSERT_ORTSTATUS_OK(experimental_get_config(session_options, &config));
-  auto release_config = gsl::finally([&]() { experimental_release_config(config); });
-
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-  ASSERT_ORTSTATUS_OK(experimental_get_read(config, &read_func, &read_state));
-  EXPECT_EQ(read_func, EpContextReadCallback);
-  EXPECT_EQ(read_state, &callback_state);
-
-  OrtWriteNamedBufferFunc write_func = EpContextWriteCallback;
-  void* write_state = reinterpret_cast<void*>(0x1);
-  ASSERT_ORTSTATUS_OK(experimental_get_write(config, &write_func, &write_state));
-  EXPECT_EQ(write_func, nullptr);
-  EXPECT_EQ(write_state, nullptr);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  auto* experimental_set_write =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
-          &ort_api);
-  ExpectFailureOrtStatus(experimental_set_write(nullptr, EpContextWriteCallback, nullptr), ORT_INVALID_ARGUMENT,
-                         "OrtModelCompilationOptions is NULL");
-#endif
 }

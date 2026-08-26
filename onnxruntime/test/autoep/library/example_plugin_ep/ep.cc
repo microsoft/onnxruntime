@@ -448,7 +448,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         // memory instead of copying it.
         ep_context_data_utils::EpContextData ep_context_data;
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
-            ep->ort_api, ep->ep_context_config_.get(), ep_cache_context.c_str(), ort_graphs[0],
+            ep->ort_api, ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
             ep_context_data));
       }
 
@@ -579,7 +579,7 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
           fallback_graph = nullptr;
         }
         RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-            ort_api, ep_context_config_.get(), ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
+            ort_api, ep_context_config_, ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
             ep_context_data.data(), ep_context_data.size()));
       }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),

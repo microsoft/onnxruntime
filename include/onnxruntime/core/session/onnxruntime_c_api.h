@@ -322,6 +322,7 @@ ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(EpContextConfig);
+ORT_RUNTIME_CLASS(EpContextDataReadOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
@@ -627,21 +628,6 @@ typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
                                                          _In_ OrtAllocator* allocator,
                                                          _Outptr_result_buffer_maybenull_(*data_size) void** buffer,
                                                          _Out_ size_t* data_size);
-
-#define ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION 1
-
-/** \brief Policy for reading external EPContext binary data.
- *
- * The application knows this limit when implementing its callback and must reject an oversized artifact before
- * allocating its output buffer. The EP independently checks the returned size before deserialization.
- *
- * \since Version 1.30.
- */
-typedef struct OrtEpContextDataReadOptions {
-  uint32_t version;  ///< Must be ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION.
-  /// Required finite maximum payload size in bytes. Must be greater than zero and less than SIZE_MAX.
-  size_t max_data_size;
-} OrtEpContextDataReadOptions;
 
 /** \brief Flags describing an execution provider's support for application-managed external EPContext data.
  *
@@ -7651,6 +7637,41 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
                   _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state,
                   _In_opt_ const OrtEpContextDataReadOptions* read_options);
+
+  /** \brief Create options for reading external EPContext binary data.
+   *
+   * The returned options must be configured with EpContextDataReadOptionsSetMaxDataSize before they are used to
+   * register a callback.
+   *
+   * \param[out] read_options Newly allocated options. Must be released with ReleaseEpContextDataReadOptions.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(CreateEpContextDataReadOptions, _Outptr_ OrtEpContextDataReadOptions** read_options);
+
+  /** \brief Set the maximum external EPContext payload size.
+   *
+   * The application must reject an oversized artifact before allocating its output buffer. The EP independently
+   * checks the returned size before deserialization.
+   *
+   * \param[in,out] read_options Options created by CreateEpContextDataReadOptions.
+   * \param[in] max_data_size Required finite maximum payload size in bytes. Must be greater than zero and less than
+   *                         SIZE_MAX.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(EpContextDataReadOptionsSetMaxDataSize, _Inout_ OrtEpContextDataReadOptions* read_options,
+                  _In_ size_t max_data_size);
+
+  /** \brief Release EPContext data read options. May be called with NULL.
+   *
+   * \since Version 1.30.
+   */
+  ORT_CLASS_RELEASE(EpContextDataReadOptions);
 };
 
 /*

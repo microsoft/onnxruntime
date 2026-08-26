@@ -658,11 +658,8 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
-inline void OrtRelease(OrtEpContextConfig* ptr) {
-  if (ptr != nullptr) {
-    GetEpApi().ReleaseEpContextConfig(ptr);
-  }
-}
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
+ORT_DEFINE_RELEASE(EpContextDataReadOptions);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -792,6 +789,7 @@ struct AllocatedFree {
 struct AllocatorWithDefaultOptions;
 struct Env;
 struct EpContextConfig;
+struct EpContextDataReadOptions;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1762,18 +1760,21 @@ struct EpContextConfig : detail::Base<OrtEpContextConfig> {
   explicit EpContextConfig(std::nullptr_t) noexcept {}
   explicit EpContextConfig(const SessionOptions& session_options);
   explicit EpContextConfig(ConstSessionOptions session_options);
-  EpContextConfig(EpContextConfig&& other) noexcept;
-  EpContextConfig& operator=(EpContextConfig&& other) noexcept;
 
-  OrtEpContextConfig* get() const noexcept { return this->p_; }
-  explicit operator bool() const noexcept { return this->p_ != nullptr; }
-  OrtEpContextConfig* release() noexcept;
-  void reset() noexcept;
-
-  [[deprecated("Use GetReadFunc(read_func, state, max_data_size)")]]
-  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
   void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state, size_t& max_data_size) const;
   void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
+};
+
+/** \brief Options controlling EPContext data reads.
+ *
+ * Wraps ::OrtEpContextDataReadOptions.
+ */
+struct EpContextDataReadOptions : detail::Base<OrtEpContextDataReadOptions> {
+  using Base = detail::Base<OrtEpContextDataReadOptions>;
+  using Base::Base;
+
+  EpContextDataReadOptions();
+  EpContextDataReadOptions& SetMaxDataSize(size_t max_data_size);
 };
 
 /** \brief Options object used when compiling a model.

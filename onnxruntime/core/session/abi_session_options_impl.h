@@ -13,6 +13,10 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/providers.h"
 
+struct OrtEpContextDataReadOptions {
+  size_t max_data_size = 0;
+};
+
 struct OrtSessionOptions {
   onnxruntime::SessionOptions value;
 

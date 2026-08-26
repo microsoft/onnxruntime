@@ -225,18 +225,19 @@ can be used concurrently — for as long as an EP might invoke the callback.
 
 Registers the read callback on the session options. Reading happens at session load, so this is
 configured on `OrtSessionOptions`. Passing `NULL` for `read_func` clears any previously set callback
-(and its state). A non-NULL callback requires versioned read options with a nonzero finite maximum.
+(and its state). A non-NULL callback requires read options with a nonzero finite maximum.
 
 ```c
-OrtEpContextDataReadOptions read_options = {
-  ORT_EP_CONTEXT_DATA_READ_OPTIONS_VERSION,
-  max_data_size,
-};
+OrtEpContextDataReadOptions* read_options = NULL;
+OrtStatus* status = api->CreateEpContextDataReadOptions(&read_options);
+if (status == NULL) {
+  status = api->EpContextDataReadOptionsSetMaxDataSize(read_options, max_data_size);
+}
 
-OrtStatus* SessionOptionsSetEpContextDataReadFunc(OrtSessionOptions* options,
-                                                  OrtReadNamedBufferFunc read_func,
-                                                  void* state,
-                                                  const OrtEpContextDataReadOptions* read_options);
+if (status == NULL) {
+  status = api->SessionOptionsSetEpContextDataReadFunc(options, read_func, state, read_options);
+}
+api->ReleaseEpContextDataReadOptions(read_options);
 ```
 
 ### Write callback — `OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc`
@@ -303,23 +304,15 @@ OrtStatus* EpContextConfigGetEpContextDataWriteFunc(const OrtEpContextConfig* co
 A move-only RAII wrapper (in `onnxruntime_cxx_api.h`) that owns the handle and exposes the
 callback accessors. Typical EP usage: construct from the session options during `CreateEp()`, keep the
 wrapper for the EP's lifetime, and query the callbacks via `GetReadFunc()` / `GetWriteFunc()`.
-The deprecated two-output `GetReadFunc(read_func, state)` overload remains only for V28 source compatibility and hides
-the required size policy; stable EP code must use the three-output overload.
 
 ```cpp
 namespace Ort {
-class EpContextConfig {
+class EpContextConfig : public detail::Base<OrtEpContextConfig> {
  public:
   explicit EpContextConfig(std::nullptr_t) noexcept;
   explicit EpContextConfig(const SessionOptions& session_options);
   explicit EpContextConfig(ConstSessionOptions session_options);   // extracts via GetEpContextConfig
 
-  EpContextConfig(EpContextConfig&&) noexcept;                     // move-only
-  EpContextConfig& operator=(EpContextConfig&&) noexcept;
-
-  OrtEpContextConfig* get() const noexcept;
-  explicit operator bool() const noexcept;
-  OrtEpContextConfig* release() noexcept;
   void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state, size_t& max_data_size) const;
   void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
 };
@@ -597,7 +590,7 @@ nvinfer1::IHostMemory* serialized = trt_engine->serialize();
 
 // ep_context_config_ is an Ort::EpContextConfig obtained in CreateEp().
 RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-    ort_api, ep_context_config_.get(),
+    ort_api, ep_context_config_,
     engine_cache_name,   // logical name / file-fallback name
     graph,               // model graph, for file-fallback path resolution
     serialized->data(), serialized->size()));
@@ -610,7 +603,7 @@ RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
 // In the EP's Compile(): read a cached engine, honoring an app read callback if present.
 ep_context_data_utils::EpContextData ctx;
 RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
-    ort_api, ep_context_config_.get(), ep_cache_context_name, graph, ctx));
+    ort_api, ep_context_config_, ep_cache_context_name, graph, ctx));
 
 engine = runtime->deserializeCudaEngine(ctx.data(), ctx.size());
 // `ctx` frees the adopted allocator buffer on destruction — no manual free.
@@ -624,10 +617,6 @@ call that handles both the custom (callback) and standard (disk) cases.
 This is a backward-compatible, append-only C API addition. `OrtEp::GetEpContextDataSupport` is appended to the
 EP-implemented struct and is called only for an EP compiled against API version 30 or later; `OrtEp::Compile()` is
 unchanged. Applications that register no callbacks behave exactly as before.
-
-The V28 experimental lookup names remain registered and forward to the stable implementations. The
-`Ort::Experimental::EpContextConfig` name is a deprecated alias of `Ort::EpContextConfig`. These compatibility paths
-are supported through 1.31 and are eligible for removal in 1.32 after a release-note warning.
 
 ### Provider Adoption
 
@@ -651,7 +640,7 @@ Stable callback typedefs (in `onnxruntime_c_api.h`):
 | --- | --- | --- |
 | `OrtWriteNamedBufferFunc` | Callback typedef | Write named (EPContext) binary data during compilation |
 | `OrtReadNamedBufferFunc` | Callback typedef | Read/process named data, allocate via the ORT allocator, return the buffer, during load |
-| `OrtEpContextDataReadOptions` | Versioned options | Require a finite maximum read payload size |
+| `OrtEpContextDataReadOptions` | Opaque options | Require a finite maximum read payload size |
 | `OrtEpContextDataSupportFlags` | Support flags | Advertise callback-capable external EPContext read/write paths |
 
 Stable functions (since ONNX Runtime 1.30):
@@ -659,6 +648,9 @@ Stable functions (since ONNX Runtime 1.30):
 | API | Group | Purpose |
 | --- | --- | --- |
 | `SessionOptionsSetEpContextDataReadFunc` | `OrtApi` | Register the read callback on session options (load) |
+| `CreateEpContextDataReadOptions` | `OrtApi` | Create opaque read callback options |
+| `EpContextDataReadOptionsSetMaxDataSize` | `OrtApi` | Set the finite maximum read payload size |
+| `ReleaseEpContextDataReadOptions` | `OrtApi` | Release read callback options |
 | `ModelCompilationOptions_SetEpContextDataWriteFunc` | `OrtCompileApi` | Register compile-time write callback |
 | `SessionOptionsGetEpContextConfig` | `OrtEpApi` | Extract config during `CreateEp()` |
 | `ReleaseEpContextConfig` | `OrtEpApi` | Release the `OrtEpContextConfig` handle |
