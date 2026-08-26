@@ -116,6 +116,7 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_windows_x64_cuda_archs }}"
             use_tensorrt: True
             TensorRTFolder: ${{ format('TensorRT-{0}.Windows.win10.cuda-{1}', parameters.tensorrt_version, parameters.tensorrt_cuda_version) }}
+            TensorRTMajorVersion: ${{ parameters.tensorrt_major_version }}
 
     - ${{ if eq(parameters.cuda_version, '12.8') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
@@ -127,6 +128,7 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_windows_x64_cuda_archs }}"
             use_tensorrt: True
             TensorRTFolder: ${{ format('TensorRT-{0}.Windows.win10.cuda-{1}', parameters.tensorrt_version, parameters.tensorrt_cuda_version) }}
+            TensorRTMajorVersion: ${{ parameters.tensorrt_major_version }}
 
     # Linux: one parallel stage per Python version
     - ${{ each config in parameters.LinuxPythonConfigurations }}:

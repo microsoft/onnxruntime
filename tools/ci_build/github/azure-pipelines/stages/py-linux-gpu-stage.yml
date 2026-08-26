@@ -155,6 +155,45 @@ stages:
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'Move wheel files'
 
+      - ${{ if and(eq(parameters.arch, 'x86_64'), ne(parameters.trt_major_version, '')) }}:
+        - bash: |
+            set -euo pipefail
+            shopt -s nullglob
+
+            wheels=(dist/*.whl)
+            if (( ${#wheels[@]} != 1 )); then
+              echo "Expected one wheel in dist, found ${#wheels[@]}" >&2
+              exit 1
+            fi
+
+            mapfile -t provider_entries < <(unzip -Z1 "${wheels[0]}" | grep -E '/libonnxruntime_providers_tensorrt\.so$' || true)
+            if (( ${#provider_entries[@]} != 1 )); then
+              echo "Expected one TensorRT provider in ${wheels[0]}" >&2
+              exit 1
+            fi
+
+            provider_path="$(Agent.TempDirectory)/libonnxruntime_providers_tensorrt.so"
+            unzip -p "${wheels[0]}" "${provider_entries[0]}" >"$provider_path"
+            dependencies=$(readelf -d "$provider_path")
+            printf '%s\n' "$dependencies"
+
+            expected_major='${{ parameters.trt_major_version }}'
+            for library in libnvinfer libnvonnxparser; do
+              if ! grep -Fq "Shared library: [${library}.so.${expected_major}]" <<<"$dependencies"; then
+                echo "Missing ${library}.so.${expected_major} dependency" >&2
+                exit 1
+              fi
+            done
+
+            unexpected_dependencies=$(grep -Eo 'lib(nvinfer|nvonnxparser)\.so\.[0-9]+' <<<"$dependencies" | grep -Ev "\.${expected_major}$" || true)
+            if [[ -n "$unexpected_dependencies" ]]; then
+              echo "Unexpected TensorRT dependencies:" >&2
+              printf '%s\n' "$unexpected_dependencies" >&2
+              exit 1
+            fi
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'Verify TensorRT wheel dependencies'
+
       - ${{ if ne(parameters.build_intermediates_artifact_name, '') }}:
         - script: |
             set -e -x
