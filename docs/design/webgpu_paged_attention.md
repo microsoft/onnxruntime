@@ -1,6 +1,6 @@
 # Design: WebGPU PagedAttention
 
-**Status**: v1 landed. Phase 2 partially landed (direct paged decode + fused paged prefill + Unpack/Repack skip fast paths).
+**Status**: v1 landed. Phase 2 partially landed (direct paged decode + fused paged prefill + Unpack/Repack skip fast paths + metadata fast path).
 **Target**: WebGPU EP, `com.microsoft::PagedAttention` v1
 **Owner**: TBD
 **Precision**: `MLFloat16` only in v1
@@ -106,7 +106,7 @@ The paged decoder step provides:
 - `cumulative_sequence_lengths: int32[batch_size + 1]` — prefix sum.
 - `past_sequence_lengths: int32[batch_size]` — cached-token count per request.
 - Per-layer `key_cache` and `value_cache` shared across the whole engine.
-- (Phase 2) `attention_metadata: int32[2]` on CPU = `[max_query_len_bound, max_kv_len_bound]`, produced by the engine each step.
+- (Phase 2) `attention_metadata: int32[2 or 3]` on CPU = `[max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound]`, produced by the engine each step.
 
 ---
 
@@ -246,12 +246,13 @@ that `ShouldRunFusedPagedPrefill` rejects (fp32, `head_size > 256`, or
 `block_size < max_k_step`); direct paged paths cover the common case on
 every WebGPU adapter.
 
-### 4.5 Host-visible values and graph capture (deferred to Phase 2)
+### 4.5 Host-visible values and graph capture
 
-The v1 op performs **one blocking D→H metadata download per node per Run**.
-It packs `cumulative_seqlens_q` and `past_seqlens` into a small GPU buffer,
-then reads it on the CPU to build `seqlen_k_cpu` and compute
-`max_seqlen_q` / `max_kv_len`. Those two scalars drive:
+When `attention_metadata` is present, the op reads its replay-wide query and
+KV bounds directly from CPU memory. A small `PagedAttentionPrepareMetadata`
+dispatch derives exact per-request `seqlen_k` and `seqlens_q` values from the
+device-resident cumulative and past lengths. No device metadata is downloaded.
+The two host bounds drive:
 
 - **Dispatch dims** of `PagedAttentionGatherKVProgram`,
   `PagedAttentionUnpackQueryProgram`, `FlashAttentionProgram` /
@@ -259,27 +260,15 @@ then reads it on the CPU to build `seqlen_k_cpu` and compute
 - **Scratch tensor sizes** for `k_padded`, `v_padded`, `q_padded`, and
   `output_padded`.
 
-The download ends the current compute pass, flushes the queue, allocates a
-staging buffer, and waits for the result. It is therefore a v1 latency
-limitation and unsuitable for browser-main-thread decode at many transformer
-layers, not only a graph-capture limitation.
+Models that omit `attention_metadata` retain the v1 compatibility path: pack
+the two device tensors, perform one blocking D→H download, validate exact
+lengths on CPU, and copy the two per-request arrays back to GPU. This fallback
+allows older exports to run but remains unsuitable for graph capture and adds
+one queue flush per PagedAttention node.
 
-The host-derived values are captured as literals when a WebGPU graph is recorded, so any
-subsequent step that presents different per-batch lengths would replay with
-wrong grids and undersized scratch. This is the exact same class of blocker
-that keeps the CUDA PagedAttention op out of CUDA Graphs — see the
-`cudaMemcpyAsync(cumulative_seqlens_q → host)` + `cudaStreamSynchronize`
-pair in [`onnxruntime/contrib_ops/cuda/bert/paged_attention.cc`][cuda-pa-sync]
-that computes `data.max_query_len` from a D→H sync.
-
-GQA/FA-decode escape the blocker via `use_indirect_dispatch` +
-`PrepareIndirectDispatchProgram`, but they only had **one** host-visible
-scalar to hide (`total_sequence_length`) and got static scratch for free
-from `past_present_share_buffer=true`. Paged has four (`q_len_b`,
-`total_kv_b`, `max_seqlen_q`, `max_kv_len`) and no free scratch — the
-lift-and-shift plan is spelled out under §5 Phase 2 "Graph-capture support".
-
-[cuda-pa-sync]: ../../onnxruntime/contrib_ops/cuda/bert/paged_attention.cc
+Graph replay must use stable, replay-wide metadata bounds. Exact masks still
+come from the device-generated arrays, so sequences may grow within those
+bounds without baking their individual lengths into the captured commands.
 
 ---
 
@@ -342,9 +331,9 @@ layout, with GenAI's builder gate flipped to allow `-e webgpu`.
 
 ### Phase 2 — Perf and forward-looking schema
 
-Phase 2 originally covered five items. Three landed in
-[#31727](https://github.com/microsoft/onnxruntime/pull/31727); the other two
-remain future work. Numbering is kept for cross-reference.
+Phase 2 originally covered five items. Direct paged attention landed in
+[#31727](https://github.com/microsoft/onnxruntime/pull/31727), and the metadata
+fast path landed later. Numbering is kept for cross-reference.
 
 #### Phase 2 items landed in this PR
 
@@ -381,6 +370,13 @@ template variant. Regression tested by
 `EndToEnd_Prefill_MultiBatch_Varlen_Fused` in
 `paged_attention_op_test.cc`. See §4.3 for the correctness invariant.
 
+**5. Remove the metadata readback.** ✅ Consume `attention_metadata` input 16
+as stable host-side query/KV bounds and derive exact `seqlen_k` / `seqlens_q`
+arrays on GPU. Older models without the input retain the original packed
+metadata readback. This removes the per-node queue flush for current GenAI
+exports; indirect dispatch remains a possible follow-up for tightening work to
+the exact lengths while retaining replay-wide allocations.
+
 #### Phase 2 items remaining (future work)
 
 **2. Complete deferred Phase 1 feature support.** Add and test the features
@@ -398,17 +394,6 @@ rotary, reshape, and cache-scatter stages, mirroring
 intermediate Q/K/V tensors and avoid an extra full-token read/write cycle.
 Preserve the Phase 1 packed-QKV behavior and add parity tests for packed
 non-rotary, packed rotary, interleaved rotary, MHA, and GQA cases.
-
-**5. Make PagedAttention graph-capture-safe.** Consume
-`attention_metadata: int32[2]` (input 16 under the merged schema) as
-`[max_query_len_bound, max_kv_len_bound]`, so scratch buffers can be sized
-once from stable bounds. Move `seqlen_k` and per-batch Q-length derivation
-to the GPU, then write indirect dispatch dimensions for
-`PagedAttentionGatherKVProgram`, `PagedAttentionUnpackQueryProgram`, the
-FlashAttention prefill/decode programs, and
-`PagedAttentionRepackOutputProgram`. This removes the current GPU-to-CPU
-metadata copy and per-step shape-dependent allocation, the two blockers to
-graph capture. The GenAI integration belongs in Phase 5.
 
 ### Phase 3 — Quantized KV cache (`T_CACHE = int8`)
 
@@ -431,8 +416,8 @@ shared memory. Also reworks the split-K decode kernel's cache indexing
 
 Not an ORT change — an ORT-GenAI change. Mirror the pattern in ORT-GenAI PR
 #2333 §3 (persistent oversized buffers, static device block table, shape
-bucketing) with `wgpuGraph` in place of `cudaGraph`. Prerequisite: Phase 2's
-`attention_metadata` consumption on the ORT side.
+bucketing) with `wgpuGraph` in place of `cudaGraph`. The ORT-side
+`attention_metadata` prerequisite is now satisfied.
 
 ---
 
@@ -442,7 +427,8 @@ bucketing) with `wgpuGraph` in place of `cudaGraph`. Prerequisite: Phase 2's
 onnxruntime/contrib_ops/webgpu/bert/
   paged_attention.h                                      # kernel and program declarations
   paged_attention.cc                                     # host dispatch and validation
-  paged_attention_pack_metadata.wgsl.template            # pack metadata for one D→H readback
+  paged_attention_pack_metadata.wgsl.template            # legacy metadata readback fallback
+  paged_attention_prepare_metadata.wgsl.template         # exact per-request lengths on GPU
   paged_attention_split_packed_qkv.wgsl.template         # split packed QKV input
   paged_attention_rotary.wgsl.template                   # rotary embedding for Q or K
   paged_attention_scatter_kv.wgsl.template               # scatter K/V into paged cache
@@ -493,7 +479,11 @@ ComputeInternal:
     return OK
   if is_packed_qkv:
     RunSplitPackedQKV()
-  read and validate cumulative_sequence_length / past_seqlens once
+  if attention_metadata:
+    read stable max bounds from CPU input
+    RunPrepareMetadata()  # exact per-request lengths stay on GPU
+  else:
+    read and validate cumulative_sequence_length / past_seqlens once
   if max_seqlen_q == 0:
     fill output with zeros; return OK
   if do_rotary:
@@ -539,11 +529,9 @@ ComputeInternal:
   return OK
 ```
 
-`max_seqlen_q` and `max_kv_len` are derived from one packed metadata D→H
-readback per node. Phase 2 direct paths remove the gather step and, on
-uniform-batch and packed-varlen callers, the padded Q/output round trip.
-The residual D→H readback is a graph-capture blocker addressed by
-outstanding Phase 2 item 5 (`attention_metadata` + indirect dispatch).
+`max_seqlen_q` and `max_kv_len` come from the CPU `attention_metadata` bounds
+for current exports. Exact per-request lengths stay on GPU. Older exports
+without metadata use one packed D→H readback per node.
 
 Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 

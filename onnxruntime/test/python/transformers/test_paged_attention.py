@@ -219,8 +219,9 @@ def create_paged_attention_graph(
     # built and their rejection tested.
     has_k_scale = config.k_quant_type != "NONE"
     has_v_scale = config.v_quant_type != "NONE"
-    # Optional host-side [max_query_len_bound, max_kv_len_bound]. When present the kernel can skip
-    # the device readback of the cumulative length arrays, so results must be identical either way.
+    # Optional host-side [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound].
+    # When present the kernel can skip the device readback of the cumulative length arrays, so
+    # results must be identical either way.
     has_attention_metadata = getattr(config, "use_attention_metadata", False)
     quant_attrs = (
         {
@@ -400,7 +401,11 @@ def create_paged_attention_graph(
         ]
     if has_attention_metadata:
         graph_input += [
-            helper.make_tensor_value_info("attention_metadata", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info(
+                "attention_metadata",
+                TensorProto.INT32,
+                getattr(config, "attention_metadata_shape", [2]),
+            ),
         ]
 
     graph_output = [
@@ -1600,6 +1605,27 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
         self.assertIn("PagedAttention (WebGPU): is_causal=0 is not supported yet", str(ctx.exception))
+
+    def test_paged_attention_webgpu_attention_metadata(self):
+        config = Config(
+            batch_size=2,
+            sequence_length=1,
+            total_sequence_length=64,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            paged_kv_block_size=256,
+            local=False,
+            rotary=False,
+            rotary_interleaved=False,
+            packed=False,
+            softcap=0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.use_attention_metadata = True
+        config.attention_metadata_shape = [3]
+        config.attention_metadata_override = numpy.array([1, 64, 1], dtype=numpy.int32)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
