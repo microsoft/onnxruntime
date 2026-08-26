@@ -471,6 +471,10 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("T1", QMoET1Constraint())
+        // Zero-points are rejected at runtime on WebGPU (see ComputeInternal). Constrain TZ to
+        // uint8 only so float zero-point models (allowed by the schema's new TZ constraint) are
+        // never matched here and their bytes reinterpreted.
+        .TypeConstraint("TZ", QMoET1Constraint())
         .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
     QMoE);
 

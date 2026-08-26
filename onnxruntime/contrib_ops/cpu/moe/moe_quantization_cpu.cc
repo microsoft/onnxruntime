@@ -954,6 +954,34 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
   }
 
+  // Float (unpacked, one-per-group) zero-points are only wired through the generic 2-bit
+  // block-wise dequant path (DequantizeBlockWithMlas honors zero_points_fp there). Every other
+  // mode -- 4-bit/8-bit, row-wise, and the integer-only fast paths (LUT GEMM, prepack, direct
+  // Q4) -- ignores the float pointer and would either drop the zero-point entirely or misread
+  // it. Reject those unsupported combinations up front so a float zero-point can never be
+  // silently dropped. Integer (uint8) zero-points are unaffected.
+  auto is_float_zp = [](const Tensor* zp) -> bool {
+    return zp != nullptr && !zp->IsDataType<uint8_t>();
+  };
+  auto is_block_wise = [](const Tensor* scales) -> bool {
+    if (scales == nullptr) {
+      return false;
+    }
+    const auto& dims = scales->Shape().GetDims();
+    return dims.size() == 3 && dims[2] > 1;
+  };
+  const bool has_float_zp = is_float_zp(inputs.fc1_zero_points) || is_float_zp(inputs.fc2_zero_points);
+  if (has_float_zp) {
+    ORT_RETURN_IF_NOT(expert_weight_bits_ == 2,
+                      "Float zero-points are only supported for 2-bit block-wise QMoE on CPU; "
+                      "got expert_weight_bits=",
+                      expert_weight_bits_, ".");
+    ORT_RETURN_IF_NOT((!is_float_zp(inputs.fc1_zero_points) || is_block_wise(inputs.fc1_scales)) &&
+                          (!is_float_zp(inputs.fc2_zero_points) || is_block_wise(inputs.fc2_scales)),
+                      "Float zero-points are only supported for block-wise QMoE on CPU "
+                      "(block_size must be provided).");
+  }
+
   return ComputeCommon(context, inputs, moe_params);
 }
 
@@ -2017,6 +2045,12 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        // Zero-points are either packed integers (uint8) or unpacked float zero-points that
+        // match the scale dtype (float for this kernel). Constrain TZ to only the dtypes this
+        // kernel actually handles so schema-valid-but-unsupported dtypes (e.g. float16/bfloat16
+        // zero-points on the float kernel) can't be selected and silently misread as uint8.
+        .TypeConstraint("TZ", {DataTypeImpl::GetTensorType<uint8_t>(),
+                               DataTypeImpl::GetTensorType<float>()})
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     QMoECPU<float>);
 
@@ -2025,6 +2059,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        // See the float kernel above: TZ lists only the zero-point dtypes this kernel handles
+        // (packed uint8 or unpacked float16 matching the scale dtype).
+        .TypeConstraint("TZ", {DataTypeImpl::GetTensorType<uint8_t>(),
+                               DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<MLFloat16>()),
     QMoECPU<MLFloat16>);
 
