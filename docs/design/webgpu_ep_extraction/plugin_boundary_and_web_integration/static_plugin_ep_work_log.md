@@ -29,7 +29,8 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Windows build + GPU tests (`--use_webgpu static_plugin`) | Green in CI |
 | Shared library plugin build (`--use_webgpu shared_lib`) | Green in CI, no regression from D2/D7 |
 | CUDA plugin EP (shares `include/onnxruntime/ep/*`) | Green in CI |
-| Linux/GCC build (`--use_webgpu static_plugin`) | Fix pushed, awaiting confirmation — see [GCC](#gcc-and-werrormaybe-uninitialized) |
+| Operator-level validation on a real GPU | **Done — no behavioural difference**, see [Testing](#testing) |
+| Linux/GCC build (`--use_webgpu static_plugin`) | **Red** — third `-Werror` batch (`array-bounds`), see [GCC](#gcc-and-werror) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
 | Emscripten / ORT Web | Not yet exercised — see [Open items](#open-items) |
 | PR | Not opened yet |
@@ -130,6 +131,11 @@ These cost real time on the original machine and are likely to recur:
   with `MSB3491`. Build into a short directory instead — `C:\b` and `C:\b2` were used for the `static_plugin`
   and `shared_lib` configurations respectively. With the Visual Studio generator the binaries land in
   `<build_dir>\<config>\<config>\`.
+
+  Refinement from a later machine: this is really an **MSBuild** problem. With `--cmake_generator Ninja` and
+  the registry's `LongPathsEnabled=1`, building at `D:\source\onnxruntime_4\build\sp` worked fine, so an
+  in-repo build directory is usable if you avoid MSBuild. Note that with Ninja the binaries land in
+  `<build_dir>\<config>\`, one level, not two.
 - **CMake may not be on `PATH`.** On a Visual Studio install it is at
   `C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin`.
 - Incremental rebuild of just the EP is much faster than a full build:
@@ -147,7 +153,7 @@ dumpbin /exports <build_dir>\<config>\<config>\onnxruntime_providers_webgpu.dll
 Expect exactly `CreateEpFactories` and `ReleaseEpFactory`. The `static_plugin` build should instead produce
 `WebGpu_`-prefixed symbols and no DLL.
 
-## Testing, and why a GPU machine is needed
+## Testing
 
 Relevant tests:
 
@@ -174,6 +180,54 @@ Two ways to get real coverage:
    both builds and tests. It has passed. This is currently the primary source of operator-level truth.
 2. **Run locally on a real GPU.** Nothing in the change is GPU-vendor specific; a normal Windows machine with a
    D3D12 or Vulkan capable GPU is enough.
+
+### Results on a real GPU
+
+This has now been done, on a machine with an NVIDIA RTX 5060 Ti. Both configurations were built from the same
+tree, RelWithDebInfo, Ninja, differing **only** in the EP path:
+
+```
+python tools\ci_build\build.py --config RelWithDebInfo --build_dir <dir> --skip_submodule_sync --parallel \
+  --cmake_generator Ninja --use_webgpu [static_plugin] --update --build --skip_tests \
+  --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON \
+                        onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+```
+
+`onnxruntime_provider_test`, with `ONNXRUNTIME_TEST_GPU_DEVICE_ID=0`:
+
+| | static_plugin | internal EP |
+| --- | --- | --- |
+| Total | 5894 | 5938 |
+| Passed | 5775 | 5803 |
+| Failed | 0 | 0 |
+| Skipped | 119 | 135 |
+
+**Across the 5894 tests common to both builds there were zero status differences.** This is the evidence that
+routing the static build through the plugin path changes no operator behaviour.
+
+`onnxruntime_test_all`: 1965 passed on both, no differences. All three `InferenceSessionTests.WebGpu*` pass on
+the `static_plugin` build, including `WebGpuCompileOnlySkipsFinalization` — confirming the earlier failure of
+that test was a property of the GPU-less host, as suspected.
+
+Two categories of test legitimately differ between the builds; neither is a regression:
+
+- **44 tests exist only in the internal-EP build.** 16 are `DISABLED_` and never run. The other 28 are
+  white-box tests that include internal WebGPU EP headers (`WebGpuContextTest`, `ActivationCacheKeyTest`,
+  `MatMul2BitsWebGpu`, `HardSwish_WebGPU`); `cmake/onnxruntime_unittests.cmake` (the
+  `onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS` guard) excludes `test/providers/webgpu/*`
+  from adapter builds entirely. Of these, `HardSwish_WebGPU` and `MatMul2BitsWebGpu` (12 tests) are real
+  operator coverage that exists only on the internal path — a known coverage gap of the plugin path, worth
+  either documenting in the design doc or closing by porting them to EP-agnostic tests.
+- **The `InferenceSessionTests.WebGpu*` virtual-device tests are deliberately paired, not shared.** The
+  internal build has `WebGpuEpFactoryVirtualDevice`, `WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly`
+  and `WebGpuCompileOnlyUsesNoOpAllocator`; the plugin build has `WebGpuVirtualDeviceCompileOnlyEndToEnd` and
+  `WebGpuVirtualDeviceRejectedWithoutCompileOnly`, which `inference_session_test.cc` documents in-source as the
+  plugin-build counterparts. Only `WebGpuCompileOnlyUsesNoOpAllocator` has no counterpart, because it asserts
+  an internal allocator *type* via `dynamic_cast`, which is inherently unobservable across the ABI boundary.
+
+One caveat for whoever repeats this: do **not** run the two `onnxruntime_test_all` binaries concurrently.
+`PathValidationTest`'s symlink tests collide over a shared temp directory and produce a spurious, and
+non-deterministic, mix of pass/fail/skip. Run sequentially: all 31 pass on both builds.
 
 There is also a `webgpu-local-testing` skill in `.agents/skills/` describing how to run WebGPU tests on Linux
 without a GPU using Mesa lavapipe (software Vulkan). Note its stated limitation: any graph containing `MatMul`
@@ -242,8 +296,9 @@ a search for `error:` drowns in benign CMake and Dawn feature-probe output such 
 | 32914307098 | CUDA Plugin Windows CI | Failure — `ParseInitializationConfigRejectsMissingRequiredFields` |
 | 32996643911 | Linux WebGPU CI | Failure — GCC `maybe-uninitialized`, batch 2 |
 | 32996646394 | CUDA Plugin Windows CI | Success |
+| 33009901327 | Linux WebGPU CI | Failure — GCC `array-bounds`, batch 3. Internal-EP job on the same run passed. |
 
-## GCC and `-Werror=maybe-uninitialized`
+## GCC and `-Werror`
 
 This was the only substantial problem the new CI surfaced, and it will bite again, so it is worth understanding
 rather than pattern-matching.
@@ -259,7 +314,9 @@ The CUDA plugin EP hit the identical problem earlier and solved it with a target
 `cmake/onnxruntime_providers_cuda_plugin.cmake`.
 
 Two batches of failures appeared, because ninja stops early and only reports the targets that were already in
-flight — **do not assume the first batch is the complete list**.
+flight — **do not assume the first batch is the complete list**. A third batch, of a different warning class,
+appeared later still. The lesson is the general one: **each CI round trip reveals only one batch**, so prefer a
+local GCC build (or a throwaway dispatch with `--compile_no_warning_as_error`) to enumerate all of them at once.
 
 - Batch 1, fixed at the source in `49855f6ef7`: uninitialized locals that are passed by pointer and read back,
   and the temporaries inside `GetAttrOrDefault` / `GetAttr` in `include/onnxruntime/ep/adapter/op_kernel_info.h`.
@@ -269,15 +326,30 @@ flight — **do not assume the first batch is the complete list**.
   source. Handled by applying the same `-Wno-maybe-uninitialized` suppression the CUDA plugin EP uses, scoped
   to the `onnxruntime_providers_webgpu` target, GCC only, and only when `onnxruntime_USE_EP_API_ADAPTERS` is on
   so that non-adapter builds stay strict.
+- Batch 3, in run `33009901327`, **still unfixed**: `-Werror=array-bounds`, a *different* warning class, at
+  `onnxruntime/contrib_ops/webgpu/quantization/matmul_nbits_mlp.cc:47` in `EmitGateActivationExpr`:
+
+  ```
+  ‘void* __builtin_memcpy(...)’ forming offset [32, 48] is out of the bounds [0, 32]
+  of object ‘<anonymous>’ with type ‘std::__cxx11::basic_string<char>’
+  ```
+
+  GCC 14 at `-O3`, inlining the `std::string{gate_var} + " * (one / (one + exp(-" + std::string{gate_var} + ")))"`
+  temporary-move concat chain through `std::operator+(basic_string&&, const char*)`. A false positive. Note that
+  the batch-2 `-Wno-maybe-uninitialized` suppression **is** working — it is present on the failing command line
+  and the batch-2 files compiled clean. The file is pre-existing (added by PR #28280, `88ca23fcd5`), not authored
+  by this branch; the adapters PCH pulls in `include/onnxruntime/ep/adapters.h`, which changes inlining and is
+  why only the adapters config trips it. Fix not yet chosen: rewrite at the source (e.g. ORT's `MakeString`, or
+  reserve + append) versus extending the existing target-scoped suppression with `-Wno-array-bounds`.
 
 ## Open items
 
-1. **Confirm the Linux leg is green** after the `-Wno-maybe-uninitialized` suppression. Dispatch a fresh run
-   rather than re-running an old one.
-2. **Operator-level validation on a real GPU.** The Windows CI job covers this now, but nobody has run the
-   WebGPU operator tests against the `static_plugin` build on a local GPU machine and compared the results to
-   the internal-EP build. That comparison is the strongest available evidence that routing the static build
-   through the plugin path changes no behaviour, and it is the main reason to move this work to a GPU machine.
+1. **Fix the Linux leg.** It is currently red on a third `-Werror` batch (`array-bounds`); see
+   [GCC](#gcc-and-werror). Enumerate the *full* remaining warning list with a local GCC build rather than
+   discovering one batch per CI round trip. Dispatch a fresh run rather than re-running an old one.
+2. ~~**Operator-level validation on a real GPU.**~~ **Done** — see [Results on a real GPU](#results-on-a-real-gpu).
+   No behavioural difference. Remaining sub-item: decide whether to close the 12-test
+   `HardSwish_WebGPU` / `MatMul2BitsWebGpu` coverage gap on the plugin path, or document it as known.
 3. **Minimal build.** `linux_minimal_build.yml` has not been dispatched. It is the interesting one because
    `cmake/onnxruntime_session.cmake` excludes `plugin_ep/*.*` from minimal builds, which is why the
    registration call in `ort_env.cc` is wrapped in `#if !defined(ORT_MINIMAL_BUILD)`. The guard has been
