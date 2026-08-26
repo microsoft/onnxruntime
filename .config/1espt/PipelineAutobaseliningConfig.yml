@@ -140,7 +140,7 @@ pipelines:
         credscan:
           lastModifiedDate: 2025-04-25
         binskim:
-          lastModifiedDate: 2026-08-25
+          lastModifiedDate: 2026-08-26
         spotbugs:
           lastModifiedDate: 2025-04-25
     usedBinskimScanAllExtensions: true

@@ -229,9 +229,9 @@
       ],
       "tool": "binskim",
       "ruleId": "BA2007",
-      "createdDate": "2026-08-25 21:50:43Z",
-      "expirationDate": "2027-02-11 22:37:33Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-25 22:37:33Z"
+      "createdDate": "2026-08-26 01:39:59Z",
+      "expirationDate": "2027-02-12 02:34:48Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-26 02:34:48Z"
     }
   }
 }
