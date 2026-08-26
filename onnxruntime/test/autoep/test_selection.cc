@@ -25,7 +25,6 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/session/plugin_ep/ep_factory_coreml.h"
-#include "core/session/provider_policy_context.h"
 #endif
 
 #include "test_allocator.h"
@@ -446,8 +445,9 @@ TEST(AutoEpSelection, CoreMLEP) {
     ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
   }
 
-  // Verify the CoreML factory's vendor name and vendor ID, along with the hardware vendor ID. Device ordering
-  // checks vendor IDs first and uses vendor names as a fallback.
+  // Verify the CoreML factory's vendor name and vendor ID, along with the hardware vendor ID. The factory reports
+  // "Microsoft", like the other internal factories: the factory vendor identifies who provides the EP
+  // implementation, not the hardware vendor.
   // Apple device discovery currently assigns VendorIds::APPLE to every NPU and GPU it reports. The CoreML factory
   // intentionally accepts any discovered GPU regardless of vendor, so this hardware vendor ID assertion must be
   // updated if discovery later reports a non-Apple GPU (see the multi-GPU TODO in
@@ -463,9 +463,9 @@ TEST(AutoEpSelection, CoreMLEP) {
       continue;
     }
 
-    EXPECT_STREQ(c_api->EpDevice_EpVendor(ep_device), "Apple");
+    EXPECT_STREQ(c_api->EpDevice_EpVendor(ep_device), "Microsoft");
     EXPECT_EQ(c_api->HardwareDevice_VendorId(c_api->EpDevice_Device(ep_device)), OrtDevice::VendorIds::APPLE);
-    EXPECT_EQ(ep_device->ep_factory->GetVendorId(ep_device->ep_factory), OrtDevice::VendorIds::APPLE);
+    EXPECT_EQ(ep_device->ep_factory->GetVendorId(ep_device->ep_factory), OrtDevice::VendorIds::MICROSOFT);
   }
 
   // Both the "test.ep_to_select" auto-selection path and the AppendExecutionProvider_V2 path select CoreML as
@@ -1091,65 +1091,6 @@ TEST(AutoEpSelection, CoreMLEPCreateAndPublishEpDevices) {
     EXPECT_EQ(num_ep_devices, size_t{0});
     EXPECT_THAT(ep_devices, ::testing::ElementsAreArray(untouched));
     EXPECT_TRUE(released.empty());
-  }
-}
-
-// Verifies that OrderDevices ranks CoreML ahead of another EP for the same Apple GPU because of vendor affinity.
-// CoreMLEPPreferGpu does not test this rule independently because both vendor affinity and EP-name ordering rank
-// CoreML ahead of WebGPU. This test uses a competing EP whose name sorts before CoreML, so CoreML can rank first
-// only because its Apple vendor identity matches the GPU.
-TEST(AutoEpSelection, CoreMLVendorAffinityPrecedesEpNameOrdering) {
-  // The competitor's name must sort before CoreML's. Otherwise, EP-name ordering could also put CoreML first, and
-  // the test would not verify vendor affinity independently.
-  constexpr const char* kCompetitorEpName = "AaaExecutionProvider";
-  ASSERT_LT(std::string_view{kCompetitorEpName}, std::string_view{kCoreMLExecutionProvider})
-      << "The competitor EP name must sort before the CoreML EP name for this test to verify vendor affinity "
-         "independently.";
-
-  // Both OrtEpDevices reference the same Apple GPU, so their hardware properties are identical. Only the CoreML
-  // factory's vendor matches the GPU, so vendor affinity determines their order.
-  OrtHardwareDevice apple_gpu{};
-  apple_gpu.type = OrtHardwareDeviceType_GPU;
-  apple_gpu.vendor_id = OrtDevice::VendorIds::APPLE;
-  apple_gpu.vendor = "Apple";
-
-  OrtEpFactory apple_factory{};
-  apple_factory.GetVendorId = [](const OrtEpFactory*) noexcept -> uint32_t {
-    return OrtDevice::VendorIds::APPLE;
-  };
-
-  OrtEpFactory competitor_factory{};
-  competitor_factory.GetVendorId = [](const OrtEpFactory*) noexcept -> uint32_t {
-    return OrtDevice::VendorIds::MICROSOFT;
-  };
-
-  OrtEpDevice coreml_device{};
-  coreml_device.ep_name = kCoreMLExecutionProvider;
-  coreml_device.ep_vendor = "Apple";
-  coreml_device.device = &apple_gpu;
-  coreml_device.ep_factory = &apple_factory;
-
-  OrtEpDevice competitor_device{};
-  competitor_device.ep_name = kCompetitorEpName;
-  competitor_device.ep_vendor = "Microsoft";
-  competitor_device.device = &apple_gpu;
-  competitor_device.ep_factory = &competitor_factory;
-
-  // Test both input orders. CoreML must be placed first in both cases, confirming that vendor affinity places it
-  // ahead regardless of input order.
-  ProviderPolicyContext context;
-  for (const bool coreml_first : {false, true}) {
-    SCOPED_TRACE(testing::Message() << "coreml_first " << coreml_first);
-    const std::vector<const OrtEpDevice*> devices =
-        coreml_first ? std::vector<const OrtEpDevice*>{&coreml_device, &competitor_device}
-                     : std::vector<const OrtEpDevice*>{&competitor_device, &coreml_device};
-
-    const std::vector<const OrtEpDevice*> ordered = context.OrderDevices(devices);
-
-    ASSERT_EQ(ordered.size(), size_t{2});
-    EXPECT_EQ(ordered[0], &coreml_device)
-        << "Vendor affinity must place CoreML ahead of a competing EP whose name sorts before CoreML's.";
-    EXPECT_EQ(ordered[1], &competitor_device);
   }
 }
 #endif  // defined(USE_COREML) && defined(__APPLE__)

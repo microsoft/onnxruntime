@@ -26,13 +26,14 @@ namespace onnxruntime {
 
 class CoreMLEpFactory : public EpFactoryInternalImpl {
  public:
-  // Report "Apple" and VendorIds::APPLE as the factory vendor identifiers so device ordering gives CoreML
-  // affinity for Apple hardware. The vendor ID is checked first, with the vendor name used as a fallback.
-  // Provider-bridge factories copy vendor identifiers from the OrtEpFactory they wrap.
-  // The CPU, DML, and WebGPU internal factories report "Microsoft". CoreML reports "Apple" through
-  // EpDevice_EpVendor.
-  // When multiple EPs target the same NPU or GPU and have equal vendor affinity, they are ordered by EP name.
-  CoreMLEpFactory() : EpFactoryInternalImpl(kCoreMLExecutionProvider, "Apple", OrtDevice::VendorIds::APPLE) {}
+  // Report "Microsoft" and VendorIds::MICROSOFT as the factory vendor identifiers, like the other internal
+  // factories (CPU, DML, and WebGPU): the factory vendor identifies who provides the EP implementation, not the
+  // hardware vendor. Discovered Apple hardware devices keep their own "Apple" / VendorIds::APPLE identifiers.
+  // Because the factory vendor does not match the Apple hardware vendor, device ordering gives CoreML no vendor
+  // affinity. When multiple EPs target the same NPU or GPU with equal vendor affinity, they are ordered by
+  // EP name.
+  CoreMLEpFactory()
+      : EpFactoryInternalImpl(kCoreMLExecutionProvider, "Microsoft", OrtDevice::VendorIds::MICROSOFT) {}
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CoreMLEpFactory);
 

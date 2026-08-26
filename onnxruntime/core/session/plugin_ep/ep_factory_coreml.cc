@@ -49,8 +49,8 @@ bool CoreMLEpFactory::CanClaimDeviceType(OrtHardwareDeviceType device_type, int3
       // The CPU device is deliberately not claimed. DEFAULT and PREFER_CPU select a single preferred EP for the CPU
       // device. The NPU- and GPU-preferring policies first select an EP for the accelerator and then use the same CPU
       // selection as a fallback.
-      // If CoreML claimed the CPU, vendor affinity on Apple hardware would make it the preferred EP for that device,
-      // ahead of the ORT CPU EP and other CPU-based EPs.
+      // If CoreML claimed the CPU, it would compete with the ORT CPU EP and other CPU-based EPs to be selected as the
+      // primary CPU EP.
       // CoreML-on-CPU remains available through an explicit MLComputeUnits=CPUOnly option. Core ML may also use its
       // internal CPU path for operations unsupported by the selected compute units.
       return false;

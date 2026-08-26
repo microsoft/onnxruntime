@@ -57,7 +57,7 @@ struct OrtDevice {
     // No vendor ID. Valid for DeviceType::CPU + MemType::DEFAULT or for generic allocators like WebGPU.
     NONE = 0x0000,
     AMD = 0x1002,        // MIGraphX EP
-    APPLE = 0x106B,      // CoreML EP
+    APPLE = 0x106B,      // Apple hardware via device discovery
     NVIDIA = 0x10DE,     // CUDA/TensorRT
     ARM = 0x13B5,        // ARM GPU EP
     MICROSOFT = 0x1414,  // DML EP
