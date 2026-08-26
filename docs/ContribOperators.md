@@ -2323,15 +2323,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GatedRMSNorm"></a><a name="com.microsoft.gatedrmsnorm">**com.microsoft.GatedRMSNorm**</a>
 
-  Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
+  Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs, and by the
+  Qwen4-Exp text QSA/PLE gated norms:
   
-    Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+    Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate)
+  
+  where `activation` is SiLU by default (`Y = X * rsqrt(mean(X^2) + epsilon) * scale *
+  gate * Sigmoid(gate)`) or plain Sigmoid when the `activation` attribute is set to
+  `"sigmoid"` (`Y = X * rsqrt(mean(X^2) + epsilon) * scale * Sigmoid(gate)`).
   
   The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
   length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
   per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-  All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
-  the reference implementation, so this replaces the exported
+  All arithmetic including the activation is done in float32 regardless of the tensor type,
+  matching the reference implementation, so this replaces the exported
   SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
   single launch.
 
@@ -2342,6 +2347,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Gate activation function. One of: 'silu', 'sigmoid'. Default is 'silu', which preserves the original Y = ... * gate * Sigmoid(gate) behavior.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added to the mean of squares before the reciprocal square root.</dd>
 </dl>
@@ -2370,6 +2377,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
+
 
 
 ### <a name="com.microsoft.GatedRelativePositionBias"></a><a name="com.microsoft.gatedrelativepositionbias">**com.microsoft.GatedRelativePositionBias**</a>

@@ -3642,15 +3642,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GatedRMSNorm_ver1_doc = R"DOC(
-Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
+Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs, and by the
+Qwen4-Exp text QSA/PLE gated norms:
 
-  Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+  Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate)
+
+where `activation` is SiLU by default (`Y = X * rsqrt(mean(X^2) + epsilon) * scale *
+gate * Sigmoid(gate)`) or plain Sigmoid when the `activation` attribute is set to
+`"sigmoid"` (`Y = X * rsqrt(mean(X^2) + epsilon) * scale * Sigmoid(gate)`).
 
 The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
 length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
 per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
-the reference implementation, so this replaces the exported
+All arithmetic including the activation is done in float32 regardless of the tensor type,
+matching the reference implementation, so this replaces the exported
 SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
 single launch.
 )DOC";
@@ -3663,6 +3668,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Epsilon added to the mean of squares before the reciprocal square root.",
               AttributeProto::FLOAT,
               1e-5f)
+        .Attr("activation",
+              "Gate activation function. One of: 'silu', 'sigmoid'. Default is 'silu', which "
+              "preserves the original Y = ... * gate * Sigmoid(gate) behavior.",
+              AttributeProto::STRING,
+              std::string("silu"))
         .Input(0,
                "X",
                "Input tensor with shape (..., H * C). Normalization is applied over each "
