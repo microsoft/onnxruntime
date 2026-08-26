@@ -19,8 +19,8 @@ using onnxruntime::webgpu::ShaderHelper;
 class KvCacheBlockQuantInt8Program final : public Program<KvCacheBlockQuantInt8Program> {
  public:
   KvCacheBlockQuantInt8Program(bool has_past, bool kv_BNSH, bool past_present_share_buffer,
-                              int head_size, int components, int compressed_head_size_u32,
-                              bool prepare_indirect_dispatch, bool use_seqlen_k)
+                               int head_size, int components, int compressed_head_size_u32,
+                               bool prepare_indirect_dispatch, bool use_seqlen_k)
       : Program{"KvCacheBlockQuantInt8Copy"},
         has_past_(has_past),
         kv_BNSH_(kv_BNSH),
@@ -68,10 +68,10 @@ class KvCacheBlockQuantInt8FusedRotaryProgram final
     : public Program<KvCacheBlockQuantInt8FusedRotaryProgram> {
  public:
   KvCacheBlockQuantInt8FusedRotaryProgram(int head_size, int half_rotary_dim,
-                                         int compressed_head_size_u32,
-                                         bool past_present_share_buffer,
-                                         bool prepare_indirect_dispatch, bool use_seqlen_k,
-                                         uint32_t multi_rotary_cache_concat_offset)
+                                          int compressed_head_size_u32,
+                                          bool past_present_share_buffer,
+                                          bool prepare_indirect_dispatch, bool use_seqlen_k,
+                                          uint32_t multi_rotary_cache_concat_offset)
       : Program{"KvCacheBlockQuantInt8FusedRotary"},
         head_size_(head_size),
         half_rotary_dim_(half_rotary_dim),

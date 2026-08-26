@@ -3813,6 +3813,12 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_FusedRotary
                                   /*enable_multi_rotary_cache=*/false);
 }
 
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_NoRotary) {
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/false,
+                                  /*kv_cache_quant_bits=*/8,
+                                  /*enable_multi_rotary_cache=*/false);
+}
+
 // The non-static packed-QKV path uses split_packed_qkv_with_rotary_embedding.
 // A batch-wide total above the concat offset must select the long RoPE cache for
 // every batch, including batches whose individual total remains below the offset.
@@ -3893,6 +3899,7 @@ TEST(GroupQueryAttentionTest, WebGPU_MultiRotaryCache_UsesGlobalLength_NonStatic
 // Helper to run a GQA op with TurboQuant enabled and separate Q/K/V with rotary.
 // past_seq_len controls total KV cache depth; sequence_length controls prefill vs decode.
 // Returns the output tensor data on success.
+template <typename T = float>
 static std::vector<float> RunGQATurboQuant(
     int batch_size,
     int sequence_length,
@@ -3909,7 +3916,8 @@ static std::vector<float> RunGQATurboQuant(
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = past_seq_len + sequence_length;
 
-  const int kv_head_dim = (head_size * static_cast<int>(bit_width) + 32) / 32;
+  const int kv_head_dim = ((head_size * static_cast<int>(bit_width) + 32) / 32) *
+                          static_cast<int>(sizeof(uint32_t) / sizeof(T));
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -3923,31 +3931,31 @@ static std::vector<float> RunGQATurboQuant(
 
   if (is_packed_qkv) {
     const int packed_dim = hidden_size + 2 * kv_hidden_size;
-    std::vector<float> packed_data(batch_size * sequence_length * packed_dim);
-    for (auto& v : packed_data) v = dist(rng);
-    tester.AddInput<float>("query", {batch_size, sequence_length, packed_dim}, packed_data);
-    tester.AddOptionalInputEdge<float>();  // key
-    tester.AddOptionalInputEdge<float>();  // value
+    std::vector<T> packed_data(batch_size * sequence_length * packed_dim);
+    for (auto& v : packed_data) v = T(dist(rng));
+    tester.AddInput<T>("query", {batch_size, sequence_length, packed_dim}, packed_data);
+    tester.AddOptionalInputEdge<T>();  // key
+    tester.AddOptionalInputEdge<T>();  // value
   } else {
-    std::vector<float> query_data(batch_size * sequence_length * hidden_size);
-    std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
-    std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
-    for (auto& v : query_data) v = dist(rng);
-    for (auto& v : key_data) v = dist(rng);
-    for (auto& v : value_data) v = dist(rng);
-    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    std::vector<T> query_data(batch_size * sequence_length * hidden_size);
+    std::vector<T> key_data(batch_size * sequence_length * kv_hidden_size);
+    std::vector<T> value_data(batch_size * sequence_length * kv_hidden_size);
+    for (auto& v : query_data) v = T(dist(rng));
+    for (auto& v : key_data) v = T(dist(rng));
+    for (auto& v : value_data) v = T(dist(rng));
+    tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<T>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<T>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
   }
 
-  // Past KV is a float payload whose raw bits are interpreted as packed u32 data.
+  // Past KV is an element-typed payload whose raw bits are interpreted as packed u32 data.
   const int past_kv_size = batch_size * kv_num_heads * past_seq_len * kv_head_dim;
-  std::vector<float> past_key_data(past_kv_size);
-  std::vector<float> past_value_data(past_kv_size);
-  for (auto& v : past_key_data) v = dist(rng);
-  for (auto& v : past_value_data) v = dist(rng);
-  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_key_data);
-  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_value_data);
+  std::vector<T> past_key_data(past_kv_size);
+  std::vector<T> past_value_data(past_kv_size);
+  for (auto& v : past_key_data) v = T(dist(rng));
+  for (auto& v : past_value_data) v = T(dist(rng));
+  tester.AddInput<T>("past_key", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_key_data);
+  tester.AddInput<T>("past_value", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_value_data);
 
   std::vector<int32_t> tq_seqlens_k(batch_size, total_sequence_length - 1);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, tq_seqlens_k);
@@ -3956,35 +3964,35 @@ static std::vector<float> RunGQATurboQuant(
   if (do_rotary) {
     const int max_seq_len = total_sequence_length + 8;
     const int half_rotary = head_size / 2;
-    std::vector<float> cos_cache(max_seq_len * half_rotary);
-    std::vector<float> sin_cache(max_seq_len * half_rotary);
+    std::vector<T> cos_cache(max_seq_len * half_rotary);
+    std::vector<T> sin_cache(max_seq_len * half_rotary);
     for (int pos = 0; pos < max_seq_len; ++pos) {
       for (int d = 0; d < half_rotary; ++d) {
         float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(head_size));
-        cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
-        sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+        cos_cache[pos * half_rotary + d] = T(std::cos(static_cast<float>(pos) * freq));
+        sin_cache[pos * half_rotary + d] = T(std::sin(static_cast<float>(pos) * freq));
       }
     }
-    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    tester.AddInput<T>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+    tester.AddInput<T>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
   } else {
-    tester.AddOptionalInputEdge<float>();  // cos_cache
-    tester.AddOptionalInputEdge<float>();  // sin_cache
+    tester.AddOptionalInputEdge<T>();  // cos_cache
+    tester.AddOptionalInputEdge<T>();  // sin_cache
   }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<T>();        // attention_bias
+  tester.AddOptionalInputEdge<T>();        // head_sink
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
+  tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size},
+                      std::vector<T>(output_size, T(0.0f)));
   const int present_seq_len = total_sequence_length;
   const int present_size = batch_size * kv_num_heads * present_seq_len * kv_head_dim;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
+                      std::vector<T>(present_size, T(0.0f)));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
+                      std::vector<T>(present_size, T(0.0f)));
 
   // TurboQuant present_key/present_value are u32-packed quantized data reinterpreted as float.
   // Values can be astronomically large, so skip value checks via custom verifier.
@@ -4031,10 +4039,25 @@ static std::vector<float> RunGQATurboQuant(
 
   if (expect == OpTester::ExpectResult::kExpectSuccess) {
     auto fetches = tester.GetFetches();
-    const float* out_data = fetches[0].Get<Tensor>().Data<float>();
-    return std::vector<float>(out_data, out_data + output_size);
+    const T* out_data = fetches[0].Get<Tensor>().Data<T>();
+    std::vector<float> output(output_size);
+    std::transform(out_data, out_data + output_size, output.begin(), [](T value) {
+      if constexpr (std::is_same_v<T, float>) {
+        return value;
+      } else {
+        return value.ToFloat();
+      }
+    });
+    return output;
   }
   return {};
+}
+
+static void ExpectFiniteNonzeroOutput(const std::vector<float>& output, const char* test_case) {
+  EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](float value) { return std::isfinite(value); }))
+      << test_case << " output contains a non-finite value";
+  EXPECT_TRUE(std::any_of(output.begin(), output.end(), [](float value) { return value != 0.0f; }))
+      << test_case << " output should not be all zeros";
 }
 
 // --- Error path: TurboQuant with smooth_softmax (non-flash attention) ---
@@ -4283,7 +4306,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Regular_UsesQ8CacheS
                                  /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
                                  /*do_rotary=*/false, /*is_packed_qkv=*/false,
                                  /*bit_width=*/8);
-  EXPECT_TRUE(std::any_of(output.begin(), output.end(), [](float value) { return value != 0.0f; }));
+  ExpectFiniteNonzeroOutput(output, "Q8 regular prefill");
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Decode_PackedRotary_UsesQ8CacheShape) {
@@ -4295,7 +4318,20 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Decode_PackedRotary_UsesQ8Ca
                                  /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
                                  /*do_rotary=*/true, /*is_packed_qkv=*/true,
                                  /*bit_width=*/8);
-  EXPECT_TRUE(std::any_of(output.begin(), output.end(), [](float value) { return value != 0.0f; }));
+  ExpectFiniteNonzeroOutput(output, "Q8 packed rotary decode");
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Float16) {
+  auto ep = WebGpuEPWithTurboQuant(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  auto output = RunGQATurboQuant<MLFloat16>(
+      /*batch_size=*/1, /*sequence_length=*/4, /*past_seq_len=*/24,
+      /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
+      /*do_rotary=*/false, /*is_packed_qkv=*/false,
+      /*bit_width=*/8);
+  ExpectFiniteNonzeroOutput(output, "Q8 float16 prefill");
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesSymmetricInt8Storage) {
