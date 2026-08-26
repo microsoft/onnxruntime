@@ -422,7 +422,8 @@ TEST(EpContextDataApiTest, ExperimentalCxxWrapperRetainsLifecycleApi) {
 
   Ort::Experimental::EpContextConfig config{session_options};
   const auto* config_handle = config.get();
-  config = std::move(config);
+  auto* config_alias = &config;
+  config = std::move(*config_alias);
   EXPECT_EQ(config.get(), config_handle);
 
   OrtReadNamedBufferFunc read_func = nullptr;
@@ -448,7 +449,8 @@ TEST(EpContextDataApiTest, StableCxxWrapperHandlesSelfMove) {
   Ort::EpContextConfig config{session_options};
   const auto* config_handle = config.get();
 
-  config = std::move(config);
+  auto* config_alias = &config;
+  config = std::move(*config_alias);
   EXPECT_EQ(config.get(), config_handle);
 
   config.reset();
