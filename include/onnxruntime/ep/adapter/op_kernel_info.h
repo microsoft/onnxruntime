@@ -154,7 +154,9 @@ struct OpKernelInfo {
 
   template <typename T>
   [[nodiscard]] T GetAttrOrDefault(const std::string& name, const T& default_value) const {
-    T tmp;
+    // Value-initialize. These accessors are fully inline here, so the compiler can see the failure and
+    // exception paths of GetAttr() and warns about a possibly uninitialized read without it.
+    T tmp{};
     return GetAttr<T>(name, &tmp).IsOK() ? tmp : default_value;
   }
   template <typename T>
@@ -164,7 +166,7 @@ struct OpKernelInfo {
   }
   template <typename T>
   [[nodiscard]] T GetAttr(const std::string& name) const {
-    T value;
+    T value{};
     ORT_THROW_IF_ERROR(GetAttr(name, &value));
     return value;
   }

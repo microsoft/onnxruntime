@@ -15,7 +15,7 @@ class Softmax final : public WebGpuKernel {
  public:
   Softmax(const OpKernelInfo& info) : WebGpuKernel{info} {
     opset_ = info.node().SinceVersion();
-    int64_t axis;
+    int64_t axis = 0;
     Status status = info.GetAttr<int64_t>("axis", &axis);
 
     if (status.IsOK()) {
