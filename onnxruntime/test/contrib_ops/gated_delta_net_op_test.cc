@@ -287,6 +287,32 @@ bool NeedSkipGatedDeltaNetTest() {
   return !HasCudaEnvironment(800);
 }
 
+bool NeedSkipGatedDeltaNetSplitTest() {
+  if (NeedSkipGatedDeltaNetTest()) return true;
+
+  int device = 0;
+  int max_shared_memory = 0;
+  if (cudaGetDevice(&device) != cudaSuccess ||
+      cudaDeviceGetAttribute(&max_shared_memory, cudaDevAttrMaxSharedMemoryPerBlockOptin, device) != cudaSuccess) {
+    return true;
+  }
+
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor desc{};
+  desc.total_tokens = 64;
+  desc.batch = 1;
+  desc.num_heads_q = 1;
+  desc.num_heads_k = 1;
+  desc.num_heads_v = 2;
+  desc.head_size_qk = kDim;
+  desc.head_size_v = kDim;
+  desc.io_type = gdn::IoType::kFloat16;
+  desc.preferred_engine = gdn::Engine::kChunkedSplit;
+  desc.sm_major = GetCudaArchitecture() / 100;
+  return gdn::SelectPlan(desc, 0, static_cast<size_t>(max_shared_memory)).engine !=
+         gdn::Engine::kChunkedSplit;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -371,7 +397,7 @@ TEST(GatedDeltaNetTest, Chunked_NarrowChunkForSmallSharedMemory) {
 }
 
 TEST(GatedDeltaNetTest, ChunkedSplit_DuplicateRowsMatchReference) {
-  if (NeedSkipGatedDeltaNetTest()) return;
+  if (NeedSkipGatedDeltaNetSplitTest()) return;
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
 
@@ -398,7 +424,7 @@ TEST(GatedDeltaNetTest, ChunkedSplit_DuplicateRowsMatchReference) {
 }
 
 TEST(GatedDeltaNetTest, ChunkedSplit_AllUpdateRulesMatchReference) {
-  if (NeedSkipGatedDeltaNetTest()) return;
+  if (NeedSkipGatedDeltaNetSplitTest()) return;
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
 
@@ -412,7 +438,7 @@ TEST(GatedDeltaNetTest, ChunkedSplit_AllUpdateRulesMatchReference) {
 }
 
 TEST(GatedDeltaNetTest, ChunkedSplit_FusedActivationsMatchReference) {
-  if (NeedSkipGatedDeltaNetTest()) return;
+  if (NeedSkipGatedDeltaNetSplitTest()) return;
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
 
