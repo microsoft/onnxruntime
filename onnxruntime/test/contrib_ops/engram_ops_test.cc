@@ -181,7 +181,7 @@ void RunEngramGateNormedTest(float tolerance) {
     std::vector<float> key(hidden_size);
     for (int64_t c = 0; c < hidden_size; ++c) {
       key[c] = embeddings[0] * key_weight[(g * 2 + 0) * hidden_size + c] +
-              embeddings[1] * key_weight[(g * 2 + 1) * hidden_size + c];
+               embeddings[1] * key_weight[(g * 2 + 1) * hidden_size + c];
     }
     float key_sum_sq = key[0] * key[0] + key[1] * key[1];
     float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden_size) + epsilon);
