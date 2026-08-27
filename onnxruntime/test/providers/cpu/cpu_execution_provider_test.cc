@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
+#include "test/test_environment.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -12,6 +13,31 @@ TEST(CPUExecutionProviderTest, MetadataTest) {
   auto provider = std::make_unique<CPUExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
   ASSERT_EQ(provider->GetOrtDeviceByMemType(OrtMemTypeDefault).Type(), OrtDevice::CPU);
+}
+
+TEST(CPUExecutionProviderTest, Float16GemmAndMatMulRegistration) {
+  auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
+  ASSERT_NE(kernel_registry, nullptr);
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<MLFloat16>()},
+  };
+
+  const auto has_kernel = [&](std::string_view op_type) {
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, op_type, kOnnxDomain, 13, type_constraints,
+        DefaultLoggingManager().DefaultLogger(), &kernel_create_info);
+    return status.IsOK() && kernel_create_info != nullptr;
+  };
+
+#ifdef MLAS_TARGET_RISCV64
+  constexpr bool expected_kernel = true;
+#else
+  const bool expected_kernel = MlasFp16AccelerationSupported();
+#endif
+  EXPECT_EQ(has_kernel("Gemm"), expected_kernel);
+  EXPECT_EQ(has_kernel("MatMul"), expected_kernel);
 }
 
 TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorDefaultsToKleidiAiEnabled) {
