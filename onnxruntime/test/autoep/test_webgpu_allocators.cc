@@ -135,13 +135,13 @@ std::string BuildMatMulLoadModelBytes(int64_t dimension, size_t depth) {
 class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    const auto devices_before_registration = env_.GetEpDevices();
+    const auto devices_before_registration = ort_env->GetEpDevices();
     const auto ep_lib_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"));
     ep_info_ = std::make_unique<Utils::ExamplePluginInfo>(
         ep_lib_path, "webgpu_allocator_test", kWebGpuExecutionProvider);
-    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(env_, *ep_info_, ep_device_holder_));
+    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, *ep_info_, ep_device_holder_));
 
-    const auto devices_after_registration = env_.GetEpDevices();
+    const auto devices_after_registration = ort_env->GetEpDevices();
     for (const auto& candidate : devices_after_registration) {
       const auto candidate_ptr = static_cast<const OrtEpDevice*>(candidate);
       if (candidate.EpName() == std::string{kWebGpuExecutionProvider} &&
@@ -169,11 +169,10 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
   }
 
   Ort::Env& Env() {
-    return env_;
+    return *ort_env;
   }
 
  private:
-  Ort::Env env_{ORT_LOGGING_LEVEL_WARNING, "webgpu_allocator_test"};
   std::unique_ptr<Utils::ExamplePluginInfo> ep_info_;
   RegisteredEpDeviceUniquePtr ep_device_holder_;
   std::vector<const OrtEpDevice*> ep_devices_;
@@ -185,9 +184,13 @@ TEST(WebGpuPluginSharedAllocatorRegistrationTest, UserAllocatorRegisteredBeforeP
   Ort::MemoryInfo user_memory_info{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
                                    0, 0, OrtDeviceMemoryType_DEFAULT, 0, OrtDeviceAllocator};
   UserWebGpuAllocator user_allocator{user_memory_info};
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "webgpu_user_allocator_test"};
+  auto& env = *ort_env;
 
   env.RegisterAllocator(&user_allocator);
+  auto unregister_allocator = gsl::finally([&] {
+    Ort::Status ignored{Ort::GetApi().UnregisterAllocator(env, user_memory_info)};
+  });
+
   auto allocator_before_plugin_registration = env.GetSharedAllocator(user_memory_info);
   ASSERT_EQ(static_cast<OrtAllocator*>(allocator_before_plugin_registration),
             static_cast<OrtAllocator*>(&user_allocator));
