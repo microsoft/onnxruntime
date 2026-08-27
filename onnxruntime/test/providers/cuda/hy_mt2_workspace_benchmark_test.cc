@@ -61,6 +61,41 @@ struct ModelProfile {
   size_t matmul_nbits_nodes;
 };
 
+struct ArenaMemoryBreakdown {
+  int64_t total_allocated_bytes;
+  int64_t reserved_bytes;
+  int64_t bfc_region_bytes;
+  int64_t bytes_in_use;
+  int64_t internal_fragmentation_bytes;
+  int64_t arena_slack_bytes;
+  double internal_fragmentation_ratio;
+};
+
+ArenaMemoryBreakdown GetArenaMemoryBreakdown(const AllocatorStats& stats) {
+  ORT_ENFORCE(stats.total_allocated_bytes >= stats.reserved_bytes);
+  ORT_ENFORCE(stats.bytes_in_use >= stats.reserved_bytes);
+  ORT_ENFORCE(stats.bytes_in_use >= stats.bytes_requested_in_use);
+
+  const int64_t bfc_region_bytes = stats.total_allocated_bytes - stats.reserved_bytes;
+  const int64_t bfc_bytes_in_use = stats.bytes_in_use - stats.reserved_bytes;
+  ORT_ENFORCE(bfc_region_bytes >= bfc_bytes_in_use);
+
+  const int64_t internal_fragmentation_bytes =
+      stats.bytes_in_use - stats.bytes_requested_in_use;
+  return {
+      stats.total_allocated_bytes,
+      stats.reserved_bytes,
+      bfc_region_bytes,
+      stats.bytes_in_use,
+      internal_fragmentation_bytes,
+      bfc_region_bytes - bfc_bytes_in_use,
+      stats.bytes_in_use == 0
+          ? 0.0
+          : static_cast<double>(internal_fragmentation_bytes) /
+                static_cast<double>(stats.bytes_in_use),
+  };
+}
+
 constexpr ModelProfile kHyMT2Profile{
     "hy-mt2-1.8b",
     "C:\\Users\\lochi\\repos\\onnxruntime\\Hy-MT2-1.8B-ONNX\\Q4_KQuant_tie\\cuda\\model.onnx",
@@ -398,6 +433,14 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_TRUE(after_initialize_used_bytes.has_value());
   const size_t wddm_after_initialize_local_bytes =
       GetWddmLocalUsageBytes(dxgi_adapter.Get());
+  const OrtDevice cuda_device(
+      OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+  AllocatorPtr cuda_allocator = session.GetSessionState().GetAllocator(cuda_device);
+  ASSERT_NE(cuda_allocator, nullptr);
+  IArena* cuda_arena = IArena::SafeArenaCast(cuda_allocator.get());
+  ASSERT_NE(cuda_arena, nullptr);
+  AllocatorStats post_initialize_stats;
+  cuda_allocator->GetStats(&post_initialize_stats);
 
   size_t matmul_nbits_nodes = 0;
   size_t cuda_matmul_nbits_nodes = 0;
@@ -477,13 +520,14 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             TensorShape({1, kSequenceLength, profile.vocab_size}));
   fetches.clear();
 
-  const OrtDevice cuda_device(
-      OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
-  AllocatorPtr cuda_allocator = session.GetSessionState().GetAllocator(cuda_device);
-  ASSERT_NE(cuda_allocator, nullptr);
-  IArena* cuda_arena = IArena::SafeArenaCast(cuda_allocator.get());
-  ASSERT_NE(cuda_arena, nullptr);
+  AllocatorStats post_warmup_stats;
+  cuda_allocator->GetStats(&post_warmup_stats);
   ASSERT_STATUS_OK(cuda_arena->Shrink());
+  AllocatorStats post_shrink_stats;
+  cuda_allocator->GetStats(&post_shrink_stats);
+  ASSERT_GE(post_warmup_stats.total_allocated_bytes, post_shrink_stats.total_allocated_bytes);
+  const int64_t shrink_reclaimed_bytes =
+      post_warmup_stats.total_allocated_bytes - post_shrink_stats.total_allocated_bytes;
   const size_t wddm_before_inference_local_bytes =
       GetWddmLocalUsageBytes(dxgi_adapter.Get());
   AllocatorStats before_memory_measurement;
@@ -537,6 +581,14 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
   AllocatorStats allocator_stats;
   cuda_allocator->GetStats(&allocator_stats);
+  const ArenaMemoryBreakdown post_initialize_breakdown =
+      GetArenaMemoryBreakdown(post_initialize_stats);
+  const ArenaMemoryBreakdown post_warmup_breakdown =
+      GetArenaMemoryBreakdown(post_warmup_stats);
+  const ArenaMemoryBreakdown post_shrink_breakdown =
+      GetArenaMemoryBreakdown(post_shrink_stats);
+  const ArenaMemoryBreakdown final_breakdown =
+      GetArenaMemoryBreakdown(allocator_stats);
 
   const auto to_mib = [](size_t bytes) {
     return static_cast<double>(bytes) / (1024.0 * 1024.0);
@@ -550,6 +602,13 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       initialization_wddm_sampler.PeakUsedBytes();
   const size_t wddm_inference_peak_local_bytes =
       inference_wddm_sampler.PeakUsedBytes();
+  const uintmax_t serialized_model_bytes = std::filesystem::file_size(model_path);
+  std::filesystem::path external_data_path = model_path;
+  external_data_path += L".data";
+  const uintmax_t serialized_external_data_bytes =
+      std::filesystem::exists(external_data_path)
+          ? std::filesystem::file_size(external_data_path)
+          : uintmax_t{0};
 
   std::cout << "[ MODEL WORKSPACE BENCHMARK ]"
             << " model=" << profile.name
@@ -560,6 +619,8 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " fpa_intb_gemm=" << enable_fpa_intb
             << " planned_workspace_nodes=" << planned_workspace_nodes
             << " largest_workspace_bytes=" << largest_workspace_bytes
+            << " serialized_model_bytes=" << serialized_model_bytes
+            << " serialized_external_data_bytes=" << serialized_external_data_bytes
             << " initialize_ms=" << initialize_ms
             << " average_ms=" << average_ms
             << " p50_ms=" << percentile(0.50)
@@ -594,9 +655,33 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << to_mib(wddm_inference_peak_local_bytes -
                       std::min(wddm_inference_peak_local_bytes,
                                wddm_before_inference_local_bytes))
+            << " post_initialize_total_allocated_bytes="
+            << post_initialize_breakdown.total_allocated_bytes
+            << " post_initialize_reserved_bytes=" << post_initialize_breakdown.reserved_bytes
+            << " post_initialize_bfc_region_bytes=" << post_initialize_breakdown.bfc_region_bytes
+            << " post_initialize_bytes_in_use=" << post_initialize_breakdown.bytes_in_use
+            << " post_initialize_arena_slack_bytes=" << post_initialize_breakdown.arena_slack_bytes
+            << " post_initialize_internal_fragmentation_bytes="
+            << post_initialize_breakdown.internal_fragmentation_bytes
+            << " post_initialize_internal_fragmentation_ratio="
+            << post_initialize_breakdown.internal_fragmentation_ratio
+            << " post_warmup_total_allocated_bytes="
+            << post_warmup_breakdown.total_allocated_bytes
+            << " post_warmup_arena_slack_bytes=" << post_warmup_breakdown.arena_slack_bytes
+            << " shrink_reclaimed_bytes=" << shrink_reclaimed_bytes
+            << " post_shrink_total_allocated_bytes="
+            << post_shrink_breakdown.total_allocated_bytes
+            << " post_shrink_arena_slack_bytes=" << post_shrink_breakdown.arena_slack_bytes
             << " measurement_new_arena_bytes=" << measurement_new_arena_bytes
             << " arena_bytes_in_use=" << allocator_stats.bytes_in_use
             << " arena_total_allocated_bytes=" << allocator_stats.total_allocated_bytes
+            << " arena_reserved_bytes=" << final_breakdown.reserved_bytes
+            << " arena_bfc_region_bytes=" << final_breakdown.bfc_region_bytes
+            << " arena_slack_bytes=" << final_breakdown.arena_slack_bytes
+            << " arena_internal_fragmentation_bytes="
+            << final_breakdown.internal_fragmentation_bytes
+            << " arena_internal_fragmentation_ratio="
+            << final_breakdown.internal_fragmentation_ratio
             << " arena_max_bytes_in_use=" << allocator_stats.max_bytes_in_use
             << " arena_num_allocs=" << allocator_stats.num_allocs
             << " arena_num_reserves=" << allocator_stats.num_reserves
