@@ -365,7 +365,8 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
   # https://github.com/pytorch/cpuinfo/pull/400
   set(ONNXRUNTIME_CPUINFO_DEINIT_PATCH_COMMAND
-      ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch)
+      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+      ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch)
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
     message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
     # https://github.com/pytorch/cpuinfo/pull/324
