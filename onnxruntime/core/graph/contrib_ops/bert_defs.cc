@@ -2694,19 +2694,18 @@ shape and type and is fully written with the state after each sequence's final t
 uses the activation type because it stores raw samples, not accumulated convolution values.
 initial_state and final_state may use the same allocation. Such in-place execution is
 transaction-safe only when the whole operator call is unconditionally committed; a caller that
-may select a prefix or roll back must preserve initial_state and commit one of the separately
-produced states instead.
+may select a prefix or roll back must preserve initial_state and replay the compact state update.
 
-When requested, prefix_states has shape
-(max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
-after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
-unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
-This output lets a transactional caller commit any produced prefix without rerunning the
-convolution.
+When state_update_capacity is positive, capture_count is required with shape (batch_size), and
+state_update has shape (batch_size, state_update_capacity, channels).
+For request b, slots [0, clamp(capture_count[b], 0,
+min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
+These values represent the append component of each shift-left-and-append state transition.
+All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
 
 For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
 cumulative_sequence_length[batch_size] == total_tokens, and its local range
-0 <= start < end <= total_tokens before accessing input, state, output, or checkpoints.
+0 <= start < end <= total_tokens before accessing input, state, or output.
 Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
 This device-side containment is not a synchronous validation or rejection mechanism.
 
@@ -2722,10 +2721,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default is 'none'.",
               AttributeProto::STRING,
               std::string("none"))
-        .Attr("max_checkpoints",
-              "Static number of per-request prefix states to expose. Checkpoint j is the state "
-              "after local token j when that token exists. Unwritten slots are unspecified. "
-              "Valid range is [0, 8].",
+        .Attr("state_update_capacity",
+              "Static number of compact contiguous-prefix transition values to expose per request. "
+              "Valid range is [0, 8]. capture_count is required exactly when this is positive.",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0,
@@ -2753,6 +2751,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Required committed carry state with shape "
                "(batch_size, channels, kernel_size - 1).",
                "T")
+        .Input(5,
+               "capture_count",
+               "Optional device int32 tensor with shape (batch_size). For each request, captures "
+               "that many local tokens from the contiguous prefix, clamped to the sequence length "
+               "and state_update_capacity. Required exactly when state_update_capacity is positive.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
@@ -2763,9 +2768,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, channels, kernel_size - 1).",
                 "T")
         .Output(2,
-                "prefix_states",
-                "Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, "
-                "kernel_size - 1). Unwritten slots are unspecified.",
+                "state_update",
+                "Optional compact transition values with shape "
+                "(batch_size, state_update_capacity, channels). Inactive slots are zero.",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -2773,18 +2778,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},
-                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+                        "Constrain cumulative_sequence_length and capture_count to device int32 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
           if (ctx.getNumOutputs() > 2) {
             propagateElemTypeFromInputToOutput(ctx, 0, 2);
           }
-
-          const int64_t max_checkpoints = getAttribute(ctx, "max_checkpoints", 0);
-          if (max_checkpoints < 0 || max_checkpoints > kMaxStateWindow) {
-            fail_shape_inference("VarlenCausalConvWithState: max_checkpoints must be in [0, ",
-                                 kMaxStateWindow, "], got ", max_checkpoints);
+          const int64_t state_update_capacity = getAttribute(ctx, "state_update_capacity", 0);
+          if (state_update_capacity < 0 || state_update_capacity > kMaxStateWindow) {
+            fail_shape_inference("VarlenCausalConvWithState: state_update_capacity must be in [0, ",
+                                 kMaxStateWindow, "], got ", state_update_capacity);
           }
 
           // Output 0: same shape as input (total_tokens, channels)
@@ -2820,6 +2824,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference(
                   "VarlenCausalConvWithState: total_tokens must be at least batch_size");
             }
+            if (hasInputShape(ctx, 5)) {
+              auto& capture_count_shape = getInputShape(ctx, 5);
+              if (capture_count_shape.dim_size() != 1) {
+                fail_shape_inference("VarlenCausalConvWithState: capture_count must have rank 1");
+              }
+              if (cu_dim.has_dim_value() && capture_count_shape.dim(0).has_dim_value() &&
+                  capture_count_shape.dim(0).dim_value() != cu_dim.dim_value() - 1) {
+                fail_shape_inference("VarlenCausalConvWithState: capture_count must have shape (batch_size)");
+              }
+            }
 
             TensorShapeProto state_shape;
             // batch_size = cumulative_sequence_length.dim(0) - 1
@@ -2837,12 +2851,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 1, state_shape);
 
             if (ctx.getNumOutputs() > 2) {
-              TensorShapeProto checkpoint_shape;
-              checkpoint_shape.add_dim()->set_dim_value(max_checkpoints);
-              for (const auto& dim : state_shape.dim()) {
-                *checkpoint_shape.add_dim() = dim;
-              }
-              updateOutputShape(ctx, 2, checkpoint_shape);
+              TensorShapeProto state_update_shape;
+              *state_update_shape.add_dim() = state_shape.dim(0);
+              state_update_shape.add_dim()->set_dim_value(state_update_capacity);
+              *state_update_shape.add_dim() = input_shape.dim(1);
+              updateOutputShape(ctx, 2, state_update_shape);
             }
           }
         }));
