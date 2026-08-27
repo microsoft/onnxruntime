@@ -15,13 +15,33 @@ using onnxruntime::webgpu::ComputeContext;
 
 class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
  public:
-  NGramHashMappingProgram() : Program{"NGramHashMapping"} {}
+  explicit NGramHashMappingProgram(bool has_past_ids)
+      : Program{"NGramHashMapping"}, has_past_ids_(has_past_ids) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
                                           {"n_head_per_ngram", ProgramUniformVariableDataType::Uint32},
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
+
+ private:
+  bool has_past_ids_;
+};
+
+// Emits the right-aligned trailing window of (past_ids ++ input_ids) so the next call can continue
+// the n-gram windows across invocations.
+class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
+ public:
+  explicit NGramPresentIdsProgram(bool has_past_ids)
+      : Program{"NGramPresentIds"}, has_past_ids_(has_past_ids) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
+
+ private:
+  bool has_past_ids_;
 };
 
 class NGramHashMapping final : public WebGpuKernel {

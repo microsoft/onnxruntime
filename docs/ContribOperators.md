@@ -1776,18 +1776,22 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
 
-  Fuses the Engram gate/value projection block.
+  Fuses the Engram gate.
   
-  The op consumes flattened n-gram embeddings, hidden states in
-  (batch_size, sequence_length, hc_mult, hidden_size) layout, per-hyper-connection key projection
-  weights, a shared value projection, and RMSNorm scales. It computes the Engram gate:
+  The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
+  the hidden-state queries in the same layout, an already projected value in
+  (batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
+  RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
+  provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
+  projection is computed once per token instead of once per hyper-connection.
+  
+  It computes the Engram gate:
   
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
   
-  The output is gate * value_projection(embeddings), broadcast across hidden_size for each
-  hyper-connection. A following ShortConv plus Add represents the final Engram residual
-  value + short_conv(value).
+  The output is gate * value, broadcast across the hyper-connections. A following ShortConv plus Add
+  represents the final Engram residual value + short_conv(value).
 
 #### Version
 
@@ -1803,22 +1807,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt>embeddings</tt> : T</dt>
-<dd>Flattened Engram embeddings with shape (batch_size, sequence_length, embedding_size).</dd>
-<dt><tt>hidden_states</tt> : T</dt>
-<dd>Hidden states with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
-<dt><tt>key_weight</tt> : T</dt>
-<dd>Per-hyper-connection key projection weights with shape (hc_mult, embedding_size, hidden_size).</dd>
-<dt><tt>key_bias</tt> (optional) : T</dt>
-<dd>Optional per-hyper-connection key projection bias with shape (hc_mult, hidden_size).</dd>
-<dt><tt>value_weight</tt> : T</dt>
-<dd>Shared value projection weight with shape (embedding_size, hidden_size).</dd>
-<dt><tt>value_bias</tt> (optional) : T</dt>
-<dd>Optional shared value projection bias with shape (hidden_size).</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>query</tt> : T</dt>
+<dd>Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Projected Engram value shared by every hyper-connection, with shape (batch_size, sequence_length, hidden_size).</dd>
 <dt><tt>key_norm_scale</tt> : T</dt>
-<dd>RMSNorm scale for key projections with shape (hc_mult, hidden_size).</dd>
+<dd>RMSNorm scale for keys with shape (hc_mult, hidden_size).</dd>
 <dt><tt>query_norm_scale</tt> : T</dt>
-<dd>RMSNorm scale for hidden-state queries with shape (hc_mult, hidden_size).</dd>
+<dd>RMSNorm scale for queries with shape (hc_mult, hidden_size).</dd>
 </dl>
 
 #### Outputs
@@ -4112,6 +4110,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
   The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
   heads for n=2 first, then n=3, and so on.
+  
+  An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
+  across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
+  those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
+  (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
+  Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
+  and running it over consecutive chunks while threading present_ids into past_ids produce identical
+  hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
 
 #### Version
 
@@ -4128,7 +4134,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
@@ -4137,13 +4143,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Per-shift odd multipliers with shape (max_ngram_size).</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dt><tt>past_ids</tt> (optional) : M</dt>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>hash_ids</tt> : M</dt>
 <dd>Hash ids with shape (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dt><tt>present_ids</tt> (optional) : M</dt>
+<dd>Trailing max_ngram_size - 1 ids of past_ids followed by input_ids, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
 </dl>
 
 #### Type Constraints
@@ -6482,6 +6492,16 @@ This version of the operator has been available since version 1 of the 'com.micr
   1D convolution with optional dilation along the sequence axis. The output is cropped to sequence_length,
   optionally passed through SiLU/Swish, and returned in (batch_size, sequence_length, hc_mult, hidden_size)
   layout. The convolution weight layout is (hc_mult * hidden_size, 1, kernel_size).
+  
+  The convolution receptive field spans state_length = (kernel_size - 1) * dilation positions before the
+  current token. To keep the op causal across invocations (chunked prefill or autoregressive decode), the
+  optional past_state input carries the normed values of those positions from the preceding call and
+  present_state returns them for the next call. Both have shape
+  (batch_size, state_length, hc_mult, hidden_size) and are right-aligned: slot state_length - 1 holds the
+  most recent position. Slots that correspond to positions before the start of the whole sequence are
+  zero. Running the op once over a full sequence and running it over consecutive chunks while threading
+  present_state into past_state produce identical outputs. When past_state is omitted the missing history
+  is treated as zeros, which matches a fresh sequence.
 
 #### Version
 
@@ -6498,7 +6518,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.</dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (3 - 5)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -6509,13 +6529,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>RMSNorm scale with shape (hc_mult, hidden_size).</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional convolution bias with shape (hc_mult * hidden_size).</dd>
+<dt><tt>past_state</tt> (optional) : T</dt>
+<dd>Optional normed convolution input for the (kernel_size - 1) * dilation positions that precede this call, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Right-aligned, so the last slot is the most recent position. If omitted the history is treated as zeros.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Output tensor with the same shape as input.</dd>
+<dt><tt>present_state</tt> (optional) : T</dt>
+<dd>Normed convolution input for the trailing (kernel_size - 1) * dilation positions of past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Feed this back as past_state on the next call.</dd>
 </dl>
 
 #### Type Constraints

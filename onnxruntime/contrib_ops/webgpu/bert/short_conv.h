@@ -26,7 +26,8 @@ class ShortConvInvRmsProgram final : public Program<ShortConvInvRmsProgram> {
 
 class ShortConvProgram final : public Program<ShortConvProgram> {
  public:
-  ShortConvProgram(bool has_bias, bool apply_silu) : Program{"ShortConv"}, has_bias_(has_bias), apply_silu_(apply_silu) {}
+  ShortConvProgram(bool has_bias, bool has_past_state, bool apply_silu)
+      : Program{"ShortConv"}, has_bias_(has_bias), has_past_state_(has_past_state), apply_silu_(apply_silu) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -37,7 +38,25 @@ class ShortConvProgram final : public Program<ShortConvProgram> {
 
  private:
   bool has_bias_;
+  bool has_past_state_;
   bool apply_silu_;
+};
+
+// Emits the trailing normed window of past_state followed by the current chunk so the next call can
+// continue the convolution across invocations.
+class ShortConvPresentStateProgram final : public Program<ShortConvPresentStateProgram> {
+ public:
+  explicit ShortConvPresentStateProgram(bool has_past_state)
+      : Program{"ShortConvPresentState"}, has_past_state_(has_past_state) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"hc_mult", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_past_state_;
 };
 
 class ShortConv final : public WebGpuKernel {
