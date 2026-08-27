@@ -30,9 +30,9 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Shared library plugin build (`--use_webgpu shared_lib`) | Green in CI, no regression from D2/D7 |
 | CUDA plugin EP (shares `include/onnxruntime/ep/*`) | Green in CI |
 | Operator-level validation on a real GPU | **Done — no behavioural difference**, see [Testing](#testing) |
-| Linux/GCC build (`--use_webgpu static_plugin`) | `array-bounds` fixed; full local GCC 14 build green under `-Werror`. CI run `33030694040` dispatched, result pending — see [GCC](#gcc-and-warnings-as-errors) |
+| Linux/GCC build (`--use_webgpu static_plugin`) | **Green in CI** (run `33030694040`) after the `array-bounds` fix — see [GCC](#gcc-and-warnings-as-errors) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
-| Emscripten / ORT Web | Not yet exercised — see [Open items](#open-items) |
+| Emscripten / ORT Web | **Builds and links**, plugin registration verified in the binary — see [ORT Web](#emscripten-and-ort-web). Not yet run in a browser |
 | PR | Not opened yet |
 
 ## Branch
@@ -307,7 +307,7 @@ own configure line `-- DAWN Werror: OFF`, which looks alarming in a summary coun
 | 32996643911 | Linux WebGPU CI | Failure — GCC `maybe-uninitialized`, batch 2 |
 | 32996646394 | CUDA Plugin Windows CI | Success |
 | 33009901327 | Linux WebGPU CI | Failure — GCC `array-bounds`, batch 3. Internal-EP job on the same run passed. |
-| 33030694040 | Linux WebGPU CI | Dispatched on `ef68884a95` — first run carrying the `array-bounds` fix |
+| 33030694040 | Linux WebGPU CI | **Success** — both jobs. Confirms the `array-bounds` fix; first green GCC run on this branch. |
 | 33030695742 | ONNX Runtime WebGPU Builds | Dispatched on `ef68884a95` — re-run after the merge from `main` |
 | 33030697208 | CUDA Plugin Windows CI | Dispatched on `ef68884a95` — re-run after the merge from `main` |
 
@@ -421,12 +421,77 @@ Both halves were checked, because each one alone is inconclusive:
 
 The 334 warnings that remain in that build are all third-party, in targets that do not use `-Werror`.
 
+## Emscripten and ORT Web
+
+This is the motivating use case for the whole change, so it was built locally before opening the PR. **It builds
+and links, and the plugin registration is verifiably present in the output.**
+
+Note what ORT Web's own CI does *not* cover today: the WebGPU WASM jobs in
+`.github/workflows/linux-wasm-ci-build-and-test-workflow.yml` pass a bare `--use_webgpu`, and bare `--use_webgpu`
+defaults to `static_lib` (`tools/ci_build/build_args.py`, `const="static_lib"`). So every existing WASM job still
+builds the **internal** EP. Nothing in CI exercises WASM + `static_plugin`; this branch only makes the
+configuration available, it does not switch ORT Web over to it.
+
+The CMake side was already written with Emscripten in mind — `cmake/onnxruntime_providers_webgpu.cmake` rejects
+`shared_lib` there with `"WebGPU EP shared library build is not supported on Emscripten. Please use
+'--use_webgpu static_plugin'."`
+
+### Building it
+
+Same container as the GCC 14 reproduction (see [above](#reproducing-the-ci-compiler-locally)), plus:
+
+- `git submodule update --init --recursive cmake/external/emsdk` — not needed for a native Linux build, required
+  here. `build.py` installs and activates the toolchain itself.
+- **`node` must be on `PATH`.** `cmake/external/onnxruntime_webassembly.cmake` includes `node_helper.cmake`,
+  which does a hard `find_program(NODE_EXECUTABLE ...)` and fails configure with
+  `Could not find NODE_EXECUTABLE using the following names: node.exe, node`. CI gets node from
+  `actions/setup-node`; the AlmaLinux image has none. emsdk bundles one — point `PATH` at
+  `cmake/external/emsdk/node/<version>/bin`.
+
+```
+docker run --rm -v /home/edch/ort:/src -v /home/edch/ortwasm:/build -w /src ort-gcc14:local \
+  bash -lc "export PATH=/src/cmake/external/emsdk/node/22.16.0_64bit/bin:\$PATH && \
+  python3.11 tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel \
+  --allow_running_as_root --build_wasm --enable_wasm_simd --enable_wasm_threads \
+  --enable_wasm_api_exception_catching --use_webgpu static_plugin --use_webnn \
+  --target onnxruntime_webassembly --skip_tests"
+```
+
+Result: configure clean, zero compile failures, links `ort-wasm-simd-threaded.asyncify.mjs` +
+`.wasm` (~32 MB). Roughly 35 minutes including the emsdk toolchain download and sysroot generation.
+
+### Verifying the plugin path actually linked
+
+A successful build alone proves little here, because the registration is behind
+`#if defined(USE_WEBGPU) && defined(ORT_WEBGPU_STATIC_PLUGIN)` in
+`onnxruntime/core/session/plugin_ep/ep_static_plugins.cc`. If that define failed to reach ORT core, the file
+would still compile — `CreateStaticPluginEpLibraries()` would just return an empty vector, and the build would
+be just as green while registering nothing.
+
+The decisive check is that ORT core holds an **undefined** reference to the prefixed entry points, using the
+emsdk LLVM tools:
+
+```
+NM=cmake/external/emsdk/upstream/bin/llvm-nm
+$NM <build>/Release/libonnxruntime_session.a          | grep WebGpu_   # expect: U WebGpu_CreateEpFactories, U WebGpu_ReleaseEpFactory
+$NM <build>/Release/libonnxruntime_providers_webgpu.a | grep WebGpu_   # expect: T WebGpu_CreateEpFactories, T WebGpu_ReleaseEpFactory
+```
+
+Observed exactly that: `U` in core, `T` in the provider, and the link resolved them. That closes the loop —
+the `#if` was live, the entry point prefixing worked, and `EpLibraryStaticPlugin` is in the binary.
+
+### Still open
+
+The binary has not been **run**. `--skip_tests` was used, and exercising it needs a browser with WebGPU, which
+the container does not have. So this validates build, link and registration wiring on Emscripten, not runtime
+behaviour.
+
 ## Open items
 
-1. **Fix the Linux leg.** The batch-3 `array-bounds` break is fixed at the source, and a local GCC 14 build
-   confirms it is the *only* ORT-owned warning in the whole build (see
-   [The complete GCC 14 warning inventory](#the-complete-gcc-14-warning-inventory)), so no further batches are
-   expected. Not yet confirmed by CI — dispatch a fresh run rather than re-running an old one.
+1. ~~**Fix the Linux leg.**~~ **Done.** The batch-3 `array-bounds` break is fixed at the source, and a local
+   GCC 14 build confirmed it was the *only* ORT-owned warning in the whole build (see
+   [The complete GCC 14 warning inventory](#the-complete-gcc-14-warning-inventory)). CI run `33030694040`
+   is green on both jobs.
 2. ~~**Operator-level validation on a real GPU.**~~ **Done** — see [Results on a real GPU](#results-on-a-real-gpu).
    No behavioural difference. Remaining sub-item: decide whether to close the 12-test
    `HardSwish_WebGPU` / `MatMul2BitsWebGpu` coverage gap on the plugin path, or document it as known.
@@ -435,8 +500,8 @@ The 334 warnings that remain in that build are all third-party, in targets that 
    registration call in `ort_env.cc` is wrapped in `#if !defined(ORT_MINIMAL_BUILD)`. The guard has been
    inspected and looks correct but has not been exercised. Also unknown: whether any shipped ORT Web
    configuration uses an extended-minimal build, which would exclude the plugin EP infrastructure entirely.
-4. **Emscripten / ORT Web.** This is the motivating use case for the whole change and has not been built.
-   `web.yml` exists and supports `workflow_dispatch`.
+4. ~~**Emscripten / ORT Web.**~~ **Builds and links**, with the registration verified in the binary — see
+   [Emscripten and ORT Web](#emscripten-and-ort-web). Not yet run in a browser.
 5. **Follow-up cleanup** listed at the end of the design doc, including removing the WebGPU special cases that
    only exist while it is still an "internal" EP.
 6. **Open the PR.**

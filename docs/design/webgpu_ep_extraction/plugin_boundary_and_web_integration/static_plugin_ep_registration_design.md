@@ -353,6 +353,39 @@ so a targeted source fix is almost always available and preferable to a blanket 
 When validating such a fix locally, always rebuild the *unfixed* source through the same harness first and confirm it
 still errors. A harness that silently fails to exercise the warning is indistinguishable from a successful fix.
 
+### Emscripten and ORT Web
+
+Making the statically linked WebGPU EP reachable through the plugin path is what motivates this design, so the
+Emscripten configuration was built before landing the change: `--build_wasm --enable_wasm_simd
+--enable_wasm_threads --use_webgpu static_plugin --use_webnn --target onnxruntime_webassembly`. It configures,
+compiles and links cleanly, producing `ort-wasm-simd-threaded.asyncify.{mjs,wasm}`.
+
+`static_plugin` is in fact the only plugin kind Emscripten supports — `cmake/onnxruntime_providers_webgpu.cmake`
+raises a `FATAL_ERROR` for `shared_lib` there, since there is no runtime library to load.
+
+No CI leg covers this yet. The WASM WebGPU jobs pass a bare `--use_webgpu`, which defaults to `static_lib`
+(`tools/ci_build/build_args.py` uses `const="static_lib"`), so they still build the internal EP. This change makes
+the configuration available to ORT Web; switching ORT Web over to it is separate work.
+
+A green build is *not* sufficient evidence that the registration is live. `CreateStaticPluginEpLibraries()` in
+`onnxruntime/core/session/plugin_ep/ep_static_plugins.cc` is guarded by
+`#if defined(USE_WEBGPU) && defined(ORT_WEBGPU_STATIC_PLUGIN)`; if that define does not reach ORT core the function
+still compiles, simply returning an empty vector, and the build is just as green while registering nothing. The
+check that actually discriminates is at the symbol level — ORT core must hold an *undefined* reference to the
+prefixed entry points, resolved by the provider library:
+
+```
+llvm-nm libonnxruntime_session.a          | grep WebGpu_   # U WebGpu_CreateEpFactories / U WebGpu_ReleaseEpFactory
+llvm-nm libonnxruntime_providers_webgpu.a | grep WebGpu_   # T WebGpu_CreateEpFactories / T WebGpu_ReleaseEpFactory
+```
+
+Both were observed on the Emscripten build, which confirms the guard was live, the D3 entry-point prefixing worked,
+and the link resolved core's reference against the provider. The binary has not yet been executed in a browser, so
+this validates build, link and registration wiring rather than runtime behaviour.
+
+A practical build note: the WASM build needs `node` on `PATH` — `node_helper.cmake` does a hard `find_program` and
+fails configure without it. emsdk bundles a suitable one under `cmake/external/emsdk/node/<version>/bin`.
+
 ## Resolution of workstream open questions
 
 > Should static factories be registered before environment creation or through environment construction options?
