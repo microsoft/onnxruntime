@@ -46,7 +46,7 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-constexpr int64_t kSequenceLength = 64;
+constexpr int64_t kSequenceLength = 1024;
 constexpr int64_t kPastSequenceLength = 1;
 constexpr int kMinFpAIntBSm = 75;
 
