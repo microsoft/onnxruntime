@@ -63,6 +63,17 @@ TEST(SubgroupMatrixMatMulTest, DeclinesInvalidMatMulShapes) {
                    .has_value());
 }
 
+TEST(SubgroupMatrixMatMulTest, RightOperandPolicyRequiresPersistentConstantForOddN) {
+  EXPECT_TRUE(webgpu::CanUseSubgroupMatrixRightOperand(
+      /*N=*/32, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
+  EXPECT_FALSE(webgpu::CanUseSubgroupMatrixRightOperand(
+      /*N=*/33, /*b_is_constant=*/true, /*has_persistent_cache=*/false));
+  EXPECT_TRUE(webgpu::CanUseSubgroupMatrixRightOperand(
+      /*N=*/33, /*b_is_constant=*/true, /*has_persistent_cache=*/true));
+  EXPECT_FALSE(webgpu::CanUseSubgroupMatrixRightOperand(
+      /*N=*/33, /*b_is_constant=*/false, /*has_persistent_cache=*/true));
+}
+
 #endif  // !defined(__wasm__)
 
 // Reference matmul using MatMulComputeHelper for shape/offset computation.
