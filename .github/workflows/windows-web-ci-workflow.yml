@@ -185,12 +185,6 @@ jobs:
           name: webgpu-shader-validation-logs
           path: ${{ runner.temp }}\web\test\07\chrome_debug.log
 
-      - name: Cleanup Chrome processes before E2E test
-        if: ${{ inputs.build_config == 'Release' }}
-        shell: pwsh
-        run: |
-          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
-
       - name: E2E package consuming test
         if: ${{ inputs.build_config == 'Release' }}
         run: npm run test:e2e -- --browser=Chrome_default
