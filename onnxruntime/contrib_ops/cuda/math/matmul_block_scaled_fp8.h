@@ -89,4 +89,9 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const cudaDeviceProp& device_prop,
                                       cudaStream_t stream);
 
+// Largest M LaunchMatMulBlockScaledFp8Gemv is worth calling with, and will accept. The tensor-core
+// sub-path shares one pass over the FP8 weight across several row tiles; the FMA fallback re-reads
+// it per tile, so it stops paying much sooner. Callers must not exceed this.
+int MatMulBlockScaledFp8GemvMaxM(int k, int block_size, const cudaDeviceProp& device_prop);
+
 }  // namespace onnxruntime::contrib::cuda

@@ -77,6 +77,11 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                const cudaDeviceProp& device_prop,
                                                cudaStream_t stream);
 
+// Largest M LaunchMatMulBlockQuantizedFp4WeightGemv is worth calling with, and will accept. The
+// tensor-core sub-path shares one pass over the packed weight across several row tiles; the scalar
+// fallback re-reads it per tile, so it stops paying much sooner. Callers must not exceed this.
+int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop);
+
 // Repacks the [N, ceil(K/block_size)] row-major E4M3 weight-scale tensor into the swizzled layout
 // the SM120 block-scaled tensor cores expect. b_scale must be sized for the *rounded* dimensions:
 // RoundUp(N, 128) * RoundUp(K / 16, 4) bytes. Only the first N rows are written; the padding rows
