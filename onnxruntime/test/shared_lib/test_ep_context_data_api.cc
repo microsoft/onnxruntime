@@ -60,6 +60,7 @@ OrtStatus* ORT_API_CALL EpContextReadCallback(void* state, const char* file_name
   return nullptr;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 struct EpContextWriteCallbackState {
   bool called = false;
   std::string file_name;
@@ -84,6 +85,7 @@ OrtStatus* ORT_API_CALL EpContextWriteCallback(void* state, const char* file_nam
 
   return nullptr;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace
 
