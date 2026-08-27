@@ -365,7 +365,8 @@ raises a `FATAL_ERROR` for `shared_lib` there, since there is no runtime library
 
 No CI leg covers this yet. The WASM WebGPU jobs pass a bare `--use_webgpu`, which defaults to `static_lib`
 (`tools/ci_build/build_args.py` uses `const="static_lib"`), so they still build the internal EP. This change makes
-the configuration available to ORT Web; switching ORT Web over to it is separate work.
+the configuration available to ORT Web; switching ORT Web over to it is separate work, and has prerequisites that
+this change does not address. See [ORT Web migration](#ort-web-migration).
 
 A green build is *not* sufficient evidence that the registration is live. `CreateStaticPluginEpLibraries()` in
 `onnxruntime/core/session/plugin_ep/ep_static_plugins.cc` is guarded by
@@ -386,7 +387,52 @@ this validates build, link and registration wiring rather than runtime behaviour
 A practical build note: the WASM build needs `node` on `PATH` — `node_helper.cmake` does a hard `find_program` and
 fails configure without it. emsdk bundles a suitable one under `cmake/external/emsdk/node/<version>/bin`.
 
-## Resolution of workstream open questions
+## ORT Web migration
+
+The intended end state is that the WebGPU EP is always a plugin EP and `--use_webgpu static_lib` goes away
+entirely, ORT Web included. Building the EP into the WASM binary as a static plugin, which this change enables, is
+only the first half of that. The second half is *selection*, and two gaps stand between the current state and a
+working ORT Web on the plugin path. Neither is visible to the linker, so the symbol-level evidence above does not
+speak to either.
+
+**ORT Web selects the EP by name, and that name resolves only to the internal EP.**
+`js/web/lib/wasm/session-options.ts` maps the `'webgpu'` backend to `epName = 'WebGPU'`, which reaches
+`OrtAppendExecutionProvider` in `onnxruntime/wasm/api.cc` and from there
+`OrtApis::SessionOptionsAppendExecutionProvider`. That API is a closed table of hardcoded EP names in
+`onnxruntime/core/session/provider_registration.cc`, and its `EpID::WebGPU` case is compiled out under
+`ORT_USE_EP_API_ADAPTERS`. On a `static_plugin` build the EP therefore registers at `OrtEnv` creation and is then
+unselectable from JS: the call returns "WebGPU execution provider is not supported in this build". This is by
+design rather than an oversight — the name-based API is the internal-EP mechanism, and plugin EPs are selected
+through `RegisterExecutionProviderLibrary` plus `OrtEpDevice`-based selection — but it does mean ORT Web needs new
+plumbing rather than a recompile.
+
+**No WebGPU `OrtEpDevice` exists under Emscripten.** Emscripten is neither `WIN32`, `LINUX` nor `APPLE`, so
+`cmake/onnxruntime_common.cmake` selects `core/platform/device_discovery_default.cc`, which discovers only a CPU
+device. `Factory::GetSupportedDevicesImpl` in `onnxruntime/core/providers/webgpu/ep/factory.cc` creates an
+`OrtEpDevice` only for devices of type `OrtHardwareDeviceType_GPU`. The one fallback, the virtual GPU device in the
+same function, is opt-in through the `allow_virtual_devices` environment configuration entry and is deliberately
+registered without allocator info, because it exists to back a device-free compile-only session. So even after
+selection plumbing is added, `GetEpDevices` would offer nothing for JS to select.
+
+A workable order:
+
+1. Make WebGPU visible as a device under Emscripten, either through an Emscripten device discovery implementation
+   that reports a GPU or by having the factory synthesize a GPU `OrtEpDevice` there. The latter fits better: WebGPU
+   availability in a browser is a JS fact rather than an OS enumeration fact, and ORT Web already supplies the
+   actual `GPUDevice` through EP options, which makes the `OrtEpDevice` effectively a handle. It must not reuse the
+   virtual-device path, which is allocator-less by design and cannot back a real session.
+2. Expose plugin EP selection in the WASM C API. `g_env` is already available in `api.cc`, so `GetEpDevices` and
+   `SessionOptionsAppendExecutionProvider_V2` are both reachable. A narrow helper that appends by EP name and
+   resolves the device internally avoids marshalling arrays of device pointers across the JS boundary. The new
+   entry point needs to be exported from `cmake/onnxruntime_webassembly.cmake`.
+3. Switch `js/web` to the new call. The `BUILD_DEFS.DISABLE_WEBGPU` branch that falls back to the JS EP is
+   unaffected. Confirm that the EP options ORT Web passes today — `deviceId`, `webgpuInstance`, `webgpuDevice`,
+   `preferredLayout` and the buffer cache modes — still reach the provider, since `Factory::CreateEpImpl` obtains
+   them from the session config options.
+4. Add a CI leg. No pipeline builds WASM with `static_plugin` today, so without one this path stays validated at
+   the symbol level only.
+
+
 
 > Should static factories be registered before environment creation or through environment construction options?
 
