@@ -115,6 +115,12 @@ struct Plan {
 // device limits, so it is defined here: tests can then exercise the architecture-dependent
 // choices -- notably the consumer-Blackwell shared-memory budget -- without linking the
 // provider module or owning that hardware.
+inline size_t RecurrentSmemBytes(int dk, int dv) {
+  const int reduction_scratch = dv > 2 ? dv : 2;
+  return sizeof(float) *
+         (static_cast<size_t>(dk) * dv + 2 * dk + reduction_scratch + dk);
+}
+
 inline size_t ChunkedSmemBytes(int bt, int dk, int dvb) {
   const int ld_kh = dk + 8;
   const int ld_vh = dvb + 8;
@@ -190,9 +196,8 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
     plan.v_block = 64;
     plan.threads = 512;
 
-    // The split engine remains available as an explicit diagnostic override, but is not selected
-    // automatically until its duplicate-row parity issue is resolved. The fused chunked engine
-    // is the production prefill path.
+    // The split engine remains an explicit benchmarking override. The fused chunked engine
+    // is the production prefill path selected by the automatic heuristic.
     const int bt = 64;
     const int64_t longest_seq = (desc.total_tokens + batch - 1) / batch;
     const bool want_split = !wants_state_update_tail_pass &&

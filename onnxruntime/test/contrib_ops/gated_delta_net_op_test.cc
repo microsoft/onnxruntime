@@ -13,6 +13,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime {
 namespace test {
@@ -369,6 +370,60 @@ TEST(GatedDeltaNetTest, Chunked_NarrowChunkForSmallSharedMemory) {
   }
 }
 
+TEST(GatedDeltaNetTest, ChunkedSplit_DuplicateRowsMatchReference) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+
+  for (int total : {64, 65, 128, 130}) {
+    SCOPED_TRACE(total);
+    Geometry g{total, 1, 2, 6, kDim, kDim};
+    Inputs in = MakeInputs(g, static_cast<uint32_t>(total) + 101);
+
+    auto duplicate_token = [](auto& values, int token_width, int dst, int src) {
+      std::copy_n(values.begin() + static_cast<ptrdiff_t>(src) * token_width,
+                  token_width,
+                  values.begin() + static_cast<ptrdiff_t>(dst) * token_width);
+    };
+    for (int dst = 1; dst < total; dst += 2) {
+      duplicate_token(in.q, g.hq * g.dk, dst, dst - 1);
+      duplicate_token(in.k, g.hq * g.dk, dst, dst - 1);
+      duplicate_token(in.v, g.hv * g.dv, dst, dst - 1);
+      duplicate_token(in.decay, g.hv, dst, dst - 1);
+      duplicate_token(in.beta, g.hv, dst, dst - 1);
+    }
+
+    RunCase(g, Options{}, in, 3e-2f, 3e-2f);
+  }
+}
+
+TEST(GatedDeltaNetTest, ChunkedSplit_AllUpdateRulesMatchReference) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+
+  Geometry g{256, 2, 1, 2, kDim, kDim};
+  for (const char* rule : {"linear", "gated", "delta", "gated_delta"}) {
+    SCOPED_TRACE(rule);
+    Options options;
+    options.update_rule = rule;
+    RunCase(g, options, MakeInputs(g, 131), 3e-2f, 3e-2f);
+  }
+}
+
+TEST(GatedDeltaNetTest, ChunkedSplit_FusedActivationsMatchReference) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+
+  Geometry g{128, 1, 2, 6, kDim, kDim};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  RunCase(g, options, MakeInputs(g, 137), 3e-2f, 3e-2f);
+}
+
 // ---------------------------------------------------------------------------
 // Recurrent engine (decode / MTP verify): T below the plan threshold.
 // ---------------------------------------------------------------------------
@@ -396,6 +451,14 @@ TEST(GatedDeltaNetTest, Recurrent_SingleValueChannelWithQkNormalization) {
   Options options;
   options.qk_l2_norm = 1;
   RunCase(g, options, MakeInputs(g, 37), 2e-2f, 2e-2f);
+}
+
+TEST(GatedDeltaNetTest, Recurrent_GenericSingleValueChannelWithQkNormalization) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{4, 1, 1, 1, 96, 1};
+  Options options;
+  options.qk_l2_norm = 1;
+  RunCase(g, options, MakeInputs(g, 139), 2e-2f, 2e-2f);
 }
 
 TEST(GatedDeltaNetTest, Ragged_MixedPrefillKeepsDecodeArithmeticStable) {
@@ -791,6 +854,11 @@ TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
   const gdn::Plan tiny = gdn::SelectPlan(d, 132, 48 * 1024);
   EXPECT_TRUE(tiny.supported);
   EXPECT_EQ(tiny.engine, gdn::Engine::kRecurrent);
+}
+
+TEST(GatedDeltaNetPlanTest, RecurrentSharedMemoryIncludesBothNormalizationScalars) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  EXPECT_EQ(gdn::RecurrentSmemBytes(96, 1), sizeof(float) * (96 + 2 * 96 + 2 + 96));
 }
 
 TEST(GatedDeltaNetPlanTest, AutomaticSelectionKeepsTheFusedEngine) {

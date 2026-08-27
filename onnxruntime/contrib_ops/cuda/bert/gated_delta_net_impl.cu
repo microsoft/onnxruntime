@@ -48,8 +48,6 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-using namespace onnxruntime::cuda;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -706,9 +704,7 @@ Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const Vari
     return CUDA_CALL(cudaGetLastError());
   }
 
-  const size_t smem =
-      sizeof(float) * (static_cast<size_t>(desc.head_size_qk) * desc.head_size_v +
-                       2 * desc.head_size_qk + std::max(desc.head_size_v, 2) + desc.head_size_qk);
+  const size_t smem = RecurrentSmemBytes(desc.head_size_qk, desc.head_size_v);
   static DynamicSmemConfig recurrent_smem_config;
   ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
       GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>,

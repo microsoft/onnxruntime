@@ -2,6 +2,10 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/gated_delta_net.h"
+
+#include <algorithm>
+#include <string>
+
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
@@ -11,7 +15,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda::CudaKernel;
+using onnxruntime::cuda::ToCudaType;
 namespace gdn = gated_delta_net;
 
 #define REGISTER_KERNEL_TYPED(T)                                        \
@@ -292,8 +297,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                     "GatedDeltaNet: the cuDNN engine is reserved and not implemented");
 
   if (plan.engine == gdn::Engine::kRecurrent && !plan.warp_specialized) {
-    const size_t smem = sizeof(float) * (static_cast<size_t>(head_size_qk) * head_size_v +
-                                         2 * head_size_qk + head_size_v + head_size_qk);
+    const size_t smem = gdn::RecurrentSmemBytes(head_size_qk, head_size_v);
     ORT_RETURN_IF_NOT(smem <= prop.sharedMemPerBlockOptin,
                       "GatedDeltaNet: the recurrent engine needs ", smem,
                       " bytes of shared memory but the device allows ",
