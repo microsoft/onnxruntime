@@ -4,12 +4,66 @@
 #include "gtest/gtest.h"
 
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
+
+#if !defined(__wasm__)
+
+TEST(SubgroupMatrixMatMulTest, AnalyzesShared2DWeight) {
+  const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulProblem(
+      TensorShape({2, 64, 16}), TensorShape({16, 32}),
+      /*is_channels_last=*/true, /*has_bias=*/true);
+
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_EQ(problem->M, 128u);
+  EXPECT_EQ(problem->N, 32u);
+  EXPECT_EQ(problem->K, 16u);
+  EXPECT_EQ(problem->batch, 1u);
+}
+
+TEST(SubgroupMatrixMatMulTest, DeclinesChannelsFirstWithBias) {
+  EXPECT_FALSE(webgpu::AnalyzeSubgroupMatrixMatMulProblem(
+                   TensorShape({1, 32, 16}), TensorShape({2, 16, 64}),
+                   /*is_channels_last=*/false, /*has_bias=*/true)
+                   .has_value());
+}
+
+TEST(SubgroupMatrixMatMulTest, AnalyzesIdenticalBatchDimensions) {
+  const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulProblem(
+      TensorShape({2, 3, 64, 16}), TensorShape({2, 3, 16, 32}),
+      /*is_channels_last=*/true, /*has_bias=*/false);
+
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_EQ(problem->M, 64u);
+  EXPECT_EQ(problem->N, 32u);
+  EXPECT_EQ(problem->K, 16u);
+  EXPECT_EQ(problem->batch, 6u);
+}
+
+TEST(SubgroupMatrixMatMulTest, DeclinesBatchBroadcasting) {
+  EXPECT_FALSE(webgpu::AnalyzeSubgroupMatrixMatMulProblem(
+                   TensorShape({2, 1, 64, 16}), TensorShape({1, 2, 16, 32}),
+                   /*is_channels_last=*/true, /*has_bias=*/false)
+                   .has_value());
+}
+
+TEST(SubgroupMatrixMatMulTest, DeclinesInvalidMatMulShapes) {
+  EXPECT_FALSE(webgpu::AnalyzeSubgroupMatrixMatMulProblem(
+                   TensorShape({16}), TensorShape({16, 32}),
+                   /*is_channels_last=*/true, /*has_bias=*/false)
+                   .has_value());
+  EXPECT_FALSE(webgpu::AnalyzeSubgroupMatrixMatMulProblem(
+                   TensorShape({64, 15}), TensorShape({16, 32}),
+                   /*is_channels_last=*/true, /*has_bias=*/false)
+                   .has_value());
+}
+
+#endif  // !defined(__wasm__)
 
 // Reference matmul using MatMulComputeHelper for shape/offset computation.
 // Supports arbitrary-rank batched matmul with broadcasting.

@@ -18,6 +18,11 @@
 namespace onnxruntime {
 namespace webgpu {
 
+#if !defined(__wasm__)
+std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(
+    const MatMul& parent, const ComputeContextBase& context);
+#endif
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     MatMul,
     kOnnxDomain,

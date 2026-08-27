@@ -13,12 +13,40 @@
 
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
+
+// Computes Y = A @ B (+ optional bias) using subgroupMatrixMultiplyAccumulate.
+class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulProgram> {
+ public:
+  SubgroupMatrixMatMulProgram(bool has_bias, int32_t config_index,
+                              uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k)
+      : Program{"SubgroupMatrixMatMul"},
+        has_bias_(has_bias),
+        config_index_(config_index),
+        sg_mat_count_m_(sg_mat_count_m),
+        sg_mat_count_n_(sg_mat_count_n),
+        split_k_(split_k) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"num_n_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"N_b", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool has_bias_;
+  const int32_t config_index_;
+  const uint32_t sg_mat_count_m_;
+  const uint32_t sg_mat_count_n_;
+  const uint32_t split_k_;
+};
 
 namespace {
 
@@ -26,6 +54,14 @@ namespace {
 // split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
 // TODO: use subgroup-size-control to enforce the subgroup size is 32.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
+
+bool TryGetPositiveUint32(int64_t dim, uint32_t& value) {
+  if (dim <= 0 || dim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+    return false;
+  }
+  value = static_cast<uint32_t>(dim);
+  return true;
+}
 
 // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 // (N_b >= N), zero-filling columns [N, N_b). Gives B an even row stride so the
@@ -65,62 +101,20 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
     const auto* b = context.Input(1);
     const auto& a_shape = a->Shape();
     const auto& b_shape = b->Shape();
-    if (a_shape.NumDimensions() < 2 || !a->IsDataType<MLFloat16>() || !b->IsDataType<MLFloat16>()) {
+    if (!a->IsDataType<MLFloat16>() || !b->IsDataType<MLFloat16>()) {
       return Status::OK();
     }
 
-    const uint32_t K = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
-    // The tiling selector is responsible for any subgroup-matrix alignment
-    // requirements (e.g. K % sg_mat_k == 0) and declines otherwise.
-    if (K == 0) {
+    const bool has_bias = context.InputCount() > 2;
+    const auto problem = AnalyzeSubgroupMatrixMatMulProblem(
+        a_shape, b_shape, /*is_channels_last=*/true, has_bias);
+    if (!problem) {
       return Status::OK();
     }
-
-    // Two shapes are handled:
-    //  * Shared 2D weight B [K, N]: all leading A dims fold into M and the whole
-    //    problem runs as one z-slice (batch == 1). Optimal for weight matmuls -
-    //    B is read once and M-parallelism is maximal.
-    //  * Batched B [..., K, N] (true bmm): A is [..., M, K] with batch dims
-    //    identical to B (no broadcasting). Each (A, B) pair is one z-dispatched
-    //    slice; the kernel derives the per-slice A/B/output strides from M, N, K.
-    // Anything else (e.g. broadcasting A across B's batch) falls back.
-    uint32_t M = 0;
-    uint32_t N = 0;
-    uint32_t batch = 1;
-    if (b_shape.NumDimensions() == 2) {
-      ORT_ENFORCE(narrow<uint32_t>(b_shape[0]) == K,
-                  "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[0]);
-      N = narrow<uint32_t>(b_shape[1]);
-      M = narrow<uint32_t>(a_shape.Size() / static_cast<int64_t>(K));
-    } else {
-      // Batched B (true bmm): A is [..., M, K], B is [..., K, N]. The kernel pairs
-      // slice i of A with slice i of B and copies A's shape to the output, so it
-      // can only be correct when A and B have identical batch dims - it does not
-      // implement numpy broadcasting. Require equal rank and equal leading dims;
-      // anything broadcastable-but-not-identical (e.g. A=[2,1,M,K], B=[1,2,K,N])
-      // falls back to the generic MatMul path.
-      const size_t rank = a_shape.NumDimensions();
-      if (b_shape.NumDimensions() != rank) {
-        return Status::OK();
-      }
-      ORT_ENFORCE(narrow<uint32_t>(b_shape[rank - 2]) == K,
-                  "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[rank - 2]);
-      M = narrow<uint32_t>(a_shape[rank - 2]);
-      N = narrow<uint32_t>(b_shape[rank - 1]);
-      for (size_t i = 0; i + 2 < rank; ++i) {
-        if (a_shape[i] != b_shape[i]) {
-          return Status::OK();
-        }
-      }
-      batch = narrow<uint32_t>(a_shape.SizeToDimension(rank - 2));
-    }
-
-    // An empty M or N yields an empty output (ONNX permits zero-length dims). Let
-    // the generic MatMul path allocate the empty result rather than dispatch a
-    // degenerate (zero-workgroup) kernel.
-    if (M == 0 || N == 0) {
-      return Status::OK();
-    }
+    const uint32_t M = problem->M;
+    const uint32_t N = problem->N;
+    const uint32_t K = problem->K;
+    const uint32_t batch = problem->batch;
 
     // The B right-operand is loaded with subgroupMatrixLoad using a row stride of
     // N_b. Intel's f16 subgroup-matrix load reads columns in 32-bit (2xf16) pairs
@@ -155,7 +149,6 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
     TensorShape output_shape{output_dims};
     auto* output = context.Output(0, output_shape);
 
-    const bool has_bias = context.InputCount() > 2;
     const Tensor* bias = has_bias ? context.Input(2) : nullptr;
 
     const auto& config = supported_subgroup_matrix_configs[config_index_];
@@ -269,6 +262,56 @@ SubgroupMatrixTilingSelector MakeDefaultTilingSelector() {
 }
 
 }  // namespace
+
+std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulProblem(
+    const TensorShape& a_shape, const TensorShape& b_shape,
+    bool is_channels_last, bool has_bias) {
+  if ((!is_channels_last && has_bias) ||
+      a_shape.NumDimensions() < 2 || b_shape.NumDimensions() < 2) {
+    return std::nullopt;
+  }
+
+  const size_t a_rank = a_shape.NumDimensions();
+  const size_t b_rank = b_shape.NumDimensions();
+  uint32_t K = 0;
+  uint32_t b_k = 0;
+  uint32_t N = 0;
+  if (!TryGetPositiveUint32(a_shape[a_rank - 1], K) ||
+      !TryGetPositiveUint32(b_shape[b_rank - 2], b_k) ||
+      !TryGetPositiveUint32(b_shape[b_rank - 1], N) || K != b_k) {
+    return std::nullopt;
+  }
+
+  uint32_t M = 1;
+  uint32_t batch = 1;
+  if (b_rank == 2) {
+    for (size_t i = 0; i + 1 < a_rank; ++i) {
+      uint32_t dim = 0;
+      if (!TryGetPositiveUint32(a_shape[i], dim) ||
+          dim > std::numeric_limits<uint32_t>::max() / M) {
+        return std::nullopt;
+      }
+      M *= dim;
+    }
+  } else {
+    if (a_rank != b_rank || !TryGetPositiveUint32(a_shape[a_rank - 2], M)) {
+      return std::nullopt;
+    }
+    for (size_t i = 0; i + 2 < a_rank; ++i) {
+      if (a_shape[i] != b_shape[i]) {
+        return std::nullopt;
+      }
+      uint32_t dim = 0;
+      if (!TryGetPositiveUint32(a_shape[i], dim) ||
+          dim > std::numeric_limits<uint32_t>::max() / batch) {
+        return std::nullopt;
+      }
+      batch *= dim;
+    }
+  }
+
+  return SubgroupMatrixMatMulProblem{M, N, K, batch};
+}
 
 Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
