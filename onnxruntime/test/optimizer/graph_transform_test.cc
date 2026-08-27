@@ -8589,7 +8589,6 @@ TEST_F(GraphTransformationTests, BiasGeluFusionWebGpu) {
   ASSERT_NE(bias_gelu_node, nullptr);
   EXPECT_EQ(bias_gelu_node->GetExecutionProviderType(), expected_ep);
 }
-#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 // Regression test for the WebGPU entry added to the Level-2 LayerNormFusion
 // allowlist (cpu_acl_cuda_dml_webgpu_eps in graph_transformer_utils.cc).
@@ -8601,13 +8600,8 @@ TEST_F(GraphTransformationTests, LayerNormFusionWebGpu) {
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
-#if defined(USE_WEBGPU)
-  const std::string expected_ep = kWebGpuExecutionProvider;
-#else
-  const std::string expected_ep = kCpuExecutionProvider;
-#endif
   for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(expected_ep);
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
   }
 
   SessionOptions session_options;
@@ -8625,7 +8619,6 @@ TEST_F(GraphTransformationTests, LayerNormFusionWebGpu) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-#if defined(USE_WEBGPU)
   ASSERT_EQ(op_to_count["LayerNormalization"], 1);
   ASSERT_EQ(op_to_count["ReduceMean"], 0);
   ASSERT_EQ(op_to_count["Pow"], 0);
@@ -8640,14 +8633,10 @@ TEST_F(GraphTransformationTests, LayerNormFusionWebGpu) {
     }
   }
   ASSERT_NE(layer_norm_node, nullptr);
-  EXPECT_EQ(layer_norm_node->GetExecutionProviderType(), expected_ep);
-#else
-  // LayerNormFusion deliberately skips float16 subgraphs assigned to the CPU EP
-  // (layer_norm_fusion.cc), so the decomposition survives in a CPU-only build.
-  ASSERT_EQ(op_to_count["LayerNormalization"], 0);
-  ASSERT_EQ(op_to_count["ReduceMean"], 2);
-#endif
+  EXPECT_EQ(layer_norm_node->GetExecutionProviderType(), kWebGpuExecutionProvider);
+  EXPECT_FLOAT_EQ(layer_norm_node->GetAttributes().at("epsilon").f(), static_cast<float>(MLFloat16(1e-4f)));
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
   // MatMul + Add -> Gemm fusion

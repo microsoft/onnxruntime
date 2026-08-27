@@ -1,8 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper, save
 
 
 def GenerateModel(model_name):  # noqa: N802
@@ -24,7 +23,7 @@ def GenerateModel(model_name):  # noqa: N802
 
     initializers = [
         numpy_helper.from_array(np.array([2], dtype=np.float16), "Pow_B"),
-        numpy_helper.from_array(np.array([1e-5], dtype=np.float16), "add_B"),
+        numpy_helper.from_array(np.array([1e-4], dtype=np.float16), "add_B"),
     ]
 
     graph = helper.make_graph(
@@ -40,7 +39,7 @@ def GenerateModel(model_name):  # noqa: N802
     )
 
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 10)])
-    onnx.save(model, model_name)
+    save(model, model_name)
 
 
 if __name__ == "__main__":
