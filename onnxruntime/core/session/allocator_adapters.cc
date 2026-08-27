@@ -123,6 +123,7 @@ std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator:
     entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
     entries.insert_or_assign("RequestedInUse", std::to_string(stats.bytes_requested_in_use));
     entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
+    entries.insert_or_assign("ReservedBytes", std::to_string(stats.reserved_bytes));
     entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
     entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));
     entries.insert_or_assign("NumReserves", std::to_string(stats.num_reserves));
