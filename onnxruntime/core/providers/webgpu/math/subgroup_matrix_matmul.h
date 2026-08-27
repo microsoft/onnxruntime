@@ -25,9 +25,19 @@ std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulProblem(
     const TensorShape& a_shape, const TensorShape& b_shape,
     bool is_channels_last, bool has_bias);
 
+std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulRoute(
+    const TensorShape& a_shape, const TensorShape& b_shape,
+    bool inputs_are_fp16, bool is_channels_last,
+    bool has_bias, bool has_activation);
+
 bool CanUseSubgroupMatrixRightOperand(uint32_t N,
                                       bool b_is_constant,
                                       bool has_persistent_cache);
+
+bool CanDispatchSubgroupMatrixMatMul(const SubgroupMatrixMatMulProblem& problem,
+                                     uint32_t config_k,
+                                     bool b_is_constant,
+                                     bool has_persistent_cache);
 
 // Per-workgroup output tiling for one MatMul problem: the tile shape and split-K
 // factor chosen by a vendor-specific policy. The subgroup-matrix shape itself is

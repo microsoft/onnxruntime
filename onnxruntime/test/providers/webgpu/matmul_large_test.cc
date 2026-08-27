@@ -74,6 +74,58 @@ TEST(SubgroupMatrixMatMulTest, RightOperandPolicyRequiresPersistentConstantForOd
       /*N=*/33, /*b_is_constant=*/false, /*has_persistent_cache=*/true));
 }
 
+TEST(SubgroupMatrixMatMulTest, PostTilingPolicyDeclinesPartialKBlock) {
+  const webgpu::SubgroupMatrixMatMulProblem problem{/*M=*/32, /*N=*/32, /*K=*/17, /*batch=*/1};
+
+  EXPECT_FALSE(webgpu::CanDispatchSubgroupMatrixMatMul(
+      problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
+}
+
+TEST(SubgroupMatrixMatMulTest, RoutesFoldedChannelsLastConvMetadataWithoutCache) {
+  const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulRoute(
+      TensorShape({128, 64}), TensorShape({64, 96}),
+      /*inputs_are_fp16=*/true, /*is_channels_last=*/true,
+      /*has_bias=*/true, /*has_activation=*/false);
+
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_EQ(problem->M, 128u);
+  EXPECT_EQ(problem->N, 96u);
+  EXPECT_EQ(problem->K, 64u);
+  EXPECT_EQ(problem->batch, 1u);
+  EXPECT_TRUE(webgpu::CanDispatchSubgroupMatrixMatMul(
+      *problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
+}
+
+TEST(SubgroupMatrixMatMulTest, RoutesFoldedAttentionMetadataWithoutCache) {
+  const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulRoute(
+      TensorShape({16, 64}), TensorShape({64, 192}),
+      /*inputs_are_fp16=*/true, /*is_channels_last=*/true,
+      /*has_bias=*/true, /*has_activation=*/false);
+
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_TRUE(webgpu::CanDispatchSubgroupMatrixMatMul(
+      *problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
+}
+
+TEST(SubgroupMatrixMatMulTest, DeclinesFusedActivationBeforeTiling) {
+  EXPECT_FALSE(webgpu::AnalyzeSubgroupMatrixMatMulRoute(
+                   TensorShape({128, 64}), TensorShape({64, 96}),
+                   /*inputs_are_fp16=*/true, /*is_channels_last=*/true,
+                   /*has_bias=*/true, /*has_activation=*/true)
+                   .has_value());
+}
+
+TEST(SubgroupMatrixMatMulTest, DeclinesCachelessOddNAfterRouteAnalysis) {
+  const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulRoute(
+      TensorShape({128, 64}), TensorShape({64, 33}),
+      /*inputs_are_fp16=*/true, /*is_channels_last=*/true,
+      /*has_bias=*/true, /*has_activation=*/false);
+
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_FALSE(webgpu::CanDispatchSubgroupMatrixMatMul(
+      *problem, /*config_k=*/16, /*b_is_constant=*/true, /*has_persistent_cache=*/false));
+}
+
 #endif  // !defined(__wasm__)
 
 // Reference matmul using MatMulComputeHelper for shape/offset computation.

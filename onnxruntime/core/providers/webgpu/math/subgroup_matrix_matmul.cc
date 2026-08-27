@@ -107,14 +107,11 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
     const auto* a = inputs[0];
     const auto* b = inputs[1];
-    if (!a->IsDataType<MLFloat16>() || !b->IsDataType<MLFloat16>() ||
-        activation.activation_kind_ != ActivationKind::None) {
-      return Status::OK();
-    }
-
     const bool has_bias = inputs.size() > 2;
-    const auto problem = AnalyzeSubgroupMatrixMatMulProblem(
-        a_shape, b_shape, is_channels_last, has_bias);
+    const bool inputs_are_fp16 = a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>();
+    const auto problem = AnalyzeSubgroupMatrixMatMulRoute(
+        a_shape, b_shape, inputs_are_fp16, is_channels_last, has_bias,
+        activation.activation_kind_ != ActivationKind::None);
     if (!problem) {
       return Status::OK();
     }
@@ -128,10 +125,12 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
       return Status::OK();
     }
 
-    // Odd N needs a padded constant B owned by a persistent per-kernel cache. Check
-    // this only after problem analysis and tiling selection so a declined problem
-    // never allocates or dispatches the padding program.
-    if (!CanUseSubgroupMatrixRightOperand(N, b_is_constant, has_persistent_cache)) {
+    const auto& config = supported_subgroup_matrix_configs[config_index_];
+    // Require whole subgroup-matrix K blocks. Odd N additionally needs a padded
+    // constant B owned by a persistent per-kernel cache. Keep this after tiling
+    // selection so a declined problem never allocates or dispatches padding.
+    if (!CanDispatchSubgroupMatrixMatMul(
+            *problem, config.K, b_is_constant, has_persistent_cache)) {
       return Status::OK();
     }
 
@@ -148,7 +147,6 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
     const Tensor* bias = has_bias ? inputs[2] : nullptr;
 
-    const auto& config = supported_subgroup_matrix_configs[config_index_];
     const uint32_t tile_m = tiling->tile_m;
     const uint32_t tile_n = tiling->tile_n;
     const uint32_t split_k = tiling->split_k;
@@ -313,10 +311,29 @@ std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulProblem(
   return SubgroupMatrixMatMulProblem{M, N, K, batch};
 }
 
+std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulRoute(
+    const TensorShape& a_shape, const TensorShape& b_shape,
+    bool inputs_are_fp16, bool is_channels_last,
+    bool has_bias, bool has_activation) {
+  if (!inputs_are_fp16 || has_activation) {
+    return std::nullopt;
+  }
+
+  return AnalyzeSubgroupMatrixMatMulProblem(a_shape, b_shape, is_channels_last, has_bias);
+}
+
 bool CanUseSubgroupMatrixRightOperand(uint32_t N,
                                       bool b_is_constant,
                                       bool has_persistent_cache) {
   return N % 2 == 0 || (b_is_constant && has_persistent_cache);
+}
+
+bool CanDispatchSubgroupMatrixMatMul(const SubgroupMatrixMatMulProblem& problem,
+                                     uint32_t config_k,
+                                     bool b_is_constant,
+                                     bool has_persistent_cache) {
+  return config_k != 0 && problem.K % config_k == 0 &&
+         CanUseSubgroupMatrixRightOperand(problem.N, b_is_constant, has_persistent_cache);
 }
 
 Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
