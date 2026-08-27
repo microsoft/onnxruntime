@@ -120,9 +120,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       device_memory_name_ = CUDA;
     }
 
-    // Pick an allocator from the plugin EP devices unless IO binding already set one.
+    // Pick an allocator from the plugin EP devices unless IO binding already set one,
+    // or the user explicitly requested to force the CPU allocator.
     if (device_memory_name_.empty()) {
-      if (auto plugin_ep_allocator = perftest::utils::GetPluginEpAllocator(env, selected_ep_devices)) {
+      if (performance_test_config.plugin_ep_force_cpu_allocator) {
+        fprintf(stdout, "[Plugin EP] Forcing CPU allocator (--plugin_ep_force_cpu_allocator was specified).\n");
+      } else if (auto plugin_ep_allocator = perftest::utils::GetPluginEpAllocator(env, selected_ep_devices)) {
         allocator_ = plugin_ep_allocator->allocator;
         requires_input_staging_ = !plugin_ep_allocator->is_host_accessible;
         has_plugin_ep_allocator_ = true;
