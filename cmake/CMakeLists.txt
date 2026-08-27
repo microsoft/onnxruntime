@@ -1532,6 +1532,26 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
 
+  if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
+          AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+    foreach(_cuda_include_dir IN LISTS CUDAToolkit_INCLUDE_DIRS)
+      set(_clusterlaunchcontrol_header
+          "${_cuda_include_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+      if(EXISTS "${_clusterlaunchcontrol_header}")
+        # CUDA 12.9 uses Windows's 32-bit long for PTX 64-bit operands. Shadow the toolkit
+        # header with the longlong2 correction shipped by newer CCCL releases.
+        set(_cuda_12_9_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cuda_12_9_fix")
+        ort_patch_cuda_12_9_clusterlaunchcontrol_header(
+          "${_clusterlaunchcontrol_header}"
+          "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+        if(EXISTS "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+          include_directories(BEFORE "${_cuda_12_9_fix_dir}")
+        endif()
+        break()
+      endif()
+    endforeach()
+  endif()
+
   # Note: The minimum required CUDA version is greater than 11.8.
   add_definitions("-DENABLE_BF16")
   message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_BF16 flag")

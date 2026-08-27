@@ -8,6 +8,7 @@
 //
 #pragma once
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -122,6 +123,7 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+    ORT_ENFORCE(block_size_ > 0, "block_size must be greater than zero");
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
@@ -149,6 +151,10 @@ class MatMulNBits final : public CudaKernel {
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
 #endif
+
+    const Tensor* group_index_initializer = nullptr;
+    group_index_is_initializer_ = has_g_idx_ &&
+                                  info.TryGetConstantInput(kInputIndexGroupIndex, &group_index_initializer);
     sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
     force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
@@ -242,10 +248,10 @@ class MatMulNBits final : public CudaKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-#if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
+#if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
   // estimate, callable after CreateKernels(). Uses the same constructed runner state that
@@ -291,6 +297,9 @@ class MatMulNBits final : public CudaKernel {
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
+  bool group_index_is_initializer_{false};
+  mutable std::mutex group_index_validation_mutex_;
+  mutable std::atomic<bool> is_group_index_validated_{false};
   bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
