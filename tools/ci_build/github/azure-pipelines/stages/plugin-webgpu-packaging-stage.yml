@@ -64,13 +64,7 @@ stages:
     - ${{ if eq(parameters.build_linux_x64, true) }}:
       - template: plugin-linux-webgpu-stage.yml
         parameters:
-          stage_name: 'Linux_plugin_webgpu_x64_Build'
           arch: 'x64'
-          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
-          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1'
-          docker_repository: 'onnxruntimewebgpuplugin'
-          artifact_name: 'webgpu_plugin_linux_x64'
-          python_artifact_name: 'webgpu_plugin_python_linux_x64'
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
@@ -79,13 +73,7 @@ stages:
     - ${{ if eq(parameters.build_linux_aarch64, true) }}:
       - template: plugin-linux-webgpu-stage.yml
         parameters:
-          stage_name: 'Linux_plugin_webgpu_aarch64_Build'
           arch: 'aarch64'
-          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14:20251017.1'
-          docker_repository: 'onnxruntimewebgpupluginaarch64'
-          artifact_name: 'webgpu_plugin_linux_aarch64'
-          python_artifact_name: 'webgpu_plugin_python_linux_aarch64'
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
