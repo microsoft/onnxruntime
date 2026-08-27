@@ -66,11 +66,13 @@ stages:
     - script: |
         set -e -x
 
-        # Pin Vulkan to SwiftShader (software Vulkan, built from source in
-        # the Docker image) so the test does not require a GPU agent.
-        # Keeping these env vars at `docker run` time (rather than baking
-        # them into the image) leaves the image reusable for a potential
-        # future real-GPU test job.
+        # VK_ICD_FILENAMES and VK_DRIVER_FILES pin Vulkan to SwiftShader (software Vulkan, built from source in the
+        # Docker image) so the test does not require a GPU agent.
+        # ORT device discovery does not identify SwiftShader as GPU hardware, so ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER
+        # opts in to advertising WebGPU against the CPU device.
+        # Keeping these environment variables at `docker run` time (rather than baking them into the image) leaves the
+        # image reusable for a potential future real-GPU test job.
+
         swiftshader_icd=/opt/swiftshader/vk_swiftshader_icd.json
 
         min_ort_version_file="$(Build.SourcesDirectory)/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION"
@@ -83,6 +85,7 @@ stages:
           --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
           --env "VK_ICD_FILENAMES=${swiftshader_icd}" \
           --env "VK_DRIVER_FILES=${swiftshader_icd}" \
+          --env "ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER=1" \
           --env "ORT_TEST_VERBOSE=$(OrtTestVerbose)" \
           --env "ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1" \
           --env "MIN_ORT_VERSION=${min_ort_version}" \
