@@ -912,8 +912,16 @@ def generate_build_tree(
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 
-    if args.use_dawn_agility_sdk and not is_windows():
-        raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) is only supported on Windows.")
+    if args.use_dawn_agility_sdk:
+        if not is_windows():
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) is only supported on Windows.")
+
+        if args.build_wheel or args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) is currently supported for local development builds only. "
+                "Python, C#, NuGet, Java, and Node.js packaging is not supported because the required D3D12 runtime "
+                "DLLs are not deployed into those packages."
+            )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]

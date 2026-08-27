@@ -831,7 +831,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     webgpu_group.add_argument(
         "--use_dawn_agility_sdk",
         action="store_true",
-        help="Build Dawn's D3D12 backend with the Agility SDK (Windows only).",
+        help=(
+            "Build Dawn's D3D12 backend with the Agility SDK for local development "
+            "(Windows only; packaging unsupported)."
+        ),
     )
     webgpu_group.add_argument(
         "--wgsl_template",
