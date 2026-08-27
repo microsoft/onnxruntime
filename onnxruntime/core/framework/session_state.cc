@@ -764,7 +764,7 @@ Status SessionState::PrepackConstantInitializedTensors(
       }
 
       const std::string& input_name = input_def->Name();
-      const SessionState* st = this;
+      SessionState* st = this;
       do {
         int ort_value_idx;
         if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK() &&
@@ -806,8 +806,7 @@ Status SessionState::PrepackConstantInitializedTensors(
   // sess_options_ is a `const SessionOptions&` here, but the referenced object is owned (non-const)
   // by the InferenceSession that created this SessionState, and this write happens single-threaded
   // before any node's PrePack() runs, so it cannot race with the concurrent reads performed later.
-  ORT_RETURN_IF_ERROR(const_cast<SessionOptions&>(sess_options_).config_options.AddConfigEntry(
-      kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
+  ORT_RETURN_IF_ERROR(const_cast<SessionOptions&>(sess_options_).config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
 
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
