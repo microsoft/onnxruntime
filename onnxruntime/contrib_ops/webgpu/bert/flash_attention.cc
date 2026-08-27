@@ -54,6 +54,45 @@ fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
 }
 )";
 
+constexpr size_t QuantizedDecodeWorkgroupStorageBytes(uint32_t m_tile,
+                                                      uint32_t tile_size,
+                                                      uint32_t head_size_vec,
+                                                      size_t element_size,
+                                                      uint32_t kv_cache_quantization_bits) {
+  const uint32_t tile_size_k_vec = m_tile == 1u ? 32u : 8u;
+  const uint32_t workgroup_size = m_tile == 1u ? 128u : 64u;
+  const size_t value_size = 4 * element_size;
+
+  const size_t all_q = m_tile * head_size_vec * value_size;
+  const size_t kv_scales = 2 * tile_size * sizeof(float);
+  const size_t inner_qk = m_tile * tile_size * tile_size_k_vec * sizeof(float);
+  const size_t tile_qk = m_tile * tile_size * element_size;
+  const size_t tile_output = m_tile * head_size_vec * value_size;
+  const size_t qkv_values = m_tile * workgroup_size * value_size;
+  const size_t tile_stats = 2 * m_tile * sizeof(float);
+  const size_t q4_lut = kv_cache_quantization_bits == 4 ? 16 * sizeof(float) : 0;
+
+  return all_q + kv_scales + inner_qk + tile_qk + tile_output + qkv_values + tile_stats + q4_lut;
+}
+
+constexpr uint32_t SelectQuantizedDecodeMTile(uint32_t desired_m_tile,
+                                              uint32_t tile_size,
+                                              uint32_t head_size_vec,
+                                              size_t element_size,
+                                              uint32_t kv_cache_quantization_bits,
+                                              uint64_t max_workgroup_storage_size) {
+  uint32_t m_tile = desired_m_tile;
+  while (m_tile > 1u &&
+         QuantizedDecodeWorkgroupStorageBytes(m_tile, tile_size, head_size_vec, element_size,
+                                              kv_cache_quantization_bits) > max_workgroup_storage_size) {
+    m_tile /= 2u;
+  }
+  return m_tile;
+}
+
+static_assert(SelectQuantizedDecodeMTile(4, 64, 96 / 4, sizeof(float), 8, 16384) == 2);
+static_assert(SelectQuantizedDecodeMTile(4, 64, 128 / 4, sizeof(float), 8, 16384) == 2);
+
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
@@ -856,7 +895,18 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor rotated_q;
 
   // Compute m_tile early so it can be passed to CopyKVCache for indirect dispatch.
-  const uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
+  uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
+  if (kv_cache_quantization_enabled) {
+    const uint32_t head_size_vec = static_cast<uint32_t>(parameters.v_head_size_ / 4);
+    m_tile = SelectQuantizedDecodeMTile(
+        m_tile, tile_size, head_size_vec, Q->DataType()->Size(), kv_cache_quantization_bits,
+        context.DeviceLimits().maxComputeWorkgroupStorageSize);
+    ORT_RETURN_IF_NOT(
+        QuantizedDecodeWorkgroupStorageBytes(m_tile, tile_size, head_size_vec, Q->DataType()->Size(),
+                                             kv_cache_quantization_bits) <=
+            context.DeviceLimits().maxComputeWorkgroupStorageSize,
+        "Quantized FlashAttention requires more workgroup storage than the device supports.");
+  }
   const uint32_t num_q_tiles = (static_cast<uint32_t>(parameters.sequence_length_) + m_tile - 1u) / m_tile;
 
   // Create indirect dispatch buffer if using indirect dispatch
