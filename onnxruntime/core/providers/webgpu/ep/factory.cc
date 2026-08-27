@@ -7,7 +7,11 @@
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 
+#include <algorithm>
+#include <charconv>
 #include <cstring>
+#include <optional>
+#include <vector>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
@@ -25,20 +29,90 @@ namespace ep {
 
 using onnxruntime::ep::Api;
 
+namespace {
+constexpr const char* kWebGpuDeviceIdMetadata = "webgpu_device_id";
+constexpr const char* kWebGpuAdapterLuidMetadata = "webgpu_adapter_luid";
+constexpr const char* kHardwareDeviceLuidMetadata = "LUID";
+
+std::optional<uint64_t> GetHardwareDeviceLuid(const OrtHardwareDevice& device) {
+  const OrtKeyValuePairs* metadata = Api().ort.HardwareDevice_Metadata(&device);
+  const char* luid_value = metadata == nullptr ? nullptr : Api().ort.GetKeyValue(metadata, kHardwareDeviceLuidMetadata);
+  if (luid_value == nullptr) {
+    return std::nullopt;
+  }
+
+  uint64_t luid = 0;
+  const char* end = luid_value + std::strlen(luid_value);
+  const auto result = std::from_chars(luid_value, end, luid);
+  if (result.ec != std::errc{} || result.ptr != end) {
+    return std::nullopt;
+  }
+
+  return luid;
+}
+
+struct SharedAllocatorContextLease {
+  SharedAllocatorContextLease(int context_id_in, std::optional<uint64_t> adapter_luid_in,
+                              std::optional<uint32_t> adapter_vendor_id_in,
+                              std::optional<uint32_t> adapter_device_id_in)
+      : context_id{context_id_in},
+        adapter_luid{adapter_luid_in},
+        adapter_vendor_id{adapter_vendor_id_in},
+        adapter_device_id{adapter_device_id_in} {
+  }
+
+  ~SharedAllocatorContextLease() {
+    if (has_context) {
+      WebGpuContextFactory::ReleaseContext(context_id);
+    }
+  }
+
+  const webgpu::BufferManager& GetBufferManager() {
+    std::call_once(init_flag, [this]() {
+      WebGpuContextConfig config{};
+      config.context_id = context_id;
+      config.adapter_luid = adapter_luid;
+      config.adapter_vendor_id = adapter_vendor_id;
+      config.adapter_device_id = adapter_device_id;
+      WebGpuContextFactory::CreateContext(config);
+      has_context = true;
+    });
+    return WebGpuContextFactory::GetContext(context_id).BufferManager();
+  }
+
+  int context_id;
+  std::optional<uint64_t> adapter_luid;
+  std::optional<uint32_t> adapter_vendor_id;
+  std::optional<uint32_t> adapter_device_id;
+  std::once_flag init_flag;
+  bool has_context{false};
+};
+}  // namespace
+
+Factory::DeviceEntry::DeviceEntry(int device_id_in, std::optional<uint64_t> adapter_luid_in,
+                                  uint32_t adapter_vendor_id_in, uint32_t adapter_device_id_in)
+    : device_id{device_id_in},
+      adapter_luid{adapter_luid_in},
+      adapter_vendor_id{adapter_luid.has_value() ? std::make_optional(adapter_vendor_id_in) : std::nullopt},
+      adapter_device_id{adapter_luid.has_value() ? std::make_optional(adapter_device_id_in) : std::nullopt},
+      default_memory_info{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
+                          0, static_cast<uint32_t>(device_id), OrtDeviceMemoryType_DEFAULT,
+                          0, OrtDeviceAllocator},
+      readonly_memory_info{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
+                           0, static_cast<uint32_t>(device_id), OrtDeviceMemoryType_DEFAULT,
+                           0, OrtReadOnlyAllocator} {
+}
+
+Factory::DeviceEntry* Factory::FindDeviceEntry(int device_id) const {
+  const auto entry = std::find_if(device_entries_.begin(), device_entries_.end(),
+                                  [device_id](const auto& candidate) {
+                                    return candidate->device_id == device_id;
+                                  });
+  return entry == device_entries_.end() ? nullptr : entry->get();
+}
+
 // Constructor
-Factory::Factory() : OrtEpFactory{},
-                     default_memory_info_{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
-                                          0,  // vendor id
-                                          0,  // device id
-                                          OrtDeviceMemoryType_DEFAULT,
-                                          0,  // alignment
-                                          OrtDeviceAllocator},
-                     readonly_memory_info_{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
-                                           0,  // vendor id
-                                           0,  // device id
-                                           OrtDeviceMemoryType_DEFAULT,
-                                           0,  // alignment
-                                           OrtReadOnlyAllocator} {
+Factory::Factory() : OrtEpFactory{} {
   ort_version_supported = ORT_API_VERSION;
 
   GetName = GetNameImpl;
@@ -96,18 +170,69 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
   size_t& num_ep_devices = *p_num_ep_devices;
   num_ep_devices = 0;
 
-  for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
-    const OrtHardwareDevice& device = *devices[i];
-    if (Api().ort.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-      // TODO: any metadata or options to add?
-      OrtEpDevice* ep_device = nullptr;
-      ORT_API_RETURN_IF_ERROR(Api().ep.CreateEpDevice(this_ptr,
-                                                      &device, nullptr, nullptr,
-                                                      &ep_device));
-      ORT_API_RETURN_IF_ERROR(Api().ep.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
-      ORT_API_RETURN_IF_ERROR(Api().ep.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
-      ep_devices[num_ep_devices++] = ep_device;
+  struct Candidate {
+    const OrtHardwareDevice* hardware_device;
+    std::optional<uint64_t> adapter_luid;
+  };
+  std::vector<Candidate> candidates;
+  const OrtHardwareDevice* first_gpu = nullptr;
+  for (size_t i = 0; i < num_devices; ++i) {
+    if (Api().ort.HardwareDevice_Type(devices[i]) != OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
+      continue;
     }
+    if (first_gpu == nullptr) {
+      first_gpu = devices[i];
+    }
+
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+    auto adapter_luid = GetHardwareDeviceLuid(*devices[i]);
+    if (adapter_luid.has_value()) {
+      candidates.push_back({devices[i], adapter_luid});
+    }
+#else
+    if (candidates.empty()) {
+      candidates.push_back({devices[i], std::nullopt});
+    }
+#endif
+  }
+
+  if (candidates.empty() && first_gpu != nullptr) {
+    candidates.push_back({first_gpu, std::nullopt});
+  }
+
+  std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
+    return left.adapter_luid.value_or(0) < right.adapter_luid.value_or(0);
+  });
+
+  for (size_t i = 0; i < candidates.size() && num_ep_devices < max_ep_devices; ++i) {
+    const int device_id = static_cast<int>(i);
+    DeviceEntry* entry = factory->FindDeviceEntry(device_id);
+    if (entry == nullptr) {
+      const uint32_t adapter_vendor_id = Api().ort.HardwareDevice_VendorId(candidates[i].hardware_device);
+      const uint32_t adapter_device_id = Api().ort.HardwareDevice_DeviceId(candidates[i].hardware_device);
+      factory->device_entries_.push_back(std::make_unique<DeviceEntry>(
+          device_id, candidates[i].adapter_luid, adapter_vendor_id, adapter_device_id));
+      entry = factory->device_entries_.back().get();
+    } else if (entry->adapter_luid != candidates[i].adapter_luid) {
+      return Api().ort.CreateStatus(ORT_FAIL, "WebGPU hardware device ordering changed during enumeration.");
+    }
+
+    OrtKeyValuePairs* ep_metadata = nullptr;
+    Api().ort.CreateKeyValuePairs(&ep_metadata);
+    Api().ort.AddKeyValuePair(ep_metadata, kWebGpuDeviceIdMetadata, std::to_string(device_id).c_str());
+    if (entry->adapter_luid.has_value()) {
+      Api().ort.AddKeyValuePair(ep_metadata, kWebGpuAdapterLuidMetadata,
+                                std::to_string(*entry->adapter_luid).c_str());
+    }
+
+    OrtEpDevice* ep_device = nullptr;
+    OrtStatus* status = Api().ep.CreateEpDevice(this_ptr, candidates[i].hardware_device,
+                                                ep_metadata, nullptr, &ep_device);
+    Api().ort.ReleaseKeyValuePairs(ep_metadata);
+    ORT_API_RETURN_IF_ERROR(status);
+    ORT_API_RETURN_IF_ERROR(Api().ep.EpDevice_AddAllocatorInfo(ep_device, entry->default_memory_info));
+    ORT_API_RETURN_IF_ERROR(Api().ep.EpDevice_AddAllocatorInfo(ep_device, entry->readonly_memory_info));
+    ep_devices[num_ep_devices++] = ep_device;
   }
 
   // If the environment allows virtual devices, register a virtual GPU EP device (vendor/device id 0) so
@@ -150,7 +275,7 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
 OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     OrtEpFactory* this_ptr,
     const OrtHardwareDevice* const* devices,
-    const OrtKeyValuePairs* const* /*ep_metadata*/,
+    const OrtKeyValuePairs* const* ep_metadata,
     size_t num_devices,
     const OrtSessionOptions* session_options,
     const OrtLogger* logger,
@@ -185,6 +310,40 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   const bool selected_virtual_device =
       device_metadata != nullptr &&
       Api().ort.GetKeyValue(device_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual) != nullptr;
+
+  if (!selected_virtual_device) {
+    if (ep_metadata == nullptr || ep_metadata[0] == nullptr) {
+      return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT, "WebGPU EP requires per-device metadata.");
+    }
+    const char* device_id = Api().ort.GetKeyValue(ep_metadata[0], kWebGpuDeviceIdMetadata);
+    if (device_id == nullptr) {
+      return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT, "WebGPU EP metadata is missing the device ID.");
+    }
+    auto status = config_options.AddConfigEntry(options::kDeviceId, device_id);
+    if (!status.IsOK()) {
+      return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+    }
+    if (const char* adapter_luid = Api().ort.GetKeyValue(ep_metadata[0], kWebGpuAdapterLuidMetadata);
+        adapter_luid != nullptr) {
+      status = config_options.AddConfigEntry(options::kAdapterLuid, adapter_luid);
+      if (!status.IsOK()) {
+        return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      }
+    }
+    if (Api().ort.GetKeyValue(ep_metadata[0], kWebGpuAdapterLuidMetadata) != nullptr) {
+      status = config_options.AddConfigEntry(
+          options::kAdapterVendorId, std::to_string(Api().ort.HardwareDevice_VendorId(devices[0])).c_str());
+      if (!status.IsOK()) {
+        return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      }
+      status = config_options.AddConfigEntry(
+          options::kAdapterDeviceId, std::to_string(Api().ort.HardwareDevice_DeviceId(devices[0])).c_str());
+      if (!status.IsOK()) {
+        return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      }
+    }
+  }
+
   if (selected_virtual_device && !compile_only) {
     return Api().ort.CreateStatus(
         ORT_INVALID_ARGUMENT,
@@ -225,7 +384,7 @@ void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) 
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
-    OrtEpFactory* /*this_ptr*/,
+    OrtEpFactory* this_ptr,
     const OrtMemoryInfo* memory_info,
     const OrtKeyValuePairs* /*allocator_options*/,
     OrtAllocator** allocator) noexcept {
@@ -233,22 +392,28 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
 
   if (ort_memory_info.GetAllocatorType() != OrtDeviceAllocator ||
-      ort_memory_info.GetDeviceId() != 0 ||
       ort_memory_info.GetAllocatorName() != WEBGPU_BUFFER) {
     return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
                                   "Unsupported memory info for shared allocator.");
   }
 
-  *allocator = new onnxruntime::ep::adapter::Allocator(memory_info,
-                                                       [](const OrtMemoryInfo&) -> AllocatorPtr {
-                                                         return std::make_shared<webgpu::GpuBufferAllocator>(
-                                                             []() -> const webgpu::BufferManager& {
-                                                               return WebGpuContextFactory::DefaultContext()
-                                                                   .BufferManager();
-                                                             },
-                                                             false,
-                                                             []() { return true; });
-                                                       });
+  auto* factory = static_cast<Factory*>(this_ptr);
+  const int device_id = ort_memory_info.GetDeviceId();
+  const DeviceEntry* entry = factory->FindDeviceEntry(device_id);
+  if (entry == nullptr) {
+    return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT, "Unknown WebGPU device ID for shared allocator.");
+  }
+  const std::optional<uint64_t> adapter_luid = entry->adapter_luid;
+  const auto context_lease = std::make_shared<SharedAllocatorContextLease>(
+      device_id, adapter_luid, entry->adapter_vendor_id, entry->adapter_device_id);
+
+  auto allocator_impl = std::make_shared<webgpu::GpuBufferAllocator>(
+      [context_lease]() -> const webgpu::BufferManager& {
+        return context_lease->GetBufferManager();
+      },
+      false,
+      []() { return true; });
+  *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, std::move(allocator_impl));
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -262,7 +427,7 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
     OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+  *data_transfer = OrtWebGpuCreateDataTransfer(/*context_id*/ -1);
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

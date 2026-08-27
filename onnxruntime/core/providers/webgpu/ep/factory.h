@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "ep.h"
 
@@ -18,6 +21,20 @@ namespace ep {
 /// </summary>
 class Factory : public OrtEpFactory {
  private:
+  struct DeviceEntry {
+    DeviceEntry(int device_id, std::optional<uint64_t> adapter_luid,
+                uint32_t adapter_vendor_id, uint32_t adapter_device_id);
+
+    int device_id;
+    std::optional<uint64_t> adapter_luid;
+    std::optional<uint32_t> adapter_vendor_id;
+    std::optional<uint32_t> adapter_device_id;
+    Ort::MemoryInfo default_memory_info;
+    Ort::MemoryInfo readonly_memory_info;
+  };
+
+  DeviceEntry* FindDeviceEntry(int device_id) const;
+
   // Static C API implementations
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
   static const char* ORT_API_CALL GetVendorImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -63,8 +80,7 @@ class Factory : public OrtEpFactory {
       const OrtKeyValuePairs* stream_options,
       OrtSyncStreamImpl** stream) noexcept;
 
-  Ort::MemoryInfo default_memory_info_;
-  Ort::MemoryInfo readonly_memory_info_;  // used for initializers
+  std::vector<std::unique_ptr<DeviceEntry>> device_entries_;
 
   // Owned virtual GPU hardware device created on demand by GetSupportedDevices when the environment
   // allows virtual devices (OrtEnv config "allow_virtual_devices"=1) and no real GPU device was

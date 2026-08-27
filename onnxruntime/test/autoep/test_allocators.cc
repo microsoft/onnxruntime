@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "core/framework/allocator.h"
+#include "core/graph/constants.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -14,6 +15,7 @@
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -21,6 +23,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
 struct DummyAllocator : OrtAllocator {
   DummyAllocator(const OrtMemoryInfo* mem_info)
       : memory_info{mem_info} {

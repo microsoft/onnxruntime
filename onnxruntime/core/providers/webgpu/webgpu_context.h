@@ -150,6 +150,9 @@ struct WebGpuContextConfig {
   uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
+  std::optional<uint64_t> adapter_luid;
+  std::optional<uint32_t> adapter_vendor_id;
+  std::optional<uint32_t> adapter_device_id;
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
   int backend_type{
 #ifdef _WIN32
@@ -183,6 +186,8 @@ class WebGpuContextFactory {
   /// Get the WebGPU context for the specified context ID. Throw if not present.
   /// </summary>
   static WebGpuContext& GetContext(int context_id);
+
+  static void RetainContext(int context_id);
 
   /// <summary>
   /// Release the WebGPU context. (ref-count based)
@@ -339,12 +344,14 @@ class WebGpuContext final {
 
   WebGpuContext(WGPUInstance instance,
                 WGPUDevice device,
+                std::optional<uint64_t> adapter_luid,
                 webgpu::ValidationMode validation_mode,
                 bool validation_mode_explicitly_set,
                 bool preserve_device,
                 uint64_t max_storage_buffer_binding_size)
       : instance_{instance},
         device_{device},
+        adapter_luid_{adapter_luid},
         validation_mode_{validation_mode},
         validation_mode_explicitly_set_{validation_mode_explicitly_set},
         query_type_{TimestampQueryType::None},
@@ -395,6 +402,7 @@ class WebGpuContext final {
 
   wgpu::Instance instance_;
   wgpu::Device device_;
+  std::optional<uint64_t> adapter_luid_;
 
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
