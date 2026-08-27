@@ -15,6 +15,10 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
 
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -290,6 +294,7 @@ bool NeedSkipGatedDeltaNetTest() {
 bool NeedSkipGatedDeltaNetSplitTest() {
   if (NeedSkipGatedDeltaNetTest()) return true;
 
+#ifdef USE_CUDA
   int device = 0;
   int max_shared_memory = 0;
   if (cudaGetDevice(&device) != cudaSuccess ||
@@ -311,6 +316,9 @@ bool NeedSkipGatedDeltaNetSplitTest() {
   desc.sm_major = GetCudaArchitecture() / 100;
   return gdn::SelectPlan(desc, 0, static_cast<size_t>(max_shared_memory)).engine !=
          gdn::Engine::kChunkedSplit;
+#else
+  return true;
+#endif
 }
 
 }  // namespace
