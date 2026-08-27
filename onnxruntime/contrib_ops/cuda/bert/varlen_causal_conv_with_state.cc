@@ -121,15 +121,12 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
 
   Tensor* output_tensor = context->Output(0, input_shape);
   Tensor* final_state_tensor = context->Output(1, state_shape);
-  Tensor* state_update_tensor = nullptr;
-  if (state_update_capacity_ > 0) {
-    const TensorShape state_update_shape({batch_size_64, state_update_capacity_, channels_64});
-    state_update_tensor = context->Output(2, state_update_shape);
-    if (state_update_tensor != nullptr) {
-      const size_t count = SafeInt<size_t>(batch_size) * state_update_capacity_ * channels;
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-          state_update_tensor->MutableDataRaw(), 0, count * sizeof(T), Stream(context)));
-    }
+  const TensorShape state_update_shape({batch_size_64, state_update_capacity_, channels_64});
+  Tensor* state_update_tensor = context->Output(2, state_update_shape);
+  if (state_update_capacity_ > 0 && state_update_tensor != nullptr) {
+    const size_t count = SafeInt<size_t>(batch_size) * state_update_capacity_ * channels;
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+        state_update_tensor->MutableDataRaw(), 0, count * sizeof(T), Stream(context)));
   }
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");
@@ -148,7 +145,7 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
       reinterpret_cast<const CudaT*>(initial_state_tensor->Data<T>()),
       reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
       reinterpret_cast<CudaT*>(final_state_tensor->MutableData<T>()),
-      state_update_tensor
+      state_update_capacity_ > 0 && state_update_tensor
           ? reinterpret_cast<CudaT*>(state_update_tensor->MutableData<T>())
           : nullptr,
       cu_seqlens_tensor->Data<int32_t>(),

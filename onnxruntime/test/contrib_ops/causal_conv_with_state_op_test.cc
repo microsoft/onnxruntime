@@ -996,6 +996,7 @@ struct VarlenCausalConvCase {
   bool with_bias = true;
   bool with_initial_state = false;
   int state_update_capacity = 0;
+  bool request_state_update = false;
   std::vector<int32_t> capture_count;
   bool verify_compact_replay = false;
   bool use_fp16 = false;
@@ -1131,7 +1132,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     }
     tester.AddOutput<float>("output", input_dims, packed_output, false, tol, tol);
     tester.AddOutput<float>("final_state", state_dims, packed_final_state, false, tol, tol);
-    if (C > 0) {
+    if (C > 0 || c.request_state_update) {
       tester.AddOutput<float>("state_update", state_update_dims, packed_state_updates, false, tol, tol);
     } else {
       tester.AddOptionalOutputEdge<float>();
@@ -1151,7 +1152,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     }
     tester.AddOutput<MLFloat16>("output", input_dims, ToFloat16(packed_output), false, tol, tol);
     tester.AddOutput<MLFloat16>("final_state", state_dims, ToFloat16(packed_final_state), false, tol, tol);
-    if (C > 0) {
+    if (C > 0 || c.request_state_update) {
       tester.AddOutput<MLFloat16>("state_update", state_update_dims,
                                   ToFloat16(packed_state_updates), false, tol, tol);
     } else {
@@ -1172,7 +1173,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     }
     tester.AddOutput<BFloat16>("output", input_dims, ToBFloat16(packed_output), false, 0.02f, 0.02f);
     tester.AddOutput<BFloat16>("final_state", state_dims, ToBFloat16(packed_final_state), false, 0.02f, 0.02f);
-    if (C > 0) {
+    if (C > 0 || c.request_state_update) {
       tester.AddOutput<BFloat16>("state_update", state_update_dims,
                                  ToBFloat16(packed_state_updates), false, 0.02f, 0.02f);
     } else {
@@ -1366,6 +1367,13 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AllOnesDecodeCompactCapture) {
 TEST(ContribOpVarlenCausalConvWithStateTest, CompactOutputOmittedWhenCapacityIsZero) {
   VarlenCausalConvCase c;
   c.seq_lens = {2, 1, 2};
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CompactOutputAllocatedWhenCapacityIsZero) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {2, 1, 2};
+  c.request_state_update = true;
   RunVarlenCausalConvCase(c);
 }
 
