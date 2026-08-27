@@ -83,6 +83,9 @@ struct UserWebGpuAllocator : OrtAllocator {
   size_t num_frees_{0};
 };
 
+// The existing test models finish too quickly to make GPU utilization observable. This configurable workload supports
+// the disabled manual diagnostic below, which verifies that the WebGPU device selected by the developer is the device
+// that actually executes the workload in a multi-GPU setup.
 std::string BuildMatMulLoadModelBytes(int64_t dimension, size_t depth) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
