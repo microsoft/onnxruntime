@@ -31,7 +31,7 @@ constexpr uint32_t kRmsWorkgroupSize = 64;
 Status ShortConvWithStateNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& norm_scale = shader.AddInput("norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  const auto& normed = shader.AddOutput("normed", ShaderUsage::UseUniform);
+  const auto& normed = shader.AddOutput("normed", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation() << "var<workgroup> row_partials: array<f32, " << kRmsWorkgroupSize << ">;\n";
 
@@ -64,7 +64,7 @@ Status ShortConvWithStateNormProgram::GenerateShaderCode(ShaderHelper& shader) c
 
 // Pass 2: Convolution kernel.
 Status ShortConvWithStateConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& normed = shader.AddInput("normed", ShaderUsage::UseUniform);
+  const auto& normed = shader.AddInput("normed", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& weight = shader.AddInput("weight", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   int input_idx = 2;
   const ShaderVariableHelper* past_state_var = nullptr;
@@ -108,7 +108,7 @@ Status ShortConvWithStateConvProgram::GenerateShaderCode(ShaderHelper& shader) c
   shader.MainFunctionBody()
       << "    } else if (u32(src) >= uniforms.state_len && u32(src) < uniforms.state_len + uniforms.sequence_length) {\n"
       << "      let normed_t = u32(src) - uniforms.state_len;\n"
-      << "      src_val = " << normed.GetByOffset("(b * uniforms.sequence_length + normed_t) * uniforms.channels + flat_channel") << ";\n"
+      << "      src_val = f32(" << normed.GetByOffset("(b * uniforms.sequence_length + normed_t) * uniforms.channels + flat_channel") << ");\n"
       << "    }\n"
       << "    sum += src_val * f32(" << weight.GetByOffset("flat_channel * uniforms.kernel_size + k") << ");\n"
       << "  }\n";
@@ -122,7 +122,7 @@ Status ShortConvWithStateConvProgram::GenerateShaderCode(ShaderHelper& shader) c
 
 // Pass 3: Update present state.
 Status ShortConvWithStateUpdateProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& normed = shader.AddInput("normed", ShaderUsage::UseUniform);
+  const auto& normed = shader.AddInput("normed", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper* past_state_var = nullptr;
   if (has_past_state_) {
     past_state_var = &shader.AddInput("past_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -145,7 +145,7 @@ Status ShortConvWithStateUpdateProgram::GenerateShaderCode(ShaderHelper& shader)
       << "  } else {\n"
       << "    let normed_t = timeline_pos - uniforms.state_len;\n"
       << "    if (normed_t < uniforms.sequence_length) {\n"
-      << "      val = " << normed.GetByOffset("(b * uniforms.sequence_length + normed_t) * uniforms.channels + flat_c") << ";\n"
+      << "      val = f32(" << normed.GetByOffset("(b * uniforms.sequence_length + normed_t) * uniforms.channels + flat_c") << ");\n"
       << "    }\n"
       << "  }\n"
       << "  " << present_state.SetByOffset("(b * uniforms.channels + flat_c) * uniforms.state_len + s", "output_element_t(val)") << "\n";
@@ -202,8 +202,9 @@ Status ShortConvWithState::ComputeInternal(ComputeContext& context) const {
   const int64_t total = input_shape.Size();
   const int64_t rows = batch_size * sequence_length * hc_mult;
 
-  // Normed buffer: [B, S, C] in float32.
-  Tensor normed = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({batch_size * sequence_length * channels}));
+  // Normed buffer: [B, S, C] in input type T (not float32) to ensure precision
+  // consistency across chunk boundaries — normed values match T-rounded present_state.
+  Tensor normed = context.CreateGPUTensor(input->DataType(), TensorShape({batch_size * sequence_length * channels}));
 
   // Pass 1: Normalize.
   if (rows > 0) {

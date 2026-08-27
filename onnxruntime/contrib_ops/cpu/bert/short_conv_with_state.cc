@@ -110,15 +110,93 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
   T* present_data = present_state->MutableData<T>();
   const bool apply_silu = activation_ == "silu" || activation_ == "swish";
 
+  auto* tp = context->GetOperatorThreadPool();
+
+  if (sequence_length == 1) {
+    // ==== Decode fast path (L==1): no scratch allocation ====
+    // For each (batch, hc_mult) pair: normalize the single token, then for each channel
+    // within that group compute the dilated convolution directly from past_state + normed value,
+    // shift state left by 1 position, and append the new normed value.
+    const int64_t total_tasks = batch_size * channels;
+    ThreadPool::TryParallelFor(
+        tp, narrow<ptrdiff_t>(total_tasks), static_cast<double>(kernel_size),
+        [&](ptrdiff_t begin, ptrdiff_t end) {
+          for (int64_t task = begin; task < end; ++task) {
+            const int64_t b = task / channels;
+            const int64_t flat_c = task % channels;
+            const int64_t g = flat_c / hidden_size;
+            const int64_t c = flat_c % hidden_size;
+
+            // Normalize the single input token for this (b, g) row.
+            const T* input_row = input_data + (b * hc_mult + g) * hidden_size;
+            float sum_sq = 0.0f;
+            for (int64_t i = 0; i < hidden_size; ++i) {
+              const float v = static_cast<float>(input_row[i]);
+              sum_sq += v * v;
+            }
+            const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon_);
+            const float scale_val = static_cast<float>(scale_data[g * hidden_size + c]);
+            const T normed_val = static_cast<T>(static_cast<float>(input_row[c]) * inv_rms * scale_val);
+
+            // Dilated convolution: dot product over kernel_size taps.
+            // State layout: [B, C, state_len] where state_len = dilation * (kernel_size - 1).
+            // The "timeline" is conceptually [past_state..., normed_val].
+            // For tap k (0..K-1), the source position in this timeline is:
+            //   state_len - (kernel_size - 1 - k) * dilation
+            // If k == kernel_size - 1, source = state_len (the new normed_val).
+            const T* past_row = past_data != nullptr
+                                    ? past_data + (b * channels + flat_c) * state_len
+                                    : nullptr;
+            float conv_sum = bias_data != nullptr ? static_cast<float>(bias_data[flat_c]) : 0.0f;
+            for (int64_t k = 0; k < kernel_size; ++k) {
+              const int64_t src = state_len - (kernel_size - 1 - k) * dilation_;
+              float src_val;
+              if (src == state_len) {
+                src_val = static_cast<float>(normed_val);
+              } else if (src >= 0 && src < state_len && past_row != nullptr) {
+                src_val = static_cast<float>(past_row[src]);
+              } else {
+                src_val = 0.0f;
+              }
+              conv_sum += src_val * static_cast<float>(weight_data[flat_c * kernel_size + k]);
+            }
+            if (apply_silu) {
+              conv_sum = kernel_helper::SiluFloat(conv_sum);
+            }
+            output_data[(b * hc_mult + g) * hidden_size + c] = static_cast<T>(conv_sum);
+
+            // Update present_state: shift past left by 1, append normed_val at end.
+            T* present_row = present_data + (b * channels + flat_c) * state_len;
+            if (state_len > 0) {
+              if (past_row != nullptr && state_len > 1) {
+                std::memcpy(present_row, past_row + 1, static_cast<size_t>(state_len - 1) * sizeof(T));
+              } else if (state_len > 1) {
+                std::memset(present_row, 0, static_cast<size_t>(state_len - 1) * sizeof(T));
+              }
+              present_row[state_len - 1] = normed_val;
+            }
+          }
+        });
+    return Status::OK();
+  }
+
+  // ==== Prefill / multi-token path ====
   // Step 1: Compute branchwise RMSNorm of input and store into a temporary buffer.
   // Layout: normed[b][t][g][c] where (b,t,g) is the row and c is within hidden_size.
   // Store normed values in type T so that precision is consistent across chunk boundaries
   // (past_state carries T-rounded values).
   const int64_t rows = batch_size * sequence_length * hc_mult;
-  std::vector<T> normed(static_cast<size_t>(batch_size * sequence_length * channels));
+  const int64_t normed_count = batch_size * sequence_length * channels;
+
+  // Use ORT temp allocator to avoid per-call heap allocation.
+  auto alloc = context->GetOperatorThreadPool() != nullptr
+                   ? context->GetAllocator(0, OrtMemTypeDefault)
+                   : context->GetAllocator(0, OrtMemTypeDefault);
+  auto normed_buffer = IAllocator::MakeUniquePtr<T>(alloc, static_cast<size_t>(normed_count));
+  T* normed = normed_buffer.get();
 
   ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows), static_cast<double>(hidden_size),
+      tp, narrow<ptrdiff_t>(rows), static_cast<double>(hidden_size),
       [&](ptrdiff_t begin, ptrdiff_t end) {
         for (int64_t row = begin; row < end; ++row) {
           const T* input_row = input_data + row * hidden_size;
@@ -129,11 +207,9 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
           }
           const float rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon_);
 
-          // Compute normed values and store in the flat buffer.
-          // Row index maps to: b = row / (sequence_length * hc_mult), remainder / hc_mult = t, remainder % hc_mult = g
           const int64_t g = row % hc_mult;
           const int64_t base = (row / hc_mult) * channels + g * hidden_size;
-          T* normed_row = normed.data() + static_cast<size_t>(base);
+          T* normed_row = normed + static_cast<size_t>(base);
           for (int64_t i = 0; i < hidden_size; ++i) {
             const float scale = static_cast<float>(scale_data[g * hidden_size + i]);
             normed_row[i] = static_cast<T>(static_cast<float>(input_row[i]) * rms * scale);
@@ -141,21 +217,16 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
         }
       });
 
-  // normed is now in layout [B, S, C] where C = hc_mult * hidden_size.
-  // past_state is in layout [B, C, state_len] (channel-major for the time axis).
-
   // Step 2: For each (batch, channel) pair, perform the dilated causal convolution
   // using past_state + normed current timesteps.
   const int64_t total_tasks = batch_size * channels;
   const double cost_per_task = static_cast<double>(sequence_length * kernel_size);
 
   ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total_tasks), cost_per_task,
+      tp, narrow<ptrdiff_t>(total_tasks), cost_per_task,
       [&](ptrdiff_t begin, ptrdiff_t end) {
-        // Build a per-thread full timeline: [state_len past values, S current values]
         const int64_t timeline_len = state_len + sequence_length;
         std::vector<float> timeline(static_cast<size_t>(timeline_len));
-        // Dynamically sized weight buffer for non-float types
         std::vector<float> w_buf;
         if constexpr (!std::is_same_v<T, float>) {
           w_buf.resize(static_cast<size_t>(kernel_size));
@@ -165,7 +236,6 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
           const int64_t b = task / channels;
           const int64_t flat_c = task % channels;
 
-          // Fill timeline[0..state_len-1] from past_state[b, flat_c, :]
           if (past_data != nullptr) {
             const T* past_row = past_data + (b * channels + flat_c) * state_len;
             for (int64_t i = 0; i < state_len; ++i) {
@@ -175,13 +245,11 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
             std::memset(timeline.data(), 0, static_cast<size_t>(state_len) * sizeof(float));
           }
 
-          // Fill timeline[state_len..state_len+S-1] from normed[b, t, flat_c]
           for (int64_t t = 0; t < sequence_length; ++t) {
             timeline[static_cast<size_t>(state_len + t)] =
                 static_cast<float>(normed[static_cast<size_t>((b * sequence_length + t) * channels + flat_c)]);
           }
 
-          // Prepare weight values (convert once for non-float types)
           const float* w_ptr;
           if constexpr (std::is_same_v<T, float>) {
             w_ptr = reinterpret_cast<const float*>(weight_data) + flat_c * kernel_size;
@@ -195,8 +263,6 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
 
           for (int64_t t = 0; t < sequence_length; ++t) {
             float sum = bias_val;
-            // The convolution taps: for k=0..K-1, source position in timeline is
-            // (state_len + t) - (kernel_size - 1 - k) * dilation
             for (int64_t k = 0; k < kernel_size; ++k) {
               const int64_t src = (state_len + t) - (kernel_size - 1 - k) * dilation_;
               if (src >= 0 && src < timeline_len) {
@@ -206,13 +272,11 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
             if (apply_silu) {
               sum = kernel_helper::SiluFloat(sum);
             }
-            // Output layout matches input: [B, S, hc_mult, H]
             const int64_t g = flat_c / hidden_size;
             const int64_t c = flat_c % hidden_size;
             output_data[((b * sequence_length + t) * hc_mult + g) * hidden_size + c] = static_cast<T>(sum);
           }
 
-          // Update present_state: last state_len values from timeline
           T* present_row = present_data + (b * channels + flat_c) * state_len;
           for (int64_t i = 0; i < state_len; ++i) {
             present_row[i] = static_cast<T>(timeline[static_cast<size_t>(timeline_len - state_len + i)]);

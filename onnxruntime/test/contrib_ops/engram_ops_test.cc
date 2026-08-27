@@ -600,6 +600,94 @@ void RunShortConvWithStateDilatedTest(float tolerance) {
 
 }  // namespace
 
+// Production-shape decode benchmark: Qwen4-Exp typical config
+// B=1, S=1, hc_mult=5, hidden_size=256, kernel_size=4, dilation=3
+// Tests that the L==1 fast path produces correct results at realistic dimensions.
+TEST(EngramOpsTest, ShortConvWithStateDecodeBenchmark) {
+  constexpr float epsilon = 1.0e-5f;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t hc_mult = 5;
+  constexpr int64_t hidden_size = 256;
+  constexpr int64_t channels = hc_mult * hidden_size;  // 1280
+  constexpr int64_t kernel_size = 4;
+  constexpr int64_t dilation = 3;
+  constexpr int64_t state_len = dilation * (kernel_size - 1);  // 9
+
+  // Generate deterministic input/weights/state
+  std::vector<float> input(hc_mult * hidden_size);
+  std::vector<float> past_state_data(channels * state_len);
+  std::vector<float> scale(hc_mult * hidden_size);
+  std::vector<float> weight(channels * kernel_size);
+
+  for (int64_t i = 0; i < static_cast<int64_t>(input.size()); ++i) {
+    input[i] = 0.01f * static_cast<float>(i % 37 - 18);
+  }
+  for (int64_t i = 0; i < static_cast<int64_t>(past_state_data.size()); ++i) {
+    past_state_data[i] = 0.005f * static_cast<float>(i % 53 - 26);
+  }
+  for (int64_t i = 0; i < static_cast<int64_t>(scale.size()); ++i) {
+    scale[i] = 0.8f + 0.4f * static_cast<float>(i % 11) / 10.0f;
+  }
+  for (int64_t i = 0; i < static_cast<int64_t>(weight.size()); ++i) {
+    weight[i] = 0.02f * static_cast<float>(i % 29 - 14);
+  }
+
+  // Compute reference output
+  // Step 1: Normalize each (hc_mult) row
+  std::vector<float> normed(channels);
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      float v = input[g * hidden_size + c];
+      sum_sq += v * v;
+    }
+    float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon);
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      normed[g * hidden_size + c] = input[g * hidden_size + c] * inv_rms * scale[g * hidden_size + c];
+    }
+  }
+
+  // Step 2: Dilated conv from past_state + normed
+  std::vector<float> expected_output(channels);
+  for (int64_t flat_c = 0; flat_c < channels; ++flat_c) {
+    float sum = 0.0f;
+    for (int64_t k = 0; k < kernel_size; ++k) {
+      int64_t src = state_len - (kernel_size - 1 - k) * dilation;
+      float src_val = 0.0f;
+      if (src == state_len) {
+        src_val = normed[flat_c];
+      } else if (src >= 0 && src < state_len) {
+        src_val = past_state_data[flat_c * state_len + src];
+      }
+      sum += src_val * weight[flat_c * kernel_size + k];
+    }
+    // SiLU
+    expected_output[flat_c] = sum / (1.0f + std::exp(-sum));
+  }
+
+  // Step 3: Expected present_state = shift past left by 1, append normed
+  std::vector<float> expected_state(channels * state_len);
+  for (int64_t flat_c = 0; flat_c < channels; ++flat_c) {
+    for (int64_t i = 0; i < state_len - 1; ++i) {
+      expected_state[flat_c * state_len + i] = past_state_data[flat_c * state_len + i + 1];
+    }
+    expected_state[flat_c * state_len + state_len - 1] = normed[flat_c];
+  }
+
+  OpTester test("ShortConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("dilation", dilation);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute<std::string>("activation", "silu");
+  test.AddInput<float>("input", {batch_size, 1, hc_mult, hidden_size}, input);
+  test.AddInput<float>("past_state", {batch_size, channels, state_len}, past_state_data);
+  test.AddInput<float>("norm_scale", {hc_mult, hidden_size}, scale);
+  test.AddInput<float>("weight", {channels, 1, kernel_size}, weight);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {batch_size, 1, hc_mult, hidden_size}, expected_output, false, 1e-4f, 1e-4f);
+  test.AddOutput<float>("present_state", {batch_size, channels, state_len}, expected_state, false, 1e-4f, 1e-4f);
+  test.Run();
+}
+
 TEST(EngramOpsTest, ShortConvWithStateFloat) {
   RunShortConvWithStateTest<float>(1e-4f);
 }

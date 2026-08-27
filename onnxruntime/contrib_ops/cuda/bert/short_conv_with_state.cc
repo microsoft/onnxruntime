@@ -89,9 +89,11 @@ Status ShortConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape present_shape({batch_size, channels, state_len});
   Tensor* present_state_out = context->Output(1, present_shape);
 
-  // Scratch buffer for normalized values in float32: [B, S, C]
+  // Scratch buffer for normalized values in type T: [B, S, C]
+  // Using T (not float) ensures precision is consistent across chunk boundaries —
+  // normed values within a chunk match the T-rounded values stored in present_state.
   const int64_t normed_count = batch_size * sequence_length * channels;
-  auto normed_ws = GetScratchBuffer<float>(static_cast<size_t>(normed_count), GetComputeStream(context));
+  auto normed_ws = GetScratchBuffer<CudaT>(static_cast<size_t>(normed_count), GetComputeStream(context));
 
   return LaunchShortConvWithStateKernel<CudaT>(
       Stream(context),
@@ -100,7 +102,6 @@ Status ShortConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(norm_scale->Data<T>()),
       reinterpret_cast<const CudaT*>(weight->Data<T>()),
       bias == nullptr ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>()),
-      nullptr,  // inv_rms_workspace (unused, computed in-kernel)
       normed_ws.get(),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
       reinterpret_cast<CudaT*>(present_state_out->MutableData<T>()),

@@ -24,7 +24,7 @@ template <typename T>
 __global__ void ShortConvWithStateNormKernel(
     const T* input,
     const T* norm_scale,
-    float* normed,
+    T* normed,
     int64_t total_rows,
     int64_t hc_mult,
     int64_t hidden_size,
@@ -62,7 +62,7 @@ __global__ void ShortConvWithStateNormKernel(
     const int64_t base = (row / hc_mult) * channels + g * hidden_size;
     for (int64_t i = threadIdx.x; i < hidden_size; i += blockDim.x) {
       const float scale = to_float<T>(norm_scale[g * hidden_size + i]);
-      normed[base + i] = to_float<T>(input_row[i]) * inv_rms_val * scale;
+      normed[base + i] = from_float<T>(to_float<T>(input_row[i]) * inv_rms_val * scale);
     }
   }
 }
@@ -71,7 +71,7 @@ __global__ void ShortConvWithStateNormKernel(
 // One thread per (batch, time, channel) output element.
 template <typename T>
 __global__ void ShortConvWithStateConvKernel(
-    const float* normed,
+    const T* normed,
     const T* past_state,
     const T* weight,
     const T* bias,
@@ -109,7 +109,7 @@ __global__ void ShortConvWithStateConvKernel(
         }
       } else if (src >= state_len && src < state_len + sequence_length) {
         // From normed[b, src - state_len, flat_channel]
-        src_val = normed[(b * sequence_length + (src - state_len)) * channels + flat_channel];
+        src_val = to_float<T>(normed[(b * sequence_length + (src - state_len)) * channels + flat_channel]);
       }
       sum += src_val * to_float<T>(weight[flat_channel * kernel_size + k]);
     }
@@ -125,7 +125,7 @@ __global__ void ShortConvWithStateConvKernel(
 // One thread per (batch, channel, state_position) element.
 template <typename T>
 __global__ void ShortConvWithStateUpdateKernel(
-    const float* normed,
+    const T* normed,
     const T* past_state,
     T* present_state,
     int64_t total_state_elements,
@@ -155,7 +155,7 @@ __global__ void ShortConvWithStateUpdateKernel(
       // In the normed range: timeline_pos - state_len
       const int64_t normed_t = timeline_pos - state_len;
       if (normed_t < sequence_length) {
-        val = normed[(b * sequence_length + normed_t) * channels + flat_c];
+        val = to_float<T>(normed[(b * sequence_length + normed_t) * channels + flat_c]);
       }
     }
     present_state[(b * channels + flat_c) * state_len + s] = from_float<T>(val);
@@ -172,8 +172,7 @@ Status LaunchShortConvWithStateKernel(
     const T* norm_scale,
     const T* weight,
     const T* bias,
-    float* /*inv_rms_workspace*/,
-    float* normed_workspace,
+    T* normed_workspace,
     T* output,
     T* present_state,
     int64_t batch_size,
@@ -236,9 +235,9 @@ Status LaunchShortConvWithStateKernel(
   return Status::OK();
 }
 
-template Status LaunchShortConvWithStateKernel<float>(cudaStream_t, const float*, const float*, const float*, const float*, const float*, float*, float*, float*, float*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, float, bool);
-template Status LaunchShortConvWithStateKernel<half>(cudaStream_t, const half*, const half*, const half*, const half*, const half*, float*, float*, half*, half*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, float, bool);
-template Status LaunchShortConvWithStateKernel<__nv_bfloat16>(cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, float*, float*, __nv_bfloat16*, __nv_bfloat16*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, float, bool);
+template Status LaunchShortConvWithStateKernel<float>(cudaStream_t, const float*, const float*, const float*, const float*, const float*, float*, float*, float*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, float, bool);
+template Status LaunchShortConvWithStateKernel<half>(cudaStream_t, const half*, const half*, const half*, const half*, const half*, half*, half*, half*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, float, bool);
+template Status LaunchShortConvWithStateKernel<__nv_bfloat16>(cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, float, bool);
 
 }  // namespace cuda
 }  // namespace contrib
