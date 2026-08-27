@@ -388,6 +388,7 @@ typedef struct OrtAllocator {
    * - Limit: Bytes limit of the allocator. -1 if no limit is set.
    * - InUse: Number of bytes in use.
    * - TotalAllocated: The total number of allocated bytes by the allocator.
+   * - ReservedBytes: Bytes currently allocated through Reserve().
    * - MaxInUse: The maximum bytes in use.
    * - NumAllocs: Number of allocations.
    * - NumReserves: Number of reserves. (Number of calls to Reserve() in arena-based allocators)

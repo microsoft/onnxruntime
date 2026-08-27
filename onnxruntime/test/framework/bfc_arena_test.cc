@@ -356,11 +356,13 @@ TEST(BFCArenaTest, BytesRequestedInUseWithReserve) {
   a.GetStats(&stats);
   EXPECT_EQ(stats.bytes_requested_in_use, static_cast<int64_t>(reserve_size));
   EXPECT_EQ(stats.bytes_in_use, static_cast<int64_t>(reserve_size));
+  EXPECT_EQ(stats.reserved_bytes, static_cast<int64_t>(reserve_size));
 
   a.Free(p);
   a.GetStats(&stats);
   EXPECT_EQ(stats.bytes_requested_in_use, 0);
   EXPECT_EQ(stats.bytes_in_use, 0);
+  EXPECT_EQ(stats.reserved_bytes, 0);
 }
 
 TEST(BFCArenaTest, TestShrink) {
