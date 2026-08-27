@@ -1198,6 +1198,7 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_AllStatsKeysPresent) {
   EXPECT_FALSE(GetStatValue(stats, "Limit").empty());
   EXPECT_FALSE(GetStatValue(stats, "InUse").empty());
   EXPECT_FALSE(GetStatValue(stats, "TotalAllocated").empty());
+  EXPECT_FALSE(GetStatValue(stats, "ReservedBytes").empty());
   EXPECT_FALSE(GetStatValue(stats, "MaxInUse").empty());
   EXPECT_FALSE(GetStatValue(stats, "NumAllocs").empty());
   EXPECT_FALSE(GetStatValue(stats, "NumReserves").empty());

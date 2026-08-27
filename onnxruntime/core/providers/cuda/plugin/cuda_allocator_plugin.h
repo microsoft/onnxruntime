@@ -62,6 +62,7 @@ struct AllocatorStats {
   int64_t bytes_in_use = 0;            // Number of bytes in use (includes padding).
   int64_t bytes_requested_in_use = 0;  // Number of bytes actually requested by user code (excludes padding).
   int64_t total_allocated_bytes = 0;   // The total number of allocated bytes by the allocator.
+  int64_t reserved_bytes = 0;          // Bytes currently allocated through Reserve().
   int64_t max_bytes_in_use = 0;        // The maximum bytes in use.
   int64_t max_alloc_size = 0;          // The max single allocation seen.
   int64_t bytes_limit = 0;             // The upper limit what the allocator can allocate (0 if unknown).
@@ -71,6 +72,7 @@ struct AllocatorStats {
     api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
     api.AddKeyValuePair(kvps, "RequestedInUse", std::to_string(bytes_requested_in_use).c_str());
     api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
+    api.AddKeyValuePair(kvps, "ReservedBytes", std::to_string(reserved_bytes).c_str());
     api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
     api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
     api.AddKeyValuePair(kvps, "NumReserves", std::to_string(num_reserves).c_str());
@@ -85,6 +87,7 @@ struct AllocatorStats {
        << "InUse:                    " << bytes_in_use << "\n"
        << "RequestedInUse:           " << bytes_requested_in_use << "\n"
        << "TotalAllocated:           " << total_allocated_bytes << "\n"
+       << "ReservedBytes:            " << reserved_bytes << "\n"
        << "MaxInUse:                 " << max_bytes_in_use << "\n"
        << "NumAllocs:                " << num_allocs << "\n"
        << "NumReserves:              " << num_reserves << "\n"

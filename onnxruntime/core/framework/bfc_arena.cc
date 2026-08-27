@@ -285,6 +285,7 @@ void* BFCArena::Reserve(size_t size) {
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
   stats_.bytes_requested_in_use += size;
+  stats_.reserved_bytes += size;
   stats_.num_reserves += 1;
   stats_.num_allocs += 1;
   stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
@@ -482,6 +483,7 @@ void BFCArena::Free(void* p) {
     device_allocator_->Free(it->first);
     stats_.bytes_in_use -= it->second;
     stats_.bytes_requested_in_use -= it->second;
+    stats_.reserved_bytes -= it->second;
     stats_.total_allocated_bytes -= it->second;
     reserved_chunks_.erase(it);
   } else {
