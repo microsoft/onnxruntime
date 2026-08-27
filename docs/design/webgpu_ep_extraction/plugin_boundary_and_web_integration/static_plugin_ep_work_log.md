@@ -495,11 +495,13 @@ behaviour.
 2. ~~**Operator-level validation on a real GPU.**~~ **Done** — see [Results on a real GPU](#results-on-a-real-gpu).
    No behavioural difference. Remaining sub-item: decide whether to close the 12-test
    `HardSwish_WebGPU` / `MatMul2BitsWebGpu` coverage gap on the plugin path, or document it as known.
-3. **Minimal build.** `linux_minimal_build.yml` has not been dispatched. It is the interesting one because
-   `cmake/onnxruntime_session.cmake` excludes `plugin_ep/*.*` from minimal builds, which is why the
-   registration call in `ort_env.cc` is wrapped in `#if !defined(ORT_MINIMAL_BUILD)`. The guard has been
-   inspected and looks correct but has not been exercised. Also unknown: whether any shipped ORT Web
-   configuration uses an extended-minimal build, which would exclude the plugin EP infrastructure entirely.
+3. ~~**Minimal build.**~~ **Resolved.** Exactly one pipeline combines an extended-minimal build with WebGPU —
+   `webgpu_minimal_build_edge_build_x64_RelWithDebInfo` in `.github/workflows/windows_webgpu.yml`, which passes a
+   bare `--use_webgpu` (internal EP) and is green, so the `#if !defined(ORT_MINIMAL_BUILD)` guard in `ort_env.cc`
+   is already exercised in CI. No ORT Web or wasm job uses a minimal build at all. The remaining hole — minimal
+   plus `static_plugin` linking the EP in without registering it — is now a configure-time `FATAL_ERROR` in
+   `cmake/CMakeLists.txt`, verified to fire on that combination and not on a non-minimal `static_plugin`
+   configure. Lifting the restriction properly is follow-up work, recorded in D4 of the design doc.
 4. ~~**Emscripten / ORT Web.**~~ **Builds and links**, with the registration verified in the binary — see
    [Emscripten and ORT Web](#emscripten-and-ort-web). Not yet run in a browser.
 5. **Follow-up cleanup** listed at the end of the design doc, including removing the WebGPU special cases that

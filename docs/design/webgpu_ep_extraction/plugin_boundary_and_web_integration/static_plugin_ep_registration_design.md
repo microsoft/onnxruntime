@@ -106,6 +106,17 @@ other two no, so only the linkage and test sites move to the derived option. The
 
 `build.py` gains `--use_webgpu static_plugin`.
 
+`onnxruntime_WEBGPU_STATIC_PLUGIN` validates its prerequisites at configure time and fails with `FATAL_ERROR` if
+they are not met: it requires `onnxruntime_USE_WEBGPU` and `onnxruntime_USE_EP_API_ADAPTERS`, and it rejects a
+minimal build. The last one is a temporary guard rather than a permanent restriction. A minimal build excludes
+`core/session/plugin_ep` from `onnxruntime_session_srcs`, and `Environment::CreateAndRegisterStaticPluginEps` is
+compiled out with it, but `cmake/onnxruntime_providers_webgpu.cmake` still builds and links the provider. The
+combination would therefore produce a binary containing the WebGPU EP that never registers it, with nothing
+reporting the problem at configure, build or run time. Allowing minimal builds to use a static plugin EP is
+worthwhile and needs the registration path to be available there first; the exclusion is currently justified by
+provider-bridge dependencies, and only two of the files under `plugin_ep` are provider-bridge, so the subset may be
+separable. Until then a loud configure error is preferable to a silently EP-less binary.
+
 The CUDA plugin is unaffected: it is gated by `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN` and sets
 `ORT_USE_EP_API_ADAPTERS` as a private target compile definition, never referencing the CMake option. CUDA's split
 between role (`BUILD_CUDA_EP_AS_PLUGIN`) and mechanism (`ORT_USE_EP_API_ADAPTERS`) is the in-tree template for

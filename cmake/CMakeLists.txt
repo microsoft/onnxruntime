@@ -450,6 +450,15 @@ if(onnxruntime_WEBGPU_STATIC_PLUGIN)
   if(NOT onnxruntime_USE_EP_API_ADAPTERS)
     message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON requires onnxruntime_USE_EP_API_ADAPTERS=ON.")
   endif()
+  # A minimal build excludes core/session/plugin_ep, so the registration that a static plugin EP depends on is not
+  # compiled in. Without this check the EP would be linked into the binary but never registered, with no diagnostic
+  # at configure, build or run time. Supporting the combination is possible but requires making the plugin EP
+  # registration available to minimal builds first.
+  if(onnxruntime_MINIMAL_BUILD)
+    message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON is not supported in a minimal build: the plugin EP "
+                        "registration in core/session/plugin_ep is excluded, so the EP would be linked in but "
+                        "never registered.")
+  endif()
   add_compile_definitions(ORT_WEBGPU_STATIC_PLUGIN=1)
 endif()
 
