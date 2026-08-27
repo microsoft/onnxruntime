@@ -2097,36 +2097,36 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-
+  
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
-
+  
     query [total_tokens, num_heads_q, head_size_qk]
     key   [total_tokens, num_heads_k, head_size_qk]
     value [total_tokens, num_heads_v, head_size_v]
-
+  
   The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
   pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
   is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
   activation with static Reshape targets instead of Shape-derived ones. Ragged packing
   (`cu_seqlens`) requires the rank-3 spelling.
-
+  
   `num_heads_q` must equal `num_heads_k`, and `num_heads_v` must be a positive multiple of
   `num_heads_q` (inverse grouped-query attention: each query/key head is shared by
   `num_heads_v / num_heads_q` value heads). Decay, beta, the state and the output are all at
   `num_heads_v`.
-
+  
   Sequence packing. When `cu_seqlens` is provided it is a device int32 tensor of length
   `batch_size + 1` holding the exclusive prefix sums of the per-request token counts, so
   requests may have different lengths. When it is absent the packing is uniform and the batch
   size is taken from `initial_state`, which is then required.
-
+  
   State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
   head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
   boundary is where reduced precision hurts most, and V-major is the layout used by cuDNN's
   GDN/KDA and by FLA with `state_v_first=true`. The two may be the same allocation; the
   implementation reads the whole incoming state before writing any of it.
-
+  
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
   is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
   transitions are emitted in one `state_update` float tensor
@@ -2138,32 +2138,33 @@ This version of the operator has been available since version 1 of the 'com.micr
   `S *= decay; S += outer(key, delta)`. Per-key-dimension
   decay is not supported when compact updates are enabled. `capture_count` is forbidden when C is
   zero.
-
+  
   The optional CPU input `state_update_active` has shape `[1]` and reports whether any row has
   a positive capture count in this invocation. When zero, the planner may use an engine that cannot
   emit compact updates. Omitting it preserves the conservative behavior of treating capture as active.
-
+  
   Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
-
+  
     S_t = exp(g_t) S_{t-1} + k_t (beta_t (v_t - exp(g_t) S_{t-1}^T k_t))^T
     o_t = scale * S_t^T q_t
-
+  
   `update_rule` selects which terms are present: 'linear' drops both the decay and the delta
   retrieval, 'gated' keeps only the decay, 'delta' keeps only the retrieval, and 'gated_delta'
   keeps both.
-
+  
   The delta family ('delta' and 'gated_delta') requires L2-normalized keys. Without them the
   per-chunk system (I + M) is arbitrarily ill-conditioned and the recurrence diverges. Either
   normalize upstream or set `qk_l2_norm=1` to have the operator do it.
-
+  
   Fused activations. `gate_activation='qwen'` computes the effective decay in float32 from the
   raw projection carried by `decay`:
-
+  
     g = -exp(a_log) * Softplus(decay + dt_bias)
-
+  
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
+  
 
 #### Version
 
@@ -7518,3 +7519,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
