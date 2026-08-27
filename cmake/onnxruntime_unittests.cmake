@@ -1996,6 +1996,17 @@ endif()
 
       if(CPUINFO_SUPPORTED AND NOT onnxruntime_MINIMAL_BUILD)
         onnxruntime_add_executable(
+          onnxruntime_cpuinfo_refcount_test
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
+        target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo)
+        add_test(
+          NAME onnxruntime_cpuinfo_refcount_test
+          COMMAND onnxruntime_cpuinfo_refcount_test)
+        set_target_properties(
+          onnxruntime_cpuinfo_refcount_test
+          PROPERTIES FOLDER "ONNXRuntimeTest")
+
+        onnxruntime_add_executable(
           onnxruntime_shared_lib_cpuinfo_dlopen_test
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
         add_dependencies(onnxruntime_shared_lib_cpuinfo_dlopen_test ${all_dependencies} onnxruntime)
