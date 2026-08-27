@@ -67,9 +67,9 @@ __global__ void NGramHashMappingKernel(
     for (int64_t j = idx - 1; j >= idx - history_length && j >= 0; --j) {
       bool boundary = do_reset &&
                       CombinedValue(input_ids, past_row, eos_value, input_base, history_length, j) == eos_value;
-      if (!boundary && segment_ids != nullptr && j > history_length) {
+      if (!boundary && segment_ids != nullptr && j >= history_length) {
         const int64_t tj = j - history_length;
-        if (segment_ids[input_base + tj] != segment_ids[input_base + tj - 1]) {
+        if (segment_ids[input_base + tj + 1] != segment_ids[input_base + tj]) {
           boundary = true;
         }
       }
@@ -84,8 +84,8 @@ __global__ void NGramHashMappingKernel(
       for (int64_t k = 0; k < n; ++k) {
         const int64_t source = idx - k;
         const T token = (last_reset >= source)
-                           ? eos_value
-                           : CombinedValue(input_ids, past_row, eos_value, input_base, history_length, source);
+                            ? eos_value
+                            : CombinedValue(input_ids, past_row, eos_value, input_base, history_length, source);
         const T product = kernel_helper::WrappedMultiply<T>(token, multipliers[k]);
         mix = k == 0 ? product : static_cast<T>(mix ^ product);
       }

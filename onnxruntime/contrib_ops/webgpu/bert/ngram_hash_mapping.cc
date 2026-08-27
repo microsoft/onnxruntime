@@ -105,9 +105,9 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   if (has_segment_ids_) {
     shader.MainFunctionBody()
-        << "    if (!boundary && j > history_length) {\n"
+        << "    if (!boundary && j >= history_length) {\n"
         << "      let tj = j - history_length;\n"
-        << "      if (" << segment_ids->GetByOffset("input_base + tj") << " != " << segment_ids->GetByOffset("input_base + tj - 1") << ") {\n"
+        << "      if (" << segment_ids->GetByOffset("input_base + tj + 1") << " != " << segment_ids->GetByOffset("input_base + tj") << ") {\n"
         << "        boundary = true;\n"
         << "      }\n"
         << "    }\n";
@@ -225,7 +225,9 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   if (present_tokens != nullptr) {
     program.AddOutput({present_tokens, ProgramTensorMetadataDependency::None});
   }
-  program.SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+  program.CacheHint(past_tokens != nullptr, head_offsets != nullptr, eos_token_id != nullptr, segment_ids != nullptr,
+                    present_tokens != nullptr, reset_on_eos_ != 0)
+      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total)},
                             {onnxruntime::narrow<uint32_t>(main_total)},
                             {onnxruntime::narrow<uint32_t>(sequence_length)},

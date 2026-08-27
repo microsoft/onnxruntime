@@ -124,6 +124,13 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
 
           int64_t last_reset = -1;  // most recent boundary position (combined index) seen so far
           for (int64_t idx = 0; idx < combined_length; ++idx) {
+            if (segment_data != nullptr && idx > history_length) {
+              const int64_t t = idx - history_length;
+              if (segment_data[b * sequence_length + t] != segment_data[b * sequence_length + t - 1]) {
+                last_reset = idx - 1;
+              }
+            }
+
             if (idx >= history_length) {
               const int64_t t = idx - history_length;
               const int64_t output_base = (b * sequence_length + t) * num_heads;
@@ -150,16 +157,9 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
               }
             }
 
-            // Update the reset boundary with the position just processed (idx), so subsequent
+            // Update the EOS reset boundary with the position just processed (idx), so subsequent
             // positions (idx+1, ...) see it as the most recent boundary strictly before them.
-            bool boundary = do_reset && local_combined[static_cast<size_t>(idx)] == eos_value;
-            if (segment_data != nullptr && idx > history_length) {
-              const int64_t t = idx - history_length;
-              if (segment_data[b * sequence_length + t] != segment_data[b * sequence_length + t - 1]) {
-                boundary = true;
-              }
-            }
-            if (boundary) {
+            if (do_reset && local_combined[static_cast<size_t>(idx)] == eos_value) {
               last_reset = idx;
             }
           }

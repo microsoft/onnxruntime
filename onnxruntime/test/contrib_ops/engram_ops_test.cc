@@ -313,8 +313,8 @@ void RunNGramHashMappingSegmentIdsTest() {
   test.AddOutput<T>("hash_ids", {1, 4, 2},
                     {33, 33,
                      11, 11,
-                     3, 48,
-                     66, 66});
+                     55, 55,
+                     3, 3});
   test.Run();
 }
 

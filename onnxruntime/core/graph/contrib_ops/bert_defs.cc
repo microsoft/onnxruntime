@@ -2749,6 +2749,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
 
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
@@ -2771,7 +2774,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 0, output_shape);
 
             if (ctx.getNumOutputs() > 1) {
-              propagateElemTypeFromInputToOutput(ctx, 0, 1);
               ONNX_NAMESPACE::TensorShapeProto present_tokens_shape;
               *present_tokens_shape.add_dim() = input_shape.dim(0);
               present_tokens_shape.add_dim()->set_dim_value(max_ngram_size - 1);
