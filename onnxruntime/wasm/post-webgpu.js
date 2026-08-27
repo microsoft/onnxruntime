@@ -10,34 +10,23 @@
 /**
  * This function is called only once when initializing the WebGPU backend.
  *
- * @param {(gpuDevice: GPUDevice) => void} setDefaultDevice A callback function to set the default device.
+ * @param {GPUDevice|undefined} configuredDevice The application-created environment device, if set.
+ * @param {readonly string[]} requiredFeatures Features required by the environment.
+ * @param {(gpuDevice: GPUDevice) => void} setDefaultDevice A callback function to publish the effective device.
  */
-Module["webgpuInit"] = (setDefaultDevice) => {
-  /**
-   * a map from GPUDevice to [deviceId, instanceHandle, deviceHandle]
-   *
-   * only stores custom devices (ie. devices created by the user, not the default device created by ORT)
-   *
-   * key is the GPUDevice object.
-   *
-   * value is a tuple of 3 elements:
-   * - deviceId: a unique ID for the device. Must be positive integer.
-   * - instanceHandle: the instance handle(pointer) of the device.
-   * - deviceHandle: the device handle(pointer) of the device.
-   *
-   * @type {WeakMap<GPUDevice, [number, number, number]>}
-   */
-  const webgpuActiveDevices = new WeakMap();
-  /**
-   * a number that is used to assign a unique ID to the next custom device.
-   */
-  let webgpuNextDeviceId = 1;
+Module["webgpuInit"] = (
+  configuredDevice,
+  requiredFeatures,
+  setDefaultDevice,
+) => {
   /**
    * a function to set the default device.
    *
    * @type {(gpuDevice: GPUDevice) => void}
    */
   const webgpuSetDefaultDevice = setDefaultDevice;
+  /** @type {GPUDevice|undefined} */
+  let webgpuDefaultDevice = configuredDevice;
   /**
    * the current device that is being used to create a WebGPU EP inference session.
    *
@@ -46,68 +35,92 @@ Module["webgpuInit"] = (setDefaultDevice) => {
    * @type {GPUDevice|undefined}
    */
   let webgpuCurrentDevice = undefined;
-  /**
-   * the current device ID that is being used to create a WebGPU EP inference session.
-   *
-   * the value of this variable is only valid during the creation of a WebGPU EP inference session.
-   *
-   * @type {number|undefined}
-   */
-  let webgpuCurrentDeviceId = undefined;
+  /** Whether a WebGPU EP inference session is currently being created. */
+  let webgpuCreatingSession = false;
+
+  const configureDefaultContext = (device) => {
+    let instanceHandle = 0;
+    let deviceHandle = 0;
+    if (device) {
+      instanceHandle = _OrtCreateWebGpuInstance();
+      if (!instanceHandle) {
+        throw new Error(
+          "Failed to create the WebGPU instance for the application-created device.",
+        );
+      }
+      deviceHandle = WebGPU.importJsDevice(device, instanceHandle);
+    }
+
+    const features = requiredFeatures.join(",");
+    const featuresLength = lengthBytesUTF8(features) + 1;
+    const featuresOffset = _malloc(featuresLength);
+    stringToUTF8(features, featuresOffset, featuresLength);
+    const errorCode = _OrtConfigureWebGpuDefaultContext(
+      instanceHandle,
+      deviceHandle,
+      featuresOffset,
+    );
+    _free(featuresOffset);
+    return errorCode;
+  };
+
+  let errorCode = configureDefaultContext(configuredDevice);
+  if (errorCode !== 0) {
+    return errorCode;
+  }
+  if (configuredDevice) {
+    webgpuSetDefaultDevice(configuredDevice);
+  }
 
   /**
    * This function is called only when a custom device is used, during preparation of session options.
    *
    * @param {GPUDevice} device the user provided device object.
-   * @returns {undefined|[number, number, number]} a tuple of device id, instance handle, and device handle.
+   * @returns {number} ORT error code.
    */
   Module["webgpuRegisterDevice"] = (device) => {
-    if (webgpuCurrentDeviceId !== undefined) {
+    if (webgpuCreatingSession) {
       throw new Error("another WebGPU EP inference session is being created.");
     }
 
     if (device) {
-      let deviceInfo = webgpuActiveDevices.get(device);
-      if (!deviceInfo) {
-        const instanceHandle = _wgpuCreateInstance(0);
-        const deviceHandle = WebGPU.importJsDevice(device, instanceHandle);
-        deviceInfo = [webgpuNextDeviceId++, instanceHandle, deviceHandle];
-        webgpuActiveDevices.set(device, deviceInfo);
+      if (webgpuDefaultDevice && webgpuDefaultDevice !== device) {
+        throw new Error(
+          "A different WebGPU device is already used by this ONNX Runtime environment.",
+        );
       }
-
-      // The current device ID is a temporary storage for the device ID to be used in the session that is being created.
-      //
-      // Soon after `webgpuRegisterDevice` (this function) is called, `webgpuOnCreateSession` will be called so that the
-      // value of `webgpuCurrentDeviceId` is used and reset then.
+      if (!webgpuDefaultDevice) {
+        errorCode = configureDefaultContext(device);
+        if (errorCode !== 0) {
+          return errorCode;
+        }
+        webgpuDefaultDevice = device;
+        webgpuSetDefaultDevice(device);
+      }
       webgpuCurrentDevice = device;
-      webgpuCurrentDeviceId = deviceInfo[0];
-      return deviceInfo;
     } else {
-      webgpuCurrentDevice = undefined;
-      webgpuCurrentDeviceId = 0;
-      return undefined;
+      webgpuCurrentDevice = webgpuDefaultDevice;
     }
+    webgpuCreatingSession = true;
+    return 0;
   };
 
   const webgpuActiveSessions = new Map();
   Module["webgpuOnCreateSession"] = (sessionHandle) => {
-    if (webgpuCurrentDeviceId === undefined) {
-      // do nothing if webgpuCurrentDeviceId is undefined.
-      // this means no WebGPU EP is being created.
+    if (!webgpuCreatingSession) {
       return;
     }
 
-    const deviceId = webgpuCurrentDeviceId;
-    webgpuCurrentDeviceId = undefined;
+    webgpuCreatingSession = false;
 
     if (sessionHandle) {
       // when session created successfully
-      const deviceHandle = _OrtGetWebGpuDevice(deviceId);
+      const deviceHandle = _OrtGetWebGpuDevice(0);
       webgpuActiveSessions.set(sessionHandle, deviceHandle);
 
-      if (deviceId === 0) {
-        const device = webgpuCurrentDevice ?? WebGPU.getJsObject(deviceHandle);
-        webgpuSetDefaultDevice(device);
+      if (!webgpuDefaultDevice) {
+        webgpuDefaultDevice = WebGPU.getJsObject(deviceHandle);
+        webgpuSetDefaultDevice(webgpuDefaultDevice);
       }
     }
     webgpuCurrentDevice = undefined;
@@ -137,7 +150,7 @@ Module["webgpuInit"] = (setDefaultDevice) => {
       const deviceHandle = webgpuActiveSessions.get(sessionHandle);
       if (deviceHandle === undefined) {
         throw new Error(
-          "Invalid session handle passed to webgpuRegisterBuffer"
+          "Invalid session handle passed to webgpuRegisterBuffer",
         );
       }
 
@@ -194,7 +207,7 @@ Module["webgpuInit"] = (setDefaultDevice) => {
           0 /* source offset */,
           gpuReadBuffer /* destination buffer */,
           0 /* destination offset */,
-          size /* size */
+          size /* size */,
         );
         device.queue.submit([commandEncoder.finish()]);
 
@@ -219,7 +232,7 @@ Module["webgpuInit"] = (setDefaultDevice) => {
 
     // get current device
     if (!webgpuCurrentDevice) {
-      const deviceHandle = _OrtGetWebGpuDevice(webgpuCurrentDeviceId);
+      const deviceHandle = _OrtGetWebGpuDevice(0);
       webgpuCurrentDevice = WebGPU.getJsObject(deviceHandle);
     }
 
@@ -236,13 +249,13 @@ Module["webgpuInit"] = (setDefaultDevice) => {
       "usage": 6 /* GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC */,
     };
     const gpuBufferForUploading = webgpuCurrentDevice.createBuffer(
-      gpuBufferForUploadingDescriptor
+      gpuBufferForUploadingDescriptor,
     );
 
     // copy (upload) data
     const arrayBuffer = gpuBufferForUploading.getMappedRange();
     new Uint8Array(arrayBuffer).set(
-      new Uint8Array(srcArrayBuffer, srcOffset, srcLength)
+      new Uint8Array(srcArrayBuffer, srcOffset, srcLength),
     );
     gpuBufferForUploading.unmap();
 
@@ -253,9 +266,11 @@ Module["webgpuInit"] = (setDefaultDevice) => {
       0,
       gpuBuffer,
       0,
-      size
+      size,
     );
     webgpuCurrentDevice.queue.submit([commandEncoder.finish()]);
     gpuBufferForUploading.destroy();
   };
+
+  return 0;
 };

@@ -86,6 +86,34 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
   }
 };
 
+const validateGpuDevice = (device: unknown): device is GPUDevice =>
+  typeof device === 'object' &&
+  device !== null &&
+  typeof (device as GPUDevice).createBuffer === 'function' &&
+  typeof (device as GPUDevice).createCommandEncoder === 'function' &&
+  typeof (device as GPUDevice).queue === 'object' &&
+  typeof (device as GPUDevice).features === 'object';
+
+const getRequiredWebGpuFeatures = (value: readonly string[] | undefined): readonly string[] => {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('`env.webgpu.requiredFeatures` must be an array of GPUFeatureName strings.');
+  }
+
+  const features: string[] = [];
+  for (const feature of value) {
+    if (typeof feature !== 'string' || feature.length === 0 || feature.includes(',')) {
+      throw new Error('`env.webgpu.requiredFeatures` must contain non-empty GPUFeatureName strings without commas.');
+    }
+    if (!features.includes(feature)) {
+      features.push(feature);
+    }
+  }
+  return features;
+};
+
 /**
  * initialize runtime environment.
  * @param env passed in the environment config object.
@@ -107,11 +135,16 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
   let webgpuAdapter: GPUAdapter | null = env.webgpu.adapter;
+  const configuredWebGpuDevice = env.webgpu.device;
+  const requiredWebGpuFeatures = getRequiredWebGpuFeatures(env.webgpu.requiredFeatures);
   if (epName === 'webgpu') {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
     }
-    if (!webgpuAdapter) {
+    if (configuredWebGpuDevice !== undefined && !validateGpuDevice(configuredWebGpuDevice)) {
+      throw new Error('Invalid GPU device set in `env.webgpu.device`. It must be a GPUDevice object.');
+    }
+    if (!BUILD_DEFS.DISABLE_JSEP && !webgpuAdapter && !configuredWebGpuDevice) {
       // if adapter is not set, request a new adapter.
       const powerPreference = env.webgpu.powerPreference;
       if (powerPreference !== undefined && powerPreference !== 'low-power' && powerPreference !== 'high-performance') {
@@ -128,7 +161,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
             'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
         );
       }
-    } else {
+    } else if (!BUILD_DEFS.DISABLE_JSEP && webgpuAdapter) {
       // if adapter is set, validate it.
       if (
         typeof webgpuAdapter.limits !== 'object' ||
@@ -152,16 +185,34 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
     const initJsep = require('./jsep/init').init;
 
     if (epName === 'webgpu') {
-      await initJsep('webgpu', getInstance(), env, webgpuAdapter);
+      await initJsep('webgpu', getInstance(), env, webgpuAdapter ?? undefined, configuredWebGpuDevice);
     }
     if (epName === 'webnn') {
       await initJsep('webnn', getInstance(), env);
     }
   } else {
     if (!BUILD_DEFS.DISABLE_WEBGPU && epName === 'webgpu') {
-      getInstance().webgpuInit!((device) => {
-        env.webgpu.device = device;
+      let effectiveDevice = configuredWebGpuDevice;
+      Object.defineProperty(env.webgpu, 'device', {
+        get: () => effectiveDevice,
+        set: (device: GPUDevice) => {
+          if (!validateGpuDevice(device)) {
+            throw new Error('Invalid GPU device set in `env.webgpu.device`. It must be a GPUDevice object.');
+          }
+          if (device !== effectiveDevice) {
+            throw new Error('The WebGPU device cannot be replaced after the WebGPU backend starts initializing.');
+          }
+        },
+        enumerable: true,
+        configurable: false,
       });
+      if (
+        getInstance().webgpuInit!(configuredWebGpuDevice, requiredWebGpuFeatures, (device) => {
+          effectiveDevice = device;
+        }) !== 0
+      ) {
+        checkLastError("Can't initialize the default WebGPU device.");
+      }
     }
     if (!BUILD_DEFS.DISABLE_WEBNN && epName === 'webnn') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
@@ -507,6 +558,8 @@ export const createSession = async (
     ]);
     return [sessionHandle, inputNames, outputNames, inputMetadata, outputMetadata];
   } catch (e) {
+    // Clear the temporary WebGPU session-creation state if preparation failed before _OrtCreateSession() was called.
+    wasm.webgpuOnCreateSession?.(0);
     inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
     outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
 

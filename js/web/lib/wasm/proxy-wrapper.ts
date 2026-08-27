@@ -92,6 +92,10 @@ export const initializeWebAssemblyAndOrtRuntime = async (): Promise<void> => {
   initializing = true;
 
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+    if (env.webgpu.device !== undefined) {
+      initializing = false;
+      throw new Error('`env.webgpu.device` cannot be used when `env.wasm.proxy` is enabled.');
+    }
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
 

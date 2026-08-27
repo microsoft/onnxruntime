@@ -55,6 +55,14 @@ bool DisableRobustnessToggleIsEnabled(const webgpu::WebGpuContext& context) {
   return DeviceToggleIsEnabled(context, "disable_robustness");
 }
 
+TEST(WebGpuRequiredFeaturesTest, MapsWebFeatureNames) {
+  EXPECT_EQ(webgpu::ParseWebGpuFeatureName("bgra8unorm-storage"),
+            wgpu::FeatureName::BGRA8UnormStorage);
+  EXPECT_EQ(webgpu::ParseWebGpuFeatureName("subgroup-size-control"),
+            wgpu::FeatureName::SubgroupSizeControl);
+  EXPECT_THROW(webgpu::ParseWebGpuFeatureName("not-a-webgpu-feature"), OnnxRuntimeException);
+}
+
 std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuContext& context,
                                                               WGPUBuffer buffer) {
   constexpr size_t kBufferSize = sizeof(std::array<uint32_t, 16>);
@@ -366,6 +374,16 @@ TEST(WebGpuContextTest, ExternalDeviceValueWarnsAndIsIgnored) {
   EXPECT_NE(warning.find("externally supplied WebGPU device"), std::string::npos);
   EXPECT_NE(warning.find("will be ignored"), std::string::npos);
 #endif
+}
+
+TEST(WebGpuContextTest, RejectsDefaultDeviceConfigurationAfterContextInitialization) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+
+  const auto status = webgpu::WebGpuContextFactory::ConfigureDefaultContext(nullptr, nullptr, {});
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("already been initialized"), std::string::npos);
 }
 
 }  // namespace

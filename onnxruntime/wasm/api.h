@@ -301,6 +301,18 @@ char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 
 #ifdef USE_WEBGPU
 
+/** Create a WebGPU instance configured for ONNX Runtime's asynchronous wait behavior. */
+WGPUInstance EMSCRIPTEN_KEEPALIVE OrtCreateWebGpuInstance();
+
+/**
+ * Configure the environment-wide WebGPU device before the default WebGPU context is initialized.
+ * The instance and device are both null for an ORT-created device, or both non-null for an imported device.
+ * Ownership of non-null handles is transferred to ONNX Runtime.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtConfigureWebGpuDefaultContext(WGPUInstance instance,
+                                                          WGPUDevice device,
+                                                          const char* required_features);
+
 /**
  * get the GPU Device by device ID.
  *

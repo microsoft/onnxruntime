@@ -590,7 +590,10 @@ async function createGpuTensorForInput(cpuTensor: ort.Tensor): Promise<ort.Tenso
   if (!isGpuBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
     throw new Error(`createGpuTensorForInput can not work with ${cpuTensor.type} tensor`);
   }
-  const device = await ort.env.webgpu.device;
+  const device = ort.env.webgpu.device;
+  if (!device) {
+    throw new Error('WebGPU device is not initialized.');
+  }
   const gpuBuffer = device.createBuffer({
     // eslint-disable-next-line no-bitwise
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
@@ -619,7 +622,10 @@ async function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly nu
 
   const size = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(type), dims)!;
 
-  const device = await ort.env.webgpu.device;
+  const device = ort.env.webgpu.device;
+  if (!device) {
+    throw new Error('WebGPU device is not initialized.');
+  }
   const gpuBuffer = device.createBuffer({
     // eslint-disable-next-line no-bitwise
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,

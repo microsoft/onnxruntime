@@ -184,12 +184,14 @@ class ComputeContextImpl implements ComputeContext {
  * @param module - the ORT WebAssembly module
  * @param env - the ORT environment variable (ort.env)
  * @param gpuAdapter - the pre-created GPU adapter
+ * @param gpuDevice - the application-created GPU device
  */
 export const init = async (
   name: 'webgpu' | 'webnn',
   module: OrtWasmModule,
   env: Env,
   gpuAdapter?: GPUAdapter,
+  gpuDevice?: GPUDevice,
 ): Promise<void> => {
   const jsepInit = module.jsepInit;
   if (!jsepInit) {
@@ -200,7 +202,7 @@ export const init = async (
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const webGpuBackendImpl = require('./backend-webgpu').WebGpuBackend;
     const backend = new webGpuBackendImpl();
-    await backend.initialize(env, gpuAdapter!);
+    await backend.initialize(env, gpuAdapter, gpuDevice);
 
     jsepInit('webgpu', [
       // backend

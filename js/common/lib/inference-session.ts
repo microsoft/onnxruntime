@@ -325,6 +325,10 @@ export declare namespace InferenceSession {
 
     /**
      * Specify an optional WebGPU device to be used by the WebGPU execution provider.
+     *
+     * @deprecated Set {@link Env.WebGpuFlags.device | ort.env.webgpu.device} before creating a session. The first
+     * device supplied through this option is promoted to the environment device for compatibility. Later sessions
+     * must use the same device.
      */
     device?: TryGetGlobalType<'GPUDevice'>;
   }

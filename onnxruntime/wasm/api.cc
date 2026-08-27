@@ -8,11 +8,15 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "api.h"
 
+#include <string>
+
 #ifdef USE_WEBGPU
 namespace onnxruntime {
 namespace webgpu {
+WGPUInstance CreateWebGpuInstance();
+bool ConfigureDefaultContext(WGPUInstance, WGPUDevice, const char*, std::string&);
 WGPUDevice GetDevice(int);
-}
+}  // namespace webgpu
 }  // namespace onnxruntime
 #endif
 
@@ -629,6 +633,24 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 // WebGPU API Section
 
 #ifdef USE_WEBGPU
+
+WGPUInstance OrtCreateWebGpuInstance() {
+  return onnxruntime::webgpu::CreateWebGpuInstance();
+}
+
+int OrtConfigureWebGpuDefaultContext(WGPUInstance instance,
+                                     WGPUDevice device,
+                                     const char* required_features) {
+  std::string error_message;
+  if (!onnxruntime::webgpu::ConfigureDefaultContext(instance, device, required_features, error_message)) {
+    if (device != nullptr) {
+      wgpuDeviceRelease(device);
+      wgpuInstanceRelease(instance);
+    }
+    return CheckStatus(Ort::GetApi().CreateStatus(ORT_FAIL, error_message.c_str()));
+  }
+  return CheckStatus(nullptr);
+}
 
 WGPUDevice OrtGetWebGpuDevice(int device_id) {
   return onnxruntime::webgpu::GetDevice(device_id);

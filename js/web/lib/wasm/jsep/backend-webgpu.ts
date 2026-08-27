@@ -226,46 +226,64 @@ export class WebGpuBackend {
    */
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
-  async initialize(env: Env, adapter: GPUAdapter): Promise<void> {
+  async initialize(env: Env, adapter?: GPUAdapter, externalDevice?: GPUDevice): Promise<void> {
     this.env = env;
-    const requiredFeatures: GPUFeatureName[] = [];
-    const deviceDescriptor: GPUDeviceDescriptor = {
-      requiredLimits: {
-        maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
-        maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
-        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-        maxBufferSize: adapter.limits.maxBufferSize,
-        maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
-        maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
-        maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
-        maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
-      },
-      requiredFeatures,
-    };
+    const requiredFeatures: GPUFeatureName[] = [...(env.webgpu.requiredFeatures ?? [])] as GPUFeatureName[];
+    if (externalDevice) {
+      for (const feature of requiredFeatures) {
+        if (!externalDevice.features.has(feature)) {
+          throw new Error(`The application-created WebGPU device does not have required feature: ${feature}.`);
+        }
+      }
+      this.device = externalDevice;
+      this.adapterInfo = new AdapterInfoImpl(externalDevice.adapterInfo);
+    } else {
+      if (!adapter) {
+        throw new Error('A GPUAdapter is required when ONNX Runtime creates the WebGPU device.');
+      }
+      for (const feature of requiredFeatures) {
+        if (!adapter.features.has(feature)) {
+          throw new Error(`Required WebGPU feature is not supported by the selected adapter: ${feature}.`);
+        }
+      }
+      const deviceDescriptor: GPUDeviceDescriptor = {
+        requiredLimits: {
+          maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
+          maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
+          maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+          maxBufferSize: adapter.limits.maxBufferSize,
+          maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+          maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+          maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+          maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+        },
+        requiredFeatures,
+      };
 
-    // Try requiring WebGPU features
-    const requireFeatureIfAvailable = (feature: GPUFeatureName) =>
-      adapter.features.has(feature) && requiredFeatures.push(feature) && true;
-    // Try chromium-experimental-timestamp-query-inside-passes and fallback to timestamp-query
-    if (!requireFeatureIfAvailable('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName)) {
-      requireFeatureIfAvailable('timestamp-query');
+      // Try requiring WebGPU features
+      const requireFeatureIfAvailable = (feature: GPUFeatureName) =>
+        adapter.features.has(feature) && !requiredFeatures.includes(feature) && requiredFeatures.push(feature) && true;
+      // Try chromium-experimental-timestamp-query-inside-passes and fallback to timestamp-query
+      if (!requireFeatureIfAvailable('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName)) {
+        requireFeatureIfAvailable('timestamp-query');
+      }
+      requireFeatureIfAvailable('shader-f16');
+      // Try subgroups
+      requireFeatureIfAvailable('subgroups');
+
+      this.device = await adapter.requestDevice(deviceDescriptor);
+      const adapterWithRequestInfo = adapter as GPUAdapter & {
+        requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+      };
+      const adapterInfo =
+        adapter.info ??
+        (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
+          ? await adapterWithRequestInfo.requestAdapterInfo()
+          : undefined);
+      // adapterInfo is optional and may not be available in all browsers.
+      // AdapterInfoImpl will handle the case when adapterInfo is undefined.
+      this.adapterInfo = new AdapterInfoImpl(adapterInfo);
     }
-    requireFeatureIfAvailable('shader-f16');
-    // Try subgroups
-    requireFeatureIfAvailable('subgroups');
-
-    this.device = await adapter.requestDevice(deviceDescriptor);
-    const adapterWithRequestInfo = adapter as GPUAdapter & {
-      requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
-    };
-    const adapterInfo =
-      adapter.info ??
-      (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
-        ? await adapterWithRequestInfo.requestAdapterInfo()
-        : undefined);
-    // adapterInfo is optional and may not be available in all browsers.
-    // AdapterInfoImpl will handle the case when adapterInfo is undefined.
-    this.adapterInfo = new AdapterInfoImpl(adapterInfo);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
