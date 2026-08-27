@@ -89,6 +89,18 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input_shape);
   Tensor* present_state = context->Output(1, state_shape);
   if (input_shape.Size() == 0) {
+    // No new positions, so present_state is past_state unchanged (zeros when there is no history).
+    // It still has to be written: output buffers are not zero-initialized.
+    if (present_state != nullptr && state_shape.Size() > 0) {
+      T* present_data = present_state->MutableData<T>();
+      const size_t count = static_cast<size_t>(state_shape.Size());
+      if (past_state != nullptr) {
+        const T* past_begin = past_state->Data<T>();
+        std::copy(past_begin, past_begin + count, present_data);
+      } else {
+        std::fill(present_data, present_data + count, T{});
+      }
+    }
     return Status::OK();
   }
 

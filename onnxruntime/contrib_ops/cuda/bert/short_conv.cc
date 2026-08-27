@@ -85,6 +85,18 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input_shape);
   Tensor* present_state = context->Output(1, state_shape);
   if (input_shape.Size() == 0) {
+    // No new positions, so present_state is past_state unchanged (zeros when there is no history).
+    // It still has to be written: output buffers are not zero-initialized.
+    if (present_state != nullptr && state_shape.Size() > 0) {
+      const size_t bytes = static_cast<size_t>(state_shape.Size()) * sizeof(CudaT);
+      void* present_data = present_state->MutableDataRaw();
+      if (past_state != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_data, past_state->DataRaw(), bytes,
+                                             cudaMemcpyDeviceToDevice, Stream(context)));
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_data, 0, bytes, Stream(context)));
+      }
+    }
     return Status::OK();
   }
 

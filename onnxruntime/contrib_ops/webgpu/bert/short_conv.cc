@@ -85,8 +85,10 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     shader.MainFunctionBody() << "  var sum = 0.0;\n";
   }
+  if (has_past_state_) {
+    shader.MainFunctionBody() << "  let state_length = (uniforms.kernel_size - 1u) * uniforms.dilation;\n";
+  }
   shader.MainFunctionBody()
-      << "  let state_length = (uniforms.kernel_size - 1u) * uniforms.dilation;\n"
       << "  for (var k = 0u; k < uniforms.kernel_size; k++) {\n"
       << "    let offset = (uniforms.kernel_size - 1u - k) * uniforms.dilation;\n"
       << "    var normed = 0.0;\n"
@@ -209,6 +211,15 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
   auto* present_state = context.Output(1, state_shape);
   const int64_t total = input_shape.Size();
   if (total == 0) {
+    // No new positions, so present_state is past_state unchanged (zeros when there is no history).
+    // It still has to be written: output buffers are not zero-initialized.
+    if (present_state != nullptr && state_shape.Size() > 0) {
+      if (has_past_state) {
+        ORT_RETURN_IF_ERROR(context.CopyTensor(*past_state, *present_state));
+      } else {
+        context.FillZero(*present_state);
+      }
+    }
     return Status::OK();
   }
 
