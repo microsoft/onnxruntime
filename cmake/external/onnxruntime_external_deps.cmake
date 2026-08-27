@@ -363,47 +363,33 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+  # https://github.com/pytorch/cpuinfo/pull/400
+  set(ONNXRUNTIME_CPUINFO_DEINIT_PATCH_COMMAND
+      ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch)
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
     message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
+    # https://github.com/pytorch/cpuinfo/pull/324
+    set(ONNXRUNTIME_CPUINFO_PATCH_COMMAND
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/324
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/400
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+        ${ONNXRUNTIME_CPUINFO_DEINIT_PATCH_COMMAND})
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        # https://github.com/microsoft/onnxruntime/issues/10038
+    # https://github.com/microsoft/onnxruntime/issues/10038
+    set(ONNXRUNTIME_CPUINFO_PATCH_COMMAND
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/400
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+        ${ONNXRUNTIME_CPUINFO_DEINIT_PATCH_COMMAND})
   else()
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        # https://github.com/pytorch/cpuinfo/pull/400
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+    set(ONNXRUNTIME_CPUINFO_PATCH_COMMAND ${ONNXRUNTIME_CPUINFO_DEINIT_PATCH_COMMAND})
   endif()
+  onnxruntime_fetchcontent_declare(
+    pytorch_cpuinfo
+    URL ${DEP_URL_pytorch_cpuinfo}
+    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+    EXCLUDE_FROM_ALL
+    PATCH_COMMAND ${ONNXRUNTIME_CPUINFO_PATCH_COMMAND}
+    FIND_PACKAGE_ARGS NAMES cpuinfo
+  )
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
   onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
   if(TARGET cpuinfo::cpuinfo AND NOT TARGET cpuinfo)
