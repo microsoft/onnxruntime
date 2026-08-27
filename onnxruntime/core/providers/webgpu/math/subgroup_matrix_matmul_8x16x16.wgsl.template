@@ -36,7 +36,6 @@
 // or batched as [batch, K, N]. Per-slice flat offsets are derived from M, N, K.
 // Each slice is an independent tile grid.
 
-#param has_bias
 #param sg_mat_k
 #param sg_mat_m
 #param sg_mat_n
@@ -477,11 +476,8 @@ $MAIN {
             let scratch_base = r * kTileN;
             let out_base = out_batch_offset + global_m * uniforms.N + global_base_n;
             for (var i: u32 = sg_lane; i < n_count; i = i + kSubgroupSize) {
-                var val = output_element_t(scratch[scratch_base + i]);
-#if has_bias
-                val += bias[global_base_n + i];
-#endif
-                output.setByOffset(out_base + i, val);
+                write_output(out_base + i, global_base_n + i,
+                             output_value_t(scratch[scratch_base + i]));
             }
         }
     }

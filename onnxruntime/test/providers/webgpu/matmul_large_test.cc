@@ -5,6 +5,7 @@
 
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -81,6 +82,50 @@ TEST(SubgroupMatrixMatMulTest, PostTilingPolicyDeclinesPartialKBlock) {
       problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
 }
 
+TEST(SubgroupMatrixMatMulTest, PointwiseConvOnlyCachesPersistentRightOperand) {
+  const int persistent_kernel = 0;
+  const int per_run_transpose = 0;
+  int compute_cache = 0;
+
+  const auto persistent_policy = webgpu::GetPointwiseConvMatMulCachePolicy(
+      /*is_channels_last=*/true, &persistent_kernel, &persistent_kernel, compute_cache);
+  EXPECT_EQ(persistent_policy.cache, &compute_cache);
+  EXPECT_TRUE(persistent_policy.b_is_constant);
+
+  const auto transient_policy = webgpu::GetPointwiseConvMatMulCachePolicy(
+      /*is_channels_last=*/true, &per_run_transpose, &persistent_kernel, compute_cache);
+  EXPECT_EQ(transient_policy.cache, &compute_cache);
+  EXPECT_FALSE(transient_policy.b_is_constant);
+
+  EXPECT_FALSE(webgpu::GetPointwiseConvMatMulCachePolicy(
+                   /*is_channels_last=*/false, &persistent_kernel, &persistent_kernel, compute_cache)
+                   .b_is_constant);
+  EXPECT_FALSE(webgpu::GetPointwiseConvMatMulCachePolicy(
+                   /*is_channels_last=*/true, &per_run_transpose,
+                   static_cast<const int*>(nullptr), compute_cache)
+                   .b_is_constant);
+}
+
+TEST(SubgroupMatrixMatMulTest, OutputWriterAppliesBiasThenActivationThenStore) {
+  webgpu::Activation activation;
+  activation.activation_kind_ = webgpu::ActivationKind::Clip;
+  const auto activation_snippet = webgpu::GetActivationSnippet(
+      activation, "output_value_t", "output_element_t");
+  const auto writer = webgpu::BuildSubgroupMatrixMatMulOutputWriter(
+      /*has_bias=*/true, activation_snippet, "output[output_offset] = value;");
+
+  const auto bias = writer.find("value += output_value_t(bias[bias_offset]);");
+  const auto clip = writer.find("value = clamp(value");
+  const auto store = writer.find("output[output_offset] = value;");
+  ASSERT_NE(bias, std::string::npos);
+  ASSERT_NE(clip, std::string::npos);
+  ASSERT_NE(store, std::string::npos);
+  EXPECT_LT(bias, clip);
+  EXPECT_LT(clip, store);
+  EXPECT_NE(writer.find("uniforms.activation_param_0"), std::string::npos);
+  EXPECT_NE(writer.find("uniforms.activation_param_1"), std::string::npos);
+}
+
 TEST(SubgroupMatrixMatMulTest, RoutesFoldedChannelsLastConvMetadataWithoutCache) {
   const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulRoute(
       TensorShape({128, 64}), TensorShape({64, 96}),
@@ -107,12 +152,20 @@ TEST(SubgroupMatrixMatMulTest, RoutesFoldedAttentionMetadataWithoutCache) {
       *problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
 }
 
-TEST(SubgroupMatrixMatMulTest, DeclinesFusedActivationBeforeTiling) {
-  EXPECT_FALSE(webgpu::AnalyzeSubgroupMatrixMatMulRoute(
-                   TensorShape({128, 64}), TensorShape({64, 96}),
-                   /*inputs_are_fp16=*/true, /*is_channels_last=*/true,
-                   /*has_bias=*/true, /*has_activation=*/true)
-                   .has_value());
+TEST(SubgroupMatrixMatMulTest, RoutesSupportedFusedActivationBeforeTiling) {
+  const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulRoute(
+      TensorShape({128, 64}), TensorShape({64, 97}),
+      /*inputs_are_fp16=*/true, /*is_channels_last=*/true,
+      /*has_bias=*/true, /*has_activation=*/true);
+
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_EQ(problem->M, 128u);
+  EXPECT_EQ(problem->N, 97u);
+  EXPECT_EQ(problem->K, 64u);
+  EXPECT_TRUE(webgpu::CanDispatchSubgroupMatrixMatMul(
+      *problem, /*config_k=*/16, /*b_is_constant=*/true, /*has_persistent_cache=*/true));
+  EXPECT_FALSE(webgpu::CanDispatchSubgroupMatrixMatMul(
+      *problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/true));
 }
 
 TEST(SubgroupMatrixMatMulTest, DeclinesCachelessOddNAfterRouteAnalysis) {

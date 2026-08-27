@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -22,12 +23,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Computes Y = A @ B (+ optional bias) using subgroupMatrixMultiplyAccumulate.
+// Computes Y = activation(A @ B + optional bias) using subgroupMatrixMultiplyAccumulate.
 class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulProgram> {
  public:
-  SubgroupMatrixMatMulProgram(bool has_bias, int32_t config_index,
+  SubgroupMatrixMatMulProgram(const Activation& activation, bool has_bias, int32_t config_index,
                               uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k)
       : Program{"SubgroupMatrixMatMul"},
+        activation_(activation),
         has_bias_(has_bias),
         config_index_(config_index),
         sg_mat_count_m_(sg_mat_count_m),
@@ -38,9 +40,11 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           {"num_n_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"N_b", ProgramUniformVariableDataType::Uint32});
+                                          {"N_b", ProgramUniformVariableDataType::Uint32},
+                                          WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
+  const Activation activation_;
   const bool has_bias_;
   const int32_t config_index_;
   const uint32_t sg_mat_count_m_;
@@ -158,14 +162,18 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
-    SubgroupMatrixMatMulProgram program{has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
+    SubgroupMatrixMatMulProgram program{activation, has_bias, config_index_,
+                                        sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
-    program.CacheHint(has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
+    program.CacheHint(activation.CacheKey(), has_bias, config_index_,
+                      sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape, 1},
                     {b_used, ProgramTensorMetadataDependency::TypeAndRank, b_used_shape, 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape, 1})
         .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}, {N_b}});
+    // Activation uniforms must remain last because definitions and values are matched by index.
+    AppendActivationUniformsData(activation, program);
     if (has_bias) {
       program.AddInput({bias, ProgramTensorMetadataDependency::None});
     }
@@ -236,18 +244,16 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
   mutable uint32_t padded_b_stride_ = 0;
 };
 
-Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelper& output,
-                                 bool has_bias, uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
+Status GenerateShaderCode8x16x16(ShaderHelper& shader,
+                                 uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
                                  uint32_t split_k) {
   return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul_8x16x16.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_m, sg_mat_count_m),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_n, sg_mat_count_n),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_k, 16),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_m, 8),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_n, 16),
-                             WGSL_TEMPLATE_PARAMETER(split_k, split_k),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_PARAMETER(split_k, split_k));
 }
 
 // Default tiling used on any vendor without a specialized policy: a fixed 32x32
@@ -314,8 +320,8 @@ std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulProblem(
 std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulRoute(
     const TensorShape& a_shape, const TensorShape& b_shape,
     bool inputs_are_fp16, bool is_channels_last,
-    bool has_bias, bool has_activation) {
-  if (!inputs_are_fp16 || has_activation) {
+    bool has_bias, bool /*has_activation*/) {
+  if (!inputs_are_fp16) {
     return std::nullopt;
   }
 
@@ -336,17 +342,42 @@ bool CanDispatchSubgroupMatrixMatMul(const SubgroupMatrixMatMulProblem& problem,
          CanUseSubgroupMatrixRightOperand(problem.N, b_is_constant, has_persistent_cache);
 }
 
+std::string BuildSubgroupMatrixMatMulOutputWriter(bool has_bias,
+                                                  std::string_view activation_snippet,
+                                                  std::string_view output_store_snippet) {
+  std::string writer =
+      "fn write_output(output_offset: u32, bias_offset: u32, value_in: output_value_t) {\n"
+      "  var value = value_in;\n";
+  if (has_bias) {
+    writer += "  value += output_value_t(bias[bias_offset]);\n";
+  }
+  writer += "  ";
+  writer += activation_snippet;
+  writer +=
+      "\n"
+      "  ";
+  writer += output_store_snippet;
+  writer +=
+      "\n"
+      "}\n";
+  return writer;
+}
+
 Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& output = shader.AddOutput(
+      "output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AdditionalImplementation() << BuildSubgroupMatrixMatMulOutputWriter(
+      has_bias_, GetActivationSnippet(activation_, "output_value_t", "output_element_t"),
+      output.SetByOffset("output_offset", "value"));
 
   const auto& config = supported_subgroup_matrix_configs[config_index_];
   if (config.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, output, has_bias_, sg_mat_count_m_, sg_mat_count_n_, split_k_);
+    return GenerateShaderCode8x16x16(shader, sg_mat_count_m_, sg_mat_count_n_, split_k_);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                 "Unsupported subgroup matrix config dimensions.");

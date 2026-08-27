@@ -5,6 +5,8 @@
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
+#include <algorithm>
+
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/random_generator.h"
@@ -1411,6 +1413,119 @@ TEST(ConvFp16Test, Pointwise_2D) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
+
+#if defined(USE_WEBGPU)
+
+namespace {
+
+enum class WebGpuPointwiseConvCase {
+  NoBias,
+  Bias,
+  FusedClip,
+};
+
+void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
+  const bool is_fused = test_case == WebGpuPointwiseConvCase::FusedClip;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  constexpr int64_t kInputChannels = 16;
+  constexpr int64_t kOutputChannels = 97;
+  constexpr int64_t kHeight = 4;
+  constexpr int64_t kWidth = 8;
+  const bool has_bias = test_case != WebGpuPointwiseConvCase::NoBias;
+
+  // Layout transformation represents fused NHWC Conv as internal-domain Conv
+  // while preserving the NhwcFusedConv activation attributes.
+  OpTester test("Conv", 11,
+                is_fused ? onnxruntime::kMSInternalNHWCDomain : onnxruntime::kOnnxDomain);
+  test.AddAttribute("group", static_cast<int64_t>(1));
+  test.AddAttribute("kernel_shape", vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("strides", vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", vector<int64_t>{1, 1});
+  if (is_fused) {
+    test.AddAttribute("activation", "Clip");
+    test.AddAttribute("activation_params", vector<float>{-1.0f, 2.0f});
+  }
+
+  const vector<int64_t> x_shape = is_fused
+                                      ? vector<int64_t>{1, kHeight, kWidth, kInputChannels}
+                                      : vector<int64_t>{1, kInputChannels, kHeight, kWidth};
+  vector<MLFloat16> x(static_cast<size_t>(kInputChannels * kHeight * kWidth), MLFloat16(1.0f));
+
+  const vector<int64_t> w_shape{kOutputChannels, kInputChannels, 1, 1};
+  vector<MLFloat16> w;
+  w.reserve(static_cast<size_t>(kOutputChannels * kInputChannels));
+  vector<float> channel_values;
+  channel_values.reserve(static_cast<size_t>(kOutputChannels));
+  for (int64_t output_channel = 0; output_channel < kOutputChannels; ++output_channel) {
+    const float channel_value = static_cast<float>(output_channel % 7 - 3);
+    channel_values.push_back(channel_value);
+    for (int64_t input_channel = 0; input_channel < kInputChannels; ++input_channel) {
+      w.emplace_back(channel_value / static_cast<float>(kInputChannels));
+    }
+  }
+
+  vector<MLFloat16> bias;
+  if (has_bias) {
+    bias.reserve(static_cast<size_t>(kOutputChannels));
+    for (int64_t output_channel = 0; output_channel < kOutputChannels; ++output_channel) {
+      const float bias_value = is_fused ? 0.5f : static_cast<float>(output_channel % 3 - 1) * 0.25f;
+      bias.emplace_back(bias_value);
+      channel_values[static_cast<size_t>(output_channel)] += bias_value;
+    }
+  }
+  if (is_fused) {
+    std::transform(channel_values.begin(), channel_values.end(), channel_values.begin(),
+                   [](float value) { return std::clamp(value, -1.0f, 2.0f); });
+  }
+
+  const vector<int64_t> y_shape = is_fused
+                                      ? vector<int64_t>{1, kHeight, kWidth, kOutputChannels}
+                                      : vector<int64_t>{1, kOutputChannels, kHeight, kWidth};
+  vector<MLFloat16> expected;
+  expected.reserve(static_cast<size_t>(kOutputChannels * kHeight * kWidth));
+  if (is_fused) {
+    for (int64_t spatial = 0; spatial < kHeight * kWidth; ++spatial) {
+      for (float value : channel_values) {
+        expected.emplace_back(value);
+      }
+    }
+  } else {
+    for (float value : channel_values) {
+      expected.insert(expected.end(), static_cast<size_t>(kHeight * kWidth), MLFloat16(value));
+    }
+  }
+
+  test.AddInput<MLFloat16>("X", x_shape, x);
+  test.AddInput<MLFloat16>("W", w_shape, w, /*is_initializer=*/true);
+  if (has_bias) {
+    test.AddInput<MLFloat16>("B", {kOutputChannels}, bias, /*is_initializer=*/true);
+  }
+  test.AddOutput<MLFloat16>("Y", y_shape, expected, /*no sort*/ false, 0.01f, 0.01f);
+  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+}  // namespace
+
+TEST(ConvFp16Test, WebGpuSubgroupPointwiseNoBias) {
+  RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::NoBias);
+}
+
+TEST(ConvFp16Test, WebGpuSubgroupPointwiseBias) {
+  RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::Bias);
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(ConvFp16Test, WebGpuSubgroupPointwiseNhwcFusedConvClip) {
+  RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::FusedClip);
+}
+#endif
+
+#endif  // USE_WEBGPU
 
 TEST(ConvFp16Test, Pointwise_3D) {
   ConvOpAndTestAttributes attrs = {

@@ -3,9 +3,33 @@
 
 #pragma once
 
+namespace onnxruntime {
+namespace webgpu {
+
+template <typename CacheT>
+struct PointwiseConvMatMulCachePolicy {
+  CacheT* cache;
+  bool b_is_constant;
+};
+
+template <typename TensorT, typename CacheT>
+constexpr PointwiseConvMatMulCachePolicy<CacheT> GetPointwiseConvMatMulCachePolicy(
+    bool is_channels_last,
+    const TensorT* right_operand,
+    const TensorT* persistent_kernel,
+    CacheT& cache) {
+  return {&cache,
+          is_channels_last && persistent_kernel != nullptr && right_operand == persistent_kernel};
+}
+
+}  // namespace webgpu
+}  // namespace onnxruntime
+
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
+#include <string_view>
 
 #include "core/framework/tensor_shape.h"
 
@@ -38,6 +62,10 @@ bool CanDispatchSubgroupMatrixMatMul(const SubgroupMatrixMatMulProblem& problem,
                                      uint32_t config_k,
                                      bool b_is_constant,
                                      bool has_persistent_cache);
+
+std::string BuildSubgroupMatrixMatMulOutputWriter(bool has_bias,
+                                                  std::string_view activation_snippet,
+                                                  std::string_view output_store_snippet);
 
 // Per-workgroup output tiling for one MatMul problem: the tile shape and split-K
 // factor chosen by a vendor-specific policy. The subgroup-matrix shape itself is

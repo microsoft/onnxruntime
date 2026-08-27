@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -277,7 +278,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       AppendActivationUniformsData(activation_, program);
       return context.RunProgram(program);
     } else {
-      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
+      const auto cache_policy = GetPointwiseConvMatMulCachePolicy(
+          is_channels_last, matmul_inputs[1], transposed_kernel_.get(), matmul_compute_cache_);
+      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
+                           matmul_input_reshapes[0], matmul_input_reshapes[1],
+                           cache_policy.cache, cache_policy.b_is_constant);
     }
   }
   // Transpose weights when necessary
