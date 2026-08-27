@@ -26,7 +26,8 @@ class ShortConvInvRmsProgram final : public Program<ShortConvInvRmsProgram> {
 
 class ShortConvProgram final : public Program<ShortConvProgram> {
  public:
-  ShortConvProgram(bool has_bias, bool apply_silu) : Program{"ShortConv"}, has_bias_(has_bias), apply_silu_(apply_silu) {}
+  ShortConvProgram(bool has_bias, bool apply_silu_or_swish)
+      : Program{"ShortConv"}, has_bias_(has_bias), apply_silu_or_swish_(apply_silu_or_swish) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -37,7 +38,7 @@ class ShortConvProgram final : public Program<ShortConvProgram> {
 
  private:
   bool has_bias_;
-  bool apply_silu_;
+  bool apply_silu_or_swish_;
 };
 
 class ShortConv final : public WebGpuKernel {

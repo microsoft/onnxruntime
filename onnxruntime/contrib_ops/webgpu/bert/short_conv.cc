@@ -92,7 +92,7 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "      sum += normed * f32(" << weight.GetByOffset("flat_channel * uniforms.kernel_size + k") << ");\n"
       << "    }\n"
       << "  }\n";
-  if (apply_silu_) {
+  if (apply_silu_or_swish_) {
     shader.MainFunctionBody() << "  sum = silu(sum);\n";
   }
   shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "output_element_t(sum)") << "\n";
