@@ -194,7 +194,7 @@ ABSL_FLAG(uint32_t, hold_ms_after_session_creation, DefaultPerformanceTestConfig
           "Prints 'SESSION_READY' to stdout before sleeping. Useful for multi-process memory measurements.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding,
-          "[TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
+          "[NVIDIA GPU plugin EP | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");
 ABSL_FLAG(std::string, plugin_ep_libs, "",
           "Specifies a list of plugin execution provider (EP) registration names and their corresponding shared libraries to register.\n"
