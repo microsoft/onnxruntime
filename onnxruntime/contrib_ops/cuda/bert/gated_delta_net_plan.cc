@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
 
 #include <algorithm>
+#include <string>
 
 namespace onnxruntime {
 namespace contrib {

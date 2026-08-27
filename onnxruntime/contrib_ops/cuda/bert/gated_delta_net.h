@@ -3,11 +3,11 @@
 
 #pragma once
 
+#include <string>
+
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
-
-#include <string>
 
 namespace onnxruntime {
 namespace contrib {

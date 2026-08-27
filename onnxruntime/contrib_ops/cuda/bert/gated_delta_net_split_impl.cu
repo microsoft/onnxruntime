@@ -53,8 +53,6 @@
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-using namespace onnxruntime::cuda;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
