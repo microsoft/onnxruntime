@@ -204,6 +204,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"QuantizeLinear", {"quantizeLinear", {{0, "input"}, {1, "scale"}, {2, "zeroPoint"}}}},
     {"ScatterElements", {"scatterElements", {{0, "input"}, {1, "indices"}, {2, "updates"}}}},
     {"LayerNormalization", {"layerNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}}}},
+    {"SkipLayerNormalization", {"layerNormalization", {{0, "input"}, {2, "scale"}, {3, "bias"}}}},
     {"DequantizeLinear", {"dequantizeLinear", {{0, "input"}, {1, "scale"}, {2, "zeroPoint"}}}},
     {"InstanceNormalization", {"instanceNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}}}},
     {"GRU", {"gru", {{0, "input"}, {1, "weight"}, {2, "recurrentWeight"}, {3, "bias"}, {5, "initialHiddenState"}}}},
