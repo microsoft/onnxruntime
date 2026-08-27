@@ -30,7 +30,7 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Shared library plugin build (`--use_webgpu shared_lib`) | Green in CI, no regression from D2/D7 |
 | CUDA plugin EP (shares `include/onnxruntime/ep/*`) | Green in CI |
 | Operator-level validation on a real GPU | **Done — no behavioural difference**, see [Testing](#testing) |
-| Linux/GCC build (`--use_webgpu static_plugin`) | `array-bounds` fixed at the source; verified locally under GCC 14, **not yet confirmed in CI** — see [GCC](#gcc-and-werror) |
+| Linux/GCC build (`--use_webgpu static_plugin`) | `array-bounds` fixed; full local GCC 14 build green under `-Werror`. CI run `33030694040` dispatched, result pending — see [GCC](#gcc-and-warnings-as-errors) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
 | Emscripten / ORT Web | Not yet exercised — see [Open items](#open-items) |
 | PR | Not opened yet |
@@ -50,6 +50,15 @@ The implementation is complete and committed. CI coverage was added for the new 
 | `49855f6ef7` | Fix GCC maybe-uninitialized errors in the EP adapter attribute accessors |
 | `d47f00a0a6` | Update dynamic plugin EP test config parsing tests |
 | `1980e901ec` | Record CI coverage in the static plugin EP registration design doc |
+| `754e025ddc` | Add a work log for the static plugin EP branch |
+| `a362107df9` | Merge `origin/main` (52 commits behind at the time; merged, not rebased) |
+| `35e6f65d52` | Record real-GPU validation results in the work log |
+| `a110948b1d` | Record GPU validation and the plugin-path test coverage gap in the design doc |
+| `8d87c11972` | Avoid GCC 14 `-Warray-bounds` false positive in `EmitGateActivationExpr` — the batch-3 CI fix |
+| `ef68884a95` | Record the complete GCC 14 warning inventory and the local reproduction recipe |
+
+Pushed through `ef68884a95`. The push from `754e025ddc` was a fast-forward; no history has been rewritten on
+this branch.
 
 ## What the change consists of
 
@@ -285,7 +294,8 @@ gh api repos/microsoft/onnxruntime/actions/jobs/<job_id>/logs > log.txt
 
 When grepping the result, search for `FAILED:` **case-sensitively**. A case-insensitive search for "failed" or
 a search for `error:` drowns in benign CMake and Dawn feature-probe output such as
-`-- Performing Test ... - Failed`.
+`-- Performing Test ... - Failed`. The same trap applies to local build logs: `grep -c "error:"` matches Dawn's
+own configure line `-- DAWN Werror: OFF`, which looks alarming in a summary count and is nothing.
 
 ### Run history
 
@@ -297,8 +307,11 @@ a search for `error:` drowns in benign CMake and Dawn feature-probe output such 
 | 32996643911 | Linux WebGPU CI | Failure — GCC `maybe-uninitialized`, batch 2 |
 | 32996646394 | CUDA Plugin Windows CI | Success |
 | 33009901327 | Linux WebGPU CI | Failure — GCC `array-bounds`, batch 3. Internal-EP job on the same run passed. |
+| 33030694040 | Linux WebGPU CI | Dispatched on `ef68884a95` — first run carrying the `array-bounds` fix |
+| 33030695742 | ONNX Runtime WebGPU Builds | Dispatched on `ef68884a95` — re-run after the merge from `main` |
+| 33030697208 | CUDA Plugin Windows CI | Dispatched on `ef68884a95` — re-run after the merge from `main` |
 
-## GCC and `-Werror`
+## GCC and warnings as errors
 
 This was the only substantial problem the new CI surfaced, and it will bite again, so it is worth understanding
 rather than pattern-matching.
@@ -392,6 +405,21 @@ make -f CMakeFiles/onnxruntime_providers_webgpu.dir/build.make \
 
 Always run the **negative control** — rebuild the unfixed source through the same harness and confirm it still
 errors. Otherwise a harness that silently fails to exercise the warning looks exactly like a successful fix.
+
+### Verification of the fix
+
+Both halves were checked, because each one alone is inconclusive:
+
+1. **Single-object recheck.** With the fix, `matmul_nbits_mlp.cc.o` compiles clean under `-Werror`. Reverting the
+   file and rebuilding through the identical harness reproduces the exact CI error, which is what proves the
+   harness was actually exercising the warning.
+2. **Full build with `-Werror` on**, i.e. the real CI configuration with `--compile_no_warning_as_error` dropped:
+   completes to 100%, links `onnxruntime_provider_test`, zero compiler errors. Before trusting this, confirm
+   `-Werror` really is on the ORT targets — `sed -n 's/^CXX_FLAGS = //p' CMakeFiles/<target>.dir/flags.make`
+   should show it for `onnxruntime_providers_webgpu`, `onnxruntime_providers` and `onnxruntime_session` — and
+   confirm the fixed file appears in the build log, so it was recompiled rather than served from a stale object.
+
+The 334 warnings that remain in that build are all third-party, in targets that do not use `-Werror`.
 
 ## Open items
 
