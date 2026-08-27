@@ -2721,10 +2721,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.",
               AttributeProto::FLOAT,
               1.0e-5f)
-        .Attr("kernel_size",
-              "Convolution kernel size. Default is 4.",
-              AttributeProto::INT,
-              static_cast<int64_t>(4))
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
@@ -2768,26 +2764,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (dilation < 1) {
             fail_shape_inference("ShortConvWithState: dilation must be >= 1");
           }
-          const int64_t kernel_size = getAttribute(ctx, "kernel_size", 4);
-          if (kernel_size < 1) {
-            fail_shape_inference("ShortConvWithState: kernel_size must be >= 1");
-          }
 
           if (hasInputShape(ctx, 0)) {
             const auto& input_shape = getInputShape(ctx, 0);
             if (input_shape.dim_size() != 4) {
               fail_shape_inference("ShortConvWithState: input must have rank 4");
             }
-            // Infer present_state shape: (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1))
-            auto* present_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
-            *present_shape->add_dim() = input_shape.dim(0);  // batch_size
-            if (input_shape.dim(2).has_dim_value() && input_shape.dim(3).has_dim_value()) {
-              present_shape->add_dim()->set_dim_value(
-                  input_shape.dim(2).dim_value() * input_shape.dim(3).dim_value());
-            } else {
-              present_shape->add_dim();
-            }
-            present_shape->add_dim()->set_dim_value(dilation * (kernel_size - 1));
           }
           if (hasInputShape(ctx, 3)) {
             const auto& weight_shape = getInputShape(ctx, 3);
@@ -2800,6 +2782,32 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             if (norm_scale_shape.dim_size() != 2) {
               fail_shape_inference("ShortConvWithState: norm_scale must have rank 2");
             }
+          }
+
+          // Infer present_state shape: (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1))
+          // Derive kernel_size from weight.shape[2] like CausalConvWithState.
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            const auto& weight_shape = getInputShape(ctx, 3);
+
+            TensorShapeProto present_shape;
+            *present_shape.add_dim() = input_shape.dim(0);  // batch_size
+
+            if (input_shape.dim(2).has_dim_value() && input_shape.dim(3).has_dim_value()) {
+              present_shape.add_dim()->set_dim_value(
+                  input_shape.dim(2).dim_value() * input_shape.dim(3).dim_value());
+            } else {
+              present_shape.add_dim();  // unknown channels
+            }
+
+            if (weight_shape.dim(2).has_dim_value()) {
+              const int64_t kernel_size = weight_shape.dim(2).dim_value();
+              present_shape.add_dim()->set_dim_value(dilation * (kernel_size - 1));
+            } else {
+              present_shape.add_dim();  // unknown state_len
+            }
+
+            updateOutputShape(ctx, 1, present_shape);
           }
         }));
 

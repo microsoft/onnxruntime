@@ -2636,19 +2636,24 @@ class SymbolicShapeInference:
         # output[0] has the same shape as input[0]
         self._propagate_shape_and_type(node, 0, 0)
         # output[1] = present_state: (batch_size, hc_mult * hidden_size, dilation * (kernel_size - 1))
+        # kernel_size is derived from weight.shape[2], not from an attribute.
         input_shape = self._get_shape(node, 0)
-        if input_shape is not None and len(input_shape) == 4:
+        weight_shape = self._get_shape(node, 3)
+        if input_shape is not None and len(input_shape) == 4 and weight_shape is not None and len(weight_shape) == 3:
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             dilation = get_attribute(node, "dilation", 1)
-            kernel_size = get_attribute(node, "kernel_size", 4)
-            state_len = dilation * (kernel_size - 1)
+            kernel_size = weight_shape[2]
             batch = input_shape[0]
             hc_mult = input_shape[2]
             hidden = input_shape[3]
             if isinstance(hc_mult, int) and isinstance(hidden, int):
                 channels = hc_mult * hidden
             else:
-                channels = f"{hc_mult}*{hidden}" if not isinstance(hc_mult, int) or not isinstance(hidden, int) else hc_mult * hidden
+                channels = f"{hc_mult}*{hidden}"
+            if isinstance(kernel_size, int):
+                state_len = dilation * (kernel_size - 1)
+            else:
+                state_len = f"{dilation}*({kernel_size}-1)"
             present_shape = [batch, channels, state_len]
             vi = self.known_vi_[node.output[1]]
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))

@@ -40,8 +40,6 @@ ShortConvWithState<T>::ShortConvWithState(const OpKernelInfo& info) : OpKernel(i
   dilation_ = info.GetAttrOrDefault<int64_t>("dilation", 1);
   ORT_ENFORCE(dilation_ >= 1, "dilation must be >= 1");
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1.0e-5f);
-  kernel_size_ = info.GetAttrOrDefault<int64_t>("kernel_size", 4);
-  ORT_ENFORCE(kernel_size_ >= 1, "kernel_size must be >= 1");
 }
 
 template <typename T>
@@ -68,7 +66,7 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
   const int64_t hc_mult = input_shape[2];
   const int64_t hidden_size = input_shape[3];
   const int64_t channels = hc_mult * hidden_size;
-  const int64_t kernel_size = kernel_size_;
+  const int64_t kernel_size = weight_shape[2];
   const int64_t state_len = dilation_ * (kernel_size - 1);
 
   ORT_RETURN_IF_NOT(weight_shape[0] == channels && weight_shape[1] == 1 && weight_shape[2] == kernel_size,
@@ -114,9 +112,10 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
 
   // Step 1: Compute branchwise RMSNorm of input and store into a temporary buffer.
   // Layout: normed[b][t][g][c] where (b,t,g) is the row and c is within hidden_size.
+  // Store normed values in type T so that precision is consistent across chunk boundaries
+  // (past_state carries T-rounded values).
   const int64_t rows = batch_size * sequence_length * hc_mult;
-  std::vector<float> inv_rms(static_cast<size_t>(rows));
-  std::vector<float> normed(static_cast<size_t>(batch_size * sequence_length * channels));
+  std::vector<T> normed(static_cast<size_t>(batch_size * sequence_length * channels));
 
   ThreadPool::TryParallelFor(
       context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows), static_cast<double>(hidden_size),
@@ -129,16 +128,15 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
             sum_sq += value * value;
           }
           const float rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon_);
-          inv_rms[static_cast<size_t>(row)] = rms;
 
           // Compute normed values and store in the flat buffer.
           // Row index maps to: b = row / (sequence_length * hc_mult), remainder / hc_mult = t, remainder % hc_mult = g
           const int64_t g = row % hc_mult;
           const int64_t base = (row / hc_mult) * channels + g * hidden_size;
-          float* normed_row = normed.data() + static_cast<size_t>(base);
+          T* normed_row = normed.data() + static_cast<size_t>(base);
           for (int64_t i = 0; i < hidden_size; ++i) {
             const float scale = static_cast<float>(scale_data[g * hidden_size + i]);
-            normed_row[i] = static_cast<float>(input_row[i]) * rms * scale;
+            normed_row[i] = static_cast<T>(static_cast<float>(input_row[i]) * rms * scale);
           }
         }
       });
@@ -157,6 +155,11 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
         // Build a per-thread full timeline: [state_len past values, S current values]
         const int64_t timeline_len = state_len + sequence_length;
         std::vector<float> timeline(static_cast<size_t>(timeline_len));
+        // Dynamically sized weight buffer for non-float types
+        std::vector<float> w_buf;
+        if constexpr (!std::is_same_v<T, float>) {
+          w_buf.resize(static_cast<size_t>(kernel_size));
+        }
 
         for (int64_t task = begin; task < end; ++task) {
           const int64_t b = task / channels;
@@ -175,19 +178,19 @@ Status ShortConvWithState<T>::Compute(OpKernelContext* context) const {
           // Fill timeline[state_len..state_len+S-1] from normed[b, t, flat_c]
           for (int64_t t = 0; t < sequence_length; ++t) {
             timeline[static_cast<size_t>(state_len + t)] =
-                normed[static_cast<size_t>((b * sequence_length + t) * channels + flat_c)];
+                static_cast<float>(normed[static_cast<size_t>((b * sequence_length + t) * channels + flat_c)]);
           }
 
-          // Compute convolution output for each timestep
-          const float* w = reinterpret_cast<const float*>(weight_data) + flat_c * kernel_size;
-          // For non-float types, we need to convert weight values
-          float w_buf[32];  // Support up to kernel_size=32
-          if constexpr (!std::is_same_v<T, float>) {
-            for (int64_t k = 0; k < kernel_size && k < 32; ++k) {
-              w_buf[k] = static_cast<float>(weight_data[flat_c * kernel_size + k]);
+          // Prepare weight values (convert once for non-float types)
+          const float* w_ptr;
+          if constexpr (std::is_same_v<T, float>) {
+            w_ptr = reinterpret_cast<const float*>(weight_data) + flat_c * kernel_size;
+          } else {
+            for (int64_t k = 0; k < kernel_size; ++k) {
+              w_buf[static_cast<size_t>(k)] = static_cast<float>(weight_data[flat_c * kernel_size + k]);
             }
+            w_ptr = w_buf.data();
           }
-          const float* w_ptr = std::is_same_v<T, float> ? w : w_buf;
           const float bias_val = bias_data == nullptr ? 0.0f : static_cast<float>(bias_data[flat_c]);
 
           for (int64_t t = 0; t < sequence_length; ++t) {

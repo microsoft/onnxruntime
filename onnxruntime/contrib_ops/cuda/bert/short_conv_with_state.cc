@@ -37,8 +37,6 @@ ShortConvWithState<T>::ShortConvWithState(const OpKernelInfo& info) : CudaKernel
   dilation_ = info.GetAttrOrDefault<int64_t>("dilation", 1);
   ORT_ENFORCE(dilation_ >= 1, "dilation must be >= 1");
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1.0e-5f);
-  kernel_size_ = info.GetAttrOrDefault<int64_t>("kernel_size", 4);
-  ORT_ENFORCE(kernel_size_ >= 1, "kernel_size must be >= 1");
 }
 
 template <typename T>
@@ -66,7 +64,7 @@ Status ShortConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t hc_mult = input_shape[2];
   const int64_t hidden_size = input_shape[3];
   const int64_t channels = hc_mult * hidden_size;
-  const int64_t kernel_size = kernel_size_;
+  const int64_t kernel_size = weight_shape[2];
   const int64_t state_len = dilation_ * (kernel_size - 1);
 
   ORT_RETURN_IF_NOT(weight_shape[0] == channels && weight_shape[1] == 1 && weight_shape[2] == kernel_size,

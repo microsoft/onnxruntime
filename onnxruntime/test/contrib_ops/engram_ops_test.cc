@@ -436,16 +436,7 @@ TEST(EngramOpsTest, EngramGateZeroDotProduct) {
   test.Run();
 }
 
-  test.AddInput<float>("hidden_states", {1, 1, 1, 2}, hidden_states);
-  test.AddInput<float>("key_weight", {1, 2, 2}, key_weight);
-  test.AddOptionalInputEdge<float>();
-  test.AddInput<float>("value_weight", {2, 2}, value_weight);
-  test.AddOptionalInputEdge<float>();
-  test.AddInput<float>("key_norm_scale", {1, 2}, unit_scale);
-  test.AddInput<float>("query_norm_scale", {1, 2}, unit_scale);
-  test.AddOutput<float>("output", {1, 1, 1, 2}, expected, false, 1e-5f, 1e-5f);
-  test.Run();
-}
+namespace {
 
 // ShortConvWithState: Stateful dilated depthwise conv with branchwise RMSNorm.
 // Tests the key invariant: ShortConv(full_seq) == concat(ShortConvWithState(one_token_steps)).
@@ -495,7 +486,6 @@ void RunShortConvWithStateTest(float tolerance) {
     test.AddAttribute<int64_t>("dilation", dilation);
     test.AddAttribute<float>("epsilon", epsilon);
     test.AddAttribute<std::string>("activation", "silu");
-    test.AddAttribute<int64_t>("kernel_size", kernel_size);
     test.AddInput<T>("input", {1, 2, 1, 2}, ToTensorType<T>(input));
     test.AddOptionalInputEdge<T>();  // no past_state
     test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
@@ -521,7 +511,6 @@ void RunShortConvWithStateTest(float tolerance) {
     test.AddAttribute<int64_t>("dilation", dilation);
     test.AddAttribute<float>("epsilon", epsilon);
     test.AddAttribute<std::string>("activation", "silu");
-    test.AddAttribute<int64_t>("kernel_size", kernel_size);
     test.AddInput<T>("input", {1, 1, 1, 2}, ToTensorType<T>(step0_input));
     test.AddOptionalInputEdge<T>();
     test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
@@ -543,7 +532,6 @@ void RunShortConvWithStateTest(float tolerance) {
     test.AddAttribute<int64_t>("dilation", dilation);
     test.AddAttribute<float>("epsilon", epsilon);
     test.AddAttribute<std::string>("activation", "silu");
-    test.AddAttribute<int64_t>("kernel_size", kernel_size);
     test.AddInput<T>("input", {1, 1, 1, 2}, ToTensorType<T>(step1_input));
     test.AddInput<T>("past_state", {1, 2, 1}, ToTensorType<T>(step1_past));
     test.AddInput<T>("norm_scale", {1, 2}, ToTensorType<T>(scale));
@@ -597,7 +585,6 @@ void RunShortConvWithStateDilatedTest(float tolerance) {
   test.AddAttribute<int64_t>("dilation", dilation);
   test.AddAttribute<float>("epsilon", epsilon);
   test.AddAttribute<std::string>("activation", "silu");
-  test.AddAttribute<int64_t>("kernel_size", kernel_size);
   test.AddInput<T>("input", {1, 4, 1, 1}, ToTensorType<T>(input));
   test.AddOptionalInputEdge<T>();
   test.AddInput<T>("norm_scale", {1, 1}, ToTensorType<T>(scale));

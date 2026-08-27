@@ -22,7 +22,6 @@ class ShortConvWithState final : public onnxruntime::cuda::CudaKernel {
   std::string activation_;
   int64_t dilation_;
   float epsilon_;
-  int64_t kernel_size_;
 };
 
 }  // namespace cuda
