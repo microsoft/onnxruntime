@@ -2701,7 +2701,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(1,
                "multipliers",
-               "Per-shift odd multipliers with shape (max_ngram_size).",
+               "Per-shift odd multipliers with shape at least (max_ngram_size).",
                "M")
         .Input(2,
                "vocab_sizes",

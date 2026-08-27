@@ -4174,7 +4174,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input_ids</tt> : M</dt>
 <dd>Compressed tokenizer ids with shape (batch_size, sequence_length).</dd>
 <dt><tt>multipliers</tt> : M</dt>
-<dd>Per-shift odd multipliers with shape (max_ngram_size).</dd>
+<dd>Per-shift odd multipliers with shape at least (max_ngram_size).</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram).</dd>
 <dt><tt>past_tokens</tt> (optional) : M</dt>
