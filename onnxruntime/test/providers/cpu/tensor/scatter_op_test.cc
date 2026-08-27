@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
+#include <limits>
 #include <memory>
 
 #include "gtest/gtest.h"
@@ -511,6 +512,9 @@ namespace {
 template <typename T, typename TIndex = int64_t>
 void RunCudaScatterElementsReduction(const char* dtype_name, const char* reduction, T data, T update, T expected,
                                      int opset = 18) {
+#if !defined(USE_CUDA)
+  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements dtype coverage.";
+#endif
   SCOPED_TRACE(testing::Message() << "dtype=" << dtype_name << ", reduction=" << reduction << ", opset=" << opset);
   OpTester test("ScatterElements", opset);
   test.AddAttribute<int64_t>("axis", 0);
@@ -523,14 +527,15 @@ void RunCudaScatterElementsReduction(const char* dtype_name, const char* reducti
   auto cuda_ep = DefaultCudaExecutionProvider();
   ASSERT_NE(cuda_ep, nullptr);
   test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
-#else
-  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements dtype coverage.";
 #endif
 }
 
 template <typename T, typename TIndex = int64_t>
 void RunCudaScatterElementsAddContention(const char* dtype_name, T data, T update, T expected,
                                          size_t update_count) {
+#if !defined(USE_CUDA)
+  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements contention coverage.";
+#endif
   SCOPED_TRACE(testing::Message() << "dtype=" << dtype_name << ", updates=" << update_count);
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 0);
@@ -543,12 +548,13 @@ void RunCudaScatterElementsAddContention(const char* dtype_name, T data, T updat
   auto cuda_ep = DefaultCudaExecutionProvider();
   ASSERT_NE(cuda_ep, nullptr);
   test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
-#else
-  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements contention coverage.";
 #endif
 }
 
 void RunCudaScatterElementsBoolReduction(const char* reduction, bool data, bool update, bool expected) {
+#if !defined(USE_CUDA)
+  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements bool coverage.";
+#endif
   SCOPED_TRACE(testing::Message() << "dtype=bool, reduction=" << reduction);
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 0);
@@ -570,8 +576,6 @@ void RunCudaScatterElementsBoolReduction(const char* reduction, bool data, bool 
   auto cuda_ep = DefaultCudaExecutionProvider();
   ASSERT_NE(cuda_ep, nullptr);
   test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
-#else
-  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements bool coverage.";
 #endif
 }
 
@@ -598,12 +602,16 @@ TEST(ScatterElements, FullDTypeInt16) {
 TEST(ScatterElements, FullDTypeUInt16) {
   RunCudaScatterElementsReduction<uint16_t>("uint16", "add", 0x3c00, 0x3c00, 0x7800);
   RunCudaScatterElementsReduction<uint16_t>("uint16", "mul", 2, 3, 6);
+  RunCudaScatterElementsReduction<uint16_t>("uint16", "mul", 50000, 2, 34464);
   RunCudaScatterElementsReduction<uint16_t>("uint16", "min", 0xbc00, 0xc000, 0xbc00);
   RunCudaScatterElementsReduction<uint16_t>("uint16", "max", 0xbc00, 0xc000, 0xc000);
 }
 
+// These IEEE 1.0 bit patterns are intentional: they detect accidental float/double representative dispatch.
 TEST(ScatterElements, FullDTypeInt32) {
   RunCudaScatterElementsReduction<int32_t>("int32", "add", 0x3f800000, 0x3f800000, 0x7f000000);
+  RunCudaScatterElementsReduction<int32_t>("int32", "add", std::numeric_limits<int32_t>::max(), 1,
+                                           std::numeric_limits<int32_t>::min());
   RunCudaScatterElementsReduction<int32_t>("int32", "mul", 2, 3, 6);
   RunCudaScatterElementsReduction<int32_t>("int32", "min", -1082130432, -1073741824, -1082130432);
   RunCudaScatterElementsReduction<int32_t>("int32", "max", -1082130432, -1073741824, -1073741824);
@@ -620,6 +628,7 @@ TEST(ScatterElements, FullDTypeInt64) {
   RunCudaScatterElementsReduction<int64_t>("int64", "add", 0x3ff0000000000000LL, 0x3ff0000000000000LL,
                                            0x7fe0000000000000LL);
   RunCudaScatterElementsReduction<int64_t>("int64", "mul", 2, 3, 6);
+  RunCudaScatterElementsReduction<int64_t>("int64", "mul", std::numeric_limits<int64_t>::max(), 2, -2);
   RunCudaScatterElementsReduction<int64_t>("int64", "min", -4616189618054758400LL, -4611686018427387904LL,
                                            -4616189618054758400LL);
   RunCudaScatterElementsReduction<int64_t>("int64", "max", -4616189618054758400LL, -4611686018427387904LL,
@@ -669,6 +678,35 @@ TEST(ScatterElements, ContentionPacked8Bit) {
   RunCudaScatterElementsAddContention<uint8_t>("uint8", 1, 1, 201, 200);
 }
 
+TEST(ScatterElements, ContentionAdjacentPacked8BitLanes) {
+#if !defined(USE_CUDA)
+  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements contention coverage.";
+#endif
+  constexpr size_t updates_per_lane = 64;
+  constexpr size_t lane_count = 4;
+  std::vector<int64_t> indices;
+  indices.reserve(updates_per_lane * lane_count);
+  for (size_t i = 0; i < updates_per_lane; ++i) {
+    for (size_t lane = 0; lane < lane_count; ++lane) {
+      indices.push_back(static_cast<int64_t>(lane));
+    }
+  }
+
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+  test.AddInput<uint8_t>("data", {4}, {1, 2, 3, 4});
+  test.AddInput<int64_t>("indices", {static_cast<int64_t>(indices.size())}, indices);
+  test.AddInput<uint8_t>("updates", {static_cast<int64_t>(indices.size())},
+                         std::vector<uint8_t>(indices.size(), 1));
+  test.AddOutput<uint8_t>("y", {4}, {65, 66, 67, 68});
+#if defined(USE_CUDA)
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  ASSERT_NE(cuda_ep, nullptr);
+  test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
+#endif
+}
+
 TEST(ScatterElements, ContentionPacked16Bit) {
   RunCudaScatterElementsAddContention<uint16_t>("uint16", 1, 1, 513, 512);
 }
@@ -686,6 +724,9 @@ TEST(ScatterElements, ContentionBFloat16) {
 }
 
 TEST(ScatterElements, ContentionBoolLogical) {
+#if !defined(USE_CUDA)
+  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements contention coverage.";
+#endif
   constexpr size_t update_count = 512;
   OpTester test("ScatterElements", 18);
   test.AddAttribute<int64_t>("axis", 0);
@@ -701,8 +742,6 @@ TEST(ScatterElements, ContentionBoolLogical) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   ASSERT_NE(cuda_ep, nullptr);
   test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
-#else
-  GTEST_SKIP() << "CUDA is required for CUDA ScatterElements contention coverage.";
 #endif
 }
 

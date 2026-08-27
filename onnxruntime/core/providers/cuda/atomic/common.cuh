@@ -17,6 +17,9 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
+#include <cuda/std/bit>
+#include <cuda/std/type_traits>
+
 #include "cuda.h"
 #include "cuda_fp16.h"
 #include "cuda_runtime.h"
@@ -401,6 +404,16 @@ __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType
 struct AddFunc {
   template <typename T>
   __device__ __forceinline__ T operator()(T a, T b) const {
+    if constexpr (::cuda::std::is_integral_v<T> && !::cuda::std::is_same_v<T, bool>) {
+      using UnsignedT = ::cuda::std::make_unsigned_t<T>;
+      using ArithmeticT =
+          ::cuda::std::conditional_t<(sizeof(UnsignedT) < sizeof(unsigned int)), unsigned int, UnsignedT>;
+      const auto result = static_cast<UnsignedT>(
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) +
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
+      return ::cuda::std::bit_cast<T>(result);
+    }
+
     return a + b;
   }
 };
@@ -408,6 +421,16 @@ struct AddFunc {
 struct MulFunc {
   template <typename T>
   __device__ __forceinline__ T operator()(T a, T b) const {
+    if constexpr (::cuda::std::is_integral_v<T> && !::cuda::std::is_same_v<T, bool>) {
+      using UnsignedT = ::cuda::std::make_unsigned_t<T>;
+      using ArithmeticT =
+          ::cuda::std::conditional_t<(sizeof(UnsignedT) < sizeof(unsigned int)), unsigned int, UnsignedT>;
+      const auto result = static_cast<UnsignedT>(
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) *
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
+      return ::cuda::std::bit_cast<T>(result);
+    }
+
     return a * b;
   }
 };
