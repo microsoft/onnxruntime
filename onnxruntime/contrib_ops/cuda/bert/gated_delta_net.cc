@@ -320,7 +320,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   IAllocatorUniquePtr<uint8_t> workspace;
   if (plan.workspace_bytes > 0) {
-    workspace = GetScratchBuffer<uint8_t>(plan.workspace_bytes, context->GetComputeStream());
+    workspace = GetScratchBuffer<uint8_t>(plan.workspace_bytes, GetComputeStream(context));
     pack.workspace = workspace.get();
   }
 

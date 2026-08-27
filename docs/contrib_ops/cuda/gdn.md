@@ -520,10 +520,10 @@ shared-memory chunk configuration. Three cases are worth calling out:
   convolution state and compact appended values remain in the activation type.
 - **The chunked engine is bound by its own serial chain, not by grid size.** Measured on
   H200 at `T=8192`, batch 1 (`ncu`): grid 96 CTAs, **0.73 waves per SM**, 25.0% warp
-  occupancy, **7.1%** tensor-pipe utilisation, **1.8%** DRAM throughput. It is tempting to
+  occupancy, **7.1%** tensor-pipe utilization, **1.8%** DRAM throughput. It is tempting to
   read that as "too few CTAs", but widening the grid measurably loses: with a `v_block` of
   32 (192 CTAs) the same work takes 657.6 us instead of 404.8 us at `T=1024`, and
-  `BT=32, v_block=32` (the configuration that maximises CTA residency) takes 793.0 us.
+  `BT=32, v_block=32` (the configuration that maximizes CTA residency) takes 793.0 us.
   The reason is that 157 KB of shared memory pins the kernel to one CTA per SM, so extra
   CTAs only add waves. Batch scaling confirms it: batch 4 at `T=1024` costs 1217.2 us,
   which is exactly `ceil(384/132) = 3` waves times the 405 us single-wave time, so

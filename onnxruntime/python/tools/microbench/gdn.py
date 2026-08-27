@@ -279,7 +279,7 @@ def main():
 
     provider = get_default_provider() if args.provider is None else provider_name(args.provider)
     if args.op == "GatedDeltaNet" and provider != "CUDAExecutionProvider":
-        raise ValueError("GatedDeltaNet is CUDA-only; select the CUDA execution provider.")
+        parser.error("GatedDeltaNet is CUDA-only; select the CUDA execution provider.")
     data_type = np.float16 if args.precision == "fp16" else np.float32
 
     print(f"provider: {provider}, precision: {args.precision}, op: {args.op}")

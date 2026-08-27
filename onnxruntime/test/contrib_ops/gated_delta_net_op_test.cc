@@ -282,19 +282,23 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
 
 constexpr int kDim = 128;  // the chunked engine is specialised for head_size 128
 
+bool NeedSkipGatedDeltaNetTest() {
+  return !HasCudaEnvironment(800);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
 // Chunked engine (prefill): T well above the 32-token plan threshold.
 // ---------------------------------------------------------------------------
 TEST(GatedDeltaNetTest, Chunked_GatedDelta_InverseGqa) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{128, 1, 2, 6, kDim, kDim};  // Hv/Hq == 3, the Qwen3.8 ratio
   RunCase(g, Options{}, MakeInputs(g, 11), 3e-2f, 3e-2f);
 }
 
 TEST(GatedDeltaNetTest, Chunked_PartialChunkAndBoundaries) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   for (int total : {63, 64, 65, 130}) {
     Geometry g{total, 1, 1, 2, kDim, kDim};
     RunCase(g, Options{}, MakeInputs(g, static_cast<uint32_t>(total)), 3e-2f, 3e-2f);
@@ -302,7 +306,7 @@ TEST(GatedDeltaNetTest, Chunked_PartialChunkAndBoundaries) {
 }
 
 TEST(GatedDeltaNetTest, Chunked_AllUpdateRules) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   for (const char* rule : {"linear", "gated", "delta", "gated_delta"}) {
     SCOPED_TRACE(rule);
     Geometry g{128, 1, 1, 2, kDim, kDim};
@@ -313,7 +317,7 @@ TEST(GatedDeltaNetTest, Chunked_AllUpdateRules) {
 }
 
 TEST(GatedDeltaNetTest, Chunked_FusedActivations) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{128, 1, 1, 2, kDim, kDim};
   Options o;
   o.gate_activation = "qwen";
@@ -323,7 +327,7 @@ TEST(GatedDeltaNetTest, Chunked_FusedActivations) {
 }
 
 TEST(GatedDeltaNetTest, Chunked_NoInitialState) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{128, 1, 1, 2, kDim, kDim};
   Inputs in = MakeInputs(g, 13, /*with_state=*/false);
   in.cu_seqlens = {0, 128};  // batch cannot be inferred from a missing state
@@ -331,7 +335,7 @@ TEST(GatedDeltaNetTest, Chunked_NoInitialState) {
 }
 
 TEST(GatedDeltaNetTest, Chunked_RaggedUnequalLengths) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{200, 3, 1, 2, kDim, kDim};
   Inputs in = MakeInputs(g, 17);
   in.cu_seqlens = {0, 40, 150, 200};
@@ -339,14 +343,14 @@ TEST(GatedDeltaNetTest, Chunked_RaggedUnequalLengths) {
 }
 
 TEST(GatedDeltaNetTest, Chunked_UniformBatch) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{256, 2, 1, 2, kDim, kDim};  // no cu_seqlens: batch comes from initial_state
   RunCase(g, Options{}, MakeInputs(g, 19), 3e-2f, 3e-2f);
 }
 
 // The rank-4 [batch, sequence, heads, head_size] spelling must match the packed one exactly.
 TEST(GatedDeltaNetTest, Rank4BatchSequenceMatchesPacked) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry prefill{256, 2, 2, 6, kDim, kDim};
   RunCase(prefill, Options{}, MakeInputs(prefill, 23), 3e-2f, 3e-2f, /*rank4=*/true);
   Geometry decode{3, 3, 1, 2, kDim, kDim};  // one token per request
@@ -356,7 +360,7 @@ TEST(GatedDeltaNetTest, Rank4BatchSequenceMatchesPacked) {
 // chunk_size=32 pins the narrow shared-memory configuration (96 KB) that consumer
 // Blackwell needs, since SM120 allows only 99 KB per block against SM90's 227 KB.
 TEST(GatedDeltaNetTest, Chunked_NarrowChunkForSmallSharedMemory) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   for (int total : {128, 65, 200}) {
     Geometry g{total, 1, 2, 6, kDim, kDim};
     Options o;
@@ -369,25 +373,25 @@ TEST(GatedDeltaNetTest, Chunked_NarrowChunkForSmallSharedMemory) {
 // Recurrent engine (decode / MTP verify): T below the plan threshold.
 // ---------------------------------------------------------------------------
 TEST(GatedDeltaNetTest, Recurrent_SingleToken) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{1, 1, 1, 2, kDim, kDim};
   RunCase(g, Options{}, MakeInputs(g, 23), 2e-2f, 2e-2f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_VerifyBatch) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, kDim, kDim};
   RunCase(g, Options{}, MakeInputs(g, 29), 2e-2f, 2e-2f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_SmallHeadSizes) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, 64, 32};  // shapes the chunked engine rejects
   RunCase(g, Options{}, MakeInputs(g, 31), 2e-2f, 2e-2f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_SingleValueChannelWithQkNormalization) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 1, 64, 1};
   Options options;
   options.qk_l2_norm = 1;
@@ -395,7 +399,7 @@ TEST(GatedDeltaNetTest, Recurrent_SingleValueChannelWithQkNormalization) {
 }
 
 TEST(GatedDeltaNetTest, Ragged_MixedPrefillKeepsDecodeArithmeticStable) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry mixed_geometry{65, 2, 1, 2, kDim, kDim};
   Inputs mixed_inputs = MakeInputs(mixed_geometry, 60);
   mixed_inputs.cu_seqlens = {0, 64, 65};
@@ -441,7 +445,7 @@ TEST(GatedDeltaNetTest, Ragged_MixedPrefillKeepsDecodeArithmeticStable) {
 // factors from the incoming state must exactly match an independent recurrent run for every
 // prefix of the full-capacity row.
 TEST(GatedDeltaNetTest, Ragged_CompactReplayMatchesSequentialPrefixes) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   constexpr int kPrefillTokens = 64;
   constexpr int kCapacity = 8;
   constexpr int kPartial = 4;
@@ -528,7 +532,7 @@ TEST(GatedDeltaNetTest, Ragged_CompactReplayMatchesSequentialPrefixes) {
 // initial_state and final_state may be the same allocation. Feeding a run's state output
 // back in as the next run's input must reproduce one long run.
 TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   constexpr int kFirst = 64, kSecond = 64;
   Geometry g_all{kFirst + kSecond, 1, 1, 2, kDim, kDim};
   Inputs in = MakeInputs(g_all, 41);
@@ -567,7 +571,7 @@ TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
 
 // Device-supplied offsets must not be able to steer an out-of-bounds access.
 TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{64, 2, 1, 2, kDim, kDim};
   Inputs in = MakeInputs(g, 43);
 
@@ -600,7 +604,7 @@ TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
 }
 
 TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 2, 5, 64, 64};  // hv=5 is not a multiple of hq=2
   Inputs in = MakeInputs(g, 47);
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
@@ -623,7 +627,7 @@ TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {
 }
 
 TEST(GatedDeltaNetTest, RejectsMissingRequiredGateInput) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 1, 64, 64};
   Inputs in = MakeInputs(g, 51);
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
@@ -647,7 +651,7 @@ TEST(GatedDeltaNetTest, RejectsMissingRequiredGateInput) {
 }
 
 TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 1, 64, 64};
   Inputs in = MakeInputs(g, 53);
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
@@ -675,7 +679,7 @@ TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
 }
 
 TEST(GatedDeltaNetTest, RequiresCaptureCountExactlyWhenCapacityIsPositive) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, 64, 32};
   Inputs in = MakeInputs(g, 57);
 
@@ -724,7 +728,7 @@ TEST(GatedDeltaNetTest, RequiresCaptureCountExactlyWhenCapacityIsPositive) {
 }
 
 TEST(GatedDeltaNetTest, StateUpdateCapacityIsBounded) {
-  if (NeedSkipIfCudaArchLowerThan(800)) return;
+  if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{1, 1, 1, 1, 64, 32};
   Inputs in = MakeInputs(g, 81);
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
