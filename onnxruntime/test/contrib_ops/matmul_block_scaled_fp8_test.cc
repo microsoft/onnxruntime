@@ -379,8 +379,8 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
 }
 
 // BF16 companion to GemvTensorCoreTilesFp16. BF16 has its own mma instruction and its own FP8
-// converter (E4M3 -> FP16 -> FP32 -> BF16), neither shared with the FP16 instantiation. Also
-// covers the bias input on the tensor-core path.
+// converter (E4M3 -> FP16 -> FP32 -> BF16), neither shared with the FP16 instantiation. Covers
+// the multi-tile and split-launch paths with activation QDQ and bias.
 TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
@@ -390,7 +390,6 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
   constexpr int64_t k = 256;
   constexpr int64_t block_size = 64;
   constexpr int64_t k_blocks = k / block_size;
-  constexpr int64_t m = 4;
   static const float kWeightValues[] = {1.0f, 2.0f, -1.0f};
   static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};
 
@@ -409,41 +408,44 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
       b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 4.0f;
     }
   }
-  std::vector<float> a(static_cast<size_t>(m * k));
-  for (int64_t row = 0; row < m; ++row) {
-    for (int64_t i = 0; i < k; ++i) {
-      a[static_cast<size_t>(row * k + i)] = kActValues[(row + i) % 4];
-    }
-  }
-  std::vector<float> bias(static_cast<size_t>(n));
-  for (int64_t col = 0; col < n; ++col) {
-    bias[static_cast<size_t>(col)] = static_cast<float>(col % 5) - 2.0f;
-  }
-  std::vector<float> expected(static_cast<size_t>(m * n));
-  for (int64_t row = 0; row < m; ++row) {
-    for (int64_t col = 0; col < n; ++col) {
-      float acc = 0.0f;
+  const std::vector<float> a_scale = {1.0f};
+  for (const int64_t m : {4, 9, 33}) {
+    std::vector<float> a(static_cast<size_t>(m * k));
+    for (int64_t row = 0; row < m; ++row) {
       for (int64_t i = 0; i < k; ++i) {
-        acc += a[static_cast<size_t>(row * k + i)] * b_ref[static_cast<size_t>(col * k + i)] *
-               b_scale[static_cast<size_t>(col * k_blocks + i / block_size)];
+        a[static_cast<size_t>(row * k + i)] = kActValues[(row + i) % 4];
       }
-      expected[static_cast<size_t>(row * n + col)] = acc + bias[static_cast<size_t>(col)];
     }
+    std::vector<float> bias(static_cast<size_t>(n));
+    for (int64_t col = 0; col < n; ++col) {
+      bias[static_cast<size_t>(col)] = static_cast<float>(col % 5) - 2.0f;
+    }
+    std::vector<float> expected(static_cast<size_t>(m * n));
+    for (int64_t row = 0; row < m; ++row) {
+      for (int64_t col = 0; col < n; ++col) {
+        float acc = 0.0f;
+        for (int64_t i = 0; i < k; ++i) {
+          acc += a[static_cast<size_t>(row * k + i)] * b_ref[static_cast<size_t>(col * k + i)] *
+                 b_scale[static_cast<size_t>(col * k_blocks + i / block_size)];
+        }
+        expected[static_cast<size_t>(row * n + col)] = acc + bias[static_cast<size_t>(col)];
+      }
+    }
+
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+    test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+    test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+    test.AddInput<float>("a_scale", {}, a_scale);
+    test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
+    test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+    test.SetOutputTolerance(0.02f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-
-  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("block_size", block_size);
-  test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
-  test.AddInput<Float8E4M3FN>("B", {n, k}, b);
-  test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
-  test.AddOptionalInputEdge<float>();  // a_scale (skipped)
-  test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
-  test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
-  test.SetOutputTolerance(0.02f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // Lane-ownership probe for the tensor-core path.
