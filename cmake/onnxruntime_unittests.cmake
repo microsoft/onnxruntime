@@ -1994,6 +1994,20 @@ endif()
       add_test(NAME onnxruntime_shared_lib_dlopen_test COMMAND onnxruntime_shared_lib_dlopen_test WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
       set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
+      if(CPUINFO_SUPPORTED AND NOT onnxruntime_MINIMAL_BUILD)
+        onnxruntime_add_executable(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
+        add_dependencies(onnxruntime_shared_lib_cpuinfo_dlopen_test ${all_dependencies} onnxruntime)
+        add_test(
+          NAME onnxruntime_shared_lib_cpuinfo_dlopen_test
+          COMMAND onnxruntime_shared_lib_cpuinfo_dlopen_test
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_cpuinfo_dlopen_test>)
+        set_target_properties(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          PROPERTIES FOLDER "ONNXRuntimeTest")
+      endif()
+
       if (MSVC)
         # set VS debugger working directory to the test program's directory
         set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
