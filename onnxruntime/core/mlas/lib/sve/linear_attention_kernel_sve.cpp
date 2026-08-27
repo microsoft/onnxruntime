@@ -97,27 +97,21 @@ MlasLinearAttentionProcessHeadSve(
     const bool n_out_ok = (n_out == 1 || n_out == 2 || n_out == 4 || n_out == 8);
 
     //
-    // At a 128-bit vector length a Z register is exactly a Q register, so this
-    // kernel has no width or register advantage over the NEON one -- and it
-    // pays a cost NEON does not: SVE has no scalar-operand FMA, so every weight
-    // needs its own broadcast register and LD1RW, and the widest panel is 16
-    // columns against NEON's 32. Measured on Cortex-X925 at VL=128, single-head
-    // shapes run 1.033x slower than the NEON kernel (95% CI [1.022, 1.044], 240
-    // cells, same-binary floor 0.989) -- small, but the interval clears the
-    // floor by about 4x, so it is a real regression rather than noise.
+    // No vector-length condition. This kernel ran behind the NEON one at
+    // VL=128 for as long as it applied one weight per LD1RW broadcast, and an
+    // earlier version of this comment justified a routing gate by claiming SVE
+    // has no scalar-operand FMA. That claim was wrong: SVE's FMLA/FMUL
+    // (indexed) take the weight from a lane of a quad, which is the same
+    // mechanism NEON's vfmaq_n_f32 uses. The compute kernel now uses it, so at
+    // a 128-bit vector length -- where a Z register is exactly a Q register --
+    // this kernel does the same work with the same instruction mix as the NEON
+    // one, and there is no vector length at which it should be declined.
     //
-    // That figure is after the induction-pointer and 8-lane rework; before it
-    // the same measurement read 1.326. The remaining gap is what SVE cannot
-    // recover at this vector length: no width advantage, and a broadcast per
-    // weight where NEON's vfmaq_n_f32 takes the scalar for free.
-    //
-    // Groups larger than one are a different matter at any vector length: the
+    // Groups larger than one were never in question at any vector length: the
     // NEON kernel declines them outright, so the alternative is the portable
-    // path, against which this kernel measured 0.51 on the same run.
+    // path.
     //
-    const bool vl_ok = (MlasLinearAttentionSveVectorBytes() > 16) || (n_out > 1);
-
-    if (!shape_ok || !n_out_ok || !vl_ok) {
+    if (!shape_ok || !n_out_ok) {
         MlasLinearAttentionProcessHeadNeon(Work);
         return;
     }

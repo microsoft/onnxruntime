@@ -51,6 +51,7 @@ Abstract:
 #define MLAS_FORCEINLINE __attribute__((always_inline)) inline
 #endif
 
+#include "linear_attention_asm_sve.h"
 #include "linear_attention_compute_sve.h"
 
 extern "C" {
