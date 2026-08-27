@@ -2573,6 +2573,16 @@ It then flattens hc_mult and hidden_size into depthwise convolution channels and
 1D convolution with optional dilation along the sequence axis. The output is cropped to sequence_length,
 optionally passed through SiLU/Swish, and returned in (batch_size, sequence_length, hc_mult, hidden_size)
 layout. The convolution weight layout is (hc_mult * hidden_size, 1, kernel_size).
+
+The convolution receptive field spans state_length = (kernel_size - 1) * dilation positions before the
+current token. To keep the op causal across invocations (chunked prefill or autoregressive decode), the
+optional past_state input carries the normed values of those positions from the preceding call and
+present_state returns them for the next call. Both have shape
+(batch_size, state_length, hc_mult, hidden_size) and are right-aligned: slot state_length - 1 holds the
+most recent position. Slots that correspond to positions before the start of the whole sequence are
+zero. Running the op once over a full sequence and running it over consecutive chunks while threading
+present_state into past_state produce identical outputs. When past_state is omitted the missing history
+is treated as zeros, which matches a fresh sequence.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2608,10 +2618,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional convolution bias with shape (hc_mult * hidden_size).",
                "T",
                OpSchema::Optional)
+        .Input(4,
+               "past_state",
+               "Optional normed convolution input for the (kernel_size - 1) * dilation positions that "
+               "precede this call, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, "
+               "hidden_size). Right-aligned, so the last slot is the most recent position. If omitted "
+               "the history is treated as zeros.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "Output tensor with the same shape as input.",
                 "T")
+        .Output(1,
+                "present_state",
+                "Normed convolution input for the trailing (kernel_size - 1) * dilation positions of "
+                "past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, "
+                "hc_mult, hidden_size). Feed this back as past_state on the next call.",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
@@ -2642,6 +2667,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("ShortConv: norm_scale must have rank 2");
             }
           }
+
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+            if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+              const auto& input_shape = getInputShape(ctx, 0);
+              const auto& weight_shape = getInputShape(ctx, 1);
+              if (input_shape.dim_size() == 4 && weight_shape.dim_size() == 3 &&
+                  weight_shape.dim(2).has_dim_value()) {
+                TensorShapeProto state_shape;
+                *state_shape.add_dim() = input_shape.dim(0);
+                state_shape.add_dim()->set_dim_value((weight_shape.dim(2).dim_value() - 1) * dilation);
+                *state_shape.add_dim() = input_shape.dim(2);
+                *state_shape.add_dim() = input_shape.dim(3);
+                updateOutputShape(ctx, 1, state_shape);
+              }
+            }
+          }
         }));
 
 constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
@@ -2653,6 +2695,14 @@ mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
 For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
 The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
 heads for n=2 first, then n=3, and so on.
+
+An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
+across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
+those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
+(batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
+Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
+and running it over consecutive chunks while threading present_ids into past_ids produce identical
+hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2681,11 +2731,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Per-output-head prime vocabulary sizes with shape "
                "((max_ngram_size - 1) * n_head_per_ngram).",
                "M")
+        .Input(3,
+               "past_ids",
+               "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
+               "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
+               "slot is the most recent id. If omitted the history is pad_id.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "hash_ids",
                 "Hash ids with shape (batch_size, sequence_length, "
                 "(max_ngram_size - 1) * n_head_per_ngram).",
                 "M")
+        .Output(1,
+                "present_ids",
+                "Trailing max_ngram_size - 1 ids of past_ids followed by input_ids, with shape "
+                "(batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.",
+                "M",
+                OpSchema::Optional)
         .TypeConstraint("M",
                         {"tensor(int32)", "tensor(int64)"},
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
@@ -2711,22 +2774,34 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *output_shape.add_dim() = input_shape.dim(1);
             output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
             updateOutputShape(ctx, 0, output_shape);
+
+            if (ctx.getNumOutputs() > 1) {
+              propagateElemTypeFromInputToOutput(ctx, 0, 1);
+              TensorShapeProto present_shape;
+              *present_shape.add_dim() = input_shape.dim(0);
+              present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+              updateOutputShape(ctx, 1, present_shape);
+            }
           }
         }));
 
 constexpr const char* EngramGate_ver1_doc = R"DOC(
-Fuses the Engram gate/value projection block.
+Fuses the Engram gate.
 
-The op consumes flattened n-gram embeddings, hidden states in
-(batch_size, sequence_length, hc_mult, hidden_size) layout, per-hyper-connection key projection
-weights, a shared value projection, and RMSNorm scales. It computes the Engram gate:
+The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
+the hidden-state queries in the same layout, an already projected value in
+(batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
+RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
+provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
+projection is computed once per token instead of once per hyper-connection.
+
+It computes the Engram gate:
 
 gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
 dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
 
-The output is gate * value_projection(embeddings), broadcast across hidden_size for each
-hyper-connection. A following ShortConv plus Add represents the final Engram residual
-value + short_conv(value).
+The output is gate * value, broadcast across the hyper-connections. A following ShortConv plus Add
+represents the final Engram residual value + short_conv(value).
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2738,39 +2813,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               1.0e-5f)
         .Input(0,
-               "embeddings",
-               "Flattened Engram embeddings with shape (batch_size, sequence_length, embedding_size).",
+               "key",
+               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                "T")
         .Input(1,
-               "hidden_states",
-               "Hidden states with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "query",
+               "Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                "T")
         .Input(2,
-               "key_weight",
-               "Per-hyper-connection key projection weights with shape "
-               "(hc_mult, embedding_size, hidden_size).",
+               "value",
+               "Projected Engram value shared by every hyper-connection, with shape "
+               "(batch_size, sequence_length, hidden_size).",
                "T")
         .Input(3,
-               "key_bias",
-               "Optional per-hyper-connection key projection bias with shape (hc_mult, hidden_size).",
-               "T",
-               OpSchema::Optional)
-        .Input(4,
-               "value_weight",
-               "Shared value projection weight with shape (embedding_size, hidden_size).",
-               "T")
-        .Input(5,
-               "value_bias",
-               "Optional shared value projection bias with shape (hidden_size).",
-               "T",
-               OpSchema::Optional)
-        .Input(6,
                "key_norm_scale",
-               "RMSNorm scale for key projections with shape (hc_mult, hidden_size).",
+               "RMSNorm scale for keys with shape (hc_mult, hidden_size).",
                "T")
-        .Input(7,
+        .Input(4,
                "query_norm_scale",
-               "RMSNorm scale for hidden-state queries with shape (hc_mult, hidden_size).",
+               "RMSNorm scale for queries with shape (hc_mult, hidden_size).",
                "T")
         .Output(0,
                 "output",
@@ -2783,17 +2844,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
           if (hasInputShape(ctx, 0)) {
-            const auto& embeddings_shape = getInputShape(ctx, 0);
-            if (embeddings_shape.dim_size() != 3) {
-              fail_shape_inference("EngramGate: embeddings must have rank 3");
+            const auto& key_shape = getInputShape(ctx, 0);
+            if (key_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: key must have rank 4");
             }
+            propagateShapeFromInputToOutput(ctx, 0, 0);
           }
           if (hasInputShape(ctx, 1)) {
-            const auto& hidden_shape = getInputShape(ctx, 1);
-            if (hidden_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: hidden_states must have rank 4");
+            const auto& query_shape = getInputShape(ctx, 1);
+            if (query_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: query must have rank 4");
             }
-            propagateShapeFromInputToOutput(ctx, 1, 0);
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& value_shape = getInputShape(ctx, 2);
+            if (value_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: value must have rank 3");
+            }
           }
         }));
 

@@ -46,6 +46,7 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* weight = context->Input<Tensor>(1);
   const Tensor* norm_scale = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(3);
+  const Tensor* past_state = context->Input<Tensor>(4);
 
   const TensorShape& input_shape = input->Shape();
   const TensorShape& weight_shape = weight->Shape();
@@ -72,7 +73,21 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
                       "bias must have shape (hc_mult * hidden_size)");
   }
 
+  // The convolution receptive field reaches this many positions before the current token, so this is
+  // exactly the amount of normed history that has to be carried between invocations.
+  const int64_t state_length = (kernel_size - 1) * dilation_;
+  const TensorShape state_shape({batch_size, state_length, hc_mult, hidden_size});
+  if (past_state != nullptr) {
+    ORT_RETURN_IF_NOT(past_state->Shape() == state_shape,
+                      "past_state must have shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size)");
+  }
+
   Tensor* output = context->Output(0, input_shape);
+  Tensor* present_state = context->Output(1, state_shape);
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
+
   // Scratch buffer holding one inverse-RMS value per (batch, sequence, hc_mult) row so that the
   // reduction is not repeated for every output channel and convolution tap.
   const int64_t rows = batch_size * sequence_length * hc_mult;
@@ -83,8 +98,10 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(weight->Data<T>()),
       reinterpret_cast<const CudaT*>(norm_scale->Data<T>()),
       bias == nullptr ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>()),
+      past_state == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_state->Data<T>()),
       inv_rms.get(),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
+      present_state == nullptr ? nullptr : reinterpret_cast<CudaT*>(present_state->MutableData<T>()),
       batch_size,
       sequence_length,
       hc_mult,

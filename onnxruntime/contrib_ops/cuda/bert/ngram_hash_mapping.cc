@@ -50,6 +50,7 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
+  const Tensor* past_ids = context->Input<Tensor>(3);
   const TensorShape& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
@@ -61,13 +62,23 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
+  // An n-gram window reaches this many positions before the current token.
+  const int64_t state_length = max_ngram_size_ - 1;
+  if (past_ids != nullptr) {
+    ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_ids must have shape (batch_size, max_ngram_size - 1)");
+  }
+
   Tensor* output = context->Output(0, TensorShape({batch_size, sequence_length, num_heads}));
+  Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
   return LaunchNGramHashMappingKernel<T>(
       Stream(context),
       input_ids->Data<T>(),
       multipliers->Data<T>(),
       vocab_sizes->Data<T>(),
+      past_ids == nullptr ? nullptr : past_ids->Data<T>(),
       output->MutableData<T>(),
+      present_ids == nullptr ? nullptr : present_ids->MutableData<T>(),
       batch_size,
       sequence_length,
       max_ngram_size_,

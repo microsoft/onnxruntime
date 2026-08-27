@@ -47,11 +47,22 @@ NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : OpKernel(info)
   pad_id_ = static_cast<T>(pad_id);
 }
 
+// Reads the id at right-aligned history slot `slot` of past_ids. Slots outside the provided history
+// (or a missing past_ids) are positions before the start of the whole sequence, so they use pad_id.
+template <typename T>
+T NGramHashMapping<T>::HistoryId(const T* past_data, int64_t b, int64_t slot, int64_t state_length) const {
+  if (past_data == nullptr || slot < 0 || slot >= state_length) {
+    return pad_id_;
+  }
+  return past_data[b * state_length + slot];
+}
+
 template <typename T>
 Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
+  const Tensor* past_ids = context->Input<Tensor>(3);
 
   const TensorShape& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
@@ -64,13 +75,41 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
 
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
+  // An n-gram window reaches this many positions before the current token.
+  const int64_t state_length = max_ngram_size_ - 1;
+  if (past_ids != nullptr) {
+    ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_ids must have shape (batch_size, max_ngram_size - 1)");
+  }
+
   Tensor* output = context->Output(0, TensorShape({batch_size, sequence_length, num_heads}));
+  Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
 
   const T* input_data = input_ids->Data<T>();
   const T* multiplier_data = multipliers->Data<T>();
   const T* vocab_data = vocab_sizes->Data<T>();
-  T* output_data = output->MutableData<T>();
+  const T* past_data = past_ids == nullptr ? nullptr : past_ids->Data<T>();
 
+  // present_ids is the right-aligned trailing window of (past_ids ++ input_ids), so it is well defined
+  // even when this call is shorter than the window.
+  if (present_ids != nullptr) {
+    T* present_data = present_ids->MutableData<T>();
+    for (int64_t b = 0; b < batch_size; ++b) {
+      for (int64_t j = 0; j < state_length; ++j) {
+        // Virtual position of slot j relative to the end of input_ids.
+        const int64_t source_t = sequence_length - state_length + j;
+        present_data[b * state_length + j] =
+            source_t >= 0 ? input_data[b * sequence_length + source_t]
+                          : HistoryId(past_data, b, state_length + source_t, state_length);
+      }
+    }
+  }
+
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  T* output_data = output->MutableData<T>();
   const int64_t total = batch_size * sequence_length;
   ThreadPool::TryParallelFor(
       context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total), static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
@@ -85,7 +124,8 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
             T mix = 0;
             for (int64_t k = 0; k < n; ++k) {
               const int64_t source_t = t - k;
-              const T token = source_t < 0 ? pad_id_ : input_data[input_base + source_t];
+              const T token = source_t >= 0 ? input_data[input_base + source_t]
+                                            : HistoryId(past_data, b, state_length + source_t, state_length);
               const T product = kernel_helper::WrappedMultiply(token, multiplier_data[k]);
               mix = k == 0 ? product : static_cast<T>(mix ^ product);
             }
