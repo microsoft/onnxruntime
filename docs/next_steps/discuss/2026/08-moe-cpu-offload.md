@@ -282,6 +282,7 @@ No replacement policy dominates across all MoE models, workloads, capacities, an
 | [HOBBIT](https://arxiv.org/abs/2411.01433) | Evaluate multiple time scales; keep mixed-precision fallback outside the exact-weight experiment. |
 | [Klotski](https://arxiv.org/abs/2502.06888) | Keep multi-request throughput results separate from single-request token latency. |
 | [HybriMoE](https://arxiv.org/abs/2504.05897) | Consider impact-aware scoring based on miss cost and expected reuse. |
+| [FreeToken](https://arxiv.org/abs/2608.16157) ([code](https://github.com/FlashML-org/FreeToken)) | Refines the same CPU/GPU expert split with a bandwidth-adaptive policy selecting how many experts run on CPU, global LRU expert caching, and runtime re-allocation of device memory between expert cache and KV cache; use it as a reference point for the cache-sizing and CPU-execution-versus-transfer trade-off. |
 
 The minimum simulation set is hindsight static, cumulative LFU, LRU, decayed or windowed LFU, and an offline optimal bound. Inter-layer transition prediction and impact-aware scoring are the first advanced candidates. Refresh the literature review before implementation and distinguish preprints from peer-reviewed results.
 
