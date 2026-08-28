@@ -94,11 +94,17 @@ __device__ __forceinline__ uint32_t PackHalf2(__half lo, __half hi) {
 
 __device__ __forceinline__ void MmaM16N8K16(float (&d)[4], const uint32_t (&a)[4],
                                             const uint32_t (&b)[2]) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   asm volatile(
       "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
       "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
       : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
       : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+#else
+  (void)d;
+  (void)a;
+  (void)b;
+#endif
 }
 
 // A-fragment for m16n8k16: lane l holds rows (l>>2, l>>2 + 8) and k-pairs at (l&3)*2.
