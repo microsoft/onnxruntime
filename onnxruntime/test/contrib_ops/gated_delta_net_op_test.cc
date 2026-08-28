@@ -227,12 +227,32 @@ std::vector<T> ToTensorType(const std::vector<float>& data) {
   }
 }
 
+// Snaps floats to the grid of the operator's input type, so the reference sees the exact values
+// the kernel reads. Without it the tolerance has to absorb input rounding and stops measuring the
+// kernel: bfloat16 needs 4e-2 against unrounded inputs where 6e-3 suffices against rounded ones.
+template <typename T>
+std::vector<float> RoundToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, float>) {
+    return data;
+  } else {
+    const std::vector<T> narrowed = ToTensorType<T>(data);
+    std::vector<float> rounded(data.size());
+    for (size_t i = 0; i < data.size(); ++i) rounded[i] = narrowed[i].ToFloat();
+    return rounded;
+  }
+}
+
 // Runs the operator and compares against the float64 reference.
 // With rank4 the leading token axis is spelled [batch, sequence] instead of [total_tokens];
 // the buffers are byte-identical, only the declared shapes differ.
 template <typename T>
-void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in, float out_tol,
+void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
+  Inputs in = in_raw;
+  in.q = RoundToTensorType<T>(in_raw.q);
+  in.k = RoundToTensorType<T>(in_raw.k);
+  in.v = RoundToTensorType<T>(in_raw.v);
+
   std::vector<float> ref_out, ref_state;
   Reference(g, o, in, &ref_out, &ref_state);
 
@@ -513,7 +533,23 @@ TEST(GatedDeltaNetTest, Recurrent_Float32) {
 TEST(GatedDeltaNetTest, BFloat16UsesRecurrentFallback) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{64, 1, 1, 2, kDim, kDim};
-  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 4e-2f, 4e-2f);
+  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 6e-3f, 2e-3f);
+}
+
+// One token per request drives the warp-specialised decode kernel, a separate instantiation
+// from the chunk loop the case above exercises.
+TEST(GatedDeltaNetTest, BFloat16SingleTokenDecode) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{3, 3, 1, 2, kDim, kDim};
+  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 153), 6e-3f, 2e-3f);
+}
+
+TEST(GatedDeltaNetTest, BFloat16RaggedUnequalLengths) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{200, 3, 1, 2, kDim, kDim};
+  Inputs in = MakeInputs(g, 157);
+  in.cu_seqlens = {0, 40, 150, 200};
+  RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_SmallHeadSizes) {

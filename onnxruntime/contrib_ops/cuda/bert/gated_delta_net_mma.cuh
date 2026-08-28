@@ -92,6 +92,9 @@ __device__ __forceinline__ uint32_t PackHalf2(__half lo, __half hi) {
          (static_cast<uint32_t>(__half_as_ushort(hi)) << 16);
 }
 
+// mma.sync.m16n8k16 is Ampere and later, so ptxas rejects it for a pre-Ampere target. The only
+// caller is the chunked engine, and SelectPlan requires sm_major >= 8 before choosing it, so the
+// pre-Ampere body below exists purely to let those targets compile and is never executed.
 __device__ __forceinline__ void MmaM16N8K16(float (&d)[4], const uint32_t (&a)[4],
                                             const uint32_t (&b)[2]) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800

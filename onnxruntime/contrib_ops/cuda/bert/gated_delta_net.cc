@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -281,9 +282,13 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.update_rule = update_rule_;
   desc.gate_activation = gate_activation_;
   desc.beta_activation = beta_activation_;
-  desc.io_type = std::is_same<T, MLFloat16>::value
-                     ? gdn::IoType::kFloat16
-                     : (std::is_same<T, BFloat16>::value ? gdn::IoType::kBFloat16 : gdn::IoType::kFloat);
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    desc.io_type = gdn::IoType::kFloat16;
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    desc.io_type = gdn::IoType::kBFloat16;
+  } else {
+    desc.io_type = gdn::IoType::kFloat;
+  }
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;

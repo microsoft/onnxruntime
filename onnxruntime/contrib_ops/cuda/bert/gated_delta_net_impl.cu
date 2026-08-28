@@ -43,6 +43,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <type_traits>
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
@@ -740,35 +741,42 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
   }
 
   if (plan.engine == Engine::kChunked) {
-    p.state_update_tail_pass = plan.state_update_tail_pass;
-    p.short_row_tail_pass = plan.short_row_tail_pass;
-    const dim3 grid(desc.batch, desc.num_heads_v, desc.head_size_v / kDVB);
-    // BT=32 halves the [BT x BT] and per-token tiles, which is what lets the chunked
-    // engine fit devices with a 99 KB opt-in limit (SM120) instead of SM90's 227 KB.
-    if (plan.chunk_size == 32) {
-      static DynamicSmemConfig chunk32_smem_config;
-      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetChunkedKernel<T, 128, 128, 32>,
-                                            plan.smem_bytes, chunk32_smem_config));
-      GatedDeltaNetChunkedKernel<T, 128, 128, 32>
-          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+    // SelectPlan only routes float16 here, so instantiating the mma kernels for the other
+    // element types would emit cubin that can never launch.
+    if constexpr (!std::is_same_v<T, half>) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "GatedDeltaNet: the chunked engine requires float16 input");
     } else {
-      static DynamicSmemConfig chunk64_smem_config;
-      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetChunkedKernel<T, 128, 128, 64>,
-                                            plan.smem_bytes, chunk64_smem_config));
-      GatedDeltaNetChunkedKernel<T, 128, 128, 64>
-          <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
-    }
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-    if (!plan.state_update_tail_pass && !plan.short_row_tail_pass) {
-      return Status::OK();
-    }
+      p.state_update_tail_pass = plan.state_update_tail_pass;
+      p.short_row_tail_pass = plan.short_row_tail_pass;
+      const dim3 grid(desc.batch, desc.num_heads_v, desc.head_size_v / kDVB);
+      // BT=32 halves the [BT x BT] and per-token tiles, which is what lets the chunked
+      // engine fit devices with a 99 KB opt-in limit (SM120) instead of SM90's 227 KB.
+      if (plan.chunk_size == 32) {
+        static DynamicSmemConfig chunk32_smem_config;
+        ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetChunkedKernel<T, 128, 128, 32>,
+                                              plan.smem_bytes, chunk32_smem_config));
+        GatedDeltaNetChunkedKernel<T, 128, 128, 32>
+            <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+      } else {
+        static DynamicSmemConfig chunk64_smem_config;
+        ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetChunkedKernel<T, 128, 128, 64>,
+                                              plan.smem_bytes, chunk64_smem_config));
+        GatedDeltaNetChunkedKernel<T, 128, 128, 64>
+            <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
+      }
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+      if (!plan.state_update_tail_pass && !plan.short_row_tail_pass) {
+        return Status::OK();
+      }
 
-    // The rows the pass above skipped are emitted by the recurrent engine. Same stream, and
-    // the two row sets are disjoint, so the merged result is deterministic.
-    // The chunked engine only accepts head_size_qk == head_size_v == 128, so the warp
-    // kernel is always the right shape here.
-    return LaunchRecurrent<T>(desc, /*warp_specialized=*/true, pack, p,
-                              max_shared_memory_per_block, stream);
+      // The rows the pass above skipped are emitted by the recurrent engine. Same stream, and
+      // the two row sets are disjoint, so the merged result is deterministic.
+      // The chunked engine only accepts head_size_qk == head_size_v == 128, so the warp
+      // kernel is always the right shape here.
+      return LaunchRecurrent<T>(desc, /*warp_specialized=*/true, pack, p,
+                                max_shared_memory_per_block, stream);
+    }
   }
 
   (void)max_threads_per_block;
