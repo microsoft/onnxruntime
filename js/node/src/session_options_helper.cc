@@ -199,7 +199,8 @@ void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort
   }
 }
 
-void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions) {
+void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
+                         std::vector<std::vector<char>>& externalDataBuffers) {
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");
@@ -374,20 +375,29 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
         paths.push_back(path);
 #endif
         ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
-                                        !obj.Get("data").IsBuffer() ||
-                                        !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
+                                        (!obj.Get("data").IsBuffer() &&
+                                         !(obj.Get("data").IsTypedArray() &&
+                                           obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array)),
                                     options.Env(),
                                     "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
 
         auto data = obj.Get("data");
+        const char* source;
+        size_t size;
         if (data.IsBuffer()) {
-          buffs.push_back(data.As<Napi::Buffer<char>>().Data());
-          sizes.push_back(data.As<Napi::Buffer<char>>().Length());
+          source = data.As<Napi::Buffer<char>>().Data();
+          size = data.As<Napi::Buffer<char>>().Length();
         } else {
           auto typedArray = data.As<Napi::TypedArray>();
-          buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
-          sizes.push_back(typedArray.ByteLength());
+          source = reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset();
+          size = typedArray.ByteLength();
         }
+        externalDataBuffers.emplace_back();
+        if (size != 0) {
+          externalDataBuffers.back().assign(source, source + size);
+        }
+        buffs.push_back(externalDataBuffers.back().data());
+        sizes.push_back(size);
       }
       sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
     }

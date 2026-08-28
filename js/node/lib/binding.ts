@@ -18,7 +18,10 @@ type ReturnType = {
 type RunOptions = InferenceSession.RunOptions;
 
 /**
- * Binding exports a simple synchronized inference session object wrap.
+ * Binding exports a simple inference session object wrap.
+ *
+ * `loadModel()` is asynchronous: the native session is constructed on a worker thread so that the
+ * JavaScript event loop stays available while ONNX Runtime initializes the session.
  */
 export declare namespace Binding {
   export interface ValueMetadata {
@@ -29,8 +32,8 @@ export declare namespace Binding {
     type: number;
   }
   export interface InferenceSession {
-    loadModel(modelPath: string, options: SessionOptions): void;
-    loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions): void;
+    loadModel(modelPath: string, options: SessionOptions): Promise<void>;
+    loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions): Promise<void>;
 
     readonly inputMetadata: ValueMetadata[];
     readonly outputMetadata: ValueMetadata[];

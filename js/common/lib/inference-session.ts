@@ -48,6 +48,29 @@ export declare namespace InferenceSession {
    */
   export interface SessionOptions extends OnnxModelOptions {
     /**
+     * Configure loading external data referenced by EPContext nodes.
+     *
+     * The callback is invoked synchronously with the external data name and must return a `Uint8Array`. The returned
+     * bytes are copied before the callback returns, so the application retains ownership of the array. Empty arrays are
+     * supported. Callback invocations may originate from multiple ONNX Runtime threads; the native JavaScript bindings
+     * serialize calls before invoking JavaScript.
+     *
+     * `maxDataSize` is a required, finite, positive safe integer. Session creation fails if the callback throws, returns
+     * another type, or returns more bytes than this limit. ONNX Runtime does not fall back to loading the data from disk
+     * after a callback failure.
+     *
+     * This setting is available only in the Node.js and React Native bindings. ONNX Runtime Web rejects it because a
+     * JavaScript callback cannot currently be registered safely through the WebAssembly ABI.
+     *
+     * JavaScript does not currently expose model compilation, so the corresponding EPContext data write callback is not
+     * available.
+     */
+    epContextDataRead?: {
+      callback: (name: string) => Uint8Array;
+      maxDataSize: number;
+    };
+
+    /**
      * An array of execution provider options.
      *
      * An execution provider option can be a string indicating the name of the execution provider,

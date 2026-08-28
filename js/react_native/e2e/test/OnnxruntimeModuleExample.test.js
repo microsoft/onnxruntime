@@ -57,4 +57,27 @@ describe('OnnxruntimeModuleExample', () => {
     // Check have no error
     await expect(element(by.label('statusError'))).not.toBeVisible();
   });
+
+  it('EPContext data read test should run successfully', async () => {
+    // Tap EPContext data read test button
+    if (platform === 'android') {
+      await element(by.label('ep-context-data-read-test-button')).tap();
+    } else {
+      await element(by.text('EPContext Data Read Test')).tap();
+    }
+
+    await delay(500);
+
+    // Run the tests
+    if (platform === 'android') {
+      await element(by.label('run-tests-button')).tap();
+    } else {
+      await element(by.text('Run All Tests')).tap();
+    }
+    await delay(1000);
+
+    // Every check must pass: invalid options are rejected and valid ones load, run and release.
+    await expect(element(by.label('statusError'))).not.toBeVisible();
+    await expect(element(by.label('statusPending'))).not.toBeVisible();
+  });
 });

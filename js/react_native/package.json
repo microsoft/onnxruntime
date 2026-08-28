@@ -62,7 +62,8 @@
     "!android/gradlew",
     "!android/gradlew.bat",
     "!android/gradle/wrapper/*.jar",
-    "!android/libs"
+    "!android/libs",
+    "!cpp/test"
   ],
   "description": "ONNX Runtime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",

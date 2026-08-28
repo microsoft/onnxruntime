@@ -13,6 +13,8 @@ if (typeof window !== 'undefined') {
 
 require('./backends/wasm/test-model-metadata');
 
+require('./ep-context-data-read');
+
 require('./pool-output-shape');
 
 require('./opset');

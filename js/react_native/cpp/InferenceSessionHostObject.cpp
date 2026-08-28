@@ -3,7 +3,11 @@
 #include "JsiUtils.h"
 #include "SessionUtils.h"
 #include "TensorUtils.h"
+#include <algorithm>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <utility>
 
 using namespace facebook::jsi;
 
@@ -35,31 +39,85 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
     }
     keepValue(runtime, arguments[0]);
     if (count > 1) {
-      parseSessionOptions(runtime, arguments[1], sessionOptions_);
+      parseSessionOptions(runtime, arguments[1], sessionOptions_, session->env_,
+                          epContextDataRead_);
     }
+    abortEpContextDataRead_ = epContextDataRead_;
+    // The state stays private to this worker until Ort::Session construction succeeds. Nothing is
+    // published to the host object here, so a rejected load releases it deterministically in
+    // onReject() instead of leaving it retained until a later dispose or garbage collection.
   }
+
+  ~LoadModelAsyncWorker() override { abortAndJoin(); }
 
  protected:
   void execute() {
     if (modelPath_.empty()) {
-      session_->session_ = std::make_shared<Ort::Session>(
+      loadedSession_ = std::make_shared<Ort::Session>(
           session_->env_->getOrtEnv(), modelData_, modelDataLength_,
           sessionOptions_);
     } else {
-      session_->session_ = std::make_shared<Ort::Session>(
+      loadedSession_ = std::make_shared<Ort::Session>(
           session_->env_->getOrtEnv(), modelPath_.c_str(), sessionOptions_);
     }
   }
 
-  Value onResolve(Runtime& rt) { return Value::undefined(); }
+  Value onResolve(Runtime& rt) {
+    // Publish only on the JS thread so dispose(), reload, and successful construction cannot race
+    // while reading or replacing the host object's shared_ptr members.
+    session_->session_.reset();
+    previousEpContextDataRead_ = std::move(session_->epContextDataRead_);
+    session_->epContextDataRead_ = std::move(epContextDataRead_);
+    session_->session_ = std::move(loadedSession_);
+
+    // The retired state can no longer be reached by any session; release it here so the JS
+    // function is dropped on the JS thread.
+    releaseState(previousEpContextDataRead_);
+    abortEpContextDataRead_.reset();
+    return Value::undefined();
+  }
+
+  Value onReject(Runtime& rt, const std::string& err) {
+    // Session construction failed, so the state was never published. Release it on the JS thread
+    // rather than waiting for this worker to be collected.
+    releaseState(epContextDataRead_);
+    abortEpContextDataRead_.reset();
+    return AsyncWorker::onReject(rt, err);
+  }
+
+  void onAbort() override {
+    if (abortEpContextDataRead_) {
+      abortEpContextDataRead_->invalidate();
+    }
+  }
 
  private:
+  // Must run on the JS thread: dropping the last reference releases the JS callback function.
+  static void
+  releaseState(std::shared_ptr<EpContextDataReadCallback>& state) noexcept {
+    if (state) {
+      state->invalidate();
+      state.reset();
+    }
+  }
+
   std::string error_;
   std::string modelPath_;
   void* modelData_;
   size_t modelDataLength_;
   std::shared_ptr<InferenceSessionHostObject> session_;
   Ort::SessionOptions sessionOptions_;
+  // Strong snapshot of the state referenced by sessionOptions_, owned solely by this worker until
+  // the session it belongs to exists.
+  std::shared_ptr<EpContextDataReadCallback> epContextDataRead_;
+  // Immutable snapshot used by onAbort() to unblock a worker waiting for the JS thread. execute()
+  // may move epContextDataRead_ into the host concurrently, so the abort path must not access it.
+  std::shared_ptr<EpContextDataReadCallback> abortEpContextDataRead_;
+  // State displaced from the host object by a successful reload, kept alive until the JS thread
+  // can release it.
+  std::shared_ptr<EpContextDataReadCallback> previousEpContextDataRead_;
+  // Declared after every callback-state reference so a worker-local session is destroyed first.
+  std::shared_ptr<Ort::Session> loadedSession_;
   std::shared_ptr<WeakObject> weakResolve_;
   std::shared_ptr<WeakObject> weakReject_;
   std::thread thread_;
@@ -109,6 +167,8 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
             });
   }
 
+  ~RunAsyncWorker() override { abortAndJoin(); }
+
  protected:
   void execute() {
     auto inputNames = std::vector<const char*>(inputNames_.size());
@@ -145,7 +205,7 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
     return Value(rt, resultObject);
   }
 
-  void onAbort() {
+  void onAbort() override {
     runOptions_.SetTerminate();
   }
 
@@ -169,7 +229,12 @@ DEFINE_METHOD(InferenceSessionHostObject::run) {
 }
 
 DEFINE_METHOD(InferenceSessionHostObject::dispose) {
+  // Release the session first: ONNX Runtime may still call the read callback while it exists.
   session_.reset();
+  if (epContextDataRead_) {
+    epContextDataRead_->invalidate();
+    epContextDataRead_.reset();
+  }
   return Value::undefined();
 }
 

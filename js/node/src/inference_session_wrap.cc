@@ -4,13 +4,187 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "common.h"
+#include "ep_context_data_read_helper.h"
 #include "inference_session_wrap.h"
 #include "ort_instance_data.h"
 #include "ort_singleton_data.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
+
+/**
+ * LoadModelWorker constructs the native Ort::Session on a libuv worker thread.
+ *
+ * Constructing the session on a worker thread keeps the JavaScript event loop available, which is a
+ * requirement for `sessionOptions.epContextDataRead`: ONNX Runtime calls that callback while the session
+ * is being created and the call has to be marshalled back to the JavaScript thread.
+ *
+ * The worker owns everything the native constructor needs, including references to the JavaScript values
+ * that back the model path/buffer and the session options, so that they stay alive until it completes.
+ */
+class LoadModelWorker : public Napi::AsyncWorker {
+ public:
+  LoadModelWorker(Napi::Env env, InferenceSessionWrap& wrap, const Napi::Object self, const Napi::Object options,
+                  Ort::SessionOptions&& sessionOptions,
+                  std::shared_ptr<EpContextDataReadState> epContextDataReadState,
+                  std::vector<std::vector<char>>&& externalDataBuffers)
+      : Napi::AsyncWorker{env, "onnxruntime.InferenceSession.loadModel"},
+        wrap_{wrap},
+        selfRef_{Napi::Persistent(self)},
+        optionsRef_{Napi::Persistent(options)},
+        externalDataBuffers_{std::move(externalDataBuffers)},
+        sessionOptions_{std::move(sessionOptions)},
+        epContextDataReadState_{std::move(epContextDataReadState)},
+        deferred_{Napi::Promise::Deferred::New(env)} {
+    // The ORT singleton must not be destroyed by an environment cleanup hook while the worker thread
+    // is still using it.
+    OrtSingletonData::RetainOrtObjects();
+  }
+
+  ~LoadModelWorker() override {
+    // Give up the ORT objects before the reference that keeps the ORT singleton alive.
+    ReleaseNativeSession();
+    OrtSingletonData::ReleaseOrtObjects();
+  }
+
+  // Keep the model path alive for the duration of the native call.
+  void SetModelPath(std::basic_string<ORTCHAR_T> modelPath) { modelPath_ = std::move(modelPath); }
+
+  // Copy the model before yielding to JavaScript. A persistent reference does not pin an ArrayBuffer's
+  // backing store, which can be detached or transferred while the worker is running.
+  void SetModelBuffer(Napi::ArrayBuffer buffer, int64_t byteOffset, int64_t byteLength) {
+    const size_t bufferLength = buffer.ByteLength();
+    if (byteOffset < 0 || byteLength < 0 || static_cast<uint64_t>(byteOffset) > bufferLength ||
+        static_cast<uint64_t>(byteLength) > bufferLength - static_cast<size_t>(byteOffset)) {
+      throw Napi::RangeError::New(buffer.Env(), "Model buffer offset or length is out of range.");
+    }
+
+    modelDataLength_ = static_cast<size_t>(byteLength);
+    if (modelDataLength_ != 0) {
+      const auto* data = static_cast<const uint8_t*>(buffer.Data()) + static_cast<size_t>(byteOffset);
+      modelDataStorage_.assign(data, data + modelDataLength_);
+      modelData_ = modelDataStorage_.data();
+    }
+    useModelBuffer_ = true;
+  }
+
+  Napi::Promise Promise() const { return deferred_.Promise(); }
+
+ protected:
+  void Execute() override {
+    try {
+      auto* ortObjects = OrtSingletonData::GetOrtObjects();
+      if (ortObjects == nullptr) {
+        SetError("ONNX Runtime is not initialized.");
+        return;
+      }
+
+      if (useModelBuffer_) {
+        session_ = std::make_unique<Ort::Session>(ortObjects->env, modelData_, modelDataLength_, sessionOptions_);
+      } else {
+        session_ = std::make_unique<Ort::Session>(ortObjects->env, modelPath_.c_str(), sessionOptions_);
+      }
+
+      // cache input/output names and types
+      Ort::AllocatorWithDefaultOptions allocator;
+
+      size_t count = session_->GetInputCount();
+      inputNames_.reserve(count);
+      inputTypes_.reserve(count);
+      for (size_t i = 0; i < count; i++) {
+        auto inputName = session_->GetInputNameAllocated(i, allocator);
+        inputNames_.emplace_back(inputName.get());
+        inputTypes_.push_back(session_->GetInputTypeInfo(i));
+      }
+
+      count = session_->GetOutputCount();
+      outputNames_.reserve(count);
+      outputTypes_.reserve(count);
+      for (size_t i = 0; i < count; i++) {
+        auto outputName = session_->GetOutputNameAllocated(i, allocator);
+        outputNames_.emplace_back(outputName.get());
+        outputTypes_.push_back(session_->GetOutputTypeInfo(i));
+      }
+    } catch (std::exception const& e) {
+      ReleaseNativeSession();
+      SetError(e.what());
+    } catch (...) {
+      ReleaseNativeSession();
+      SetError("Failed to create the inference session.");
+    }
+  }
+
+  void OnOK() override {
+    Napi::Env env = Env();
+    Napi::HandleScope scope{env};
+
+    try {
+      wrap_.AdoptLoadedSession(std::move(session_), std::move(inputNames_), std::move(inputTypes_),
+                               std::move(outputNames_), std::move(outputTypes_), optionsRef_.Value());
+    } catch (Napi::Error const& e) {
+      ReleaseNativeSession();
+      wrap_.ResetAfterFailedLoad();
+      deferred_.Reject(e.Value());
+      return;
+    } catch (std::exception const& e) {
+      ReleaseNativeSession();
+      wrap_.ResetAfterFailedLoad();
+      deferred_.Reject(Napi::Error::New(env, e.what()).Value());
+      return;
+    }
+
+    deferred_.Resolve(env.Undefined());
+  }
+
+  void OnError(const Napi::Error& e) override {
+    Napi::Env env = Env();
+    Napi::HandleScope scope{env};
+
+    // The native session is released before the callback state that it can call into.
+    ReleaseNativeSession();
+    wrap_.ResetAfterFailedLoad();
+    deferred_.Reject(e.Value());
+  }
+
+ private:
+  void ReleaseNativeSession() noexcept {
+    inputTypes_.clear();
+    outputTypes_.clear();
+    session_.reset(nullptr);
+  }
+
+  InferenceSessionWrap& wrap_;
+
+  // Keeps the wrapper object and options object alive until the worker completes.
+  Napi::ObjectReference selfRef_;
+  Napi::ObjectReference optionsRef_;
+
+  // Owns every external initializer backing store referenced by sessionOptions_.
+  std::vector<std::vector<char>> externalDataBuffers_;
+  Ort::SessionOptions sessionOptions_;
+
+  // Strong snapshot of the callback state: it must outlive the native session under construction.
+  // Declared before `session_` so that the session is destroyed first.
+  std::shared_ptr<EpContextDataReadState> epContextDataReadState_;
+
+  std::basic_string<ORTCHAR_T> modelPath_;
+  bool useModelBuffer_ = false;
+  void* modelData_ = nullptr;
+  size_t modelDataLength_ = 0;
+  std::vector<uint8_t> modelDataStorage_;
+
+  std::unique_ptr<Ort::Session> session_;
+  std::vector<std::string> inputNames_;
+  std::vector<Ort::TypeInfo> inputTypes_;
+  std::vector<std::string> outputNames_;
+  std::vector<Ort::TypeInfo> outputTypes_;
+
+  Napi::Promise::Deferred deferred_;
+};
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
@@ -55,7 +229,11 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
-    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr) {}
+    : Napi::ObjectWrap<InferenceSessionWrap>(info),
+      initialized_(false),
+      loading_(false),
+      disposed_(false),
+      session_(nullptr) {}
 
 InferenceSessionWrap::~InferenceSessionWrap() {
   // If the ORT singleton has already been destroyed (e.g. during process shutdown when the
@@ -70,81 +248,127 @@ InferenceSessionWrap::~InferenceSessionWrap() {
     }
     (void)ioBinding_.release();
     (void)session_.release();
+  } else {
+    ioBinding_.reset(nullptr);
+    session_.reset(nullptr);
+  }
+
+  // The native session is gone, so the callback state can no longer be reached from ONNX Runtime.
+  ReleaseEpContextDataReadState();
+}
+
+void InferenceSessionWrap::AdoptLoadedSession(std::unique_ptr<Ort::Session> session,
+                                              std::vector<std::string> inputNames,
+                                              std::vector<Ort::TypeInfo> inputTypes,
+                                              std::vector<std::string> outputNames,
+                                              std::vector<Ort::TypeInfo> outputTypes, const Napi::Object options) {
+  this->session_ = std::move(session);
+  this->inputNames_ = std::move(inputNames);
+  this->inputTypes_ = std::move(inputTypes);
+  this->outputNames_ = std::move(outputNames);
+  this->outputTypes_ = std::move(outputTypes);
+
+  // cache preferred output locations
+  ParsePreferredOutputLocations(options, outputNames_, preferredOutputLocations_);
+  if (preferredOutputLocations_.size() > 0) {
+    ioBinding_ = std::make_unique<Ort::IoBinding>(*session_);
+  }
+
+  this->loading_ = false;
+  this->initialized_ = true;
+}
+
+void InferenceSessionWrap::ResetAfterFailedLoad() noexcept {
+  this->loading_ = false;
+  this->initialized_ = false;
+
+  this->inputNames_.clear();
+  this->outputNames_.clear();
+  this->preferredOutputLocations_.clear();
+
+  if (OrtSingletonData::GetOrtObjects()) {
+    this->inputTypes_.clear();
+    this->outputTypes_.clear();
+    this->ioBinding_.reset(nullptr);
+    this->session_.reset(nullptr);
+  }
+
+  // Deterministic teardown: the callback state is released only after the native session is gone.
+  ReleaseEpContextDataReadState();
+}
+
+void InferenceSessionWrap::ReleaseEpContextDataReadState() noexcept {
+  if (this->epContextDataReadState_) {
+    this->epContextDataReadState_->Release();
+    this->epContextDataReadState_.reset();
   }
 }
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  Napi::HandleScope scope(env);
+  Napi::EscapableHandleScope scope(env);
 
   ORT_NAPI_THROW_ERROR_IF(this->initialized_, env, "Model already loaded. Cannot load model multiple times.");
+  ORT_NAPI_THROW_ERROR_IF(this->loading_, env, "Model is being loaded. Cannot load model multiple times.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   size_t argsLength = info.Length();
   ORT_NAPI_THROW_TYPEERROR_IF(argsLength == 0, env, "Expect argument: model file path or buffer.");
 
+  const bool isModelPath = argsLength == 2 && info[0].IsString() && info[1].IsObject();
+  const bool isModelBuffer = argsLength == 4 && info[0].IsArrayBuffer() && info[1].IsNumber() &&
+                             info[2].IsNumber() && info[3].IsObject();
+  ORT_NAPI_THROW_TYPEERROR_IF(
+      !isModelPath && !isModelBuffer, env,
+      "Invalid argument: args has to be either (modelPath, options) or (buffer, byteOffset, byteLength, options).");
+
+  auto options = info[argsLength - 1].As<Napi::Object>();
+
+  std::unique_ptr<LoadModelWorker> worker;
   try {
     Ort::SessionOptions sessionOptions;
+    std::vector<std::vector<char>> externalDataBuffers;
+    ParseSessionOptions(options, sessionOptions, externalDataBuffers);
+    ParseEpContextDataReadOptions(options, sessionOptions, this->epContextDataReadState_);
 
-    if (argsLength == 2 && info[0].IsString() && info[1].IsObject()) {
-      Napi::String value = info[0].As<Napi::String>();
+    worker = std::make_unique<LoadModelWorker>(env, *this, info.This().As<Napi::Object>(), options,
+                                               std::move(sessionOptions), this->epContextDataReadState_,
+                                               std::move(externalDataBuffers));
 
-      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
+    if (isModelPath) {
+      auto value = info[0].As<Napi::String>();
 #ifdef _WIN32
-                                            reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
+      auto modelPath = value.Utf16Value();
+      worker->SetModelPath(std::wstring{modelPath.begin(), modelPath.end()});
 #else
-                                            value.Utf8Value().c_str(),
+      worker->SetModelPath(value.Utf8Value());
 #endif
-                                            sessionOptions));
-
-    } else if (argsLength == 4 && info[0].IsArrayBuffer() && info[1].IsNumber() && info[2].IsNumber() &&
-               info[3].IsObject()) {
-      void* buffer = info[0].As<Napi::ArrayBuffer>().Data();
-      int64_t bytesOffset = info[1].As<Napi::Number>().Int64Value();
-      int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
-
-      ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
-                                            reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
-                                            sessionOptions));
     } else {
-      ORT_NAPI_THROW_TYPEERROR(
-          env,
-          "Invalid argument: args has to be either (modelPath, options) or (buffer, byteOffset, byteLength, options).");
-    }
-
-    // cache input/output names and types
-    Ort::AllocatorWithDefaultOptions allocator;
-
-    size_t count = session_->GetInputCount();
-    inputNames_.reserve(count);
-    for (size_t i = 0; i < count; i++) {
-      auto input_name = session_->GetInputNameAllocated(i, allocator);
-      inputNames_.emplace_back(input_name.get());
-      inputTypes_.push_back(session_->GetInputTypeInfo(i));
-    }
-
-    count = session_->GetOutputCount();
-    outputNames_.reserve(count);
-    for (size_t i = 0; i < count; i++) {
-      auto output_name = session_->GetOutputNameAllocated(i, allocator);
-      outputNames_.emplace_back(output_name.get());
-      outputTypes_.push_back(session_->GetOutputTypeInfo(i));
-    }
-
-    // cache preferred output locations
-    ParsePreferredOutputLocations(info[argsLength - 1].As<Napi::Object>(), outputNames_, preferredOutputLocations_);
-    if (preferredOutputLocations_.size() > 0) {
-      ioBinding_ = std::make_unique<Ort::IoBinding>(*session_);
+      worker->SetModelBuffer(info[0].As<Napi::ArrayBuffer>(), info[1].As<Napi::Number>().Int64Value(),
+                             info[2].As<Napi::Number>().Int64Value());
     }
   } catch (Napi::Error const& e) {
+    worker.reset(nullptr);
+    ReleaseEpContextDataReadState();
     throw e;
   } catch (std::exception const& e) {
+    worker.reset(nullptr);
+    ReleaseEpContextDataReadState();
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
-  this->initialized_ = true;
-  return env.Undefined();
+
+  this->loading_ = true;
+  auto promise = worker->Promise();
+  // Napi::AsyncWorker deletes itself once it completed.
+  try {
+    worker->Queue();
+    worker.release();
+  } catch (...) {
+    this->loading_ = false;
+    ReleaseEpContextDataReadState();
+    throw;
+  }
+  return scope.Escape(promise);
 }
 
 Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
@@ -282,6 +506,9 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
 
   this->ioBinding_.reset(nullptr);
   this->session_.reset(nullptr);
+
+  // Deterministic teardown: the native session is released before the state it can call into.
+  this->ReleaseEpContextDataReadState();
 
   this->disposed_ = true;
   return env.Undefined();
