@@ -112,6 +112,16 @@ class CutlassFpAIntBGemmRunnerInterface {
 // overflow; on overflow this returns std::nullopt instead of throwing.
 inline std::optional<size_t> ComputeFpAIntBGemmWorkspaceSize(int m, int n, int /*k*/, int sm,
                                                              int multi_processor_count) {
+  // Empty output never reaches tactic selection or workspace allocation. Handle it before the
+  // architecture-specific formulas: the native SM90 formula otherwise depends only on the SM count
+  // and would return a large positive estimate. Negative dimensions are unknown/invalid, not empty.
+  if (m < 0 || n < 0) {
+    return std::nullopt;
+  }
+  if (m == 0 || n == 0) {
+    return 0;
+  }
+
   try {
     using Interface = CutlassFpAIntBGemmRunnerInterface;
 #ifndef EXCLUDE_SM_90

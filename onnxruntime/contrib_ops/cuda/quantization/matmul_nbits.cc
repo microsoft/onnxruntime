@@ -181,35 +181,17 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
   return true;
 }
 
-// Product of all leading (non-K) dimensions of input A, i.e. the GEMM "m". Returns nullopt when the
-// shape is missing or any leading dimension is not statically known (dynamic-shape fallback).
-static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
-  if (input_a == nullptr) {
-    return std::nullopt;
-  }
-  const ONNX_NAMESPACE::TensorShapeProto* shape = input_a->Shape();
-  if (shape == nullptr || shape->dim_size() < 1) {
-    return std::nullopt;
-  }
-  SafeInt<int64_t> m(1);
-  // All dims except the last (which is K).
-  for (int i = 0; i + 1 < shape->dim_size(); ++i) {
-    const auto& dim = shape->dim(i);
-    if (!dim.has_dim_value()) {
-      return std::nullopt;
-    }
-    try {
-      m *= dim.dim_value();
-    } catch (const OnnxRuntimeException&) {
-      return std::nullopt;
-    }
-  }
-  return static_cast<int64_t>(m);
-}
-
-static std::optional<int64_t> LeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
+std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
   if (input_a_shape.empty()) {
     return std::nullopt;
+  }
+
+  // Establish a known-empty output before rejecting unknown dimensions or doing arithmetic.
+  // This also avoids reporting overflow for a huge prefix whose later leading dimension is zero.
+  for (size_t i = 0; i + 1 < input_a_shape.size(); ++i) {
+    if (input_a_shape[i] == 0) {
+      return 0;
+    }
   }
 
   SafeInt<int64_t> m(1);
@@ -225,6 +207,30 @@ static std::optional<int64_t> LeadingDimProduct(gsl::span<const int64_t> input_a
   }
 
   return static_cast<int64_t>(m);
+}
+
+// Product of all leading (non-K) dimensions of input A, i.e. the GEMM "m". Returns nullopt when the
+// shape is missing or any non-zero leading dimension is not statically known.
+static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
+  if (input_a == nullptr) {
+    return std::nullopt;
+  }
+  const ONNX_NAMESPACE::TensorShapeProto* shape = input_a->Shape();
+  if (shape == nullptr || shape->dim_size() < 1) {
+    return std::nullopt;
+  }
+
+  TensorShapeVector dimensions;
+  dimensions.reserve(static_cast<size_t>(shape->dim_size()));
+  for (const auto& dimension : shape->dim()) {
+    if (!dimension.has_dim_value()) {
+      dimensions.push_back(-1);
+    } else {
+      dimensions.push_back(dimension.dim_value());
+    }
+  }
+
+  return ComputeMatMulNBitsLeadingDimProduct(dimensions);
 }
 
 static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
@@ -321,7 +327,8 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaD
 
 std::optional<size_t> EstimateMatMulNBitsWorkspace(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
-  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, LeadingDimProduct(input_a_shape));
+  return EstimateMatMulNBitsWorkspaceImpl(
+      node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape));
 }
 
 template <typename T>
@@ -618,55 +625,45 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 #endif
 
 #if USE_FPA_INTB_GEMM && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the same constructed
-// runner state and effective arch that ComputeInternal() uses, so the returned size equals the real
-// runtime request when the queried input-A shape equals the runtime input shape. Returns empty
-// (dynamic fallback) when the node does not take the fpA_intB CUTLASS-GEMM path, when the leading
-// (m) dimension of input A is not statically known, or when the size formula overflows.
+// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the constructed runner
+// state and effective arch from ComputeInternal(). The size is exact for its CUTLASS GEMM branch.
+// Runtime may instead select the CUDA GEMV tactic, which requests no workspace; in that case this is
+// a safe upper bound. Unknown/negative dimensions and arithmetic overflow use dynamic fallback.
+// The shared formula returns zero for empty output; a zero-sized requirement is omitted.
 template <typename T>
 Status MatMulNBits<T>::DeclareWorkspaceRequirements(
-    gsl::span<const TensorShape> input_shapes,
+    gsl::span<const WorkspaceInputShape> input_shapes,
     /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
   if (!has_fpA_intB_gemm_ || weightOnlyGemmRunner_ == nullptr) {
     return Status::OK();
   }
-  if (input_shapes.empty()) {
-    return Status::OK();
-  }
-  // input_shapes[0] is input A, the same tensor as ctx->Input(0) in Compute(). m = product of all
-  // its dims except the last (K). A symbolic/unknown dim (negative) triggers the dynamic fallback.
-  const TensorShape& a_shape = input_shapes[0];
-  const size_t rank = a_shape.NumDimensions();
-  if (rank < 1) {
-    return Status::OK();
-  }
-  int64_t m64 = 1;
-  try {
-    SafeInt<int64_t> m(1);
-    for (size_t i = 0; i + 1 < rank; ++i) {
-      const int64_t d = a_shape[i];
-      if (d < 0) {
-        return Status::OK();
-      }
-      m *= d;
-    }
-    m64 = static_cast<int64_t>(m);
-  } catch (const OnnxRuntimeException&) {
+
+  // Input A is the only input needed for this estimate. Missing or unknown unrelated optional
+  // inputs do not suppress declaration.
+  const TensorShape* a_shape = GetWorkspaceInputShape(input_shapes, 0).GetShape();
+  if (a_shape == nullptr) {
     return Status::OK();
   }
 
-  // Use the same packing/workspace architecture rule as the runtime request.
+  // Input A is the same tensor as ctx->Input(0) in Compute(). m = product of all its dims except
+  // the last (K), which comes from the kernel attribute and may remain unknown here.
+  const std::optional<int64_t> m64 =
+      ComputeMatMulNBitsLeadingDimProduct(a_shape->GetDims());
+  if (!m64.has_value()) {
+    return Status::OK();
+  }
+  // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
   const int effective_sm = FpAIntBPackingSmForKernel();
   std::optional<size_t> ws;
   try {
     ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(m64), SafeInt<int>(N_), SafeInt<int>(K_),
+        SafeInt<int>(*m64), SafeInt<int>(N_), SafeInt<int>(K_),
         effective_sm, this->GetDeviceProp().multiProcessorCount);
   } catch (const OnnxRuntimeException&) {
     return Status::OK();
   }
-  if (!ws.has_value()) {
+  if (!ws.has_value() || *ws == 0) {
     return Status::OK();
   }
   requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
@@ -676,6 +673,12 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
+#if USE_FPA_INTB_GEMM
+  // TEST verification hook only. Record every invocation, including validation failures, empty
+  // outputs, and GEMV/non-fpA_intB paths, so the value always describes the latest call.
+  last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
+#endif
+
   if constexpr (std::is_same_v<T, BFloat16>) {
     if (sm_ < 80) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -830,11 +833,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
+        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
         // TEST verification hook only. Relaxed ordering is sufficient: the pilot's single-threaded
         // tests only read this after the compute call has returned, so no cross-thread happens-before
         // relationship needs to be established here.
         last_compute_workspace_bytes_.store(workspace_size, std::memory_order_relaxed);
-        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
 
         weightOnlyGemmRunner_->gemm(
             a_data,

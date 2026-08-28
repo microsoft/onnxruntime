@@ -13,6 +13,7 @@
 #include "core/framework/max_shape_inference.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/node_shape_resolver.h"
+#include "core/framework/workspace_input_shape.h"
 #include "core/framework/workspace_requirement.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
@@ -218,9 +219,135 @@ TEST(MaxShapeOverride, ResolveNodeInputShapesAcceptsStaticZeroExtent) {
   MaxShapeInferenceResult inferred_shapes;
   const Node& identity = *model.MainGraph().Nodes().begin();
   const auto resolved = ResolveNodeInputShapes(identity, &model.MainGraph(), inferred_shapes);
-  ASSERT_TRUE(resolved.has_value());
-  ASSERT_EQ(resolved->size(), 1u);
-  EXPECT_EQ((*resolved)[0], TensorShape({0, 4}));
+  ASSERT_EQ(resolved.size(), 1u);
+  EXPECT_EQ(resolved[0].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(resolved[0].GetShape(), nullptr);
+  EXPECT_EQ(*resolved[0].GetShape(), TensorShape({0, 4}));
+}
+
+TEST(MaxShapeOverride, ResolveNodeInputShapesAcceptsRankZeroScalar) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("scalar", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+  NodeArg* input = builder.MakeInput<float>(std::vector<int64_t>{}, "input");
+  NodeArg* output = builder.MakeOutput<float>(std::nullopt);
+  builder.AddNode("Identity", {input}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  MaxShapeInferenceResult inferred_shapes;
+  const Node& identity = *model.MainGraph().Nodes().begin();
+  const auto resolved = ResolveNodeInputShapes(identity, &model.MainGraph(), inferred_shapes);
+  ASSERT_EQ(resolved.size(), 1u);
+  EXPECT_EQ(resolved[0].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(resolved[0].GetShape(), nullptr);
+  EXPECT_EQ(resolved[0].GetShape()->NumDimensions(), 0u);
+}
+
+TEST(MaxShapeOverride, ResolveNodeInputShapesPreservesInternalHoles) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("internal_holes", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeArg* first = builder.MakeInput<float>(std::vector<int64_t>{2, 3}, "first");
+  NodeArg* after_hole = builder.MakeInput<float>(std::vector<int64_t>{5}, "after_hole");
+  NodeArg* explicit_missing = builder.MakeOptionalTensor();
+  const std::vector<NodeArg*> inputs{first, nullptr, after_hole, explicit_missing};
+  const std::vector<NodeArg*> outputs;
+  // Graph::AddNode dereferences every input argument and cannot accept a nullptr hole. Construct
+  // Node directly to verify that the resolver preserves the positional layout in Node::InputDefs().
+  Node node("shape_probe", "ShapeProbe", "", inputs, outputs, nullptr, kOnnxDomain);
+
+  MaxShapeInferenceResult inferred_shapes;
+  const auto resolved = ResolveNodeInputShapes(node, &graph, inferred_shapes);
+  ASSERT_EQ(resolved.size(), inputs.size());
+  EXPECT_EQ(resolved[0].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  EXPECT_EQ(resolved[1].GetState(), WorkspaceInputShapeState::Missing);
+  EXPECT_EQ(resolved[2].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(resolved[2].GetShape(), nullptr);
+  EXPECT_EQ(*resolved[2].GetShape(), TensorShape({5}));
+  EXPECT_EQ(resolved[3].GetState(), WorkspaceInputShapeState::Missing);
+}
+
+TEST(MaxShapeOverride, MissingTrailingInputAndOutOfRangeAccessorAreMissing) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("trailing_missing", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeArg* present = builder.MakeInput<float>(std::vector<int64_t>{2}, "present");
+  NodeArg* trailing_missing = builder.MakeOptionalTensor();
+  const std::vector<NodeArg*> inputs{present, trailing_missing};
+  const std::vector<NodeArg*> outputs;
+  Node& node = graph.AddNode("shape_probe", "ShapeProbe", "", inputs, outputs);
+
+  MaxShapeInferenceResult inferred_shapes;
+  const auto resolved = ResolveNodeInputShapes(node, &graph, inferred_shapes);
+  ASSERT_EQ(resolved.size(), inputs.size());
+  EXPECT_EQ(GetWorkspaceInputShape(resolved, 1).GetState(), WorkspaceInputShapeState::Missing);
+  EXPECT_EQ(GetWorkspaceInputShape(resolved, 2).GetState(), WorkspaceInputShapeState::Missing);
+  EXPECT_EQ(GetWorkspaceInputShape(resolved, 100).GetState(), WorkspaceInputShapeState::Missing);
+}
+
+TEST(MaxShapeOverride, ResolveNodeInputShapesDistinguishesAbsentMetadataFromPartialShapes) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("partial_shapes", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeArg* no_shape = builder.MakeInput<float>(std::nullopt, "no_shape");
+  NodeArg* symbolic = builder.MakeSymbolicInput<float>({std::string{"batch"}, int64_t{4}});
+  NodeArg* negative = builder.MakeInput<float>(std::nullopt, "negative");
+  ONNX_NAMESPACE::TensorShapeProto negative_shape;
+  negative_shape.add_dim()->set_dim_value(-2);
+  negative_shape.add_dim()->set_dim_value(4);
+  negative->SetShape(negative_shape);
+  const std::vector<NodeArg*> inputs{no_shape, symbolic, negative};
+  const std::vector<NodeArg*> outputs;
+  Node& node = graph.AddNode("shape_probe", "ShapeProbe", "", inputs, outputs);
+
+  MaxShapeInferenceResult inferred_shapes;
+  const auto resolved = ResolveNodeInputShapes(node, &graph, inferred_shapes);
+  ASSERT_EQ(resolved.size(), inputs.size());
+  EXPECT_EQ(resolved[0].GetState(), WorkspaceInputShapeState::PresentWithoutShape);
+  EXPECT_EQ(resolved[0].GetShape(), nullptr);
+
+  EXPECT_EQ(resolved[1].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(resolved[1].GetShape(), nullptr);
+  EXPECT_EQ(*resolved[1].GetShape(), TensorShape({-1, 4}));
+
+  EXPECT_EQ(resolved[2].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(resolved[2].GetShape(), nullptr);
+  EXPECT_EQ(*resolved[2].GetShape(), TensorShape({-1, 4}));
+}
+
+TEST(MaxShapeOverride, ResolveNodeInputShapesUsesMaxShapeOnlyForMatchingGraphIdentity) {
+  auto model = MakeDynamicIdentityModel();
+  Graph& graph = model->MainGraph();
+  MaxShapeOverrideMap overrides;
+  overrides.emplace("input", TensorShape({8, 4}));
+  MaxShapeInferenceResult inferred_shapes;
+  ASSERT_STATUS_OK(InferMaxShapes(graph, overrides, inferred_shapes));
+
+  const Node& identity = *graph.Nodes().begin();
+  const auto matching_graph_shapes = ResolveNodeInputShapes(identity, &graph, inferred_shapes);
+  ASSERT_EQ(matching_graph_shapes.size(), 1u);
+  EXPECT_EQ(matching_graph_shapes[0].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(matching_graph_shapes[0].GetShape(), nullptr);
+  EXPECT_EQ(*matching_graph_shapes[0].GetShape(), TensorShape({8, 4}));
+
+  int other_graph_identity = 0;
+  const auto other_graph_shapes = ResolveNodeInputShapes(identity, &other_graph_identity, inferred_shapes);
+  ASSERT_EQ(other_graph_shapes.size(), 1u);
+  EXPECT_EQ(other_graph_shapes[0].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  ASSERT_NE(other_graph_shapes[0].GetShape(), nullptr);
+  EXPECT_EQ(*other_graph_shapes[0].GetShape(), TensorShape({-1, 4}));
 }
 
 TEST(MaxShapeOverride, InferRejectsUnknownInput) {
@@ -287,6 +414,21 @@ TEST(MaxShapeOverride, InferMatchesParallelControlFlowSubgraphsByStableIdentity)
   ASSERT_NE(shape_b, nullptr);
   EXPECT_EQ(*shape_a, TensorShape({8, 4}));
   EXPECT_EQ(*shape_b, TensorShape({16, 2}));
+}
+
+// ============================================================================
+// WorkspaceInputShape tests
+// ============================================================================
+
+TEST(WorkspaceInputShape, PresentShapeDeepCopiesExternalPartialDimensions) {
+  std::vector<int64_t> dimensions{2, -1};
+  const auto input_shape =
+      WorkspaceInputShape::PresentWithShape(TensorShape::FromExistingBuffer(dimensions));
+
+  dimensions[0] = 9;
+  dimensions[1] = 3;
+  ASSERT_NE(input_shape.GetShape(), nullptr);
+  EXPECT_EQ(*input_shape.GetShape(), TensorShape({2, -1}));
 }
 
 // ============================================================================
