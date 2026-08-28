@@ -69,6 +69,9 @@ struct BuildOptions {
   // Keep present_value as a graph output but also feed it to an Identity inside the graph. That
   // internal consumer expects BNSH and would silently receive BNHS.
   bool present_value_also_consumed_internally = false;
+  // Feed past_value through a value-layout Transpose from a BNHS graph input while leaving
+  // present_value as a plain BNSH graph output, i.e. a half-converted node.
+  bool partially_transformed = false;
 
   // Fill the past caches with a pattern that varies along both sequence_length and head_size, and
   // set the sequence lengths so the kernel actually reads them. Without this the caches are zero and
@@ -110,6 +113,18 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
           std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
       builder.AddNode("Identity", {past_value}, {forwarded});
       past_value = forwarded;
+    }
+
+    if (opts.partially_transformed) {
+      // Emulate a hand-edited model: past_value already arrives BNHS through a value-layout
+      // Transpose, while present_value below is left as a plain BNSH graph output. The original
+      // past_value graph input is left dangling, which is legal and irrelevant here.
+      NodeArg* bnhs_input = builder.MakeInput<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, kMaxSeq}, MLFloat16(0.0f), MLFloat16(0.0f));
+      NodeArg* bnsh = builder.MakeIntermediate<MLFloat16>(cache_shape);
+      Node& transpose = builder.AddNode("Transpose", {bnhs_input}, {bnsh});
+      transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+      past_value = bnsh;
     }
   }
 
@@ -588,31 +603,87 @@ TEST_F(GqaValueLayoutTransformerTest, SkipsWhenPresentValueIsNotAGraphOutput) {
 
 // Boundary NodeArgs are shared. Swapping a shared past_value's declared shape while rewiring only
 // one of its consumers would leave the other reading a BNHS tensor as BNSH, and processing the
-// second node would swap the declared shape back to BNSH and undo the first.
-TEST_F(GqaValueLayoutTransformerTest, SkipsWhenPastValueIsSharedByTwoGqaNodes) {
+// second node would swap the declared shape back to BNSH and undo the first. The boundary is
+// application visible, so the option cannot be honored and initialization must fail.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPastValueSharedByTwoGqaNodes) {
   BuildOptions opts;
   opts.second_gqa_sharing_past_kv = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
 
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_, MakeTransformer(),
-      TransformerLevel::Level1, /*steps=*/1,
-      [](Graph& graph) { return ExpectNoTransposes(graph, /*expected_gqa=*/2); },
-      [](Graph& graph) { return ExpectNoTransposes(graph, /*expected_gqa=*/2); }));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires this node to be its only consumer");
 }
 
 // An internal consumer of the present_value graph output expects BNSH, so retargeting the GQA
 // output through a Transpose would silently hand it BNHS.
-TEST_F(GqaValueLayoutTransformerTest, SkipsWhenPresentValueIsAlsoConsumedInternally) {
+TEST_F(GqaValueLayoutTransformerTest, RejectsPresentValueAlsoConsumedInternally) {
   BuildOptions opts;
   opts.present_value_also_consumed_internally = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
 
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_, MakeTransformer(),
-      TransformerLevel::Level1, /*steps=*/1,
-      [](Graph& graph) { return ExpectNoTransposes(graph); },
-      [](Graph& graph) { return ExpectNoTransposes(graph); }));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires it to have no internal consumers");
+}
+
+// A rejection must leave the graph exactly as it was loaded. Each model here holds two independent
+// GQA nodes, one convertible and one with an internally consumed present_value that fails
+// validation. A transformer that converted as it walked the graph would rewire the convertible node
+// before reaching the other one, leaving a half-converted, unresolved graph behind.
+//
+// Both build orders are covered because GetNodesInTopologicalOrder() does not necessarily follow
+// insertion order for independent nodes: whichever way it sorts, one of these two models presents
+// the convertible node first and so catches a transformer that mutates as it validates.
+TEST_F(GqaValueLayoutTransformerTest, LeavesTheGraphUntouchedWhenValidationFails) {
+  for (const bool convertible_first : {true, false}) {
+    SCOPED_TRACE(convertible_first ? "convertible node built first" : "invalid node built first");
+
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 21;
+    domain_to_version[kMSDomain] = 1;
+
+    Model model("GqaValueLayoutValidationFailure", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    Graph& graph = model.MainGraph();
+
+    BuildOptions invalid;
+    invalid.present_value_also_consumed_internally = true;
+
+    ModelTestBuilder helper(graph);
+    if (convertible_first) {
+      BuildGqaModel(helper, BuildOptions{});
+      BuildGqaModel(helper, invalid);
+    } else {
+      BuildGqaModel(helper, invalid);
+      BuildGqaModel(helper, BuildOptions{});
+    }
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    GqaValueLayoutTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(transformer.Apply(graph, modified, *logger_),
+                                        "requires it to have no internal consumers");
+
+    EXPECT_FALSE(modified);
+    ASSERT_STATUS_OK(ExpectNoTransposes(graph, /*expected_gqa=*/2));
+  }
+}
+
+// The transformer converts both operands together, so a node with only one side converted means the
+// graph was edited by hand. Converting the rest cannot repair it, so fail rather than proceed.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPartiallyTransformedNode) {
+  BuildOptions opts;
+  opts.partially_transformed = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "applied to only one of past_value / present_value");
 }
 
 TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCache) {

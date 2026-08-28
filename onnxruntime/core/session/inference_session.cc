@@ -2337,6 +2337,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                SessionState& session_state,
                                const SessionOptions& sess_options,
                                const logging::Logger& logger) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // The BNHS GroupQueryAttention Value layout is applied by TransformGraph, which the ORT format
   // load path does not run. Silently ignoring the option would leave the session expecting BNSH
   // while the application supplies BNHS: with dynamic or coincidentally square cache dimensions
@@ -2348,6 +2349,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                 "Session option '", kOrtSessionOptionsGqaValueLayout, "' is not supported for ORT format models. ",
                 "Apply the Value layout transform when converting the model to ORT format and load it without "
                 "setting this option, or load the ONNX model instead.");
+#endif
 
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 

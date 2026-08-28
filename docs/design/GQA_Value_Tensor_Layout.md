@@ -1,7 +1,7 @@
 # BNHS Value layout for GroupQueryAttention
 
 Status: partially implemented (see [Sequencing](#8-sequencing))
-Last updated: 2026-08-15
+Last updated: 2026-08-27
 
 ## Motivation
 
@@ -37,7 +37,7 @@ correct, but slow (see [Fallback cost](#fallback-cost)).
 | Consumer | The EP compiler fuses the sequence into one op that reads BNHS V and aliases past/present to one buffer. |
 | Fallback | A non-fusing EP executes the transposes: correct, slow. Diagnosed by a warning, not an error. |
 | Scope of application | **Main graph only** (`graph_level == 0`). Subgraphs (BeamSearch decoder body, Loop) are out of scope — the boundary there is not the application's. |
-| Precondition | `past_value` must be a graph input and `present_value` a graph output, and this node must be the boundary's only user. Otherwise warn and skip the node. |
+| Precondition | A cache that is not application visible (`past_value` not a graph input, or `present_value` not a graph output) is skipped with a warning. A cache that *is* application visible but cannot be converted fails session initialization — see 3.5. |
 
 GQA operand indices, from [`docs/ContribOperators.md`](../ContribOperators.md#commicrosoftgroupqueryattention):
 `past_value` = input **4**, `present_value` = output **2**.
@@ -102,7 +102,6 @@ class GqaValueLayoutTransformer : public GraphTransformer {
  public:
   GqaValueLayoutTransformer() noexcept
       : GraphTransformer("GqaValueLayoutTransformer") {}
-  bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
   Status ApplyImpl(Graph&, bool& modified, int graph_level, const logging::Logger&) const override;
@@ -111,48 +110,51 @@ class GqaValueLayoutTransformer : public GraphTransformer {
 
 It is constructed only when the layout is BNHS, so it needs no configuration.
 
+`ShouldOnlyApplyOnce()` is deliberately **not** overridden. Re-running has to be safe regardless,
+because a model saved with `session.optimized_model_filepath` already carries the transform and may
+be reloaded into a new session with the option still set — a fresh `Apply` that the override would not
+guard. Section 3.4 is what provides that guarantee, and leaving the default keeps it under test.
+
 ### 3.2 Algorithm
 
 ```
 ApplyImpl(graph, modified, graph_level, logger):
   if graph_level != 0: return OK          // main graph only; do NOT Recurse
 
+  // pass 1: classify every node, mutating nothing (3.6)
+  nodes_to_transform = []
   for node in graph.Nodes():
     if node.OpType() != "GroupQueryAttention" or node.Domain() != kMSDomain: continue
-    if AlreadyTransformed(graph, node): continue                      // 3.4
-    ORT_RETURN_IF_ERROR(ValidateNode(graph, node))                    // 3.5
+    ORT_RETURN_IF_ERROR(ClassifyNode(graph, node, logger, out transform))   // 3.4, 3.5
+    if transform: nodes_to_transform.append(node.Index())
 
-    inputs  = node.MutableInputDefs()
-    outputs = node.MutableOutputDefs()
+  // pass 2: rewire. TransformNode() has no failure modes.
+  for node_index in nodes_to_transform:
+    TransformNode(graph, *graph.GetNode(node_index))
+    modified = true
 
-    // ---- input side ----
-    if inputs.size() > 4 and inputs[4]->Exists():
-      NodeArg* boundary = inputs[4]                    // graph input, declared BNSH today
-      NodeArg& bnsh = graph.GetOrCreateNodeArg(
-          graph.GenerateNodeArgName(boundary->Name() + "_bnsh"), boundary->TypeAsProto());
-      Node& tp = graph.AddNode(
-          graph.GenerateNodeName(node.Name() + "/past_value_bnhs_to_bnsh"),
-          "Transpose", "GQA past_value BNHS->BNSH",
-          {boundary}, {&bnsh}, nullptr, kOnnxDomain);
-      tp.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
-      graph_utils::ReplaceNodeInput(node, 4, bnsh);
-      SwapLastTwoDims(*boundary);        // graph input now declares BNHS
-      modified = true;
 
-    // ---- output side ----
-    if outputs.size() > 2 and outputs[2]->Exists():
-      NodeArg* boundary = outputs[2]                   // graph output, declared BNSH today
-      NodeArg& bnsh = graph.GetOrCreateNodeArg(
-          graph.GenerateNodeArgName(boundary->Name() + "_bnsh"), boundary->TypeAsProto());
-      outputs[2] = &bnsh;                              // retarget GQA output 2
-      Node& tp = graph.AddNode(
-          graph.GenerateNodeName(node.Name() + "/present_value_bnsh_to_bnhs"),
-          "Transpose", "GQA present_value BNSH->BNHS",
-          {&bnsh}, {boundary}, nullptr, kOnnxDomain);
-      tp.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
-      SwapLastTwoDims(*boundary);        // graph output now declares BNHS
-      modified = true;
+TransformNode(graph, node):
+  // ---- input side ----
+  if HasInput(node, 4):
+    NodeArg* boundary = node.MutableInputDefs()[4]    // graph input, declared BNSH today
+    NodeArg& bnsh = graph.GetOrCreateNodeArg(
+        graph.GenerateNodeArgName(boundary->Name() + "_bnsh"), boundary->TypeAsProto());
+    graph.AddNode(..., "Transpose", ..., {boundary}, {&bnsh}, ..., kOnnxDomain)
+        .AddAttribute("perm", {0, 1, 3, 2});
+    graph_utils::ReplaceNodeInput(node, 4, bnsh);
+    SwapLastTwoDims(*boundary);        // graph input now declares BNHS
 
+  // ---- output side ----
+  if HasOutput(node, 2):
+    NodeArg* boundary = node.MutableOutputDefs()[2]   // graph output, declared BNSH today
+    NodeArg& bnsh = graph.GetOrCreateNodeArg(
+        graph.GenerateNodeArgName(boundary->Name() + "_bnsh"), boundary->TypeAsProto());
+    node.MutableOutputDefs()[2] = &bnsh;              // retarget GQA output 2 first, so the
+                                                      // boundary never has two producers
+    graph.AddNode(..., "Transpose", ..., {&bnsh}, {boundary}, ..., kOnnxDomain)
+        .AddAttribute("perm", {0, 1, 3, 2});
+    SwapLastTwoDims(*boundary);        // graph output now declares BNHS
 ```
 
 On shapes: the **new** `_bnsh` NodeArgs inherit the original (BNSH) type and shape and need no
@@ -191,45 +193,79 @@ transposes and the BNHS boundary. Reloading it with the key still set would inse
 swap the boundary back to a BNSH declaration while the application still feeds BNHS — broken, and
 broken quietly.
 
-`AlreadyTransformed(graph, node)` returns true when input 4's producer is a `Transpose` with
-`perm == [0,1,3,2]` whose own input is a graph input, **or** output 2's sole consumer is such a
-Transpose producing a graph output.
+`GetValueLayoutState(graph, node)` classifies a node from the graph structure — not from a metadata
+marker, which does not survive the ORT-format round trip reliably. A Value operand counts as converted
+when input 4's producer is a `Transpose` with `perm == [0,1,3,2]` whose own input is a graph input, or
+when output 2's sole consumer is such a Transpose producing a graph output. The three states are:
 
-Detect this via graph structure rather than a metadata marker; a marker does not survive the
-ORT-format round trip reliably.
+| State | Meaning | `ApplyImpl` |
+|---|---|---|
+| `kNone` | no operand converted | convert |
+| `kFull` | **every operand this node has** is converted | skip, log at INFO |
+| `kPartial` | node has both operands, exactly one converted | error (see 3.5) |
 
-### 3.5 Validation
+`kFull` deliberately does not require both operands. A node may legitimately have only one: a
+prefill-only model has no `past_value`, and a model can omit the `present_value` output. For those,
+the one side present *is* the whole conversion. Requiring both would classify a correctly converted
+single-operand node as `kNone`, so reloading such a model with the option set would send it back
+through conversion; it would then be stopped only by the graph-input/graph-output check in 3.5, which
+would report the transformer's own internal `_bnsh` NodeArg as an application topology problem. The
+`kPartial` check is gated on the node holding *both* operands for the same reason, which is also what
+makes erroring on it safe.
 
-`ValidateNode` returns an **error** for:
+### 3.5 Scope of the option, and why the rest is an error
 
-- **4-bit KV cache with BNHS.** When `v_quant_type != "NONE" && kv_cache_bit_width == 4`, V is
-  `uint8` with two 4-bit values packed along `head_size`. A byte-wise `Transpose` cannot transpose
-  sub-byte-packed data, and the declared-shape swap would be wrong as well. A fusing EP never
-  executes the Transpose so it may be fine there, but the CPU fallback would be silently incorrect.
-  Rejected until the packing semantics under BNHS are defined — see [Open items](#open-items).
-- Rank of `past_value` or `present_value` present but not equal to 4.
+The option describes the layout of the buffers the **application binds**. That gives one legitimate
+skip and one class of hard failure, and the distinction matters because it is the option's external
+contract: if the application is told BNHS, every boundary it can see must actually be BNHS.
 
-`ValidateNode` **warns and skips** (does not error) when `past_value` is not a graph input or
-`present_value` is not a graph output. The session key describes an application boundary; if the
-tensor is produced or consumed inside the graph, that premise does not hold.
+**Skip (warning), by design.** A `past_value` that is not a graph input, or a `present_value` that is
+not a graph output, is a Value cache the application never touches. It keeps BNSH, and ORT logs a
+warning naming the node. Nothing observable to the application changes, so this is a documented scope
+limit rather than a failure. It is recorded in the `kOrtSessionOptionsGqaValueLayout` comment.
 
-### 3.6 Sole ownership of the boundary
+**Error at session initialization.** Anything else means an application-visible boundary would stay
+BNSH while the application believes it is BNHS, and would bind buffers in the wrong layout. Silently
+skipping would make the option self-inconsistent, so `ClassifyNode` returns an error for:
 
-A boundary NodeArg is shared state: swapping its declared shape is visible to every node that reads
-or writes it, but only the node being processed gets rewired through a Transpose. Two failure modes
-follow, so the transformer additionally requires that this node be the boundary's only user:
+- **A shared boundary.** A `past_value` graph input read by more than one node, or a `present_value`
+  graph output that is also consumed inside the graph. A boundary NodeArg is shared state: swapping
+  its declared shape is visible to every node that reads or writes it, but only the node being
+  processed gets rewired through a Transpose. For a shared `past_value`, converting the first node
+  flips the graph input to BNHS while the second still reads it as BNSH, and processing the second
+  swaps the declared shape back, undoing the first. For a `present_value` with internal consumers,
+  those consumers silently receive BNHS where they expect BNSH.
+- **A partially converted node.** A node holding both Value operands where only one is already
+  converted (see 3.4). The transformer converts both together, so this means the graph was edited by
+  hand or produced by a build that failed part way; the boundary layouts no longer agree with each
+  other and converting the remainder cannot repair that.
+- **4-bit KV cache.** When `v_quant_type != "NONE" && kv_cache_bit_width == 4`, V is `uint8` with two
+  4-bit values packed along `head_size`. A byte-wise `Transpose` cannot transpose sub-byte-packed
+  data, and the declared-shape swap would be wrong as well. A fusing EP never executes the Transpose
+  so it may be fine there, but the CPU fallback would be silently incorrect. Rejected until the
+  packing semantics under BNHS are defined — see [Open items](#open-items).
+- **A Value cache tensor that is not rank 4** (a declared shape of any other rank; an undeclared shape
+  imposes no constraint and is fine).
 
-- **A `past_value` graph input feeding two GQA nodes.** Transforming the first rewires only that node
-  and flips the graph input to BNHS, leaving the second node reading a BNHS tensor as BNSH. Then
-  processing the second node swaps the declared shape a second time, back to BNSH, undoing the first.
-  Guard: the `past_value` graph input must have exactly one consumer, and it must be this node.
-- **A `present_value` graph output that is also consumed inside the graph.** Retargeting GQA's output
-  through a Transpose leaves those internal consumers silently receiving BNHS where they expect BNSH.
-  Guard: the `present_value` graph output must have no consumer nodes.
+Supporting shared boundaries would mean converting each boundary once and rewiring every BNSH user of
+it, which is more than this design needs for the single-cache-per-layer models it targets.
 
-Both are conservative: they decline to transform rather than produce wrong results. Lifting them
-means transforming each boundary once and rewiring every BNSH user of it, which is a larger change
-than this design needs for the single-cache-per-layer models it targets.
+### 3.6 Validate the whole graph, then convert
+
+`ApplyImpl` runs two passes:
+
+1. `ClassifyNode` over every GQA node, mutating nothing, collecting the indices to convert.
+2. `TransformNode` over the collected indices.
+
+The split matters because the errors in 3.5 are fatal to session initialization. Converting as the
+walk proceeds would leave earlier nodes rewired and the graph unresolved when a later node fails —
+`GraphTransformer::Apply` skips `Resolve()` when `ApplyImpl` returns an error. Validating first means
+the graph is either fully converted or byte-for-byte as it was loaded.
+
+It also removes an ordering dependency: every node is judged against the original graph, so a verdict
+does not depend on the topological order or on producer/consumer bookkeeping staying accurate
+mid-rewrite. `TransformNode` has no failure modes at all — `SwapLastTwoDims` is infallible because
+`ValidateSwappableShape` already established the rank in pass 1.
 
 ## 4. Wiring into the session
 
@@ -325,14 +361,20 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - Idempotency: running the transformer twice produces the same graph as running it once.
 - `past_value` absent (prefill-only model) yields only the output-side transpose, and
   `present_value` absent yields only the input-side transpose.
-- `past_value` produced by a node, or `present_value` consumed by one: warn and skip, graph
+- `past_value` produced by a node, or `present_value` consumed by one: the cache is not application
+  visible, so it is a documented skip with a warning (section 3.5); graph
   unchanged.
-- 4-bit quantized Value cache returns an error.
-- A `past_value` graph input shared by two GQA nodes, and a `present_value` graph output that is also
-  consumed inside the graph: both warn and skip (section 3.6).
+- Errors, per section 3.5: a `past_value` graph input shared by two GQA nodes; a `present_value` graph
+  output also consumed inside the graph; a node with the layout applied to only one operand; a 4-bit
+  quantized Value cache.
+- The graph is left untouched when validation fails (section 3.6). Two independent GQA nodes, one
+  convertible and one not, asserted for both build orders — `GetNodesInTopologicalOrder()` does not
+  follow insertion order for independent nodes, and only the order that presents the convertible node
+  first catches a transformer that mutates while it validates. Verified to fail against a single-pass
+  implementation.
 
-Three session-level tests cover the plumbing that a graph-level test cannot reach, by loading a
-serialized model into an `InferenceSessionWrapper`:
+Session-level tests cover the plumbing that a graph-level test cannot reach, by loading a serialized
+model into an `InferenceSessionWrapper`:
 
 - The transform is applied at `ORT_DISABLE_ALL`. This is the test that pins down the placement
   decision in 4.1; a registered level 1 optimizer would be skipped entirely at that level.
