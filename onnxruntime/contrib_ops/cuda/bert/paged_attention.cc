@@ -451,6 +451,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   bool use_flash_attention = flash_eligible && !use_paged_decode;
   const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode && parameters.is_causal;
 
+  if (!parameters.is_causal && !use_flash_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: is_causal=0 requires the FlashAttention backend (sm>=80, fp16/bf16, "
+                           "head_size ",
+                           parameters.head_size, ", block_size ", parameters.block_size, ").");
+  }
+
   // Both gather-based backends need a dense KV staging buffer when the cache is quantized
   // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).
   const bool needs_dense_kv = use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
