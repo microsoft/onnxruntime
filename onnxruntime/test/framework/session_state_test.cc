@@ -211,6 +211,47 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateAddGetKernelTest, testing::Values(0, 1));
 
+static void FinalizeSessionStateForMemoryPatternFlagTest(SessionState& session_state,
+                                                         ExecutionProviders& execution_providers) {
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), krm));
+}
+
+TEST(SessionStateTest, ResolveMemoryPatternFlagKeepsEnabledForShapedGraphInput) {
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("batch");
+  tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &tensor_float);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_float);
+  graph.AddNode("node_1", "Identity", "node 1", {&input_arg}, {&output_arg})
+      .SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider,
+                                           std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false))));
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
+                             DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  FinalizeSessionStateForMemoryPatternFlagTest(session_state, execution_providers);
+
+  session_state.ResolveMemoryPatternFlag();
+  EXPECT_TRUE(session_state.GetEnableMemoryPattern());
+}
+
 class TestParam {
  public:
   int ir_version;
