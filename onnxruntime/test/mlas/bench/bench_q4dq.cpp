@@ -109,21 +109,21 @@ static void BM_QDQBlockwiseQuantizer_TransposeColumnwise(benchmark::State& state
 
 BENCHMARK(BM_QDQBlockwiseQuantizer_QuantizeColumnwise)
     ->UseRealTime()
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
       b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {8}});
     });
 
 BENCHMARK(BM_MlasQuantizeBlockwise)
     ->UseRealTime()
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
       b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {8}});
     });
 
 BENCHMARK(BM_QDQBlockwiseQuantizer_TransposeColumnwise)
     ->UseRealTime()
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads", "add8"});
       b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {2, 8, 16}, {0, 1}});
     });

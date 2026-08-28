@@ -117,7 +117,7 @@ void QNBITGEMM(benchmark::State& state) {
 }
 
 template <typename AType>
-static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
+static void QNBitGemmArgs(benchmark::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
@@ -137,7 +137,7 @@ static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
 // Standard sweep for the native W2 kernel. W2 has fewer free dimensions
 // than W4 (symmetric-only, SQNBIT_CompInt8 only), so the grid uses fixed
 // values for those axes and sweeps the rest like QNBitGemmArgs.
-static void QNBit2BitArgs(benchmark::internal::Benchmark* b) {
+static void QNBit2BitArgs(benchmark::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
@@ -167,7 +167,7 @@ BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitArgs)->UseRealTime();
 //   (K=4096, N=1024): 20 nodes
 // Both M=1 (decode) and M=128 (prefill) are exercised — paired with the W2
 // rows below so we get a 3-way (W2 / W4 / W8) comparison at each M.
-static void QNBitGemmRealisticShapesArgs(benchmark::internal::Benchmark* b) {
+static void QNBitGemmRealisticShapesArgs(benchmark::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
@@ -193,7 +193,7 @@ BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmRealisticShapesArgs)->UseRealTime
 // AVX-512BW hosts). W2 is registered only for SQNBIT_CompInt8 and BlkLen=64,
 // so we emit just that one ComputeType. Covers both M=1 (decode) and M=128
 // (prefill).
-static void QNBit2BitRealisticShapesArgs(benchmark::internal::Benchmark* b) {
+static void QNBit2BitRealisticShapesArgs(benchmark::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;

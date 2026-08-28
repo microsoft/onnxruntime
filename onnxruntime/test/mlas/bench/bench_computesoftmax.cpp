@@ -178,7 +178,7 @@ void COMPUTESOFTMAXOUTPUTF32KERNELAVX(benchmark::State& state) {
 
 #endif  // defined(MLAS_TARGET_AMD64)
 
-static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
+static void ComputeSoftmaxInplaceArgs(benchmark::Benchmark* b) {
   b->ArgNames({"ByteAligned", "N", "D", "Threads"});
   for (int threads : {1, 8}) {
     for (int byte_aligned : {64}) {  // MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT is 64
