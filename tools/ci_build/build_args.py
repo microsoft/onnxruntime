@@ -177,6 +177,16 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
         default=[],
         help="Extra CMake definitions (-D<key>=<value>). Provide as <key>=<value>.",
     )
+    parser.add_argument(
+        "--cmake_extra_args",
+        action="append",
+        default=[],
+        metavar="ARG",
+        help=(
+            "Extra CMake command-line argument. Repeat for multiple arguments. "
+            "Use --cmake_extra_args=<ARG> when ARG starts with '-'."
+        ),
+    )
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake executable.")
     parser.add_argument(
         "--cmake_generator",
