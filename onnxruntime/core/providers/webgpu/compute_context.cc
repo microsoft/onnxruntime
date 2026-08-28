@@ -20,6 +20,10 @@ const webgpu::BufferManager& ComputeContextBase::BufferManagerAccessor::Get(cons
   return context.ep_.BufferManager();
 }
 
+CommandRecordingState& ComputeContextBase::BufferManagerAccessor::GetRecording(const ComputeContextBase& context) {
+  return context.ep_.Recording();
+}
+
 ComputeContext::ComputeContext(WebGpuContext& webgpu_context,
                                const WebGpuExecutionProvider& ep,
                                const OpKernel& op_kernel,

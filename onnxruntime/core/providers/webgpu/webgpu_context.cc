@@ -245,13 +245,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
 
     // create buffer manager
-    buffer_cache_config_ = config.buffer_cache_config;
     buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                               default_recording_,
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
                                                config.buffer_cache_config.query_resolve.mode,
                                                config.buffer_cache_config.default_entry.mode);
+    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled);
 
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(*this);
@@ -366,8 +369,7 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds(CommandRecordingState& recor
   return result;
 }
 
-Status WebGpuContext::EncodeDeferredDispatches(const webgpu::BufferManager& buffer_mgr) {
-  auto& recording = buffer_mgr.Recording();
+Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording) {
   if (recording.deferred_dispatches.empty()) {
     return Status::OK();
   }
@@ -420,7 +422,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   }
 
   const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
-  CommandRecordingState& recording = buffer_mgr.Recording();
+  CommandRecordingState& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
 
   // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -684,7 +687,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    uniform_buffer = buffer_mgr.Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    uniform_buffer = buffer_mgr.Create(recording, uniform_buffer_total_size,
+                                       wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -720,7 +724,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   recording.has_unsubmitted_work = true;
   if (uniform_buffer) {
     // The bind group owns a reference now, so return the allocator's reference immediately.
-    buffer_mgr.Release(uniform_buffer);
+    buffer_mgr.Release(recording, uniform_buffer);
   }
   command.dispatch_group = {x, y, z};
   if (program.IndirectDispatchTensor() != nullptr) {
@@ -738,7 +742,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   // windows are encoded and submitted by the caller at its execution boundary.
   if (static_cast<size_t>(recording.num_pending_dispatches) + recording.deferred_dispatches.size() >=
       max_num_pending_dispatches_) {
-    ORT_RETURN_IF_ERROR(Flush(buffer_mgr));
+    ORT_RETURN_IF_ERROR(Flush(buffer_mgr, recording));
   }
   return Status::OK();
 }
@@ -1018,9 +1022,10 @@ Status WebGpuContext::PopErrorScope() {
   return status;
 }
 
-Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
-  Status status = EncodeDeferredDispatches(buffer_mgr);
-  auto& recording = buffer_mgr.Recording();
+Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
+                            CommandRecordingState& recording) {
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
+  Status status = EncodeDeferredDispatches(recording);
   if (!recording.command_encoder) {
     return status;
   }
@@ -1065,7 +1070,7 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   auto command_buffer = recording.command_encoder.Finish();
   device_queue_.Submit(1, &command_buffer);
   if (recording.graph_capture_state != GraphCaptureState::Replaying) {
-    buffer_mgr.RefreshPendingBuffers(recording.graph_capture_state);
+    buffer_mgr.RefreshPendingBuffers(recording);
   }
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
@@ -1139,12 +1144,13 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
   }
 }
 
-void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+                                 const webgpu::BufferManager& buffer_manager,
+                                 CommandRecordingState& recording) {
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
-  ORT_THROW_IF_ERROR(Flush(buffer_manager));
-
-  auto& recording = buffer_manager.Recording();
+  ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
   recording.external_captured_commands = captured_commands;
 
   // Make sure the external vector is empty before we start capturing
@@ -1155,9 +1161,11 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   recording.graph_capture_state = GraphCaptureState::Capturing;
 }
 
-void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+                           const webgpu::BufferManager& buffer_manager,
+                           CommandRecordingState& recording) {
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
-  auto& recording = buffer_manager.Recording();
   recording.graph_capture_state = GraphCaptureState::Replaying;
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
@@ -1176,20 +1184,20 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
 
     DispatchCommand(command, recording);
     if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
-      ORT_THROW_IF_ERROR(Flush(buffer_manager));
+      ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
     }
   }
 
   // Flush any remaining commands
-  ORT_THROW_IF_ERROR(Flush(buffer_manager));
+  ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
 
   recording.graph_capture_state = GraphCaptureState::Default;
 }
 
-void WebGpuContext::CaptureEnd(const webgpu::BufferManager& buffer_manager) {
+void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
 
-  auto& recording = buffer_manager.Recording();
   recording.graph_capture_state = GraphCaptureState::Default;
   recording.external_captured_commands = nullptr;
 }
@@ -1313,6 +1321,16 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   return *it->second.context;
+}
+
+void WebGpuContextFactory::RetainContext(int context_id) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU contexts have not been initialized or have been cleaned up.");
+  auto it = contexts_->find(context_id);
+  ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
+
+  ++it->second.ref_count;
 }
 
 void WebGpuContextFactory::ReleaseContext(int context_id) {

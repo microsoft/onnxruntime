@@ -99,6 +99,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
@@ -107,7 +108,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
   allocator.Free(allocation);
 
   allocation = allocator.Alloc(sizeof(nonzero_data));
@@ -116,7 +117,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   EXPECT_EQ(reused_buffer, dirty_buffer);
 
   const auto downloaded_data = ReadBufferWithExternalCommandEncoder(context, reused_buffer);
-  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(downloaded_data, expected_data);
 
@@ -127,6 +128,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
 
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   webgpu::BufferManager buffer_manager(context,
@@ -137,6 +139,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false);
 
   std::array<uint32_t, 16> nonzero_data;
@@ -144,19 +147,19 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
   allocator.Free(allocation);
 
-  context.CaptureBegin(&captured_commands, buffer_manager);
+  context.CaptureBegin(&captured_commands, buffer_manager, webgpu_ep->Recording());
   allocation = allocator.Alloc(sizeof(nonzero_data));
   if (allocation == nullptr) {
-    context.CaptureEnd();
+    context.CaptureEnd(webgpu_ep->Recording());
     FAIL() << "Failed to reacquire a device allocation during graph capture.";
   }
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
-  const Status flush_status = context.Flush(buffer_manager);
-  context.CaptureEnd();
+  const Status flush_status = context.Flush(buffer_manager, webgpu_ep->Recording());
+  context.CaptureEnd(webgpu_ep->Recording());
   if (!flush_status.IsOK()) {
     allocator.Free(allocation);
     FAIL() << flush_status.ErrorMessage();
@@ -181,6 +184,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
@@ -189,8 +193,8 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
-  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   allocator.Free(allocation);
 
   RunOptions run_options;

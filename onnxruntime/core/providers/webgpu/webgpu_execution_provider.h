@@ -112,7 +112,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
-  webgpu::BufferManager& InitializerBufferManager() const { return *session_initializer_buffer_mgr_; }
+  webgpu::BufferManager& InitializerBufferManager() const;
+  webgpu::CommandRecordingState& Recording() const { return *recording_; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
@@ -152,24 +153,13 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
-  // Command recording state for this session. The WebGpuContext is shared across sessions but
-  // command encoding is not thread-safe (Dawn's ImplicitDeviceSynchronization explicitly does
-  // not cover it), so the encoder / compute pass / pending-dispatch counter live here instead.
-  // InferenceSession serializes this session's Run and Initialize under session_mutex_ (the EP
-  // reports ConcurrentRunSupported() == false), so a single writer is guaranteed without locks.
-  // Declared before the buffer managers below, which hold a reference to it.
+  // Command recording is per session and is passed separately from the context-level BufferManagers.
   std::unique_ptr<webgpu::CommandRecordingState> recording_;
 
   // Per-graph buffer managers keyed by annotation ID.
   // Each captured graph gets its own buffer manager so that buffer caches
   // are isolated between different generators.
   std::unordered_map<int, std::unique_ptr<webgpu::BufferManager>> per_graph_buffer_mgrs_;
-
-  // Per-session buffer managers. The context's caches are plain STL containers, so sharing them
-  // across sessions running on different threads is a data race. Sessions only need to share the
-  // wgpu::Device (so buffers stay interoperable), not the caches in front of it.
-  std::unique_ptr<webgpu::BufferManager> session_buffer_mgr_;
-  std::unique_ptr<webgpu::BufferManager> session_initializer_buffer_mgr_;
 
   // Per-session pool of buffers donated by retired per-graph BufferManagers,
   // seeded into new per-graph BufferManagers to avoid device allocations for

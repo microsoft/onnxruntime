@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -88,30 +89,26 @@ class IBufferCacheManager {
 //
 class BufferManager {
  public:
-  BufferManager(WebGpuContext& context, CommandRecordingState& recording, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
-  void Upload(void* src, WGPUBuffer dst, size_t size) const;
-  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero = false,
+  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
+  void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
+  void MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const;
+  WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
+                    bool initialize_to_zero = false,
                     bool submit_zero_initialize = false) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
-  void Release(WGPUBuffer buffer) const;
-  void Download(WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;
+  void Release(CommandRecordingState& recording, WGPUBuffer buffer) const;
+  void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
+  void RefreshPendingBuffers(CommandRecordingState& recording) const;
 
-  // The recording state that commands issued through this manager are encoded into.
-  CommandRecordingState& Recording() const { return recording_; }
-
-  // Direct access to the underlying cache managers. Used by SessionBufferPool to
-  // donate/seed buffers across per-graph BufferManager lifetimes.
-  IBufferCacheManager& StorageCache() { return *storage_cache_; }
-  IBufferCacheManager& UniformCache() { return *uniform_cache_; }
+  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
+  void AbsorbCachedBuffers(wgpu::BufferUsage usage,
+                           std::vector<std::pair<size_t, WGPUBuffer>>&& buffers);
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
-
   WebGpuContext& context_;
-  CommandRecordingState& recording_;
+  mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;
@@ -120,7 +117,7 @@ class BufferManager {
 
 class BufferManagerFactory {
  public:
-  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, CommandRecordingState& recording, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
+  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
 
  private:
   BufferManagerFactory() {}

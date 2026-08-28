@@ -111,10 +111,12 @@ struct CapturedCommandInfo {
 // State for one session's command recording timeline. WebGpuContext is shared across sessions,
 // but Dawn command encoders and deferred dispatch windows must not be.
 struct CommandRecordingState {
+  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
   bool has_unsubmitted_work = false;
+  std::vector<wgpu::Buffer> pending_buffers;
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -198,6 +200,11 @@ class WebGpuContextFactory {
   static WebGpuContext& GetContext(int context_id);
 
   /// <summary>
+  /// Retain an existing WebGPU context. (ref-count based)
+  /// </summary>
+  static void RetainContext(int context_id);
+
+  /// <summary>
   /// Release the WebGPU context. (ref-count based)
   /// </summary>
   static void ReleaseContext(int context_id);
@@ -274,29 +281,20 @@ class WebGpuContext final {
       recording.compute_pass_encoder = nullptr;
     }
   }
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
-  void CaptureEnd(const webgpu::BufferManager& buffer_manager);
-  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+                    const webgpu::BufferManager& buffer_manager,
+                    CommandRecordingState& recording);
+  void CaptureEnd(CommandRecordingState& recording);
+  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+              const webgpu::BufferManager& buffer_manager,
+              CommandRecordingState& recording);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
-  Status Flush(const webgpu::BufferManager& buffer_mgr);
+  Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
-  /**
-   * Get the context-level buffer manager.
-   *
-   * This is NOT the manager sessions use - each WebGpuExecutionProvider owns its own (see
-   * WebGpuExecutionProvider::BufferManager). It exists for session-less plugin EP facilities
-   * such as the shared allocator and OrtWebGpuCreateDataTransfer, which have no EP to borrow one
-   * from.
-   */
+  // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
-
-  /**
-   * The buffer cache configuration this context was initialized with. Exposed so that each
-   * session can create its own BufferManager with the same policy instead of sharing the
-   * context's caches across threads.
-   */
-  const WebGpuBufferCacheConfig& BufferCacheConfig() const { return buffer_cache_config_; }
+  webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -380,7 +378,7 @@ class WebGpuContext final {
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
   void DispatchCommand(const webgpu::CapturedCommandInfo& command, CommandRecordingState& recording);
-  Status EncodeDeferredDispatches(const webgpu::BufferManager& buffer_mgr);
+  Status EncodeDeferredDispatches(CommandRecordingState& recording);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
@@ -424,16 +422,9 @@ class WebGpuContext final {
   std::unordered_set<wgpu::FeatureName> device_features_;
   wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
 
-  // Recording state for buffer_mgr_ below. Sessions never touch it: each
-  // WebGpuExecutionProvider owns its own CommandRecordingState. This one exists only for the
-  // session-less plugin EP allocator and data transfer, whose operations are not covered by any
-  // session_mutex_.
-  CommandRecordingState default_recording_;
-
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
+  std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
-
-  WebGpuBufferCacheConfig buffer_cache_config_{};
 
   uint32_t max_num_pending_dispatches_ = 16;
 

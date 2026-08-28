@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <mutex>
+
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
@@ -11,12 +13,14 @@ namespace onnxruntime {
 namespace webgpu {
 
 class BufferManager;
+struct CommandRecordingState;
 
 // Low-level data transfer implementation that operates on raw pointers.
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
 class DataTransferImpl {
  public:
-  DataTransferImpl(const BufferManager& buffer_manager) : buffer_manager_{buffer_manager} {};
+  DataTransferImpl(const BufferManager& buffer_manager, CommandRecordingState& recording)
+      : buffer_manager_{buffer_manager}, recording_{recording} {}
 
   common::Status CopyTensor(void const* src_data,
                             bool src_is_gpu,
@@ -25,12 +29,15 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
+  mutable std::mutex mutex_;
   const BufferManager& buffer_manager_;
+  CommandRecordingState& recording_;
 };
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(const BufferManager& buffer_manager) : impl_{buffer_manager} {};
+  DataTransfer(const BufferManager& buffer_manager, CommandRecordingState& recording)
+      : impl_{buffer_manager, recording} {}
   ~DataTransfer() {};
 
   // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can

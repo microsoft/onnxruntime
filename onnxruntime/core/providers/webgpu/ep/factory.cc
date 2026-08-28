@@ -212,7 +212,9 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       device_free,
-      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false,
+      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
+      [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
+      false,
       [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
@@ -222,6 +224,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
           [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
             return webgpu_ep_ptr->InitializerBufferManager();
           },
+          [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
           true),  // initializer device allocator
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
@@ -248,16 +251,14 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  *allocator = new onnxruntime::ep::adapter::Allocator(memory_info,
-                                                       [](const OrtMemoryInfo&) -> AllocatorPtr {
-                                                         return std::make_shared<webgpu::GpuBufferAllocator>(
-                                                             []() -> const webgpu::BufferManager& {
-                                                               return WebGpuContextFactory::DefaultContext()
-                                                                   .BufferManager();
-                                                             },
-                                                             false,
-                                                             []() { return true; });
-                                                       });
+  *allocator = new onnxruntime::ep::adapter::Allocator(
+      memory_info,
+      [](const OrtMemoryInfo&) -> AllocatorPtr {
+        auto context = std::shared_ptr<WebGpuContext>(
+            &WebGpuContextFactory::DefaultContext(),
+            [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
+        return std::make_shared<webgpu::ExternalGpuBufferAllocator>(std::move(context));
+      });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
