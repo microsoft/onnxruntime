@@ -553,6 +553,9 @@ static std::shared_ptr<KernelRegistry> MakeCustomCpuRegistry(const char* op_type
 // supplies the missing fp16 kernel. The node is therefore not kernel-less: rewriting it to fp32 would
 // wrap it in casts it does not need and, worse, mean the kernel the user registered never runs.
 TEST(TransformerTest, Fp16NodeWithCustomRegistryFp16KernelNotForced) {
+#if defined(DISABLE_CONTRIB_OPS)
+  GTEST_SKIP() << "BiasGelu is unavailable when contrib ops are disabled.";
+#endif
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
@@ -625,6 +628,9 @@ static onnxruntime::Node& BuildFp16BiasAddGraph(onnxruntime::Graph& graph, TypeP
 // custom registry. Without one the transformer cannot confirm an fp32 kernel exists and has to leave
 // the node alone (it warns and session initialization fails later); with one it converts the node.
 TEST(TransformerTest, Fp16NodeWithCustomRegistryFp32KernelForcedToFp32) {
+#if defined(DISABLE_CONTRIB_OPS)
+  GTEST_SKIP() << "BiasGelu is unavailable when contrib ops are disabled.";
+#endif
   auto& logger = DefaultLoggingManager().DefaultLogger();
   auto cpu_registry = DefaultCpuExecutionProvider()->GetKernelRegistry();
   auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
