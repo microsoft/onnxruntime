@@ -611,6 +611,48 @@ API boundary and are reported, only with a less specific message.
 With that fix the reduced-size `static_plugin` build passes `suite0` on the WebGPU backend in full: 2152 tests,
 all passing, matching the `static_lib` control run on the identical flag set.
 
+#### Measured performance comparison
+
+The same two binaries were compared on inference performance in Edge, using the test runner's `--perf` mode
+(`test-runner-cli model <folder> -b=webgpu -e=edge -P=<n>`) against two synthetic models chosen to isolate the two
+places the plugin path could plausibly cost something:
+
+- **dispatch-bound** — 300 chained tiny elementwise ops (`Mul`/`Add`/`Sub`) on a `[1, 1024]` tensor. Almost no GPU
+  work per node, so the run time is dominated by per-node host-side work, which is exactly what now goes through
+  the C API adapters.
+- **compute-bound** — 16 chained `[512, 512]` `MatMul`s. Host-side per-node cost is negligible against the GPU
+  work.
+
+Three runs per model per build; the table reports the median of the three per-run P50 values.
+
+| Metric | `static_lib` | `static_plugin` | Delta |
+| --- | ---: | ---: | ---: |
+| dispatch-bound, per-run P50 | 10.90 ms | 11.80 ms | +0.9 ms (+8%) |
+| compute-bound, per-run P50 | 7.00 ms | 7.30 ms | +0.3 ms (+4%, within noise) |
+| session init, dispatch model | 1136 ms | 1172 ms | +36 ms (+3%) |
+| session init, compute model | 1250 ms | 1290 ms | +40 ms (+3%) |
+| `suite0` net test time | 44.95 / 45.28 s | 45.71 / 44.93 s | none measurable |
+
+Reading of these numbers:
+
+- **Execution is not measurably slower in any realistic case.** The compute-bound difference is inside run-to-run
+  variance, and `suite0`'s net test time — 2152 models, two samples per build — is indistinguishable between the
+  two builds.
+- **A dispatch-bound graph pays roughly 8%.** That is the cost of routing per-node kernel work through the C API
+  adapters instead of a direct in-process virtual call. It only shows up when nodes do essentially no GPU work,
+  which is the worst case by construction rather than a representative one. Amortized over ~300 nodes it is on the
+  order of 3 µs per node.
+- **Session creation costs about 3%.** This covers plugin EP registration, `GetCapability` and kernel creation
+  through the C API. Note the absolute figure is dominated by fetching and parsing the model, so the true relative
+  cost of the plugin machinery within session creation is higher than 3% — but it is tens of milliseconds once,
+  not per inference.
+
+A caution on methodology: the *total* wall time the test runner prints for `suite0` is not a usable metric. It
+varied between 3 min 15 s and 4 min 04 s for the **same** `static_lib` binary across two runs, and `static_plugin`
+produced both 4 min 13 s and 3 min 16 s. Only the second figure it prints — net test time, excluding the
+per-model `before all` session-creation hooks — is stable enough to compare, and by that measure the two builds
+are equal. An early single-sample comparison of the total figure suggested a 29% regression that does not exist.
+
 
 
 > Should static factories be registered before environment creation or through environment construction options?
