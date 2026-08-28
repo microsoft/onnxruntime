@@ -32,7 +32,12 @@ TEST(CPUExecutionProviderTest, Float16GemmAndMatMulRegistration) {
     return status.IsOK() && kernel_create_info != nullptr;
   };
 
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    defined(MLAS_TARGET_RISCV64)
   const bool expected_kernel = MlasFp16AccelerationSupported();
+#else
+  const bool expected_kernel = false;
+#endif
   EXPECT_EQ(has_kernel("Gemm"), expected_kernel);
   EXPECT_EQ(has_kernel("MatMul"), expected_kernel);
 }
