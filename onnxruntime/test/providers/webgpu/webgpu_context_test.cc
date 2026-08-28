@@ -269,6 +269,26 @@ TEST(WebGpuContextTest, EnableRobustnessRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(RobustnessOptions("true")), OnnxRuntimeException);
 }
 
+TEST(WebGpuContextTest, AdapterIndexRejectsInvalidValue) {
+  for (const char* value : {"-1", "1x"}) {
+    ConfigOptions options;
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, value));
+    EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
+  }
+}
+
+TEST(WebGpuContextTest, AdapterIndexAcceptsNonNegativeInteger) {
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kDeviceId, "31337"));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+
+  ASSERT_NE(ep, nullptr);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(31337).Device().Get(), nullptr);
+}
+
 TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
   auto options = RobustnessOptions("0");
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));

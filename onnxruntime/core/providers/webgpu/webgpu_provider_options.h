@@ -25,6 +25,7 @@ constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackend
 constexpr const char* kPowerPreference = "ep.webgpuexecutionprovider.powerPreference";
 
 constexpr const char* kDeviceId = "ep.webgpuexecutionprovider.deviceId";
+constexpr const char* kAdapterIndex = "ep.webgpuexecutionprovider.adapterIndex";
 constexpr const char* kWebGpuInstance = "ep.webgpuexecutionprovider.webgpuInstance";
 constexpr const char* kWebGpuDevice = "ep.webgpuexecutionprovider.webgpuDevice";
 
