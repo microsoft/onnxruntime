@@ -131,6 +131,13 @@ jobs:
       - name: Build (simd + threads + WebGPU experimental)
         if: ${{ inputs.build_webgpu == true }}
         run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium)"
+          if [ -z "$CHROME_PATH" ]; then
+            echo "Error: Google Chrome or Chromium is not installed. Please install it to run WebGPU builds."
+            exit 1
+          fi
+          echo "Using Chrome path: $CHROME_PATH"
+          export CHROME_PATH
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
