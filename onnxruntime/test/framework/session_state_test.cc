@@ -1070,7 +1070,9 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
 };
 
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsExceptionsToStatus) {
-#if defined(ORT_NO_EXCEPTIONS)
+#if defined(__ANDROID__)
+  GTEST_SKIP() << "Parallel prepack is disabled on Android.";
+#elif defined(ORT_NO_EXCEPTIONS)
   GTEST_SKIP() << "Exceptions are disabled.";
 #else
   SessionOptions sess_options;
