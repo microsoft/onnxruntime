@@ -595,6 +595,55 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_matmulintegertofloat(self):
+        """
+        Test ORT MatMulIntegerToFloat op ('com.microsoft' domain).
+        Check that the output shape is propagated from the first two inputs and that the
+        output data type comes from the a_scale input, which float16 scales make visible.
+        """
+        initializers = [
+            helper.make_tensor("b", TensorProto.INT8, [10, 4], [0] * 40),
+            helper.make_tensor("a_scale", TensorProto.FLOAT16, [], [0.03]),
+            helper.make_tensor("b_scale", TensorProto.FLOAT16, [4], [0.02] * 4),
+            helper.make_tensor("a_zero_point", TensorProto.UINT8, [], [128]),
+            helper.make_tensor("b_zero_point", TensorProto.INT8, [4], [0] * 4),
+        ]
+
+        nodes = [
+            helper.make_node(
+                "MatMulIntegerToFloat",
+                inputs=[
+                    "a",
+                    "b",
+                    "a_scale",
+                    "b_scale",
+                    "a_zero_point",
+                    "b_zero_point",
+                ],
+                outputs=["output_f16"],
+                domain="com.microsoft",
+            ),
+        ]
+
+        inputs = [
+            helper.make_tensor_value_info("a", TensorProto.UINT8, ["x", 2, 3, 10]),
+        ]
+
+        outputs = [
+            helper.make_tensor_value_info("output_f16", TensorProto.UNDEFINED, None),
+        ]
+
+        graph = helper.make_graph(nodes, "MatMulIntegerToFloat_Test", inputs, outputs, initializers)
+        model = helper.make_model(graph)
+        model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+        expected_shapes = [
+            helper.make_tensor_value_info("output_f16", TensorProto.FLOAT16, ["x", 2, 3, 4]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
     def test_matmulnbits(self):
         """
         Test ORT MatMulNBits op.
