@@ -833,7 +833,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help=(
             "Build Dawn's D3D12 backend with the Agility SDK for local development "
-            "(Windows only; packaging unsupported)."
+            "(Windows desktop x86, x64, or ARM64 only; packaging unsupported)."
         ),
     )
     webgpu_group.add_argument(
