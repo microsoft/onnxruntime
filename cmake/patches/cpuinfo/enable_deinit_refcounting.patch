@@ -1,5 +1,5 @@
 diff --git a/src/arm/linux/init.c b/src/arm/linux/init.c
-index 48c9f4a050..cb3170f279 100644
+index 48c9f4a050412220b5c817814b643fc4850c7626..cb3170f279474ee344dd61480eab2831f2d027b9 100644
 --- a/src/arm/linux/init.c
 +++ b/src/arm/linux/init.c
 @@ -1001,3 +1001,43 @@ cleanup:
@@ -47,7 +47,7 @@ index 48c9f4a050..cb3170f279 100644
 +	cpuinfo_linux_cpu_max = 0;
 +}
 diff --git a/src/arm/mach/init.c b/src/arm/mach/init.c
-index 76224b9d40..9a9fb4276c 100644
+index 76224b9d40eb5cd047f1353e81b5999196d3b881..9a9fb4276c531687bf7984e2bd41152ed91e94a6 100644
 --- a/src/arm/mach/init.c
 +++ b/src/arm/mach/init.c
 @@ -873,3 +873,32 @@ cleanup:
@@ -84,10 +84,28 @@ index 76224b9d40..9a9fb4276c 100644
 +	cpuinfo_max_cache_size = 0;
 +}
 diff --git a/src/arm/windows/init-by-logical-sys-info.c b/src/arm/windows/init-by-logical-sys-info.c
-index 815ecb770a..2e44f8aa05 100644
+index 815ecb770a5bc5c48c7dff049f50b111b427954a..f0d66223f0d189776659248f525200ebdcda0116 100644
 --- a/src/arm/windows/init-by-logical-sys-info.c
 +++ b/src/arm/windows/init-by-logical-sys-info.c
-@@ -372,6 +372,40 @@ clean_up:
+@@ -14,6 +14,8 @@
+ 
+ #define MAX_NR_OF_CACHES (cpuinfo_cache_level_max - 1)
+ 
++static uint32_t cache_counters[MAX_NR_OF_CACHES];
++
+ /* Call chain:
+  * cpu_info_init_by_logical_sys_info
+  * 		read_packages_for_processors
+@@ -126,6 +128,8 @@ bool cpu_info_init_by_logical_sys_info(const struct woa_chip_info* chip_info, co
+ 	uint32_t nr_of_uarchs = 0;
+ 	bool result = false;
+ 
++	memset(cache_counters, 0, sizeof(cache_counters));
++
+ 	HANDLE heap = GetProcessHeap();
+ 
+ 	/* 1. Count available logical processor groups and processors */
+@@ -372,6 +376,40 @@ clean_up:
  	return result;
  }
  
@@ -128,8 +146,54 @@ index 815ecb770a..2e44f8aa05 100644
  static uint32_t count_logical_processors(const uint32_t max_group_count, uint32_t* global_proc_index_per_group) {
  	uint32_t nr_of_processors = 0;
  
+@@ -606,11 +644,6 @@ static bool parse_relation_cache_info(
+ 	uint32_t* numbers_of_caches,
+ 	const uint32_t* global_proc_index_per_group,
+ 	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX info) {
+-	static uint32_t l1i_counter = 0;
+-	static uint32_t l1d_counter = 0;
+-	static uint32_t l2_counter = 0;
+-	static uint32_t l3_counter = 0;
+-
+ 	/* Count cache types for allocation at first. */
+ 	if (caches == NULL) {
+ 		switch (info->Cache.Level) {
+@@ -665,12 +698,12 @@ static bool parse_relation_cache_info(
+ 		case 1:
+ 			switch (info->Cache.Type) {
+ 				case CacheInstruction:
+-					current_cache = l1i_base + l1i_counter;
+-					l1i_counter++;
++					current_cache = l1i_base + cache_counters[cpuinfo_cache_level_1i];
++					cache_counters[cpuinfo_cache_level_1i]++;
+ 					break;
+ 				case CacheData:
+-					current_cache = l1d_base + l1d_counter;
+-					l1d_counter++;
++					current_cache = l1d_base + cache_counters[cpuinfo_cache_level_1d];
++					cache_counters[cpuinfo_cache_level_1d]++;
+ 					break;
+ 				case CacheUnified:
+ 					break;
+@@ -681,12 +714,12 @@ static bool parse_relation_cache_info(
+ 			}
+ 			break;
+ 		case 2:
+-			current_cache = l2_base + l2_counter;
+-			l2_counter++;
++			current_cache = l2_base + cache_counters[cpuinfo_cache_level_2];
++			cache_counters[cpuinfo_cache_level_2]++;
+ 			break;
+ 		case 3:
+-			current_cache = l3_base + l3_counter;
+-			l3_counter++;
++			current_cache = l3_base + cache_counters[cpuinfo_cache_level_3];
++			cache_counters[cpuinfo_cache_level_3]++;
+ 			break;
+ 	}
+ 	current_cache->size = info->Cache.CacheSize;
 diff --git a/src/arm/windows/init.c b/src/arm/windows/init.c
-index 528ae3279f..fcf219df15 100644
+index 528ae3279f5e979409ac07de6cee833691e034cd..fcf219df153419249211be4fdf014f50fc5198da 100644
 --- a/src/arm/windows/init.c
 +++ b/src/arm/windows/init.c
 @@ -25,12 +25,18 @@ BOOL CALLBACK cpuinfo_arm_windows_init(PINIT_ONCE init_once, PVOID parameter, PV
@@ -182,7 +246,7 @@ index 528ae3279f..fcf219df15 100644
  
  	cpuinfo_log_debug("detected chip model name: %ls", chip_info->chip_name_string);
 diff --git a/src/cpuinfo/internal-api.h b/src/cpuinfo/internal-api.h
-index d84b26a89c..9c1588872d 100644
+index d84b26a89cfc38e726216688e490f50799f31455..9c1588872da413535f2fb68fb96d6106b420ac49 100644
 --- a/src/cpuinfo/internal-api.h
 +++ b/src/cpuinfo/internal-api.h
 @@ -45,6 +45,9 @@ extern CPUINFO_INTERNAL struct cpuinfo_uarch_info cpuinfo_global_uarch;
@@ -220,7 +284,7 @@ index d84b26a89c..9c1588872d 100644
  
  typedef void (*cpuinfo_processor_callback)(uint32_t);
 diff --git a/src/emscripten/init.c b/src/emscripten/init.c
-index c239324375..6c8210f2c2 100644
+index c2393243755816fb341f892b7b092a58891603c4..6c8210f2c23ddc0f0efde954d80fcf974aba74fb 100644
 --- a/src/emscripten/init.c
 +++ b/src/emscripten/init.c
 @@ -286,3 +286,35 @@ cleanup:
@@ -260,7 +324,7 @@ index c239324375..6c8210f2c2 100644
 +	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
 +}
 diff --git a/src/init.c b/src/init.c
-index 81d5721c44..e3cd9217a9 100644
+index 81d5721c446f363cefcbb39d52507a2c07298c35..e3cd9217a9acfc9615f97a1aa6bb66d96f373910 100644
 --- a/src/init.c
 +++ b/src/init.c
 @@ -13,55 +13,98 @@
@@ -387,7 +451,7 @@ index 81d5721c44..e3cd9217a9 100644
 +	CPUINFO_LIFECYCLE_UNLOCK();
 +}
 diff --git a/src/riscv/linux/init.c b/src/riscv/linux/init.c
-index 45168c7e66..3da8c3ffd5 100644
+index 45168c7e66b80e7f8a712a6afe7bab379a07b95b..3da8c3ffd59f02bebb0193b832d67ddf0841cab3 100644
 --- a/src/riscv/linux/init.c
 +++ b/src/riscv/linux/init.c
 @@ -618,3 +618,36 @@ cleanup:
@@ -428,7 +492,7 @@ index 45168c7e66..3da8c3ffd5 100644
 +	cpuinfo_linux_cpu_max = 0;
 +}
 diff --git a/src/x86/freebsd/init.c b/src/x86/freebsd/init.c
-index 797fa24b95..ba30a5d9c8 100644
+index 797fa24b95a55e0503459dd2fdaf8476f060a631..ba30a5d9c89c209115f6797d9b52263c7271e17f 100644
 --- a/src/x86/freebsd/init.c
 +++ b/src/x86/freebsd/init.c
 @@ -396,3 +396,30 @@ cleanup:
@@ -463,7 +527,7 @@ index 797fa24b95..ba30a5d9c8 100644
 +	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
 +}
 diff --git a/src/x86/linux/init.c b/src/x86/linux/init.c
-index d2b2d47514..62e1187e06 100644
+index d2b2d47514c8cc75b502c78b1d1176ae49fe3304..62e1187e0631b791c378d23963d63e10095a12be 100644
 --- a/src/x86/linux/init.c
 +++ b/src/x86/linux/init.c
 @@ -676,3 +676,38 @@ cleanup:
@@ -506,7 +570,7 @@ index d2b2d47514..62e1187e06 100644
 +	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
 +}
 diff --git a/src/x86/mach/init.c b/src/x86/mach/init.c
-index b8ea6047ac..9009e830ab 100644
+index b8ea6047ac043fc067190013e719188b50aca3f5..9009e830ab4ac15610af72e700266b800d88e0fc 100644
 --- a/src/x86/mach/init.c
 +++ b/src/x86/mach/init.c
 @@ -378,3 +378,30 @@ cleanup:
@@ -541,7 +605,7 @@ index b8ea6047ac..9009e830ab 100644
 +	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
 +}
 diff --git a/src/x86/windows/init.c b/src/x86/windows/init.c
-index 7380bb46d5..f1401beb60 100644
+index 7380bb46d5f2ee96e98b77fd378be9d70de813ee..f1401beb60de989503402be98fdbac4c20909c1b 100644
 --- a/src/x86/windows/init.c
 +++ b/src/x86/windows/init.c
 @@ -665,5 +665,39 @@ cleanup:

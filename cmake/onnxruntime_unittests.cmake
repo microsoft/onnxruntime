@@ -1986,6 +1986,19 @@ endif()
     set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
+  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    onnxruntime_add_executable(
+      onnxruntime_cpuinfo_refcount_test
+      ${TEST_SRC_DIR}/common/cpuinfo_refcount_test.cc)
+    target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
+    add_test(
+      NAME onnxruntime_cpuinfo_refcount_test
+      COMMAND onnxruntime_cpuinfo_refcount_test)
+    set_target_properties(
+      onnxruntime_cpuinfo_refcount_test
+      PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
+
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
     if(WIN32)
@@ -1996,20 +2009,14 @@ endif()
 
       if(CPUINFO_SUPPORTED AND NOT onnxruntime_MINIMAL_BUILD)
         onnxruntime_add_executable(
-          onnxruntime_cpuinfo_refcount_test
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
-        target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo)
-        add_test(
-          NAME onnxruntime_cpuinfo_refcount_test
-          COMMAND onnxruntime_cpuinfo_refcount_test)
-        set_target_properties(
-          onnxruntime_cpuinfo_refcount_test
-          PROPERTIES FOLDER "ONNXRuntimeTest")
-
-        onnxruntime_add_executable(
           onnxruntime_shared_lib_cpuinfo_dlopen_test
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
         add_dependencies(onnxruntime_shared_lib_cpuinfo_dlopen_test ${all_dependencies} onnxruntime)
+        if(onnxruntime_USE_XNNPACK)
+          target_compile_definitions(
+            onnxruntime_shared_lib_cpuinfo_dlopen_test
+            PRIVATE ORT_CPUINFO_DLOPEN_TEST_USE_XNNPACK)
+        endif()
         add_test(
           NAME onnxruntime_shared_lib_cpuinfo_dlopen_test
           COMMAND onnxruntime_shared_lib_cpuinfo_dlopen_test

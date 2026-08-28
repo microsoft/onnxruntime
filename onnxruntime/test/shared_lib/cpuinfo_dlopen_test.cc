@@ -72,6 +72,8 @@ bool LoadQueryHardwareAndUnload() {
 
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   OrtEnv* env = nullptr;
+  OrtSessionOptions* session_options = nullptr;
+  OrtSession* session = nullptr;
   bool success = ort_api != nullptr;
 
   if (success) {
@@ -84,6 +86,28 @@ bool LoadQueryHardwareAndUnload() {
       std::cerr << "ONNX Runtime reported no hardware devices" << std::endl;
       success = false;
     }
+  }
+#if defined(ORT_CPUINFO_DLOPEN_TEST_USE_XNNPACK)
+  if (success) {
+    success = CheckStatus(*ort_api, ort_api->CreateSessionOptions(&session_options));
+  }
+  if (success) {
+    success = CheckStatus(
+        *ort_api,
+        ort_api->SessionOptionsAppendExecutionProvider(session_options, "XNNPACK", nullptr, nullptr, 0));
+  }
+  if (success) {
+    success = CheckStatus(
+        *ort_api,
+        ort_api->CreateSession(env, L"testdata\\matmul_1.onnx", session_options, &session));
+  }
+#endif
+
+  if (session != nullptr) {
+    ort_api->ReleaseSession(session);
+  }
+  if (session_options != nullptr) {
+    ort_api->ReleaseSessionOptions(session_options);
   }
   if (env != nullptr) {
     ort_api->ReleaseEnv(env);

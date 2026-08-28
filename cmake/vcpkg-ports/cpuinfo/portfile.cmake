@@ -12,7 +12,8 @@ vcpkg_from_github(
     PATCHES
         patch_cpuinfo_h_for_arm64ec.patch
         patch_vcpkg_arm64ec_support.patch       # https://github.com/pytorch/cpuinfo/pull/324
-        enable_deinit_refcounting.patch          # https://github.com/pytorch/cpuinfo/pull/400
+        # https://github.com/pytorch/cpuinfo/pull/400
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/cpuinfo/enable_deinit_refcounting.patch"
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
