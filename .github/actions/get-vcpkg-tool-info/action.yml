@@ -1,0 +1,24 @@
+name: 'Get vcpkg tool info'
+description: 'Reads the repository-wide vcpkg release tag and archive hash.'
+outputs:
+  release_tag:
+    description: 'The vcpkg release tag.'
+    value: ${{ steps.read-info.outputs.release_tag }}
+  sha512:
+    description: 'The SHA-512 of the vcpkg release archive.'
+    value: ${{ steps.read-info.outputs.sha512 }}
+runs:
+  using: 'composite'
+  steps:
+    - id: read-info
+      shell: python
+      env:
+        PYTHONPATH: ${{ github.workspace }}/tools/ci_build
+      run: |
+        import os
+
+        from vcpkg_tool_info import get_vcpkg_release_tag, get_vcpkg_sha512
+
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
+            output_file.write(f"release_tag={get_vcpkg_release_tag()}\n")
+            output_file.write(f"sha512={get_vcpkg_sha512()}\n")

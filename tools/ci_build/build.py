@@ -43,6 +43,7 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
+from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -580,7 +581,14 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2026.07.29", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    [
+                        "git",
+                        "clone",
+                        "-b",
+                        get_vcpkg_release_tag(),
+                        "https://github.com/microsoft/vcpkg.git",
+                        "--recursive",
+                    ],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
