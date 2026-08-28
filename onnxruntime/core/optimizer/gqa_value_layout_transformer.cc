@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/graph_utils.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -67,12 +68,18 @@ bool IsValueLayoutTranspose(const Node& node) {
   return true;
 }
 
-// True if this GQA node has already been adapted, either by a previous run of this transformer or
-// because the model was saved after the transform was applied (session.optimized_model_filepath).
-// Running twice would insert a second pair of Transposes and swap the boundary shapes back to BNSH
-// while the application still supplies BNHS, so this check is required for correctness rather than
-// being a mere optimization.
-bool AlreadyTransformed(const Graph& graph, const Node& node, const logging::Logger& logger) {
+// How much of the BNHS Value layout a GQA node already carries, either from a previous run of this
+// transformer or because the model was saved after the transform was applied
+// (session.optimized_model_filepath). Converting an already converted node would insert a second
+// pair of Transposes and swap the boundary shapes back to BNSH while the application still supplies
+// BNHS, so this classification is required for correctness rather than being an optimization.
+enum class ValueLayoutState {
+  kNone,     // no operand is converted
+  kFull,     // every Value operand this node has is converted
+  kPartial,  // the node has both Value operands but only one is converted
+};
+
+ValueLayoutState GetValueLayoutState(const Graph& graph, const Node& node) {
   const bool has_past_value = HasInput(node, kPastValueInputIndex);
   const bool has_present_value = HasOutput(node, kPresentValueOutputIndex);
 
@@ -91,16 +98,15 @@ bool AlreadyTransformed(const Graph& graph, const Node& node, const logging::Log
                                 graph.IsOutput(consumers[0]->OutputDefs()[0]);
   }
 
-  // When a node has both operands, this transformer always converts them together, so a mismatch
-  // means the graph was hand-edited or a previous run stopped part way. Report it, and still treat
-  // the node as transformed so we do not compound the inconsistency. A node with only one of the
-  // two operands legitimately has only that side converted, hence the two guards.
+  // Only a node holding both operands can be half converted. A node with just one of them
+  // legitimately has only that side converted, which is kFull for that node, so requiring both
+  // would misreport a correctly converted prefill-only model as unconverted.
   if (has_past_value && has_present_value && past_value_transformed != present_value_transformed) {
-    LOGS(logger, ERROR) << "GroupQueryAttention node '" << DescribeNode(node) << "' has the BNHS Value layout "
-                        << "applied to only one of past_value / present_value. Leaving the node unchanged.";
+    return ValueLayoutState::kPartial;
   }
 
-  return past_value_transformed || present_value_transformed;
+  return (past_value_transformed || present_value_transformed) ? ValueLayoutState::kFull
+                                                               : ValueLayoutState::kNone;
 }
 
 Node& AddValueLayoutTranspose(Graph& graph,
@@ -114,28 +120,64 @@ Node& AddValueLayoutTranspose(Graph& graph,
   return transpose;
 }
 
-// Rewrites a rank-4 declared shape from BNSH to BNHS (or back). Symbolic dimension parameters are
-// carried across unchanged, so the transposed shape stays consistent with the rest of the graph.
-Status SwapLastTwoDims(NodeArg& arg) {
+// A declared shape can only be reinterpreted between BNSH and BNHS if it is rank 4. An undeclared
+// shape imposes no constraint and needs no update. Checked during validation so that the mutation
+// below cannot fail.
+Status ValidateSwappableShape(const NodeArg& arg) {
   const auto* shape = arg.Shape();
   if (shape == nullptr) {
-    // No declared shape means no constraint to update: any shape is accepted at this boundary.
     return Status::OK();
   }
 
   ORT_RETURN_IF_NOT(shape->dim_size() == 4, "GQA Value cache tensor '", arg.Name(), "' must be rank 4 to use the ",
                     "BNHS layout, but it has rank ", shape->dim_size(), ".");
+  return Status::OK();
+}
+
+// Rewrites a rank-4 declared shape from BNSH to BNHS (or back). Symbolic dimension parameters are
+// carried across unchanged, so the transposed shape stays consistent with the rest of the graph.
+// Infallible by construction: ValidateSwappableShape() has already established rank 4 or no shape.
+void SwapLastTwoDims(NodeArg& arg) {
+  const auto* shape = arg.Shape();
+  if (shape == nullptr || shape->dim_size() != 4) {
+    return;
+  }
 
   ONNX_NAMESPACE::TensorShapeProto swapped = *shape;
   swapped.mutable_dim()->SwapElements(2, 3);
   arg.SetShape(swapped);
-
-  return Status::OK();
 }
 
-// Rejects configurations the Transpose pair cannot express. Returns an error for those; the caller
-// skips (with a warning) for cases that are merely outside this transformer's scope.
-Status ValidateNode(const Node& node) {
+// Decides what to do with one node, without mutating the graph.
+//
+// Returns an error for a topology the application would observe as inconsistent: it asked for BNHS,
+// so a boundary that stays BNSH means the buffers it binds are in the wrong layout. Failing at
+// initialization is the only way to keep the option's external contract honest.
+//
+// Sets transform = false, with a warning, for a Value cache that never reaches the application. Such
+// a cache stays BNSH by design; see the scope note on kOrtSessionOptionsGqaValueLayout.
+Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger& logger, bool& transform) {
+  transform = false;
+
+  switch (GetValueLayoutState(graph, node)) {
+    case ValueLayoutState::kFull:
+      LOGS(logger, INFO) << "GroupQueryAttention node '" << DescribeNode(node)
+                         << "' already uses the BNHS Value layout. Skipping.";
+      return Status::OK();
+
+    case ValueLayoutState::kPartial:
+      // This transformer converts both operands together, so a half converted node means the graph
+      // was edited by hand or produced by a build that failed part way. Either way the boundary
+      // layouts no longer agree with each other and cannot be repaired by converting the rest.
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "GroupQueryAttention node '", DescribeNode(node), "' has the BNHS Value layout applied ",
+                             "to only one of past_value / present_value. The graph is inconsistent, so the '",
+                             kOrtSessionOptionsGqaValueLayout, "' option cannot be applied safely.");
+
+    case ValueLayoutState::kNone:
+      break;
+  }
+
   // A 4-bit Value cache is uint8 with two values packed into each byte along head_size. A byte-wise
   // Transpose moves whole bytes, so it cannot convert between BNHS and BNSH packing, and the
   // declared-shape swap would be wrong as well. Reject rather than silently producing bad results
@@ -147,7 +189,109 @@ Status ValidateNode(const Node& node) {
                 "not supported with the BNHS Value layout ('", kOrtSessionOptionsGqaValueLayout,
                 "'). Two 4-bit values are packed per byte along head_size and cannot be transposed byte-wise.");
 
+  const bool has_past_value = HasInput(node, kPastValueInputIndex);
+  const bool has_present_value = HasOutput(node, kPresentValueOutputIndex);
+  if (!has_past_value && !has_present_value) {
+    return Status::OK();
+  }
+
+  // Scope limit, not an error: a cache the application never binds is invisible to the option, so
+  // leaving it BNSH keeps the graph correct and changes nothing the application can observe.
+  if (has_past_value && !graph.IsInputsIncludingInitializers(node.InputDefs()[kPastValueInputIndex])) {
+    LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a past_value input ('"
+                          << node.InputDefs()[kPastValueInputIndex]->Name() << "') that is not a graph input, so it is "
+                          << "not visible to the application. It keeps the BNSH layout.";
+    return Status::OK();
+  }
+
+  if (has_present_value && !graph.IsOutput(node.OutputDefs()[kPresentValueOutputIndex])) {
+    LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a present_value output ('"
+                          << node.OutputDefs()[kPresentValueOutputIndex]->Name() << "') that is not a graph output, so "
+                          << "it is not visible to the application. It keeps the BNSH layout.";
+    return Status::OK();
+  }
+
+  // Each boundary NodeArg is shared state: swapping its declared shape is visible to every node that
+  // reads or writes it, but only this node gets rewired through a Transpose. If a boundary has any
+  // other user, converting it would leave that user interpreting the tensor in the wrong layout
+  // (and, for a shared past_value, would swap the declared shape a second time and undo it). These
+  // boundaries are application visible, so the option cannot be honored and this is an error rather
+  // than a silent skip.
+  if (has_past_value) {
+    const NodeArg* boundary_arg = node.InputDefs()[kPastValueInputIndex];
+    const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
+    if (consumers.size() != 1 || consumers[0] != &node) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "GroupQueryAttention node '", DescribeNode(node), "' reads a past_value graph input ('",
+                             boundary_arg->Name(), "') that has ", consumers.size(), " consumer node(s); the '",
+                             kOrtSessionOptionsGqaValueLayout, "' option requires this node to be its only consumer. ",
+                             "A Value cache shared between nodes cannot be converted to BNHS.");
+    }
+  }
+
+  if (has_present_value) {
+    const NodeArg* boundary_arg = node.OutputDefs()[kPresentValueOutputIndex];
+    const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
+    if (!consumers.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "GroupQueryAttention node '", DescribeNode(node), "' writes a present_value graph output ('",
+                             boundary_arg->Name(), "') that is also consumed by ", consumers.size(),
+                             " node(s) inside the graph; the '", kOrtSessionOptionsGqaValueLayout,
+                             "' option requires it to have no internal consumers, which would receive BNHS data where ",
+                             "they expect BNSH.");
+    }
+  }
+
+  if (has_past_value) {
+    ORT_RETURN_IF_ERROR(ValidateSwappableShape(*node.InputDefs()[kPastValueInputIndex]));
+  }
+  if (has_present_value) {
+    ORT_RETURN_IF_ERROR(ValidateSwappableShape(*node.OutputDefs()[kPresentValueOutputIndex]));
+  }
+
+  transform = true;
   return Status::OK();
+}
+
+// Rewires one validated node. Has no failure modes: ClassifyNode() has already established every
+// precondition, which is what lets the caller validate the whole graph before mutating any of it.
+void TransformNode(Graph& graph, Node& node) {
+  if (HasInput(node, kPastValueInputIndex)) {
+    // The graph input keeps its name and identity but now declares BNHS. A new NodeArg carries the
+    // BNSH result of the Transpose into the GQA node, inheriting the original (BNSH) type/shape.
+    NodeArg* boundary_arg = node.MutableInputDefs()[kPastValueInputIndex];
+    NodeArg& bnsh_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(boundary_arg->Name() + "_bnsh"),
+                                                 boundary_arg->TypeAsProto());
+
+    AddValueLayoutTranspose(graph,
+                            DescribeNode(node) + "/past_value_bnhs_to_bnsh",
+                            "Converts the GQA past_value cache from BNHS to the BNSH layout the operator requires",
+                            *boundary_arg,
+                            bnsh_arg);
+
+    graph_utils::ReplaceNodeInput(node, static_cast<int>(kPastValueInputIndex), bnsh_arg);
+    SwapLastTwoDims(*boundary_arg);
+  }
+
+  if (HasOutput(node, kPresentValueOutputIndex)) {
+    // Symmetrically: the GQA node now writes BNSH into a new NodeArg, and the Transpose produces
+    // the graph output, which keeps its name and identity but now declares BNHS.
+    NodeArg* boundary_arg = node.MutableOutputDefs()[kPresentValueOutputIndex];
+    NodeArg& bnsh_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(boundary_arg->Name() + "_bnsh"),
+                                                 boundary_arg->TypeAsProto());
+
+    // Retarget the GQA output before adding the Transpose so the graph never has two producers
+    // for the boundary NodeArg.
+    node.MutableOutputDefs()[kPresentValueOutputIndex] = &bnsh_arg;
+
+    AddValueLayoutTranspose(graph,
+                            DescribeNode(node) + "/present_value_bnsh_to_bnhs",
+                            "Converts the GQA present_value cache from BNSH to the BNHS layout the application expects",
+                            bnsh_arg,
+                            *boundary_arg);
+
+    SwapLastTwoDims(*boundary_arg);
+  }
 }
 
 }  // namespace
@@ -166,117 +310,43 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  // First pass: classify every GroupQueryAttention node without touching the graph. An
+  // unconvertible topology therefore fails initialization with the graph exactly as it was loaded,
+  // instead of leaving earlier nodes converted and the graph unresolved. It also means every node is
+  // judged against the original graph, so the verdict does not depend on topological order or on
+  // producer/consumer bookkeeping being up to date mid-rewrite.
+  InlinedVector<NodeIndex> nodes_to_transform;
+
   for (auto node_index : node_topology_list) {
-    auto* node_ptr = graph.GetNode(node_index);
+    const Node* node_ptr = graph.GetNode(node_index);
     if (node_ptr == nullptr) {
       continue;
     }
-    Node& node = *node_ptr;
+    const Node& node = *node_ptr;
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GroupQueryAttention", {1}, kMSDomain)) {
       continue;
     }
 
-    if (AlreadyTransformed(graph, node, logger)) {
-      LOGS(logger, INFO) << "GroupQueryAttention node '" << DescribeNode(node)
-                         << "' already uses the BNHS Value layout. Skipping.";
-      continue;
+    bool transform = false;
+    ORT_RETURN_IF_ERROR(ClassifyNode(graph, node, logger, transform));
+    if (transform) {
+      nodes_to_transform.push_back(node_index);
     }
+  }
 
-    ORT_RETURN_IF_ERROR(ValidateNode(node));
+  // Second pass: rewire. TransformNode() cannot fail, so the graph is either fully converted or
+  // untouched.
+  for (auto node_index : nodes_to_transform) {
+    Node* node_ptr = graph.GetNode(node_index);
+    ORT_RETURN_IF(node_ptr == nullptr, "GroupQueryAttention node ", node_index,
+                  " disappeared between validation and transformation.");
 
-    const bool has_past_value = HasInput(node, kPastValueInputIndex);
-    const bool has_present_value = HasOutput(node, kPresentValueOutputIndex);
-    if (!has_past_value && !has_present_value) {
-      continue;
-    }
+    TransformNode(graph, *node_ptr);
+    modified = true;
 
-    // The layout only means something if the tensor is what the application binds to the session.
-    // Anything else is outside this transformer's contract, so leave the node alone rather than
-    // rewriting a layout the producer or consumer does not expect.
-    if (has_past_value && !graph.IsInputsIncludingInitializers(node.InputDefs()[kPastValueInputIndex])) {
-      LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a past_value input ('"
-                            << node.InputDefs()[kPastValueInputIndex]->Name() << "') that is not a graph input. "
-                            << "The BNHS Value layout will not be applied to this node.";
-      continue;
-    }
-
-    if (has_present_value && !graph.IsOutput(node.OutputDefs()[kPresentValueOutputIndex])) {
-      LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a present_value output ('"
-                            << node.OutputDefs()[kPresentValueOutputIndex]->Name() << "') that is not a graph output. "
-                            << "The BNHS Value layout will not be applied to this node.";
-      continue;
-    }
-
-    // Each boundary NodeArg is shared: swapping its declared shape is visible to every other node
-    // that reads or writes it, but only this node gets rewired through a Transpose. If a boundary
-    // has any other user, transforming it would leave that user interpreting the tensor in the wrong
-    // layout (and, for a shared past_value, would swap the declared shape a second time and undo
-    // it). Until this transformer can rewire every BNSH user of a boundary, require sole ownership.
-    if (has_past_value) {
-      const NodeArg* boundary_arg = node.InputDefs()[kPastValueInputIndex];
-      const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
-      if (consumers.size() != 1 || consumers[0] != &node) {
-        LOGS(logger, ERROR) << "GroupQueryAttention node '" << DescribeNode(node) << "' shares its past_value graph "
-                              << "input ('" << boundary_arg->Name() << "') with " << (consumers.size() - 1)
-                              << " other node(s). The BNHS Value layout will not be applied to this node.";
-        continue;
-      }
-    }
-
-    if (has_present_value) {
-      const NodeArg* boundary_arg = node.OutputDefs()[kPresentValueOutputIndex];
-      const auto consumers = graph.GetConsumerNodes(boundary_arg->Name());
-      if (!consumers.empty()) {
-        LOGS(logger, ERROR) << "GroupQueryAttention node '" << DescribeNode(node) << "' has a present_value graph "
-                              << "output ('" << boundary_arg->Name() << "') that is also consumed by " << consumers.size()
-                              << " node(s) inside the graph. The BNHS Value layout will not be applied to this node.";
-        continue;
-      }
-    }
-
-    if (has_past_value) {
-      // The graph input keeps its name and identity but now declares BNHS. A new NodeArg carries the
-      // BNSH result of the Transpose into the GQA node, inheriting the original (BNSH) type/shape.
-      NodeArg* boundary_arg = node.MutableInputDefs()[kPastValueInputIndex];
-      NodeArg& bnsh_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(boundary_arg->Name() + "_bnsh"),
-                                                   boundary_arg->TypeAsProto());
-
-      AddValueLayoutTranspose(graph,
-                              DescribeNode(node) + "/past_value_bnhs_to_bnsh",
-                              "Converts the GQA past_value cache from BNHS to the BNSH layout the operator requires",
-                              *boundary_arg,
-                              bnsh_arg);
-
-      graph_utils::ReplaceNodeInput(node, static_cast<int>(kPastValueInputIndex), bnsh_arg);
-      ORT_RETURN_IF_ERROR(SwapLastTwoDims(*boundary_arg));
-
-      modified = true;
-    }
-
-    if (has_present_value) {
-      // Symmetrically: the GQA node now writes BNSH into a new NodeArg, and the Transpose produces
-      // the graph output, which keeps its name and identity but now declares BNHS.
-      NodeArg* boundary_arg = node.MutableOutputDefs()[kPresentValueOutputIndex];
-      NodeArg& bnsh_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(boundary_arg->Name() + "_bnsh"),
-                                                   boundary_arg->TypeAsProto());
-
-      // Retarget the GQA output before adding the Transpose so the graph never has two producers
-      // for the boundary NodeArg.
-      node.MutableOutputDefs()[kPresentValueOutputIndex] = &bnsh_arg;
-
-      AddValueLayoutTranspose(graph,
-                              DescribeNode(node) + "/present_value_bnsh_to_bnhs",
-                              "Converts the GQA present_value cache from BNSH to the BNHS layout the application expects",
-                              bnsh_arg,
-                              *boundary_arg);
-
-      ORT_RETURN_IF_ERROR(SwapLastTwoDims(*boundary_arg));
-
-      modified = true;
-    }
-
-    LOGS(logger, INFO) << "Applied the BNHS Value layout to GroupQueryAttention node '" << DescribeNode(node) << "'.";
+    LOGS(logger, INFO) << "Applied the BNHS Value layout to GroupQueryAttention node '"
+                       << DescribeNode(*node_ptr) << "'.";
   }
 
   return Status::OK();
