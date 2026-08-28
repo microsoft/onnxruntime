@@ -375,7 +375,7 @@ if (CPUINFO_SUPPORTED)
         # https://github.com/pytorch/cpuinfo/pull/324
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
         # https://github.com/pytorch/cpuinfo/pull/400
-        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
+        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
         ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
@@ -390,7 +390,7 @@ if (CPUINFO_SUPPORTED)
         # https://github.com/microsoft/onnxruntime/issues/10038
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch &&
         # https://github.com/pytorch/cpuinfo/pull/400
-        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
+        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
         ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
@@ -402,7 +402,7 @@ if (CPUINFO_SUPPORTED)
       EXCLUDE_FROM_ALL
       PATCH_COMMAND
         # https://github.com/pytorch/cpuinfo/pull/400
-        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
+        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
         ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )

@@ -1989,7 +1989,7 @@ endif()
   if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     onnxruntime_add_executable(
       onnxruntime_cpuinfo_refcount_test
-      ${TEST_SRC_DIR}/common/cpuinfo_refcount_test.cc)
+      ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
     target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
     add_test(
       NAME onnxruntime_cpuinfo_refcount_test
