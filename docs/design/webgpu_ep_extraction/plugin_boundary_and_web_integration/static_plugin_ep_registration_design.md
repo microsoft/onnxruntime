@@ -423,9 +423,9 @@ design rather than an oversight — the name-based API is the internal-EP mechan
 through `RegisterExecutionProviderLibrary` plus `OrtEpDevice`-based selection — but it does mean ORT Web needs new
 plumbing rather than a recompile.
 
-**No WebGPU `OrtEpDevice` exists under Emscripten.** Emscripten is neither `WIN32`, `LINUX` nor `APPLE`, so
-`cmake/onnxruntime_common.cmake` selects `core/platform/device_discovery_default.cc`, which discovers only a CPU
-device. `Factory::GetSupportedDevicesImpl` in `onnxruntime/core/providers/webgpu/ep/factory.cc` creates an
+**No WebGPU `OrtEpDevice` exists under Emscripten.** Emscripten was neither `WIN32`, `LINUX` nor `APPLE`, so
+`cmake/onnxruntime_common.cmake` fell through to `core/platform/device_discovery_default.cc`, which discovers only
+a CPU device. `Factory::GetSupportedDevicesImpl` in `onnxruntime/core/providers/webgpu/ep/factory.cc` creates an
 `OrtEpDevice` only for devices of type `OrtHardwareDeviceType_GPU`. The one fallback, the virtual GPU device in the
 same function, is opt-in through the `allow_virtual_devices` environment configuration entry and is deliberately
 registered without allocator info, because it exists to back a device-free compile-only session. So even after
@@ -433,17 +433,37 @@ selection plumbing is added, `GetEpDevices` would offer nothing for JS to select
 
 A workable order:
 
-1. Make WebGPU visible as a device under Emscripten, either through an Emscripten device discovery implementation
-   that reports a GPU or by having the factory synthesize a GPU `OrtEpDevice` there. The latter fits better: WebGPU
-   availability in a browser is a JS fact rather than an OS enumeration fact, and ORT Web already supplies the
-   actual `GPUDevice` through EP options, which makes the `OrtEpDevice` effectively a handle. It must not reuse the
-   virtual-device path, which is allocator-less by design and cannot back a real session.
+1. Make WebGPU visible as a device under Emscripten by adding an Emscripten device discovery implementation.
+   `cmake/onnxruntime_common.cmake` gains an `Emscripten` arm selecting a new
+   `core/platform/emscripten/device_discovery.cc`, which reports the CPU device via `GetCpuDeviceFromCPUIDInfo()`
+   plus a GPU `OrtHardwareDevice` when a synchronous `EM_ASM_INT` check finds `navigator.gpu`. No change to
+   `Factory::GetSupportedDevicesImpl` is needed: its existing loop filters on `OrtHardwareDeviceType_GPU`, so a
+   discovered GPU flows through and picks up both allocator infos unmodified.
 
-   *Prototype result:* factory synthesis works. When the real-GPU loop yields no devices, the factory creates a
-   GPU `OrtHardwareDevice` with null metadata — null metadata is what keeps it out of the virtual-device
-   classification, which is keyed off `kOrtHardwareDevice_MetadataKey_IsVirtual` — and registers both the default
-   and the read-only allocator info. That is sufficient for session creation and shared-allocator setup; no
-   Emscripten device discovery implementation is needed.
+   The prototype first tried the other option — having the factory synthesize the device itself through
+   `CreateHardwareDevice` — and it worked, but it is the wrong layer. `GetSupportedDevices` documents its `devices`
+   argument as "the `OrtHardwareDevice` instances that are available", so that array is the source of truth, and
+   `CreateHardwareDevice` is documented for devices with no hardware behind them ("e.g., virtual"). A browser GPU
+   is real hardware that ORT's discovery layer merely failed to enumerate, so the producer is the place to fix it.
+   Leaving it in the factory would also oblige every future Emscripten plugin EP to repeat the same workaround.
+
+   A capability check is a legitimate form of discovery here. `core/platform/apple/device_discovery.cc` sets the
+   precedent: it enumerates nothing, it asserts that one GPU exists on Apple Silicon and hardcodes the vendor id.
+   `navigator.gpu` is a stronger signal than that — an actual runtime capability probe, and the same one ORT Web's
+   `initEp` uses to decide whether WebGPU is usable. `EM_ASM` from ORT core is likewise established practice
+   (`core/graph/model.cc`, `core/framework/external_data_loader.cc`), not just an EP-layer habit.
+
+   The honest limitation is that no adapter information is available. `_OrtInit` creates the `OrtEnv` and therefore
+   triggers discovery, and it runs before `navigator.gpu.requestAdapter()` in ORT Web's `initEp`, so `vendor_id`
+   and `device_id` are left at 0. That is acceptable: Apple reports no device id either, and browsers mask
+   `GPUAdapterInfo.vendor` for fingerprinting resistance regardless. The device is deliberately *not* tagged with
+   `kOrtHardwareDevice_MetadataKey_IsVirtual`, which is what keeps it distinct from the virtual device — that path
+   is allocator-less by design and cannot back a real session.
+
+   One accepted side effect: `ep_library_internal.cc` creates an internal `WebGpuEpFactory` in a
+   `USE_WEBGPU && !ORT_USE_EP_API_ADAPTERS` build, so today's `static_lib` ORT Web build starts producing an
+   `OrtEpDevice` where it previously produced none. That build selects by name and is slated for removal, so the
+   change is benign.
 
 2. Expose plugin EP selection in the WASM C API. `g_env` is already available in `api.cc`, so `GetEpDevices` and
    `SessionOptionsAppendExecutionProvider_V2` are both reachable. A narrow helper that appends by EP name and
@@ -468,13 +488,20 @@ A workable order:
    is required though: `session-options.ts` passes the short name `'WebGPU'`, whereas `OrtEpDevice` selection
    matches the canonical `'WebGpuExecutionProvider'` returned by `EpDevice_EpName`.
 
-   The productionization question the prototype leaves open is *conditionality*. The prototype switches to V2
-   unconditionally whenever WebGPU is enabled, which is not shippable: the same JS is bundled against both
-   `static_lib` and `static_plugin` binaries, and nothing at TypeScript build time distinguishes them. This wants
-   either a build define threaded through from the WASM build or a runtime capability probe.
+   The productionization question this raises is *conditionality*: is it safe to switch to V2 unconditionally
+   whenever WebGPU is enabled? It is, provided the WASM build flips at the same time. `BUILD_DEFS.DISABLE_WEBGPU`
+   is defined in `js/web/script/build.ts` as exactly `!USE_WEBGPU_EP`, so the bundle is already specialized per
+   WASM flavour by `--webgpu-ep` — the JSEP bundle takes the other branch entirely and is unaffected. Flipping the
+   WebGPU WASM builds to `static_plugin` (step 4) therefore makes `!DISABLE_WEBGPU` imply `static_plugin` by
+   construction, and no additional build define or runtime capability probe is needed. What is *not* safe is
+   landing the JS change without the build change, since the two must move together.
 
-4. Add a CI leg. No pipeline builds WASM with `static_plugin` today, so without one this path stays validated at
-   the symbol level only.
+4. Flip the ORT Web WASM builds to `static_plugin` and add a CI leg. The two builds are
+   `Build (simd + threads + WebGPU experimental)` and its JSPI sibling in
+   `.github/workflows/linux-wasm-ci-build-and-test-workflow.yml`, both of which pass a bare `--use_webgpu` and so
+   get `static_lib` from `build_args.py`'s `const="static_lib"`. Neither uses `--minimal_build`, so the
+   minimal-build `FATAL_ERROR` guard does not stand in the way of this migration. No pipeline builds WASM with
+   `static_plugin` today, so without a leg this path stays validated at the symbol level only.
 
    *Prototype note:* the `js/web` test runner cannot currently exercise this configuration end to end, because
    `script/test-runner-cli.ts` spawns `script/build` with only `--bundle-mode` and does not forward `--webgpu-ep`.
