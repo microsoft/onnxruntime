@@ -46,3 +46,50 @@ index 3887169..8432613 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/common/scoped_resource.h b/onnx/common/scoped_resource.h
+index 525e4d6..2c41f0b 100644
+--- a/onnx/common/scoped_resource.h
++++ b/onnx/common/scoped_resource.h
+@@ -56,7 +56,41 @@ class ScopedResource {
+ inline void close_handle(HANDLE h) {
+   CloseHandle(h);
+ }
+-using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;
++// INVALID_HANDLE_VALUE is ((HANDLE)(LONG_PTR)-1); the reinterpret_cast it
++// performs is not a valid constant expression for a non-type template parameter
++// under Clang (e.g. clang-cl cross-compilation), so it cannot be used as a
++// ScopedResource template argument. Hold the sentinel as a runtime value.
++class ScopedHandle {
++  HANDLE val_;
++
++ public:
++  explicit ScopedHandle(HANDLE v) : val_(v) {}
++  ~ScopedHandle() {
++    if (val_ != INVALID_HANDLE_VALUE) {
++      close_handle(val_);
++    }
++  }
++  HANDLE get() const {
++    return val_;
++  }
++  HANDLE release() {
++    HANDLE tmp = val_;
++    val_ = INVALID_HANDLE_VALUE;
++    return tmp;
++  }
++  ScopedHandle(ScopedHandle&& other) : val_(other.release()) {}
++  ScopedHandle& operator=(ScopedHandle&& other) {
++    if (this != &other) {
++      if (val_ != INVALID_HANDLE_VALUE) {
++        close_handle(val_);
++      }
++      val_ = other.release();
++    }
++    return *this;
++  }
++  ScopedHandle(const ScopedHandle&) = delete;
++  ScopedHandle& operator=(const ScopedHandle&) = delete;
++};
+ #endif
+ 
+ inline void close_fd(int fd) {

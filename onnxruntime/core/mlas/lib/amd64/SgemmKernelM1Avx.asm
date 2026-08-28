@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMaskMoveAvx:NEAR
+        EXTERN  MlasMaskMoveAvx:PROC
 
 ;
 ; Stack frame layout for the SGEMM M=1 kernels.
@@ -29,9 +27,9 @@ INCLUDE mlasi.inc
 
 SgemmKernelM1Frame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
         SavedRsi QWORD ?
         SavedRbx QWORD ?
         SavedRbp QWORD ?
@@ -217,9 +215,9 @@ ProcessRemainingCountK:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
-        movaps  xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
-        movaps  xmm8,SgemmKernelM1Frame.SavedXmm8[rsp]
+        movaps  xmm6,XMMWORD PTR SgemmKernelM1Frame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SgemmKernelM1Frame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR SgemmKernelM1Frame.SavedXmm8[rsp]
         add     rsp,(SgemmKernelM1Frame.SavedRsi)
 
         BEGIN_EPILOGUE
@@ -384,9 +382,9 @@ ProcessRemainingCountN1:
 ;
 
         sub     rbp,4
-        jb      ProcessRemainingCountN
+        jb      ProcessRemainingCountN_2
 
-ProcessRowLoop4:
+ProcessRowLoop4_2:
         vxorps  xmm2,xmm2,xmm2              ; clear row accumulators
         vxorps  xmm3,xmm3,xmm3
         vxorps  xmm4,xmm4,xmm4
@@ -396,9 +394,9 @@ ProcessRowLoop4:
         mov     rax,r9                      ; reload CountK
         lea     r11,[rdx+rbx*4]             ; advance matrix B by 4 rows
         sub     rax,8
-        jb      ProcessRemainingCountK4
+        jb      ProcessRemainingCountK4_2
 
-ProcessColumnLoop4:
+ProcessColumnLoop4_2:
         lea     rsi,[rdx+rbx*2]             ; compute matrix B plus 2 rows
         vmovups ymm1,YMMWORD PTR [rcx]
         vmulps  ymm6,ymm1,YMMWORD PTR [rdx]
@@ -412,11 +410,11 @@ ProcessColumnLoop4:
         add     rcx,8*4                     ; advance matrix A by 8 columns
         add     rdx,8*4                     ; advance matrix B by 8 columns
         sub     rax,8
-        jae     ProcessColumnLoop4
+        jae     ProcessColumnLoop4_2
 
-ProcessRemainingCountK4:
+ProcessRemainingCountK4_2:
         test    al,7                        ; test for unaligned columns
-        jz      Output4x1Block
+        jz      Output4x1Block_2
         lea     rsi,[rdx+rbx*2]             ; compute matrix B plus 2 rows
         vmaskmovps ymm1,ymm7,YMMWORD PTR [rcx]
         vmaskmovps ymm6,ymm7,YMMWORD PTR [rdx]
@@ -436,7 +434,7 @@ ProcessRemainingCountK4:
 ; Reduce and output the row accumulators.
 ;
 
-Output4x1Block:
+Output4x1Block_2:
         vunpcklps ymm6,ymm2,ymm3            ; transpose row accumulators
         vunpckhps ymm1,ymm2,ymm3
         vunpcklps ymm2,ymm4,ymm5
@@ -455,18 +453,18 @@ Output4x1Block:
         vmovups XMMWORD PTR [r8],xmm4
         add     r8,4*4                      ; advance matrix C by 4 columns
         sub     rbp,4
-        jae     ProcessRowLoop4
+        jae     ProcessRowLoop4_2
 
-ProcessRemainingCountN:
+ProcessRemainingCountN_2:
         test    ebp,2
-        jnz     ProcessRowLoop2
+        jnz     ProcessRowLoop2_2
         test    ebp,1
-        jnz     ProcessRowLoop1
+        jnz     ProcessRowLoop1_2
 
-ExitKernel:
+ExitKernel_2:
         vzeroupper
-        movaps  xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
-        movaps  xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
+        movaps  xmm6,XMMWORD PTR SgemmKernelM1Frame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SgemmKernelM1Frame.SavedXmm7[rsp]
         add     rsp,(SgemmKernelM1Frame.SavedRsi)
 
         BEGIN_EPILOGUE
@@ -480,7 +478,7 @@ ExitKernel:
 ; Process 2 rows of the matrices.
 ;
 
-ProcessRowLoop2:
+ProcessRowLoop2_2:
         vxorps  xmm2,xmm2,xmm2              ; clear row accumulators
         vxorps  xmm3,xmm3,xmm3
         mov     rcx,r10                     ; reload matrix A
@@ -488,9 +486,9 @@ ProcessRowLoop2:
         mov     rax,r9                      ; reload CountK
         lea     r11,[rdx+rbx*2]             ; advance matrix B by 2 rows
         sub     rax,8
-        jb      ProcessRemainingCountK2
+        jb      ProcessRemainingCountK2_2
 
-ProcessColumnLoop2:
+ProcessColumnLoop2_2:
         vmovups ymm1,YMMWORD PTR [rcx]
         vmulps  ymm6,ymm1,YMMWORD PTR [rdx]
         vaddps  ymm2,ymm2,ymm6
@@ -499,11 +497,11 @@ ProcessColumnLoop2:
         add     rcx,8*4                     ; advance matrix A by 8 columns
         add     rdx,8*4                     ; advance matrix B by 8 columns
         sub     rax,8
-        jae     ProcessColumnLoop2
+        jae     ProcessColumnLoop2_2
 
-ProcessRemainingCountK2:
+ProcessRemainingCountK2_2:
         test    al,7                        ; test for unaligned columns
-        jz      Output2x1Block
+        jz      Output2x1Block_2
         vmaskmovps ymm1,ymm7,YMMWORD PTR [rcx]
         vmaskmovps ymm6,ymm7,YMMWORD PTR [rdx]
         vmulps  ymm6,ymm1,ymm6
@@ -516,7 +514,7 @@ ProcessRemainingCountK2:
 ; Reduce and output the row accumulators.
 ;
 
-Output2x1Block:
+Output2x1Block_2:
         vunpcklps ymm4,ymm2,ymm3            ; reduce row accumulators
         vunpckhps ymm2,ymm2,ymm3
         vaddps  ymm2,ymm2,ymm4
@@ -530,32 +528,32 @@ Output2x1Block:
         vmovsd  QWORD PTR [r8],xmm2
         add     r8,2*4                      ; advance matrix C by 2 columns
         test    ebp,1
-        jz      ExitKernel
+        jz      ExitKernel_2
 
 ;
 ; Process 1 row of the matrices.
 ;
 
-ProcessRowLoop1:
+ProcessRowLoop1_2:
         vxorps  xmm2,xmm2,xmm2              ; clear row accumulators
         mov     rcx,r10                     ; reload matrix A
         mov     rdx,r11                     ; reload matrix B
         mov     rax,r9                      ; reload CountK
         sub     rax,8
-        jb      ProcessRemainingCountK1
+        jb      ProcessRemainingCountK1_2
 
-ProcessColumnLoop1:
+ProcessColumnLoop1_2:
         vmovups ymm1,YMMWORD PTR [rcx]
         vmulps  ymm6,ymm1,YMMWORD PTR [rdx]
         vaddps  ymm2,ymm2,ymm6
         add     rcx,8*4                     ; advance matrix A by 8 columns
         add     rdx,8*4                     ; advance matrix B by 8 columns
         sub     rax,8
-        jae     ProcessColumnLoop1
+        jae     ProcessColumnLoop1_2
 
-ProcessRemainingCountK1:
+ProcessRemainingCountK1_2:
         test    al,7                        ; test for unaligned columns
-        jz      Output1x1Block
+        jz      Output1x1Block_2
         vmaskmovps ymm1,ymm7,YMMWORD PTR [rcx]
         vmaskmovps ymm6,ymm7,YMMWORD PTR [rdx]
         vmulps  ymm6,ymm1,ymm6
@@ -565,7 +563,7 @@ ProcessRemainingCountK1:
 ; Reduce and output the row accumulators.
 ;
 
-Output1x1Block:
+Output1x1Block_2:
         vhaddps ymm2,ymm2,ymm2              ; reduce row accumulators
         vhaddps ymm2,ymm2,ymm2
         vextractf128 xmm4,ymm2,1
@@ -574,7 +572,7 @@ Output1x1Block:
         vandnps xmm3,xmm0,xmm3
         vaddss  xmm2,xmm2,xmm3
         vmovss  DWORD PTR [r8],xmm2
-        jmp     ExitKernel
+        jmp     ExitKernel_2
 
         NESTED_END MlasSgemmKernelM1TransposeBAvx, _TEXT
 

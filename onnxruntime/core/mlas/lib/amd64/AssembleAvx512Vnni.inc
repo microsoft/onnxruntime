@@ -87,7 +87,6 @@ GprIndex_r15    EQU     15
 ;
 
 VnniZmmZmmZmm MACRO Opcode, DestReg, Src1Reg, Src2Reg
-
         LOCAL   Payload0, Payload1, Payload2, ModRMByte
 
         Payload0 = 002h                     ; "0F 38" prefix
@@ -139,7 +138,7 @@ VpdpwssdsZmmZmmZmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 ;   This macro builds a VNNI instruction of the form:
 ;
-;        instr zmm1,zmm2,DWORD BCST [BaseReg+IndexReg*Scale+ByteOffset]
+;        instr zmm1,zmm2,DWORD PTR [BaseReg+IndexReg*Scale+ByteOffset]{1to16}
 ;
 ; Arguments:
 ;
@@ -160,7 +159,6 @@ VpdpwssdsZmmZmmZmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 
 VnniZmmZmmBroadcast MACRO Opcode, DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
-
         LOCAL   Payload0, Payload1, Payload2, ModRMByte, SibByte
 
 .errnz (ByteOffset AND 3)

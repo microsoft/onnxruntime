@@ -14,7 +14,7 @@
 #include "gmock/gmock.h"
 
 #ifdef _WIN32
-#include <wil/Resource.h>
+#include <wil/resource.h>
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>

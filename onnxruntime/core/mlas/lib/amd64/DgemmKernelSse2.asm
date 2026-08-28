@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE DgemmKernelCommon.inc
 INCLUDE FgemmKernelSse2Common.inc
-        .list
 
 ;
 ; Macro Description:
@@ -116,15 +114,7 @@ ENDIF
 ;
 
 ProcessCountM MACRO RowCount, Fallthrough
-
-        LOCAL   ProcessNextColumnLoop8xN
-        LOCAL   Compute8xNBlockBy1Loop
-        LOCAL   Output8xNBlock
-        LOCAL   OutputPartial8xNBlock
-        LOCAL   OutputPartialLessThan6xNBlock
-        LOCAL   OutputPartialLessThan4xNBlock
-        LOCAL   OutputPartial1xNBlock
-        LOCAL   SkipAccumulateOutput1xN
+        LOCAL   ProcessNextColumnLoop8xN, Compute8xNBlockBy1Loop, Output8xNBlock, OutputPartial8xNBlock, OutputPartialLessThan6xNBlock, OutputPartialLessThan4xNBlock, OutputPartial1xNBlock, SkipAccumulateOutput1xN
 
 ProcessNextColumnLoop8xN:
         EmitIfCountGE RowCount, 1, <xorpd xmm8,xmm8>

@@ -14,18 +14,17 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        .const
+CONST   SEGMENT READONLY ALIGN(16) 'CONST'
 
 SINGLE_SIZE     equ 4
 HALF_SIZE       equ 2
 LOW_SELECTOR    equ 00100000b
 HIGH_SELECTOR   equ 00110001b
 
-        SUBTTL  "Convert buffer of half-precision floats to single-precision floats"
+CONST   ENDS
+
 ;++
 ;
 ; Routine Description:

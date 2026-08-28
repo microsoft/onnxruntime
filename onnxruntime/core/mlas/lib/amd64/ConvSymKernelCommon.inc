@@ -42,16 +42,16 @@ ConvSymPostProcessParams ENDS
 
 ConvSymKernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR15 QWORD ?
         SavedR14 QWORD ?
@@ -77,16 +77,16 @@ ConvSymKernelFrame ENDS
 
 ConvSymDepthwiseKernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR15 QWORD ?
         SavedR14 QWORD ?

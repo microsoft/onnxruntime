@@ -17,7 +17,7 @@
 ;
 ;--
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
+        EXTERN  MlasMaskMoveTableAvx:PROC
 
 ;
 ; Macro Description:
@@ -213,15 +213,7 @@ ENDIF
 ;
 
 ProcessCountM MACRO RowCount, Fallthrough
-
-        LOCAL   ProcessNextColumnLoop2xN
-        LOCAL   Store2xNBlock
-        LOCAL   ProcessRemainingCountN
-        LOCAL   Store1xNBlock
-        LOCAL   OutputMasked2xNBlock
-        LOCAL   StoreMasked2xNBlock
-        LOCAL   OutputMasked1xNBlock
-        LOCAL   StoreMasked1xNBlock
+        LOCAL   ProcessNextColumnLoop2xN, Store2xNBlock, ProcessRemainingCountN, Store1xNBlock, OutputMasked2xNBlock, StoreMasked2xNBlock, OutputMasked1xNBlock, StoreMasked1xNBlock
 
         cmp     rbp,FgemmYmmElementCount
         jbe     ProcessRemainingCountN
