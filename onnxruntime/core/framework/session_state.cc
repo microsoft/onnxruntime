@@ -757,6 +757,7 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   };
 
+#if !defined(__ANDROID__)
   auto has_constant_initializer_input = [this](const Node& node) {
     for (const auto* input_def : node.InputDefs()) {
       if (!input_def->Exists()) {
@@ -807,6 +808,10 @@ Status SessionState::PrepackConstantInitializedTensors(
   // by the InferenceSession that created this SessionState, and this write happens single-threaded
   // before any node's PrePack() runs, so it cannot race with the concurrent reads performed later.
   ORT_RETURN_IF_ERROR(const_cast<SessionOptions&>(sess_options_).config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
+#else
+  constexpr bool enable_parallel_prepack = false;
+  bool should_cache_prepacked_weights_for_shared_initializers = (prepacked_weights_container_ != nullptr);
+#endif
 
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
@@ -833,6 +838,7 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   }
 
+#if !defined(__ANDROID__)
   // Parallel path: fan out the per-node CPU work (dominated by kernel->PrePack(), which reads and
   // repacks each node's constant initializer) across the intra-op thread pool. EPs that do not
   // advertise concurrent kernel execution are left on the sequential path.
@@ -901,6 +907,7 @@ Status SessionState::PrepackConstantInitializedTensors(
   for (auto& st : statuses) {
     ORT_RETURN_IF_ERROR(st);
   }
+#endif
   return Status::OK();
 }
 

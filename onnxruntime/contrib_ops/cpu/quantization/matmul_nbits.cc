@@ -380,8 +380,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
   // Only create threadpool for LUT GEMM path which can benefit from parallel packing
   // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
+#if !defined(__ANDROID__)
   const bool outer_parallel_prepack =
       OpKernel::Info().GetConfigOptions().GetConfigEntry(kOrtSessionOptionsEnableParallelPrepack) == "1";
+#else
+  constexpr bool outer_parallel_prepack = false;
+#endif
   if (prefer_lut_gemm_ && !outer_parallel_prepack) {
     OrtThreadPoolParams tpo;
     tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
