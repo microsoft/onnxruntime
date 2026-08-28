@@ -216,6 +216,17 @@ void AddCommonAttrs(OpTester& t, const Options& o) {
   if (o.scale != 0.0f) t.AddAttribute("scale", o.scale);
 }
 
+template <typename T>
+std::vector<T> ToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(data);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(data);
+  } else {
+    return data;
+  }
+}
+
 // Runs the operator and compares against the float64 reference.
 // With rank4 the leading token axis is spelled [batch, sequence] instead of [total_tokens];
 // the buffers are byte-identical, only the declared shapes differ.
@@ -238,15 +249,9 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in, float o
     return s;
   };
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    test.AddInput<MLFloat16>("query", shaped({g.hq, g.dk}), ToFloat16(in.q));
-    test.AddInput<MLFloat16>("key", shaped({g.hq, g.dk}), ToFloat16(in.k));
-    test.AddInput<MLFloat16>("value", shaped({g.hv, g.dv}), ToFloat16(in.v));
-  } else {
-    test.AddInput<float>("query", shaped({g.hq, g.dk}), in.q);
-    test.AddInput<float>("key", shaped({g.hq, g.dk}), in.k);
-    test.AddInput<float>("value", shaped({g.hv, g.dv}), in.v);
-  }
+  test.AddInput<T>("query", shaped({g.hq, g.dk}), ToTensorType<T>(in.q));
+  test.AddInput<T>("key", shaped({g.hq, g.dk}), ToTensorType<T>(in.k));
+  test.AddInput<T>("value", shaped({g.hv, g.dv}), ToTensorType<T>(in.v));
   if (in.cu_seqlens.empty()) {
     test.AddOptionalInputEdge<int32_t>();
   } else {
@@ -286,13 +291,8 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in, float o
     }
   }
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    test.AddOutput<MLFloat16>("output", shaped({out_heads, g.dv}), ToFloat16(ref_out),
-                              false, out_tol, out_tol);
-  } else {
-    test.AddOutput<float>("output", shaped({out_heads, g.dv}), ref_out,
-                          false, out_tol, out_tol);
-  }
+  test.AddOutput<T>("output", shaped({out_heads, g.dv}), ToTensorType<T>(ref_out),
+                    false, out_tol, out_tol);
   test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
                         state_tol);
   if (o.state_update_capacity > 0) {
@@ -508,6 +508,12 @@ TEST(GatedDeltaNetTest, Recurrent_Float32) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, 64, 32};
   RunTypedCase<float>(g, Options{}, MakeInputs(g, 149), 1e-4f, 1e-4f);
+}
+
+TEST(GatedDeltaNetTest, Recurrent_BFloat16) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{4, 1, 1, 2, 64, 32};
+  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 3e-2f, 3e-2f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_SmallHeadSizes) {
@@ -1151,6 +1157,24 @@ TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
   const gdn::Plan tiny = gdn::SelectPlan(d, 48 * 1024);
   EXPECT_TRUE(tiny.supported);
   EXPECT_EQ(tiny.engine, gdn::Engine::kRecurrent);
+}
+
+TEST(GatedDeltaNetPlanTest, BFloat16UsesRecurrentEngine) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor d{};
+  d.total_tokens = 64;
+  d.batch = 1;
+  d.num_heads_q = 1;
+  d.num_heads_k = 1;
+  d.num_heads_v = 2;
+  d.head_size_qk = 128;
+  d.head_size_v = 128;
+  d.io_type = gdn::IoType::kBFloat16;
+  d.sm_major = 8;
+
+  const auto plan = gdn::SelectPlan(d, 160 * 1024);
+  EXPECT_TRUE(plan.supported);
+  EXPECT_EQ(plan.engine, gdn::Engine::kRecurrent);
 }
 
 TEST(GatedDeltaNetPlanTest, RecurrentSharedMemoryIncludesBothNormalizationScalars) {

@@ -39,6 +39,7 @@
 // which keeps the exponent bounded within a chunk.
 
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 
 #include <algorithm>
 #include <mutex>
@@ -779,6 +780,9 @@ template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const
                                            float, int, size_t, cudaStream_t);
 template Status LaunchGatedDeltaNet<half>(const Descriptor&, const Plan&, const VariantPack<half>&,
                                           float, int, size_t, cudaStream_t);
+template Status LaunchGatedDeltaNet<__nv_bfloat16>(
+    const Descriptor&, const Plan&, const VariantPack<__nv_bfloat16>&, float, int, size_t,
+    cudaStream_t);
 
 }  // namespace gated_delta_net
 }  // namespace cuda
