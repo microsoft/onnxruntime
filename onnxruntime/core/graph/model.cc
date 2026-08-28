@@ -560,11 +560,11 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
     if (status.Category() == common::SYSTEM) {
-      switch (status.Code()) {
-        case ENOENT:
+      switch (common::StatusCodeFromSystemErrno(status.Code())) {
+        case common::NO_SUCHFILE:
           return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToUTF8String(file_path),
                                  " failed. File doesn't exist");
-        case EINVAL:
+        case common::INVALID_ARGUMENT:
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToUTF8String(file_path), " failed");
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
