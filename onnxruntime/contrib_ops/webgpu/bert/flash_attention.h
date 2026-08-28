@@ -100,6 +100,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false,
+                        bool has_local_window = false,
                         bool turbo_quant = false,
                         int compressed_head_size_u32 = 0,
                         bool use_seqlens_q = false)
@@ -115,6 +116,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
         has_head_sink_(has_head_sink),
+        has_local_window_(has_local_window),
         turbo_quant_(turbo_quant),
         compressed_head_size_u32_(compressed_head_size_u32),
         use_seqlens_q_(use_seqlens_q) {
@@ -147,7 +149,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -161,6 +164,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
+  bool has_local_window_;
   int max_k_step_;
   bool turbo_quant_;
   int compressed_head_size_u32_;
@@ -376,7 +380,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr,
                            const Tensor* total_seqlen = nullptr, const Tensor* seqlens_q = nullptr,
                            const Tensor* block_table = nullptr, uint32_t block_size = 0, uint32_t max_num_blocks_per_seq = 0,
-                           const Tensor* cumulative_seqlens_q = nullptr);
+                           const Tensor* cumulative_seqlens_q = nullptr, int local_window_size = -1);
 
 // Adapter/config gate for the fused paged-prefill shader
 // (FlashAttentionPagedPrefillProgram). Callers that decide up front whether Q

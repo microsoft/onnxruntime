@@ -275,6 +275,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
+                             WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
@@ -769,10 +770,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink,
                            const Tensor* total_seqlen, const Tensor* seqlens_q,
                            const Tensor* block_table, uint32_t block_size, uint32_t max_num_blocks_per_seq,
-                           const Tensor* cumulative_seqlens_q) {
+                           const Tensor* cumulative_seqlens_q, int local_window_size) {
   constexpr uint32_t tile_size = 64;
   const bool use_seqlens_q = seqlens_q != nullptr;
   const bool use_paged_kv_cache = block_table != nullptr;
+  const bool has_local_window = local_window_size > 0;
 
   const bool turbo_quant_enabled = context.KvCacheQuantizationEnabled();
   if (turbo_quant_enabled && (parameters.head_size_ < 8 || (parameters.head_size_ & (parameters.head_size_ - 1)) != 0)) {
@@ -1005,7 +1007,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Split-reduce wins for short Q (sequence_length < 32) across all KV
   // cache lengths measured: 1.13x-2.07x faster at total_sequence_length
   // 128 / 500 / 2000 on a representative LLM (32 heads, head_size 96).
-  const bool use_split_reduce = parameters.sequence_length_ < 32;
+  const bool use_split_reduce = parameters.sequence_length_ < 32 && !has_local_window;
 
   if (!use_split_reduce) {
     // Ask the shared helper whether the fused paged-prefill shader can run on
@@ -1089,6 +1091,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                     q_BNSH,
                                     use_seqlen_k,
                                     has_head_sink,
+                                    has_local_window,
                                     turbo_quant_enabled,
                                     compressed_head_size_u32,
                                     use_seqlens_q};
@@ -1130,7 +1133,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
       program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
           .SetWorkgroupSize(prefill_tile_size)
-          .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple, has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, turbo_quant_enabled, compressed_head_size_u32, program.max_k_step(), use_seqlens_q)
+          .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple, has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window, turbo_quant_enabled, compressed_head_size_u32, program.max_k_step(), use_seqlens_q)
           .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                                 {static_cast<uint32_t>(parameters.total_sequence_length_)},
                                 {static_cast<uint32_t>(present_sequence_length)},
@@ -1140,7 +1143,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                 {num_seq_tile},
                                 {attn_bias_dim0},
                                 {attn_bias_dim1},
-                                {attn_bias_dim3}});
+                                {attn_bias_dim3},
+                                {static_cast<uint32_t>(has_local_window ? local_window_size : 0)}});
 
       ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }

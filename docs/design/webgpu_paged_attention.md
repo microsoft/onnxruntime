@@ -1,6 +1,6 @@
 # Design: WebGPU PagedAttention
 
-**Status**: v1 landed. Phase 2 partially landed (direct paged decode + fused paged prefill + Unpack/Repack skip fast paths + metadata fast path).
+**Status**: v1 landed. Phase 2 partially landed (direct paged decode + fused paged prefill + Unpack/Repack skip fast paths + metadata fast path + local-window/head-sink fallback).
 **Target**: WebGPU EP, `com.microsoft::PagedAttention` v1
 **Owner**: TBD
 **Precision**: `MLFloat16` only in v1
@@ -377,11 +377,21 @@ metadata readback. This removes the per-node queue flush for current GenAI
 exports; indirect dispatch remains a possible follow-up for tightening work to
 the exact lengths while retaining replay-wide allocations.
 
+**Local-window and head-sink support.** ✅ The generic
+`FlashAttentionProgram` applies `local_window_size` as a per-query left mask
+and composes it with the existing learned `head_sink` softmax term. Local
+windows route through gather-then-flash for both prefill and decode because the
+direct paged shaders do not yet skip old pages. Head-sink-only decode retains
+the direct paged split-reduce path; head-sink prefill falls back to gather until
+the fused paged-prefill shader carries the sink term. This is a correctness
+implementation, not the final local-window optimization: gathering and shader
+traversal still scale with full KV history.
+
 #### Phase 2 items remaining (future work)
 
 **2. Complete deferred Phase 1 feature support.** Add and test the features
-currently rejected by WebGPU: `softcap`, `local_window_size`, `head_sink`,
-`use_smooth_softmax`, `q_norm_weight`, and `k_norm_weight`. Evaluate
+currently rejected by WebGPU: `softcap`, `use_smooth_softmax`,
+`q_norm_weight`, and `k_norm_weight`. Evaluate
 `slot_mapping` including negative-slot skip-write semantics, plus
 `rotary_offset` and non-default `v_head_size` when model compatibility
 requires them. Add `bfloat16` only when target WebGPU adapters provide a
@@ -537,7 +547,7 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 
 - Any `T_CACHE != T` (quantized).
 - `kv_cache_layout == LATENT`.
-- Non-null `head_sink`, `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`.
+- Non-null `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`.
 - `slot_mapping` containing negative entries.
 
 ---
@@ -573,8 +583,9 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
   `TestPagedAttentionRotaryZeroTokenRegression`) remain the CUDA source of
   truth. `TestPagedAttentionWebGpu` runs the same PyTorch reference
   (`attention_ref`) over a WebGPU-scoped config matrix (rotary + packed QKV +
-  GQA), filtered by `_webgpu_supports_config` to skip `softcap != 0` and
-  `local_window_size != -1` until the WebGPU kernel implements them. Because
+  GQA), plus focused local-window/head-sink tests for GPT-OSS-style prefill,
+  decode, short-history saturation, and independent sink paths. The matrix is
+  filtered by `_webgpu_supports_config` to skip `softcap != 0`. Because
   lavapipe crashes on MatMul, the numerical tests must run on
   **macOS-arm64 Metal** or on a discrete Windows/Linux WebGPU adapter as the
   source of truth (same policy as the expanded-Attention tests).
