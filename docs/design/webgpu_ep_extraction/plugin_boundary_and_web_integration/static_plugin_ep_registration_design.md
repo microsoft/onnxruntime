@@ -392,8 +392,9 @@ llvm-nm libonnxruntime_providers_webgpu.a | grep WebGpu_   # T WebGpu_CreateEpFa
 ```
 
 Both were observed on the Emscripten build, which confirms the guard was live, the D3 entry-point prefixing worked,
-and the link resolved core's reference against the provider. The binary has not yet been executed in a browser, so
-this validates build, link and registration wiring rather than runtime behaviour.
+and the link resolved core's reference against the provider. That check validates build, link and registration
+wiring; runtime behaviour was established separately by the ORT Web prototype described under
+[ORT Web migration](#ort-web-migration).
 
 A practical build note: the WASM build needs `node` on `PATH` — `node_helper.cmake` does a hard `find_program` and
 fails configure without it. emsdk bundles a suitable one under `cmake/external/emsdk/node/<version>/bin`.
@@ -405,6 +406,11 @@ entirely, ORT Web included. Building the EP into the WASM binary as a static plu
 only the first half of that. The second half is *selection*, and two gaps stand between the current state and a
 working ORT Web on the plugin path. Neither is visible to the linker, so the symbol-level evidence above does not
 speak to either.
+
+Both gaps have since been closed by a throwaway prototype, which ran the full `js/web` WebGPU operator suite in
+Edge against a WASM `static_plugin` binary: 2152 tests, all passing. The design below is therefore validated end
+to end rather than merely plausible; what remains is productionization, not discovery. The prototype's findings are
+recorded inline in the steps that follow.
 
 **ORT Web selects the EP by name, and that name resolves only to the internal EP.**
 `js/web/lib/wasm/session-options.ts` maps the `'webgpu'` backend to `epName = 'WebGPU'`, which reaches
@@ -432,16 +438,49 @@ A workable order:
    availability in a browser is a JS fact rather than an OS enumeration fact, and ORT Web already supplies the
    actual `GPUDevice` through EP options, which makes the `OrtEpDevice` effectively a handle. It must not reuse the
    virtual-device path, which is allocator-less by design and cannot back a real session.
+
+   *Prototype result:* factory synthesis works. When the real-GPU loop yields no devices, the factory creates a
+   GPU `OrtHardwareDevice` with null metadata — null metadata is what keeps it out of the virtual-device
+   classification, which is keyed off `kOrtHardwareDevice_MetadataKey_IsVirtual` — and registers both the default
+   and the read-only allocator info. That is sufficient for session creation and shared-allocator setup; no
+   Emscripten device discovery implementation is needed.
+
 2. Expose plugin EP selection in the WASM C API. `g_env` is already available in `api.cc`, so `GetEpDevices` and
    `SessionOptionsAppendExecutionProvider_V2` are both reachable. A narrow helper that appends by EP name and
    resolves the device internally avoids marshalling arrays of device pointers across the JS boundary. The new
    entry point needs to be exported from `cmake/onnxruntime_webassembly.cmake`.
+
+   *Prototype result:* the name-resolving helper is the right shape. Note that exporting it takes three edits, not
+   one: `EMSCRIPTEN_KEEPALIVE` in `api.h`, the `JSPI_EXPORTS` list in `cmake/onnxruntime_webassembly.cmake` for
+   JSPI builds, and the `wrapAsyncAPIs` list in `onnxruntime/wasm/pre-async.js` for Asyncify builds. Omitting the
+   last one is the easy mistake, and Asyncify is the default variant. Reporting matters too: on no match the helper
+   should raise a status naming the EPs that *are* registered, which is what makes a misconfiguration diagnosable
+   from JS through `checkLastError`.
+
 3. Switch `js/web` to the new call. The `BUILD_DEFS.DISABLE_WEBGPU` branch that falls back to the JS EP is
    unaffected. Confirm that the EP options ORT Web passes today — `deviceId`, `webgpuInstance`, `webgpuDevice`,
    `preferredLayout` and the buffer cache modes — still reach the provider, since `Factory::CreateEpImpl` obtains
    them from the session config options.
+
+   *Prototype result:* the options do reach the provider unchanged, and the reason is worth recording. Both paths
+   derive their config prefix from `OrtSessionOptions::GetProviderOptionPrefix` keyed on the EP name, so V2 lands
+   the options under exactly the same `ep.webgpuexecutionprovider.*` keys the name-based path used. One JS change
+   is required though: `session-options.ts` passes the short name `'WebGPU'`, whereas `OrtEpDevice` selection
+   matches the canonical `'WebGpuExecutionProvider'` returned by `EpDevice_EpName`.
+
+   The productionization question the prototype leaves open is *conditionality*. The prototype switches to V2
+   unconditionally whenever WebGPU is enabled, which is not shippable: the same JS is bundled against both
+   `static_lib` and `static_plugin` binaries, and nothing at TypeScript build time distinguishes them. This wants
+   either a build define threaded through from the WASM build or a runtime capability probe.
+
 4. Add a CI leg. No pipeline builds WASM with `static_plugin` today, so without one this path stays validated at
    the symbol level only.
+
+   *Prototype note:* the `js/web` test runner cannot currently exercise this configuration end to end, because
+   `script/test-runner-cli.ts` spawns `script/build` with only `--bundle-mode` and does not forward `--webgpu-ep`.
+   Setting `npm_config_webgpu_ep` in the environment works as a stopgap, since `script/build.ts` reads it, but a CI
+   leg should forward the flag properly. Note also that without `--webgpu-ep` the `webgpu` backend silently routes
+   through JSEP instead, so a leg that omits it would pass while testing nothing relevant.
 
 
 
