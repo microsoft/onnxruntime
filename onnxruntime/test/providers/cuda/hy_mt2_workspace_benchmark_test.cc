@@ -50,6 +50,11 @@ constexpr int64_t kSequenceLength = 1024;
 constexpr int64_t kPastSequenceLength = 1;
 constexpr int kMinFpAIntBSm = 75;
 
+enum class CacheLayout {
+  Transformer,
+  Qwen35Hybrid,
+};
+
 struct ModelProfile {
   const char* name;
   const char* default_model_path;
@@ -59,6 +64,7 @@ struct ModelProfile {
   int64_t vocab_size;
   int64_t bos_token_id;
   size_t matmul_nbits_nodes;
+  CacheLayout cache_layout;
 };
 
 struct ArenaMemoryBreakdown {
@@ -99,12 +105,22 @@ ArenaMemoryBreakdown GetArenaMemoryBreakdown(const AllocatorStats& stats) {
 constexpr ModelProfile kHyMT2Profile{
     "hy-mt2-1.8b",
     "C:\\Users\\lochi\\repos\\onnxruntime\\Hy-MT2-1.8B-ONNX\\Q4_KQuant_tie\\cuda\\model.onnx",
-    32, 4, 128, 120818, 120000, 225};
+    32, 4, 128, 120818, 120000, 225, CacheLayout::Transformer};
 
 constexpr ModelProfile kQwen25Profile{
     "qwen2.5-1.5b",
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen2.5-1.5b-instruct-cuda-gpu-4\\v4\\model.onnx",
-    28, 2, 128, 151936, 151643, 141};
+    28, 2, 128, 151936, 151643, 141, CacheLayout::Transformer};
+
+constexpr ModelProfile kQwen35Profile{
+    "qwen3.5-2b-text",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen3.5-2b-text-cuda-gpu-1\\v1\\model.onnx",
+    24, 2, 256, 248320, 1, 187, CacheLayout::Qwen35Hybrid};
+
+constexpr ModelProfile kQwen25_7BProfile{
+    "qwen2.5-7b",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen2.5-7b-instruct-cuda-gpu-4\\v4\\model.onnx",
+    28, 4, 128, 152064, 151643, 141, CacheLayout::Transformer};
 
 class CudaMemorySampler {
  public:
@@ -321,21 +337,39 @@ const ModelProfile& GetModelProfile() {
   if (model_name == kQwen25Profile.name) {
     return kQwen25Profile;
   }
+  if (model_name == kQwen35Profile.name) {
+    return kQwen35Profile;
+  }
+  if (model_name == kQwen25_7BProfile.name) {
+    return kQwen25_7BProfile;
+  }
 
-  ORT_THROW("ORT_WORKSPACE_BENCHMARK_MODEL must be ", kHyMT2Profile.name, " or ",
-            kQwen25Profile.name, ", but got: ", model_name);
+  ORT_THROW("ORT_WORKSPACE_BENCHMARK_MODEL must be ", kHyMT2Profile.name, ", ",
+            kQwen25Profile.name, ", ", kQwen35Profile.name, ", or ",
+            kQwen25_7BProfile.name, ", but got: ", model_name);
 }
 
 std::string BuildMaxShapeOverride(const ModelProfile& profile) {
   std::ostringstream shapes;
   shapes << "input_ids:[1," << kSequenceLength << "]"
          << ";attention_mask:[1," << kPastSequenceLength + kSequenceLength << "]";
+  if (profile.cache_layout == CacheLayout::Qwen35Hybrid) {
+    shapes << ";position_ids:[1," << kSequenceLength << "]";
+  }
+
   for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
-    const std::string shape = ":[1," + std::to_string(profile.num_key_value_heads) + "," +
-                              std::to_string(kPastSequenceLength) + "," +
-                              std::to_string(profile.head_size) + "]";
-    shapes << ";past_key_values." << layer << ".key" << shape
-           << ";past_key_values." << layer << ".value" << shape;
+    const bool uses_full_attention =
+        profile.cache_layout == CacheLayout::Transformer || layer % 4 == 3;
+    if (uses_full_attention) {
+      const std::string shape = ":[1," + std::to_string(profile.num_key_value_heads) + "," +
+                                std::to_string(kPastSequenceLength) + "," +
+                                std::to_string(profile.head_size) + "]";
+      shapes << ";past_key_values." << layer << ".key" << shape
+             << ";past_key_values." << layer << ".value" << shape;
+    } else {
+      shapes << ";past_key_values." << layer << ".conv_state:[1,6144,3]"
+             << ";past_key_values." << layer << ".recurrent_state:[1,16,128,128]";
+    }
   }
   return shapes.str();
 }
@@ -481,6 +515,10 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   std::vector<MLFloat16> past_data(
       static_cast<size_t>(profile.num_key_value_heads * kPastSequenceLength * profile.head_size),
       MLFloat16(0.0f));
+  std::vector<int64_t> position_ids(static_cast<size_t>(kSequenceLength));
+  std::iota(position_ids.begin(), position_ids.end(), kPastSequenceLength);
+  std::vector<MLFloat16> conv_state_data(6144 * 3, MLFloat16(0.0f));
+  std::vector<MLFloat16> recurrent_state_data(16 * 128 * 128, MLFloat16(0.0f));
 
   NameMLValMap feeds;
   OrtValue input_ids_value;
@@ -495,14 +533,42 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       attention_mask.data(), OrtMemoryInfo(), &attention_mask_value);
   feeds.emplace("attention_mask", attention_mask_value);
 
+  if (profile.cache_layout == CacheLayout::Qwen35Hybrid) {
+    OrtValue position_ids_value;
+    CreateMLValue<int64_t>(
+        std::array<int64_t, 2>{1, kSequenceLength},
+        position_ids.data(), OrtMemoryInfo(), &position_ids_value);
+    feeds.emplace("position_ids", position_ids_value);
+  }
+
   const std::array<int64_t, 4> past_shape{
       1, profile.num_key_value_heads, kPastSequenceLength, profile.head_size};
   for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
-    for (const char* kind : {"key", "value"}) {
-      OrtValue past_value;
-      CreateMLValue<MLFloat16>(past_shape, past_data.data(), OrtMemoryInfo(), &past_value);
+    const bool uses_full_attention =
+        profile.cache_layout == CacheLayout::Transformer || layer % 4 == 3;
+    if (uses_full_attention) {
+      for (const char* kind : {"key", "value"}) {
+        OrtValue past_value;
+        CreateMLValue<MLFloat16>(past_shape, past_data.data(), OrtMemoryInfo(), &past_value);
+        feeds.emplace(
+            "past_key_values." + std::to_string(layer) + "." + kind, std::move(past_value));
+      }
+    } else {
+      OrtValue conv_state_value;
+      CreateMLValue<MLFloat16>(
+          std::array<int64_t, 3>{1, 6144, 3},
+          conv_state_data.data(), OrtMemoryInfo(), &conv_state_value);
       feeds.emplace(
-          "past_key_values." + std::to_string(layer) + "." + kind, std::move(past_value));
+          "past_key_values." + std::to_string(layer) + ".conv_state",
+          std::move(conv_state_value));
+
+      OrtValue recurrent_state_value;
+      CreateMLValue<MLFloat16>(
+          std::array<int64_t, 4>{1, 16, 128, 128},
+          recurrent_state_data.data(), OrtMemoryInfo(), &recurrent_state_value);
+      feeds.emplace(
+          "past_key_values." + std::to_string(layer) + ".recurrent_state",
+          std::move(recurrent_state_value));
     }
   }
 
