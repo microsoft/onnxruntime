@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "ep.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -65,6 +66,7 @@ class Factory : public OrtEpFactory {
 
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
+  const webgpu::WebGpuDeviceConfig device_config_;
 
   // Owned virtual GPU hardware device created on demand by GetSupportedDevices when the environment
   // allows virtual devices (OrtEnv config "allow_virtual_devices"=1) and no real GPU device was
@@ -74,7 +76,7 @@ class Factory : public OrtEpFactory {
   OrtHardwareDevice* virtual_hw_device_ = nullptr;
 
  public:
-  Factory();
+  explicit Factory(const webgpu::WebGpuDeviceConfig& device_config);
   ~Factory();
 };
 

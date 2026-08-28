@@ -3,11 +3,27 @@
 
 #pragma once
 
+#include "core/session/onnxruntime_env_config_keys.h"
+
 namespace onnxruntime {
 namespace webgpu {
+
+struct WebGpuDeviceConfig {
+  bool enable_robustness{
+#ifndef NDEBUG
+      true
+#else
+      false
+#endif
+  };
+  bool enable_robustness_explicitly_set{false};
+  bool enable_zero_buffer{true};
+  bool enable_zero_buffer_explicitly_set{false};
+};
+
 namespace options {
 
-// The following are the options that can be set in the WebGPU provider options.
+// The following are the options that can be set in the WebGPU session provider options.
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
@@ -34,7 +50,6 @@ constexpr const char* kQueryResolveBufferCacheMode = "ep.webgpuexecutionprovider
 constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defaultBufferCacheMode";
 
 constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMode";
-constexpr const char* kEnableRobustness = "ep.webgpuexecutionprovider.enableRobustness";
 
 constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
 constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";
@@ -87,6 +102,9 @@ constexpr const char* kValidationMode_full = "full";
 
 constexpr const char* kEnableRobustness_ON = "1";
 constexpr const char* kEnableRobustness_OFF = "0";
+
+constexpr const char* kEnableZeroBuffer_ON = "1";
+constexpr const char* kEnableZeroBuffer_OFF = "0";
 
 }  // namespace options
 }  // namespace webgpu

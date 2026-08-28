@@ -23,8 +23,7 @@ GpuBufferAllocator::GpuBufferAllocator(
                         OrtMemTypeDefault)),
       buffer_manager_getter_{std::move(buffer_manager_getter)},
       should_submit_zero_initialize_{std::move(should_submit_zero_initialize)},
-      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()},
-      initialize_to_zero_{!is_read_only_allocator} {
+      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()} {
 }
 
 void* GpuBufferAllocator::Alloc(size_t size) {
@@ -38,7 +37,7 @@ void* GpuBufferAllocator::Alloc(size_t size) {
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
   const bool submit_zero_initialize = should_submit_zero_initialize_ && should_submit_zero_initialize_();
-  return buffer_manager_getter_().Create(size, usage, initialize_to_zero_, submit_zero_initialize);
+  return buffer_manager_getter_().CreateAllocatorBuffer(size, usage, submit_zero_initialize);
 }
 
 void GpuBufferAllocator::Free(void* p) {

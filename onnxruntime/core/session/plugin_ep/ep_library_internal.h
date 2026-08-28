@@ -11,6 +11,10 @@
 
 namespace onnxruntime {
 
+namespace webgpu {
+struct WebGpuDeviceConfig;
+}
+
 /// <summary>
 /// EpLibraryInternal wraps statically included execution providers (i.e. 'internal') so they can return OrtEpFactory
 /// instances in the same way as dynamically loaded libraries.
@@ -39,9 +43,11 @@ class EpLibraryInternal : public EpLibrary {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryInternal);
 
-  // create instances for all internal EPs included in this build. allow_virtual_devices is forwarded to
-  // the WebGPU EP factory (the only internal EP that can register a virtual device); see CreateWebGpuEp.
-  static std::vector<std::unique_ptr<EpLibraryInternal>> CreateInternalEps(bool allow_virtual_devices);
+  // Create instances for all internal EPs included in this build. The environment configuration is
+  // forwarded to EPs that have environment-level options.
+  static std::vector<std::unique_ptr<EpLibraryInternal>> CreateInternalEps(
+      bool allow_virtual_devices,
+      const OrtKeyValuePairs& environment_options);
 
  private:
   static std::unique_ptr<EpLibraryInternal> CreateCpuEp();
@@ -49,7 +55,9 @@ class EpLibraryInternal : public EpLibrary {
   static std::unique_ptr<EpLibraryInternal> CreateDmlEp();
 #endif
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-  static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp(bool allow_virtual_devices);
+  static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp(
+      bool allow_virtual_devices,
+      const webgpu::WebGpuDeviceConfig& device_config);
 #endif
 
   std::unique_ptr<EpFactoryInternal> factory_;  // all internal EPs register a single factory currently

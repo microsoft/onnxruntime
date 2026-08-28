@@ -16,6 +16,7 @@
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -143,6 +144,8 @@ struct WebGpuContextConfig {
 #endif
   };
   bool enable_robustness_explicitly_set{false};
+  bool enable_zero_buffer{true};
+  bool enable_zero_buffer_explicitly_set{false};
   bool preserve_device{false};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
@@ -194,7 +197,7 @@ class WebGpuContextFactory {
   /// <summary>
   /// Return the default context. Create if not present.
   /// </summary>
-  static WebGpuContext& DefaultContext();
+  static WebGpuContext& DefaultContext(const WebGpuDeviceConfig& device_config);
 
  private:
   WebGpuContextFactory() {}
@@ -283,6 +286,9 @@ class WebGpuContext final {
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
   }
+
+  bool EnableZeroBuffer() const { return enable_zero_buffer_; }
+  bool EnableRobustness() const { return enable_robustness_; }
 
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
@@ -399,6 +405,7 @@ class WebGpuContext final {
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
   bool enable_robustness_ = false;
+  bool enable_zero_buffer_ = true;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;

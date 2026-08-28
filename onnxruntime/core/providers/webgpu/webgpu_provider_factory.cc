@@ -3,12 +3,14 @@
 
 #include <charconv>
 #include <mutex>
+#include <string_view>
 
 #include "core/framework/error_code_helper.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
@@ -36,6 +38,9 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 };
 
 namespace {
+
+constexpr const char* kDeprecatedSessionEnableRobustness =
+    "ep.webgpuexecutionprovider.enableRobustness";
 
 WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
@@ -152,8 +157,20 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   return webgpu_ep_config;
 }
 
-WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options) {
+WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options,
+                                             const WebGpuDeviceConfig& device_config) {
   WebGpuContextConfig config{};
+  config.enable_robustness = device_config.enable_robustness;
+  config.enable_robustness_explicitly_set = device_config.enable_robustness_explicitly_set;
+  config.enable_zero_buffer = device_config.enable_zero_buffer;
+  config.enable_zero_buffer_explicitly_set = device_config.enable_zero_buffer_explicitly_set;
+
+  if (std::string ignored_value;
+      config_options.TryGetConfigEntry(kDeprecatedSessionEnableRobustness, ignored_value)) {
+    LOGS_DEFAULT(WARNING)
+        << "Session-level enableRobustness is no longer honored. Use the environment option "
+        << kOrtEnvWebGpuEnableRobustness << " instead.";
+  }
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
@@ -200,18 +217,6 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
       config.validation_mode = ValidationMode::Full;
     } else {
       ORT_THROW("Invalid validation mode: ", validation_mode_str);
-    }
-  }
-
-  if (std::string enable_robustness_str;
-      config_options.TryGetConfigEntry(kEnableRobustness, enable_robustness_str)) {
-    config.enable_robustness_explicitly_set = true;
-    if (enable_robustness_str == kEnableRobustness_ON) {
-      config.enable_robustness = true;
-    } else if (enable_robustness_str == kEnableRobustness_OFF) {
-      config.enable_robustness = false;
-    } else {
-      ORT_THROW("Invalid enableRobustness value: ", enable_robustness_str, ". Must be \"0\" or \"1\".");
     }
   }
 
@@ -272,6 +277,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable robustness: " << config.enable_robustness;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable zero buffer: " << config.enable_zero_buffer;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
@@ -339,12 +345,52 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
 }  // namespace
 
-std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
+webgpu::WebGpuDeviceConfig ParseWebGpuDeviceConfig(const char* enable_robustness,
+                                                   const char* enable_zero_buffer) {
+  webgpu::WebGpuDeviceConfig config{};
+
+  if (enable_robustness != nullptr) {
+    config.enable_robustness_explicitly_set = true;
+    if (std::string_view{enable_robustness} == kEnableRobustness_ON) {
+      config.enable_robustness = true;
+    } else if (std::string_view{enable_robustness} == kEnableRobustness_OFF) {
+      config.enable_robustness = false;
+    } else {
+      ORT_THROW("Invalid enableRobustness value: ", enable_robustness, ". Must be \"0\" or \"1\".");
+    }
+  }
+
+  if (enable_zero_buffer != nullptr) {
+    config.enable_zero_buffer_explicitly_set = true;
+    if (std::string_view{enable_zero_buffer} == kEnableZeroBuffer_ON) {
+      config.enable_zero_buffer = true;
+    } else if (std::string_view{enable_zero_buffer} == kEnableZeroBuffer_OFF) {
+      config.enable_zero_buffer = false;
+    } else {
+      ORT_THROW("Invalid enableZeroBuffer value: ", enable_zero_buffer, ". Must be \"0\" or \"1\".");
+    }
+  }
+
+  return config;
+}
+
+webgpu::WebGpuDeviceConfig ParseWebGpuDeviceConfig(const OrtKeyValuePairs& environment_options) {
+  const auto& entries = environment_options.Entries();
+  const auto robustness = entries.find(kOrtEnvWebGpuEnableRobustness);
+  const auto zero_buffer = entries.find(kOrtEnvWebGpuEnableZeroBuffer);
+  return ParseWebGpuDeviceConfig(
+      robustness == entries.end() ? nullptr : robustness->second.c_str(),
+      zero_buffer == entries.end() ? nullptr : zero_buffer->second.c_str());
+}
+
+std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
+    const ConfigOptions& config_options,
+    const webgpu::WebGpuDeviceConfig& device_config) {
   // prepare WebGpuExecutionProviderConfig
   WebGpuExecutionProviderConfig webgpu_ep_config = ParseEpConfig(config_options);
 
   // prepare WebGpuContextConfig
-  WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
+  WebGpuContextConfig config = ParseWebGpuContextConfig(config_options, device_config);
 
   // Load the Dawn library and create the WebGPU instance.
   auto& context = WebGpuContextFactory::CreateContext(config);
@@ -355,11 +401,13 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
 struct WebGpuDataTransferImpl : OrtDataTransferImpl {
-  WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id)
+  WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id,
+                         const webgpu::WebGpuDeviceConfig& device_config)
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
         data_transfer_{nullptr},
         context_id_{context_id},
+        device_config_{device_config},
         init_mutex_{} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
@@ -433,7 +481,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
           return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Shared data transfer can only be created for the default device (0).");
         }
 
-        auto& context = WebGpuContextFactory::DefaultContext();
+        auto& context = WebGpuContextFactory::DefaultContext(impl.device_config_);
 
         // Create the DataTransferImpl instance
         // Note: The DataTransferImpl holds a const reference to BufferManager. The BufferManager's lifecycle
@@ -495,12 +543,15 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   const OrtEpApi& ep_api;
   std::unique_ptr<DataTransferImpl> data_transfer_;  // Lazy-initialized
   int context_id_;                                   // Track which context we're using
-  std::mutex init_mutex_;                            // Protects lazy initialization
+  webgpu::WebGpuDeviceConfig device_config_;
+  std::mutex init_mutex_;  // Protects lazy initialization
 };
 
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(
+    int context_id /* = 0 */,
+    const webgpu::WebGpuDeviceConfig& device_config /* = {} */) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id);
+  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id, device_config);
 #else
   // Validate API version is supported
   const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
@@ -508,7 +559,7 @@ OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
     // API version not supported - return nullptr to indicate failure
     return nullptr;
   }
-  return new WebGpuDataTransferImpl(*api, context_id);
+  return new WebGpuDataTransferImpl(*api, context_id, device_config);
 #endif
 }
 
