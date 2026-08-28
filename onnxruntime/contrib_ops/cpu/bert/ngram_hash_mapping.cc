@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <limits>
 
-#include "contrib_ops/cpu/bert/kernel_helper.h"
+#include "contrib_ops/cpu/bert/engram_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -67,7 +67,7 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const TensorShape& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
-                        multipliers->Shape()[0] >= max_ngram_size_,
+                        multipliers->Shape()[0] == max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,
@@ -126,7 +126,7 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
               const int64_t source_t = t - k;
               const T token = source_t >= 0 ? input_data[input_base + source_t]
                                             : HistoryId(past_data, b, state_length + source_t, state_length);
-              const T product = kernel_helper::WrappedMultiply(token, multiplier_data[k]);
+              const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
               mix = k == 0 ? product : static_cast<T>(mix ^ product);
             }
 
@@ -134,7 +134,7 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
             for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
               const int64_t out_h = ngram_offset + h;
               const T mod = vocab_data[out_h];
-              output_data[output_base + out_h] = mod <= 0 ? T{} : kernel_helper::PositiveMod(mix, mod);
+              output_data[output_base + out_h] = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
             }
           }
         }

@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-#include "contrib_ops/cuda/bert/kernel_helper.cuh"
+#include "contrib_ops/cuda/bert/engram_helper.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -18,52 +18,63 @@ namespace cuda {
 
 namespace {
 
-// One block per (batch, t, g) row. The RMS reduction only depends on the row, so it is computed
-// once here instead of being repeated by every output channel and every convolution tap.
+// Raw (un-normalized) value at a virtual position of "past_state history followed by the current chunk".
+// Missing history reads as zero, which is exactly what a fresh sequence contributes.
+template <typename T>
+__device__ __forceinline__ float RawAt(const T* input, const T* past_state, int64_t b, int64_t p,
+                                       int64_t g, int64_t c, int64_t sequence_length,
+                                       int64_t state_length, int64_t hc_mult, int64_t hidden_size) {
+  if (p >= state_length) {
+    const int64_t t = p - state_length;
+    return to_float<T>(input[((b * sequence_length + t) * hc_mult + g) * hidden_size + c]);
+  }
+  if (past_state == nullptr) {
+    return 0.0f;
+  }
+  return to_float<T>(past_state[((b * state_length + p) * hc_mult + g) * hidden_size + c]);
+}
+
+// One block per (batch, virtual position, g) row. The RMS reduction only depends on the row, so it is
+// computed once here instead of being repeated by every output channel and every convolution tap.
+// Recomputing it from the raw history (rather than storing normalized history) makes a chunked run
+// bit-exact against a full-sequence run for every element type.
 template <typename T>
 __global__ void ShortConvInvRmsKernel(
     const T* input,
+    const T* past_state,
     float* inv_rms,
     int64_t rows,
+    int64_t sequence_length,
+    int64_t state_length,
+    int64_t hc_mult,
     int64_t hidden_size,
     float epsilon) {
   extern __shared__ float shared[];
 
+  const int64_t virtual_length = state_length + sequence_length;
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
-    const T* input_row = input + row * hidden_size;
+    const int64_t g = row % hc_mult;
+    const int64_t p = (row / hc_mult) % virtual_length;
+    const int64_t b = row / (virtual_length * hc_mult);
     float sum_sq = 0.0f;
     for (int64_t i = threadIdx.x; i < hidden_size; i += blockDim.x) {
-      const float value = to_float<T>(input_row[i]);
+      const float value = RawAt<T>(input, past_state, b, p, g, i, sequence_length, state_length,
+                                   hc_mult, hidden_size);
       sum_sq += value * value;
     }
-    sum_sq = kernel_helper::BlockSum(sum_sq, shared);
+    sum_sq = engram_helper::BlockSum(sum_sq, shared);
     if (threadIdx.x == 0) {
       inv_rms[row] = rsqrtf(sum_sq / static_cast<float>(hidden_size) + epsilon);
     }
   }
 }
 
-// Reads the normed value for a position before the current chunk out of the right-aligned past_state.
-// Returns false when that position is before the start of the whole sequence.
-template <typename T>
-__device__ __forceinline__ bool PastNormed(const T* past_state, int64_t b, int64_t slot,
-                                           int64_t state_length, int64_t hc_mult, int64_t hidden_size,
-                                           int64_t g, int64_t c, float* value) {
-  if (past_state == nullptr || slot < 0 || slot >= state_length) {
-    return false;
-  }
-  *value = to_float<T>(past_state[((b * state_length + slot) * hc_mult + g) * hidden_size + c]);
-  return true;
-}
-
-// Fills the trailing state window from past_state followed by the normed current chunk, so that a
+// Copies the trailing state window of "past_state followed by input" through unchanged, so that a
 // chunked run reproduces the full-sequence result.
 template <typename T>
 __global__ void ShortConvPresentStateKernel(
     const T* input,
-    const T* norm_scale,
     const T* past_state,
-    const float* inv_rms,
     T* present_state,
     int64_t total,
     int64_t sequence_length,
@@ -77,18 +88,9 @@ __global__ void ShortConvPresentStateKernel(
     const int64_t g = (linear / hidden_size) % hc_mult;
     const int64_t slot = (linear / (hc_mult * hidden_size)) % state_length;
     const int64_t b = linear / (state_length * hc_mult * hidden_size);
-    const int64_t source_t = sequence_length - state_length + slot;
-
-    float value = 0.0f;
-    if (source_t >= 0) {
-      const int64_t source_row = (b * sequence_length + source_t) * hc_mult + g;
-      value = to_float<T>(input[source_row * hidden_size + c]) * inv_rms[source_row] *
-              to_float<T>(norm_scale[g * hidden_size + c]);
-    } else {
-      PastNormed<T>(past_state, b, state_length + source_t, state_length, hc_mult, hidden_size, g, c,
-                    &value);
-    }
-    present_state[linear] = from_float<T>(value);
+    const int64_t p = sequence_length + slot;
+    present_state[linear] = from_float<T>(RawAt<T>(input, past_state, b, p, g, c, sequence_length,
+                                                   state_length, hc_mult, hidden_size));
   }
 }
 
@@ -110,6 +112,7 @@ __global__ void ShortConvKernel(
     bool apply_silu) {
   const int64_t channels = hc_mult * hidden_size;
   const int64_t state_length = (kernel_size - 1) * dilation;
+  const int64_t virtual_length = state_length + sequence_length;
   for (int64_t linear = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        linear < total;
        linear += static_cast<int64_t>(gridDim.x) * blockDim.x) {
@@ -122,18 +125,15 @@ __global__ void ShortConvKernel(
 
     float sum = bias == nullptr ? 0.0f : to_float<T>(bias[flat_channel]);
     for (int64_t k = 0; k < kernel_size; ++k) {
-      const int64_t source_t = t - (kernel_size - 1 - k) * dilation;
-      float normed;
-      if (source_t >= 0) {
-        const int64_t source_row = (b * sequence_length + source_t) * hc_mult + g;
-        normed = to_float<T>(input[source_row * hidden_size + c]) * inv_rms[source_row] * scale;
-      } else if (!PastNormed<T>(past_state, b, state_length + source_t, state_length, hc_mult,
-                                hidden_size, g, c, &normed)) {
-        continue;
-      }
+      // Tap k is (kernel_size - 1 - k) * dilation positions back, so p is always in [0, virtual_length).
+      const int64_t p = t + state_length - (kernel_size - 1 - k) * dilation;
+      const int64_t virtual_row = (b * virtual_length + p) * hc_mult + g;
+      const float normed = RawAt<T>(input, past_state, b, p, g, c, sequence_length, state_length,
+                                    hc_mult, hidden_size) *
+                           inv_rms[virtual_row] * scale;
       sum += normed * to_float<T>(weight[flat_channel * kernel_size + k]);
     }
-    output[linear] = from_float<T>(apply_silu ? kernel_helper::SiluFloat(sum) : sum);
+    output[linear] = from_float<T>(apply_silu ? engram_helper::SiluFloat(sum) : sum);
   }
 }
 
@@ -158,31 +158,33 @@ Status LaunchShortConvKernel(
     int64_t dilation,
     float epsilon,
     bool apply_silu) {
-  const int64_t rows = batch_size * sequence_length * hc_mult;
-  const int64_t total = rows * hidden_size;
+  const int64_t total = batch_size * sequence_length * hc_mult * hidden_size;
   if (total == 0) {
     return Status::OK();
   }
 
-  const int rms_blocks = static_cast<int>(std::min(rows, kernel_helper::kMaxGridDimX));
-  const size_t shared_bytes = static_cast<size_t>(kernel_helper::kThreads) * sizeof(float);
-  ShortConvInvRmsKernel<T><<<rms_blocks, kernel_helper::kThreads, shared_bytes, stream>>>(
-      input, inv_rms_workspace, rows, hidden_size, epsilon);
+  const int64_t state_length = (kernel_size - 1) * dilation;
+  const int64_t virtual_rows = batch_size * (state_length + sequence_length) * hc_mult;
+
+  const int rms_blocks = static_cast<int>(std::min(virtual_rows, engram_helper::kMaxGridDimX));
+  const size_t shared_bytes = static_cast<size_t>(engram_helper::kThreads) * sizeof(float);
+  ShortConvInvRmsKernel<T><<<rms_blocks, engram_helper::kThreads, shared_bytes, stream>>>(
+      input, past_state, inv_rms_workspace, virtual_rows, sequence_length, state_length, hc_mult,
+      hidden_size, epsilon);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-  ShortConvKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
+  ShortConvKernel<T><<<engram_helper::GridSize(total), engram_helper::kThreads, 0, stream>>>(
       input, weight, norm_scale, bias, past_state, inv_rms_workspace, output, total, sequence_length,
       hc_mult, hidden_size, kernel_size, dilation, apply_silu);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-  const int64_t state_length = (kernel_size - 1) * dilation;
   const int64_t present_total = batch_size * state_length * hc_mult * hidden_size;
   if (present_state == nullptr || present_total == 0) {
     return Status::OK();
   }
-  ShortConvPresentStateKernel<T><<<kernel_helper::GridSize(present_total), kernel_helper::kThreads, 0, stream>>>(
-      input, norm_scale, past_state, inv_rms_workspace, present_state, present_total, sequence_length,
-      state_length, hc_mult, hidden_size);
+  ShortConvPresentStateKernel<T><<<engram_helper::GridSize(present_total), engram_helper::kThreads, 0, stream>>>(
+      input, past_state, present_state, present_total, sequence_length, state_length, hc_mult,
+      hidden_size);
   return CUDA_CALL(cudaGetLastError());
 }
 

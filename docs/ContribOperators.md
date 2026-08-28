@@ -6495,13 +6495,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   The convolution receptive field spans state_length = (kernel_size - 1) * dilation positions before the
   current token. To keep the op causal across invocations (chunked prefill or autoregressive decode), the
-  optional past_state input carries the normed values of those positions from the preceding call and
-  present_state returns them for the next call. Both have shape
+  optional past_state input carries the raw (un-normalized) input values of those positions from the
+  preceding call and present_state returns them for the next call. Both have shape
   (batch_size, state_length, hc_mult, hidden_size) and are right-aligned: slot state_length - 1 holds the
   most recent position. Slots that correspond to positions before the start of the whole sequence are
-  zero. Running the op once over a full sequence and running it over consecutive chunks while threading
-  present_state into past_state produce identical outputs. When past_state is omitted the missing history
-  is treated as zeros, which matches a fresh sequence.
+  zero. Because the state is un-normalized, the RMS reduction is recomputed from the same values a
+  full-sequence run would use, so running the op once over a full sequence and running it over consecutive
+  chunks while threading present_state into past_state produce identical outputs for every element type.
+  When past_state is omitted the missing history is treated as zeros, which matches a fresh sequence.
 
 #### Version
 
@@ -6530,7 +6531,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional convolution bias with shape (hc_mult * hidden_size).</dd>
 <dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Optional normed convolution input for the (kernel_size - 1) * dilation positions that precede this call, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Right-aligned, so the last slot is the most recent position. If omitted the history is treated as zeros.</dd>
+<dd>Optional raw (un-normalized) input for the (kernel_size - 1) * dilation positions that precede this call, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Right-aligned, so the last slot is the most recent position. If omitted the history is treated as zeros.</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -6539,7 +6540,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Output tensor with the same shape as input.</dd>
 <dt><tt>present_state</tt> (optional) : T</dt>
-<dd>Normed convolution input for the trailing (kernel_size - 1) * dilation positions of past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Feed this back as past_state on the next call.</dd>
+<dd>Raw (un-normalized) input for the trailing (kernel_size - 1) * dilation positions of past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Feed this back as past_state on the next call.</dd>
 </dl>
 
 #### Type Constraints

@@ -7,7 +7,7 @@
 #include <cmath>
 #include <vector>
 
-#include "contrib_ops/cpu/bert/kernel_helper.h"
+#include "contrib_ops/cpu/bert/engram_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -77,8 +77,10 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
                       "bias must have shape (hc_mult * hidden_size)");
   }
 
+  ORT_RETURN_IF_NOT(kernel_size >= 1, "kernel_size must be >= 1");
+
   // The convolution receptive field reaches this many positions before the current token, so this is
-  // exactly the amount of normed history that has to be carried between invocations.
+  // exactly the amount of raw input history that has to be carried between invocations.
   const int64_t state_length = (kernel_size - 1) * dilation_;
   const TensorShape state_shape({batch_size, state_length, hc_mult, hidden_size});
   if (past_state != nullptr) {
@@ -111,20 +113,41 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
   const T* past_data = past_state == nullptr ? nullptr : past_state->Data<T>();
   T* output_data = output->MutableData<T>();
   const bool apply_silu = activation_ == "silu" || activation_ == "swish";
-  const int64_t rows = batch_size * sequence_length * hc_mult;
-  const int64_t total = rows * hidden_size;
+  const int64_t total = batch_size * sequence_length * channels;
 
-  // The RMS reduction only depends on the (batch, sequence, hc_mult) row, so compute it once per row
-  // instead of repeating it for every output channel and convolution tap.
-  std::vector<float> inv_rms(static_cast<size_t>(rows));
+  // Virtual sequence = past_state history followed by the current chunk. Virtual position p < state_length
+  // reads slot p of past_state; p >= state_length reads token p - state_length of input.
+  const int64_t virtual_length = state_length + sequence_length;
+  const int64_t virtual_rows = batch_size * virtual_length * hc_mult;
+
+  // Raw (un-normalized) value at a virtual position. Missing history reads as zero, which is exactly what
+  // a fresh sequence contributes.
+  auto raw_at = [&](int64_t b, int64_t p, int64_t g, int64_t c) -> float {
+    if (p >= state_length) {
+      const int64_t t = p - state_length;
+      return static_cast<float>(input_data[(((b * sequence_length + t) * hc_mult + g) * hidden_size) + c]);
+    }
+    if (past_data == nullptr) {
+      return 0.0f;
+    }
+    return static_cast<float>(past_data[(((b * state_length + p) * hc_mult + g) * hidden_size) + c]);
+  };
+
+  // The RMS reduction only depends on the (batch, virtual position, hc_mult) row, so compute it once per
+  // row instead of repeating it for every output channel and convolution tap. Recomputing it from the raw
+  // history (rather than storing normalized history) makes a chunked run bit-exact against a full-sequence
+  // run for every element type.
+  std::vector<float> inv_rms(static_cast<size_t>(virtual_rows));
   ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows), static_cast<double>(hidden_size),
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(virtual_rows), static_cast<double>(hidden_size),
       [&](ptrdiff_t begin, ptrdiff_t end) {
         for (int64_t row = begin; row < end; ++row) {
-          const T* input_row = input_data + row * hidden_size;
+          const int64_t g = row % hc_mult;
+          const int64_t p = (row / hc_mult) % virtual_length;
+          const int64_t b = row / (virtual_length * hc_mult);
           float sum_sq = 0.0f;
           for (int64_t i = 0; i < hidden_size; ++i) {
-            const float value = static_cast<float>(input_row[i]);
+            const float value = raw_at(b, p, g, i);
             sum_sq += value * value;
           }
           inv_rms[static_cast<size_t>(row)] = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon_);
@@ -144,25 +167,13 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
 
           float sum = bias_data == nullptr ? 0.0f : static_cast<float>(bias_data[flat_channel]);
           for (int64_t k = 0; k < kernel_size; ++k) {
-            const int64_t source_t = t - (kernel_size - 1 - k) * dilation_;
-            float normed;
-            if (source_t >= 0) {
-              const int64_t source_row = (b * sequence_length + source_t) * hc_mult + g;
-              normed = static_cast<float>(input_data[source_row * hidden_size + c]) *
-                       inv_rms[static_cast<size_t>(source_row)] * scale;
-            } else if (past_data != nullptr) {
-              // past_state is right-aligned, so position -1 is its last slot.
-              const int64_t slot = state_length + source_t;
-              if (slot < 0) {
-                continue;
-              }
-              normed = static_cast<float>(past_data[((b * state_length + slot) * hc_mult + g) * hidden_size + c]);
-            } else {
-              continue;
-            }
+            // Tap k is (kernel_size - 1 - k) * dilation positions back, so p is always in [0, virtual_length).
+            const int64_t p = t + state_length - (kernel_size - 1 - k) * dilation_;
+            const int64_t virtual_row = (b * virtual_length + p) * hc_mult + g;
+            const float normed = raw_at(b, p, g, c) * inv_rms[static_cast<size_t>(virtual_row)] * scale;
             sum += normed * static_cast<float>(weight_data[flat_channel * kernel_size + k]);
           }
-          output_data[linear] = static_cast<T>(apply_silu ? kernel_helper::SiluFloat(sum) : sum);
+          output_data[linear] = static_cast<T>(apply_silu ? engram_helper::SiluFloat(sum) : sum);
         }
       });
 
@@ -176,24 +187,11 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
             const int64_t g = slot_row % hc_mult;
             const int64_t slot = (slot_row / hc_mult) % state_length;
             const int64_t b = slot_row / (state_length * hc_mult);
-            // Virtual position of this slot relative to the end of the current chunk.
-            const int64_t source_t = sequence_length - state_length + slot;
+            // present_state holds the trailing state_length virtual positions, still un-normalized.
+            const int64_t p = virtual_length - state_length + slot;
             T* present_row = present_data + slot_row * hidden_size;
-
-            if (source_t >= 0) {
-              const int64_t source_row = (b * sequence_length + source_t) * hc_mult + g;
-              const T* input_row = input_data + source_row * hidden_size;
-              const float row_inv_rms = inv_rms[static_cast<size_t>(source_row)];
-              for (int64_t i = 0; i < hidden_size; ++i) {
-                present_row[i] = static_cast<T>(static_cast<float>(input_row[i]) * row_inv_rms *
-                                                static_cast<float>(scale_data[g * hidden_size + i]));
-              }
-            } else if (past_data != nullptr) {
-              const int64_t past_slot = state_length + source_t;
-              const T* past_row = past_data + ((b * state_length + past_slot) * hc_mult + g) * hidden_size;
-              std::copy(past_row, past_row + hidden_size, present_row);
-            } else {
-              std::fill(present_row, present_row + hidden_size, T{});
+            for (int64_t i = 0; i < hidden_size; ++i) {
+              present_row[i] = static_cast<T>(raw_at(b, p, g, i));
             }
           }
         });

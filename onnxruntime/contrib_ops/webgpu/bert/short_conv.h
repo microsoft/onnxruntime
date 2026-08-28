@@ -13,15 +13,23 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-// Computes one inverse-RMS value per (batch, sequence, hc_mult) row. One workgroup handles one row so
-// the reduction is shared by every output channel and convolution tap instead of being repeated.
+// Computes one inverse-RMS value per (batch, virtual position, hc_mult) row, where virtual positions
+// cover the past_state history followed by the current chunk. One workgroup handles one row so the
+// reduction is shared by every output channel and convolution tap instead of being repeated.
 class ShortConvInvRmsProgram final : public Program<ShortConvInvRmsProgram> {
  public:
-  ShortConvInvRmsProgram() : Program{"ShortConvInvRms"} {}
+  explicit ShortConvInvRmsProgram(bool has_past_state)
+      : Program{"ShortConvInvRms"}, has_past_state_(has_past_state) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
+                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"hc_mult", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
+
+ private:
+  bool has_past_state_;
 };
 
 class ShortConvProgram final : public Program<ShortConvProgram> {
@@ -31,6 +39,7 @@ class ShortConvProgram final : public Program<ShortConvProgram> {
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"kernel_size", ProgramUniformVariableDataType::Uint32},
@@ -42,8 +51,8 @@ class ShortConvProgram final : public Program<ShortConvProgram> {
   bool apply_silu_;
 };
 
-// Emits the trailing normed window of past_state followed by the current chunk so the next call can
-// continue the convolution across invocations.
+// Copies the trailing raw (un-normalized) window of past_state followed by the current chunk so the
+// next call can continue the convolution across invocations.
 class ShortConvPresentStateProgram final : public Program<ShortConvPresentStateProgram> {
  public:
   explicit ShortConvPresentStateProgram(bool has_past_state)

@@ -3,12 +3,13 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
-namespace kernel_helper {
+namespace engram_helper {
 
 // Numerically stable logistic function.
 inline float SigmoidFloat(float x) {
@@ -52,6 +53,6 @@ inline T WrappedMultiply(T a, T b) {
   return static_cast<T>(static_cast<UnsignedT>(a) * static_cast<UnsignedT>(b));
 }
 
-}  // namespace kernel_helper
+}  // namespace engram_helper
 }  // namespace contrib
 }  // namespace onnxruntime

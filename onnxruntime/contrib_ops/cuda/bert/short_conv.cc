@@ -73,8 +73,10 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
                       "bias must have shape (hc_mult * hidden_size)");
   }
 
+  ORT_RETURN_IF_NOT(kernel_size >= 1, "kernel_size must be >= 1");
+
   // The convolution receptive field reaches this many positions before the current token, so this is
-  // exactly the amount of normed history that has to be carried between invocations.
+  // exactly the amount of raw input history that has to be carried between invocations.
   const int64_t state_length = (kernel_size - 1) * dilation_;
   const TensorShape state_shape({batch_size, state_length, hc_mult, hidden_size});
   if (past_state != nullptr) {
@@ -100,10 +102,11 @@ Status ShortConv<T>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  // Scratch buffer holding one inverse-RMS value per (batch, sequence, hc_mult) row so that the
-  // reduction is not repeated for every output channel and convolution tap.
-  const int64_t rows = batch_size * sequence_length * hc_mult;
-  auto inv_rms = GetScratchBuffer<float>(static_cast<size_t>(rows), GetComputeStream(context));
+  // Scratch buffer holding one inverse-RMS value per (batch, virtual position, hc_mult) row so that
+  // the reduction is not repeated for every output channel and convolution tap. Virtual positions
+  // cover the past_state history followed by the current chunk.
+  const int64_t virtual_rows = batch_size * (state_length + sequence_length) * hc_mult;
+  auto inv_rms = GetScratchBuffer<float>(static_cast<size_t>(virtual_rows), GetComputeStream(context));
   return LaunchShortConvKernel<CudaT>(
       Stream(context),
       reinterpret_cast<const CudaT*>(input->Data<T>()),

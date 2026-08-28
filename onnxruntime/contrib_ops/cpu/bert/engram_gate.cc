@@ -5,7 +5,7 @@
 
 #include <cmath>
 
-#include "contrib_ops/cpu/bert/kernel_helper.h"
+#include "contrib_ops/cpu/bert/engram_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -102,7 +102,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
             dot += normed_key * normed_query;
           }
           dot /= std::sqrt(static_cast<float>(hidden_size));
-          const float gate = kernel_helper::SigmoidFloat(kernel_helper::EngramGateArg(dot));
+          const float gate = engram_helper::SigmoidFloat(engram_helper::EngramGateArg(dot));
 
           T* output_row = output_data + row * hidden_size;
           for (int64_t c = 0; c < hidden_size; ++c) {

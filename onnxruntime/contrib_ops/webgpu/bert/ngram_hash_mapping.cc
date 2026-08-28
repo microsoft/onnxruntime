@@ -3,7 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
 
-#include "contrib_ops/webgpu/bert/kernel_helper.h"
+#include "contrib_ops/webgpu/bert/engram_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -33,7 +33,7 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  shader.AdditionalImplementation() << kernel_helper::kPositiveModWgsl;
+  shader.AdditionalImplementation() << engram_helper::kPositiveModWgsl;
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
@@ -124,7 +124,7 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   const auto* past_ids = context.Input(3);
   const auto& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
-  ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 && multipliers->Shape()[0] >= max_ngram_size_,
+  ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 && multipliers->Shape()[0] == max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape() == TensorShape({num_heads}),

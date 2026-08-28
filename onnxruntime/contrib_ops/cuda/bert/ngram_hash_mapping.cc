@@ -54,7 +54,7 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   const TensorShape& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
-                        multipliers->Shape()[0] >= max_ngram_size_,
+                        multipliers->Shape()[0] == max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,

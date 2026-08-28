@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace kernel_helper {
+namespace engram_helper {
 
 constexpr int kThreads = 256;
 constexpr int64_t kMaxGridDimX = 65535;
@@ -36,6 +36,31 @@ __device__ __forceinline__ float BlockSum(float value, float* shared) {
   const float total = shared[0];
   __syncthreads();
   return total;
+}
+
+// Sums three independent per-thread partials across the block in a single tree reduction, so a row
+// that needs three reductions pays one set of barriers instead of three. `shared` must point to at
+// least 3 * blockDim.x floats, and blockDim.x must be a power of two. All threads must call this.
+__device__ __forceinline__ void BlockSum3(float* a, float* b, float* c, float* shared) {
+  float* shared_a = shared;
+  float* shared_b = shared + blockDim.x;
+  float* shared_c = shared + 2 * blockDim.x;
+  shared_a[threadIdx.x] = *a;
+  shared_b[threadIdx.x] = *b;
+  shared_c[threadIdx.x] = *c;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      shared_a[threadIdx.x] += shared_a[threadIdx.x + stride];
+      shared_b[threadIdx.x] += shared_b[threadIdx.x + stride];
+      shared_c[threadIdx.x] += shared_c[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  *a = shared_a[0];
+  *b = shared_b[0];
+  *c = shared_c[0];
+  __syncthreads();
 }
 
 // Numerically stable logistic function.
@@ -80,7 +105,7 @@ __device__ __forceinline__ int64_t WrappedMultiply<int64_t>(int64_t a, int64_t b
   return static_cast<int64_t>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
 }
 
-}  // namespace kernel_helper
+}  // namespace engram_helper
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

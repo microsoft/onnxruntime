@@ -3,7 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/short_conv.h"
 
-#include "contrib_ops/webgpu/bert/kernel_helper.h"
+#include "contrib_ops/webgpu/bert/engram_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -25,21 +25,55 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 constexpr uint32_t kRmsWorkgroupSize = 64;
+
+// Emits a WGSL `raw_at(b, p, g, c)` that reads the raw (un-normalized) value at a virtual position of
+// "past_state history followed by the current chunk". Missing history reads as zero, which is exactly
+// what a fresh sequence contributes. Requires `sequence_length`, `state_length`, `hc_mult` and
+// `hidden_size` uniforms on the program.
+void AppendRawAtWgsl(ShaderHelper& shader, const ShaderVariableHelper& input,
+                     const ShaderVariableHelper* past_state) {
+  shader.AdditionalImplementation()
+      << "fn raw_at(b: u32, p: u32, g: u32, c: u32) -> f32 {\n"
+      << "  if (p >= uniforms.state_length) {\n"
+      << "    let t = p - uniforms.state_length;\n"
+      << "    return f32("
+      << input.GetByOffset("((b * uniforms.sequence_length + t) * uniforms.hc_mult + g) * uniforms.hidden_size + c")
+      << ");\n"
+      << "  }\n";
+  if (past_state != nullptr) {
+    shader.AdditionalImplementation()
+        << "  return f32("
+        << past_state->GetByOffset(
+               "((b * uniforms.state_length + p) * uniforms.hc_mult + g) * uniforms.hidden_size + c")
+        << ");\n";
+  } else {
+    shader.AdditionalImplementation() << "  return 0.0;\n";
+  }
+  shader.AdditionalImplementation() << "}\n";
+}
 }  // namespace
 
 Status ShortConvInvRmsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* past_state = nullptr;
+  if (has_past_state_) {
+    past_state = &shader.AddInput("past_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  }
   const auto& inv_rms = shader.AddOutput("inv_rms", ShaderUsage::UseUniform);
 
+  AppendRawAtWgsl(shader, input, past_state);
   shader.AdditionalImplementation() << "var<workgroup> row_partials: array<f32, " << kRmsWorkgroupSize << ">;\n";
 
   shader.MainFunctionBody()
       << "  let row = workgroup_idx;\n"
       << "  if (row >= uniforms.rows) { return; }\n"
-      << "  let row_base = row * uniforms.hidden_size;\n"
+      << "  let virtual_length = uniforms.state_length + uniforms.sequence_length;\n"
+      << "  let g = row % uniforms.hc_mult;\n"
+      << "  let p = (row / uniforms.hc_mult) % virtual_length;\n"
+      << "  let b = row / (virtual_length * uniforms.hc_mult);\n"
       << "  var sum_sq = 0.0;\n"
       << "  for (var i = local_idx; i < uniforms.hidden_size; i += " << kRmsWorkgroupSize << "u) {\n"
-      << "    let v = f32(" << input.GetByOffset("row_base + i") << ");\n"
+      << "    let v = raw_at(b, p, g, i);\n"
       << "    sum_sq += v * v;\n"
       << "  }\n"
       << "  row_partials[local_idx] = sum_sq;\n"
@@ -69,7 +103,8 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  shader.AdditionalImplementation() << kernel_helper::kStableSigmoidWgsl << kernel_helper::kSiluWgsl;
+  shader.AdditionalImplementation() << engram_helper::kStableSigmoidWgsl << engram_helper::kSiluWgsl;
+  AppendRawAtWgsl(shader, input, past_state);
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
@@ -78,6 +113,7 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let g = (global_idx / uniforms.hidden_size) % uniforms.hc_mult;\n"
       << "  let t = (global_idx / channels) % uniforms.sequence_length;\n"
       << "  let b = global_idx / (uniforms.sequence_length * channels);\n"
+      << "  let virtual_length = uniforms.state_length + uniforms.sequence_length;\n"
       << "  let flat_channel = g * uniforms.hidden_size + c;\n"
       << "  let scale = f32(" << norm_scale.GetByOffset("flat_channel") << ");\n";
   if (has_bias_) {
@@ -85,37 +121,14 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     shader.MainFunctionBody() << "  var sum = 0.0;\n";
   }
-  if (has_past_state_) {
-    shader.MainFunctionBody() << "  let state_length = (uniforms.kernel_size - 1u) * uniforms.dilation;\n";
-  }
   shader.MainFunctionBody()
       << "  for (var k = 0u; k < uniforms.kernel_size; k++) {\n"
+      // Tap k is `offset` positions back and offset <= state_length, so `p` never underflows.
       << "    let offset = (uniforms.kernel_size - 1u - k) * uniforms.dilation;\n"
-      << "    var normed = 0.0;\n"
-      << "    var has_value = false;\n"
-      << "    if (t >= offset) {\n"
-      << "      let source_t = t - offset;\n"
-      << "      let source_row = (b * uniforms.sequence_length + source_t) * uniforms.hc_mult + g;\n"
-      << "      normed = f32(" << input.GetByOffset("source_row * uniforms.hidden_size + c") << ") * "
-      << inv_rms.GetByOffset("source_row") << " * scale;\n"
-      << "      has_value = true;\n"
-      << "    }\n";
-  if (has_past_state_) {
-    // past_state is right-aligned, so position -1 is its last slot. offset <= state_length keeps the
-    // slot inside the window, so no additional bounds check is needed here.
-    shader.MainFunctionBody()
-        << "    if (t < offset) {\n"
-        << "      let slot = state_length + t - offset;\n"
-        << "      normed = f32("
-        << past_state->GetByOffset("((b * state_length + slot) * uniforms.hc_mult + g) * uniforms.hidden_size + c")
-        << ");\n"
-        << "      has_value = true;\n"
-        << "    }\n";
-  }
-  shader.MainFunctionBody()
-      << "    if (has_value) {\n"
-      << "      sum += normed * f32(" << weight.GetByOffset("flat_channel * uniforms.kernel_size + k") << ");\n"
-      << "    }\n"
+      << "    let p = t + uniforms.state_length - offset;\n"
+      << "    let virtual_row = (b * virtual_length + p) * uniforms.hc_mult + g;\n"
+      << "    let normed = raw_at(b, p, g, c) * " << inv_rms.GetByOffset("virtual_row") << " * scale;\n"
+      << "    sum += normed * f32(" << weight.GetByOffset("flat_channel * uniforms.kernel_size + k") << ");\n"
       << "  }\n";
   if (apply_silu_) {
     shader.MainFunctionBody() << "  sum = silu(sum);\n";
@@ -126,13 +139,13 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status ShortConvPresentStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  const auto& norm_scale = shader.AddInput("norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  const auto& inv_rms = shader.AddInput("inv_rms", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_state = nullptr;
   if (has_past_state_) {
     past_state = &shader.AddInput("past_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
   const auto& present_state = shader.AddOutput("present_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  AppendRawAtWgsl(shader, input, past_state);
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
@@ -140,26 +153,9 @@ Status ShortConvPresentStateProgram::GenerateShaderCode(ShaderHelper& shader) co
       << "  let g = (global_idx / uniforms.hidden_size) % uniforms.hc_mult;\n"
       << "  let slot = (global_idx / (uniforms.hc_mult * uniforms.hidden_size)) % uniforms.state_length;\n"
       << "  let b = global_idx / (uniforms.state_length * uniforms.hc_mult * uniforms.hidden_size);\n"
-      << "  var value = 0.0;\n"
-      << "  if (slot + uniforms.sequence_length >= uniforms.state_length) {\n"
-      << "    let source_t = slot + uniforms.sequence_length - uniforms.state_length;\n"
-      << "    let source_row = (b * uniforms.sequence_length + source_t) * uniforms.hc_mult + g;\n"
-      << "    value = f32(" << input.GetByOffset("source_row * uniforms.hidden_size + c") << ") * "
-      << inv_rms.GetByOffset("source_row") << " * f32("
-      << norm_scale.GetByOffset("g * uniforms.hidden_size + c") << ");\n"
-      << "  }\n";
-  if (has_past_state_) {
-    shader.MainFunctionBody()
-        << "  if (slot + uniforms.sequence_length < uniforms.state_length) {\n"
-        << "    let past_slot = slot + uniforms.sequence_length;\n"
-        << "    value = f32("
-        << past_state->GetByOffset(
-               "((b * uniforms.state_length + past_slot) * uniforms.hc_mult + g) * uniforms.hidden_size + c")
-        << ");\n"
-        << "  }\n";
-  }
-  shader.MainFunctionBody() << "  "
-                            << present_state.SetByOffset("global_idx", "present_state_element_t(value)") << "\n";
+      // present_state holds the trailing state_length virtual positions, still un-normalized.
+      << "  let value = raw_at(b, slot + uniforms.sequence_length, g, c);\n"
+      << "  " << present_state.SetByOffset("global_idx", "present_state_element_t(value)") << "\n";
   return Status::OK();
 }
 
@@ -197,8 +193,10 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_NOT(bias->Shape() == TensorShape({channels}), "bias must have shape (hc_mult * hidden_size)");
   }
   const int64_t kernel_size = weight_shape[2];
+  ORT_RETURN_IF_NOT(kernel_size >= 1, "kernel_size must be >= 1");
+
   // The convolution receptive field reaches this many positions before the current token, so this is
-  // exactly the amount of normed history that has to be carried between invocations.
+  // exactly the amount of raw input history that has to be carried between invocations.
   const int64_t state_length = (kernel_size - 1) * dilation_;
   const TensorShape state_shape({batch_size, state_length, hc_mult, hidden_size});
   if (past_state != nullptr) {
@@ -223,15 +221,23 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  // First pass: one inverse-RMS value per (batch, sequence, hc_mult) row.
-  const int64_t rows = batch_size * sequence_length * hc_mult;
-  Tensor inv_rms = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({rows}));
-  ShortConvInvRmsProgram inv_rms_program;
-  inv_rms_program.AddInput({input, ProgramTensorMetadataDependency::Type})
-      .AddOutput({&inv_rms, ProgramTensorMetadataDependency::None})
+  // First pass: one inverse-RMS value per (batch, virtual position, hc_mult) row. Recomputing it from
+  // the raw history (rather than storing normalized history) makes a chunked run bit-exact against a
+  // full-sequence run for every element type.
+  const int64_t virtual_rows = batch_size * (state_length + sequence_length) * hc_mult;
+  Tensor inv_rms = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({virtual_rows}));
+  ShortConvInvRmsProgram inv_rms_program{has_past_state};
+  inv_rms_program.CacheHint(has_past_state).AddInput({input, ProgramTensorMetadataDependency::Type});
+  if (has_past_state) {
+    inv_rms_program.AddInput({past_state, ProgramTensorMetadataDependency::Type});
+  }
+  inv_rms_program.AddOutput({&inv_rms, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(kRmsWorkgroupSize)
-      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
-      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(rows)},
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(virtual_rows))
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(virtual_rows)},
+                            {onnxruntime::narrow<uint32_t>(sequence_length)},
+                            {onnxruntime::narrow<uint32_t>(state_length)},
+                            {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_size)},
                             {epsilon_}});
   ORT_RETURN_IF_ERROR(context.RunProgram(inv_rms_program));
@@ -252,6 +258,7 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
       .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total)},
                             {onnxruntime::narrow<uint32_t>(sequence_length)},
+                            {onnxruntime::narrow<uint32_t>(state_length)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_size)},
                             {onnxruntime::narrow<uint32_t>(kernel_size)},
@@ -263,10 +270,7 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
   ShortConvPresentStateProgram present_program{has_past_state};
-  present_program.CacheHint(has_past_state)
-      .AddInputs({{input, ProgramTensorMetadataDependency::Type},
-                  {norm_scale, ProgramTensorMetadataDependency::Type},
-                  {&inv_rms, ProgramTensorMetadataDependency::Type}});
+  present_program.CacheHint(has_past_state).AddInput({input, ProgramTensorMetadataDependency::Type});
   if (has_past_state) {
     present_program.AddInput({past_state, ProgramTensorMetadataDependency::Type});
   }

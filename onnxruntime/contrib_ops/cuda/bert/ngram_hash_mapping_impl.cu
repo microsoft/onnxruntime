@@ -7,7 +7,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
-#include "contrib_ops/cuda/bert/kernel_helper.cuh"
+#include "contrib_ops/cuda/bert/engram_helper.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -56,7 +56,7 @@ __global__ void NGramHashMappingKernel(
         const T token = source_t >= 0
                             ? input_ids[input_base + source_t]
                             : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
-        const T product = kernel_helper::WrappedMultiply<T>(token, multipliers[k]);
+        const T product = engram_helper::WrappedMultiply<T>(token, multipliers[k]);
         mix = k == 0 ? product : static_cast<T>(mix ^ product);
       }
 
@@ -64,7 +64,7 @@ __global__ void NGramHashMappingKernel(
       for (int64_t h = 0; h < n_head_per_ngram; ++h) {
         const int64_t out_h = ngram_offset + h;
         const T mod = vocab_sizes[out_h];
-        output[output_base + out_h] = mod <= 0 ? T{} : kernel_helper::PositiveMod(mix, mod);
+        output[output_base + out_h] = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
       }
     }
   }
@@ -112,7 +112,7 @@ Status LaunchNGramHashMappingKernel(
   const int64_t state_length = max_ngram_size - 1;
   if (present_ids != nullptr && batch_size * state_length > 0) {
     const int64_t present_total = batch_size * state_length;
-    NGramPresentIdsKernel<T><<<kernel_helper::GridSize(present_total), kernel_helper::kThreads, 0, stream>>>(
+    NGramPresentIdsKernel<T><<<engram_helper::GridSize(present_total), engram_helper::kThreads, 0, stream>>>(
         input_ids, past_ids, present_ids, present_total, sequence_length, state_length, pad_id);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
@@ -121,7 +121,7 @@ Status LaunchNGramHashMappingKernel(
   if (total == 0) {
     return Status::OK();
   }
-  NGramHashMappingKernel<T><<<kernel_helper::GridSize(total), kernel_helper::kThreads, 0, stream>>>(
+  NGramHashMappingKernel<T><<<engram_helper::GridSize(total), engram_helper::kThreads, 0, stream>>>(
       input_ids, multipliers, vocab_sizes, past_ids, output, total, sequence_length, max_ngram_size,
       n_head_per_ngram, pad_id);
   return CUDA_CALL(cudaGetLastError());

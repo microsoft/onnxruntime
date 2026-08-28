@@ -3,7 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/engram_gate.h"
 
-#include "contrib_ops/webgpu/bert/kernel_helper.h"
+#include "contrib_ops/webgpu/bert/engram_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -35,7 +35,7 @@ Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& gate = shader.AddOutput("gate", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
-      << kernel_helper::kStableSigmoidWgsl << kernel_helper::kEngramGateArgWgsl
+      << engram_helper::kStableSigmoidWgsl << engram_helper::kEngramGateArgWgsl
       << "var<workgroup> key_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
       << "var<workgroup> query_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
       << "var<workgroup> dot_partials: array<f32, " << kGateWorkgroupSize << ">;\n";

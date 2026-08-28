@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
-namespace kernel_helper {
+namespace engram_helper {
 
 // WGSL snippets shared by the contrib kernels. Append them to ShaderHelper::AdditionalImplementation().
 
@@ -41,7 +41,7 @@ constexpr std::string_view kPositiveModWgsl =
     "  return result;\n"
     "}\n";
 
-}  // namespace kernel_helper
+}  // namespace engram_helper
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

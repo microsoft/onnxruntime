@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-#include "contrib_ops/cuda/bert/kernel_helper.cuh"
+#include "contrib_ops/cuda/bert/engram_helper.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -55,14 +55,14 @@ __global__ void EngramGateKernel(
       dot_numerator += key_value * to_float<T>(key_scale_g[d]) * query_value * to_float<T>(query_scale_g[d]);
     }
 
-    key_sum_sq = kernel_helper::BlockSum(key_sum_sq, shared);
-    query_sum_sq = kernel_helper::BlockSum(query_sum_sq, shared);
-    dot_numerator = kernel_helper::BlockSum(dot_numerator, shared);
+    // The three partials are independent and available at the same point, so fuse them into one tree
+    // reduction instead of paying three sets of barriers per row.
+    engram_helper::BlockSum3(&key_sum_sq, &query_sum_sq, &dot_numerator, shared);
 
     const float key_inv_rms = rsqrtf(key_sum_sq / static_cast<float>(hidden_size) + epsilon);
     const float query_inv_rms = rsqrtf(query_sum_sq / static_cast<float>(hidden_size) + epsilon);
     const float dot = dot_numerator * key_inv_rms * query_inv_rms / sqrtf(static_cast<float>(hidden_size));
-    const float gate = kernel_helper::SigmoidFloat(kernel_helper::EngramGateArg(dot));
+    const float gate = engram_helper::SigmoidFloat(engram_helper::EngramGateArg(dot));
 
     T* output_row = output + row * hidden_size;
     for (int64_t c = threadIdx.x; c < hidden_size; c += blockDim.x) {
@@ -91,9 +91,9 @@ Status LaunchEngramGateKernel(
   if (rows == 0 || hidden_size == 0) {
     return Status::OK();
   }
-  const int blocks = static_cast<int>(std::min(rows, kernel_helper::kMaxGridDimX));
-  const size_t shared_bytes = static_cast<size_t>(kernel_helper::kThreads) * sizeof(float);
-  EngramGateKernel<T><<<blocks, kernel_helper::kThreads, shared_bytes, stream>>>(
+  const int blocks = static_cast<int>(std::min(rows, engram_helper::kMaxGridDimX));
+  const size_t shared_bytes = 3 * static_cast<size_t>(engram_helper::kThreads) * sizeof(float);
+  EngramGateKernel<T><<<blocks, engram_helper::kThreads, shared_bytes, stream>>>(
       key, query, value, key_norm_scale, query_norm_scale, output, rows, hc_mult, hidden_size, epsilon);
   return CUDA_CALL(cudaGetLastError());
 }

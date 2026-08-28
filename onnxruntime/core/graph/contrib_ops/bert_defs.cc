@@ -2576,13 +2576,14 @@ layout. The convolution weight layout is (hc_mult * hidden_size, 1, kernel_size)
 
 The convolution receptive field spans state_length = (kernel_size - 1) * dilation positions before the
 current token. To keep the op causal across invocations (chunked prefill or autoregressive decode), the
-optional past_state input carries the normed values of those positions from the preceding call and
-present_state returns them for the next call. Both have shape
+optional past_state input carries the raw (un-normalized) input values of those positions from the
+preceding call and present_state returns them for the next call. Both have shape
 (batch_size, state_length, hc_mult, hidden_size) and are right-aligned: slot state_length - 1 holds the
 most recent position. Slots that correspond to positions before the start of the whole sequence are
-zero. Running the op once over a full sequence and running it over consecutive chunks while threading
-present_state into past_state produce identical outputs. When past_state is omitted the missing history
-is treated as zeros, which matches a fresh sequence.
+zero. Because the state is un-normalized, the RMS reduction is recomputed from the same values a
+full-sequence run would use, so running the op once over a full sequence and running it over consecutive
+chunks while threading present_state into past_state produce identical outputs for every element type.
+When past_state is omitted the missing history is treated as zeros, which matches a fresh sequence.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2620,7 +2621,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "past_state",
-               "Optional normed convolution input for the (kernel_size - 1) * dilation positions that "
+               "Optional raw (un-normalized) input for the (kernel_size - 1) * dilation positions that "
                "precede this call, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, "
                "hidden_size). Right-aligned, so the last slot is the most recent position. If omitted "
                "the history is treated as zeros.",
@@ -2632,7 +2633,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_state",
-                "Normed convolution input for the trailing (kernel_size - 1) * dilation positions of "
+                "Raw (un-normalized) input for the trailing (kernel_size - 1) * dilation positions of "
                 "past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, "
                 "hc_mult, hidden_size). Feed this back as past_state on the next call.",
                 "T",
@@ -2659,6 +2660,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             const auto& weight_shape = getInputShape(ctx, 1);
             if (weight_shape.dim_size() != 3) {
               fail_shape_inference("ShortConv: weight must have rank 3");
+            }
+            if (weight_shape.dim(2).has_dim_value() && weight_shape.dim(2).dim_value() < 1) {
+              fail_shape_inference("ShortConv: kernel_size must be >= 1");
             }
           }
           if (hasInputShape(ctx, 2)) {
@@ -2754,6 +2758,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
 
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
@@ -2776,7 +2783,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 0, output_shape);
 
             if (ctx.getNumOutputs() > 1) {
-              propagateElemTypeFromInputToOutput(ctx, 0, 1);
               TensorShapeProto present_shape;
               *present_shape.add_dim() = input_shape.dim(0);
               present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
