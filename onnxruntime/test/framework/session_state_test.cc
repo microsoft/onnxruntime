@@ -773,7 +773,7 @@ static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePac
   ASSERT_TRUE(status.IsOK());
 }
 
-#if !defined(ORT_NO_EXCEPTIONS)
+#if !defined(ORT_NO_EXCEPTIONS) && !defined(__ANDROID__)
 static void CreateThrowingPrepackGraph(Graph& graph) {
   TypeProto type;
   type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
