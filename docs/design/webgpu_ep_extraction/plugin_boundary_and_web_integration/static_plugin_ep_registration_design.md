@@ -509,6 +509,108 @@ A workable order:
    leg should forward the flag properly. Note also that without `--webgpu-ep` the `webgpu` backend silently routes
    through JSEP instead, so a leg that omits it would pass while testing nothing relevant.
 
+### Interaction with the ORT Web reduced-size build options
+
+The ORT Web WASM builds are size-sensitive and pass a set of size-reduction flags that the local prototype builds
+did not. `linux-wasm-ci-build-and-test-workflow.yml` applies `--disable_ml_ops --disable_generation_ops
+--disable_types string float4 float8 optional sparsetensor --include_ops_by_config
+onnxruntime/wasm/reduced_types.config --enable_reduced_operator_type_support`, and `web.yml` adds `--disable_rtti`
+for the release job. Since the migration changes how the WebGPU EP is compiled and linked, each of these was
+checked against the plugin path.
+
+**None of them need adapting.** The findings:
+
+- *Compile definitions reach the WebGPU target in every mode.* `onnxruntime_providers_webgpu` is created through
+  `onnxruntime_add_static_library` / `onnxruntime_add_shared_library_module`, both of which call
+  `onnxruntime_configure_target` → `onnxruntime_set_compile_flags`. That function is where every `DISABLE_*` and
+  `REDUCED_OPS_BUILD` definition is applied, so the `static_lib`, `static_plugin` and shared-library builds all
+  receive an identical set. There is no propagation gap introduced by the plugin boundary.
+
+- *Operator and type reduction never applied to WebGPU, before or after.*
+  `op_registration_utils.get_kernel_registration_files()` hardcodes the CPU registration files (plus CUDA when
+  requested); WebGPU is not in the list, so `--include_ops_by_config` does not rewrite WebGPU kernel
+  registrations. `onnxruntime/wasm/reduced_types.config` is `!no_ops_specified_means_all_ops_are_required` — it
+  performs global *type* reduction only, with no op exclusion — and that mechanism works through the
+  `op_kernel_type_control` macros, which neither `core/providers/webgpu` nor `contrib_ops/webgpu` uses. Its saving
+  is entirely CPU-EP-side and is unchanged by the plugin switch. This is a pre-existing gap, not a regression.
+
+- *The type and ML/generation op flags are inert for WebGPU.* No source under `core/providers/webgpu` or
+  `contrib_ops/webgpu` references `DISABLE_ML_OPS`, `DISABLE_GENERATION_OPS`, `DISABLE_SPARSE_TENSORS`,
+  `DISABLE_OPTIONAL_TYPE`, `DISABLE_FLOAT8_TYPES`, `DISABLE_FLOAT4_TYPES` or `DISABLE_STRING_TYPE`.
+
+- *`--disable_rtti` is safe on the plugin path.* Neither `include/onnxruntime/ep` (the EP API adapters) nor
+  `onnxruntime/core/session/plugin_ep` uses `dynamic_cast` or `typeid`.
+
+One consequence is worth recording for the *shared library* plugin EP, which is out of scope here but shares this
+code. `onnxruntime_c_api.h` contains no `DISABLE_*` guards, so the `OrtApi` struct layout is invariant under these
+flags and the ABI is stable. `onnxruntime_cxx_api.h` does guard some `Ort::Value` members (the sparse tensor
+methods) — an EP DLL built with a different `--disable_types` than its host would therefore see a different C++
+header surface, but since those wrappers are inline over stable function pointers this is a source-compatibility
+concern rather than an ABI one. For `static_plugin` everything is compiled in one tree with one set of defines, so
+the question does not arise.
+
+**What is *not* covered by any existing flag** is the plugin machinery itself. Relative to `static_lib`, the
+`static_plugin` build adds `core/providers/webgpu/ep/*` (excluded from the source list in the `static_lib` branch
+of `onnxruntime_providers_webgpu.cmake`), inlines the header-only EP API adapters into every WebGPU translation
+unit, and reaches the `OrtGraph` / `OrtNode` C API graph views through `OrtEp::GetCapability`. Note that
+`core/session/plugin_ep` is *not* part of that delta: `onnxruntime_session.cmake` only excludes it for
+`onnxruntime_MINIMAL_BUILD`, so today's WASM builds already compile it in.
+
+That also means the only existing lever that trims plugin-EP machinery is `--minimal_build`, which
+`static_plugin` currently rejects outright. If measurement shows the size delta matters, lifting that restriction
+(already listed as a follow-up) is the mechanism to reach parity — not a new size-reduction flag.
+
+#### Measured size comparison
+
+Both modes were then built locally with the exact CI flag set (`Release`, SIMD + threads, asyncify, WebNN on,
+`--disable_rtti`, `--enable_wasm_api_exception_catching`, and the full reduced-size set above) and the artifacts
+compared:
+
+| Artifact | `static_lib` | `static_plugin` | Delta |
+| --- | ---: | ---: | ---: |
+| `ort-wasm-simd-threaded.asyncify.wasm` | 26,243,969 B | 26,190,991 B | **−52,978 B (−0.20%)** |
+| `ort-wasm-simd-threaded.asyncify.mjs` | 53,218 B | 53,218 B | 0 |
+
+**There is no size regression** — `static_plugin` is marginally smaller. Both configurations compiled cleanly with
+every reduced-size flag, which empirically confirms the analysis above. The plugin build plausibly comes out ahead
+because it drops the internal `IExecutionProvider` / `KernelRegistry` glue and the built-in `WebGpuEpFactory` in
+`ep_library_internal.cc` in favour of the header-only adapters, but that attribution is not separately measured.
+For reference, the same `static_plugin` configuration without any reduced-size flags is 40.9 MB, so those flags are
+worth ~15 MB and remain essential regardless of EP mode.
+
+#### `--enable_wasm_api_exception_catching` and the EP API adapters
+
+The one option that *did* interact with the plugin path is `--enable_wasm_api_exception_catching`. It is not a
+size-reduction flag in the same sense as the others, but it is part of the same CI flag set and it exposed a real
+bug.
+
+`onnxruntime_webassembly.cmake` compiles only `wasm/api.cc` and `core/session/onnxruntime_c_api.cc` with
+`-sDISABLE_EXCEPTION_CATCHING=0`; every other translation unit keeps Emscripten's default, where `catch` clauses
+are compiled so that they never match. Exceptions still propagate — they are simply only catchable at the C API
+boundary.
+
+The EP API adapters in `include/onnxruntime/ep/adapter/` are header-only and are therefore inlined into WebGPU
+translation units that have catching disabled. `OpKernelInfo::GetAttr()` / `GetAttrs()` were implemented as a
+`try` around the throwing `Ort::` C++ wrappers, converting `Ort::Exception` into a `Status`. That makes a *missing
+optional attribute* — ordinary control flow for `GetAttrOrDefault()` — depend on catching an exception. With
+catching disabled the `catch` never ran, so the exception escaped `GetAttrOrDefault()` entirely and surfaced from
+session creation as e.g. `ERROR_CODE: 6, ERROR_MESSAGE: No attribute with name:'extrapolation_value'is defined.`
+
+This reproduced as 949 `suite0` failures on the reduced-size `static_plugin` build while the same build passed on
+the CPU backend, the reduced-size `static_lib` build passed, and the full-op `static_plugin` build passed — the
+failure required plugin + WebGPU + API-only exception catching together.
+
+The fix is to not use exceptions for control flow in the adapters: `GetAttr()` / `GetAttrs()` now call the
+non-throwing `OrtApi::KernelInfoGetAttribute*` functions directly and convert the returned `OrtStatus*` into a
+`Status`. **General rule: header-only EP API adapter code must not rely on catching exceptions**, because a plugin
+EP may be compiled with exception catching disabled. The remaining `catch` blocks in `include/onnxruntime/ep`
+(`common.h`, `get_capability_utils.h`, `adapter/kernel_registry.h`) sit on genuinely exceptional callback
+boundaries rather than on control-flow paths; when catching is disabled those exceptions still reach the outer C
+API boundary and are reported, only with a less specific message.
+
+With that fix the reduced-size `static_plugin` build passes `suite0` on the WebGPU backend in full: 2152 tests,
+all passing, matching the `static_lib` control run on the identical flag set.
+
 
 
 > Should static factories be registered before environment creation or through environment construction options?
