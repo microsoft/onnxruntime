@@ -60,7 +60,8 @@ The initialization breakdown uses the CUDA allocator snapshot immediately after
 
 - **Serialized external tensor data** is the size of the adjacent
   `model.onnx.data` file. It provides model-size context but is not a measurement
-  of GPU-resident weight memory.
+  of GPU-resident weight memory. Some models instead embed their weights in the
+  `model.onnx` file, in which case the serialized ONNX size includes the weights.
 - **Direct reserved bytes** are live allocations made through `IArena::Reserve()`.
   For these models they are primarily persistent `MatMulNBits` prepacked buffers,
   but the statistic is allocator-wide and is not exclusively a prepack counter.
@@ -135,6 +136,103 @@ fragmentation was only 248 bytes, so the large post-initialization slack reflect
 free BFC capacity rather than live-allocation padding. The WDDM process peak did
 not change between configurations.
 
+### Qwen 2.5 7B
+
+Model:
+`qwen2.5-7b-instruct-cuda-gpu:4`
+
+- 28 decoder layers
+- 4 key/value heads
+- 141 CUDA `MatMulNBits` nodes
+- 113 nodes declared nonzero workspace for the tested shape
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 113 | +113 |
+| Largest workspace | 0 B | 4,257,792 B | +4,257,792 B |
+| Serialized ONNX graph | 198,083 B | 198,083 B | 0 B |
+| Serialized external tensor data | 5,076,085,760 B (4,840.93 MiB) | 5,076,085,760 B (4,840.93 MiB) | 0 B |
+| Post-initialization arena total | 9,053,150,464 B (8,633.76 MiB) | 9,053,150,464 B (8,633.76 MiB) | 0 B |
+| Post-initialization direct reserved bytes | 3,977,035,776 B (3,792.80 MiB) | 3,977,035,776 B (3,792.80 MiB) | 0 B |
+| Post-initialization BFC region capacity | 5,076,114,688 B (4,840.96 MiB) | 5,076,114,688 B (4,840.96 MiB) | 0 B |
+| Post-initialization arena slack | 3,977,035,776 B (3,792.80 MiB) | 3,977,035,776 B (3,792.80 MiB) | 0 B |
+| Shrink reclaimed after warmup | 4,288,462,848 B (4,089.80 MiB) | 4,288,462,848 B (4,089.80 MiB) | 0 B |
+| Measured arena reservation | 542,319,360 B | 542,849,792 B | **+530,432 B** |
+| Final arena slack | 542,319,360 B | 542,849,792 B | **+530,432 B** |
+| Internal fragmentation | 248 B | 248 B | 0 B |
+| Internal fragmentation ratio | 0.00000489% | 0.00000489% | 0 pp |
+| Arena allocation calls | 13,936 | 9,755 | **-30.0%** |
+| WDDM initialization peak | 9,902 MiB | 9,902 MiB | **0 MiB** |
+| WDDM post-initialization usage | 9,676 MiB | 9,676 MiB | **0 MiB** |
+| WDDM pre-inference usage | 5,604 MiB | 5,604 MiB | **0 MiB** |
+| WDDM inference peak | 6,132 MiB | 6,132 MiB | **0 MiB** |
+| WDDM inference increase | 528 MiB | 528 MiB | **0 MiB** |
+| Average latency | 261.47 ms | 259.04 ms | -0.9% |
+| P50 latency | 260.47 ms | 258.10 ms | -0.9% |
+| P90 latency | 264.95 ms | 267.16 ms | +0.8% |
+| Initialization | 111.91 s | 142.11 s | +27.0% |
+
+Workspace preallocation did not reduce the controlled CUDA arena reservation for
+this model and shape. It added 530,432 bytes (approximately 518 KiB), despite a
+largest declared workspace of approximately 4.06 MiB, while eliminating 4,181
+allocator calls. The process-scoped WDDM inference peak was unchanged, and the
+paired latency measurements were effectively unchanged.
+
+The 4,840.93 MiB serialized external-data file closely matches the 4,840.96 MiB
+BFC region capacity created during initialization. The separate 3,792.80 MiB of
+direct reserves primarily represents persistent prepacked buffers. After
+warmup, `Shrink()` reclaimed 4,089.80 MiB of completely free BFC regions.
+Internal fragmentation was only 248 bytes.
+
+### Qwen 3.5 2B Text
+
+Model:
+`qwen3.5-2b-text-cuda-gpu:1`
+
+- 24 decoder layers: 18 linear-attention and 6 full-attention layers
+- 2 key/value heads and head size 256 for full-attention layers
+- 187 CUDA `MatMulNBits` nodes
+- 151 nodes declared nonzero workspace for the tested shape
+- Weights embedded in the single `model.onnx` file
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 151 | +151 |
+| Largest workspace | 0 B | 6,952,960 B | +6,952,960 B |
+| Serialized ONNX model | 1,397,119,352 B (1,332.40 MiB) | 1,397,119,352 B (1,332.40 MiB) | 0 B |
+| Serialized external tensor data | 0 B | 0 B | 0 B |
+| Post-initialization arena total | 3,248,802,560 B (3,098.30 MiB) | 3,248,802,560 B (3,098.30 MiB) | 0 B |
+| Post-initialization direct reserved bytes | 1,343,619,072 B (1,281.38 MiB) | 1,343,619,072 B (1,281.38 MiB) | 0 B |
+| Post-initialization BFC region capacity | 1,905,183,488 B (1,816.92 MiB) | 1,905,183,488 B (1,816.92 MiB) | 0 B |
+| Post-initialization arena slack | 1,280,049,152 B (1,220.75 MiB) | 1,280,049,152 B (1,220.75 MiB) | 0 B |
+| Shrink reclaimed after warmup | 1,788,608,512 B (1,705.75 MiB) | 1,788,608,512 B (1,705.75 MiB) | 0 B |
+| Measured arena reservation | 708,753,664 B | 701,974,528 B | **-6,779,136 B** |
+| Final arena slack | 708,753,664 B | 701,974,528 B | **-6,779,136 B** |
+| Internal fragmentation | 8,116 B | 8,116 B | 0 B |
+| Internal fragmentation ratio | 0.0004122% | 0.0004122% | 0 pp |
+| Arena allocation calls | 13,945 | 8,358 | **-40.1%** |
+| WDDM initialization peak | 3,848 MiB | 3,848 MiB | **0 MiB** |
+| WDDM post-initialization usage | 3,426 MiB | 3,426 MiB | **0 MiB** |
+| WDDM pre-inference usage | 2,294 MiB | 2,294 MiB | **0 MiB** |
+| WDDM inference peak | 2,952 MiB | 2,944 MiB | **-8 MiB** |
+| WDDM inference increase | 658 MiB | 650 MiB | **-8 MiB** |
+| Average latency | 222.61 ms | 230.20 ms | +3.4% |
+| P50 latency | 221.23 ms | 229.95 ms | +3.9% |
+| P90 latency | 227.51 ms | 234.87 ms | +3.2% |
+| Initialization | 100.47 s | 89.50 s | **-10.9%** |
+
+Workspace preallocation reduced the controlled CUDA arena reservation by
+6,779,136 bytes (approximately 6.47 MiB), close to the largest declared
+workspace of 6,952,960 bytes (approximately 6.63 MiB). It eliminated 5,587
+allocator calls and reduced the WDDM inference peak by 8 MiB.
+
+The model's 1,332.40 MiB serialized ONNX file embeds its weights. Initialization
+created 1,816.92 MiB of BFC region capacity and 1,281.38 MiB of persistent direct
+reserves. After warmup, `Shrink()` reclaimed 1,705.75 MiB of completely free BFC
+regions. Internal fragmentation was 8,116 bytes. The paired latency run was 3.4%
+slower with preallocation; as with the other single paired measurements, this
+does not establish a stable latency effect.
+
 ### Hy-MT2 1.8B
 
 Model:
@@ -186,14 +284,17 @@ configurations.
 | Model | WDDM inference-peak change | Arena reservation change | Allocation-call change | Average-latency change |
 |---|---:|---:|---:|---:|
 | Qwen 2.5 1.5B | **-6 MiB** | **-4,003,328 B** | **-30.0%** | **-16.5%** |
+| Qwen 2.5 7B | **0 MiB** | +530,432 B | **-30.0%** | -0.9% |
+| Qwen 3.5 2B Text | **-8 MiB** | **-6,779,136 B** | **-40.1%** | +3.4% |
 | Hy-MT2 1.8B | **0 MiB** | +115,200 B | **-43.2%** | +9.9% |
 
 The memory benefit scales with the model's workspace requirement at this longer
-sequence length. Qwen reused approximately 3.82 MiB of activation storage and
-reduced the process-scoped WDDM inference peak by 6 MiB. Hy-MT2's smaller
-workspace did not produce a net reservation reduction. Both models substantially
-reduced allocator calls. Latency improved for Qwen but regressed for Hy-MT2 in
-these paired runs.
+sequence length. Qwen 2.5 reused approximately 3.82 MiB of activation storage,
+and Qwen 3.5 reused approximately 6.47 MiB. Their process-scoped WDDM inference
+peaks decreased by 6 MiB and 8 MiB, respectively. Qwen 2.5 7B and Hy-MT2 did not
+produce net reservation reductions for the tested shape. All four models
+substantially reduced allocator calls. Latency moved in different directions
+across the single paired runs.
 
 ## NVIDIA T1000
 
