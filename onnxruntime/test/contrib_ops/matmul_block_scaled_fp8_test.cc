@@ -5,6 +5,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/unittest_util/conversion.h"
 #include "test/util/include/scoped_env_vars.h"
 
@@ -78,6 +79,60 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightOnlyGemmFp16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// The opt-in row-wise FP8 prefill path uses a per-activation-row scale and cuBLASLt's row-major
+// FP8 matrix multiplication. The input values are exactly representable after dynamic scaling, so
+// this checks the scale layout, row-major output layout, and the FP16 result type independently of
+// the existing weight-only dequantize + cuBLAS path.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, RowWiseFp8PrefillFp16) {
+  if (!HasCudaEnvironment(900)) {
+    GTEST_SKIP() << "SM90+ CUDA device is required for row-wise FP8 GEMM.";
+  }
+#if CUDA_VERSION < 12090
+  GTEST_SKIP() << "Row-wise FP8 GEMM requires CUDA 12.9 or newer.";
+#else
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_ENABLE_ROW_WISE_FP8_GEMM", "1"}}};
+
+  constexpr int64_t m = 2;
+  constexpr int64_t n = 4096;  // enables the opt-in prefill guard
+  constexpr int64_t k = 128;
+  constexpr int64_t block_size = 128;
+
+  static const float kWeightValues[] = {1.0f, 2.0f, -1.0f, 0.5f};
+  static const float kWeightScales[] = {1.0f, 0.5f, 2.0f, 1.0f};
+  std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
+  std::vector<float> b_scale(static_cast<size_t>(n));
+  for (int64_t row = 0; row < n; ++row) {
+    const int pattern = static_cast<int>(row % 4);
+    b_scale[static_cast<size_t>(row)] = kWeightScales[pattern];
+    for (int64_t col = 0; col < k; ++col) {
+      b[static_cast<size_t>(row * k + col)] = Float8E4M3FN(kWeightValues[pattern]);
+    }
+  }
+
+  std::vector<float> a(static_cast<size_t>(m * k), 1.0f);
+  std::vector<float> expected(static_cast<size_t>(m * n));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      const int pattern = static_cast<int>(col % 4);
+      expected[static_cast<size_t>(row * n + col)] =
+          static_cast<float>(k) * kWeightValues[pattern] * kWeightScales[pattern];
+    }
+  }
+
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+  test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+  test.AddInput<float>("b_scale", {n, 1}, b_scale);
+  test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+  test.SetOutputTolerance(0.5f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
 }
 
 // GEMM path with non-unit per-block scales, negative weights and bias, BF16 activations/output.
