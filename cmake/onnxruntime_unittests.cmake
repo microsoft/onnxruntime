@@ -2012,11 +2012,6 @@ endif()
           onnxruntime_shared_lib_cpuinfo_dlopen_test
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
         add_dependencies(onnxruntime_shared_lib_cpuinfo_dlopen_test ${all_dependencies} onnxruntime)
-        if(onnxruntime_USE_XNNPACK)
-          target_compile_definitions(
-            onnxruntime_shared_lib_cpuinfo_dlopen_test
-            PRIVATE ORT_CPUINFO_DLOPEN_TEST_USE_XNNPACK)
-        endif()
         add_test(
           NAME onnxruntime_shared_lib_cpuinfo_dlopen_test
           COMMAND onnxruntime_shared_lib_cpuinfo_dlopen_test

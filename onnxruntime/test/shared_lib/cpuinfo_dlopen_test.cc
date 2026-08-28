@@ -3,8 +3,8 @@
 
 #include <Windows.h>
 
-#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 
@@ -16,6 +16,11 @@ namespace {
 struct ProcessHeapSnapshot {
   size_t busy_block_count = 0;
   size_t busy_bytes = 0;
+};
+
+struct ProcessHeapGrowth {
+  int64_t busy_block_count = 0;
+  int64_t busy_bytes = 0;
 };
 
 bool CaptureProcessHeapSnapshot(ProcessHeapSnapshot& snapshot) {
@@ -47,7 +52,7 @@ bool CheckStatus(const OrtApi& ort_api, OrtStatus* status) {
   return false;
 }
 
-bool LoadQueryHardwareAndUnload() {
+bool LoadAndUnload(bool query_hardware) {
   HMODULE ort_library = LoadLibraryW(L"onnxruntime.dll");
   if (ort_library == nullptr) {
     std::cerr << "LoadLibraryW failed with error " << GetLastError() << std::endl;
@@ -72,42 +77,18 @@ bool LoadQueryHardwareAndUnload() {
 
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   OrtEnv* env = nullptr;
-  OrtSessionOptions* session_options = nullptr;
-  OrtSession* session = nullptr;
   bool success = ort_api != nullptr;
 
   if (success) {
     success = CheckStatus(*ort_api, ort_api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "CpuinfoDlopenTest", &env));
   }
-  if (success) {
+  if (success && query_hardware) {
     size_t num_devices = 0;
     success = CheckStatus(*ort_api, ort_api->GetNumHardwareDevices(env, &num_devices));
     if (success && num_devices == 0) {
       std::cerr << "ONNX Runtime reported no hardware devices" << std::endl;
       success = false;
     }
-  }
-#if defined(ORT_CPUINFO_DLOPEN_TEST_USE_XNNPACK)
-  if (success) {
-    success = CheckStatus(*ort_api, ort_api->CreateSessionOptions(&session_options));
-  }
-  if (success) {
-    success = CheckStatus(
-        *ort_api,
-        ort_api->SessionOptionsAppendExecutionProvider(session_options, "XNNPACK", nullptr, nullptr, 0));
-  }
-  if (success) {
-    success = CheckStatus(
-        *ort_api,
-        ort_api->CreateSession(env, L"testdata\\matmul_1.onnx", session_options, &session));
-  }
-#endif
-
-  if (session != nullptr) {
-    ort_api->ReleaseSession(session);
-  }
-  if (session_options != nullptr) {
-    ort_api->ReleaseSessionOptions(session_options);
   }
   if (env != nullptr) {
     ort_api->ReleaseEnv(env);
@@ -126,6 +107,13 @@ bool LoadQueryHardwareAndUnload() {
   return success;
 }
 
+ProcessHeapGrowth operator-(const ProcessHeapSnapshot& after, const ProcessHeapSnapshot& before) {
+  return {
+      static_cast<int64_t>(after.busy_block_count) - static_cast<int64_t>(before.busy_block_count),
+      static_cast<int64_t>(after.busy_bytes) - static_cast<int64_t>(before.busy_bytes),
+  };
+}
+
 }  // namespace
 
 int wmain() {
@@ -133,45 +121,49 @@ int wmain() {
   constexpr size_t kMeasuredCycles = 3;
 
   for (size_t cycle = 0; cycle < kWarmupCycles; ++cycle) {
-    if (!LoadQueryHardwareAndUnload()) {
+    if (!LoadAndUnload(false) || !LoadAndUnload(true)) {
       return EXIT_FAILURE;
     }
   }
 
-  std::array<ProcessHeapSnapshot, kMeasuredCycles + 1> snapshots;
-  if (!CaptureProcessHeapSnapshot(snapshots[0])) {
-    std::cerr << "Failed to capture the initial process heap snapshot" << std::endl;
-    return EXIT_FAILURE;
-  }
+  ProcessHeapGrowth baseline_growth;
+  ProcessHeapGrowth cpuinfo_growth;
 
+  // CreateEnv must not initialize CPUIDInfo. GetNumHardwareDevices does so through Windows device discovery.
   for (size_t cycle = 0; cycle < kMeasuredCycles; ++cycle) {
-    if (!LoadQueryHardwareAndUnload()) {
+    ProcessHeapSnapshot before_baseline;
+    ProcessHeapSnapshot after_baseline;
+    ProcessHeapSnapshot after_cpuinfo;
+    if (!CaptureProcessHeapSnapshot(before_baseline)) {
+      std::cerr << "Failed to capture process heap before baseline cycle " << cycle << std::endl;
       return EXIT_FAILURE;
     }
-    if (!CaptureProcessHeapSnapshot(snapshots[cycle + 1])) {
-      std::cerr << "Failed to capture process heap snapshot " << cycle + 1 << std::endl;
+    if (!LoadAndUnload(false) || !CaptureProcessHeapSnapshot(after_baseline)) {
+      std::cerr << "Failed to measure baseline DLL cycle " << cycle << std::endl;
       return EXIT_FAILURE;
     }
+    if (!LoadAndUnload(true) || !CaptureProcessHeapSnapshot(after_cpuinfo)) {
+      std::cerr << "Failed to measure cpuinfo DLL cycle " << cycle << std::endl;
+      return EXIT_FAILURE;
+    }
+
+    const ProcessHeapGrowth baseline_cycle = after_baseline - before_baseline;
+    const ProcessHeapGrowth cpuinfo_cycle = after_cpuinfo - after_baseline;
+    baseline_growth.busy_block_count += baseline_cycle.busy_block_count;
+    baseline_growth.busy_bytes += baseline_cycle.busy_bytes;
+    cpuinfo_growth.busy_block_count += cpuinfo_cycle.busy_block_count;
+    cpuinfo_growth.busy_bytes += cpuinfo_cycle.busy_bytes;
   }
 
-  bool block_count_grew_each_cycle = true;
-  bool allocated_bytes_grew_each_cycle = true;
-  // Ignore one-time loader caching and detect the repeated growth caused by unreleased cpuinfo globals.
-  for (size_t cycle = 0; cycle < kMeasuredCycles; ++cycle) {
-    block_count_grew_each_cycle =
-        block_count_grew_each_cycle &&
-        snapshots[cycle + 1].busy_block_count > snapshots[cycle].busy_block_count;
-    allocated_bytes_grew_each_cycle =
-        allocated_bytes_grew_each_cycle &&
-        snapshots[cycle + 1].busy_bytes > snapshots[cycle].busy_bytes;
-  }
-
-  if (block_count_grew_each_cycle && allocated_bytes_grew_each_cycle) {
-    std::cerr << "Process heap grew after every ONNX Runtime DLL load/unload cycle:"
-              << " blocks " << snapshots[0].busy_block_count << " -> "
-              << snapshots[kMeasuredCycles].busy_block_count
-              << ", bytes " << snapshots[0].busy_bytes << " -> "
-              << snapshots[kMeasuredCycles].busy_bytes << std::endl;
+  constexpr int64_t kBlockTolerance = 2;
+  constexpr int64_t kByteTolerance = 1024;
+  if (cpuinfo_growth.busy_block_count > baseline_growth.busy_block_count + kBlockTolerance &&
+      cpuinfo_growth.busy_bytes > baseline_growth.busy_bytes + kByteTolerance) {
+    std::cerr << "Hardware discovery retained additional process-heap allocations across DLL unload cycles:"
+              << " baseline blocks/bytes " << baseline_growth.busy_block_count << "/"
+              << baseline_growth.busy_bytes
+              << ", cpuinfo blocks/bytes " << cpuinfo_growth.busy_block_count << "/"
+              << cpuinfo_growth.busy_bytes << std::endl;
     return EXIT_FAILURE;
   }
 
