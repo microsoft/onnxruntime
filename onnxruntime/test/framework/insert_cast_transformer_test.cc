@@ -556,7 +556,15 @@ TEST(TransformerTest, Fp16NodeWithCustomRegistryFp16KernelNotForced) {
 #if defined(DISABLE_CONTRIB_OPS)
   GTEST_SKIP() << "BiasGelu is unavailable when contrib ops are disabled.";
 #endif
-  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  // Pin both opsets the graph uses. com.microsoft must be listed explicitly: Model uses a non-empty
+  // domain_to_version map verbatim, so omitting it would leave the contrib node without a schema and
+  // fail Resolve. Its version is 1 and stays there, but ai.onnx is pinned for the same reason as in
+  // Fp16OutputOnlyNodeWithNoCpuKernelForcedToFp32 -- so nothing here moves when main's default opset
+  // does.
+  auto model = std::make_shared<onnxruntime::Model>(
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 12}, {onnxruntime::kMSDomain, 1}},
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_16;
@@ -638,10 +646,19 @@ TEST(TransformerTest, Fp16NodeWithCustomRegistryFp32KernelForcedToFp32) {
            DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
   };
 
+  // Both blocks below pin the two opsets the graph uses. com.microsoft must be listed explicitly:
+  // Model uses a non-empty domain_to_version map verbatim, so omitting it would leave the contrib
+  // node without a schema and fail Resolve. Its version is 1 and stays there, but ai.onnx is pinned
+  // for the same reason as in Fp16OutputOnlyNodeWithNoCpuKernelForcedToFp32 -- so nothing here moves
+  // when main's default opset does.
+
   // Baseline: the CPU EP registry alone has neither an fp16 nor an fp32 BiasAdd kernel, so there is
   // nothing to fall back to and the node stays as it is.
   {
-    auto model = std::make_shared<onnxruntime::Model>("test", false, logger);
+    auto model = std::make_shared<onnxruntime::Model>(
+        "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+        std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 12}, {onnxruntime::kMSDomain, 1}},
+        std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
     TypeProto tensor_float_16;
     std::vector<std::unique_ptr<onnxruntime::NodeArg>> arg_storage;
     auto& bias_add = BuildFp16BiasAddGraph(model->MainGraph(), tensor_float_16, arg_storage);
@@ -659,7 +676,10 @@ TEST(TransformerTest, Fp16NodeWithCustomRegistryFp32KernelForcedToFp32) {
 
   // With the fp32 kernel supplied by a custom registry the fallback is available and is applied.
   {
-    auto model = std::make_shared<onnxruntime::Model>("test", false, logger);
+    auto model = std::make_shared<onnxruntime::Model>(
+        "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+        std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 12}, {onnxruntime::kMSDomain, 1}},
+        std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
     TypeProto tensor_float_16;
     std::vector<std::unique_ptr<onnxruntime::NodeArg>> arg_storage;
     auto& bias_add = BuildFp16BiasAddGraph(model->MainGraph(), tensor_float_16, arg_storage);
