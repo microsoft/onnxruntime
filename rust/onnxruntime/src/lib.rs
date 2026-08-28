@@ -181,7 +181,7 @@ pub mod session;
 pub mod tensor;
 
 // Re-export
-pub use error::{OrtApiError, OrtError, Result};
+pub use error::{EpContextDataCallbackError, OrtApiError, OrtError, Result};
 use sys::OnnxEnumInt;
 
 // Re-export ndarray as it's part of the public API anyway
@@ -341,7 +341,7 @@ pub enum GraphOptimizationLevel {
 
 impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
     fn from(val: GraphOptimizationLevel) -> Self {
-        use GraphOptimizationLevel::{All, Basic, DisableAll, Extended};
+        use GraphOptimizationLevel::{All, Basic, DisableAll, Extended, Layout};
         match val {
             DisableAll => sys::GraphOptimizationLevel::ORT_DISABLE_ALL,
             Basic => sys::GraphOptimizationLevel::ORT_ENABLE_BASIC,

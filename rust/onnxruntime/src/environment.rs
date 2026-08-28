@@ -1,7 +1,7 @@
 //! Module containing environment types
 
 use crate::{
-    error::{status_to_result, OrtError, Result},
+    error::{status_to_result_with_api, OrtError, Result},
     onnxruntime::custom_logger,
     session::SessionBuilder,
     LoggingLevel,
@@ -33,6 +33,30 @@ impl _EnvironmentSingleton {
     pub(crate) unsafe fn api(&self) -> sys::OrtApi {
         *self.api
     }
+}
+
+fn ensure_api_available(api: *const sys::OrtApi) -> Result<*const sys::OrtApi> {
+    if api.is_null() {
+        Err(OrtError::UnsupportedApiVersion {
+            requested: ORT_API_VERSION,
+        })
+    } else {
+        Ok(api)
+    }
+}
+
+unsafe fn get_api(lib: &onnxruntime) -> Result<*const sys::OrtApi> {
+    let api_base = lib.OrtGetApiBase();
+    if api_base.is_null() {
+        return Err(OrtError::UnsupportedApiVersion {
+            requested: ORT_API_VERSION,
+        });
+    }
+
+    let get_api = (*api_base).GetApi.ok_or(OrtError::UnsupportedApiVersion {
+        requested: ORT_API_VERSION,
+    })?;
+    ensure_api_available(get_api(ORT_API_VERSION))
 }
 
 unsafe impl Send for _EnvironmentSingleton {}
@@ -126,7 +150,7 @@ impl Environment {
         let env = ENV.get_or_try_init(|| {
             debug!("Environment not yet initialized, creating a new one.");
 
-            let api = unsafe { (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) };
+            let api = unsafe { get_api(lib)? };
 
             let mut env_ptr: *mut sys::OrtEnv = std::ptr::null_mut();
 
@@ -145,7 +169,7 @@ impl Environment {
                     &mut env_ptr,
                 );
 
-                status_to_result(status).map_err(OrtError::Environment)?;
+                status_to_result_with_api(status, api).map_err(OrtError::Environment)?;
             }
             debug!(
                 env_ptr = format!("{:?}", env_ptr).as_str(),
@@ -164,7 +188,7 @@ impl Environment {
         if guard.env_ptr.is_null() || guard.api.is_null() {
             debug!("Environment not yet initialized, creating a new one.");
 
-            let api = unsafe { (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) };
+            let api = unsafe { get_api(lib)? };
 
             let mut env_ptr: *mut sys::OrtEnv = std::ptr::null_mut();
 
@@ -183,7 +207,7 @@ impl Environment {
                     &mut env_ptr,
                 );
 
-                status_to_result(status).map_err(OrtError::Environment)?;
+                status_to_result_with_api(status, api).map_err(OrtError::Environment)?;
             }
             debug!(
                 env_ptr = format!("{:?}", env_ptr).as_str(),
@@ -290,6 +314,17 @@ pub(crate) mod tests {
     use test_log::test;
 
     pub(crate) static ONNX_RUNTIME_LIBRARY_PATH: &str = "RUST_ONNXRUNTIME_LIBRARY_PATH";
+
+    #[test]
+    fn null_api_is_reported_as_version_mismatch() {
+        let error = ensure_api_available(std::ptr::null()).unwrap_err();
+        assert!(matches!(
+            error,
+            OrtError::UnsupportedApiVersion {
+                requested: ORT_API_VERSION
+            }
+        ));
+    }
 
     #[test]
     fn sequential_environment_creation() {

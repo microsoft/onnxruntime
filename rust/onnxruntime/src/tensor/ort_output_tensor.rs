@@ -180,11 +180,7 @@ fn extract_string_tensor(value: OrtOutputTensor) -> Result<WithOutputTensor<Stri
 
     let status = {
         let api = ENV.get().unwrap().lock().unwrap();
-        unsafe {
-            api.api()
-                .GetStringTensorDataLength
-                .unwrap()(value.tensor_ptr, &mut data_len)
-        }
+        unsafe { api.api().GetStringTensorDataLength.unwrap()(value.tensor_ptr, &mut data_len) }
     };
     status_to_result(status).map_err(OrtError::GetStringTensorDataLength)?;
 
@@ -455,7 +451,13 @@ impl TryFrom<OrtOutputTensor> for OrtOutput {
                 | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN
                 | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ
                 | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ
-                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2 => {
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0 => {
                     unimplemented!("{:?}", element_type)
                 }
             }
