@@ -3356,6 +3356,10 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
 
   const auto& output_graph = output_model_proto.graph();
 
+  ASSERT_EQ(output_graph.input_size(), 1);
+  ASSERT_EQ(output_graph.output_size(), 1);
+  ASSERT_EQ(output_graph.node_size(), 2);
+
   // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
   // and there should be no duplicates.
   ASSERT_EQ(output_graph.initializer_size(), 2) << "Expected both initializers in output without duplication";
