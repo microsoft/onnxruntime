@@ -44,6 +44,14 @@ class IOpBuilder {
 
   // Does the builder implementation support creating an ML Program?
   virtual bool SupportsMLProgram() const = 0;
+
+  // Is this op cheap enough that a CoreML partition consisting only of nodes
+  // like it isn't worth the marshalling cost? Used by the trivial-only
+  // partition heuristic in CoreMLExecutionProvider::GetCapability. Defaults
+  // to false; trivial-op builders override to true. Some builders dispatch
+  // multiple op types (e.g. UnaryOpBuilder), so the answer can depend on
+  // node.OpType().
+  virtual bool IsTrivial(const Node& /*node*/) const { return false; }
 };
 
 }  // namespace coreml

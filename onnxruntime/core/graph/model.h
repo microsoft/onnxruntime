@@ -251,6 +251,16 @@ class Model {
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
+  // Reads the model bytes from file_path but stores graph_model_path as the graph's model path.
+  // graph_model_path is used as the base directory for resolving external initializers, so this
+  // overload lets callers load a model file while resolving its external data from a different folder.
+  static common::Status Load(const PathString& file_path,
+                             const PathString& graph_model_path,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
+
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
@@ -343,7 +353,7 @@ class Model {
   // map from function id to pointer of model local function proto
   // FunctionProto is hosted in ModelProto.
   // this map will be used for the local functions' schema's type/shape inference.
-  // This container is used by ONNX code and must be an std::unordered_map.
+  // Must be std::unordered_map to match ONNX_NAMESPACE::shape_inference::ModelLocalFunctionsMap.
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
   // this is the map from function id to the local function template.
   // this map will be used by graph to instantiate the function body.

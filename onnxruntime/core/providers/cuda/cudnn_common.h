@@ -149,9 +149,10 @@ struct Consts<BFloat16> {
 
 inline double ClampCudnnBatchNormEpsilon(double epsilon) {
   if (epsilon < CUDNN_BN_MIN_EPSILON) {
-    if (CUDNN_BN_MIN_EPSILON - epsilon > FLT_EPSILON)
+    if (CUDNN_BN_MIN_EPSILON - epsilon > FLT_EPSILON) {
       LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than CUDNN_BN_MIN_EPSILON. "
                             << "Setting it to CUDNN_BN_MIN_EPSILON";
+    }
     return CUDNN_BN_MIN_EPSILON;
   }
   return epsilon;

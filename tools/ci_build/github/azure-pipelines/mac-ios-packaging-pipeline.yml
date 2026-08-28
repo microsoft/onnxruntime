@@ -47,6 +47,7 @@ parameters:
   default: normal
 
 name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
+
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.
@@ -56,7 +57,7 @@ extends:
     # Update the pool with your team's 1ES hosted pool.
     pool:
       name: "Azure Pipelines"
-      image: "macOS-14"
+      image: "macOS-15"
       os: macOS
     sdl:
       sourceAnalysisPool:
@@ -67,3 +68,5 @@ extends:
     - template: templates/stages/mac-ios-packaging-build-stage.yml
       parameters:
         buildType: ${{ parameters.buildType }}
+        xcodeVersion: "26.3"
+        iosSimulatorRuntimeVersion: "26.2"

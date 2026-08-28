@@ -13,6 +13,13 @@ namespace cuda {
 
 constexpr int kEfficientAttentionMaxHeadSize = 1024;
 
+// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
+// For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
+// causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
+// -1e+30 is safe: 1e30 × 1.4427 ≈ 1.4e30 << FLT_MAX ≈ 3.4e38, and
+// exp(-1e30) ≈ 0 (effectively masked). For fp16 lowest()=-65504 > -1e30, no-op.
+constexpr float kCutlassSafeMaskFilterValue = -1.0e+30f;
+
 struct MemoryEfficientAttentionParams {
   int32_t sm = 50;
   bool is_half = false;
@@ -27,6 +34,12 @@ struct MemoryEfficientAttentionParams {
   int32_t v_head_size = 0;
   int32_t local_window_size = -1;
   bool causal = false;
+  // When true, causal masking uses upper-left alignment (q_i attends to kv[0..i]).
+  // When false (default), uses lower-right alignment (q_i attends to kv[kv_len-q_len+i..kv_len-1]).
+  // ONNX Attention spec requires upper-left for cross-attention without past (S_q != S_kv, past=0).
+  // Lower-right is correct for decode with KV cache (past > 0).
+  // For square matrices (S_q == S_kv), both alignments produce identical results.
+  bool causal_from_top_left = false;
   bool use_smooth_softmax = false;
   bool broadcast_attn_bias_dim_0 = false;
   bool broadcast_attn_bias_dim_1 = false;

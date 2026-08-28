@@ -9,6 +9,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -117,6 +118,21 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
 
   if (output_size == 0) {
     return Status::OK();
+  }
+
+  // Lazily create the vendor-optimized implementation (e.g. Intel subgroup-matrix)
+  // on the first Compute call, once the device capabilities can be queried from the
+  // compute context. std::call_once makes the one-time init safe against concurrent
+  // Compute calls on this shared kernel; a null impl_ means no vendor path exists.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixGemmImpl(*this, context);
+  });
+  if (impl_) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
   }
 
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.

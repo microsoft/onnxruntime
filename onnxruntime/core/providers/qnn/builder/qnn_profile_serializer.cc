@@ -237,7 +237,7 @@ Serializer::Serializer(const ProfilingInfo& profiling_info,
       tracelogging_provider_ep_enabled_(tracelogging_provider_ep_enabled) {
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   std::filesystem::path output_fs_filepath(profiling_info.csv_output_filepath);
-  qnn_log_filename_ = output_fs_filepath.filename().string();
+  qnn_log_filename_ = PathToUTF8String(output_fs_filepath.filename().native());
   // Remove extension (assumed to be ".csv") then add "_qnn.log"
   size_t extension_start_idx = qnn_log_filename_.rfind(".");
   qnn_log_filename_ = qnn_log_filename_.substr(0, extension_start_idx);

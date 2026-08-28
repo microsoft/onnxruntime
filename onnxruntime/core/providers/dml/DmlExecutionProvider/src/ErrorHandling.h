@@ -9,7 +9,7 @@
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_CATCH_GENERIC ORT_CATCH(...) 
+#define ORT_CATCH_GENERIC ORT_CATCH(...)
 #else
 #define ORT_CATCH_GENERIC catch(...)
 #endif
@@ -60,6 +60,13 @@
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
+#define ORT_THROW_HR_MSG(hr, fmt, ...) ORT_THROW(hr)
+#else
+#define ORT_THROW_HR_MSG(hr, fmt, ...) \
+    THROW_HR_MSG(hr, fmt, __VA_ARGS__)
+#endif
+
+#ifdef ORT_NO_EXCEPTIONS
 #define ORT_THROW_HR_IF(hr, condition) ORT_ENFORCE(!(condition), hr)
 #else
 #define ORT_THROW_HR_IF(hr, condition) THROW_HR_IF(hr, condition)
@@ -68,7 +75,7 @@
 #ifdef ORT_NO_EXCEPTIONS
 #define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(!(condition))
 #else
-#define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition) 
+#define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition)
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS

@@ -84,6 +84,17 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     test_registered += RegisterTestTransposeABProduct(1, 1, 64, 1, 1.0f, 0.0f);
     test_registered += RegisterTestTransposeABProduct(1, 1, 16, 3, 1.0f, 0.0f);
 
+    // Short-path batch coverage with non-trivial alpha/beta combinations.
+    // Keep this small to avoid long-test-only latency while still exercising BatchSize > 1.
+    for (size_t batch_size : {2u, 4u, 8u}) {
+      test_registered += RegisterTestTransposeABProduct(25, 81, 79, batch_size, 1.0f, 0.0f);
+      test_registered += RegisterTestTransposeABProduct(25, 81, 79, batch_size, 0.0f, 0.25f);
+      test_registered += RegisterTestTransposeABProduct(25, 81, 0, batch_size, 0.0f, 0.25f);
+      test_registered += RegisterTestTransposeABProduct(1, 64, 31, batch_size, 0.0f, -1.0f);
+      test_registered += RegisterTestTransposeABProduct(64, 1, 31, batch_size, 0.5f, 0.5f);
+      test_registered += RegisterTestTransposeABProduct(1, 1, 31, batch_size, 0.0f, 0.25f);
+    }
+
     return test_registered;
   }
 

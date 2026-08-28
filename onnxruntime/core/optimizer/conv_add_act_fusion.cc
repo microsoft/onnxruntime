@@ -113,7 +113,7 @@ class ConvAddActivationSelector : public NodeSelector {
         return true;
       }
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSigmoid", {6})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSigmoid", {6, 22})) {
         return true;
       }
       return false;
@@ -211,7 +211,22 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 
  private:
   std::string OpType(const RuntimeState& runtimeState) const override {
-    return (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv";
+    const auto& target = runtimeState.selected_nodes.Target();
+    const auto* channels_last_attr = graph_utils::GetNodeAttribute(target, "channels_last");
+    const bool channels_last = channels_last_attr != nullptr && channels_last_attr->i() != 0;
+    const std::string& op_type = target.OpType();
+
+    // If channels_last is set, use NHWC fused convolution regardless of original op type.
+    if (channels_last) {
+      return "NhwcFusedConv";
+    }
+
+    // Without channels_last, convert Conv to FusedConv, and leave other op types unchanged.
+    if (op_type == "Conv") {
+      return "FusedConv";
+    }
+
+    return op_type;
   }
 
   std::string Domain(const RuntimeState&) const override { return kMSDomain; }
@@ -288,7 +303,7 @@ void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
   auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
   std::string msDomainNhwcFusedConv = SelectorActionRegistry::OpVersionsMapKey("NhwcFusedConv", kMSDomain);
-  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}, {msDomainNhwcFusedConv, {1, 11}}},
+  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11, 22}}, {msDomainNhwcFusedConv, {1, 11, 22}}},
                                      std::move(selector), std::move(action));
 }
 

@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 #ifdef _WIN32
-#include <iostream>
 #include <locale>
 #endif
 
@@ -30,6 +31,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
+#include "test/util/include/telemetry_test_environment.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #define TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
@@ -51,11 +53,17 @@ constexpr const char* kLogLevel = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
 // Specify dynamic plugin EP configuration JSON.
 // Refer to `onnxruntime::test::dynamic_plugin_ep_infra::ParseInitializationConfig()` for more information.
 constexpr const char* kDynamicPluginEpConfigJson = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON";
+// Specify a file path from which to read dynamic plugin EP configuration JSON.
+// Mutually exclusive with kDynamicPluginEpConfigJson.
+constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON_FILE";
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }  // namespace env_var_names
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
 extern "C" void ortenv_setup() {
+  // Fully suppress telemetry for the unit-test process before any Ort::Env (and therefore the platform
+  // telemetry provider) is created, so local non-CI runs never spin up the uploader or emit events.
+  onnxruntime::test::SuppressTelemetryForTests();
   ORT_TRY {
 #ifdef _WIN32
     // Set the locale to UTF-8 to ensure proper handling of wide characters on Windows
@@ -79,9 +87,62 @@ extern "C" void ortenv_setup() {
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
     {
       namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
-      if (auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
-              env_var_names::kDynamicPluginEpConfigJson);
-          dynamic_plugin_ep_config_json.has_value()) {
+
+      auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
+          env_var_names::kDynamicPluginEpConfigJson);
+      auto dynamic_plugin_ep_config_json_file = onnxruntime::ParseEnvironmentVariable<std::string>(
+          env_var_names::kDynamicPluginEpConfigJsonFile);
+
+      ORT_ENFORCE(!dynamic_plugin_ep_config_json.has_value() || !dynamic_plugin_ep_config_json_file.has_value(),
+                  "Only one of ", env_var_names::kDynamicPluginEpConfigJson,
+                  " and ", env_var_names::kDynamicPluginEpConfigJsonFile,
+                  " should be set, not both.");
+
+      if (dynamic_plugin_ep_config_json_file.has_value()) {
+        const auto& config_file_path = *dynamic_plugin_ep_config_json_file;
+        std::cout << "Reading dynamic plugin EP configuration from file: " << config_file_path << "\n";
+        std::ifstream config_file{config_file_path};
+        ORT_ENFORCE(config_file, "Failed to open dynamic plugin EP configuration file: ", config_file_path);
+        dynamic_plugin_ep_config_json.emplace(
+            std::istreambuf_iterator<char>{config_file}, std::istreambuf_iterator<char>{});
+      }
+
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH)
+      if (!dynamic_plugin_ep_config_json.has_value()) {
+        dynamic_plugin_ep_config_json.emplace(
+            "{\n"
+            "  \"ep_library_registration_name\": \"CUDAExecutionProvider\",\n"
+            "  \"ep_library_path\": \"" ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH
+            "\",\n"
+            "  \"selected_ep_name\": \"CUDAExecutionProvider\"\n"
+            "}");
+      }
+#endif
+
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP) && defined(ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH)
+      if (!dynamic_plugin_ep_config_json.has_value()) {
+        // Register with a ".virtual" suffix so ORT auto-sets env config "allow_virtual_devices"=1, letting
+        // the WebGPU factory surface a virtual GPU device. Its only purpose here is to give
+        // dynamic_plugin_ep_infra::Initialize() (below) a selectable WebGPU device so the binary doesn't
+        // exit at startup when GetEpDevices() would otherwise be empty (no real GPU). It does not make
+        // non-compile-only WebGPU tests runnable without a device: the virtual device only backs device-free
+        // compile-only sessions, and a real GPU, when present, is enumerated first and preferred (see the
+        // resize(1) de-dup in test_dynamic_plugin_ep.cc).
+        dynamic_plugin_ep_config_json.emplace(
+            "{\n"
+            "  \"ep_library_registration_name\": \"WebGpuExecutionProvider.virtual\",\n"
+            "  \"ep_library_path\": \"" ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH
+            "\",\n"
+            // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU
+            // int64 kernels on the plugin path too (mirrors DefaultWebGpuExecutionProvider on the
+            // static path). The key is the un-prefixed provider option name for plugin EPs.
+            "  \"default_ep_options\": { \"enableInt64\": \"1\" },\n"
+            "  \"selected_ep_name\": \"WebGpuExecutionProvider\"\n"
+            "}");
+      }
+#endif
+
+      if (dynamic_plugin_ep_config_json.has_value()) {
         std::cout << "Initializing dynamic plugin EP infrastructure with configuration:\n"
                   << *dynamic_plugin_ep_config_json << "\n";
         dynamic_plugin_ep_infra::InitializationConfig config{};

@@ -291,7 +291,7 @@ namespace Dml::GraphDescBuilder
             if (iter != isInitializerTransferable.end())
             {
                 // Using const_cast here is simpler than making surrounding code const correct.
-                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first), modelPath);
+                tensorWrapper = Dml::SafeMakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first), modelPath);
             }
             return tensorWrapper;
         };

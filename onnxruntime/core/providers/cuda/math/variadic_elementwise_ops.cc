@@ -158,7 +158,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     OpKernelContext* context) const {
   const auto& node = Node();
   const auto& node_name = node.Name();
-  auto input_count = node.InputArgCount().front();
+  auto input_count = context->InputCount();
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
 
   const InputTensorVector input_tensors =

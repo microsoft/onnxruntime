@@ -51,5 +51,5 @@ fn main() {
 
     let outputs = session.run(inputs).unwrap();
 
-    print!("outputs: {:#?}", outputs[0].float_array().unwrap());
+    print!("outputs: {:#?}", outputs[0].float_array().unwrap().view());
 }

@@ -22,7 +22,7 @@ namespace Dml
         ));
 
         ComPtr<DmlResourceWrapper> resourceWrapper;
-        wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
+        Dml::SafeMakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
         return resourceWrapper;
     }
 }

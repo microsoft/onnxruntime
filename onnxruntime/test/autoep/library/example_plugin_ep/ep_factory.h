@@ -28,6 +28,20 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
     return arena_allocator_.get();
   }
 
+  // Get the EP version string.
+  const std::string& GetEpVersionString() const {
+    return ep_version_;
+  }
+
+  // Get the vendor ID.
+  uint32_t GetVendorIdValue() const {
+    return vendor_id_;
+  }
+
+  const OrtMemoryInfo* GetDefaultMemoryInfo() const {
+    return default_memory_info_;
+  }
+
   const OrtLogger& default_logger_;  // default logger for the EP factory
 
  private:
@@ -89,6 +103,21 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                         _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
                                                         _Out_ size_t num_domains) noexcept;
 
+  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* const* devices,
+      size_t num_devices,
+      const char* compatibility_info,
+      OrtCompiledModelCompatibility* model_compatibility) noexcept;
+
+  static OrtStatus* ORT_API_CALL SelectBestModelCandidateImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* device,
+      const OrtKeyValuePairs* const* candidates,
+      size_t num_candidates,
+      const OrtSessionOptions* session_options,
+      size_t* selected_index) noexcept;
+
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
@@ -97,6 +126,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
+  Ort::MemoryInfo host_accessible_memory_info_;
 
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena

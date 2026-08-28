@@ -15,18 +15,26 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
+template <typename T, typename U>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     Stream* stream,
     contrib::GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<T>& data);
+    GroupQueryAttentionData<T, U>& data);
 
 template <typename T, bool output_bnsh>
 Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
+
+template <typename T>
+Status LaunchConvertHeadSinkToFloat(
+    const T* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
 
 // ============================================================================
 // GQABufferRequirements: Centralized buffer size calculation
@@ -46,6 +54,7 @@ struct GQABufferRequirements {
   template <typename T>
   static GQABufferRequirements Compute(
       const GroupQueryAttentionParameters& params,
+      bool use_xqa,
       bool use_flash_attention,
       bool use_flash_attention_fast_decode,
       bool use_memory_efficient_attention) {
@@ -66,6 +75,17 @@ struct GQABufferRequirements {
     const size_t k_elements = batch_size * seq_len * kv_num_heads * head_size;
     const size_t v_elements = k_elements;
 
+    if (use_xqa) {
+      // XQA needs scratch for rotated/unpacked/normalized Q.
+      // RoPE/QK-Norm K is written directly to cache by the fused preprocess kernel.
+      // A per-channel K scale also needs it: the scale is folded into Q before the kernel runs.
+      if (params.do_rotary || params.is_packed_qkv || params.use_qk_norm ||
+          params.k_quant_type == KVQuantizationType::PER_CHANNEL) {
+        req.qkv_buffer_bytes = elem_size * q_elements;
+      }
+      return req;
+    }
+
     if (use_flash_attention) {
       // Flash Attention path:
       // qkv_buffer is used for:
@@ -75,11 +95,25 @@ struct GQABufferRequirements {
       // Logic:
       // - we generally only need Q buffer (for rotary Q) if we can write K/V directly to cache/output.
 
-      if (params.do_rotary || params.is_packed_qkv) {
-        // Just Q buffer needed for rotation/unpacking.
-        // K and V are written directly to present_key/value (unpacked/rotated/quantized/appended).
+      bool is_quantized = params.k_quant_type != KVQuantizationType::NONE ||
+                          params.v_quant_type != KVQuantizationType::NONE;
+
+      if (is_quantized) {
+        if (!params.is_first_prompt) {
+          // Decoding fallback: need full cache scratch for dequantization
+          // We need space for Q (rotated) + K (dequantized full) + V (dequantized full)
+          // Q is sequence_length (1), K/V are seqlen_present_kv_cache (Capacity)
+          const size_t k_elements_full = batch_size * static_cast<size_t>(params.seqlen_present_kv_cache) * kv_num_heads * head_size;
+          // Align to 256 bytes for good measure
+          size_t total_bytes = elem_size * (q_elements + 2 * k_elements_full) + 256;
+          req.qkv_buffer_bytes = total_bytes;
+        } else {
+          req.qkv_buffer_bytes = elem_size * (q_elements + k_elements + v_elements);
+        }
+      } else if (params.do_rotary || params.is_packed_qkv) {
         req.qkv_buffer_bytes = elem_size * q_elements;
       }
+
     } else if (use_memory_efficient_attention) {
       // Memory Efficient Attention path:
       // - qkv_buffer: for unpacking packed QKV or Q rotation
@@ -94,30 +128,73 @@ struct GQABufferRequirements {
       }
     }
 
+    // Unfused fallback: needs Q buffer for rotary embedding output.
+    // QK-Norm also requires a materialized Q buffer to hold the normalized (and optionally rotated) Q,
+    // even when rotary is disabled and the input is not packed.
+    if (req.qkv_buffer_bytes == 0 && (params.do_rotary || params.is_packed_qkv || params.use_qk_norm)) {
+      req.qkv_buffer_bytes = elem_size * q_elements;
+    }
+
     return req;
   }
 };
+
+template <typename T>
+// Also used by ONNX Attention (core/providers/cuda/llm/attention.cc) for GQA head expansion in MEA path.
+Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
+                     float2* k_buff, float2* v_buff,
+                     const float2* k_og, const float2* v_og,
+                     const int buff_seqlen, const int og_seqlen,
+                     const bool is_bsnh,
+                     cudaStream_t stream,
+                     const int max_threads_per_block);
 
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
     int* past_seq_lens,
     int* total_seq_lens,
     int* padded_seq_lens,
+    int* cache_past_seq_lens,
+    int* cache_total_seq_lens,
+    int* evict_counts,
     const int batch_size,
     const int sequence_length,
     const bool is_first_prompt,
+    const int kv_cache_capacity,
+    const int kv_cache_real_capacity,
     cudaStream_t stream,
     const int max_threads_per_block);
 
-template <typename T>
-Status LaunchUnpackRoPEAppendKV(
-    const T* packed_qkv, const T* query, const T* key, const T* value,
-    T* unpacked_q, T* k_cache, T* v_cache,
-    const int num_heads, const int kv_num_heads, const int head_size,
-    const int sequence_length, const int batch_size, const int max_seqlen,
-    const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
-    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
-    const bool is_cache_bnsh, cudaStream_t stream, const int max_threads_per_block);
+// Evicts the oldest evict_counts[b] entries of a windowed (sliding_window_cache) KV cache by
+// left-shifting the retained entries to the front, so the cache keeps holding the most recent
+// tokens contiguously at indices [0, L). Must run before the new tokens are appended.
+Status LaunchCompactKvCache(void* k_cache,
+                            void* v_cache,
+                            void* scratch,
+                            const int* evict_counts,
+                            const int* cache_past_seq_lens,
+                            const int batch_size,
+                            const int kv_num_heads,
+                            const int capacity,
+                            const int row_bytes,
+                            cudaStream_t stream);
+
+// Copies `rows` entries between two BNSH KV caches, reading from row src_offsets[b] + s (or from
+// row s when src_offsets is null) and writing to row s. Used to seed the staging cache that a
+// multi-token step of a windowed (sliding_window_cache) KV cache runs against, and to copy the
+// surviving window back into the real cache afterwards.
+Status LaunchCopyKvCacheWindow(void* dst_k,
+                               void* dst_v,
+                               const void* src_k,
+                               const void* src_v,
+                               const int batch_size,
+                               const int kv_num_heads,
+                               const int src_capacity,
+                               const int dst_capacity,
+                               const int rows,
+                               const int* src_offsets,
+                               const int row_bytes,
+                               cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

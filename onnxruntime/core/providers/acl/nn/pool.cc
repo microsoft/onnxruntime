@@ -161,13 +161,13 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
   if (X->Shape().NumDimensions() != PREF_DIM) {
-    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
+    LOGS_DEFAULT(WARNING) << "ACL does not support tensors with 4 or more dimensions; defaulting to cpu implementation";
     Status s = onnxruntime::Pool<T, PoolType>::Compute(context);
     return s;
   }
 
   if (aclDilations[0] * aclDilations[1] > 1) {
-    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for dilation; defaulting to cpu implementation";
+    LOGS_DEFAULT(WARNING) << "ACL does not support dilation; defaulting to cpu implementation";
     Status s = onnxruntime::Pool<T, PoolType>::Compute(context);
     return s;
   }
@@ -180,7 +180,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     pool_type = arm_compute::PoolingType::MAX;
     LOGS_DEFAULT(VERBOSE) << "MaxPool";
   } else {
-    LOGS_DEFAULT(WARNING) << "Pooling operation not supported in ArmNN; defaulting to cpu implementation";
+    LOGS_DEFAULT(WARNING) << "Pooling operation not supported in ACL; defaulting to cpu implementation";
     return onnxruntime::Pool<T, PoolType>::Compute(context);
   }
 
@@ -207,13 +207,13 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
   if (X->Shape().NumDimensions() != PREF_DIM) {
-    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
+    LOGS_DEFAULT(WARNING) << "ACL does not support tensors with 4 or more dimensions; defaulting to cpu implementation";
     Status s = onnxruntime::MaxPoolV8::Compute(context);
     return s;
   }
 
   if (aclDilations[0] * aclDilations[1] > 1) {
-    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for dilation; defaulting to cpu implementation";
+    LOGS_DEFAULT(WARNING) << "ACL does not support dilation; defaulting to cpu implementation";
     Status s = onnxruntime::MaxPoolV8::Compute(context);
     return s;
   }

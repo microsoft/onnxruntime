@@ -13,12 +13,15 @@
 #include "core/session/ort_apis.h"
 #include "core/common/string_utils.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env_var_utils.h"
 
 std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
   os << "OrtThreadPoolParams {";
   os << " thread_pool_size: " << params.thread_pool_size;
   os << " auto_set_affinity: " << params.auto_set_affinity;
   os << " allow_spinning: " << params.allow_spinning;
+  os << " spin_duration_us: " << params.spin_duration_us;
+  os << " spin_backoff_max: " << params.spin_backoff_max;
   os << " dynamic_block_base_: " << params.dynamic_block_base_;
   os << " stack_size: " << params.stack_size;
   os << " affinity_str: " << params.affinity_str;
@@ -155,16 +158,51 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  if (options.work_callbacks.on_enqueue || options.work_callbacks.on_start_work ||
+      options.work_callbacks.on_stop_work || options.work_callbacks.on_abandon) {
+    to.work_callbacks = &options.work_callbacks;
+  }
+#endif
+
+  // Clamp so that invalid negatives (e.g. -5) are treated as the default (-1).
+  const int spin_us = options.allow_spinning ? std::max(options.spin_duration_us, -1) : 0;
+  // spin_backoff_max is ignored when spinning is disabled.
+  const unsigned int backoff_max = options.allow_spinning
+                                       ? std::min(std::max(options.spin_backoff_max, 1U),
+                                                  concurrency::kSpinBackoffMaxLimit)
+                                       : 1U;
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                      options.allow_spinning);
+                                      spin_us, /*force_hybrid*/ false, backoff_max);
+}
+
+static constexpr const char* kIntraOpNumThreadsEnvVar = "ORT_INTRA_OP_NUM_THREADS";
+static constexpr const char* kInterOpNumThreadsEnvVar = "ORT_INTER_OP_NUM_THREADS";
+
+// Determines the default thread count from the environment for a pool whose size was not set
+// programmatically (thread_pool_size == 0). Returns 0 when the environment does not specify one,
+// leaving the machine-sized default in place.
+//
+// ORT_INTRA_OP_NUM_THREADS sizes the intra-op pool and ORT_INTER_OP_NUM_THREADS the inter-op pool.
+// Parsing is strict (a negative or non-integer value fails loudly); an explicit value of 0 requests
+// the machine-sized default. This lets CPU-limited containers bound ORT's pools without reaching
+// every InferenceSession call site: physical-core detection cannot see the cgroup CPU reservation,
+// so the machine-sized default otherwise oversubscribes it.
+static int NumThreadsFromEnvironment(ThreadPoolType tpool_type) {
+  const bool is_intra_op = tpool_type == ThreadPoolType::INTRA_OP;
+  const char* ort_env_var = is_intra_op ? kIntraOpNumThreadsEnvVar : kInterOpNumThreadsEnvVar;
+  if (const auto parsed = ParseEnvironmentVariable<int>(ort_env_var); parsed.has_value()) {
+    ORT_ENFORCE(*parsed >= 0, ort_env_var, " must be a non-negative integer, got: ", *parsed);
+    return *parsed;
+  }
+  return 0;
 }
 
 std::unique_ptr<ThreadPool>
 CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
-  // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
-  // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
-  // to be created for parallel execution.
-  ORT_UNUSED_PARAMETER(tpool_type);
+  if (options.thread_pool_size == 0) {  // 0 == "use default": consult the environment before the helper sizes to the machine
+    options.thread_pool_size = NumThreadsFromEnvironment(tpool_type);
+  }
   return CreateThreadPoolHelper(env, options);
 }
 

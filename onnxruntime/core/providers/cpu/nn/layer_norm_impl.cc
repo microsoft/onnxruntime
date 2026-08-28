@@ -4,6 +4,8 @@
 #include "layer_norm_impl.h"
 #include "layer_norm_helper.h"
 
+#include <type_traits>
+
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
@@ -38,35 +40,56 @@ void ComputeJob(
   ORT_UNUSED_PARAMETER(bias_float_ptr);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(alloc);
 
-  const T* p_input = X_data + task_idx * norm_size;
-  T* p_output = Y_data + task_idx * norm_size;
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
+
+  const ptrdiff_t input_offset = SafeInt<ptrdiff_t>(task_idx) * norm_size;
+
+  if constexpr (std::is_same_v<T, float>) {
+    if (MlasLayerNormF32(
+            X_data + input_offset, scale_data + i,
+            (simplified || !bias_data) ? nullptr : bias_data + i,
+            Y_data + input_offset,
+            mean_data ? &mean_data[task_idx] : nullptr,
+            inv_std_dev_data ? &inv_std_dev_data[task_idx] : nullptr,
+            static_cast<size_t>(norm_size), epsilon, simplified)) {
+      return;
+    }
+  }
+
+  const T* p_input = X_data + input_offset;
+  T* p_output = Y_data + input_offset;
 
   T mean(0.0f);
-  T mean_square(0.0f);
+  T std_dev(0.0f);
 
-  for (int64_t h = 0; h < norm_size; h++) {
-    p_output[h] = p_input[h];
-    mean += p_input[h];
-    mean_square += p_input[h] * p_input[h];
-  }
-
-  mean = mean / norm_size;
   if (simplified) {
-    mean_square = sqrt(mean_square / norm_size + epsilon);
+    // RMSNorm: single pass computing sum of squares (no mean needed for normalization).
+    T sum_sq(0.0f);
+    for (int64_t h = 0; h < norm_size; h++) {
+      p_output[h] = p_input[h];
+      sum_sq += p_input[h] * p_input[h];
+    }
+    std_dev = sqrt(sum_sq / norm_size + epsilon);
   } else {
-    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
+    // Welford's online algorithm: single-pass numerically stable mean and variance.
+    T M2(0.0f);
+    for (int64_t h = 0; h < norm_size; h++) {
+      p_output[h] = p_input[h];
+      T delta = p_input[h] - mean;
+      mean += delta / static_cast<T>(h + 1);
+      T delta2 = p_input[h] - mean;
+      M2 += delta * delta2;
+    }
+    std_dev = sqrt(M2 / norm_size + epsilon);
   }
-
-  // Compute the offset of gamma and beta to support broadcasting.
-  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; h++, i++) {
     if (simplified) {
-      p_output[h] = p_output[h] / mean_square * scale_data[i];
+      p_output[h] = p_output[h] / std_dev * scale_data[i];
     } else if (nullptr == bias_data) {
-      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[i];
+      p_output[h] = (p_output[h] - mean) / std_dev * scale_data[i];
     } else {
-      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[i] + bias_data[i];
+      p_output[h] = (p_output[h] - mean) / std_dev * scale_data[i] + bias_data[i];
     }
   }
 
@@ -76,7 +99,7 @@ void ComputeJob(
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / mean_square);
+    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / std_dev);
   }
 }
 
@@ -105,9 +128,13 @@ void ComputeJob(
   ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
   ORT_UNUSED_PARAMETER(alloc);       // only required to create temporary float buffers
 
+  const ptrdiff_t input_offset = SafeInt<ptrdiff_t>(task_idx) * norm_size;
+
   // reinterpret input/output MLFloat16* as Eigen::half*
-  const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(X_data + task_idx * norm_size);
-  Eigen::half* p_output = reinterpret_cast<Eigen::half*>(Y_data + task_idx * norm_size);
+  const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(
+      X_data + input_offset);
+  Eigen::half* p_output = reinterpret_cast<Eigen::half*>(
+      Y_data + input_offset);
 
   // Fix: cast norm_size to Eigen::Index
   Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> input_vec(
@@ -115,21 +142,28 @@ void ComputeJob(
   Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(
       p_output, ToEigenIndex(norm_size));
 
-  // Compute mean and mean_square in float for precision
   float mean = 0.0f;
-  float mean_square = 0.0f;
+  float std_dev = 0.0f;
 
-  for (int64_t i = 0; i < norm_size; ++i) {
-    float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
-    mean += val;
-    mean_square += val * val;
-  }
-
-  mean /= gsl::narrow_cast<float>(norm_size);
   if (simplified) {
-    mean_square = std::sqrt(mean_square / norm_size + epsilon);
+    // RMSNorm: single pass computing sum of squares (no mean needed for normalization).
+    float sum_sq = 0.0f;
+    for (int64_t i = 0; i < norm_size; ++i) {
+      float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
+      sum_sq += val * val;
+    }
+    std_dev = std::sqrt(sum_sq / norm_size + epsilon);
   } else {
-    mean_square = std::sqrt(mean_square / norm_size - mean * mean + epsilon);
+    // Welford's online algorithm: single-pass numerically stable mean and variance.
+    float M2 = 0.0f;
+    for (int64_t i = 0; i < norm_size; ++i) {
+      float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
+      float delta = val - mean;
+      mean += delta / static_cast<float>(i + 1);
+      float delta2 = val - mean;
+      M2 += delta * delta2;
+    }
+    std_dev = std::sqrt(M2 / norm_size + epsilon);
   }
 
   // Offset calculation for broadcasting
@@ -140,11 +174,11 @@ void ComputeJob(
 
     float y = 0.0f;
     if (simplified) {
-      y = x / mean_square * scale_float_ptr[i];
+      y = x / std_dev * scale_float_ptr[i];
     } else if (bias_float_ptr == nullptr) {
-      y = (x - mean) / mean_square * scale_float_ptr[i];
+      y = (x - mean) / std_dev * scale_float_ptr[i];
     } else {
-      y = (x - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
+      y = (x - mean) / std_dev * scale_float_ptr[i] + bias_float_ptr[i];
     }
 
     output_vec[ToEigenIndex(h)] = gsl::narrow_cast<Eigen::half>(y);
@@ -156,7 +190,7 @@ void ComputeJob(
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1.0f / mean_square);
+    inv_std_dev_data[task_idx] = MLFloat16(1.0f / std_dev);
   }
 }
 // Write a statistic value (mean or 1/denom) into the output buffer,
@@ -436,6 +470,12 @@ LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified
 
 template <typename T, typename U>
 Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) const {
+  // Currently only instantiated for T in {float, double, MLFloat16}. Integer types would
+  // require addressing overflow in variance computation and fixed-point normalization.
+  static_assert(std::is_same_v<T, float> || std::is_same_v<T, double> ||
+                    std::is_same_v<T, MLFloat16>,
+                "LayerNorm is only supported for float, double, or MLFloat16.");
+
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = prepacked_scale_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(1);

@@ -21,27 +21,14 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "elementwise_constants.h"
 #include "softmax.h"
 
 //
 // Bundles the floating point constants for use by kernels written in assembly.
 //
 
-MLAS_INTERNAL_DATA const struct {
-    float LowerRange;
-    float UpperRange;
-    float alpha_13;
-    float alpha_11;
-    float alpha_9;
-    float alpha_7;
-    float alpha_5;
-    float alpha_3;
-    float alpha_1;
-    float beta_6;
-    float beta_4;
-    float beta_2;
-    float beta_0;
-} MlasTanhConstants = {
+MLAS_INTERNAL_DATA const MLAS_TANH_CONSTANTS MlasTanhConstants = {
     -9.0f,
     9.0f,
     -2.76076847742355e-16f,
@@ -178,7 +165,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().TanhKernelRoutine(Input, Output, N);
 #else
     MlasTanhKernel(Input, Output, N);
@@ -193,6 +180,10 @@ MlasComputeTanh<MLAS_FP16>(
     MLAS_FP16* Output,
     size_t N
 ) {
+    if(GetMlasPlatform().TanhFP16KernelRoutine){
+        GetMlasPlatform().TanhFP16KernelRoutine(Input, Output, N);
+        return;
+    }
     const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
     if (dispatch == nullptr || dispatch->Tanh_Fp16 == nullptr) {
         MLAS_THROW_EX(std::runtime_error, "Tanh_Fp16 is not supported.");

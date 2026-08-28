@@ -5,6 +5,7 @@
 #include <mutex>
 #include "core/graph/graph_viewer.h"
 #include "core/framework/murmurhash3.h"
+#include "core/common/path_string.h"
 
 namespace onnxruntime {
 int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
@@ -40,7 +41,7 @@ int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_vi
 
     // prefer path the model was loaded from
     // this may not be available if the model was loaded from a stream or in-memory bytes
-    const auto model_path_str = main_graph.ModelPath().string();
+    const auto model_path_str = PathToUTF8String(main_graph.ModelPath().native());
     if (!model_path_str.empty()) {
       MurmurHash3::x86_128(model_path_str.data(), model_path_str.size(), hash[0], &hash);
     } else {

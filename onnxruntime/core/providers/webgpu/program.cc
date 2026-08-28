@@ -49,17 +49,18 @@ ProgramUniformVariableValue::ProgramUniformVariableValue(ProgramUniformVariableD
   memcpy(data.data(), ptr, length * element_byte_size);
 }
 
-std::ostream& operator<<(std::ostream& os, ProgramUniformVariableDataType type) {
-  os << ProgramUniformVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+#define DEFINE_ENUM_STREAM_OP(StreamType, EnumType, EnumNameArray)         \
+  StreamType& operator<<(StreamType& os, EnumType type) {                  \
+    os << EnumNameArray[std::underlying_type<decltype(type)>::type(type)]; \
+    return os;                                                             \
+  }
 
-std::ostream& operator<<(std::ostream& os, ProgramConstantDataType type) {
-  os << ProgramConstantDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+DEFINE_ENUM_STREAM_OP(std::ostream, ProgramUniformVariableDataType, ProgramUniformVariableDataTypeName)
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramUniformVariableDataType, ProgramUniformVariableDataTypeName)
+DEFINE_ENUM_STREAM_OP(std::ostream, ProgramConstantDataType, ProgramConstantDataTypeName)
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramConstantDataType, ProgramConstantDataTypeName)
 
-std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) {
+OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency dep) {
   bool first = true;
   if ((dep & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
     os << "Type";
@@ -109,10 +110,7 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "i4x8",    // Int4x8
 };
 
-std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
-  os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramVariableDataType, ProgramVariableDataTypeName)
 #endif
 
 int NumberOfComponents(ProgramVariableDataType type) {
@@ -332,7 +330,8 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
       indirect_dispatch_tensor_{nullptr},
       workgroup_size_x_{0},
       workgroup_size_y_{0},
-      workgroup_size_z_{0} {
+      workgroup_size_z_{0},
+      subgroup_size_{0} {
 }
 
 ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
@@ -388,6 +387,11 @@ ProgramBase& ProgramBase::SetWorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
   workgroup_size_x_ = x;
   workgroup_size_y_ = y;
   workgroup_size_z_ = z;
+  return *this;
+}
+
+ProgramBase& ProgramBase::SetSubgroupSize(uint32_t size) {
+  subgroup_size_ = size;
   return *this;
 }
 

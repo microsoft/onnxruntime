@@ -75,7 +75,8 @@ HQ4BitGemmPackQuantBData_CompFp16(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 void
@@ -104,16 +105,33 @@ HQ4BitGemmKernel_CompFp16(
     size_t ldc
 );
 
+void
+HQ8BitGemmPackQuantBData_CompFp16(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+void
+HQ8BitBlkDequantBForHgemm_CompFp16(
+    size_t BlkLen,
+    MLAS_FP16* FpData,
+    const std::byte* QuantBData,
+    const MLAS_FP16* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    size_t CountN,
+    size_t K,
+    size_t BlockCountK
+);
+
 #endif  // !(defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64))
 
 // SQNBIT_CompInt8 declarations
-
-bool
-UsePacked_CompInt8(
-    size_t K,
-    size_t BlkLen,
-    bool HasZp
-);
 
 void
 QuantizeARow_CompInt8(
@@ -169,34 +187,27 @@ SQ4BitGemmKernel_CompInt8(
     const float* Bias
 );
 
-#ifdef USE_KLEIDIAI
-void
-QuantizeA_Packed_CompInt8(
-    size_t BlkLen,
-    const float* A,
-    size_t CountM,
-    size_t CountK,
-    std::byte* QuantA
-);
-
-void
-SQ4BitGemmKernel_Packed_CompInt8(
+// W2 CompInt8 kernel entry point (DotProd backend). Implemented in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp. Signature matches the
+// SQ4BitGemmKernel_BlkSum_CompInt8_Fn typedef in qnbitgemm.h.
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
     size_t BlkLen,
     const std::byte* QuantA,
-    const std::byte* PackedQuantBData,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
     float* C,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN,
+    size_t CountM,
+    size_t CountN,
     size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
     size_t ldc,
-    const float *Bias
+    const float* ABlockSum,
+    const float* QuantBBlkSum
 );
-#endif
-
-bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp);
 
 //
 // General helpers.

@@ -38,11 +38,12 @@ namespace onnxruntime {
 namespace math {
 
 // MatMul implementation purely based on Eigen.
-#define EIGEN_MATMUL_FUNCTION(T)                                                                                  \
-  template <>                                                                                                     \
-  void MatMul<T>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const T* A, const T* B, T* C, concurrency::ThreadPool*) { \
-    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                                      \
-    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);                          \
+#define EIGEN_MATMUL_FUNCTION(T)                                                                                \
+  template <>                                                                                                   \
+  void MatMul<T>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const T* A, const T* B, T* C, concurrency::ThreadPool*, \
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*) {                                                  \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                                    \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);                        \
   }
 
 EIGEN_MATMUL_FUNCTION(int32_t)
@@ -75,16 +76,17 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 template <>
 void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
                              ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* threadpool) {
+                             float* C, ThreadPool* threadpool, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
-  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
+  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool, mlas_backend_kernel_selector_config);
 }
 
 template <>
 void Gemm<Eigen::half, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
                                    ptrdiff_t N, ptrdiff_t K, Eigen::half alpha, const Eigen::half* A, const Eigen::half* B, Eigen::half beta,
-                                   Eigen::half* C, ThreadPool*) {
+                                   Eigen::half* C, ThreadPool*, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   auto C_mat = EigenMatrixMap<Eigen::half>(C, N, M);
   if (beta == static_cast<Eigen::half>(0)) {
     C_mat.setZero();
@@ -129,7 +131,8 @@ void Gemm<Eigen::half, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE Trans
 template <>
 void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
                               ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool* threadpool) {
+                              double* C, ThreadPool* threadpool, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
@@ -138,7 +141,8 @@ void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, pt
 template <>
 void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
                               ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool*) {
+                              double* C, ThreadPool*, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   auto C_mat = EigenMatrixMap<double>(C, N, M);
   if (beta == 0) {
     C_mat.setZero();
@@ -181,13 +185,55 @@ void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, pt
 #endif
 
 template <>
-void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
-  MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
+void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool,
+                   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool, mlas_backend_kernel_selector_config);
+}
+
+template <>
+void MatMul<MLFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const MLFloat16* A, const MLFloat16* B, MLFloat16* C, ThreadPool* threadpool,
+                       const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  // Guard against using generic half GEMM when no accelerated implementation is
+  // available. Native packing support currently also signals an accelerated
+  // backend path.
+  const bool has_accelerated_half_gemm =
+      MlasFp16AccelerationSupported() ||
+      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans,
+                                  static_cast<size_t>(N), static_cast<size_t>(K),
+                                  mlas_backend_kernel_selector_config) != 0;
+  if (has_accelerated_half_gemm) {
+    MLAS_HALF_GEMM_DATA_PARAMS data{};
+    data.A = A;
+    data.lda = static_cast<size_t>(K);
+    data.B = B;
+    data.ldb = static_cast<size_t>(N);
+    data.C = C;
+    data.ldc = static_cast<size_t>(N);
+    data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+    MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, threadpool);
+    return;
+  }
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+  auto C_mat = EigenMatrixMap<Eigen::half>(reinterpret_cast<Eigen::half*>(C), N, M);
+  // Accumulate the fallback in fp32 and round only the result to fp16.
+  C_mat.noalias() =
+      (ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(B), N, K).cast<float>() *
+       ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(A), K, M).cast<float>())
+          .cast<Eigen::half>();
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 }
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
-void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
+void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, const double* B, double* C, ThreadPool* threadpool,
+                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 #else
@@ -197,14 +243,82 @@ EIGEN_MATMUL_FUNCTION(double)
 template <>
 void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                               int ldc, ThreadPool* threadpool) {
+                               int ldc, ThreadPool* threadpool, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool, mlas_backend_kernel_selector_config);
+}
+
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
+template <>
+void GemmEx<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                double alpha, const double* A, int lda, const double* B, int ldb, double beta, double* C,
+                                int ldc, ThreadPool* threadpool, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
+#else
+template <>
+void GemmEx<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                double alpha, const double* A, int lda, const double* B, int ldb, double beta, double* C,
+                                int ldc, ThreadPool*, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+  auto C_mat = EigenMatrixMapWithStrides<double>(C, N, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldc, 1));
+  if (beta == 0) {
+    C_mat.setZero();
+  } else {
+    C_mat *= beta;
+  }
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, N, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1)) *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, K, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1)));
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, K, N, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1))
+                                          .transpose() *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, K, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1)));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, N, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1)) *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, M, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1))
+                                          .transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, K, N, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1))
+                                          .transpose() *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, M, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1))
+                                          .transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
+}
+#endif
 
 template <>
 void GemmEx<MLFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                    MLFloat16 alpha, const MLFloat16* A, int lda, const MLFloat16* B, int ldb, MLFloat16 beta,
-                                   MLFloat16* C, int ldc, ThreadPool*) {
+                                   MLFloat16* C, int ldc, ThreadPool*, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   // The following function is not implemented for MLFloat16 in Mlas.
   // MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
   // Threadpool is not used.
@@ -770,6 +884,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
 template struct Im2col<int8_t, StorageOrder::NHWC>;
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
 template struct Im2col<MLFloat16, StorageOrder::NHWC>;
+template struct Im2col<float, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,

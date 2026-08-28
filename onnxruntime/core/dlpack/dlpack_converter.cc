@@ -162,12 +162,18 @@ bool IsContiguousTensor(const DLTensor& tensor) {
     return true;
   }
 
-  int64_t running_size = 1;
-  for (int i = tensor.ndim - 1; i >= 0; i--) {
+  // Zero-size tensors (any dimension equals 0) have no elements, so any stride
+  // layout is vacuously contiguous. Check upfront before validating strides,
+  // because some frameworks (e.g. NumPy 2.x) set all strides to 0 for zero-size
+  // tensors, which would otherwise fail the per-dimension stride check below.
+  for (int i = 0; i < tensor.ndim; i++) {
     if (tensor.shape[i] == 0) {
       return true;
     }
+  }
 
+  int64_t running_size = 1;
+  for (int i = tensor.ndim - 1; i >= 0; i--) {
     if (tensor.shape[i] != 1 && tensor.strides[i] != running_size) {
       return false;
     }

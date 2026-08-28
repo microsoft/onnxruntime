@@ -5,6 +5,7 @@
 #include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "contrib_ops/cuda/bert/rotary_common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -728,6 +729,30 @@ template Status LaunchConcatNewToPastKV<BFloat16>(const int batch_size,
                                                   const int64_t* position_ids,
                                                   const bool interleaved);
 
+template Status LaunchConcatNewToPastKV<__nv_bfloat16>(const int batch_size,
+                                                       const int kv_num_heads,
+                                                       const int head_size,
+                                                       const int kv_sequence_length,
+                                                       const int past_sequence_length,
+                                                       const int present_sequence_length,
+                                                       const bool is_bsnh,
+                                                       const int* past_seq_lens,
+                                                       const int* total_seq_lens,
+                                                       const __nv_bfloat16* past_key,
+                                                       const __nv_bfloat16* past_value,
+                                                       const __nv_bfloat16* new_key,
+                                                       const __nv_bfloat16* new_value,
+                                                       __nv_bfloat16* present_key,
+                                                       __nv_bfloat16* present_value,
+                                                       cudaStream_t stream,
+                                                       const int max_threads_per_block,
+                                                       const bool past_only,
+                                                       const __nv_bfloat16* cos_cache,
+                                                       const __nv_bfloat16* sin_cache,
+                                                       const int rotary_dim,
+                                                       const int64_t* position_ids,
+                                                       const bool interleaved);
+
 template Status LaunchConcatNewToPastKV<float>(const int batch_size,
                                                const int kv_num_heads,
                                                const int head_size,
@@ -864,10 +889,13 @@ Status LaunchConcatKVInPlace(int batch_size,
                              const bool is_new_kv_bnsh_format,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
-  // static_assert(sizeof(T) == 2);
-  assert(head_size % 4 == 0);
+  constexpr int elements_per_vector = sizeof(float2) / sizeof(T);
+  if (head_size % elements_per_vector != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size must be divisible by ", elements_per_vector,
+                           " for vectorized kernel.");
+  }
 
-  const int H = head_size / 4;
+  const int H = head_size / elements_per_vector;
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(new_seq_len, batch_size, 1);
     const dim3 block(H, kv_num_heads, 1);

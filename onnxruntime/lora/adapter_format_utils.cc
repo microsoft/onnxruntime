@@ -7,8 +7,9 @@
 #include "core/framework/allocator.h"
 #include "core/common/common.h"
 #include "core/common/endian.h"
-#include "core/framework/endian_utils.h"
+#include "core/common/safeint.h"
 #include "core/common/span_utils.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/ort_value.h"
@@ -19,6 +20,34 @@
 namespace onnxruntime {
 namespace adapters {
 namespace utils {
+
+namespace {
+
+constexpr bool IsSupportedLoraParameterType(TensorDataType data_type) {
+  switch (data_type) {
+    case TensorDataType::FLOAT:
+    case TensorDataType::UINT8:
+    case TensorDataType::INT8:
+    case TensorDataType::UINT16:
+    case TensorDataType::INT16:
+    case TensorDataType::INT32:
+    case TensorDataType::INT64:
+    case TensorDataType::FLOAT16:
+    case TensorDataType::DOUBLE:
+    case TensorDataType::UINT32:
+    case TensorDataType::UINT64:
+    case TensorDataType::BFLOAT16:
+    case TensorDataType::FLOAT8E4M3FN:
+    case TensorDataType::FLOAT8E4M3FNUZ:
+    case TensorDataType::FLOAT8E5M2:
+    case TensorDataType::FLOAT8E5M2FNUZ:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
 
 bool IsAdapterFormatModelBytes(const void* bytes, size_t num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
@@ -149,13 +178,40 @@ struct ReadDataForBigEndian {
 std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter& param) {
   OrtValue result;
 
+  const auto* param_name = param.name();
+  ORT_ENFORCE(param_name != nullptr, "Lora Parameter: name is missing");
+
   std::string name;
-  LoadStringFromLoraFormat(name, param.name());
+  LoadStringFromLoraFormat(name, param_name);
 
   const auto data_type = param.data_type();
+  // The raw-byte size calculation below is valid only for fixed-size, unpacked scalar types.
+  // An allowlist also rejects undeclared enum values because FlatBuffers verifies the field
+  // representation but not membership in TensorDataType.
+  ORT_ENFORCE(IsSupportedLoraParameterType(data_type),
+              "Lora Param '", name, "': data_type '", static_cast<int32_t>(data_type),
+              "' is not a supported LoRA parameter type");
+
+  const auto* dims = param.dims();
+  ORT_ENFORCE(dims != nullptr && dims->size() > 0,
+              "Lora Param '", name, "': dims is missing or empty");
+
+  const auto* raw_data = param.raw_data();
+  ORT_ENFORCE(raw_data != nullptr,
+              "Lora Param '", name, "': raw_data is missing");
+
   // Copying shape takes care of endianess using flatbuffers accessors
-  TensorShapeVector shape(param.dims()->begin(), param.dims()->end());
+  TensorShapeVector shape(dims->begin(), dims->end());
+  TensorShape tensor_shape(shape);
   const auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
+  const size_t expected_raw_data_size = SafeInt<size_t>(tensor_shape.Size()) * elem_type->Size();
+  if (raw_data->size() != expected_raw_data_size) {
+    ORT_THROW("Lora Param '", name,
+              "': raw_data size (", raw_data->size(),
+              ") does not match expected size (", expected_raw_data_size,
+              ") calculated from tensor shape and element type");
+  }
+
   static const OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
   if constexpr (endian::native == endian::big) {
@@ -166,16 +222,16 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
       // of raw data
       // const_cast is necessary due to Tensor class API
       Tensor::InitOrtValue(elem_type,
-                           TensorShape(shape),
-                           const_cast<uint8_t*>(param.raw_data()->data()),
+                           tensor_shape,
+                           const_cast<uint8_t*>(raw_data->data()),
                            cpu_meminfo,
                            result);
     }
   } else {
     // const_cast is necessary due to Tensor class API
     Tensor::InitOrtValue(elem_type,
-                         TensorShape(shape),
-                         const_cast<uint8_t*>(param.raw_data()->data()),
+                         tensor_shape,
+                         const_cast<uint8_t*>(raw_data->data()),
                          cpu_meminfo,
                          result);
   }

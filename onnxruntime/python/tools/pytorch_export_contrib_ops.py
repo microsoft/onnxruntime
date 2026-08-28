@@ -6,6 +6,7 @@ Support for registering ONNX Runtime's built-in contrib ops with
 PyTorch-ONNX exporter (torch.onnx.export).
 """
 
+import contextlib
 import typing
 
 try:
@@ -22,7 +23,7 @@ _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
 
 
-def _reg(symbolic_fn: typing.Callable, namespace: str = ""):
+def _reg(symbolic_fn: typing.Callable, namespace: str = "aten"):
     name = f"{namespace}::{symbolic_fn.__name__}"
     torch.onnx.register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
     _registered_ops.add(name)
@@ -49,13 +50,6 @@ def register():
         padding_mode_str = ["zeros", "border", "reflection"][padding_mode]
         align_corners = int(symbolic_helper._maybe_get_const(align_corners, "b"))
 
-        # From opset v13 onward, the output shape can be specified with
-        # (N, C, H, W) (N, H_out, W_out, 2) => (N, C, H_out, W_out)
-        # input_shape = input.type().sizes()
-        # gird_shape = grid.type().sizes()
-        # output_shape = input_shape[:2] + gird_shape[1:3]
-        # g.op(...).setType(input.type().with_sizes(output_shape))
-
         return g.op(
             "com.microsoft::GridSample",
             input,
@@ -71,15 +65,24 @@ def register():
         return g.op("com.microsoft::Inverse", self).setType(self.type())
 
     _reg(inverse)
+    torch.onnx.register_custom_op_symbolic("aten::linalg_inv", inverse, _OPSET_VERSION)
+    _registered_ops.add("aten::linalg_inv")
 
-    @torch.onnx.symbolic_helper.parse_args("v", "s")
-    def gelu(g, self: torch._C.Value, approximate: str = "none"):
-        # Use microsoft::Gelu for performance if possible. It only supports approximate == "none"
+    def gelu(g, self: torch._C.Value, approximate="none"):
+        # PyTorch can emit aten::gelu with or without the optional approximate arg.
+        if not isinstance(approximate, str):
+            approximate = symbolic_helper._maybe_get_const(approximate, "s")
+
+        # Use microsoft::Gelu for performance if possible. It only supports approximate == "none".
         if approximate == "none":
             return g.op("com.microsoft::Gelu", self).setType(self.type())
         return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
 
     _reg(gelu)
+    # Some PyTorch versions dispatch GELU symbolic lookup by exporter opset.
+    # Registering across stable opsets keeps ORT Gelu fusion consistently enabled.
+    for opset in range(9, 21):
+        torch.onnx.register_custom_op_symbolic("aten::gelu", gelu, opset)
 
     def triu(g, self, diagonal):
         return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1).setType(self.type())
@@ -127,3 +130,8 @@ def unregister():
             for version in symbolic_helper._onnx_stable_opsets:
                 if version >= _OPSET_VERSION and symbolic_registry.is_registered_op(kind, namespace, version):
                     del symbolic_registry._registry[(namespace, version)][kind]
+
+    # Also clean up gelu's multi-opset registrations (see register()).
+    for opset in range(9, 21):
+        with contextlib.suppress(Exception):
+            torch.onnx.unregister_custom_op_symbolic("aten::gelu", opset)

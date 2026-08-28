@@ -1,0 +1,15 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 012512a..548ee4c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -24,8 +24,8 @@ include( GNUInstallDirs )
+
+ get_directory_property( has_parent PARENT_DIRECTORY )
+
+-# Override by setting on CMake command line.
+-set( CMAKE_CXX_STANDARD 17 CACHE STRING "The C++ standard whose features are requested." )
++# Don't explicitly set CMAKE_CXX_STANDARD as a cache variable.
++# Cache variables are sticky and global. They may override values from other projects.
+
+ option( USE_SYSTEM_TZ_DB "Use the operating system's timezone database" OFF )
+ option( MANUAL_TZ_DB "User will set TZ DB manually by invoking set_install in their code" OFF )

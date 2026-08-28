@@ -108,7 +108,7 @@ class ShaderHelper final {
 
  private:
   template <typename ConstantType>  // ConstantType is one of {ProgramConstant, ProgramOverridableConstantValue, ProgramOverridableConstantDefinition}
-  void WriteConstantValue(std::ostream& ss, const ConstantType& constant) const {
+  void WriteConstantValue(OStringStream& ss, const ConstantType& constant) const {
     switch (constant.type) {
       case ProgramConstantDataType::Float16:
         ss << constant.f16.ToFloat();
@@ -156,7 +156,7 @@ class ShaderHelper final {
   // \param code The generated full WGSL source code.
   // \param shape_uniform_ranks The ranks for variables that need a uniform for the shape.
   //
-  Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const;
+  Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks);
   friend class ProgramManager;
 
   const WebGpuContext& webgpu_context_;
@@ -175,9 +175,7 @@ class ShaderHelper final {
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;
   std::vector<std::unique_ptr<ShaderIndicesHelper>> indices_vars_;
-  std::string additional_implementation_;
   OStringStream additional_implementation_ss_;
-  std::string body_;
   OStringStream body_ss_;
 };
 

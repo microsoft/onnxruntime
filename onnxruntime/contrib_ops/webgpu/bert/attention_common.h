@@ -42,7 +42,7 @@ struct WebgpuAttentionParameters {
   explicit WebgpuAttentionParameters(onnxruntime::contrib::GroupQueryAttentionParameters parameters) : is_gqa_(true),
                                                                                                        batch_size_(parameters.batch_size),
                                                                                                        sequence_length_(parameters.sequence_length),
-                                                                                                       kv_sequence_length_(parameters.sequence_length),
+                                                                                                       kv_sequence_length_(parameters.kv_sequence_length),
                                                                                                        past_sequence_length_(parameters.seqlen_past_kv_cache),
                                                                                                        total_sequence_length_(parameters.total_sequence_length),
                                                                                                        hidden_size_(parameters.hidden_size),
@@ -103,7 +103,6 @@ struct WebgpuAttentionParameters {
   int num_splits_ = 0;  // number of splits for splitkv
   int rotary_dim_ = 0;  // rotary embedding dimension
   int local_window_size_ = 0;
-  bool kv_share_buffer_ = false;
   bool is_packed_qkv_ = false;
   bool is_subsequent_prompt_ = false;  // indicates whether we have past context and seqlen > 1
   bool is_first_prompt_ = false;       // indicates whether this is first decoding step

@@ -488,6 +488,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   enable_file_mapped_weights_ = false;
   LOGS_DEFAULT(WARNING) << "File mapped weights feature is only available on Windows arm64 devices for QNN API versions >= 2.32. "
                         << "Feature will be disabled by default";
+#else
+  if (qnn_context_embed_mode_ && enable_file_mapped_weights_) {
+    enable_file_mapped_weights_ = false;
+    LOGS_DEFAULT(WARNING) << "File mapped weights feature is incompatible with embedded EP contexts. Feature will be disabled by default.";
+  }
 #endif
 
   static const std::string QNN_DEVICE_ID = "device_id";
@@ -570,8 +575,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   enable_htp_shared_mem_allocator_ = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
   if (enable_htp_shared_mem_allocator_) {
     // Initialize rpcmem_library_.
-    // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
-    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    // This library is only necessary for the inference (for the shared memory allocator), if we are in context
+    // generation stage, there is no need to load it as no allocations will be made.
+    if (!context_cache_enabled_) {
+      rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    }
     model_settings_.htp_shared_memory = enable_htp_shared_mem_allocator_;
   }
 
@@ -600,6 +608,19 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN JSON graphs, "
                             << "but did not enable dumping of QNN JSON graphs.";
     }
+  }
+
+  static const std::string QNN_HTP_EXTENDED_UDMA_MODE = "extended_udma";
+  auto htp_extended_udma_pos = provider_options_map.find(QNN_HTP_EXTENDED_UDMA_MODE);
+  if (htp_extended_udma_pos != provider_options_map.end()) {
+    if ("1" == htp_extended_udma_pos->second) {
+      enable_htp_extended_udma_mode_ = true;
+    } else if ("0" == htp_extended_udma_pos->second) {
+      enable_htp_extended_udma_mode_ = false;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Invalid extended_udma mode: " << enable_htp_extended_udma_mode_ << " only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified extended_udma mode: " << enable_htp_extended_udma_mode_;
   }
 
   // Option to skip QNN API interface version check to use other QNN library other than default.
@@ -986,8 +1007,18 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
     for (auto& ep_ctx_node : ep_ctx_nodes) {
       NodeAttrHelper node_helper(*ep_ctx_node);
+      std::string ep_cache_context_value = node_helper.Get(qnn::EP_CACHE_CONTEXT, "");
+      if (ep_cache_context_value.empty()) {
+        continue;
+      }
+      auto validate_status = utils::ValidateExternalDataPath(
+          std::filesystem::path(context_model_path), std::filesystem::path(ep_cache_context_value));
+      if (!validate_status.IsOK()) {
+        LOGS(logger, ERROR) << "QNN EP context path validation failed: " << validate_status.ErrorMessage();
+        return result;
+      }
       std::string context_bin_filepath(parent_path.string());
-      context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
+      context_bin_filepath.append("/").append(ep_cache_context_value);
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
         context_bin_map.emplace(context_bin_filepath, std::make_unique<std::vector<std::string>>());
         // Push context bin filepath for lookup between sessions
@@ -1006,7 +1037,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
                                                enable_vtcm_backup_buffer_sharing_,
                                                enable_file_mapped_weights_,
                                                rpcmem_library_,
-                                               context_bin_map);
+                                               context_bin_map,
+                                               enable_htp_extended_udma_mode_);
 
   context_bin_map.clear();
 

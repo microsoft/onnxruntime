@@ -50,4 +50,8 @@ ORT_API_STATUS_IMPL(SignalSemaphore, _In_ OrtExternalResourceImporter* importer,
                     _In_ OrtSyncStream* stream,
                     _In_ uint64_t value);
 
+ORT_API_STATUS_IMPL(InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const OrtGraphicsInteropConfig* config);
+ORT_API_STATUS_IMPL(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
+
 }  // namespace OrtInteropAPI

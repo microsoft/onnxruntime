@@ -30,7 +30,7 @@ Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let value = " << input.GetByOffset("global_idx")
                             << "  + " << bias.GetByOffset("global_idx % uniforms.channels")
                             << "  + " << residual.GetByOffset("global_idx") << ";\n"
-                            << "  " + output.SetByOffset("global_idx", "value");
+                            << "  " << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
 }

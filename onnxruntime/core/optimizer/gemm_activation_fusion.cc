@@ -21,20 +21,20 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_t
 // If the op has multiple versions, here we require it must have a single implementation that can work across all the
 // versions. Because in the fusion, we discarded the op version information.
 bool IsFusableActivation(const Node& node) {
-  return IsSupportedOptypeVersionAndDomain(node, "Elu", {6}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}, kOnnxDomain) ||
+  return IsSupportedOptypeVersionAndDomain(node, "Elu", {6, 22}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6, 22}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6, 16}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Selu", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Selu", {6, 22}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Softplus", {1}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Softsign", {1}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Softplus", {1, 22}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Softsign", {1, 22}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13}, kOnnxDomain) ||
 #ifndef DISABLE_CONTRIB_OPS
          IsSupportedOptypeVersionAndDomain(node, "ScaledTanh", {1}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "ParametricSoftplus", {1}, kOnnxDomain) ||
 #endif
-         IsSupportedOptypeVersionAndDomain(node, "ThresholdedRelu", {1, 10}, kOnnxDomain);
+         IsSupportedOptypeVersionAndDomain(node, "ThresholdedRelu", {1, 10, 22}, kOnnxDomain);
 }
 }  // namespace
 

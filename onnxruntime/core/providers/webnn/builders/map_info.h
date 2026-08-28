@@ -47,6 +47,7 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback
 // Use ONNX-to-ONNX op mapping to improve the search complexity for WebNN ops in the op_inputs_map.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
     {"ConvInteger", {"Cast", "Conv", "DequantizeLinear"}},
+    {"DepthToSpace", {"Reshape", "Transpose"}},
     {"DynamicQuantizeLinear",
      {"Cast", "Clip", "Div", "Max", "Min", "QuantizeLinear", "ReduceMax", "ReduceMin", "Reshape", "Round", "Sub"}},
     {"Einsum", {"MatMul", "Mul", "ReduceSum", "Reshape", "Transpose", "Trilu"}},
@@ -55,6 +56,7 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
      {"Add", "Cast", "Concat", "CumSum", "Div", "Expand", "Less", "MatMul", "Reshape", "ScatterND",
       "Softmax", "Transpose", "Where"}},
     {"LRN", {"Add", "AveragePool", "Div", "Mul", "Pad", "Pow", "Transpose"}},
+    {"LpNormalization", {"Div", "Max", "ReduceL1", "ReduceL2"}},
     {"MatMulInteger", {"Cast", "DequantizeLinear", "MatMul"}},
     {"MatMulNBits", {"Add", "DequantizeLinear", "MatMul", "Reshape", "Transpose"}},
     {"MultiHeadAttention", {"Add", "Cast", "Concat", "Div", "MatMul", "Reshape", "Softmax", "Transpose"}},

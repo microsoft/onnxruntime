@@ -12,20 +12,19 @@ set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 
 # Both abseil and xnnpack create a target called memory, which
 # results in a duplicate target if ABSL_ENABLE_INSTALL is on.
-if (onnxruntime_USE_XNNPACK)
-  set(ABSL_ENABLE_INSTALL OFF)
-else()
-  if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
     set(ABSL_ENABLE_INSTALL ON)
-  endif()
 endif()
 
 if(Patch_FOUND)
   if (WIN32)
-    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch &&
-                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
+    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_windows.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda_warnings.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda13_member_template.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_msvc_unreachable_code.patch)
   else()
-    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
+    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda_warnings.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda13_member_template.patch)
   endif()
 else()
   set(ABSL_PATCH_COMMAND "")

@@ -48,7 +48,7 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
 
   for (const Node* next_node : output_nodes) {
     // Check if the next node is not of type "Shape"
-    if (!next_node || !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Shape", {13, 15, 19}, kOnnxDomain)) {
+    if (!next_node || !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Shape", {13, 15, 19, 21, 23, 24, 25}, kOnnxDomain)) {
       return false;
     }
   }

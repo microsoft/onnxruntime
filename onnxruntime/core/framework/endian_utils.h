@@ -79,11 +79,18 @@ common::Status ReadLittleEndian(gsl::span<const unsigned char> source_bytes, gsl
 /**
  * Writes to a little-endian destination.
  */
+common::Status WriteLittleEndian(size_t element_size,
+                                 gsl::span<const unsigned char> source_bytes,
+                                 gsl::span<unsigned char> destination_bytes);
+
+/**
+ * Writes to a little-endian destination.
+ */
 template <typename T>
 common::Status WriteLittleEndian(gsl::span<const T> source, gsl::span<unsigned char> destination_bytes) {
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
   const auto source_bytes = gsl::make_span(reinterpret_cast<const unsigned char*>(source.data()), source.size_bytes());
-  return detail::CopyLittleEndian(sizeof(T), source_bytes, destination_bytes);
+  return WriteLittleEndian(sizeof(T), source_bytes, destination_bytes);
 }
 
 }  // namespace utils

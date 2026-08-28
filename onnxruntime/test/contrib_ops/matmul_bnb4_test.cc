@@ -57,7 +57,11 @@ void QuantizeDequantizeBnb4(std::vector<float>& raw_vals,  // N X K
       tp.get());
 }
 
-void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_size, bool use_float16) {
+// Runs the MatMulBnb4 op and compares against the reference result.
+// When `execution_providers` is empty the test runs on the default (CPU) EP; otherwise each
+// provider in the list is exercised separately (a fresh session per EP).
+void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_size, bool use_float16,
+             std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers = {}) {
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
   // quantizer expects transposed weights, N X K
@@ -88,40 +92,150 @@ void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_
     }
   }
 
+  // Builds a fresh OpTester and runs it against the given EP (nullptr => default CPU EP).
+  auto build_and_run = [&](std::vector<std::unique_ptr<IExecutionProvider>>* eps) {
+    OpTester test("MatMulBnb4", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", K);
+    test.AddAttribute<int64_t>("N", N);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddAttribute<int64_t>("quant_type", quant_type);
+    if (use_float16) {
+      test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
+      test.AddInput<uint8_t>("B", {quantized_numel}, input1_vals, true);
+      test.AddInput<MLFloat16>("absmax", {total_block_count}, ToFloat16(absmax), true);
+      test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
+      test.SetOutputAbsErr("Y", 0.02f);
+    } else {
+      test.AddInput<float>("A", {M, K}, input0_vals, false);
+      test.AddInput<uint8_t>("B", {quantized_numel}, input1_vals, true);
+      test.AddInput<float>("absmax", {total_block_count}, absmax, true);
+      test.AddOutput<float>("Y", {M, N}, expected_vals);
+      if (eps != nullptr) {
+        test.SetOutputAbsErr("Y", 0.02f);
+      }
+    }
+
+    if (eps != nullptr) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, eps);
+    } else {
+      test.Run();
+    }
+  };
+
+  if (execution_providers.empty()) {
+    build_and_run(nullptr);
+  } else {
+    for (auto& ep : execution_providers) {
+      std::vector<std::unique_ptr<IExecutionProvider>> single_ep;
+      single_ep.push_back(std::move(ep));
+      build_and_run(&single_ep);
+    }
+  }
+}
+
+// Collects the compiled GPU execution providers (CUDA and/or WebGPU) so the shared tests below
+// exercise each one that is available in the current build.
+std::vector<std::unique_ptr<IExecutionProvider>> GetGpuExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+#if defined(USE_WEBGPU)
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+#endif
+  return execution_providers;
+}
+
+TEST(MatMulBnb4, RejectsUndersizedBQuantTensor) {
+  // K=32, N=2 → numel=64, expected b_quant size = (64+1)/2 = 32
+  // Provide only 4 bytes (valid for K=4, N=2) but claim K=32, N=2
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", 32LL);
+  test.AddAttribute<int64_t>("N", 2LL);
+  test.AddAttribute<int64_t>("block_size", 32LL);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<uint8_t>("B", {4}, std::vector<uint8_t>(4, 0));  // too small
+  test.AddInput<float>("absmax", {2}, std::vector<float>(2, 1.0f));
+  test.AddOutput<float>("Y", {1, 2}, std::vector<float>(2, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "b_quant tensor size", {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulBnb4, RejectsUndersizedAbsmaxTensor) {
+  // K=32, N=2, block_size=32 → numel=64, expected absmax size = (64+32-1)/32 = 2
+  // Provide only 1 absmax element
+  int64_t K = 32, N = 2, block_size = 32;
+  int64_t numel = K * N;
+  int64_t quantized_numel = (numel + 1) / 2;
+
   OpTester test("MatMulBnb4", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", block_size);
-  test.AddAttribute<int64_t>("quant_type", quant_type);
-  if (use_float16) {
-    test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
-    test.AddInput<uint8_t>("B", {quantized_numel}, input1_vals, true);
-    test.AddInput<MLFloat16>("absmax", {total_block_count}, ToFloat16(absmax), true);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
 
-    test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
-    test.SetOutputAbsErr("Y", 0.02f);
+  test.AddInput<float>("A", {1, K}, std::vector<float>(K, 0.0f));
+  test.AddInput<uint8_t>("B", {quantized_numel}, std::vector<uint8_t>(quantized_numel, 0));
+  test.AddInput<float>("absmax", {1}, std::vector<float>(1, 1.0f));  // too small
+  test.AddOutput<float>("Y", {1, N}, std::vector<float>(N, 0.0f));
 
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-  } else {
-    test.AddInput<float>("A", {M, K}, input0_vals, false);
-    test.AddInput<uint8_t>("B", {quantized_numel}, input1_vals, true);
-    test.AddInput<float>("absmax", {total_block_count}, absmax, true);
-
-    test.AddOutput<float>("Y", {M, N}, expected_vals);
-
-    test.Run();
-  }
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "absmax tensor size", {}, nullptr, &execution_providers);
 }
 
-TEST(MatMulBnb4, Float32) {
+#if defined(USE_CUDA)
+TEST(MatMulBnb4, RejectsUndersizedBQuantTensorCuda) {
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", 32LL);
+  test.AddAttribute<int64_t>("N", 2LL);
+  test.AddAttribute<int64_t>("block_size", 32LL);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<uint8_t>("B", {4}, std::vector<uint8_t>(4, 0));  // too small
+  test.AddInput<float>("absmax", {2}, std::vector<float>(2, 1.0f));
+  test.AddOutput<float>("Y", {1, 2}, std::vector<float>(2, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "b_quant tensor size", {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulBnb4, RejectsUndersizedAbsmaxTensorCuda) {
+  int64_t K = 32, N = 2, block_size = 32;
+  int64_t numel = K * N;
+  int64_t quantized_numel = (numel + 1) / 2;
+
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, K}, std::vector<float>(K, 0.0f));
+  test.AddInput<uint8_t>("B", {quantized_numel}, std::vector<uint8_t>(quantized_numel, 0));
+  test.AddInput<float>("absmax", {1}, std::vector<float>(1, 1.0f));  // too small
+  test.AddOutput<float>("Y", {1, N}, std::vector<float>(N, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "absmax tensor size", {}, nullptr, &execution_providers);
+}
+#endif
+
+TEST(MatMulBnb4, DISABLED_Float32) {
   for (auto qt : {0, 1}) {
     for (auto M : {1, 2, 100}) {
       for (auto N : {1, 2, 32, 288}) {
         for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
           for (auto block_size : {16, 32, 64, 128}) {
-            RunTest(qt, M, N, K, block_size, false);
+            // Runs on the compiled GPU EPs (CUDA/WebGPU) when available, otherwise the default CPU EP.
+            RunTest(qt, M, N, K, block_size, false, GetGpuExecutionProviders());
           }
         }
       }
@@ -129,22 +243,22 @@ TEST(MatMulBnb4, Float32) {
   }
 }
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 TEST(MatMulBnb4, Float16) {
   for (auto qt : {0, 1}) {
     for (auto M : {1, 2, 100}) {
       for (auto N : {1, 2, 32, 288}) {
         for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
           for (auto block_size : {16, 32, 64, 128}) {
-            RunTest(qt, M, N, K, block_size, true);
+            RunTest(qt, M, N, K, block_size, true, GetGpuExecutionProviders());
           }
         }
       }
     }
   }
 }
-
 #endif
+
 }  // namespace test
 }  // namespace onnxruntime
 

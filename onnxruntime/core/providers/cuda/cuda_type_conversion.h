@@ -14,12 +14,17 @@
 #pragma warning(push)
 // 'fp4_interpretation' : unreferenced parameter
 #pragma warning(disable : 4100)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #include <cuda_fp4.h>
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 #endif

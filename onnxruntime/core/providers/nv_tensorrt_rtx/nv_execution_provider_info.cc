@@ -86,6 +86,8 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
   }
   info.ep_context_file_path = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
 
+  info.compile_only_mode = (session_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1");
+
   // If embed mode is not specified, default to 1 if dump_ep_context_model is true, otherwise 0
   auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "-1"));
   if (embed_mode == -1) {

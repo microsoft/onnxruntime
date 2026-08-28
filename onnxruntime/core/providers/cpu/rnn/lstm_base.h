@@ -5,6 +5,7 @@
 
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
@@ -51,6 +52,8 @@ class LSTMBase {
 
     ORT_ENFORCE(layout_ == 0,
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   ~LSTMBase() = default;
@@ -78,6 +81,8 @@ class LSTMBase {
   int64_t layout_;
 
   rnn::detail::ActivationFuncs activation_funcs_;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime

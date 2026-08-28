@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <deque>
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/mlas/inc/mlas.h"
@@ -122,12 +124,20 @@ class NchwcTransformerImpl {
   void TransformConv(Node& node);
   void TransformPool(Node& node);
   void TransformBinary(Node& node, bool add_node);
+  void TransformMul(Node& node);
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformBatchNormalization(Node& node);
   void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
   void TrackTransposeFromNhwc(Node& node);
+
+  // Attempt to fuse the decomposed-HardSwish diamond Mul(x, HardSigmoid(x)) into
+  // the producing NCHWc conv as a HardSwish activation. `hardsigmoid` is the
+  // current activation node, `conv_output_arg` its original (pre-rewrite) input,
+  // and `nchwc_input` the NchwcArgument for that conv output. Returns true if the
+  // fusion was applied (and both the HardSigmoid and Mul were removed).
+  bool TryFuseNchwcHardSwish(Node& hardsigmoid, NodeArg* conv_output_arg, NchwcArgument& nchwc_input);
 
   Graph& graph_;
 
@@ -323,6 +333,18 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
 void NchwcTransformerImpl::TransformConv(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
+  NchwcArgument* nchwc_sum_input = nullptr;
+
+  // The internal NCHWc Conv kernel can consume an optional fused Sum input, but it expects
+  // that tensor to already be in NCHWc layout. Only allow transforming a pre-existing
+  // FusedConv(X, W, B, Sum) when the Sum input already has a tracked NCHWc variant that
+  // can be wired through directly.
+  if (node.OpType() == "FusedConv" && input_defs.size() >= 4 && input_defs[3] != nullptr && input_defs[3]->Exists()) {
+    nchwc_sum_input = LookupNchwcArgument(input_defs[3]);
+    if (nchwc_sum_input == nullptr) {
+      return;
+    }
+  }
 
   // Require that the weights tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
@@ -489,6 +511,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
   }
 
+  if (nchwc_sum_input != nullptr) {
+    nchwc_node.MutableInputDefs()[3] = nchwc_sum_input->nchwc_arg_;
+    nchwc_sum_input->remaining_original_uses_--;
+  }
+
   NchwcArgument::Shape output_shape(output_defs[0]);
 
   if (do_reorder_input) {
@@ -513,6 +540,31 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   // Bail out if MaxPool has the optional index tensor specified.
   if (output_defs.size() > 1) {
     return;
+  }
+
+  // Bail out for AveragePool with ceil_mode==1 && count_include_pad==1. The default float CPU
+  // AveragePool kernel was fixed (PR #29629) to divide the trailing ceil_mode window by its
+  // clamped size instead of the full kernel size. NchwcAveragePool routes to
+  // MlasAveragePoolingIncludePad, which still uses the full-kernel-size divisor and would
+  // silently reintroduce the wrong-average bug for optimized NCHWc graphs. Leaving this combo
+  // unconverted keeps it on the fixed CPU path; every other AveragePool (and all MaxPool /
+  // global pooling) conversion is unaffected, so there is no perf impact on the common case.
+  if (node.OpType() == "AveragePool") {
+    const NodeAttributes& attrs = node.GetAttributes();
+    const auto get_int_attr = [&attrs](const char* name) -> int64_t {
+      const auto it = attrs.find(name);
+      return (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT)
+                 ? it->second.i()
+                 : 0;
+    };
+    // Gate count_include_pad as (!= 0) to match how PoolBase and the float (pool.cc) / fp16
+    // kernels treat it: any nonzero value enables include-pad. Using == 1 here would let an
+    // out-of-spec count_include_pad=2 model escape the bail-out, convert to NchwcAveragePool,
+    // and silently hit the buggy full-kernel divisor in the optimized graph. ceil_mode stays
+    // == 1 because the kernels gate the ceil-window fix on exactly ceil_mode == 1.
+    if (get_int_attr("ceil_mode") == 1 && get_int_attr("count_include_pad") != 0) {
+      return;
+    }
   }
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
@@ -734,6 +786,89 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
   }
 }
 
+void NchwcTransformerImpl::TransformMul(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  if (input_defs.size() != 2 || output_defs.size() != 1) {
+    return;
+  }
+
+  auto* nchwc_input_0 = LookupNchwcArgument(input_defs[0]);
+  auto* nchwc_input_1 = LookupNchwcArgument(input_defs[1]);
+
+  // If both inputs are already NCHWc arguments, use the regular binary path.
+  if (nchwc_input_0 != nullptr && nchwc_input_1 != nullptr) {
+    TransformBinary(node, false);
+    return;
+  }
+
+  // Exactly one input must be NCHWc and the other must be a static scale tensor.
+  if ((nchwc_input_0 == nullptr) == (nchwc_input_1 == nullptr)) {
+    return;
+  }
+
+  const int nchwc_input_index = (nchwc_input_0 != nullptr) ? 0 : 1;
+  const int scale_input_index = nchwc_input_index ^ 1;
+  auto* nchwc_input = (nchwc_input_index == 0) ? nchwc_input_0 : nchwc_input_1;
+
+  const auto* mul_scale_tensor_proto = graph_utils::GetConstantInitializer(graph_, input_defs[scale_input_index]->Name());
+  if (mul_scale_tensor_proto == nullptr ||
+      mul_scale_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    return;
+  }
+
+  const int64_t channels = nchwc_input->channels_;
+
+  Initializer mul_scale{graph_, *mul_scale_tensor_proto, graph_.ModelPath()};
+  const auto scale_dims = mul_scale.dims();
+
+  bool channel_broadcast_shape = false;
+  if (scale_dims.size() == 3) {
+    channel_broadcast_shape = (scale_dims[0] == channels && scale_dims[1] == 1 && scale_dims[2] == 1);
+  } else if (scale_dims.size() == 4) {
+    channel_broadcast_shape = (scale_dims[0] == 1 && scale_dims[1] == channels && scale_dims[2] == 1 && scale_dims[3] == 1);
+  }
+
+  if (!channel_broadcast_shape) {
+    return;
+  }
+
+  const size_t nchwc_block_size = MlasNchwcGetBlockSize();
+  const int64_t nchwc_channels = (channels + static_cast<int64_t>(nchwc_block_size) - 1) & ~static_cast<int64_t>(nchwc_block_size - 1);
+
+  InlinedVector<float> padded_scale(gsl::narrow<size_t>(nchwc_channels), 1.0f);
+  std::copy_n(mul_scale.data<float>(), channels, padded_scale.data());
+
+  ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
+  nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("mul_scale"));
+  utils::SetRawDataInTensorProto(nchwc_conv_W_tensor_proto, padded_scale.data(),
+                                 gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
+  nchwc_conv_W_tensor_proto.add_dims(nchwc_channels);
+  nchwc_conv_W_tensor_proto.add_dims(1);
+  nchwc_conv_W_tensor_proto.add_dims(1);
+  nchwc_conv_W_tensor_proto.add_dims(1);
+
+  auto* nchwc_conv_W_arg = &graph_utils::AddInitializerWithOrtValue(graph_, nchwc_conv_W_tensor_proto);
+
+  std::string nchwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_mul_nchwc");
+  Node& nchwc_node = graph_.AddNode(nchwc_node_name,
+                                    "Conv",
+                                    nchwc_node_name,
+                                    std::array{nchwc_input->nchwc_arg_, nchwc_conv_W_arg},
+                                    output_defs,
+                                    nullptr,
+                                    kMSNchwcDomain);
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+  nchwc_node.AddAttribute("group", nchwc_channels);
+
+  nchwc_input->remaining_original_uses_--;
+
+  CreateNchwcArgument(node, nchwc_node, channels, nchwc_input->shape_);
+  removed_nodes_.push_front(node.Index());
+}
+
 void NchwcTransformerImpl::TransformConcat(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
@@ -780,6 +915,86 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
   CreateNchwcArgument(node, node, total_channels, output_shape);
 }
 
+bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
+                                                 NodeArg* conv_output_arg,
+                                                 NchwcArgument& nchwc_input) {
+  // Only applies to a HardSigmoid whose gate params match HardSwish (alpha=1/6,
+  // beta=1/2), producing exactly one consumer.
+  if (hardsigmoid.OpType() != "HardSigmoid" || hardsigmoid.GetOutputEdgesCount() != 1) {
+    return false;
+  }
+  const auto* alpha_attr = graph_utils::GetNodeAttribute(hardsigmoid, "alpha");
+  const auto* beta_attr = graph_utils::GetNodeAttribute(hardsigmoid, "beta");
+  const float alpha = (alpha_attr != nullptr && utils::HasFloat(*alpha_attr)) ? alpha_attr->f() : 0.2f;
+  const float beta = (beta_attr != nullptr && utils::HasFloat(*beta_attr)) ? beta_attr->f() : 0.5f;
+  if (!std::isfinite(alpha) || !std::isfinite(beta) ||
+      std::abs(alpha - (1.0f / 6.0f)) > 1e-6f || std::abs(beta - 0.5f) > 1e-6f) {
+    return false;
+  }
+
+  // The producing conv must be a single-activation NCHWc Conv whose output feeds
+  // exactly two consumers (this HardSigmoid and one Mul).
+  auto& nchwc_node = nchwc_input.output_node_;
+  if (nchwc_node.OpType() != "Conv" || nchwc_node.Domain() != kMSNchwcDomain) {
+    return false;
+  }
+  if (nchwc_input.starting_original_uses_ != 2) {
+    return false;
+  }
+  if (graph_utils::GetNodeAttribute(nchwc_node, "activation") != nullptr) {
+    return false;
+  }
+
+  // Find the sibling Mul that consumes both the conv output and the HardSigmoid
+  // output (the HardSwish elementwise multiply).
+  const NodeArg* hardsigmoid_out = hardsigmoid.OutputDefs()[0];
+  Node* mul_node = nullptr;
+  const auto consumers = graph_.GetConsumerNodes(conv_output_arg->Name());
+  for (const Node* consumer : consumers) {
+    if (consumer == &hardsigmoid) {
+      continue;
+    }
+    Node* candidate = graph_.GetNode(consumer->Index());
+    if (candidate == nullptr || candidate->OpType() != "Mul" ||
+        candidate->Domain() != kOnnxDomain ||
+        candidate->GetExecutionProviderType() != hardsigmoid.GetExecutionProviderType() ||
+        candidate->InputDefs().size() != 2) {
+      return false;
+    }
+    // The Mul must consume the conv output and the HardSigmoid output.
+    const auto& mul_inputs = candidate->InputDefs();
+    const bool consumes_conv = (mul_inputs[0] == conv_output_arg) || (mul_inputs[1] == conv_output_arg);
+    const bool consumes_hs = (mul_inputs[0] == hardsigmoid_out) || (mul_inputs[1] == hardsigmoid_out);
+    if (!consumes_conv || !consumes_hs) {
+      return false;
+    }
+    mul_node = candidate;
+  }
+  if (mul_node == nullptr) {
+    return false;
+  }
+  if (graph_.NodeProducesGraphOutput(hardsigmoid) || graph_.NodeProducesGraphOutput(*mul_node)) {
+    return false;
+  }
+
+  // Apply: mark the conv as HardSwish and route the Mul's output onto the conv's
+  // NCHWc argument. Both the HardSigmoid and the Mul consumed one use each of the
+  // conv output; account for both and remove them.
+  nchwc_node.AddAttribute("activation", std::string("HardSwish"));
+
+  // HardSigmoid use of the conv output.
+  nchwc_input.remaining_original_uses_--;
+  // Mul use of the conv output.
+  nchwc_input.remaining_original_uses_--;
+
+  graph_utils::RemoveNodeOutputEdges(graph_, hardsigmoid);
+  removed_nodes_.push_front(hardsigmoid.Index());
+
+  FuseNchwcArgument(*mul_node, nchwc_input);
+  removed_nodes_.push_front(mul_node->Index());
+  return true;
+}
+
 // After doing a Conv/Add fusion, there may be an activation node that could now
 // be fused into the Conv node as well. Otherwise, this is an elementwise
 // operation that can directly use the NCHWc input.
@@ -788,16 +1003,47 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 
   auto* nchwc_input = LookupNchwcArgument(input_defs[0]);
   if (nchwc_input != nullptr) {
+    // Capture the original (pre-rewrite) input NodeArg so we can match the
+    // HardSwish diamond pattern below.
+    NodeArg* orig_input_arg = input_defs[0];
+
+    // HardSwish diamond: ONNX decomposes HardSwish(x) into Mul(x, HardSigmoid(x)).
+    // When this activation node is that HardSigmoid and it (a) uses the HardSwish
+    // gate params alpha=1/6,beta=1/2, (b) reads a single-conv NCHWc output that is
+    // used by exactly this HardSigmoid and one Mul, and (c) that Mul's other input
+    // is the same conv output, then fuse the whole thing into the conv as a
+    // HardSwish activation and drop both the HardSigmoid and the Mul.
+    // On failure (pattern does not match, e.g. alpha/beta are not HardSwish values,
+    // or no sibling Mul exists), fall through to the standard activation-fusion
+    // path below, which handles HardSigmoid as a standalone activation.
+    if (TryFuseNchwcHardSwish(node, orig_input_arg, *nchwc_input)) {
+      return;
+    }
+
     input_defs[0] = nchwc_input->nchwc_arg_;
     nchwc_input->remaining_original_uses_--;
 
     // Check if this is a single use NCHWc convolution that hasn't already
     // been fused with another activation.
     auto& nchwc_node = nchwc_input->output_node_;
+
+    const bool can_fuse_activation = (node.OpType() == "Relu") ||
+                                     (node.OpType() == "Sigmoid") ||
+                                     (node.OpType() == "Tanh") ||
+                                     (node.OpType() == "HardSigmoid");
     if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
+        can_fuse_activation &&
         (nchwc_input->starting_original_uses_ == 1) &&
         (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
+      if (node.OpType() == "HardSigmoid") {
+        const auto* alpha_attr = graph_utils::GetNodeAttribute(node, "alpha");
+        const auto* beta_attr = graph_utils::GetNodeAttribute(node, "beta");
+        InlinedVector<float> activation_params{
+            alpha_attr == nullptr ? 0.2f : alpha_attr->f(),
+            beta_attr == nullptr ? 0.5f : beta_attr->f()};
+        nchwc_node.AddAttribute("activation_params", activation_params);
+      }
       FuseNchwcArgument(node, *nchwc_input);
       removed_nodes_.push_front(node.Index());
     } else {
@@ -1149,16 +1395,21 @@ void NchwcTransformerImpl::TrackTransposeFromNhwc(Node& node) {
 }
 
 void NchwcTransformerImpl::Transform(Node& node) {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13, 21, 23, 24, 25})) {
     TrackTransposeFromNhwc(node);
   }
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11, 22}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11, 12}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11})) {
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11, 12, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11, 19, 22})) {
     TransformPool(node);
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14})) {
+    // Mul can be converted when exactly one input is already NCHWc and the
+    // other input is a static channel-scale tensor, so it does not need to
+    // wait for all input edges to be removed.
+    TransformMul(node);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
     // been decremented to zero by earlier transforms. This is a hint that the
@@ -1168,23 +1419,25 @@ void NchwcTransformerImpl::Transform(Node& node) {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8, 13})) {
       TransformBinary(node, true);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14})) {
-      TransformBinary(node, false);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11, 13})) {
       TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6, 22}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13})) {
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {20}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {1}, kMSDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "QuickGelu", {1}, kMSDomain)) {
       TransformActivation(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9, 14})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9, 14, 15})) {
       TransformBatchNormalization(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13, 21, 23, 24, 25})) {
       TransformTransposeToNhwc(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13, 18, 19})) {
       TransformResize(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1, 22}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1, 22})) {
       // Convert these pooling types only if the input is already in NCHWc format.
       TransformPool(node);
     }

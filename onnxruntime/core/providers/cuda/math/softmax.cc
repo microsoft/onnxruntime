@@ -13,7 +13,7 @@ namespace cuda {
 
 template <typename T, typename TOut, bool is_log_softmax>
 Status SoftMaxComputeHelper(
-    Stream* stream,
+    SoftmaxComputeStreamT stream,
     const T* X,
     const TensorShape& input_shape,
     TOut* Y,
@@ -40,9 +40,9 @@ Status SoftMaxComputeHelper(
 }
 
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                         \
-  template Status SoftMaxComputeHelper<T, TOut, false>(Stream * stream, const T* input,                  \
+  template Status SoftMaxComputeHelper<T, TOut, false>(SoftmaxComputeStreamT stream, const T* input,     \
                                                        const TensorShape& shape, TOut* Y, int64_t axis); \
-  template Status SoftMaxComputeHelper<T, TOut, true>(Stream * stream, const T* input,                   \
+  template Status SoftMaxComputeHelper<T, TOut, true>(SoftmaxComputeStreamT stream, const T* input,      \
                                                       const TensorShape& shape, TOut* Y, int64_t axis);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
@@ -177,12 +177,13 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   Status status;
+  auto compute_stream = Stream(ctx);
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, T, true>(ctx->GetComputeStream(), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, T, true>(compute_stream, X_data, *compute_input_shape, Y_data,
                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                     : static_cast<int64_t>(axis));
   } else {
-    status = SoftMaxComputeHelper<T, T, false>(ctx->GetComputeStream(), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, T, false>(compute_stream, X_data, *compute_input_shape, Y_data,
                                                is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                      : static_cast<int64_t>(axis));
   }

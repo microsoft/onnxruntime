@@ -30,6 +30,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Cos | ai.onnx(7+) | cos | |
 | CumSum | ai.onnx(11-13, 14+) | cumulativeSum | 'axis' input should be a constant |
 | Div | ai.onnx(7-12, 13, 14+) | div | |
+| DepthToSpace | ai.onnx(7-10, 11-12, 13+) | reshape, transpose | |
 | DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear, reshape | |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | Only supports test mode |
 | DynamicQuantizeLinear | ai.onnx(11+) | cast, clamp, div, div, max, min, quantizeLinear, reduceMax, reduceMin, reshape, roundEven, sub | |
@@ -42,7 +43,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | |
 | Floor | ai.onnx(7-12, 13+) | floor | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | |
-| GatherBlockQuantized | com.microsoft(1+) | dequantizeLinear, gather | |
+| GatherBlockQuantized | com.microsoft(1+) | dequantizeLinear, gather | uint8-packed 4-bit data (bits=4) is reinterpreted as uint4, which requires 'quantize_axis' to be the last axis and 'data' (and 'zero_points', if present) to be constant initializers |
 | GatherElements | ai.onnx(11-12, 13+) | gatherElements | |
 | GatherND | ai.onnx(11, 12, 13+) | gatherND | Only supports 'batch_dims' == 0 |
 | Gelu | ai.onnx(20+) | gelu | |
@@ -52,7 +53,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | GlobalLpPool| ai.onnx(7+) | l2Pool2d | Only supports 4-D input, 'p' value is 2 |
 | Greater | ai.onnx(7-8, 9-12, 13+) | greater | |
 | GreaterOrEqual | ai.onnx(12-15, 16+) | greaterOrEqual | |
-| GroupQueryAttention | com.microsoft(1+) | add, cast, concat, constant, cumulativeSum, div, expand, lesser, matmul, reshape, scatterND, softmax, transpose, where | Only supports input total_sequence_length is constant and past_sequence_length of past kv equals to present_sequence_length of present kv. Does not support cos_cache and sin_cache inputs |
+| GroupQueryAttention | com.microsoft(1+) | add, cast, concat, constant, cumulativeSum, div, expand, lesser, matmul, reshape, scatterND, softmax, transpose, where | Only supports input total_sequence_length is constant and past_sequence_length of past kv equals to present_sequence_length of present kv. |
 | GRU | ai.onnx(7-13, 14-21, 22+) | gru | Only supports 'layout' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | HardSigmoid | ai.onnx(7+) | hardSigmoid | |
 | HardSwish | ai.onnx(14+) | hardSwish | |
@@ -65,12 +66,13 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Less | ai.onnx(7-8, 9-12, 13+) | lesser | |
 | LessOrEqual | ai.onnx(12-15, 16+) | lesserOrEqual | |
 | Log | ai.onnx(7-12, 13+) | log | |
+| LpNormalization | ai.onnx(7-21, 22+) | div, max, reduceL1, reduceL2 | |
 | LpPool | ai.onnx(7-10, 11-17, 18+) | l2Pool2d | Only supports 4-D input, 2-D 'kernel_shape', 'p' value is 2 |
 | LRN | ai.onnx(7-12, 13+) | pad, averagePool2d, transpose, add, mul, pow, div | |
 | LSTM | ai.onnx(7-13, 14-21, 22+) | lstm | Only supports 'layout' == 0, 'input_forget' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | |
 | MatMulInteger | ai.onnx(10+) | cast, dequantizeLinear, matmul | |
-| MatMulNBits | com.microsoft(1+) | add, dequantizeLinear, matmul, reshape, transpose | Inputs 'B' and 'zero_points' (if present) should be constants, input 'g_idx' is not supported, only bits=4 is supported |
+| MatMulNBits | com.microsoft(1+) | add, dequantizeLinear, matmul, reshape, transpose | Inputs 'B' and 'zero_points' (if present) should be constants, input 'g_idx' is not supported, only bits=4 and bits=8 are supported |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | |
 | MaxPool | ai.onnx(7, 8-9, 10, 11, 12+) | maxPool2d | Only supports 4-D input, 2-D 'kernel_shape', 'storage_order' != 1, one output |
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | |

@@ -6,7 +6,6 @@ set -e -x
 mkdir -p /build/dist
 
 EXTRA_ARG=""
-ENABLE_CACHE=false
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
@@ -18,7 +17,7 @@ PYTHON_EXES=(
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
-while getopts "d:p:x:c:e" parameter_Option
+while getopts "d:p:x:c:a:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|WEBGPU|CPU|NPU.
@@ -34,26 +33,31 @@ p)
   ;;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-e) ENABLE_CACHE=true;;
-*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+a) CUDA_ARCHS=${OPTARG};;
+*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-a <cuda_archs>]"
    exit 1;;
 esac
 done
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
 fi
-if [ "$ENABLE_CACHE" = true ] ; then
+
+if command -v ccache &> /dev/null; then
+    ccache --zero-stats
     BUILD_ARGS+=("--use_cache")
-    ccache -s;
 fi
 
 ARCH=$(uname -m)
 
-
-
+if [ "$ARCH" == "aarch64" ] && [ "$BUILD_DEVICE" == "GPU" ]; then
+  # Each CUDA compiler process handles all requested architectures and can use several GB.
+  BUILD_ARGS+=("--parallel" "8")
+else
+  BUILD_ARGS+=("--parallel")
+fi
 
 echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
@@ -70,18 +74,38 @@ if [ "$ARCH" == "x86_64" ]; then
 fi
 
 if [ "$BUILD_DEVICE" == "GPU" ]; then
-    if [ "$CUDA_VERSION" == "12.8" ]; then
-        CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;90a-real;90-virtual"
-    elif [ "$CUDA_VERSION" == "13.0" ]; then
-        CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
-    else
-        echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
-        exit 1
+    # The caller (-a) normally supplies these. Keep in sync with plugin-cuda-pipeline.yml
+    # (cmake_linux_x64_cuda_archs / cmake_linux_aarch64_cuda_archs).
+    if [ -z "${CUDA_ARCHS:-}" ]; then
+        if [ "$CUDA_VERSION" == "13.0" ] && [ "$ARCH" == "aarch64" ]; then
+            CUDA_ARCHS="89-real;90-real;120-real;121-real"
+        elif [ "$CUDA_VERSION" == "12.8" ]; then
+            CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;89-real;90-real;120-real"
+        elif [ "$CUDA_VERSION" == "13.0" ]; then
+            CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;120-real"
+        else
+            echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
+            exit 1
+        fi
     fi
 
     SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
-    #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    CUDA_HOME=/usr/local/cuda-$SHORT_CUDA_VERSION
+    if [ ! -d "$CUDA_HOME" ] && [ -d /usr/local/cuda ]; then
+        # Allow the cu13 packaging flow to run on images that expose a newer CUDA minor version via /usr/local/cuda.
+        CUDA_HOME=/usr/local/cuda
+    fi
+    #Enable CUDA EP.
+    BUILD_ARGS+=("--use_cuda" "--cuda_version=$SHORT_CUDA_VERSION" "--cuda_home=$CUDA_HOME" "--cudnn_home=$CUDA_HOME")
+    BUILD_ARGS+=("--nvcc_threads=1" "--flash_nvcc_threads=1")
+    BUILD_ARGS+=("--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=ON")
+    # Enable TRT EP only if TensorRT is installed.
+    if [ -f /usr/include/NvInfer.h ]; then
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/usr")
+    elif [ "$ARCH" != "aarch64" ] && [ -f /opt/tensorrt/include/NvInfer.h ]; then
+        # The aarch64 TensorRT tarball is not compatible with the packaging image's glibc baseline.
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/opt/tensorrt")
+    fi
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
     BUILD_ARGS+=("--use_webgpu")
@@ -111,11 +135,17 @@ do
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
   python3_dir=$(dirname "$PYTHON_EXE")
   ls "$python3_dir"
-  ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
+  PIP_REQUIREMENTS=(-r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt)
+  if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then
+    # mypy 1.19+ dependencies do not support free-threaded CPython 3.13.
+    PIP_REQUIREMENTS+=("mypy<1.19")
+  fi
+  "${PYTHON_EXE}" -m pip install "${PIP_REQUIREMENTS[@]}"
   PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 
-if [ "$ENABLE_CACHE" = true ] ; then
-  which ccache && ccache -sv && ccache -z
+if command -v ccache &> /dev/null; then
+  # FIXME: can't use `-vv` for extra details b/c we're shipping with a decrepit version of ccache (3.something) that doesn't support it.
+  ccache --show-stats # -vv
 fi

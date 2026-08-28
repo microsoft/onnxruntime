@@ -23,7 +23,6 @@ import tempfile
 import warnings
 from pathlib import Path
 
-import coloredlogs
 import onnx
 from fusion_options import FusionOptions
 from onnx_model_clip import ClipOnnxModel
@@ -587,5 +586,5 @@ def main(argv: list[str] | None = None):
 
 
 if __name__ == "__main__":
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+    logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO)
     main()

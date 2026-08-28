@@ -6,6 +6,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 
@@ -27,7 +28,9 @@ inline MLFloat16 mask_filter_value() {
 template <typename T>
 class AttentionBase : public OpKernel {
  public:
-  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {}
+  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+  }
 
   Status ApplyAttention(OpKernelContext* context,
                         const T* Q,                                              // Q data with shape BxNxSxH
@@ -82,6 +85,8 @@ class AttentionBase : public OpKernel {
                       std::ptrdiff_t batch_i,
                       std::ptrdiff_t head_i,
                       bool transposed) const;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 template <typename T>

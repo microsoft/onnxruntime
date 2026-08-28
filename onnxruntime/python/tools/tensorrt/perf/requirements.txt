@@ -1,4 +1,0 @@
-onnxconverter-common
-onnxmltools
-pandas
-coloredlogs

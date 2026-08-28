@@ -22,6 +22,7 @@ void ElementwiseProduct(const float* op1, const float* op2, float* dest, int siz
 template <typename T>
 GRUGradImpl<T>::GRUGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
                             bool linear_before_reset, concurrency::ThreadPool* thread_pool,
+                            const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
                             AllocatorPtr allocator)
     : sequence_length_(sequence_length),
       batch_size_(batch_size),
@@ -29,6 +30,7 @@ GRUGradImpl<T>::GRUGradImpl(int sequence_length, int batch_size, int hidden_size
       input_size_(input_size),
       linear_before_reset_(linear_before_reset),
       thread_pool_(thread_pool),
+      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config),
       allocator_(allocator) {
   const size_t hidden_size_x3 = 3U * static_cast<size_t>(hidden_size_);
   const size_t weight_size = 3U * static_cast<size_t>(hidden_size_) * static_cast<size_t>(input_size_);
@@ -223,13 +225,15 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // ah = Xth * Wh^T + (rt (.) Ht-1h) * Rh^T + Wbh + Rbh
         // dL/drt = (dL/dah * Rh) (.) (Ht-1h) ---------- (5)
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                         hidden_size_, alpha, grad_ah, Rh, weight_beta, grad_ar, thread_pool_);
+                                         hidden_size_, alpha, grad_ah, Rh, weight_beta, grad_ar, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         ElementwiseProduct(grad_ar, Htminus1, grad_ar, hidden_size_);
       } else {
         // ah = Xth * Wh^T + rt (.) (Ht-1h * Rh^T + Rbh) + Wbh
         // dL/drt = dL/dah (.) (Ht-1h * Rh^T + Rbh) ---------- (5)
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasTrans, 1, hidden_size_,
-                                         hidden_size_, alpha, Htminus1, Rh, weight_beta, grad_ar, thread_pool_);
+                                         hidden_size_, alpha, Htminus1, Rh, weight_beta, grad_ar, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         if (Rbh != nullptr)
           deepcpu::elementwise_sum1(Rbh, grad_ar, hidden_size_);
         ElementwiseProduct(grad_ar, grad_ah, grad_ar, hidden_size_);
@@ -258,7 +262,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         float* grad_Xt = SafeRawPointer<T>(outputs.grad_input.begin() + X_offset,
                                            outputs.grad_input.end(), input_size_);
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_az, Wz, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_az, Wz, input_beta, grad_Xt, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
 
         // ar = Xtr * Wr^T + Ht-1r * Rr^T + Wbr + Rbr
         // dL/dXtr = dL/dar * Wr ---------- (9)
@@ -266,14 +271,16 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // M = 1, N = input_size_, K = hidden_size_
         input_beta = 1.0f;
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ar, Wr, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_ar, Wr, input_beta, grad_Xt, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
 
         // ah = Xth * Wh^T + (rt (.) Ht-1h) * Rh^T + Wbh + Rbh
         // dL/dXth = dL/dah * Wh ---------- (10)
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ah, Wh, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_ah, Wh, input_beta, grad_Xt, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
       }
 
       if (grad_weights_required) {
@@ -287,7 +294,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         const float* Xt = SafeRawPointer<const T>(inputs.input.begin() + X_offset,
                                                   inputs.input.end(), input_size_);
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_az, Xt, weight_beta, grad_Wz_local, thread_pool_);
+                                         1, alpha, grad_az, Xt, weight_beta, grad_Wz_local, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wz_local, grad_Wz, hidden_size_ * input_size_);
 
@@ -296,7 +304,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ar, Xt, weight_beta, grad_Wr_local, thread_pool_);
+                                         1, alpha, grad_ar, Xt, weight_beta, grad_Wr_local, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wr_local, grad_Wr, hidden_size_ * input_size_);
 
@@ -305,7 +314,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ah, Xt, weight_beta, grad_Wh_local, thread_pool_);
+                                         1, alpha, grad_ah, Xt, weight_beta, grad_Wh_local, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wh_local, grad_Wh, hidden_size_ * input_size_);
       }
@@ -316,7 +326,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_az, Htminus1, weight_beta, grad_Rz_local, thread_pool_);
+                                         1, alpha, grad_az, Htminus1, weight_beta, grad_Rz_local, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rz_local, grad_Rz, hidden_size_ * hidden_size_);
 
@@ -325,7 +336,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ar, Htminus1, weight_beta, grad_Rr_local, thread_pool_);
+                                         1, alpha, grad_ar, Htminus1, weight_beta, grad_Rr_local, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rr_local, grad_Rr, hidden_size_ * hidden_size_);
 
@@ -336,7 +348,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
           // M = hidden_size_, N = hidden_size_, K = 1
           ElementwiseProduct(rt, Htminus1, rt_factor, hidden_size_);
           ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                           1, alpha, grad_ah, rt_factor, weight_beta, grad_Rh_local, thread_pool_);
+                                           1, alpha, grad_ah, rt_factor, weight_beta, grad_Rh_local, thread_pool_,
+                                           mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
           // Note that the weight beta is always 0. So, we must accumulate ourselves.
           deepcpu::elementwise_sum1(grad_Rh_local, grad_Rh, hidden_size_ * hidden_size_);
         } else {
@@ -347,7 +360,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
           // M = hidden_size_, N = hidden_size_, K = 1
           ElementwiseProduct(grad_ah, rt, rt_factor, hidden_size_);
           ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                           1, alpha, rt_factor, Htminus1, weight_beta, grad_Rh_local, thread_pool_);
+                                           1, alpha, rt_factor, Htminus1, weight_beta, grad_Rh_local, thread_pool_,
+                                           mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
           // Note that the weight beta is always 0. So, we must accumulate ourselves.
           deepcpu::elementwise_sum1(grad_Rh_local, grad_Rh, hidden_size_ * hidden_size_);
         }
@@ -402,14 +416,16 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
       ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_az, Rz, recurrence_input_beta, grad_Ht, thread_pool_);
+                                       hidden_size_, alpha, grad_az, Rz, recurrence_input_beta, grad_Ht, thread_pool_,
+                                       mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
 
       // ar = Xtr * Wr^T + Ht-1r * Rr^T +  Wbr + Rbr
       // dL/dHt-1r = dL/dar * Rr ---------- (26)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
       ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ar, Rr, recurrence_input_beta, grad_Ht, thread_pool_);
+                                       hidden_size_, alpha, grad_ar, Rr, recurrence_input_beta, grad_Ht, thread_pool_,
+                                       mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
 
       if (!linear_before_reset_) {
         // ah = Xth * Wh^T + (rt (.) Ht-1h) * Rh^T + Wbh + Rbh
@@ -421,7 +437,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         // to store the intermediate result (making sure to clear the results in grad_ar before writing to it).
         recurrence_input_beta = 0.0f;
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                         hidden_size_, alpha, grad_ah, Rh, recurrence_input_beta, grad_ar, thread_pool_);
+                                         hidden_size_, alpha, grad_ah, Rh, recurrence_input_beta, grad_ar, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         deepcpu::elementwise_product(grad_ar, rt, grad_Ht, hidden_size_);
       } else {
         // ah = Xth * Wh^T + rt (.) (Ht-1h * Rh^T + Rbh) + Wbh
@@ -432,7 +449,8 @@ void GRUGradImpl<T>::ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutp
         recurrence_input_beta = 1.0f;
         ElementwiseProduct(grad_ah, rt, rt_factor, hidden_size_);
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                         hidden_size_, alpha, rt_factor, Rh, recurrence_input_beta, grad_Ht, thread_pool_);
+                                         hidden_size_, alpha, rt_factor, Rh, recurrence_input_beta, grad_Ht, thread_pool_,
+                                         mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
       }
     }
   }

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -31,7 +33,7 @@ class MoE : public WebGpuKernel {
     activation_alpha_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_alpha", 1.0));
     activation_beta_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_beta", 1.0));
     swiglu_fusion_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0));
-    swiglu_limit_ = info.GetAttrOrDefault<float>("swiglu_limit", 0);
+    swiglu_limit_ = info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
     k_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("k", 4));
     normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 0) == 1;
     use_sparse_mixer_ = info.GetAttrOrDefault<int64_t>("use_sparse_mixer", 0) == 1;

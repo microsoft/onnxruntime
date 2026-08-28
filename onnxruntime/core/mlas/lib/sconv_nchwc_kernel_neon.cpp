@@ -50,8 +50,9 @@ void
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
     const float32x4_t AccumulateMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT)));
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
-    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-static_cast<int>(BiasAddition)));
-    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(BiasAddition ? -1 : 0));
+    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(ReluActivation ? -1 : 0));
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
@@ -182,6 +183,11 @@ void
     }
 }
 
+
+//
+// Implementation of MlasConvNchwFloatKernelNeon
+//
+
 void
     MLASCALL
     MlasConvNchwFloatKernelNeon(
@@ -229,6 +235,7 @@ void
     );
 }
 
+
 //
 // Implementation of MlasConvNchwcFloatKernelNeon
 //
@@ -257,6 +264,29 @@ void
         unsigned KernelFlags
     )
 {
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+    MlasConvNchwcFloatKernelNeonAsm(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags
+    );
+#else
     MlasConvFloatKernelNeonImpl<true>(
         Input,
         Filter,
@@ -278,19 +308,18 @@ void
         Bias,
         KernelFlags
     );
+#endif
 }
 
 //
 // Implementation of MlasConvDepthwiseFloatKernelNeon
 //
 // This kernel performs depthwise separable convolution where each input channel
-// is convolved with its own filter. This is more efficient than standard convolution
-// for certain network architectures like MobileNets.
+// is convolved with its own filter. 
 //
 
-void
-    MLASCALL
-    MlasConvDepthwiseFloatKernelNeon(
+static void
+MlasConvDepthwiseFloatKernelNeonImpl(
         const float* Input,
         const float* Filter,
         float* Output,
@@ -311,8 +340,10 @@ void
 {
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
     const float32x4_t AccumulateMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT)));
-    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION)));
-    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
+    const bool BiasAdditionEnabled = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(BiasAdditionEnabled ? -1 : 0));
+    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(ReluActivation ? -1 : 0));
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
@@ -324,7 +355,9 @@ void
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+    const size_t KernelSize = KernelHeight * KernelWidth;
+
+    auto ComputeDepthwiseOutput = [&](size_t output_idx) {
 
         float32x4_t OldOutput0 = MlasLoadFloat32x4(&Output[output_idx * BlockSize]);
         float32x4_t OldOutput1 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 4]);
@@ -348,7 +381,7 @@ void
             BiasVector3 = MlasLoadFloat32x4(Bias + 12);
         }
 
-        for (size_t kernel_pos = 0; kernel_pos < KernelHeight * KernelWidth; kernel_pos++) {
+        for (size_t kernel_pos = 0; kernel_pos < KernelSize; kernel_pos++) {
             size_t kh = kernel_pos / KernelWidth;
             size_t kw = kernel_pos % KernelWidth;
 
@@ -395,38 +428,83 @@ void
         MlasStoreFloat32x4(&Output[output_idx * BlockSize + 4], Accumulator1);
         MlasStoreFloat32x4(&Output[output_idx * BlockSize + 8], Accumulator2);
         MlasStoreFloat32x4(&Output[output_idx * BlockSize + 12], Accumulator3);
+
+    };
+
+    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+        ComputeDepthwiseOutput(output_idx);
     }
 }
 
-//
-// Implementation of MlasConvPointwiseFloatKernelNeon
-//
-// Performs pointwise (1x1) convolution on NCHWC formatted data using batched
-// GEMM. Input channels are strided by InputStride, requiring separate GEMMs
-// per channel block which are accumulated into the output.
-//
-
 void
     MLASCALL
-    MlasConvPointwiseFloatKernelNeon(
+    MlasConvDepthwiseFloatKernelNeon(
         const float* Input,
         const float* Filter,
         float* Output,
         size_t StrideWidth,
-        size_t InputChannels,
-        size_t FilterCount,
+        size_t DilationWidth,
         size_t InputStride,
-        size_t FilterStride,
-        size_t OutputStride,
+        size_t KernelHeight,
+        size_t KernelWidth,
+        const float* InputBase,
+        size_t InputWidth,
+        size_t DilatedInputWidth,
+        size_t OutputCountLeftPad,
         size_t OutputCount,
+        size_t OutputCountRightPad,
         const float* Bias,
         unsigned KernelFlags
+    )
+{
+    MlasConvDepthwiseFloatKernelNeonImpl(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        InputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags);
+}
+
+//
+// Pointwise convolution helpers.
+//
+
+namespace {
+
+static void
+MlasConvPointwiseFloatKernelNeonFallback(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t InputChannels,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t OutputCount,
+    const float* Bias,
+    unsigned KernelFlags
     )
 {
     const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
     const float firstBeta = (AccumulateOutput || BiasAddition) ? 1.0f : 0.0f;
+
+    MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
+    mlas_backend_kernel_selector_config.use_kleidiai = ((KernelFlags & MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI) != 0);
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t InputStrideElements = InputStride / sizeof(float);
@@ -486,7 +564,7 @@ void
     }
 
     MlasGemmBatch(CblasNoTrans, CblasNoTrans, OutputCount, BlockSize, BlockSize,
-                  gemm_params, idx, nullptr);
+                  gemm_params, idx, nullptr, &mlas_backend_kernel_selector_config);
 
     if (ReluActivation) {
         const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
@@ -500,6 +578,40 @@ void
             }
         }
     }
+}
+
+} // namespace
+
+void
+    MLASCALL
+    MlasConvPointwiseFloatKernelNeon(
+        const float* Input,
+        const float* Filter,
+        float* Output,
+        size_t StrideWidth,
+        size_t InputChannels,
+        size_t FilterCount,
+        size_t InputStride,
+        size_t FilterStride,
+        size_t OutputStride,
+        size_t OutputCount,
+        const float* Bias,
+        unsigned KernelFlags
+    )
+{
+    MlasConvPointwiseFloatKernelNeonFallback(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        InputChannels,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        OutputCount,
+        Bias,
+        KernelFlags);
 }
 
 #endif

@@ -17,6 +17,10 @@ Abstract:
 
 #if defined(__aarch64__) && defined(__linux__)
 
+#include <algorithm>
+#include <cstring>
+#include <vector>
+
 #include "arm_neon.h"
 #include "mlasi.h"
 #include "sbgemm.h"
@@ -28,6 +32,25 @@ struct MLAS_SBGEMM_KERNEL_NEON {
     static constexpr size_t PackedN = MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
     static constexpr MLAS_SBGEMM_STRIDES Strides{128, 128, 256};  // M:N:K
 };
+
+MLAS_FORCEINLINE size_t
+MlasSBGemmKernelRows(size_t CountM)
+{
+    return CountM >= 8 ? 8 : CountM >= 4 ? 4
+                         : CountM >= 2   ? 2
+                                         : 1;
+}
+
+MLAS_FORCEINLINE void
+MlasSBGemmCopyPackA(float* PackedA, const float* A, size_t lda, size_t Rows, size_t CountK, size_t AlignedCountK)
+{
+    for (size_t m = 0; m < Rows; ++m) {
+        float* dst = PackedA + m * AlignedCountK;
+        const float* src = A + m * lda;
+        std::memcpy(dst, src, CountK * sizeof(float));
+        std::fill_n(dst + CountK, AlignedCountK - CountK, 0.0f);
+    }
+}
 
 bool MLASCALL
 MlasBf16AccelerationSupported()
@@ -338,12 +361,32 @@ template <>
 MLAS_FORCEINLINE void
 MlasSBGemmKernel<MLAS_SBGEMM_KERNEL_NEON>(size_t CountM, size_t CountN, size_t CountK, const float* A, size_t lda, const bfloat16_t* B, float* C, size_t ldc, const float* Bias, const bool ZeroMode)
 {
+    constexpr size_t PackedK = MLAS_SBGEMM_KERNEL_NEON::PackedK;
+    const size_t AlignedCountK = (CountK + PackedK - 1) & ~(PackedK - 1);
+    const bool PackATail = AlignedCountK != CountK;
+    std::vector<float> PackedA;
+    if (PackATail) {
+        PackedA.resize(MLAS_SBGEMM_KERNEL_NEON::KernelMaxM * AlignedCountK);
+    }
+
     while (CountM > 0) {
+        const float* KernelA = A;
+        size_t KernelLda = lda;
+        size_t KernelCountK = CountK;
+
+        if (PackATail) {
+            const size_t RowsToPack = MlasSBGemmKernelRows(CountM);
+            MlasSBGemmCopyPackA(PackedA.data(), A, lda, RowsToPack, CountK, AlignedCountK);
+            KernelA = PackedA.data();
+            KernelLda = AlignedCountK;
+            KernelCountK = AlignedCountK;
+        }
+
         size_t RowsHandled;
         if (ZeroMode) {
-            RowsHandled = MlasSbgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, Bias);
+            RowsHandled = MlasSbgemmKernelZero(KernelA, B, C, KernelCountK, CountM, CountN, KernelLda, ldc, Bias);
         } else {
-            RowsHandled = MlasSbgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, Bias);
+            RowsHandled = MlasSbgemmKernelAdd(KernelA, B, C, KernelCountK, CountM, CountN, KernelLda, ldc, Bias);
         }
         C += ldc * RowsHandled;
         A += lda * RowsHandled;

@@ -4,7 +4,6 @@ transformers==4.50.0
 numpy>=1.24.1
 accelerate
 onnx==1.18.0
-coloredlogs
 packaging
 # Use newer version of protobuf might cause crash
 protobuf==4.25.8

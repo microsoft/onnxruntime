@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -171,7 +172,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                       bool enable_vtcm_backup_buffer_sharing,
                       bool enable_file_mapped_weights,
                       std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library,
-                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map,
+                      bool enable_htp_extended_udma_mode);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -269,9 +271,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, void* mapped_base_ptr);
 #endif
 
-  QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
-  static logging::Severity MapQNNLogLevelToOrtSeverity(QnnLog_Level_t qnn_log_level);
-
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   typedef struct FileMappingCallbackInfo {
     void* const mapped_file_ptr;
@@ -299,7 +298,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseProfilehandle();
 
-  Status CreateContext(bool enable_htp_weight_sharing);
+  Status CreateContext(bool enable_htp_weight_sharing, bool enable_htp_extended_udma_mode);
 
   Status GetFileSizeIfValid(const std::string& filepath, size_t& file_size);
 
@@ -323,7 +322,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
   // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
-  Status InitializeQnnLog(const logging::Logger& logger);
+  Status InitializeQnnLog();
 
   // Terminate logging in the backend
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
@@ -378,6 +377,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
+  QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
 
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
@@ -461,7 +461,28 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return Status::OK();
   }
 
- private:
+  std::unique_ptr<void, std::function<void(void*)>> GetSystemContextHandle();
+
+  Status GetGraphInfoAndBinVersion(QnnSystemContext_Handle_t sys_ctx_handle,
+                                   void* buffer,
+                                   Qnn_ContextBinarySize_t buffer_length,
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+                                   Qnn_Version_t& blob_version,
+#endif
+                                   uint32_t& graph_count,
+                                   QnnSystemContext_GraphInfo_t** graphs_info);
+
+  // Checks if act_ver is >= min_ver. An act_ver of 0.0.0 is considered invalid.
+  static bool MinVersionMet(const Qnn_Version_t& act_ver, const Qnn_Version_t& min_ver) {
+    if (act_ver.major == 0 && act_ver.minor == 0 && act_ver.patch == 0) {
+      return false;
+    }
+
+    return act_ver.major > min_ver.major ||
+           (act_ver.major == min_ver.major && act_ver.minor > min_ver.minor) ||
+           (act_ver.major == min_ver.major && act_ver.minor == min_ver.minor && act_ver.patch >= min_ver.patch);
+  }
+
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;

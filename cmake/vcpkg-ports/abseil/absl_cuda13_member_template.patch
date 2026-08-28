@@ -1,0 +1,58 @@
+--- a/absl/container/internal/common.h
++++ b/absl/container/internal/common.h
+@@ -68,6 +68,16 @@
+   using AddPtr = Other*;
+ };
+ 
++// Workaround for an NVCC 13.3 (cudafe++) host parse error triggered by naming
++// the member alias template `IfRRef<...>::AddPtr<Other>` directly inside the
++// insert_or_assign/try_emplace macros. Wrapping the qualified-id in this
++// top-level alias template avoids the mis-parse while preserving the original
++// SFINAE behavior: substitution still happens in the immediate context, so
++// forming a pointer-to-reference remains a soft (SFINAE) failure rather than a
++// hard error. See https://github.com/abseil/abseil-cpp/issues/2075.
++template <class T, class Other>
++using IfRRefAddPtr = typename IfRRef<T>::template AddPtr<Other>;
++
+ template <class, class = void>
+ struct IsTransparent : std::false_type {};
+ template <class T>
+--- a/absl/container/internal/raw_hash_map.h
++++ b/absl/container/internal/raw_hash_map.h
+@@ -106,8 +106,8 @@
+       typename K = key_type, class V = mapped_type,                            \
+       ABSL_INTERNAL_IF_##KValue##_NOR_##VValue(                                \
+           int = (EnableIf<LifetimeBoundKV<K, KValue, V, VValue,                \
+-                                          IfRRef<int KQual>::AddPtr<K>,        \
+-                                          IfRRef<int VQual>::AddPtr<V>>>()),   \
++                                          IfRRefAddPtr<int KQual, K>,        \
++                                          IfRRefAddPtr<int VQual, V>>>()),   \
+           ABSL_INTERNAL_SINGLE_ARG(                                            \
+               int &...,                                                        \
+               decltype(EnableIf<LifetimeBoundKV<K, KValue, V, VValue>>()) =    \
+--- a/absl/container/internal/btree_container.h
++++ b/absl/container/internal/btree_container.h
+@@ -497,8 +497,8 @@
+       typename K = key_type, class M,                                        \
+       ABSL_INTERNAL_IF_##KValue##_NOR_##MValue(                              \
+           int = (EnableIf<LifetimeBoundKV<K, KValue, M, MValue,              \
+-                                          IfRRef<int KQual>::AddPtr<K>,      \
+-                                          IfRRef<int MQual>::AddPtr<M>>>()), \
++                                          IfRRefAddPtr<int KQual, K>,      \
++                                          IfRRefAddPtr<int MQual, M>>>()), \
+           ABSL_INTERNAL_SINGLE_ARG(                                          \
+               int &...,                                                      \
+               decltype(EnableIf<LifetimeBoundKV<K, KValue, M, MValue>>()) =  \
+@@ -598,10 +598,10 @@
+       ABSL_INTERNAL_IF_##KValue(                                               \
+           class... Args,                                                       \
+           int = (EnableIf<                                                     \
+-                 LifetimeBoundK<K, KValue, IfRRef<int KQual>::AddPtr<K>>>())), \
++                 LifetimeBoundK<K, KValue, IfRRefAddPtr<int KQual, K>>>())), \
+       ABSL_INTERNAL_IF_##KValue(                                               \
+           decltype(EnableIf<LifetimeBoundK<                                    \
+-                       K, KValue, IfRRef<int KQual>::AddPtr<K>>>()) = 0,       \
++                       K, KValue, IfRRefAddPtr<int KQual, K>>>()) = 0,       \
+           class... Args),                                                      \
+       std::enable_if_t<!std::is_convertible<K, const_iterator>::value, int> =  \
+           0>                                                                   \

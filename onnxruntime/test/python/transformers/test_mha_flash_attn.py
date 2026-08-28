@@ -371,7 +371,9 @@ def parity_check_mha(
         out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
         out = out.detach().cpu().numpy()
         # Pytorch to compare
-        out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=False)
+        out_ref, _ = attention_ref(
+            q, k, v, query_padding_mask=None, key_padding_mask=None, attention_bias=None, causal=False
+        )
         out_ref = out_ref.detach().cpu().numpy()
 
     numpy.testing.assert_allclose(

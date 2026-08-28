@@ -134,6 +134,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                   &Activation,
                   true,
                   MlasConv2DTest<Threaded>::threadpool_,
+                  nullptr,
                   UseBf16_);
 
     //
@@ -250,6 +251,21 @@ class MlasNchwcConv2DBf16Test : public MlasNchwcConv2DTest<Threaded> {
         }
       }
     }
+
+    // BF16 direct NCHW tests (InputChannels < BlockSize, non-depthwise).
+    // These shapes are eligible for the direct 3x3 BF16 asm kernel and route
+    // through ConvNchwBf16Kernel in snchwc.cpp.
+    TestBf16(1, 1, 3, 8, 8, 4, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+    TestBf16(2, 1, 5, 9, 9, 3, 3, 3, 1, 1, 1, 1, 1, 1, 2, 2);
+    TestBf16(1, 1, 7, 11, 11, 2, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+
+    // BF16 depthwise tests (grouped conv with one channel/filter per group).
+    // The padded case exercises the depthwise wrapper's left/right fallback
+    // around the BF16 asm interior span.
+    TestBf16(1, 16, 1, 8, 8, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+    TestBf16(1, 32, 1, 10, 10, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
+    TestBf16(1, 16, 1, 10, 10, 1, 3, 3, 0, 0, 0, 0, 1, 1, 3, 3);
+    TestBf16(1, 16, 1, 8, 8, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
   }
 
  private:

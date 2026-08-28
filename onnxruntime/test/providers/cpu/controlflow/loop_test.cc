@@ -1041,6 +1041,322 @@ TEST(Loop, IterationCountAsOutput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+// Verify that Loop correctly handles tensor(string) scan outputs.
+// Strings are not trivially copyable so the concatenation path must use proper copy semantics.
+// Uses strings exceeding the small-string-optimization threshold to exercise heap-allocated payloads.
+TEST(Loop, StringScanOutput) {
+  auto create_subgraph = []() {
+    Model model("String scan output subgraph", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* Subgraph produces a constant string tensor as a scan output each iteration.
+
+      iter_num_in    cond_in
+        (unused)        |
+                    [Identity]
+                        |
+                     cond_out
+
+      [Constant] -> scan_output (string tensor, shape {1})
+    */
+
+    // graph input types
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto string_tensor;
+    string_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
+    string_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& scan_out = graph.GetOrCreateNodeArg("scan_out", &string_tensor);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+      graph.AddNode("cond_identity", "Identity", "Forward cond", inputs, outputs);
+    }
+
+    // Constant -> scan_out (string long enough to exceed SSO)
+    {
+      TensorProto value_tensor;
+      value_tensor.set_name("string_const");
+      value_tensor.add_dims(1);
+      value_tensor.set_data_type(TensorProto_DataType_STRING);
+      // Use a string longer than typical SSO buffer (>22 chars) to ensure heap allocation
+      value_tensor.add_string_data("this_string_exceeds_sso_threshold_and_uses_heap_allocation");
+
+      auto& constant_node = graph.AddNode("string_constant", "Constant", "String constant",
+                                          {}, {&scan_out});
+      constant_node.AddAttribute("value", value_tensor);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in});
+    graph.SetOutputs({&cond_out, &scan_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {3});
+  test.AddInput<bool>("cond", {1}, {true});
+
+  // scan output: 3 iterations, each producing a {1} string tensor -> final shape {3, 1}
+  test.AddOutput<std::string>("scan_out_final", {3, 1},
+                              {"this_string_exceeds_sso_threshold_and_uses_heap_allocation",
+                               "this_string_exceeds_sso_threshold_and_uses_heap_allocation",
+                               "this_string_exceeds_sso_threshold_and_uses_heap_allocation"});
+
+  // Only CPU EP supports string tensors.
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+// Verify multi-element string scan output (shape {2} per iteration).
+TEST(Loop, StringScanOutputMultiElement) {
+  auto create_subgraph = []() {
+    Model model("Multi-element string scan output", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    // graph input types
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto string_tensor;
+    string_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
+    string_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& scan_out = graph.GetOrCreateNodeArg("scan_out", &string_tensor);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+      graph.AddNode("cond_identity", "Identity", "Forward cond", inputs, outputs);
+    }
+
+    // Constant -> scan_out with 2 elements
+    {
+      TensorProto value_tensor;
+      value_tensor.set_name("string_const");
+      value_tensor.add_dims(2);
+      value_tensor.set_data_type(TensorProto_DataType_STRING);
+      value_tensor.add_string_data("first_heap_allocated_string_that_exceeds_sso_buffer_size");
+      value_tensor.add_string_data("second_heap_allocated_string_that_exceeds_sso_buffer_size");
+
+      auto& constant_node = graph.AddNode("string_constant", "Constant", "String constant",
+                                          {}, {&scan_out});
+      constant_node.AddAttribute("value", value_tensor);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in});
+    graph.SetOutputs({&cond_out, &scan_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {2});
+  test.AddInput<bool>("cond", {1}, {true});
+
+  // scan output: 2 iterations x {2} elements -> {2, 2}
+  test.AddOutput<std::string>("scan_out_final", {2, 2},
+                              {"first_heap_allocated_string_that_exceeds_sso_buffer_size",
+                               "second_heap_allocated_string_that_exceeds_sso_buffer_size",
+                               "first_heap_allocated_string_that_exceeds_sso_buffer_size",
+                               "second_heap_allocated_string_that_exceeds_sso_buffer_size"});
+
+  // Only CPU EP supports string tensors.
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+// Verify Loop with a string loop-carried variable (uses IDataTransfer::CopyTensor path).
+TEST(Loop, StringLoopCarriedVar) {
+  auto create_subgraph = []() {
+    Model model("String loop-carried var subgraph", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* Subgraph passes through a string loop-carried variable unchanged.
+
+      iter_num_in    cond_in    loop_var_in (string)
+        (unused)        |            |
+                    [Identity]   [Identity]
+                        |            |
+                     cond_out   loop_var_out
+    */
+
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto string_tensor;
+    string_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
+    string_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+    auto& loop_var_in = graph.GetOrCreateNodeArg("loop_var_in", &string_tensor);
+
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& loop_var_out = graph.GetOrCreateNodeArg("loop_var_out", &string_tensor);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+      graph.AddNode("cond_identity", "Identity", "Forward cond", inputs, outputs);
+    }
+
+    // loop_var_in -> loop_var_out
+    {
+      inputs = {&loop_var_in};
+      outputs = {&loop_var_out};
+      graph.AddNode("var_identity", "Identity", "Forward loop var", inputs, outputs);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in, &loop_var_in});
+    graph.SetOutputs({&cond_out, &loop_var_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {3});
+  test.AddInput<bool>("cond", {1}, {true});
+  test.AddInput<std::string>("loop_var_init", {1},
+                             {"a_long_string_value_that_definitely_exceeds_the_sso_threshold"});
+
+  test.AddOutput<std::string>("loop_var_final", {1},
+                              {"a_long_string_value_that_definitely_exceeds_the_sso_threshold"});
+
+  // Only CPU EP supports string tensors.
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+// Verify Loop with zero trip count produces empty scan output for strings.
+TEST(Loop, StringScanOutputZeroIterations) {
+  auto create_subgraph = []() {
+    Model model("String scan output zero iter", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto string_tensor;
+    string_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
+    string_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& scan_out = graph.GetOrCreateNodeArg("scan_out", &string_tensor);
+
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+      graph.AddNode("cond_identity", "Identity", "Forward cond", inputs, outputs);
+    }
+
+    {
+      TensorProto value_tensor;
+      value_tensor.set_name("string_const");
+      value_tensor.add_dims(1);
+      value_tensor.set_data_type(TensorProto_DataType_STRING);
+      value_tensor.add_string_data("never_produced_because_zero_iterations");
+
+      auto& constant_node = graph.AddNode("string_constant", "Constant", "String constant",
+                                          {}, {&scan_out});
+      constant_node.AddAttribute("value", value_tensor);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in});
+    graph.SetOutputs({&cond_out, &scan_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {0});
+  test.AddInput<bool>("cond", {1}, {true});
+
+  // Zero iterations -> scan output shape {0, 1} with no elements
+  test.AddOutput<std::string>("scan_out_final", {0, 1}, {});
+
+  // Only CPU EP supports string tensors.
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
 #if defined(USE_CUDA)
 // test that when part of the subgraph run on CUDA it executes successfully
 TEST(Loop, MixedExecutionProviders) {

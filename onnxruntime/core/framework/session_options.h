@@ -16,6 +16,9 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
+// Needed for OrtReadNamedBufferFunc, the type of the EPContext data read callback stored in this struct. This include
+// can be removed once the experimental EPContext data callback APIs are promoted to the stable C API.
+#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 
@@ -226,6 +229,9 @@ struct SessionOptions {
   bool has_explicit_ep_context_gen_options = false;
   epctx::ModelGenOptions ep_context_gen_options = {};
   epctx::ModelGenOptions GetEpContextGenerationOptions() const;
+
+  OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
+  void* ep_context_data_read_state = nullptr;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

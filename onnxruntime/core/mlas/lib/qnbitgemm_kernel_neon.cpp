@@ -20,18 +20,18 @@ Abstract:
 #include <arm_neon.h>
 
 #include <cassert>
-#include <vector>
 #include <numeric>
+#include <vector>
 
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
-#ifdef USE_KLEIDIAI
-#include "kai/kai_common.h"
-#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
-#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
-#include "kai_ukernel_interface.h"
-#endif
+// W2 block-group pack helpers and scalar reference kernel declared in the
+// Avx512-named header are pure C++ (no x86 intrinsics). They serve as the
+// cross-arch layout authority for W2 and are reused on ARM64 for pack-size /
+// pack / layout; compute is provided by the native NEON DotProd kernel in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp.
+#include "sqnbitgemm_kernel_avx512_2bit.h"
 
 namespace sqnbitgemm_neon
 {
@@ -50,29 +50,17 @@ QNBitGemmPackQuantBDataSize(
     size_t K,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     if constexpr (BlkBitWidth == 4) {
-#ifndef USE_KLEIDIAI
         MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
         MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
-#endif
-
-#ifdef USE_KLEIDIAI
-        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-            const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
-            const size_t nr = ukernel.get_nr();
-            const size_t kr = ukernel.get_kr();
-            const size_t sr = ukernel.get_sr();
-            return kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
-        } else
-#endif
-        {
-            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-            return PackedQuantBDataSize;
-        }
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        return PackedQuantBDataSize;
     } else {
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -107,7 +95,8 @@ SQ4BitGemmPackQuantBData(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -179,49 +168,22 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
-    const std::byte*,
+    const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 4>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-#ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(QuantBScaleBegin);
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
-#endif
+    MLAS_UNREFERENCED_PARAMETER(QuantBZPBegin);
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
-#ifdef USE_KLEIDIAI
-    if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
-        std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
-
-        const size_t nr = ukernel.get_nr();
-        const size_t kr = ukernel.get_kr();
-        const size_t sr = ukernel.get_sr();
-
-        kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
-        params.lhs_zero_point = 1;
-        params.rhs_zero_point = 8;
-        params.scale_dt = kai_dt_bf16;
-
-        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-        const size_t scales_len = N * BlockCountK;
-        std::vector<uint16_t> scales(scales_len);
-        for (size_t i = 0; i < scales_len; i++) {
-            const uint32_t* i32 = reinterpret_cast<const uint32_t*>(&QuantBScaleBegin[i]);
-            scales[i] = *i32 >> 16;
-        }
-
-        kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
-                reinterpret_cast<const uint8_t*>(QuantBDataBegin), BlockCountK * BlkLen / 2,
-                nullptr, scales.data(), BlockCountK * sizeof(uint16_t),
-                PackedQuantBDataBegin, 0, &params);
-    } else
-#endif
-    {
-        std::byte* PackedQuantBDataBegin = reinterpret_cast<std::byte*>(PackedQuantB.QuantBWorkspace_);
-        SQ4BitGemmPackQuantBData(N, K, BlkLen, ComputeType, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
-    }
+    std::byte* PackedQuantBDataBegin = reinterpret_cast<std::byte*>(PackedQuantB.QuantBWorkspace_);
+    SQ4BitGemmPackQuantBData(
+        N, K, BlkLen, ComputeType, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool,
+        BackendKernelSelectorConfig
+    );
 }
 
 void
@@ -347,7 +309,8 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 8>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
@@ -381,7 +344,7 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
         // Pack the blksum (and BlkUnsignedQuantAZeroPointCorrection if applicable)
         if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
             Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool);
-        }    
+        }
     }
 }
 
@@ -397,36 +360,22 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t BlkLen,
     bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    size_t BlkBitWidth
+    size_t BlkBitWidth,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
-#ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
     MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
-#endif
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     switch (ComputeType) {
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
-#ifdef USE_KLEIDIAI
-            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-                const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
-                    M == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
-
-                const size_t mr = ukernel.get_mr();
-                const size_t kr = ukernel.get_kr();
-                const size_t sr = ukernel.get_sr();
-                return kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
-            } else
-#endif
-            {
-                // workspace buffer is used for block quantization of A to int8
-                const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-                // QuantData + Scale + BlkSum
-                const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
-                return PerGemmWorkspaceSize;
-            }
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            // QuantData + Scale + BlkSum
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
+            return PerGemmWorkspaceSize;
         }
         default: {
             return 0;
@@ -453,20 +402,6 @@ QNBitGemmPerGemmWorkspaceAlignment(
 }
 
 }  // namespace
-
-bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp)
-{
-#ifdef USE_KLEIDIAI
-    bool has_dotprod = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
-    return (BlkLen % 32) == 0 && (K % BlkLen) == 0 && !HasZp && has_dotprod;
-#else
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(BlkLen);
-    MLAS_UNREFERENCED_PARAMETER(HasZp);
-    return false;
-#endif
-}
 
 template<bool QuantAUnsigned>
 size_t
@@ -572,15 +507,9 @@ GetMlasQNBitGemmDispatchNeon(
         if (InitializeWithDotSupport) {
             d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
             d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
-            d.UsePacked_CompInt8 = sqnbitgemm_neon::UsePacked_CompInt8;
 
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<true>;
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<true>;
-
-#ifdef USE_KLEIDIAI
-            d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
-            d.QuantizeA_Packed_CompInt8 = sqnbitgemm_neon::QuantizeA_Packed_CompInt8;
-#endif
         }
 
         if (InitializeWithI8MMSupport) {
@@ -589,10 +518,53 @@ GetMlasQNBitGemmDispatchNeon(
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
         }
 
+        // W2 native CompInt8 path.
+        //
+        // Pack-size, pack-and-blksum, and EffectiveBlockCountK use the
+        // portable AVX-512-namespaced helpers (the file is misleadingly
+        // named -- the TU contains no x86 intrinsics) which serve as the
+        // cross-arch layout authority for W2.
+        //
+        // SQ2BitGemmKernel_BlkSum_CompInt8 is wired to the native NEON
+        // DotProd kernel when FEAT_DotProd is available; the kernel
+        // handles BlkLen ∈ {32, 64, 128} natively via SDOT inner loops.
+        // The 2-bit weights are unpacked to unsigned values in [0, 3] and
+        // fed directly to SDOT; the B zero-point correction is fused into
+        // the accumulator via the ABlockSum × QuantBBlkSum term (where
+        // QuantBBlkSum bakes in -scale × zp per block), so no post-kernel
+        // zero-point correction SGEMM is needed.
+        //
+        // FEAT_I8MM hosts also take this path: FEAT_I8MM always implies
+        // FEAT_DotProd per the ARM spec, and USDOT and SDOT have identical
+        // throughput on every core that implements both -- a separate I8MM
+        // TU using USDOT would be pure duplication. The real I8MM-only
+        // throughput win lives in SMMLA (R2-tile 2×2 matrix-multiply,
+        // 2× the dots/cycle of SDOT), which is future work.
+        //
+        // The Scalar fall-back is defensive: an I8MM-without-DotProd host
+        // is unreachable on conformant ARMv8.2+ hardware.
+        if (InitializeWithDotSupport || InitializeWithI8MMSupport) {
+            d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+            d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+            d.SQ2BitGemmKernel_BlkSum_CompInt8  = InitializeWithDotSupport
+                ? sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd
+                : onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar;
+            d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+                return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+            };
+            // W2 NEON DotProd kernel uses vdotq_s32 over A and so requires
+            // SIGNED int8 A. The shared QuantizeARowComputeBlkSum is wired
+            // to the UNSIGNED W8 variant on DotProd-only hosts; route W2
+            // through the signed variant explicitly.
+            d.QuantizeARowComputeBlkSum_CompInt8_W2 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
+        }
+
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
         d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
         d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
         d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+        d.HQ8BitGemmPackQuantBData = sqnbitgemm_neon::HQ8BitGemmPackQuantBData_CompFp16;
+        d.HQ8BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ8BitBlkDequantBForHgemm_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
         return d;

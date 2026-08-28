@@ -5,25 +5,26 @@
 #param tile_m
 #param tile_n
 #param use_subgroup
+#param vec_size
 
 #use .getByOffset .setByOffset
 
-// im2col access for src: [N, H_i, W_i, C_i / 4] (vec4-packed NHWC)
-// Conceptual Matrix Shape: N * (H_o * W_o) x (K_h * K_w * C_i / 4)
+// im2col access for src: [N, H_i, W_i, C_i / vec_size]
+// Conceptual Matrix Shape: N * (H_o * W_o) x (K_h * K_w * C_i / vec_size)
 fn load_src(batch : u32, m : u32, k_packed_idx : u32) -> src_value_t {
-  if (batch >= uniforms.batch || m >= uniforms.im2col_m || k_packed_idx * 4 >= uniforms.im2col_k) {
+  if (batch >= uniforms.batch || m >= uniforms.im2col_m || k_packed_idx * vec_size >= uniforms.im2col_k) {
     return src_value_t();
   }
 
-  let channel_i_v4 = uniforms.channel_i / 4;
+  let channel_i_vec = uniforms.channel_i / vec_size;
 
   // 1. Decompose M index (H_o * W_o) into (h_idx, w_idx)
   let h_idx = m / uniforms.output_w;  // Output H index (H_o)
   let w_idx = m % uniforms.output_w;  // Output W index (W_o)
 
-  // 2. Decompose K index into (k_h, k_w, c_i_v4_idx)
-  let c_i_v4_idx = k_packed_idx % channel_i_v4;
-  let k_h_w_idx = k_packed_idx / channel_i_v4;
+  // 2. Decompose K index into (k_h, k_w, c_i_vec_idx)
+  let c_i_vec_idx = k_packed_idx % channel_i_vec;
+  let k_h_w_idx = k_packed_idx / channel_i_vec;
   let k_h = k_h_w_idx / uniforms.kernel_w;  // Kernel Row
   let k_w = k_h_w_idx % uniforms.kernel_w;  // Kernel Column
 
@@ -41,18 +42,18 @@ fn load_src(batch : u32, m : u32, k_packed_idx : u32) -> src_value_t {
     return src_value_t();
   }
 
-  // 6. Calculate final NHWC/vec4 index
-  let src_idx = batch * uniforms.src_h * uniforms.src_w * channel_i_v4 +
-                u32(src_h_coord) * uniforms.src_w * channel_i_v4 +
-                u32(src_w_coord) * channel_i_v4 +
-                c_i_v4_idx;
+  // 6. Calculate final NHWC index
+  let src_idx = batch * uniforms.src_h * uniforms.src_w * channel_i_vec +
+                u32(src_h_coord) * uniforms.src_w * channel_i_vec +
+                u32(src_w_coord) * channel_i_vec +
+                c_i_vec_idx;
   return src.getByOffset(src_idx);
 }
 
-// weight shape: [Co, K_h, K_w, C_i / 4] (vec4-packed CoHWCi)
+// weight shape: [Co, K_h, K_w, C_i / vec_size] (CoHWCi)
 fn load_weight(n : u32, k_packed_idx : u32) -> weight_value_t {
-  if (n < uniforms.im2col_n && k_packed_idx < uniforms.im2col_k / 4) {
-    let weight_idx = n * uniforms.im2col_k / 4 +
+  if (n < uniforms.im2col_n && k_packed_idx < uniforms.im2col_k / vec_size) {
+    let weight_idx = n * uniforms.im2col_k / vec_size +
                      k_packed_idx;
     return weight.getByOffset(weight_idx);
   }
@@ -80,7 +81,10 @@ fn write_output(batch : u32, m : u32, n : u32, value : output_element_t) {
 
 const TILE_M_SIZE : u32 = tile_m;
 const TILE_N_SIZE : u32 = tile_n;
-const TILE_K_VEC_SIZE : u32 = 4;
+// In dimension K, the tile consists of 16 scalars, requiring `16 / vec_size` vector loads.
+const TILE_K_VEC_SIZE : u32 = 16 / vec_size;
+// In dimensions M and N, since a workgroup has 64 threads, it advances by `64 / TILE_K_VEC_SIZE`.
+const ADVANCE_DIM = 64 / TILE_K_VEC_SIZE;
 
 var<workgroup> src_tile : array<array<src_value_t, TILE_M_SIZE>, TILE_K_VEC_SIZE>;
 var<workgroup> weight_tile : array<array<weight_value_t, TILE_N_SIZE>, TILE_K_VEC_SIZE>;
@@ -92,20 +96,20 @@ $MAIN {
 
   var results : array<output_element_t, TILE_M_SIZE>;
   for (var k_idx = 0u; k_idx < uniforms.K_tiles; k_idx++) {
-    for (var src_m = 0u; src_m < TILE_M_SIZE; src_m += 16u) {
-      // Loads a 16x4 vec of src into the workgroup memory.
-      let load_src_m = src_m + local_idx / 4;
-      let load_src_k = local_idx % 4;
+    for (var src_m = 0u; src_m < TILE_M_SIZE; src_m += ADVANCE_DIM) {
+      // Loads a 64 vec of src into the workgroup memory.
+      let load_src_m = src_m + local_idx / TILE_K_VEC_SIZE;
+      let load_src_k = local_idx % TILE_K_VEC_SIZE;
 
       src_tile[load_src_k][load_src_m] = load_src(batch,
                                                   m_global_base + load_src_m,
                                                   k_idx * TILE_K_VEC_SIZE + load_src_k);
     }
 
-    for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += 16u) {
-      // Loads a 16x4 vec of weight into the workgroup memory.
-      let load_weight_n = weight_n + local_idx / 4;
-      let load_weight_k = local_idx % 4;
+    for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += ADVANCE_DIM) {
+      // Loads a 64 vec of weight into the workgroup memory.
+      let load_weight_n = weight_n + local_idx / TILE_K_VEC_SIZE;
+      let load_weight_k = local_idx % TILE_K_VEC_SIZE;
 
       weight_tile[load_weight_k][load_weight_n] = load_weight(n_global_base + load_weight_n,
                                                               k_idx * TILE_K_VEC_SIZE + load_weight_k);
@@ -121,7 +125,11 @@ $MAIN {
       }
 #else
       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
+#if vec_size == 1
+        results[m_idx] += output_element_t(weight_data * src_tile[inner_k_idx][m_idx]);
+#else
         results[m_idx] += output_element_t(dot(weight_data, src_tile[inner_k_idx][m_idx]));
+#endif
       }
 #endif
     }

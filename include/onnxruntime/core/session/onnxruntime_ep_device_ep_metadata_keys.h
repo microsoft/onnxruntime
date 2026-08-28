@@ -10,6 +10,10 @@
 static const char* const kOrtEpDevice_EpMetadataKey_Version = "version";
 
 // Key for the execution provider OS driver version.
+// Value should be a 4-part dot-separated version string in the format "a.b.c.d" (e.g., "31.0.101.4502").
+// This maps to the Windows DXCore adapter property DXCoreAdapterProperty::DriverVersion
+// (https://learn.microsoft.com/en-us/windows/win32/api/dxcore_interface/ne-dxcore_interface-dxcoreadapterproperty).
+// On non-Windows platforms, the EP should provide an equivalent OS-level driver version if available.
 static const char* const kOrtEpDevice_EpMetadataKey_OSDriverVersion = "os_driver_version";
 
 // Prefix for execution provider compatibility information stored in model metadata.
@@ -26,3 +30,18 @@ static const char* const kOrtEpDevice_EpMetadataKey_LibraryPath = "library_path"
 //         if this metadata key is not present.
 //  - "1": OrtHardwareDevice is virtual.
 static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "is_virtual";
+
+// Key for the execution provider's weightless mode support on a specific device.
+// Set by the EP during GetSupportedDevices() via CreateEpDevice() metadata.
+// The app can read it via EpDevice_EpMetadata() to check device-specific weightless capability
+// before calling ModelCompilationOptions_SetWeightlessEnabled().
+//
+// Possible values:
+//  - "none": EP does not support weightless mode on this device. This is the assumed default value
+//            if this metadata key is not present.
+//  - "external_only": EP supports weightless mode for external initializers only (e.g., older
+//                     hardware/driver that must transform internal constants).
+//  - "all": EP supports weightless mode for all initializers (internal and external).
+//
+// \since Version 1.29.
+static const char* const kOrtEpDevice_EpMetadataKey_WeightlessSupport = "weightless_support";

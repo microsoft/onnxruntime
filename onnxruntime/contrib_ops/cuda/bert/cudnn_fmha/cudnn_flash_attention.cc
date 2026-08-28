@@ -59,6 +59,7 @@ void run(
 
 #include <cudnn_frontend.h>
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 namespace onnxruntime::cudnn_sdpa {
@@ -82,12 +83,21 @@ bool is_stable() {
   //    Sliding window attention
   // version 90300 (9.3.0)
   //    Bug fixes; Variable sequence length supports zero-sequence-length values
+  // version 90600 (9.6.0)
+  //    Bottom-right causal mask no longer requires sequence lengths to be multiples of 64
   // For more information, please refer to cuDNN release notes, and the following links:
   //    https://docs.nvidia.com/deeplearning/cudnn/latest/developer/graph-api.html#fused-flash-attention-fprop
-  //    https://github.com/NVIDIA/cudnn-frontend/blob/v1.5.2/docs/operations/Attention.md
+  //    https://github.com/NVIDIA/cudnn-frontend/blob/v1.24.0/docs/operations/Attention.md
 
   // For cuDNN version < 9.3, we will disable it by default.
-  return cudnnGetVersion() >= 90300;
+  const size_t version = cudnnGetVersion();
+
+  // cuDNN 9.10.0 and 9.10.1 have known bugs in the FP16/BF16 SDPA forward kernels, so skip them.
+  if (version == 91000 || version == 91001) {
+    return false;
+  }
+
+  return version >= 90300;
 }
 
 namespace fe = cudnn_frontend;
@@ -100,14 +110,36 @@ bool is_supported(const cudaDeviceProp& dprops,
                   int sequence_length_q,
                   int sequence_length_kv,
                   bool is_causal) {
-  return (dprops.major >= 8) &&
-         (head_size_qk % 8 == 0) && (head_size_qk <= 256) &&
-         (head_size_v % 8 == 0) && (head_size_v <= 256) &&
-         (num_heads_q % num_heads_kv == 0) &&
-         // Bottom right causal mask is only supported with s_q multiple of 64 and s_kv multiple of 64.
-         (!is_causal || (sequence_length_q != sequence_length_kv &&
-                         sequence_length_q % 64 == 0 &&
-                         sequence_length_kv % 64 == 0));
+  if (dprops.major < 8 ||
+      (head_size_qk % 8 != 0) || (head_size_qk > 256) ||
+      (head_size_v % 8 != 0) || (head_size_v > 256) ||
+      (num_heads_kv == 0) || (num_heads_q % num_heads_kv != 0)) {
+    return false;
+  }
+
+  // For a single query token (s_q == 1, e.g. decode) causal masking is a no-op: the token attends to
+  // every key up to its own position, which the padding / kv sequence length already bounds. cuDNN is
+  // therefore called without a causal mask in that case (see run()), so the causal-specific support
+  // restrictions below do not apply.
+  if (is_causal && sequence_length_q > 1) {
+    // cuDNN expresses causal masking through diagonal alignment (cudnn_frontend >= 1.24):
+    //   * s_q == s_kv : top-left aligned mask (standard self-attention causal, e.g. prefill).
+    //   * s_q  < s_kv : bottom-right aligned mask (decode / cross attention with past KV).
+    //   * s_q  > s_kv : not supported by cuDNN bottom-right causal masking.
+    if (sequence_length_q > sequence_length_kv) {
+      return false;
+    }
+
+    // Bottom-right causal masking requires s_q and s_kv to be multiples of 64 on cuDNN < 9.6.0.
+    // Top-left causal masking (s_q == s_kv) has no such restriction.
+    if (sequence_length_q != sequence_length_kv &&
+        cudnnGetVersion() < 90600 &&
+        (sequence_length_q % 64 != 0 || sequence_length_kv % 64 != 0)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // A helper function to set stride for q, k, v or output tensor.
@@ -228,13 +260,23 @@ std::shared_ptr<fe::graph::Graph> build_graph(GraphParams& params) {
 
   auto attributes = fe::graph::SDPA_attributes()
                         .set_name("SDPA")
-                        .set_is_inference(true)
-                        .set_causal_mask(is_causal)
-                        .set_causal_mask_bottom_right(is_causal && sequence_length_q != sequence_length_kv)
+                        .set_generate_stats(false)
                         .set_attn_scale(scale);
 
+  if (is_causal) {
+    // Use diagonal-alignment based causal masking (cudnn_frontend >= 1.24). A right bound of 0 keeps
+    // only the lower-triangular region. Standard self-attention (s_q == s_kv) is top-left aligned;
+    // decode / cross attention (s_q < s_kv) is bottom-right aligned so the query rows line up with the
+    // most recent keys.
+    attributes.set_diagonal_alignment(sequence_length_q != sequence_length_kv
+                                          ? fe::DiagonalAlignment_t::BOTTOM_RIGHT
+                                          : fe::DiagonalAlignment_t::TOP_LEFT)
+        .set_diagonal_band_right_bound(0);
+  }
+
   if (params.sliding_window > 0) {
-    attributes.set_sliding_window_length(params.sliding_window);
+    // Sliding window length maps to the left bound of the attention diagonal band.
+    attributes.set_diagonal_band_left_bound(params.sliding_window);
   }
 
   if (params.has_bias) {
@@ -315,6 +357,22 @@ struct BytesHash {
 // TODO(tianleiwu): since the key includes sequence lengths, we may want to limit the cache size.
 thread_local std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, BytesHash<GraphParams> > mha_graph_cache;
 
+// Allocate a device buffer of shape [batch_size] filled with a constant sequence length.
+// Used to synthesize a no-op padding mask for one side when cuDNN requires both seq_len_q and
+// seq_len_kv to be set (cudnn_frontend validates that both are present when padding mask is on).
+// The buffer is filled with a stream-ordered Fill kernel (rather than a synchronous cudaMemcpy)
+// so this path is safe to capture into a CUDA graph.
+static IAllocatorUniquePtr<int> CreateConstantSeqLenBuffer(AllocatorPtr allocator,
+                                                           Stream* stream,
+                                                           int batch_size,
+                                                           int value) {
+  IAllocatorUniquePtr<int> buffer =
+      IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(batch_size), false, stream);
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+  onnxruntime::cuda::Fill<int>(cuda_stream, buffer.get(), value, static_cast<int64_t>(batch_size));
+  return buffer;
+}
+
 void run(
     void* output,
     void* q,
@@ -340,6 +398,22 @@ void run(
     cudnnHandle_t handle,
     Stream* stream,
     AllocatorPtr allocator) {
+  // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
+  // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
+  // behaves as a no-op padding mask on that side.
+  IAllocatorUniquePtr<int> synthesized_seq_len_q;
+  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
+  if (mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr) {
+    if (mask_sequence_lengths_q == nullptr) {
+      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
+      mask_sequence_lengths_q = synthesized_seq_len_q.get();
+    }
+    if (mask_sequence_lengths_kv == nullptr) {
+      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
+      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
+    }
+  }
+
   GraphParams params;
   params.batch_size = batch_size;
   params.num_heads_q = num_heads_q;
@@ -349,7 +423,11 @@ void run(
   params.sequence_length_q = sequence_length_q;
   params.sequence_length_kv = sequence_length_kv;
   params.scale = scale;
-  params.is_causal = is_causal;
+  // A single query token (s_q == 1, e.g. decode) attends to all keys up to its own position, so causal
+  // masking is a no-op and the padding / kv sequence length bounds the valid keys. Dropping the causal
+  // mask here also avoids a cuDNN limitation where decode-only graphs (s_q == 1) with a causal
+  // right-bound fail to build on cuDNN backend versions <= 9.9.0.
+  params.is_causal = is_causal && (sequence_length_q > 1);
   params.is_bf16 = is_bf16;
   params.qkv_format = qkv_format;
   params.handle = handle;
