@@ -1833,6 +1833,10 @@ MlasFp16AccelerationSupported();
 
 /**
  * @brief Whether an accelerated HalfGemm backend is available with the given configuration.
+ *
+ * @param BackendKernelSelectorConfig Backend kernel selection configuration. A
+ *        null pointer enables the default backend configuration.
+ * @return True if HalfGemm can use an accelerated backend.
  */
 bool MLASCALL
 MlasHalfGemmAccelerationSupported(

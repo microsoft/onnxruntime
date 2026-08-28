@@ -27,8 +27,7 @@ struct KernelRegistryAndStatus {
 };
 }  // namespace
 
-#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
-    defined(MLAS_TARGET_RISCV64)
+#if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 #define ORT_CPU_FP16_GEMM_MATMUL_ENABLED
 #endif
 
