@@ -1806,7 +1806,7 @@ class TestInferenceSession(unittest.TestCase):
         apple_accelerator = next(
             (
                 device
-                for device in onnxrt.get_hardware_devices()
+                for device in C.get_hardware_devices()
                 if device.type in (onnxrt.OrtHardwareDeviceType.GPU, onnxrt.OrtHardwareDeviceType.NPU)
                 and device.vendor == "Apple"
             ),
