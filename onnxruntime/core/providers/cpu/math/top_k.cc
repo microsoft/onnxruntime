@@ -25,6 +25,7 @@
 #include <queue>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <core/common/safeint.h>
 
 namespace onnxruntime {
@@ -481,9 +482,8 @@ static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axi
                            "the tensor to be processed and a tensor containing k value");
   }
 
-  auto y_shape = Y->Shape().GetDims();
-  if (y_shape.size() != 1 || y_shape[0] != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
+  if (Y->Shape().Size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should contain exactly one element");
   }
 
   auto parsed_input_k = Y->Data<int64_t>()[0];
@@ -491,7 +491,11 @@ static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axi
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
   }
 
-  return TopKImpl<T>(p_op_kernel_context, X, axis, gsl::narrow_cast<unsigned>(parsed_input_k), is_largest, is_sorted);
+  if (parsed_input_k > std::numeric_limits<unsigned>::max()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k exceeds supported range");
+  }
+
+  return TopKImpl<T>(p_op_kernel_context, X, axis, static_cast<unsigned>(parsed_input_k), is_largest, is_sorted);
 }
 
 template <>
