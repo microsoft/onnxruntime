@@ -47,7 +47,7 @@ static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t ran
     std::sort(axes_values.begin(), axes_values.end());
   }
   // check if axes are consecutive
-  for (size_t i = 1; i < axes_values.size(); i++) {
+  for (size_size_t i = 1; i < axes_values.size(); i++) {
     if (axes_values[i] != axes_values[i - 1] + 1) {
       axes_values.clear();
       break;
@@ -519,35 +519,32 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
+    // --- REPLACE LINES 522-540 WITH THIS: ---
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
+
+    const NodeArg* div_output = div_node.OutputDefs()[0];
+    const NodeArg* mul_output = mul_node.OutputDefs()[0];
+
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      NodeArg* input_def = mul_node.MutableInputDefs()[i];
+      if (input_def == nullptr || input_def->Shape() == nullptr) {
         continue;
       }
-      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
+      if (input_def != div_output &&
+          input_def->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = input_def;
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      NodeArg* input_def = last_add_node.MutableInputDefs()[i];
+      if (input_def == nullptr || input_def->Shape() == nullptr) {
         continue;
       }
-      if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        bias = last_add_node.MutableInputDefs()[i];
-      }
-    }
-    if (scale == nullptr || bias == nullptr) {
-      continue;
-    }
-
-    // Scale and bias must have the same shape.
-    bool same_dim = true;
-    for (int i = 0; i < scale->Shape()->dim_size(); i++) {
-      if (scale->Shape()->dim(i).dim_value() != bias->Shape()->dim(i).dim_value()) {
-        same_dim = false;
-        break;
+      if (input_def != mul_output &&
+          input_def->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        bias = input_def;
       }
     }
     if (!same_dim)
@@ -790,20 +787,23 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
+// --- REPLACE LINES 793-809 WITH THIS: ---
     NodeArg* scale = nullptr;
+    const NodeArg* div_output = div_node.OutputDefs()[0];
+
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      NodeArg* input_def = mul_node.MutableInputDefs()[i];
+      if (input_def == nullptr || input_def->Shape() == nullptr) {
         continue;
       }
 #ifdef ENABLE_TRAINING_CORE
-      if (axes_values.empty() ||
-          mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
+      if (input_def != div_output &&
+          (axes_values.empty() || input_def->Shape()->dim_size() == static_cast<int>(axes_values.size()))) {
+        scale = input_def;
       }
 #else
-      // Scale must be 1d.
-      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-        scale = mul_node.MutableInputDefs()[i];
+      if (input_def != div_output && input_def->Shape()->dim_size() == 1) {
+        scale = input_def;
       }
 #endif
     }
