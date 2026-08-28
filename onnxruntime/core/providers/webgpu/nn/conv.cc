@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -277,6 +278,12 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       AppendActivationUniformsData(activation_, program);
       return context.RunProgram(program);
     } else {
+      if (is_channels_last) {
+        auto M = matmul_output_shape[1];
+        if (intel::CanApplyMatMulIntel(context, batch, M, N, K)) {
+          return intel::ApplyMatMulIntel(context, activation_, inputs, output, matmul_input_reshapes[0], matmul_input_reshapes[1]);
+        }
+      }
       return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
     }
   }
