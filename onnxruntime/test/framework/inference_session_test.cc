@@ -4146,11 +4146,15 @@ TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerPrese
 
     if (externalize) {
       external_file.close();
+      ASSERT_GT(std::filesystem::file_size(external_path), 0u);
+#if !defined(__EMSCRIPTEN__)
+      // WASM cannot load host filesystem external data without a Module.MountedFiles mapping.
       std::ofstream output_model(output_path, std::ios::binary | std::ios::trunc);
       ASSERT_TRUE(output_model.is_open());
       output_model.write(sink.data(), static_cast<std::streamsize>(sink.size()));
       output_model.close();
       RunCompileApiAddModel(sink, output_path.c_str(), true);
+#endif
     } else {
       RunCompileApiAddModel(sink, nullptr, true);
     }
