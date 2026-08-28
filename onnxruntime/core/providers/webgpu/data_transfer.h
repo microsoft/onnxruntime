@@ -33,10 +33,6 @@ class DataTransfer : public IDataTransfer {
   DataTransfer(const BufferManager& buffer_manager) : impl_{buffer_manager} {};
   ~DataTransfer() {};
 
-  // Device-compatibility predicate for WebGPU copies. Does not touch the BufferManager, so it can
-  // be exercised without a live device.
-  static bool IsSupportedDevicePair(const OrtDevice& src_device, const OrtDevice& dst_device);
-
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;

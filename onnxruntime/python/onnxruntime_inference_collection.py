@@ -335,11 +335,13 @@ class Session:
         for value in values:
             if not isinstance(value, OrtValue):
                 continue
-            # Session-owned values are valid only with their owner; shared-allocator values have no session owner.
+            # Sessionless values come from a shared allocator. A session-owned WebGPU buffer is
+            # usable by any session on the same WebGPU context.
             if value._session is not None and value._session is not self._sess:
-                raise ValueError("Session-scoped OrtValue must be used with the session that created it.")
-            if value._is_webgpu_buffer:
-                raise ValueError("WebGPU OrtValues must be used with IOBinding.")
+                if not (
+                    value._is_webgpu_buffer and value._session.webgpu_context_id() == self._sess.webgpu_context_id()
+                ):
+                    raise ValueError("Session-scoped OrtValue must be used with the session that created it.")
 
     def _validate_graph_capture_run_api(self, run_options=None):
         if not self._sess.is_webgpu_graph_capture_enabled():

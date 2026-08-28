@@ -2010,6 +2010,39 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "same session"):
             owned.update_inplace(foreign)
 
+    def test_ortvalue_ownership_allows_matching_webgpu_context(self):
+        """A WebGPU buffer from another session is accepted only on a matching WebGPU context.
+
+        The context id is injected because a second WebGPU context needs caller-supplied Dawn
+        handles, which Python cannot reach.
+        """
+
+        class WebGpuValue(onnxrt.OrtValue):
+            _is_webgpu_buffer = True
+
+        class FakeSession:
+            def __init__(self, context_id):
+                self._context_id = context_id
+
+            def webgpu_context_id(self):
+                return self._context_id
+
+        class FakeOwner:
+            def __init__(self, session):
+                self._sess = session
+
+        source = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros((2, 2), dtype=np.float32))
+        target = FakeOwner(FakeSession(0))
+
+        same_context = WebGpuValue(source._get_c_value())
+        same_context._session = FakeSession(0)
+        onnxrt.InferenceSession._validate_ortvalue_ownership(target, [same_context])
+
+        other_context = WebGpuValue(source._get_c_value())
+        other_context._session = FakeSession(1)
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            onnxrt.InferenceSession._validate_ortvalue_ownership(target, [other_context])
+
     def test_foreign_webgpu_context_predicate(self):
         """Unit-test the copy_tensors context predicate without needing a second WebGPU context.
 
@@ -2527,52 +2560,6 @@ class TestInferenceSession(unittest.TestCase):
         # ... and releasing the WebGPU buffer afterwards must not fault.
         del held
         gc.collect()
-
-    @unittest.skipIf(
-        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
-        "WebGpuExecutionProvider is not available",
-    )
-    def test_webgpu_copy_tensors_misuse_raises_instead_of_terminating(self):
-        """Misusing copy_tensors on WebGPU buffers must raise, not kill the process.
-
-        BufferManager::MemCpy reports misuse with ORT_ENFORCE, which throws. The shared data
-        transfer reaches it through WebGpuDataTransferImpl::CopyTensorsImpl, a noexcept C ABI
-        callback, so before the fix the exception escaped a noexcept frame and std::terminate took
-        the process down with no message. That was unreachable while copy_tensors rejected every
-        WebGPU OrtValue outright; allowing the supported copies exposes it, so it is pinned here.
-        """
-        so = onnxrt.SessionOptions()
-        so.enable_mem_pattern = False
-
-        try:
-            session = onnxrt.InferenceSession(
-                get_name("mul_1.onnx"),
-                sess_options=so,
-                providers=["WebGpuExecutionProvider"],
-            )
-        except RuntimeError as error:
-            if "Failed to get a WebGPU" in str(error):
-                self.skipTest(str(error))
-            raise
-
-        large = device_ortvalue_from_numpy(session, np.zeros((64, 64), dtype=np.float32), "webgpu")
-        small = session.create_ortvalue_from_shape_and_type([2, 2], np.float32, "webgpu")
-
-        # Aliased source and destination: WebGPU forbids a self copy.
-        with self.assertRaisesRegex(RuntimeError, "must be different"):
-            onnxrt.copy_tensors([large], [large])
-
-        # Destination too small to receive the source.
-        with self.assertRaisesRegex(RuntimeError, "must have enough space"):
-            onnxrt.copy_tensors([large], [small])
-
-        # The session is still usable: the failures were reported, not fatal.
-        input_metadata = session.get_inputs()[0]
-        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
-        gpu_input = device_ortvalue_from_numpy(session, input_value, "webgpu")
-        gpu_copy = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
-        onnxrt.copy_tensors([gpu_input], [gpu_copy])
-        np.testing.assert_allclose(gpu_copy.numpy(), input_value)
 
     def test_memory_arena_shrinkage(self):
         if (

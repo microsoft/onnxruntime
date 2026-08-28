@@ -21,14 +21,6 @@ namespace python {
 namespace py = pybind11;
 
 namespace {
-const char* GetBindingAllocatorName(const OrtDevice& device) {
-  if (device.Type() == OrtDevice::GPU &&
-      device.Vendor() == OrtDevice::VendorIds::NONE) {
-    return WEBGPU_BUFFER;
-  }
-  return GetDeviceName(device);
-}
-
 void BindOutput(SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device,
                 MLDataType element_type, const std::vector<int64_t>& shape, int64_t data_ptr) {
   ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
@@ -51,7 +43,7 @@ void BindOutput(SessionIOBinding* io_binding, const std::string& name, const Ort
   }
 
   OrtValue ml_value;
-  OrtMemoryInfo info(GetBindingAllocatorName(device), OrtDeviceAllocator, device);
+  OrtMemoryInfo info(GetDeviceAllocatorName(device), OrtDeviceAllocator, device);
   Tensor::InitOrtValue(element_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
   auto status = io_binding->Get()->BindOutput(name, ml_value);
@@ -109,7 +101,7 @@ void addIoBindingMethods(pybind11::module& m) {
         }
         auto ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
         OrtValue ml_value;
-        OrtMemoryInfo info(GetBindingAllocatorName(device), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceAllocatorName(device), OrtDeviceAllocator, device);
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
         auto status = io_binding->Get()->BindInput(name, ml_value);
@@ -126,7 +118,7 @@ void addIoBindingMethods(pybind11::module& m) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        OrtMemoryInfo info(GetBindingAllocatorName(device), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceAllocatorName(device), OrtDeviceAllocator, device);
         auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         // See comment in the int32_t element_type overload above: string tensors are not safe
         // to bind via a raw, non-owning pointer because no std::string objects are constructed

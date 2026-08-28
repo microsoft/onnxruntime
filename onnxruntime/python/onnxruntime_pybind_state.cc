@@ -99,10 +99,7 @@ std::unique_ptr<OrtValue> CreateSessionOrtValue(PyInferenceSession* session,
   // Accessing session state enforces that initialization has completed.
   (void)session->GetSessionHandle()->GetSessionState();
 
-  const char* allocator_name = device.Type() == OrtDevice::GPU &&
-                                       device.Vendor() == OrtDevice::VendorIds::NONE
-                                   ? WEBGPU_BUFFER
-                                   : GetDeviceName(device);
+  const char* allocator_name = GetDeviceAllocatorName(device);
   OrtMemoryInfo memory_info{allocator_name, OrtDeviceAllocator, device};
   auto allocator = session->GetSessionHandle()->GetAllocator(memory_info);
   if (!allocator) {
@@ -433,6 +430,13 @@ const char* GetDeviceName(const OrtDevice& device) {
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
+}
+
+const char* GetDeviceAllocatorName(const OrtDevice& device) {
+  if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NONE) {
+    return WEBGPU_BUFFER;
+  }
+  return GetDeviceName(device);
 }
 
 py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager) {
