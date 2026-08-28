@@ -16,7 +16,8 @@ python tools\ci_build\build.py `
 
 This option is intended for local development and supports Windows desktop x86, x64, and ARM64 targets. Windows ARM32
 and WindowsStore/UWP targets are not supported. Python wheels, C#, NuGet, Java, and Node.js packages are also not
-supported because they do not deploy the required D3D12 runtime DLLs.
+supported because they do not deploy the required D3D12 runtime DLLs. Custom Dawn checkouts selected with
+`onnxruntime_CUSTOM_DAWN_SRC_PATH` are not supported.
 
 The pinned SDK is a preview release, need enable Windows Developer Mode, and install a
 GPU driver that supports the experimental shader models required by the pinned Dawn revision. Feature availability
@@ -24,5 +25,5 @@ depends on the GPU and driver. At runtime, Dawn loads the SDK DLLs from the `D3D
 Look for `[AgilitySDK] active` in the Dawn log to confirm successful activation.
 
 For direct CMake configuration, enable `onnxruntime_USE_WEBGPU`, `onnxruntime_ENABLE_DAWN_BACKEND_D3D12`, and
-`DAWN_USE_AGILITY_SDK`. The SDK is downloaded to `third_party/agility-sdk` in the Dawn source tree. When
-`onnxruntime_CUSTOM_DAWN_SRC_PATH` is set, this directory is created in the specified Dawn checkout.
+`DAWN_USE_AGILITY_SDK`. The SDK is downloaded to `third_party/agility-sdk` in the Dawn source tree managed by ONNX
+Runtime.
