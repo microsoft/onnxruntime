@@ -7,32 +7,16 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/subgroup_matrix_common.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
-// Per-workgroup output tiling for one MatMul problem: the tile shape and split-K
-// factor chosen by a vendor-specific policy. The subgroup-matrix shape itself is
-// separate from this selection.
-struct SubgroupMatrixTiling {
-  uint32_t tile_m;   // output rows per workgroup
-  uint32_t tile_n;   // output cols per workgroup
-  uint32_t split_k;  // subgroups cooperating along K (1 = no split)
-};
-
-// Vendor-supplied callback that selects the output tiling for a given problem.
-// batch is the number of z-dispatched slices (1 for a shared 2D weight), used by
-// the policy to scale occupancy. Returning nullopt declines the problem, so
-// MatMul falls back to another compute path. An empty selector likewise yields
-// no implementation.
-using SubgroupMatrixTilingSelector =
-    std::function<std::optional<SubgroupMatrixTiling>(const ComputeContext& context,
-                                                      uint32_t M, uint32_t N, uint32_t K, uint32_t batch)>;
 
 // Creates a MatMulOptImpl that runs the subgroup-matrix kernel on devices whose
 // vendor policy supports it. The per-problem output tiling comes from a
@@ -73,6 +57,58 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
   const uint32_t sg_mat_count_n_;
   const uint32_t split_k_;
 };
+
+// Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
+// (N_b >= N), zero-filling columns [N, N_b). Gives B an even row stride so the
+// subgroup-matrix f16 load's 4-byte row-start alignment holds for odd N. Shared by
+// the subgroup-matrix MatMul and Conv 1x1 paths.
+class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMulPadBProgram> {
+ public:
+  SubgroupMatrixMatMulPadBProgram() : Program{"SubgroupMatrixMatMulPadB"} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"N_b", ProgramUniformVariableDataType::Uint32});
+};
+
+// Caches an even-strided (N_b = N + 1) copy of a constant weight B with odd N so
+// the column-pad pass runs once and is reused across inference steps. Shared by the
+// subgroup-matrix MatMul and Conv 1x1 paths, which need the same odd-N alignment
+// fix. Only valid when B is a constant initializer - a runtime B changes per run
+// and must not be cached.
+class SubgroupMatrixPadBCache {
+ public:
+  // Builds the padded copy of `b` (whose last dim must equal N) on first use and
+  // returns it via `b_used` with its row stride via `n_b`.
+  Status EnsurePaddedB(ComputeContext& context, const Tensor& b, uint32_t N,
+                       /*out*/ const Tensor*& b_used, /*out*/ uint32_t& n_b) const;
+
+ private:
+  mutable std::once_flag pad_once_;
+  mutable std::unique_ptr<Tensor> padded_b_;
+  mutable uint32_t padded_b_stride_ = 0;
+};
+
+// Runs the subgroup-matrix kernel for Y = A @ B (+ optional bias) given resolved
+// operands and their logical shapes. a_shape/b_shape may differ from the tensors'
+// own shapes when the caller reshaped them (e.g. a 1x1 Conv folding N,H,W into M).
+// Handles the shared 2D-weight and batched-B cases, odd-N even-stride padding (via
+// pad_cache when b_is_constant), vendor tiling and dispatch. When `output` is
+// non-null the caller's pre-allocated tensor is used as a flat buffer (its element
+// count must equal batch*M*N); when null the result is allocated via
+// context.Output(0, ...) shaped like a_shape with its trailing dim set to N. Sets
+// handled=true on success; leaves handled=false (touching nothing) on an
+// unsupported device/problem so the caller can fall back. Shared by the MatMul
+// operator and the Conv 1x1 path.
+Status DispatchSubgroupMatrixMatMul(ComputeContext& context,
+                                    int32_t config_index,
+                                    const SubgroupMatrixTilingSelector& tiling_selector,
+                                    const SubgroupMatrixPadBCache& pad_cache,
+                                    const Tensor* a, const Tensor* b, const Tensor* bias,
+                                    Tensor* output,
+                                    const TensorShape& a_shape, const TensorShape& b_shape,
+                                    bool b_is_constant,
+                                    /*out*/ bool& handled);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
