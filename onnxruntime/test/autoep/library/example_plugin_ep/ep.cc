@@ -98,8 +98,10 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
     }
 
     // Prefer writing straight into an already-allocated output, avoiding an allocation. The query does not
-    // validate the buffer against this run's computed shape, so validate element type and shape before touching it
-    // and fall back to GetOutput() on a mismatch.
+    // validate the buffer against this run's computed shape, so validate element type and shape before touching it.
+    // Do not write to an incompatible preallocated output. This example reports an error rather than calling
+    // GetOutput() on a mismatch. GetOutput() would not replace it; ORT can reject the already-allocated output slot
+    // with a shape-mismatch error.
     OrtValue* preallocated_output = nullptr;
     RETURN_IF_ERROR(ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, 0, &preallocated_output));
     RecordPreallocatedOutputQueryResult(preallocated_output != nullptr ? 1 : 0);
@@ -114,20 +116,15 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
       ort_api.ReleaseStatus(status);
     }
 
+    float* output_data = nullptr;
     if (preallocated_output != nullptr) {
-      Ort::ConstValue output_value{preallocated_output};
+      Ort::UnownedValue output_value{preallocated_output};
       auto type_and_shape = output_value.GetTensorTypeAndShapeInfo();
       if (type_and_shape.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
           type_and_shape.GetShape() != shape0) {
-        preallocated_output = nullptr;
+        throw Ort::Exception("Unexpected output type or shape for preallocated output of MulKernel", ORT_INVALID_ARGUMENT);
       }
-    }
-
-    float* output_data = nullptr;
-    if (preallocated_output != nullptr) {
-      void* raw_output_data = nullptr;
-      RETURN_IF_ERROR(ort_api.GetTensorMutableData(preallocated_output, &raw_output_data));
-      output_data = static_cast<float*>(raw_output_data);
+      output_data = output_value.GetTensorMutableData<float>();
     } else {
       output_data = kernel_context.GetOutput(0, shape0).GetTensorMutableData<float>();
     }

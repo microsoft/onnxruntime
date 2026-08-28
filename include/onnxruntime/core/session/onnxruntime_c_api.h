@@ -7572,10 +7572,14 @@ struct OrtApi {
    * resizes, or replaces an output value.
    *
    * The caller must validate the returned tensor's shape and element type before
-   * writing to it. ORT validates element type, rank, and static dimensions before
-   * the run, but the dynamic-dimension check that KernelContext_GetOutput performs
-   * is skipped on this path, so a model with dynamic output shapes can yield a
-   * buffer smaller than the computed output.
+   * writing to it, and must not write to an incompatible tensor. ORT generally
+   * rejects element type, rank, and static-dimension mismatches for top-level
+   * outputs during pre-run validation. For dynamic output dimensions, however,
+   * the shape check that KernelContext_GetOutput performs is skipped on this
+   * path, so a model with dynamic output shapes can yield a buffer smaller than
+   * the computed output. Calling KernelContext_GetOutput with the computed shape
+   * does not resize or replace an incompatible preallocated tensor; because the
+   * output slot is already allocated, ORT returns an error for the mismatch.
    *
    * \param[in] context OrtKernelContext instance.
    * \param[in] output_index Output index in the current kernel.
