@@ -26,7 +26,7 @@ struct VariantPack {
   const float* beta = nullptr;             // [total_tokens, Hv]
   const float* initial_state = nullptr;    // [B, Hv, V, K] V-major, may alias final_state
   const float* a_log = nullptr;            // [Hv]
-  const float* dt_bias = nullptr;          // [Hv] or [Hv, K]
+  const float* dt_bias = nullptr;          // [Hv]
   T* output = nullptr;                     // [total_tokens, max(Hq,Hv), V]
   float* final_state = nullptr;            // [B, Hv, V, K]
   float* state_update = nullptr;           // [B, C * (Hv + Hk*K + Hv*V)]

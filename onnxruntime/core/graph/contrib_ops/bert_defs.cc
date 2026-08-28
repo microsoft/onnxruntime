@@ -3071,19 +3071,19 @@ implementation reads the whole incoming state before writing any of it.
 
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
 is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
-transitions are emitted in one `state_update` float tensor
-`[batch_size, C * (num_heads_v + num_heads_k * head_size_qk +
-num_heads_v * head_size_v)]`. Each row is struct-of-arrays: all decay values, then all keys,
-then all deltas. Entries at positions greater than or equal to `capture_count[b]` are unspecified;
-consumers must read only the captured prefix. The key retains its shared `num_heads_k`
-representation. For scalar decay the decoded factors replay one transition as
-`S *= decay; S += outer(key, delta)`. Per-key-dimension
-decay is not supported when compact updates are enabled. `capture_count` is forbidden when C is
-zero.
+transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
+float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
+Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
+greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
+read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
+decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
+Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
+forbidden when C is zero.
 
-The optional CPU input `state_update_active` has shape `[1]` and reports whether any row has
-a positive capture count in this invocation. When zero, the planner may use an engine that cannot
-emit compact updates. Omitting it preserves the conservative behavior of treating capture as active.
+The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
+disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
+engine that cannot emit compact updates. Omitting it preserves the conservative behavior of
+treating capture as active.
 
 Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
 
@@ -3132,7 +3132,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("chunk_size",
-              "Tuning hint for the chunk-parallel prefill algorithm. Default 64.",
+              "Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; "
+              "any other value lets the implementation take the widest chunk the device can "
+              "hold. Default 64.",
               AttributeProto::INT, static_cast<int64_t>(64))
         .Attr("state_update_capacity",
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "
@@ -3164,7 +3166,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "TS", OpSchema::Optional)
         .Input(9, "capture_count",
                "Number of leading local token transitions to capture for each request, shape "
-               "(batch_size). Required exactly when state_update_capacity is positive.",
+               "(batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. "
+               "Required exactly when state_update_capacity is positive.",
                "TI", OpSchema::Optional)
         .Input(10, "state_update_active",
                "CPU int32 control with shape (1). Zero disables transition capture, ignores "
@@ -3248,6 +3251,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 query_shape.dim(token_dims + 1).has_dim_value() &&
                 value_shape.dim(token_dims).has_dim_value() &&
                 value_shape.dim(token_dims + 1).has_dim_value()) {
+              // num_heads_k is constrained to equal num_heads_q, so query supplies it.
               const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
               const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
               const int64_t num_heads_v = value_shape.dim(token_dims).dim_value();

@@ -3,7 +3,7 @@
 
 // GatedDeltaNet CUDA kernels.
 //
-// Two engines, chosen by gated_delta_net_plan.cc:
+// Two engines, chosen by gated_delta_net_plan.h:
 //
 //  * chunked  -- tensor-core chunked scan for prefill. One CTA owns one
 //                (sequence, v-head, v-block) and walks the sequence in BT=64 token chunks,
@@ -239,7 +239,6 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
                                          p.gate_activation)
                         : 0.0f;
         be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
-        if (!needs_retrieval) be = pack.beta != nullptr ? be : 1.0f;
       }
       s.gc[tid] = g;
       s.beta[tid] = be;
@@ -533,8 +532,8 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   float* S = rsmem;                          // [d_k][d_v]
   float* kbuf = S + d_k * d_v;               // [d_k]
   float* qbuf = kbuf + d_k;                  // [d_k]
-  float* rbuf = qbuf + d_k;                  // [max(d_v, 2)]
-  float* gbuf = rbuf + (d_v > 1 ? d_v : 2);  // [d_k] per-key-dim decay
+  float* rbuf = qbuf + d_k;                  // [max(d_v, 2)], see RecurrentSmemBytes
+  float* gbuf = rbuf + (d_v > 2 ? d_v : 2);  // [d_k] per-key-dim decay
 
   const int b = blockIdx.x, hv = blockIdx.y;
   const int tid = threadIdx.x;

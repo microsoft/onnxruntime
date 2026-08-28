@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/gated_delta_net.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 
@@ -282,15 +283,11 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.io_type = std::is_same<T, MLFloat16>::value ? gdn::IoType::kFloat16 : gdn::IoType::kFloat;
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
-  desc.has_decay = decay != nullptr;
-  desc.has_beta = beta != nullptr;
-  desc.has_initial_state = initial_state != nullptr;
   desc.ragged = cu_seqlens != nullptr;
   desc.preferred_engine = forced_engine_;
 
   const cudaDeviceProp& prop = GetDeviceProp();
   desc.sm_major = prop.major;
-  desc.sm_minor = prop.minor;
 
   gdn::Plan plan = gdn::SelectPlan(desc, prop.sharedMemPerBlockOptin);
   if (forced_engine_ == gdn::Engine::kChunked ||
@@ -298,9 +295,13 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(
         plan.engine == forced_engine_,
         "GatedDeltaNet: the ", gdn::EngineName(forced_engine_),
-        " engine cannot serve this descriptor");
+        " engine cannot serve this descriptor (",
+        plan.reject_reason ? plan.reject_reason : "no reason recorded", ")");
   } else if (forced_engine_ == gdn::Engine::kRecurrent) {
     plan.engine = gdn::Engine::kRecurrent;
+    // Match the fallback path's kernel choice: the override must measure what the
+    // heuristic would have run, not the generic kernel.
+    plan.warp_specialized = gdn::RecurrentIsWarpSpecialized(head_size_qk);
     plan.state_update_tail_pass = false;
     plan.short_row_tail_pass = false;
   } else if (forced_engine_ == gdn::Engine::kCudnn) {
@@ -324,7 +325,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.key = reinterpret_cast<const CudaT*>(key->Data<T>());
   pack.value = reinterpret_cast<const CudaT*>(value->Data<T>());
   pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
-  pack.capture_count = capture_count != nullptr ? capture_count->Data<int32_t>() : nullptr;
+  pack.capture_count = desc.state_update_active ? capture_count->Data<int32_t>() : nullptr;
   pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
   pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
   pack.initial_state = initial_state != nullptr ? initial_state->Data<float>() : nullptr;
@@ -335,6 +336,8 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
   const cudaStream_t stream = Stream(context);
+  // Only the inactive case is cleared. While capture is active the kernels write just the
+  // captured prefix, and the schema declares the remaining entries unspecified.
   if (state_update != nullptr && state_update_capacity_ > 0 && !desc.state_update_active) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(pack.state_update, 0, state_update->SizeInBytes(), stream));
   }

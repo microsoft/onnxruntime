@@ -67,22 +67,16 @@ struct Descriptor {
   IoType io_type = IoType::kFloat16;
   bool qk_l2_norm = false;
   bool decay_per_key_dim = false;
-  bool has_decay = false;
-  bool has_beta = false;
-  bool has_initial_state = false;
   bool ragged = false;  // cu_seqlens supplied
   // Benchmarking override. kAuto lets the heuristic choose.
   Engine preferred_engine = Engine::kAuto;
   int sm_major = 0;
-  int sm_minor = 0;
 };
 
 struct Plan {
   Engine engine = Engine::kRecurrent;
   int chunk_size = 64;
-  int v_block = 64;         // dv columns owned by one CTA (chunked engine)
-  int threads = 512;        // CTA size
-  int cols_per_block = 32;  // dv columns per CTA (recurrent engine)
+  int v_block = 64;  // dv columns owned by one CTA (chunked engine)
   // Split engine only: chunks whose prepare output is live in the workspace at once. The
   // sequence is walked in passes of this many chunks so the workspace stays bounded.
   int chunks_per_pass = 0;
@@ -110,6 +104,12 @@ inline size_t RecurrentSmemBytes(int dk, int dv) {
   const int reduction_scratch = dv > 2 ? dv : 2;
   return sizeof(float) *
          (static_cast<size_t>(dk) * dv + 2 * dk + reduction_scratch + dk);
+}
+
+// The warp kernel keeps its slice of the state in registers, so it only needs a head size
+// that divides evenly into 32-lane strips.
+inline bool RecurrentIsWarpSpecialized(int dk) {
+  return dk == 64 || dk == 128 || dk == 256;
 }
 
 inline size_t ChunkedSmemBytes(int bt, int dk, int dvb) {
@@ -184,7 +184,6 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
 
   if (long_enough && shape_ok && rule_ok && type_ok && desc.sm_major >= 8) {
     plan.v_block = 64;
-    plan.threads = 512;
 
     // The split engine remains an explicit benchmarking override. The fused chunked engine
     // is the production prefill path selected by the automatic heuristic.
@@ -230,6 +229,7 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
         plan.supported = true;
         return plan;
       }
+      plan.reject_reason = "split engine exceeds the device shared-memory opt-in limit";
       plan.v_block = 64;  // fall through to the fused engine
     }
 
@@ -257,14 +257,10 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
   }
 
   plan.engine = Engine::kRecurrent;
-  plan.cols_per_block = 32;
   plan.smem_bytes = 0;
   plan.workspace_bytes = 0;
   plan.supported = true;
-  // The warp kernel keeps its slice of the state in registers, so it only needs a head size
-  // that divides evenly into 32-lane strips.
-  plan.warp_specialized =
-      desc.head_size_qk == 64 || desc.head_size_qk == 128 || desc.head_size_qk == 256;
+  plan.warp_specialized = RecurrentIsWarpSpecialized(desc.head_size_qk);
   if (plan.reject_reason == nullptr) {
     if (!long_enough) {
       plan.reject_reason = "below the chunked-engine token threshold";

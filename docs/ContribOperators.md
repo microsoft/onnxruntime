@@ -2128,15 +2128,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
   is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
-  transitions are emitted in one `state_update` float tensor
-  `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk +
-  num_heads_v * head_size_v)]`. Each row is struct-of-arrays: all decay values, then all keys,
-  then all deltas. Entries at positions greater than or equal to `capture_count[b]` are unspecified;
-  consumers must read only the captured prefix. The key retains its shared `num_heads_k`
-  representation. For scalar decay the decoded factors replay one transition as
-  `S *= decay; S += outer(key, delta)`. Per-key-dimension
-  decay is not supported when compact updates are enabled. `capture_count` is forbidden when C is
-  zero.
+  transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
+  float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
+  Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
+  greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
+  read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
+  decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
+  Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
+  forbidden when C is zero.
   
   The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
   disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -2176,7 +2175,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta_activation</tt> : string</dt>
 <dd>'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a sigmoid.</dd>
 <dt><tt>chunk_size</tt> : int</dt>
-<dd>Tuning hint for the chunk-parallel prefill algorithm. Default 64.</dd>
+<dd>Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; any other value lets the implementation take the widest chunk the device can hold. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
 <dd>'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes -exp(a_log) * Softplus(decay + dt_bias) in float32.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
@@ -2211,9 +2210,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
 <dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=qwen.</dd>
 <dt><tt>capture_count</tt> (optional) : TI</dt>
-<dd>Number of leading local token transitions to capture for each request, shape (batch_size). Required exactly when state_update_capacity is positive.</dd>
+<dd>Number of leading local token transitions to capture for each request, shape (batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. Required exactly when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : TI</dt>
-<dd>CPU int32 control with shape (1). Zero means every capture_count is zero, allowing the planner to use an engine without transition capture. Omission is conservative.</dd>
+<dd>CPU int32 control with shape (1). Zero disables transition capture, ignores capture_count, and produces a zero-filled state_update. Omission is conservative.</dd>
 </dl>
 
 #### Outputs (1 - 3)

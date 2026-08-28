@@ -184,10 +184,10 @@ overflow. Either normalize upstream or set `qk_l2_norm=1`.
 
 ## 5. CUDA Engines and Plan Selection
 
-Selection follows the cuDNN frontend's execution flow: a problem `Descriptor` is hashed into
-a `PlanCache`, a heuristic (`SelectPlan`, the analog of `heur_mode::A`) picks an engine and
-its tile parameters, the plan reports its workspace and shared-memory requirement, and
-execution binds a `VariantPack` of device pointers.
+Selection follows the cuDNN frontend's execution flow: a heuristic (`SelectPlan`, the analog
+of `heur_mode::A`) evaluates the problem `Descriptor` and the device shared-memory opt-in
+limit to pick an engine and its tile parameters, the plan reports its workspace and
+shared-memory requirement, and execution binds a `VariantPack` of device pointers.
 
 | Engine | Used for | Shape |
 |---|---|---|
@@ -229,10 +229,10 @@ ratio tracks that efficiency and nothing else:
 
 The fused per-token cost jumps from 0.392 us to 0.298 us across that same boundary, so once
 the fused engine stops wasting a wave the split engine's extra launch and its round-trip
-through the workspace are pure overhead. The split engine is currently diagnostic-only and
-is selected with `ORT_GDN_PLAN=chunked_split`; automatic selection remains disabled until its
-duplicate-row parity issue is resolved. It also requires at least two chunks and enough
-shared-memory opt-in capacity for both kernels, which excludes SM120.
+through the workspace are pure overhead. The split engine is currently an explicit opt-in
+path selected with `ORT_GDN_PLAN=chunked_split` (the fused engine is the default production
+prefill path). It also requires at least two chunks and enough shared-memory opt-in capacity
+for both kernels, which excludes SM120.
 
 Because the split engine keeps its state in float16 where the fused engine uses float32, the
 two are **not** numerically identical, so this choice is deliberately a deterministic
@@ -531,7 +531,7 @@ shared-memory chunk configuration. Three cases are worth calling out:
   Consequently the only way to speed this engine up is to **shorten the per-CTA critical
   path**. That is what `Engine::kChunkedSplit` does; see below.
 - **The split engine (`Engine::kChunkedSplit`) is 20% faster where the fused grid underfills
-  the device, but remains diagnostic-only.** Pushing
+  the device.** Pushing
   `(I+M)^-1` through the subtraction gives `U = Uv - W S0` with `Uv = (I+M)^-1 (beta v)` and
   `W = (I+M)^-1 diag(beta e^gc) k`, so every state-independent term factorizes out. A
   prepare kernel owns one `(sequence, v-head, chunk)` — 768 CTAs instead of 96 at `T=1024` —
@@ -575,8 +575,8 @@ shared-memory chunk configuration. Three cases are worth calling out:
   | MMLU-Pro | 800 | 83.38% | 84.38% | +1.00pp | 46 (19/27) | 0.30 |
 
   Long chain-of-thought is the sensitive probe for a prefill-only numerics change, so GPQA is
-  the one that matters here; neither moves. The split engine is still selected only with
-  `ORT_GDN_PLAN=chunked_split` while its duplicate-row parity issue is investigated.
+  the one that matters here; neither moves. The split engine is currently selected via
+  `ORT_GDN_PLAN=chunked_split`.
 - **cuDNN backend.** `Engine::kCudnn` is reserved and unimplemented. As of cudnn-frontend
   v1.27.0 — the version this build pins, and the release that introduced GDN — the operation
   exists **only** in the Python package (`python/cudnn/linear_attention/`); there are no GDN
