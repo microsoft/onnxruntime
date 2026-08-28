@@ -105,6 +105,7 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  is_causal_ = info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1;
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -211,6 +212,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           has_explicit_scale_,
                                                           device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
+  parameters.is_causal = is_causal_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
@@ -442,10 +444,19 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       enable_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
       parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0;
+  // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
+  // both hard-code a bottom-right causal mask.
   bool use_paged_decode =
-      decode_eligible && decode_shaped && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible);
+      decode_eligible && decode_shaped && parameters.is_causal && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible);
   bool use_flash_attention = flash_eligible && !use_paged_decode;
-  const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode;
+  const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode && parameters.is_causal;
+
+  if (!parameters.is_causal && !use_flash_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: is_causal=0 requires the FlashAttention backend (sm>=80, fp16/bf16, "
+                           "head_size ",
+                           parameters.head_size, ", block_size ", parameters.block_size, ").");
+  }
 
   // Both gather-based backends need a dense KV staging buffer when the cache is quantized
   // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).

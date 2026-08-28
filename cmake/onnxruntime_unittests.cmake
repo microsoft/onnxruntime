@@ -2635,6 +2635,11 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
+  if (NOT onnxruntime_USE_WEBGPU OR NOT onnxruntime_USE_EP_API_ADAPTERS)
+    list(REMOVE_ITEM onnxruntime_autoep_test_SRC
+         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_webgpu_allocators.cc")
+  endif()
+
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
 
@@ -2666,6 +2671,12 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
+
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+    # The WebGPU plugin is loaded at test-run time, so ensure a focused auto-EP test build produces it and its
+    # co-located runtime dependencies.
+    add_dependencies(onnxruntime_autoep_test onnxruntime_providers_webgpu)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
