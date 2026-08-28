@@ -73,6 +73,9 @@ class OnnxRuntimeTestSession : public TestSession {
   bool requires_input_staging_ = false;
   bool has_plugin_ep_allocator_ = false;
   bool has_dynamic_output_shapes_ = false;
+  // Per-output dynamic-shape flag, aligned with outputs_. Lets Run() reset only the outputs that
+  // actually have dynamic shapes instead of discarding every pre-allocated buffer.
+  std::vector<bool> is_output_dynamic_;
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
