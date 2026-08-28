@@ -499,6 +499,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
+        "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -898,7 +899,8 @@ def generate_build_tree(
     if not args.use_webgpu:
         if args.use_external_dawn:
             raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
-
+        if args.use_dawn_agility_sdk:
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) must be enabled with WebGPU (--use_webgpu).")
         if is_windows():
             if args.enable_pix_capture:
                 raise BuildError(
@@ -909,6 +911,23 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
+
+    if args.use_dawn_agility_sdk:
+        if not is_windows():
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) is only supported on Windows.")
+
+        if args.arm or args.arm64ec:
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) does not support Windows ARM32 or ARM64EC. "
+                "Use an x86, x64, or ARM64 target."
+            )
+
+        if args.build_wheel or args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) is currently supported for local development builds only. "
+                "Python, C#, NuGet, Java, and Node.js packaging is not supported because the required D3D12 runtime "
+                "DLLs are not deployed into those packages."
+            )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
