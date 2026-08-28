@@ -38,6 +38,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
+  * <a href="#com.microsoft.GatedDeltaNet">com.microsoft.GatedDeltaNet</a>
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
@@ -2090,6 +2091,150 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
+
+  Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+  
+  Layout. Query, key and value are token-major, so head counts are derived from the shapes
+  rather than from attributes:
+  
+    query [total_tokens, num_heads_q, head_size_qk]
+    key   [total_tokens, num_heads_k, head_size_qk]
+    value [total_tokens, num_heads_v, head_size_v]
+  
+  The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
+  pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
+  is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
+  activation with static Reshape targets instead of Shape-derived ones. Ragged packing
+  (`cu_seqlens`) requires the rank-3 spelling.
+  
+  `num_heads_q` must equal `num_heads_k`, and `num_heads_v` must be a positive multiple of
+  `num_heads_q` (inverse grouped-query attention: each query/key head is shared by
+  `num_heads_v / num_heads_q` value heads). Decay, beta, the state and the output are all at
+  `num_heads_v`.
+  
+  Sequence packing. When `cu_seqlens` is provided it is a device int32 tensor of length
+  `batch_size + 1` holding the exclusive prefix sums of the per-request token counts, so
+  requests may have different lengths. When it is absent the packing is uniform and the batch
+  size is taken from `initial_state`, which is then required.
+  
+  State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
+  head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
+  boundary is where reduced precision hurts most. The two may be the same allocation; the
+  implementation reads the whole incoming state before writing any of it.
+  
+  Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
+  is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
+  transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
+  float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
+  Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
+  greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
+  read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
+  decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
+  Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
+  forbidden when C is zero.
+  
+  The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
+  disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
+  engine that cannot emit compact updates. Omitting it preserves the conservative behavior of
+  treating capture as active.
+  
+  Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
+  
+    S_t = exp(g_t) S_{t-1} + k_t (beta_t (v_t - exp(g_t) S_{t-1}^T k_t))^T
+    o_t = scale * S_t^T q_t
+  
+  `update_rule` selects which terms are present: 'linear' drops both the decay and the delta
+  retrieval, 'gated' keeps only the decay, 'delta' keeps only the retrieval, and 'gated_delta'
+  keeps both.
+  
+  The delta family ('delta' and 'gated_delta') requires L2-normalized keys. Without them the
+  per-chunk system (I + M) is arbitrarily ill-conditioned and the recurrence diverges. Either
+  normalize upstream or set `qk_l2_norm=1` to have the operator do it.
+  
+  Fused activations. `gate_activation='qwen'` computes the effective decay in float32 from the
+  raw projection carried by `decay`:
+  
+    g = -exp(a_log) * Softplus(decay + dt_bias)
+  
+  `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
+  query and key head vector. Folding these in avoids materializing the intermediates and keeps
+  the gate arithmetic in float32 independent of the input type.
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>beta_activation</tt> : string</dt>
+<dd>'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a sigmoid.</dd>
+<dt><tt>chunk_size</tt> : int</dt>
+<dd>Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; any other value lets the implementation take the widest chunk the device can hold. Default 64.</dd>
+<dt><tt>gate_activation</tt> : string</dt>
+<dd>'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes -exp(a_log) * Softplus(decay + dt_bias) in float32.</dd>
+<dt><tt>qk_l2_norm</tt> : int</dt>
+<dd>When 1, L2-normalize each query and key head vector before the recurrence. Default 0.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Output scaling factor. When 0.0 (default) uses 1/sqrt(head_size_qk).</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Capacity C for compact contiguous-prefix transition capture, in [0, 8]. 0 (default) disables compact state-update outputs.</dd>
+<dt><tt>update_rule</tt> : string</dt>
+<dd>One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
+</dl>
+
+#### Inputs (3 - 11)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query, shape (total_tokens, num_heads_q, head_size_qk)</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key, shape (total_tokens, num_heads_k, head_size_qk)</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value, shape (total_tokens, num_heads_v, head_size_v)</dd>
+<dt><tt>cu_seqlens</tt> (optional) : TI</dt>
+<dd>Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). Absent means uniform packing.</dd>
+<dt><tt>decay</tt> (optional) : TS</dt>
+<dd>Log-space decay, shape (total_tokens, num_heads_v) for a scalar per-head decay or (total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay.</dd>
+<dt><tt>beta</tt> (optional) : TS</dt>
+<dd>Update rate, shape (total_tokens, num_heads_v)</dd>
+<dt><tt>initial_state</tt> (optional) : TS</dt>
+<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. May alias final_state.</dd>
+<dt><tt>a_log</tt> (optional) : TS</dt>
+<dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.</dd>
+<dt><tt>dt_bias</tt> (optional) : TS</dt>
+<dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=qwen.</dd>
+<dt><tt>capture_count</tt> (optional) : TI</dt>
+<dd>Number of leading local token transitions to capture for each request, shape (batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. Required exactly when state_update_capacity is positive.</dd>
+<dt><tt>state_update_active</tt> (optional) : TI</dt>
+<dd>CPU int32 control with shape (1). Zero disables transition capture, ignores capture_count, and produces a zero-filled state_update. Omission is conservative.</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Output, shape (total_tokens, max(num_heads_q, num_heads_v), head_size_v)</dd>
+<dt><tt>final_state</tt> (optional) : TS</dt>
+<dd>State after the last token of each request, shape (batch_size, num_heads_v, head_size_v, head_size_qk)</dd>
+<dt><tt>state_update</tt> (optional) : TS</dt>
+<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain query/key/value/output types.</dd>
+<dt><tt>TS</tt> : tensor(float)</dt>
+<dd>State, gate, beta and compact state-update tensors are always float.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>Constrain index and count tensors to int32.</dd>
 </dl>
 
 
@@ -4467,6 +4612,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>is_causal</tt> : int</dt>
+<dd>Whether the attention mask is causal (bottom-right aligned). Default value is 1. Set to 0 for a block drafter whose query tokens attend to each other bidirectionally; local_window_size then bounds the mask on the left only.</dd>
 <dt><tt>k_cache_dtype</tt> : string</dt>
 <dd>Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' (the default) means the cache tensor's own element type is also the logical type. 'float16', 'bfloat16', 'int8' and 'float8e4m3fn' name that same type explicitly and must agree with the tensor. 'int4' and 'float4e2m1' name sub-byte types packed two per byte into a uint8 cache, where the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i occupies the low-order bits of byte i. Every value is a signed, zero-symmetric type: quantization uses a scale with no zero point, so unsigned logical types are not expressible.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
@@ -7024,19 +7171,18 @@ This version of the operator has been available since version 1 of the 'com.micr
   uses the activation type because it stores raw samples, not accumulated convolution values.
   initial_state and final_state may use the same allocation. Such in-place execution is
   transaction-safe only when the whole operator call is unconditionally committed; a caller that
-  may select a prefix or roll back must preserve initial_state and commit one of the separately
-  produced states instead.
+  may select a prefix or roll back must preserve initial_state and replay the compact state update.
   
-  When requested, prefix_states has shape
-  (max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
-  after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
-  unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
-  This output lets a transactional caller commit any produced prefix without rerunning the
-  convolution.
+  When state_update_capacity is positive, capture_count is required with shape (batch_size), and
+  state_update has shape (batch_size, state_update_capacity, channels).
+  For request b, slots [0, clamp(capture_count[b], 0,
+  min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
+  These values represent the append component of each shift-left-and-append state transition.
+  All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
   
   For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
   cumulative_sequence_length[batch_size] == total_tokens, and its local range
-  0 <= start < end <= total_tokens before accessing input, state, output, or checkpoints.
+  0 <= start < end <= total_tokens before accessing input, state, or output.
   Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
   This device-side containment is not a synchronous validation or rejection mechanism.
   
@@ -7051,11 +7197,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
-<dt><tt>max_checkpoints</tt> : int</dt>
-<dd>Static number of per-request prefix states to expose. Checkpoint j is the state after local token j when that token exists. Unwritten slots are unspecified. Valid range is [0, 8].</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Static number of compact contiguous-prefix transition values to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 6)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -7068,6 +7214,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
 <dt><tt>initial_state</tt> : T</dt>
 <dd>Required committed carry state with shape (batch_size, channels, kernel_size - 1).</dd>
+<dt><tt>capture_count</tt> (optional) : M</dt>
+<dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
 </dl>
 
 #### Outputs (2 - 3)
@@ -7077,8 +7225,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Token-major convolution output with the same shape as input.</dd>
 <dt><tt>final_state</tt> : T</dt>
 <dd>Fully written state after each sequence's final token, with shape (batch_size, channels, kernel_size - 1).</dd>
-<dt><tt>prefix_states</tt> (optional) : T</dt>
-<dd>Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, kernel_size - 1). Unwritten slots are unspecified.</dd>
+<dt><tt>state_update</tt> (optional) : T</dt>
+<dd>Optional compact transition values with shape (batch_size, state_update_capacity, channels). Inactive slots are zero.</dd>
 </dl>
 
 #### Type Constraints
@@ -7087,7 +7235,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
-<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
+<dd>Constrain cumulative_sequence_length and capture_count to device int32 tensors.</dd>
 </dl>
 
 
@@ -7373,3 +7521,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
