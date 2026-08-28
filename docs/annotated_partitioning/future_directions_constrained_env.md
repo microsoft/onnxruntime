@@ -1034,144 +1034,56 @@ planning/allocation, and integration with resource accounting remain deferred; n
 partition budgets or replaces the runtime scratch-allocation path yet. Phase-B planner/accounting
 integration remains in the scope of #32071.
 
-A kernel can declare multiple workspace slots (e.g., attention needs separate Q transpose buffer, output buffer, seqlens buffer). The `slot_id` is defined by the kernel author and is stable across calls — it identifies *which* buffer within that kernel's logic.
+A kernel can declare multiple workspace slots. The `slot_id` is defined by the kernel author and is
+stable across calls; `(NodeIndex, slot_id)` identifies one internal buffer for one kernel instance.
+The interface capability and the current planner capability are intentionally distinct.
 
-**Key constraint:** Multiple nodes may use the same kernel class. Each node instance gets its own set of workspace slots. The unique key for retrieval is `(NodeIndex, slot_id)` — the framework supplies `NodeIndex`, the kernel supplies `slot_id`.
+##### Current Phase-B strategy in #32071
 
-**Memory reuse via liveness-based offset planning:**
+#32071 integrates opted-in workspace with ORT's existing activation `MemoryPattern`; it does not
+introduce a separate `WorkspacePattern` or allocate a persistent execution buffer during
+`FinalizeSessionState()`:
 
-Workspace buffers are live only during their kernel's execution step. This means workspaces from non-overlapping steps can share the same physical memory — exactly the same liveness analysis already used for activation tensors. The offset planner assigns overlapping offsets to workspaces whose liveness intervals don't intersect:
+1. Level 1 contributes an operator workspace reservation to partition resource accounting.
+2. After kernel creation and prepacking, Level 2 is compared with that reservation and registers
+   usable requirements in the sequential execution plan.
+3. Each registered `(NodeIndex, slot_id)` receives a negative synthetic pattern ID, disjoint from
+   graph `OrtValue` indices.
+4. On the first run for a feed-shape memory-pattern key, the execution frame traces the synthetic
+   workspace allocation/free lifetime. The kernel still receives no planned pointer and falls back to
+   `GetScratchBuffer()`.
+5. ORT caches one pattern containing both activation and workspace blocks. On later runs with a
+   compatible feed-shape key, the execution frame allocates the normal per-run pattern backing buffer
+   and returns `backing_buffer + workspace_offset`.
+6. If the pattern is unavailable or the runtime request exceeds the declared capacity,
+   `GetPreallocatedWorkspace(slot_id, requested_bytes)` returns no pointer and the kernel retains its
+   dynamic `GetScratchBuffer()` fallback.
 
-```
-Step 0: Node A workspace (slots 0,1) → offsets [0, 4096]
-Step 1: Node B workspace (slot 0)    → offset [0]  ← reuses Node A's memory
-Step 2: Node C workspace (slots 0,1) → offsets [0, 8192]  ← reuses again
-```
+This reduces allocator traffic and lets workspace reuse memory occupied by non-overlapping
+activations after the warm-up run. It does not protect the first run from OOM, guarantee that the
+per-run backing-buffer allocation succeeds, or provide initialize-time persistent allocation.
 
-Peak workspace memory = max over all steps of (sum of workspace slots for that step), not the sum of all workspaces across all nodes.
+**Current one-slot limitation:** although `DeclareWorkspaceRequirements()` can return multiple slots,
+#32071 currently preplans only kernels that opt in with `SupportsPreallocatedWorkspace()` and declare
+exactly one slot. This is sufficient for the current MatMulNBits pilot and for PMHA's single attention
+workspace allocation. PackedAttention preserves two simultaneously live allocations in #32283:
 
-**Concurrency model (multiple concurrent `Run()` calls):**
-
-The existing memory pattern system already handles this correctly:
-- The **pattern** (offset/size map) is computed once during `Initialize()` and cached in `SessionState` — shared, read-only.
-- The **actual buffer** is allocated per-`Run()` by each `ExecutionFrame` using the pattern as a blueprint.
-- Each concurrent `Run()` gets its own `ExecutionFrame` with its own workspace buffer — no sharing, no synchronization needed.
-
-Workspace pre-allocation follows the same model:
-- `DeclareWorkspaceRequirements()` is called during `FinalizeSessionState()` → produces a workspace offset plan (shared, immutable).
-- Each `Run()` allocates a workspace buffer of `peak_workspace_size` bytes and uses offsets from the plan.
-- Concurrent runs each get their own buffer — safe without locks.
-
-**Note on CUDA:** In practice, concurrent `Run()` on the same CUDA session is uncommon (users don't typically do this). But the design should remain thread-safe by following the same per-run buffer pattern.
-
-**Single-thread pre-allocation mode (eliminating runtime OOM):**
-
-Even with workspace planning, the per-`Run()` buffer allocation can still OOM if device memory is fragmented or consumed by other processes since `Initialize()`. For constrained environments, this is the last remaining point of failure.
-
-Most constrained-environment users run **single-threaded inference** — one `Run()` at a time. ORT already has a concurrent-run counter (`InferenceSession::current_num_runs_`). If the session is configured to disallow concurrency, the execution buffer (which includes workspace slots) can be **allocated once at initialization and reused for every `Run()` call**.
-
-**Proposed** (not currently implemented): a session option such as `session.pre_allocate_execution_buffers = "1"` would enable this behavior.
-
-When enabled:
-1. After `FinalizeSessionState()` computes the memory pattern (including workspace offsets from `DeclareWorkspaceRequirements`), allocate the peak buffer once: `IAllocator::Alloc(peak_size)` per EP.
-2. Store the pre-allocated buffer pointer on `SessionState`.
-3. Each `Run()` reuses the same buffer — no allocation, no OOM possible.
-4. Enforce `max_concurrent_runs = 1`: if a second `Run()` arrives, fail fast.
-
-```cpp
-if (pre_allocate_mode_ && current_num_runs_.fetch_add(1) > 0) {
-    current_num_runs_.fetch_sub(1);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-        "Concurrent Run() not allowed with pre-allocated execution buffers.");
-}
+```text
+slot 0: projection output/workspace
+slot 1: selected Attention backend workspace
 ```
 
-**What this guarantees:** If `Initialize()` succeeds, `Run()` cannot OOM — all device memory (weights + intermediates + workspace) is already resident. The budget at partition time accounts for all three: `budget ≥ weights_on_device + peak_execution_buffer`.
+Its Level-1 reservation is `projection_bytes + max(feasible Attention route bytes)`, and its Level-2
+declaration must preserve the two slots. Combining them into one declaration would change the runtime
+allocation topology. Before PackedAttention can use #32071 preallocation, the planner must accept and
+trace multiple slots for one kernel instance; until then, PackedAttention remains on its existing
+`GetScratchBuffer()` fallback. PMHA can be integrated first with the current one-slot pilot.
 
-**What already exists:** `MemoryPattern` computation is done, `MemoryPatternGroup::GetPeakAllocSize()` gives peak size, `current_num_runs_` counter exists, per-EP allocators exist. The `ExecutionFrame` already uses offset-based placement into a contiguous block — the change is to not free/reallocate that block between calls.
-
-**Scope:** Single-threaded only. For concurrent inference, multiple buffers are needed (defeating the guarantee).
-
-**Interaction with dynamic shapes:** `pre_allocate_execution_buffers` is fundamentally a **static-shape-only** feature. With dynamic shapes, `ExecutionFrame` must allocate buffers on every `Run()` because activation tensor sizes are unknown until the input arrives — there is no way to pre-compute a total buffer size at `Initialize()` time. Even if some kernels' workspace slots are shape-independent, the activation portion (which typically dominates) still requires per-`Run()` allocation, so the OOM-elimination guarantee cannot hold.
-
-Furthermore, the arena allocator already handles repeated allocations efficiently (same-size blocks are recycled without syscalls), so pre-allocating just the workspace portion while leaving activations dynamic would add complexity for negligible gain.
-
-**Summary:** For dynamic-shape models, the value of `DeclareWorkspaceRequirements` is in **budget estimation** (Level 1/Level 2, using worst-case or max-batch sizes to decide how many nodes fit on the device), not in runtime pre-allocation.
-
-**Planning flow (during FinalizeSessionState):**
-
-1. For each kernel in the execution plan (when shapes are static), call `DeclareWorkspaceRequirements()` with the inferred input shapes.
-2. Record `{NodeIndex, slot_id} → size_bytes` in the execution plan.
-3. Run liveness analysis: workspace for node N is live only during step N's execution.
-4. Compute offsets (same algorithm as activation patterns) → yields `peak_workspace_size` and per-slot offsets.
-5. Store workspace pattern as a **separate `WorkspacePattern`** in `SessionState`.
-
-**Why workspace buffers are separate from `MemoryPattern` (activations):**
-
-Although the offset planning algorithm is the same (liveness → assign offsets → compute peak), workspace buffers differ in allocation and retrieval:
-
-| Aspect | MemoryPattern (activations) | WorkspacePattern |
-|--------|---------------------------|------------------|
-| **Addressing** | `MLValueIndex` — framework-assigned, part of graph IR | `(NodeIndex, slot_id)` — kernel-defined, opaque to framework |
-| **Who queries** | Framework automatically when creating output `OrtValue`s | Kernel explicitly via `GetPreallocatedWorkspace(slot_id)` |
-| **Lifetime** | Multi-step — output lives until its last consumer executes | Single-step — live only during the owning kernel's step |
-| **What's returned** | An `OrtValue` (typed tensor with shape metadata) | Raw `void*` — kernel interprets the bytes internally |
-| **Graph visibility** | Framework manages these as edges between nodes | Invisible to graph — internal scratch memory |
-| **Size determination** | Inferred from output shape × element_size | Declared by kernel (may be unrelated to any tensor shape) |
-
-Concretely, this means:
-- `WorkspacePattern` is a new class (not reusing `MemoryPatternGroup`) with its own lookup: `GetOffset(NodeIndex, slot_id) → {offset, size}`.
-- The workspace buffer is allocated separately from the activation buffer. They could share physical memory (workspace is always single-step, so it never overlaps with itself across steps), but keeping them separate simplifies accounting and makes budget tracking unambiguous: `peak_total = peak_activations + peak_workspace`.
-- In pre-allocation mode, both buffers are allocated once at init. In normal mode, both are allocated per-`Run()` from the arena. But they remain distinct allocations with distinct query paths.
-
-**Per-Run retrieval (during Compute):**
-
-Each `ExecutionFrame` allocates a workspace buffer of `peak_workspace_size` via the EP's allocator and provides offset-based access through a dedicated query interface (not the existing OrtValue/MLValue machinery):
-
-**Alternative A: Transparent fallback in GetScratchBuffer**
-
-Modify `GetScratchBuffer<T>(slot_id, size, stream)` to check for a pre-planned buffer first:
-
-```cpp
-template <typename T>
-IAllocatorUniquePtr<T> GetScratchBuffer(int slot_id, size_t count_or_bytes, Stream* stream) const {
-  // Check if workspace was pre-planned for this node + slot
-  void* preallocated = context_.GetPreallocatedWorkspace(slot_id);
-  if (preallocated) {
-    // Return non-owning pointer (buffer lifetime managed by the frame)
-    return IAllocatorUniquePtr<T>(static_cast<T*>(preallocated), [](T*){});
-  }
-  // Fall back to arena (dynamic shapes, or DeclareWorkspaceRequirements not implemented)
-  return IAllocator::MakeUniquePtr<T>(allocator_, count_or_bytes, false, stream);
-}
-```
-
-Pro: Minimal kernel code changes — just add `slot_id` parameter. Con: Overloads `GetScratchBuffer` semantics; non-owning vs owning pointer distinction is subtle.
-
-**Alternative B: Separate retrieval path**
-
-Keep `GetScratchBuffer()` unchanged for arena allocation. Add a new method:
-
-```cpp
-// In OpKernelContext:
-void* GetPreallocatedWorkspace(int slot_id) const;
-// Returns nullptr if not pre-planned → kernel must call GetScratchBuffer() instead
-
-// Kernel usage:
-void* ws = context->GetPreallocatedWorkspace(0);
-if (!ws) {
-  scratch_buffer_ = GetScratchBuffer<void>(workspace_size, stream);
-  ws = scratch_buffer_.get();
-}
-```
-
-Pro: Clear separation, no ambiguity about ownership. Con: Kernels need explicit fallback logic (but this is a one-time pattern per kernel).
-
-**Compatibility with dynamic shapes:** Both alternatives are opt-in. If `DeclareWorkspaceRequirements()` is not overridden or returns empty (dynamic shapes), everything falls back to `GetScratchBuffer()` → arena, exactly as today. Same kernel binary works for both static and dynamic models.
-
-**Incremental adoption:** Start with the highest-impact ops (attention, convolution, GEMM) which account for the majority of workspace. Less common ops continue using the arena with a reduced safety multiplier in `IResourceAccountant`.
-
-**Buffer strategy:** Workspace offsets can share the activation buffer (liveness doesn't overlap — workspace is live only during its step, activations may span steps). Alternatively, a separate workspace buffer is simpler initially and easier to account for in memory limits.
+**Future stronger mode:** allocating and retaining the complete execution buffer during session
+initialization would be a separate feature. Such a mode would need trustworthy static or bounded
+shapes, runtime bound enforcement, a concurrency policy, and no dynamic-allocation fallback before it
+could claim that a successful `Initialize()` prevents allocation-time OOM during `Run()`. #32071 does
+not provide that guarantee.
 
 ##### EP Plugin C ABI Surface for Workspace Pre-declaration
 
