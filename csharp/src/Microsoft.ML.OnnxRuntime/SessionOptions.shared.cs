@@ -449,7 +449,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
         /// <exception cref="ArgumentException">epDevices was empty.</exception>
         /// <see cref="OrtEnv.GetEpDevices" />
-        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices,
                                             IReadOnlyDictionary<string, string> epOptions)
         {
             if (epDevices == null || epDevices.Count == 0)
@@ -481,7 +481,7 @@ namespace Microsoft.ML.OnnxRuntime
                         env.Handle,
                         epDevicePtrs,
                         (UIntPtr)epDevices.Count,
-                        epOptionsKeys,  
+                        epOptionsKeys,
                         epOptionsValues,
                         epOptionsCount));
             }
@@ -622,7 +622,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="readDelegate">Delegate that supplies the named data.</param>
         /// <param name="maxDataSize">Required finite maximum payload size in bytes.</param>
-        public unsafe void SetEpContextDataReadDelegate(ReadEpContextDataDelegate readDelegate, ulong maxDataSize)
+        public void SetEpContextDataReadDelegate(ReadEpContextDataDelegate readDelegate, ulong maxDataSize)
         {
             if (readDelegate == null)
             {
@@ -637,14 +637,16 @@ namespace Microsoft.ML.OnnxRuntime
 
             var registration = new EpContextDataReadRegistration(readDelegate, maxDataSize);
             bool optionsRefAdded = false;
+            IntPtr readOptions = IntPtr.Zero;
 
             try
             {
-                var readOptions = new NativeMethods.OrtEpContextDataReadOptions
-                {
-                    Version = 1,
-                    MaxDataSize = new UIntPtr(maxDataSize),
-                };
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtCreateEpContextDataReadOptions(out readOptions));
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtEpContextDataReadOptionsSetMaxDataSize(
+                        readOptions, new UIntPtr(maxDataSize)));
+
                 lock (_epContextDataReadRegistrationLock)
                 {
                     DangerousAddRef(ref optionsRefAdded);
@@ -652,7 +654,7 @@ namespace Microsoft.ML.OnnxRuntime
                         DangerousGetHandle(),
                         registration.FunctionPointer,
                         registration.State,
-                        (IntPtr)(&readOptions)));
+                        readOptions));
 
                     var previousRegistration = _epContextDataReadRegistration;
                     _epContextDataReadRegistration = registration;
@@ -666,6 +668,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
+                NativeMethods.OrtReleaseEpContextDataReadOptions(readOptions);
                 if (optionsRefAdded)
                 {
                     DangerousRelease();
@@ -786,7 +789,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
-                    handle, 
+                    handle,
                     funcPtr,
                     GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }

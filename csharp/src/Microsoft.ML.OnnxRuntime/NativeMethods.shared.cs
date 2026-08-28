@@ -495,6 +495,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionOptionsSetWeightlessSourceModelBuffer;
         // v1.30 APIs
         public IntPtr SessionOptionsSetEpContextDataReadFunc;
+        public IntPtr CreateEpContextDataReadOptions;
+        public IntPtr EpContextDataReadOptionsSetMaxDataSize;
+        public IntPtr ReleaseEpContextDataReadOptions;
     }
 
     internal static class NativeMethods
@@ -605,6 +608,18 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtSessionOptionsSetEpContextDataReadFunc)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpContextDataReadFunc,
                     typeof(DOrtSessionOptionsSetEpContextDataReadFunc));
+            OrtCreateEpContextDataReadOptions =
+                (DOrtCreateEpContextDataReadOptions)Marshal.GetDelegateForFunctionPointer(
+                    api_.CreateEpContextDataReadOptions,
+                    typeof(DOrtCreateEpContextDataReadOptions));
+            OrtEpContextDataReadOptionsSetMaxDataSize =
+                (DOrtEpContextDataReadOptionsSetMaxDataSize)Marshal.GetDelegateForFunctionPointer(
+                    api_.EpContextDataReadOptionsSetMaxDataSize,
+                    typeof(DOrtEpContextDataReadOptionsSetMaxDataSize));
+            OrtReleaseEpContextDataReadOptions =
+                (DOrtReleaseEpContextDataReadOptions)Marshal.GetDelegateForFunctionPointer(
+                    api_.ReleaseEpContextDataReadOptions,
+                    typeof(DOrtReleaseEpContextDataReadOptions));
             OrtSetOptimizedModelFilePath = (DOrtSetOptimizedModelFilePath)Marshal.GetDelegateForFunctionPointer(api_.SetOptimizedModelFilePath, typeof(DOrtSetOptimizedModelFilePath));
             OrtEnableProfiling = (DOrtEnableProfiling)Marshal.GetDelegateForFunctionPointer(api_.EnableProfiling, typeof(DOrtEnableProfiling));
             OrtDisableProfiling = (DOrtDisableProfiling)Marshal.GetDelegateForFunctionPointer(api_.DisableProfiling, typeof(DOrtDisableProfiling));
@@ -1637,13 +1652,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                         bool value);
         public static DOrtSessionOptionsSetLoadCancellationFlag OrtSessionOptionsSetLoadCancellationFlag;
 
-        [StructLayout(LayoutKind.Sequential)]
-        internal struct OrtEpContextDataReadOptions
-        {
-            internal uint Version;
-            internal UIntPtr MaxDataSize;
-        }
-
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtReadNamedBufferDelegate(
             IntPtr /* void* */ state,
@@ -1659,6 +1667,22 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /* void* */ state,
             IntPtr /* const OrtEpContextDataReadOptions* */ readOptions);
         public static DOrtSessionOptionsSetEpContextDataReadFunc OrtSessionOptionsSetEpContextDataReadFunc;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateEpContextDataReadOptions(
+            out IntPtr /* OrtEpContextDataReadOptions** */ readOptions);
+        public static DOrtCreateEpContextDataReadOptions OrtCreateEpContextDataReadOptions;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtEpContextDataReadOptionsSetMaxDataSize(
+            IntPtr /* OrtEpContextDataReadOptions* */ readOptions,
+            UIntPtr /* size_t */ maxDataSize);
+        public static DOrtEpContextDataReadOptionsSetMaxDataSize OrtEpContextDataReadOptionsSetMaxDataSize;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseEpContextDataReadOptions(
+            IntPtr /* OrtEpContextDataReadOptions* */ readOptions);
+        public static DOrtReleaseEpContextDataReadOptions OrtReleaseEpContextDataReadOptions;
 
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]

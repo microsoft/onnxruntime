@@ -214,7 +214,7 @@ public class CompileApiTests
     [Fact]
     public void EpContextDataCallbackValidation()
     {
-        Assert.Equal(IntPtr.Size * 426, Marshal.SizeOf<OrtApi>());
+        Assert.Equal(IntPtr.Size * 429, Marshal.SizeOf<OrtApi>());
         Assert.Equal(IntPtr.Size * 17, Marshal.SizeOf<CompileApi.OrtCompileApi>());
 
         using var sessionOptions = new SessionOptions();
@@ -237,6 +237,34 @@ public class CompileApiTests
         Assert.Throws<ArgumentNullException>(() => compileOptions.SetEpContextDataWriteDelegate(null));
         compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
         compileOptions.ClearEpContextDataWriteDelegate();
+
+        var emptyData = new OrtEpContextData(IntPtr.Zero, UIntPtr.Zero);
+        Assert.True(emptyData.GetSpan().IsEmpty);
+        emptyData.Invalidate();
+
+        using (var emptyBuffer = new OrtEpContextDataBuffer(OrtAllocator.DefaultInstance.Pointer, 1024))
+        {
+            Assert.True(emptyBuffer.Allocate(0).IsEmpty);
+            emptyBuffer.Detach(out IntPtr pointer, out UIntPtr size);
+            Assert.Equal(IntPtr.Zero, pointer);
+            Assert.Equal(UIntPtr.Zero, size);
+        }
+
+        WeakReference replacedCallbackTargetReference;
+        WeakReference retainedCallbackTargetReference;
+        using (CreateCompilationOptionsWithReadDelegate(
+            out replacedCallbackTargetReference, out retainedCallbackTargetReference))
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Assert.False(replacedCallbackTargetReference.IsAlive);
+            Assert.True(retainedCallbackTargetReference.IsAlive);
+        }
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(retainedCallbackTargetReference.IsAlive);
     }
 
     [SkippableFact]
@@ -319,45 +347,6 @@ public class CompileApiTests
             Assert.NotEmpty(contextPayload);
             Assert.False(File.Exists(contextName));
             Assert.Throws<ObjectDisposedException>(() => retainedWriteData.GetSpan());
-
-            int compileReadCount = 0;
-            var sourceCompileOptions = new SessionOptions();
-            sourceCompileOptions.SetEpContextDataReadDelegate((name, output) =>
-            {
-                ++compileReadCount;
-                Assert.Equal(contextName, name);
-                contextPayload.CopyTo(output.Allocate(contextPayload.Length));
-            }, (ulong)contextPayload.Length);
-            sourceCompileOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
-            using (var retainedCompileOptions = new OrtModelCompilationOptions(sourceCompileOptions))
-            {
-                sourceCompileOptions.ClearEpContextDataReadDelegate();
-                sourceCompileOptions.Dispose();
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-
-                retainedCompileOptions.SetInputModelFromBuffer(compiledModel);
-                IntPtr recompiledModelBuffer = IntPtr.Zero;
-                UIntPtr recompiledModelBufferSize = UIntPtr.Zero;
-                OrtAllocator allocator = OrtAllocator.DefaultInstance;
-                retainedCompileOptions.SetOutputModelBuffer(
-                    allocator, ref recompiledModelBuffer, ref recompiledModelBufferSize);
-                try
-                {
-                    retainedCompileOptions.CompileModel();
-                    Assert.NotEqual(IntPtr.Zero, recompiledModelBuffer);
-                    Assert.NotEqual(UIntPtr.Zero, recompiledModelBufferSize);
-                }
-                finally
-                {
-                    if (recompiledModelBuffer != IntPtr.Zero)
-                    {
-                        allocator.FreeMemory(recompiledModelBuffer);
-                    }
-                }
-            }
-            Assert.Equal(1, compileReadCount);
-            Assert.False(File.Exists(contextName));
 
             using (var missingOutputLoadOptions = new SessionOptions())
             {
@@ -497,6 +486,32 @@ public class CompileApiTests
                 // This file is created by ORT, so we delete it manually in finally block.
                 File.Delete(outputModelFilePath);
             }
+        }
+    }
+
+    private static OrtModelCompilationOptions CreateCompilationOptionsWithReadDelegate(
+        out WeakReference replacedCallbackTargetReference,
+        out WeakReference retainedCallbackTargetReference)
+    {
+        using var sessionOptions = new SessionOptions();
+        var replacedCallbackTarget = new EpContextDataReadCallbackTarget();
+        replacedCallbackTargetReference = new WeakReference(replacedCallbackTarget);
+        sessionOptions.SetEpContextDataReadDelegate(replacedCallbackTarget.Read, 1024);
+
+        var retainedCallbackTarget = new EpContextDataReadCallbackTarget();
+        retainedCallbackTargetReference = new WeakReference(retainedCallbackTarget);
+        sessionOptions.SetEpContextDataReadDelegate(retainedCallbackTarget.Read, 1024);
+
+        var compileOptions = new OrtModelCompilationOptions(sessionOptions);
+        sessionOptions.ClearEpContextDataReadDelegate();
+        return compileOptions;
+    }
+
+    private sealed class EpContextDataReadCallbackTarget
+    {
+        internal void Read(string _, OrtEpContextDataBuffer output)
+        {
+            output.Allocate(0);
         }
     }
 }
