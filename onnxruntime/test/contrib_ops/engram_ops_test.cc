@@ -220,9 +220,6 @@ void RunShortConvChunkedTest(const ShortConvConfig& config, const std::vector<in
   const int64_t state_length = config.state_length();
   int64_t first_position = 0;
   for (int64_t chunk_length : chunk_lengths) {
-    ShortConvConfig chunk_config = config;
-    chunk_config.sequence_length = chunk_length;
-
     std::vector<float> chunk(static_cast<size_t>(config.batch_size * chunk_length * config.channels()));
     std::vector<float> expected(chunk.size());
     for (int64_t b = 0; b < config.batch_size; ++b) {
