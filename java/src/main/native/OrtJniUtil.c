@@ -3,8 +3,18 @@
  * Licensed under the MIT License.
  */
 #include <jni.h>
+#include <limits.h>
 #include <stdio.h>
+#include <string.h>
 #include "OrtJniUtil.h"
+
+struct EpContextDataCallbackState {
+    JavaVM* jvm;
+    jobject callback;
+    jmethodID method;
+    const OrtApi* api;
+    size_t maxDataSize;
+};
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     // To silence unused-parameter error.
@@ -14,6 +24,252 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     // Requesting 1.6 to support Android. Will need to be bumped to a later version to call interface default methods
     // from native code, or to access other new Java features.
     return JNI_VERSION_1_6;
+}
+
+static OrtStatus* createCallbackStatus(
+    const EpContextDataCallbackState* state, OrtErrorCode code, const char* message) {
+    return state->api->CreateStatus(code, message);
+}
+
+static OrtStatus* createJavaExceptionStatus(
+    const EpContextDataCallbackState* state, JNIEnv* jniEnv, const char* prefix) {
+    jthrowable throwable = (*jniEnv)->ExceptionOccurred(jniEnv);
+    (*jniEnv)->ExceptionClear(jniEnv);
+
+    const char* detail = NULL;
+    jstring detailString = NULL;
+    jclass throwableClass = NULL;
+    if (throwable != NULL) {
+        throwableClass = (*jniEnv)->GetObjectClass(jniEnv, throwable);
+        if (throwableClass != NULL) {
+            jmethodID toString = (*jniEnv)->GetMethodID(
+                jniEnv, throwableClass, "toString", "()Ljava/lang/String;");
+            if (toString != NULL) {
+                detailString = (jstring)(*jniEnv)->CallObjectMethod(jniEnv, throwable, toString);
+                if (!(*jniEnv)->ExceptionCheck(jniEnv) && detailString != NULL) {
+                    detail = (*jniEnv)->GetStringUTFChars(jniEnv, detailString, NULL);
+                }
+            }
+        }
+    }
+
+    if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+        (*jniEnv)->ExceptionClear(jniEnv);
+    }
+
+    OrtStatus* status = NULL;
+    if (detail != NULL) {
+        size_t prefixLength = strlen(prefix);
+        size_t detailLength = strlen(detail);
+        char* message = (char*)malloc(prefixLength + detailLength + 3);
+        if (message != NULL) {
+            snprintf(message, prefixLength + detailLength + 3, "%s: %s", prefix, detail);
+            status = createCallbackStatus(state, ORT_FAIL, message);
+            free(message);
+        }
+        (*jniEnv)->ReleaseStringUTFChars(jniEnv, detailString, detail);
+    }
+
+    if (detailString != NULL) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, detailString);
+    }
+    if (throwableClass != NULL) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, throwableClass);
+    }
+    if (throwable != NULL) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, throwable);
+    }
+
+    return status != NULL ? status : createCallbackStatus(state, ORT_FAIL, prefix);
+}
+
+static OrtStatus* getCallbackEnv(
+    EpContextDataCallbackState* state, JNIEnv** jniEnv, bool* attached) {
+    *attached = false;
+    jint result = (*state->jvm)->GetEnv(state->jvm, (void**)jniEnv, JNI_VERSION_1_6);
+    if (result == JNI_OK) {
+        return NULL;
+    }
+    if (result != JNI_EDETACHED) {
+        return createCallbackStatus(state, ORT_FAIL, "Failed to access the JVM for an EPContext callback");
+    }
+
+    result = (*state->jvm)->AttachCurrentThread(state->jvm, (void**)jniEnv, NULL);
+    if (result != JNI_OK) {
+        return createCallbackStatus(state, ORT_FAIL, "Failed to attach an EPContext callback thread to the JVM");
+    }
+    *attached = true;
+    return NULL;
+}
+
+static void detachCallbackThread(EpContextDataCallbackState* state, bool attached) {
+    if (attached) {
+        (*state->jvm)->DetachCurrentThread(state->jvm);
+    }
+}
+
+EpContextDataCallbackState* createEpContextDataCallbackState(
+    JNIEnv* jniEnv, const OrtApi* api, jobject callback, const char* methodName,
+    const char* methodSignature, size_t maxDataSize) {
+    EpContextDataCallbackState* state =
+        (EpContextDataCallbackState*)calloc(1, sizeof(EpContextDataCallbackState));
+    if (state == NULL) {
+        throwOrtException(jniEnv, ORT_FAIL, "Not enough memory for the EPContext callback state");
+        return NULL;
+    }
+
+    state->api = api;
+    state->maxDataSize = maxDataSize;
+    if ((*jniEnv)->GetJavaVM(jniEnv, &state->jvm) != JNI_OK) {
+        free(state);
+        throwOrtException(jniEnv, ORT_FAIL, "Failed to access the JVM for the EPContext callback");
+        return NULL;
+    }
+
+    state->callback = (*jniEnv)->NewGlobalRef(jniEnv, callback);
+    if (state->callback == NULL) {
+        free(state);
+        return NULL;
+    }
+
+    jclass callbackClass = (*jniEnv)->GetObjectClass(jniEnv, callback);
+    if (callbackClass == NULL) {
+        (*jniEnv)->DeleteGlobalRef(jniEnv, state->callback);
+        free(state);
+        return NULL;
+    }
+
+    state->method = (*jniEnv)->GetMethodID(jniEnv, callbackClass, methodName, methodSignature);
+    (*jniEnv)->DeleteLocalRef(jniEnv, callbackClass);
+    if (state->method == NULL) {
+        (*jniEnv)->DeleteGlobalRef(jniEnv, state->callback);
+        free(state);
+        return NULL;
+    }
+
+    return state;
+}
+
+void releaseEpContextDataCallbackState(JNIEnv* jniEnv, EpContextDataCallbackState* state) {
+    if (state != NULL) {
+        (*jniEnv)->DeleteGlobalRef(jniEnv, state->callback);
+        free(state);
+    }
+}
+
+OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
+    void* callbackState, const char* name, OrtAllocator* allocator, void** buffer, size_t* dataSize) {
+    EpContextDataCallbackState* state = (EpContextDataCallbackState*)callbackState;
+    JNIEnv* jniEnv = NULL;
+    bool attached = false;
+    OrtStatus* status = getCallbackEnv(state, &jniEnv, &attached);
+    if (status != NULL) {
+        return status;
+    }
+
+    *buffer = NULL;
+    *dataSize = 0;
+    jstring javaName = (*jniEnv)->NewStringUTF(jniEnv, name);
+    if (javaName == NULL) {
+        status = createJavaExceptionStatus(state, jniEnv, "Failed to create the EPContext data name");
+        detachCallbackThread(state, attached);
+        return status;
+    }
+
+    jbyteArray javaData =
+        (jbyteArray)(*jniEnv)->CallObjectMethod(jniEnv, state->callback, state->method, javaName);
+    if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+        status = createJavaExceptionStatus(state, jniEnv, "EPContext data read callback failed");
+    } else if (javaData == NULL) {
+        status = createCallbackStatus(
+            state, ORT_FAIL, "EPContext data read callback returned null");
+    } else {
+        jsize length = (*jniEnv)->GetArrayLength(jniEnv, javaData);
+        size_t outputSize = (size_t)length;
+        if (outputSize > state->maxDataSize) {
+            status = createCallbackStatus(
+                state, ORT_INVALID_ARGUMENT,
+                "EPContext data read callback result exceeds the configured maximum size");
+        } else if (outputSize != 0) {
+            void* output = allocator->Alloc(allocator, outputSize);
+            if (output == NULL) {
+                status = createCallbackStatus(
+                    state, ORT_FAIL, "Failed to allocate the EPContext data read result");
+            } else {
+                (*jniEnv)->GetByteArrayRegion(
+                    jniEnv, javaData, 0, length, (jbyte*)output);
+                if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+                    allocator->Free(allocator, output);
+                    status = createJavaExceptionStatus(
+                        state, jniEnv, "Failed to copy the EPContext data read result");
+                } else {
+                    *buffer = output;
+                    *dataSize = outputSize;
+                }
+            }
+        }
+    }
+
+    if (javaData != NULL) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, javaData);
+    }
+    (*jniEnv)->DeleteLocalRef(jniEnv, javaName);
+    detachCallbackThread(state, attached);
+    return status;
+}
+
+OrtStatus* ORT_API_CALL javaEpContextDataWriteCallback(
+    void* callbackState, const char* name, const void* buffer, size_t bufferSize) {
+    EpContextDataCallbackState* state = (EpContextDataCallbackState*)callbackState;
+    if (bufferSize > INT_MAX) {
+        return createCallbackStatus(
+            state, ORT_INVALID_ARGUMENT,
+            "EPContext data is too large for a Java byte array");
+    }
+    if (bufferSize != 0 && buffer == NULL) {
+        return createCallbackStatus(
+            state, ORT_INVALID_ARGUMENT,
+            "EPContext data has a null buffer for a non-empty payload");
+    }
+
+    JNIEnv* jniEnv = NULL;
+    bool attached = false;
+    OrtStatus* status = getCallbackEnv(state, &jniEnv, &attached);
+    if (status != NULL) {
+        return status;
+    }
+
+    jstring javaName = (*jniEnv)->NewStringUTF(jniEnv, name);
+    jbyteArray javaData = (*jniEnv)->NewByteArray(jniEnv, (jsize)bufferSize);
+    if (javaName == NULL || javaData == NULL) {
+        status = createJavaExceptionStatus(
+            state, jniEnv, "Failed to allocate Java EPContext callback arguments");
+    } else {
+        if (bufferSize != 0) {
+            (*jniEnv)->SetByteArrayRegion(
+                jniEnv, javaData, 0, (jsize)bufferSize, (const jbyte*)buffer);
+        }
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+            status = createJavaExceptionStatus(
+                state, jniEnv, "Failed to copy EPContext data into Java");
+        } else {
+            (*jniEnv)->CallVoidMethod(
+                jniEnv, state->callback, state->method, javaName, javaData);
+            if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+                status = createJavaExceptionStatus(
+                    state, jniEnv, "EPContext data write callback failed");
+            }
+        }
+    }
+
+    if (javaData != NULL) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, javaData);
+    }
+    if (javaName != NULL) {
+        (*jniEnv)->DeleteLocalRef(jniEnv, javaName);
+    }
+    detachCallbackThread(state, attached);
+    return status;
 }
 
 /**

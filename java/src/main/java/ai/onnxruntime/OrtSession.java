@@ -58,7 +58,27 @@ public class OrtSession implements AutoCloseable {
 
   private OnnxModelMetadata metadata;
 
+  private final SessionOptions.EpContextDataReadCallbackRegistration
+      epContextDataReadCallbackRegistration;
+
   private boolean closed = false;
+
+  @FunctionalInterface
+  private interface NativeSessionCreator {
+    long create() throws OrtException;
+  }
+
+  private static final class SessionCreationResult {
+    private final long nativeHandle;
+    private final SessionOptions.EpContextDataReadCallbackRegistration callbackRegistration;
+
+    private SessionCreationResult(
+        long nativeHandle,
+        SessionOptions.EpContextDataReadCallbackRegistration callbackRegistration) {
+      this.nativeHandle = nativeHandle;
+      this.callbackRegistration = callbackRegistration;
+    }
+  }
 
   /**
    * Create a session loading the model from disk.
@@ -73,7 +93,13 @@ public class OrtSession implements AutoCloseable {
       throws OrtException {
     this(
         createSession(
-            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, options.getNativeHandle()),
+            options,
+            () ->
+                createSession(
+                    OnnxRuntime.ortApiHandle,
+                    env.getNativeHandle(),
+                    modelPath,
+                    options.getNativeHandle())),
         allocator);
   }
 
@@ -90,7 +116,13 @@ public class OrtSession implements AutoCloseable {
       throws OrtException {
     this(
         createSession(
-            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
+            options,
+            () ->
+                createSession(
+                    OnnxRuntime.ortApiHandle,
+                    env.getNativeHandle(),
+                    modelArray,
+                    options.getNativeHandle())),
         allocator);
   }
 
@@ -110,13 +142,34 @@ public class OrtSession implements AutoCloseable {
       throws OrtException {
     this(
         createSession(
-            OnnxRuntime.ortApiHandle,
-            env.getNativeHandle(),
-            modelBuffer,
-            modelBuffer.position(),
-            modelBuffer.remaining(),
-            options.getNativeHandle()),
+            options,
+            () ->
+                createSession(
+                    OnnxRuntime.ortApiHandle,
+                    env.getNativeHandle(),
+                    modelBuffer,
+                    modelBuffer.position(),
+                    modelBuffer.remaining(),
+                    options.getNativeHandle())),
         allocator);
+  }
+
+  private static SessionCreationResult createSession(
+      SessionOptions options, NativeSessionCreator creator) throws OrtException {
+    synchronized (options) {
+      SessionOptions.EpContextDataReadCallbackRegistration registration =
+          options.retainEpContextDataReadCallbackRegistration();
+      boolean created = false;
+      try {
+        SessionCreationResult result = new SessionCreationResult(creator.create(), registration);
+        created = true;
+        return result;
+      } finally {
+        if (!created && registration != null) {
+          registration.release();
+        }
+      }
+    }
   }
 
   /**
@@ -126,18 +179,31 @@ public class OrtSession implements AutoCloseable {
    * @param allocator The allocator to use.
    * @throws OrtException If the model's inputs, outputs or metadata could not be read.
    */
-  private OrtSession(long nativeHandle, OrtAllocator allocator) throws OrtException {
-    this.nativeHandle = nativeHandle;
+  private OrtSession(SessionCreationResult result, OrtAllocator allocator) throws OrtException {
+    this.nativeHandle = result.nativeHandle;
     this.allocator = allocator;
-    numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
-    inputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(getInputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
-    numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle, nativeHandle);
-    outputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getOutputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+    this.epContextDataReadCallbackRegistration = result.callbackRegistration;
+    boolean initialized = false;
+    try {
+      numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
+      inputNames =
+          new LinkedHashSet<>(
+              Arrays.asList(
+                  getInputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+      numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle, nativeHandle);
+      outputNames =
+          new LinkedHashSet<>(
+              Arrays.asList(
+                  getOutputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+      initialized = true;
+    } finally {
+      if (!initialized) {
+        closeSession(OnnxRuntime.ortApiHandle, nativeHandle);
+        if (epContextDataReadCallbackRegistration != null) {
+          epContextDataReadCallbackRegistration.release();
+        }
+      }
+    }
   }
 
   /**
@@ -512,6 +578,9 @@ public class OrtSession implements AutoCloseable {
     if (!closed) {
       closeSession(OnnxRuntime.ortApiHandle, nativeHandle);
       closed = true;
+      if (epContextDataReadCallbackRegistration != null) {
+        epContextDataReadCallbackRegistration.release();
+      }
     } else {
       throw new IllegalStateException("Trying to close an already closed OrtSession.");
     }
@@ -603,7 +672,7 @@ public class OrtSession implements AutoCloseable {
   private native String endProfiling(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
-  private native void closeSession(long apiHandle, long nativeHandle) throws OrtException;
+  private native void closeSession(long apiHandle, long nativeHandle);
 
   /**
    * Builds the {@link OnnxModelMetadata} for this session.
@@ -633,6 +702,54 @@ public class OrtSession implements AutoCloseable {
    * otherwise it could release resources that are in use.
    */
   public static class SessionOptions implements AutoCloseable {
+
+    /**
+     * Supplies external EPContext data during session initialization.
+     *
+     * <p>The returned array is copied into memory owned by ONNX Runtime and may be reused by the
+     * application after this method returns. Returning {@code null} or throwing an exception fails
+     * the ONNX Runtime operation without falling back to filesystem access.
+     *
+     * <p>ONNX Runtime may invoke this callback concurrently from multiple threads. Implementations
+     * must synchronize access to shared state.
+     */
+    @FunctionalInterface
+    public interface EpContextDataReadCallback {
+      /**
+       * Reads one complete named EPContext payload.
+       *
+       * @param name The logical UTF-8 data identifier stored in the EPContext node.
+       * @return The payload. A zero-length array represents an empty payload.
+       * @throws Exception If the payload cannot be read.
+       */
+      byte[] read(String name) throws Exception;
+    }
+
+    static final class EpContextDataReadCallbackRegistration {
+      private final long nativeHandle;
+      private int referenceCount = 1;
+
+      private EpContextDataReadCallbackRegistration(long nativeHandle) {
+        this.nativeHandle = nativeHandle;
+      }
+
+      synchronized void retain() {
+        if (referenceCount == 0) {
+          throw new IllegalStateException("EPContext data read callback is already released.");
+        }
+        referenceCount++;
+      }
+
+      synchronized void release() {
+        if (referenceCount == 0) {
+          throw new IllegalStateException("EPContext data read callback is already released.");
+        }
+        referenceCount--;
+        if (referenceCount == 0) {
+          releaseEpContextDataCallback(nativeHandle);
+        }
+      }
+    }
 
     /**
      * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum
@@ -720,6 +837,8 @@ public class OrtSession implements AutoCloseable {
 
     private final Map<String, String> configEntries;
 
+    private EpContextDataReadCallbackRegistration epContextDataReadCallbackRegistration;
+
     private boolean closed = false;
 
     /** Create an empty session options. */
@@ -731,7 +850,7 @@ public class OrtSession implements AutoCloseable {
 
     /** Closes the session options, releasing any memory acquired. */
     @Override
-    public void close() {
+    public synchronized void close() {
       if (!closed) {
         if (!customLibraryHandles.isEmpty()) {
           long[] longArray = new long[customLibraryHandles.size()];
@@ -742,6 +861,10 @@ public class OrtSession implements AutoCloseable {
         }
         closeOptions(OnnxRuntime.ortApiHandle, nativeHandle);
         closed = true;
+        if (epContextDataReadCallbackRegistration != null) {
+          epContextDataReadCallbackRegistration.release();
+          epContextDataReadCallbackRegistration = null;
+        }
       } else {
         throw new IllegalStateException("Trying to close a closed SessionOptions.");
       }
@@ -761,6 +884,64 @@ public class OrtSession implements AutoCloseable {
      */
     long getNativeHandle() {
       return nativeHandle;
+    }
+
+    /**
+     * Registers a callback that supplies external EPContext data during session initialization.
+     *
+     * <p>The callback and its captured state are retained until these options and every session or
+     * model compilation options created from them are closed. Replacing or clearing the callback
+     * does not affect existing sessions or compilation options.
+     *
+     * @param callback The callback that supplies named data.
+     * @param maxDataSize A finite maximum payload size in bytes. Must be greater than zero. A
+     *     callback result larger than this limit fails the ONNX Runtime operation.
+     * @throws OrtException If native registration fails.
+     * @throws IllegalArgumentException If {@code maxDataSize} is not positive.
+     * @throws NullPointerException If {@code callback} is null.
+     */
+    public synchronized void setEpContextDataReadCallback(
+        EpContextDataReadCallback callback, long maxDataSize) throws OrtException {
+      checkClosed();
+      Objects.requireNonNull(callback, "callback must not be null");
+      if (maxDataSize <= 0) {
+        throw new IllegalArgumentException("maxDataSize must be greater than zero");
+      }
+
+      long callbackHandle =
+          setEpContextDataReadCallback(
+              OnnxRuntime.ortApiHandle, nativeHandle, callback, maxDataSize);
+      EpContextDataReadCallbackRegistration previous = epContextDataReadCallbackRegistration;
+      epContextDataReadCallbackRegistration =
+          new EpContextDataReadCallbackRegistration(callbackHandle);
+      if (previous != null) {
+        previous.release();
+      }
+    }
+
+    /**
+     * Clears the EPContext data read callback.
+     *
+     * <p>Existing sessions and model compilation options retain their callback snapshot.
+     *
+     * @throws OrtException If native registration fails.
+     */
+    public synchronized void clearEpContextDataReadCallback() throws OrtException {
+      checkClosed();
+      clearEpContextDataReadCallback(OnnxRuntime.ortApiHandle, nativeHandle);
+      if (epContextDataReadCallbackRegistration != null) {
+        epContextDataReadCallbackRegistration.release();
+        epContextDataReadCallbackRegistration = null;
+      }
+    }
+
+    synchronized EpContextDataReadCallbackRegistration
+        retainEpContextDataReadCallbackRegistration() {
+      checkClosed();
+      if (epContextDataReadCallbackRegistration != null) {
+        epContextDataReadCallbackRegistration.retain();
+      }
+      return epContextDataReadCallbackRegistration;
     }
 
     /**
@@ -1417,6 +1598,18 @@ public class OrtSession implements AutoCloseable {
     private native void closeCustomLibraries(long[] nativeHandle);
 
     private native void closeOptions(long apiHandle, long nativeHandle);
+
+    private static native long setEpContextDataReadCallback(
+        long apiHandle,
+        long nativeHandle,
+        EpContextDataReadCallback callback,
+        long maxDataSize)
+        throws OrtException;
+
+    private static native void clearEpContextDataReadCallback(long apiHandle, long nativeHandle)
+        throws OrtException;
+
+    private static native void releaseEpContextDataCallback(long callbackHandle);
 
     private native void setDeterministicCompute(
         long apiHandle, long nativeHandle, boolean isDeterministic) throws OrtException;
