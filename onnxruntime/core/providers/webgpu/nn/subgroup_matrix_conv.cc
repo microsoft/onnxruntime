@@ -263,7 +263,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
-                      activation.ToString())
+                      activation.CacheKey())
         .AddInputs({{src, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(vec_size)},
                     {ohwi_weight, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape, 1})
