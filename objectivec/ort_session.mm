@@ -3,6 +3,8 @@
 
 #import "ort_session_internal.h"
 
+#include <cstring>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -19,12 +21,139 @@ enum class NamedValueType {
   OverridableInitializer,
   Output,
 };
+
+OrtStatus* CreateCallbackStatus(OrtErrorCode code, NSString* message) {
+  const char* messageCstr = message.UTF8String;
+  return Ort::GetApi().CreateStatus(code, messageCstr != nullptr ? messageCstr : "EPContext data read block failed");
+}
+
+OrtStatus* ORT_API_CALL EpContextDataReadCallback(void* state,
+                                                  const char* name,
+                                                  OrtAllocator* allocator,
+                                                  void** buffer,
+                                                  size_t* dataSize);
 }  // namespace
 
 NS_ASSUME_NONNULL_BEGIN
 
+@interface ORTEpContextDataReadRegistration : NSObject
+
+@property(nonatomic, copy, readonly) ORTEpContextDataReadBlock block;
+@property(nonatomic, readonly) size_t maxDataSize;
+
+- (instancetype)initWithBlock:(ORTEpContextDataReadBlock)block
+                  maxDataSize:(size_t)maxDataSize;
+
+@end
+
+@implementation ORTEpContextDataReadRegistration
+
+- (instancetype)initWithBlock:(ORTEpContextDataReadBlock)block
+                  maxDataSize:(size_t)maxDataSize {
+  if ((self = [super init]) == nil) {
+    return nil;
+  }
+
+  _block = [block copy];
+  _maxDataSize = maxDataSize;
+  return self;
+}
+
+@end
+
+namespace {
+OrtStatus* ORT_API_CALL EpContextDataReadCallback(void* state,
+                                                  const char* name,
+                                                  OrtAllocator* allocator,
+                                                  void** buffer,
+                                                  size_t* dataSize) {
+  if (buffer == nullptr || dataSize == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                      "EPContext data read callback received null output parameters");
+  }
+
+  *buffer = nullptr;
+  *dataSize = 0;
+
+  if (state == nullptr || name == nullptr || allocator == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                      "EPContext data read callback received invalid input parameters");
+  }
+
+  try {
+    @try {
+      @autoreleasepool {
+        ORTEpContextDataReadRegistration* registration =
+            (__bridge ORTEpContextDataReadRegistration*)state;
+        NSString* dataName = [NSString stringWithUTF8String:name];
+        if (dataName == nil) {
+          return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                            "EPContext data name is not valid UTF-8");
+        }
+
+        NSError* callbackError = nil;
+        NSData* data = registration.block(dataName, &callbackError);
+        if (data == nil) {
+          if (callbackError == nil) {
+            return Ort::GetApi().CreateStatus(
+                ORT_FAIL, "EPContext data read block returned nil without setting an error");
+          }
+
+          NSString* message =
+              [NSString stringWithFormat:@"EPContext data read block failed for '%@': %@",
+                                         dataName, callbackError.localizedDescription];
+          return CreateCallbackStatus(ORT_FAIL, message);
+        }
+
+        if (![data isKindOfClass:[NSData class]]) {
+          return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                            "EPContext data read block returned an object that is not NSData");
+        }
+
+        const NSUInteger length = data.length;
+        if (length > registration.maxDataSize) {
+          return Ort::GetApi().CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              "EPContext data returned by the read block exceeds maxDataSize");
+        }
+        if (length == 0) {
+          return nullptr;
+        }
+
+        const void* bytes = data.bytes;
+        if (bytes == nullptr) {
+          return Ort::GetApi().CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              "EPContext data read block returned non-empty NSData with null bytes");
+        }
+
+        void* allocatedBuffer = allocator->Alloc(allocator, static_cast<size_t>(length));
+        if (allocatedBuffer == nullptr) {
+          return Ort::GetApi().CreateStatus(ORT_FAIL,
+                                            "Failed to allocate the EPContext data output buffer");
+        }
+
+        std::memcpy(allocatedBuffer, bytes, length);
+        *buffer = allocatedBuffer;
+        *dataSize = static_cast<size_t>(length);
+        return nullptr;
+      }
+    } @catch (NSException* /*exception*/) {
+      return Ort::GetApi().CreateStatus(
+          ORT_FAIL, "EPContext data read block raised an Objective-C exception");
+    }
+  } catch (const std::exception& exception) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, exception.what());
+  } catch (...) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL,
+                                      "EPContext data read callback raised an unknown exception");
+  }
+}
+}  // namespace
+
 @implementation ORTSession {
   ORTEnv* _env;  // keep a strong reference so the ORTEnv doesn't get destroyed before this does
+  id _epContextDataReadRegistration;
   std::optional<Ort::Session> _session;
 }
 
@@ -46,14 +175,30 @@ NS_ASSUME_NONNULL_BEGIN
       }
     }
 
-    _env = env;
-    _session = Ort::Session{[env CXXAPIOrtEnv],
-                            path.UTF8String,
-                            [sessionOptions CXXAPIOrtSessionOptions]};
+    id registrationSnapshot;
+    Ort::SessionOptions sessionOptionsSnapshot{nullptr};
+    @synchronized(sessionOptions) {
+      registrationSnapshot = [sessionOptions epContextDataReadRegistrationSnapshot];
+      sessionOptionsSnapshot = [sessionOptions CXXAPIOrtSessionOptions].Clone();
+    }
 
+    std::optional<Ort::Session> session;
+    session.emplace([env CXXAPIOrtEnv],
+                    path.UTF8String,
+                    sessionOptionsSnapshot);
+
+    _env = env;
+    _epContextDataReadRegistration = registrationSnapshot;
+    _session = std::move(session);
     return self;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (void)dealloc {
+  // Execution providers may retain the raw callback state, so release the native session first.
+  _session.reset();
+  _epContextDataReadRegistration = nil;
 }
 
 - (BOOL)runWithInputs:(NSDictionary<NSString*, ORTValue*>*)inputs
@@ -211,6 +356,7 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @implementation ORTSessionOptions {
+  ORTEpContextDataReadRegistration* _epContextDataReadRegistration;
   std::optional<Ort::SessionOptions> _sessionOptions;
 }
 
@@ -302,6 +448,47 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
+- (BOOL)setEpContextDataReadBlock:(ORTEpContextDataReadBlock)block
+                      maxDataSize:(NSUInteger)maxDataSize
+                            error:(NSError**)error {
+  try {
+    if (block == nil) {
+      ORT_CXX_API_THROW("EPContext data read block must not be nil", ORT_INVALID_ARGUMENT);
+    }
+    if (maxDataSize == 0 || maxDataSize == std::numeric_limits<NSUInteger>::max()) {
+      ORT_CXX_API_THROW("maxDataSize must be finite and greater than zero", ORT_INVALID_ARGUMENT);
+    }
+
+    @synchronized(self) {
+      ORTEpContextDataReadRegistration* registration =
+          [[ORTEpContextDataReadRegistration alloc] initWithBlock:block
+                                                      maxDataSize:static_cast<size_t>(maxDataSize)];
+      if (registration == nil) {
+        ORT_CXX_API_THROW("Failed to create EPContext data read block registration", ORT_FAIL);
+      }
+      _sessionOptions->SetEpContextDataReadFunc(
+          EpContextDataReadCallback, (__bridge void*)registration,
+          registration.maxDataSize);
+      _epContextDataReadRegistration = registration;
+    }
+
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)clearEpContextDataReadBlockWithError:(NSError**)error {
+  try {
+    @synchronized(self) {
+      _sessionOptions->ClearEpContextDataReadFunc();
+      _epContextDataReadRegistration = nil;
+    }
+
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
 - (BOOL)registerCustomOpsUsingFunction:(NSString*)registrationFuncName
                                  error:(NSError**)error {
   try {
@@ -336,6 +523,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (Ort::SessionOptions&)CXXAPIOrtSessionOptions {
   return *_sessionOptions;
+}
+
+- (nullable id)epContextDataReadRegistrationSnapshot {
+  @synchronized(self) {
+    return _epContextDataReadRegistration;
+  }
 }
 
 @end
