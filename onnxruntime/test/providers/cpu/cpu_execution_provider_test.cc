@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_registry.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "test/test_environment.h"
@@ -24,22 +25,19 @@ TEST(CPUExecutionProviderTest, Float16GemmAndMatMulRegistration) {
       {"T", DataTypeImpl::GetTensorType<MLFloat16>()},
   };
 
-  const auto has_kernel = [&](std::string_view op_type) {
+  const auto has_kernel = [&](std::string_view op_type, int opset_version) {
     const KernelCreateInfo* kernel_create_info{};
     const auto status = kernel_registry->TryFindKernel(
-        kCpuExecutionProvider, op_type, kOnnxDomain, 13, type_constraints,
+        kCpuExecutionProvider, op_type, kOnnxDomain, opset_version, type_constraints,
         DefaultLoggingManager().DefaultLogger(), &kernel_create_info);
     return status.IsOK() && kernel_create_info != nullptr;
   };
 
-#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
-    defined(MLAS_TARGET_RISCV64)
-  const bool expected_kernel = MlasFp16AccelerationSupported();
-#else
-  const bool expected_kernel = false;
-#endif
-  EXPECT_EQ(has_kernel("Gemm"), expected_kernel);
-  EXPECT_EQ(has_kernel("MatMul"), expected_kernel);
+  const bool expected_kernel = MlasHalfGemmAccelerationSupported(nullptr);
+  EXPECT_EQ(has_kernel("Gemm", 8), expected_kernel);
+  EXPECT_EQ(has_kernel("Gemm", 13), expected_kernel);
+  EXPECT_EQ(has_kernel("MatMul", 8), expected_kernel);
+  EXPECT_EQ(has_kernel("MatMul", 13), expected_kernel);
 }
 
 TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorDefaultsToKleidiAiEnabled) {

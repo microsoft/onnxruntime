@@ -1832,6 +1832,14 @@ bool MLASCALL
 MlasFp16AccelerationSupported();
 
 /**
+ * @brief Whether an accelerated HalfGemm backend is available with the given configuration.
+ */
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+/**
  * @brief Interface for half gemm post processors.
  *
  * Example implementation of this interface includes activations,
