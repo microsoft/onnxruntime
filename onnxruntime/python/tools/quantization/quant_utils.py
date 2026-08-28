@@ -1261,6 +1261,33 @@ def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
     )
 
 
+def bias_abs_max_per_channel(bias_data: numpy.ndarray, num_channels: int) -> numpy.ndarray:
+    """
+    Reduces a bias to a single absolute-maximum value per output channel.
+
+    This magnitude is used to ensure that the quantized bias will fit in an
+    integer dtype (e.g. int32).
+
+    Conv requires a 1-D bias, but Gemm's C input only has to be
+    unidirectionally broadcastable to (M, N), so it may also be (1,N), (M,1),
+    (1,1), (M,N) or a scalar. In per-channel quantization, the channel axis is
+    the last axis. So this takes the max over the leading axes.
+    """
+    bias_abs = numpy.abs(numpy.atleast_1d(bias_data))
+
+    if bias_abs.ndim > 1:
+        bias_abs = bias_abs.max(axis=tuple(range(bias_abs.ndim - 1)))
+
+    if bias_abs.shape[0] == 1 and num_channels > 1:
+        bias_abs = numpy.broadcast_to(bias_abs, (num_channels,))
+    elif bias_abs.shape[0] != num_channels:
+        raise ValueError(
+            f"Bias shape {bias_data.shape} is not broadcastable to per-channel size {num_channels} along the last axis."
+        )
+
+    return bias_abs
+
+
 def add_quant_suffix(tensor_name: str) -> str:
     return tensor_name + "_QuantizeLinear"
 
