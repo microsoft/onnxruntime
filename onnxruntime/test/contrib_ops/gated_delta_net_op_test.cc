@@ -510,10 +510,10 @@ TEST(GatedDeltaNetTest, Recurrent_Float32) {
   RunTypedCase<float>(g, Options{}, MakeInputs(g, 149), 1e-4f, 1e-4f);
 }
 
-TEST(GatedDeltaNetTest, Recurrent_BFloat16) {
+TEST(GatedDeltaNetTest, BFloat16UsesRecurrentFallback) {
   if (NeedSkipGatedDeltaNetTest()) return;
-  Geometry g{4, 1, 1, 2, 64, 32};
-  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 3e-2f, 3e-2f);
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 4e-2f, 4e-2f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_SmallHeadSizes) {
