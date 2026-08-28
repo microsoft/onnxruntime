@@ -4073,12 +4073,10 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 
 Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(RegisterOnnxOperatorKernels(kernel_registry));
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(MLAS_TARGET_RISCV64)
   if (MlasFp16AccelerationSupported()) {
     ORT_RETURN_IF_ERROR(RegisterFp16GemmMatMulKernels(kernel_registry));
   }
-#elif defined(MLAS_TARGET_RISCV64)
-  ORT_RETURN_IF_ERROR(RegisterFp16GemmMatMulKernels(kernel_registry));
 #endif
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   if (MlasFp16AccelerationSupported()) {
