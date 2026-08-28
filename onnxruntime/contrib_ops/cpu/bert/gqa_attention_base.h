@@ -832,9 +832,11 @@ class GQAAttentionBase {
     thread_count = std::max(thread_count, 1);
 
     // Flash decoding: for decode (sequence_length==1), partition KV across threads
-    // to improve parallelism when batch*heads < thread_count.
+    // to improve parallelism when batch*heads < thread_count. The per-batch fallback
+    // uses the regular tiled kernel and therefore needs its larger scratch layout.
     const int kv_chunk_count = (max_total_seqlen + kv_block_size - 1) / kv_block_size;
     const bool use_flash_decoding = (sequence_length == 1 &&
+                                     common_past_seqlen >= 0 &&
                                      batch_size * num_heads_ < thread_count &&
                                      kv_chunk_count > 1);
 

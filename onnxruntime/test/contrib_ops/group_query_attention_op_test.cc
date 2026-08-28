@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -253,6 +254,115 @@ TEST(GroupQueryAttentionTest, WindowedCacheAttentionBiasWithPositionIds_CPU) {
   tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
                           expected_present_value);
   tester.SetOutputTolerance(0.001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheAttentionBiasRejectsAbsoluteLengthBeyondBias_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int cache_capacity = 16;
+  constexpr int total_sequence_length = 10;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("local_window_size", 8);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                         std::vector<float>(cache_capacity * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                         std::vector<float>(cache_capacity * head_size, 0.0f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {cache_capacity});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<float>("attention_bias", {batch_size, num_heads, sequence_length, total_sequence_length},
+                         std::vector<float>(total_sequence_length, 0.0f));
+  tester.AddOptionalInputEdge<float>();  // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<float>(cache_capacity * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<float>(cache_capacity * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "exceeds the attention_bias sequence dimension 10", {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, QuantizedWindowedCacheRaggedBiasOffsetsDecode_CPU) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 256;
+  constexpr int hidden_size = num_heads * head_size;
+
+  const int l2_cache_size = std::max(Env::Default().GetL2CacheSize(), 1);
+  const int kv_block_size = std::max(l2_cache_size / (static_cast<int>(sizeof(float)) * 4 *
+                                                      (head_size + head_size)),
+                                     1);
+  const int cache_capacity = 2 * kv_block_size;
+  const int total_sequence_length = cache_capacity + 2;
+  const size_t cache_elements = static_cast<size_t>(batch_size) * kv_num_heads * cache_capacity * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
+  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
+  tester.AddAttribute<int64_t>("kv_cache_bit_width", 8);
+  tester.AddAttribute<int64_t>("local_window_size", cache_capacity);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * hidden_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size},
+                         std::vector<float>(batch_size * head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size},
+                         std::vector<float>(batch_size * head_size, 0.25f));
+  tester.AddInput<int8_t>("past_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<int8_t>(cache_elements, 0));
+  tester.AddInput<int8_t>("past_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<int8_t>(cache_elements, 1));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {cache_capacity, cache_capacity + 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<float>("attention_bias", {batch_size, num_heads, sequence_length, total_sequence_length},
+                         std::vector<float>(batch_size * total_sequence_length, 0.0f));
+  tester.AddOptionalInputEdge<float>();  // head_sink
+  tester.AddInput<float>("k_scale", {1}, {0.01f});
+  tester.AddInput<float>("v_scale", {1}, {0.01f});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * hidden_size, 0.0f));
+  tester.AddOutput<int8_t>("present_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                           std::vector<int8_t>(cache_elements, 0));
+  tester.AddOutput<int8_t>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                           std::vector<int8_t>(cache_elements, 0));
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                    const std::string& /*provider*/) {
+    ASSERT_FALSE(fetches.empty());
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+    for (int i = 0; i < batch_size * hidden_size; ++i) {
+      EXPECT_TRUE(std::isfinite(output[i])) << "Non-finite output at index " << i;
+    }
+  });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());

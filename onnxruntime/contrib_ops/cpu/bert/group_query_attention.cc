@@ -319,6 +319,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is out of range [0, ", present_kv_seqlen, ")");
       }
+      if (windowed && attention_bias != nullptr && seqlens_k_data[b] >= attention_bias->Shape()[3]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " exceeds the attention_bias sequence dimension ", attention_bias->Shape()[3], ".");
+      }
       if ((windowed || !parameters.is_first_prompt) &&
           static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
