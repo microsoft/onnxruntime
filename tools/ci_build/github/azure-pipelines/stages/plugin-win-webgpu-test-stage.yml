@@ -60,6 +60,7 @@ stages:
       displayName: 'Install and test Python package'
       env:
         ORT_TEST_VERBOSE: $(OrtTestVerbose)
+        ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE: '1'
 
   # NuGet package test (x64 only — the NuGet package is multi-platform but
   # the test runs on a single Windows agent that exercises the WebGPU EP).
