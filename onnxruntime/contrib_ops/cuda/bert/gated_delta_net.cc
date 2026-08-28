@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/gated_delta_net.h"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
@@ -71,11 +72,15 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
   }
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-  chunk_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("chunk_size", 64));
-  state_update_capacity_ =
-      static_cast<int>(info.GetAttrOrDefault<int64_t>("state_update_capacity", 0));
-  ORT_ENFORCE(state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
-              "state_update_capacity must be in [0, 8], got ", state_update_capacity_);
+  const int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
+  ORT_ENFORCE(chunk_size > 0 && chunk_size <= std::numeric_limits<int>::max(),
+              "chunk_size must be positive and fit in int32, got ", chunk_size);
+  chunk_size_ = static_cast<int>(chunk_size);
+  const int64_t state_update_capacity =
+      info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
+  ORT_ENFORCE(state_update_capacity >= 0 && state_update_capacity <= 8,
+              "state_update_capacity must be in [0, 8], got ", state_update_capacity);
+  state_update_capacity_ = static_cast<int>(state_update_capacity);
   qk_l2_norm_ = info.GetAttrOrDefault<int64_t>("qk_l2_norm", 0) != 0;
 
   forced_engine_ = gdn::EngineFromName(
@@ -132,9 +137,15 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(k_shape.SizeToDimension(token_dims) == total_tokens &&
                         v_shape.SizeToDimension(token_dims) == total_tokens,
                     "query, key and value must agree on total_tokens");
-  ORT_RETURN_IF_NOT(total_tokens > 0, "total_tokens must be positive");
+  const int64_t max_int = std::numeric_limits<int>::max();
+  ORT_RETURN_IF_NOT(total_tokens > 0 && total_tokens <= max_int,
+                    "total_tokens must be positive and fit in int32");
 
   // Head counts are derived from the shapes; there are no head-count attributes.
+  ORT_RETURN_IF_NOT(q_shape[token_dims] <= max_int && k_shape[token_dims] <= max_int &&
+                        v_shape[token_dims] <= max_int && q_shape[token_dims + 1] <= max_int &&
+                        v_shape[token_dims + 1] <= max_int,
+                    "head counts and head sizes must fit in int32");
   const int num_heads_q = static_cast<int>(q_shape[token_dims]);
   const int num_heads_k = static_cast<int>(k_shape[token_dims]);
   const int num_heads_v = static_cast<int>(v_shape[token_dims]);
@@ -156,20 +167,25 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                       "head_size_qk]");
   }
 
-  int batch = 1;
+  int64_t batch_dim = 1;
   if (cu_seqlens != nullptr) {
     ORT_RETURN_IF_NOT(qkv_rank == 3,
                       "cu_seqlens describes ragged packing, so query/key/value must be rank 3");
     ORT_RETURN_IF_NOT(cu_seqlens->Shape().NumDimensions() == 1 && cu_seqlens->Shape()[0] >= 2,
                       "cu_seqlens must be rank 1 with at least 2 elements");
-    batch = static_cast<int>(cu_seqlens->Shape()[0] - 1);
+    batch_dim = cu_seqlens->Shape()[0] - 1;
   } else if (qkv_rank == 4) {
-    batch = static_cast<int>(q_shape[0]);
+    batch_dim = q_shape[0];
   } else {
     // Uniform packing. The batch size comes from the state, which GenAI always binds.
     ORT_RETURN_IF_NOT(initial_state != nullptr,
                       "cu_seqlens is absent, so initial_state is required to determine batch size");
-    batch = static_cast<int>(initial_state->Shape()[initial_state->Shape().NumDimensions() - 4]);
+    batch_dim = initial_state->Shape()[initial_state->Shape().NumDimensions() - 4];
+  }
+  ORT_RETURN_IF_NOT(batch_dim > 0 && batch_dim <= max_int,
+                    "batch size must be positive and fit in int32");
+  const int batch = static_cast<int>(batch_dim);
+  if (cu_seqlens == nullptr && qkv_rank == 3) {
     ORT_RETURN_IF_NOT(batch > 0 && total_tokens % batch == 0,
                       "total_tokens (", total_tokens, ") must be divisible by batch (", batch, ")");
   }
@@ -276,8 +292,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.sm_major = prop.major;
   desc.sm_minor = prop.minor;
 
-  gdn::Plan plan = gdn::PlanCache::Instance().GetOrCreate(desc, prop.multiProcessorCount,
-                                                          prop.sharedMemPerBlockOptin);
+  gdn::Plan plan = gdn::SelectPlan(desc, prop.sharedMemPerBlockOptin);
   if (forced_engine_ == gdn::Engine::kChunked ||
       forced_engine_ == gdn::Engine::kChunkedSplit) {
     ORT_RETURN_IF_NOT(
@@ -320,6 +335,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
   const cudaStream_t stream = Stream(context);
+  if (state_update != nullptr && state_update_capacity_ > 0 && !desc.state_update_active) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(pack.state_update, 0, state_update->SizeInBytes(), stream));
+  }
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
 
   IAllocatorUniquePtr<uint8_t> workspace;

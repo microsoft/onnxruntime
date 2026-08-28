@@ -40,8 +40,7 @@ Source:
 - **Token-major (THD) inputs.** Head counts are derived from rank-3 shapes rather than from
   attributes, and an optional `cu_seqlens` allows variable-length requests in one call.
 - **V-major float32 state, split into `initial_state` / `final_state`.** The recurrence
-  boundary is where reduced precision hurts most, and V-major matches the layout used by
-  cuDNN's GDN/KDA and by FLA with `state_v_first=true`.
+  boundary is where reduced precision hurts most.
 - **Compact speculative-state capture.** A single packed `state_update` output records only
   the transitions needed to replay an accepted prefix. It avoids materializing a dense copy
   of the recurrent state for every draft token.
@@ -138,10 +137,11 @@ inactive persistent bank, then atomically publishes the bank. Full acceptance us
 would consume 576 MiB across 48 layers; compact capture allocates only the transition payload
 and does not multiply persistent state by the speculative width.
 
-When `state_update_active[0]` is zero, no row requests capture and the planner may select a
-chunked engine that does not emit transitions. When capture is active, chunked processing may
-handle non-capturing rows while a recurrent tail pass emits the requested capsules. This keeps
-mixed prefill/decode batches on their normal arithmetic paths.
+When `state_update_active[0]` is zero, transition capture is disabled: `capture_count` is ignored,
+`state_update` is zero-filled, and the planner may select a chunked engine that does not emit
+transitions. When capture is active, chunked processing may handle non-capturing rows while a
+recurrent tail pass emits the requested capsules. This keeps mixed prefill/decode batches on their
+normal arithmetic paths.
 
 ## 4. Recurrence and the Chunked Form
 

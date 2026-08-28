@@ -3066,8 +3066,7 @@ size is taken from `initial_state`, which is then required.
 
 State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
 head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
-boundary is where reduced precision hurts most, and V-major is the layout used by cuDNN's
-GDN/KDA and by FLA with `state_v_first=true`. The two may be the same allocation; the
+boundary is where reduced precision hurts most. The two may be the same allocation; the
 implementation reads the whole incoming state before writing any of it.
 
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
@@ -3168,8 +3167,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(batch_size). Required exactly when state_update_capacity is positive.",
                "TI", OpSchema::Optional)
         .Input(10, "state_update_active",
-               "CPU int32 control with shape (1). Zero means every capture_count is zero, allowing "
-               "the planner to use an engine without transition capture. Omission is conservative.",
+               "CPU int32 control with shape (1). Zero disables transition capture, ignores "
+               "capture_count, and produces a zero-filled state_update. Omission is conservative.",
                "TI", OpSchema::Optional)
         .Output(0, "output",
                 "Output, shape (total_tokens, max(num_heads_q, num_heads_v), head_size_v)", "T")

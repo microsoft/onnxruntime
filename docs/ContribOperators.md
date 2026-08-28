@@ -2123,8 +2123,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
   head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
-  boundary is where reduced precision hurts most, and V-major is the layout used by cuDNN's
-  GDN/KDA and by FLA with `state_v_first=true`. The two may be the same allocation; the
+  boundary is where reduced precision hurts most. The two may be the same allocation; the
   implementation reads the whole incoming state before writing any of it.
   
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
@@ -2139,9 +2138,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   decay is not supported when compact updates are enabled. `capture_count` is forbidden when C is
   zero.
   
-  The optional CPU input `state_update_active` has shape `[1]` and reports whether any row has
-  a positive capture count in this invocation. When zero, the planner may use an engine that cannot
-  emit compact updates. Omitting it preserves the conservative behavior of treating capture as active.
+  The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
+  disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
+  engine that cannot emit compact updates. Omitting it preserves the conservative behavior of
+  treating capture as active.
   
   Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
   

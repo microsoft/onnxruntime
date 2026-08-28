@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 // Plan selection for GatedDeltaNet, modeled on the cuDNN frontend's execution flow:
-// a problem descriptor is hashed into a cache, a heuristic picks an engine, the engine
-// reports its workspace requirement, and execution binds a variant pack of pointers.
+// a heuristic picks an engine, the engine reports its workspace requirement, and execution
+// binds a variant pack of pointers.
 //
 // cuDNN itself cannot serve as a backend here: its GDN/KDA graph nodes exist only in the
 // Python frontend (`python/cudnn/linear_attention/`, nothing in `include/`) and its FROST
@@ -14,10 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 
 namespace onnxruntime {
 namespace contrib {
@@ -78,12 +75,6 @@ struct Descriptor {
   Engine preferred_engine = Engine::kAuto;
   int sm_major = 0;
   int sm_minor = 0;
-
-  bool operator==(const Descriptor& o) const noexcept;
-};
-
-struct DescriptorHash {
-  size_t operator()(const Descriptor& d) const noexcept;
 };
 
 struct Plan {
@@ -164,8 +155,7 @@ inline size_t SplitTileBytes(int bt, int dk, int dv) {
   return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + dv + bt) + sizeof(float);
 }
 
-inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_block_optin) {
-  (void)sm_count;
+inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
   Plan plan;
   plan.chunk_size = desc.chunk_size > 0 ? desc.chunk_size : 64;
 
@@ -288,17 +278,6 @@ inline Plan SelectPlan(const Descriptor& desc, int sm_count, size_t smem_per_blo
   }
   return plan;
 }
-
-// Process-wide memoisation of SelectPlan, mirroring the frontend's plan cache.
-class PlanCache {
- public:
-  static PlanCache& Instance();
-  Plan GetOrCreate(const Descriptor& desc, int sm_count, size_t smem_per_block_optin);
-
- private:
-  std::mutex mutex_;
-  std::unordered_map<Descriptor, Plan, DescriptorHash> cache_;
-};
 
 }  // namespace gated_delta_net
 }  // namespace cuda
