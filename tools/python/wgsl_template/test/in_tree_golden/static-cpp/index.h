@@ -34,14 +34,12 @@ Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHe
 template <>
 struct TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template"> {
   using type = struct {
-    int param_has_bias;
     int param_sg_mat_count_m;
     int param_sg_mat_count_n;
     int param_sg_mat_k;
     int param_sg_mat_m;
     int param_sg_mat_n;
     int param_split_k;
-    const ShaderVariableHelper* var_output;
   };
 };
 

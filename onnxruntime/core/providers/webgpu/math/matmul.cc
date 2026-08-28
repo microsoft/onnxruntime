@@ -158,8 +158,10 @@ Status ComputeMatMul(ComputeContext* context,
 
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
-  int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
-  int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
+  const int64_t batchA =
+      a_shape.NumDimensions() > 2 ? a_shape.SizeToDimension(a_shape.NumDimensions() - 2) : 1;
+  const int64_t batchB =
+      b_shape.NumDimensions() > 2 ? b_shape.SizeToDimension(b_shape.NumDimensions() - 2) : 1;
 
   TensorShape output_shape = helper.OutputShape();
 

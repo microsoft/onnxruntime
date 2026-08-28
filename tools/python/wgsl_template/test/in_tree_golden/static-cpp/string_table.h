@@ -212,8 +212,8 @@ constexpr const char* __str_202 = "                &input_b, b_base + 2 * kSgMat
 constexpr const char* __str_203 = "                &input_b, b_base + 3 * kSgMatN, uniforms.N_b);\n";
 constexpr const char* __str_204 = "        let a_col = a_batch_offset + kb * kSgMatK;\n";
 constexpr const char* __str_205 = "            let out_base = out_batch_offset + global_m * uniforms.N + global_base_n;\n";
-constexpr const char* __str_206 = "                var val = output_element_t(scratch[scratch_base + i]);\n";
-constexpr const char* __str_207 = "                val += bias[global_base_n + i];\n";
+constexpr const char* __str_206 = "                write_output(out_base + i, global_base_n + i,\n";
+constexpr const char* __str_207 = "                             output_value_t(scratch[scratch_base + i]));\n";
 constexpr const char* __str_208 = "uniforms.output_size";
 constexpr const char* __str_209 = "r * uniforms.N + c";
 constexpr const char* __str_210 = "global_idx";
