@@ -916,9 +916,9 @@ def generate_build_tree(
         if not is_windows():
             raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) is only supported on Windows.")
 
-        if args.arm:
+        if args.arm or args.arm64ec:
             raise BuildError(
-                "Dawn Agility SDK (--use_dawn_agility_sdk) does not support Windows ARM32. "
+                "Dawn Agility SDK (--use_dawn_agility_sdk) does not support Windows ARM32 or ARM64EC. "
                 "Use an x86, x64, or ARM64 target."
             )
 

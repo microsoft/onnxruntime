@@ -647,9 +647,10 @@ if (onnxruntime_USE_WEBGPU)
     if (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
       message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported for WindowsStore/UWP.")
     endif()
-    if (onnxruntime_target_platform STREQUAL "ARM")
+    if (onnxruntime_target_platform STREQUAL "ARM" OR
+        onnxruntime_target_platform STREQUAL "ARM64EC")
       message(FATAL_ERROR
-              "DAWN_USE_AGILITY_SDK does not support Windows ARM32. "
+              "DAWN_USE_AGILITY_SDK does not support Windows ARM32 or ARM64EC. "
               "Use an x86, x64, or ARM64 target.")
     endif()
     if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
