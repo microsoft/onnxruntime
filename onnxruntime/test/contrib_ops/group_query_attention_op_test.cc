@@ -204,6 +204,61 @@ TEST(GroupQueryAttentionTest, CausalMaskDefaultsToEnabled_CPU) {
   RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, std::nullopt, expected_output);
 }
 
+TEST(GroupQueryAttentionTest, WindowedCacheAttentionBiasWithPositionIds_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int cache_capacity = 2;
+  constexpr int total_sequence_length = 5;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+  tester.AddAttribute<int64_t>("local_window_size", cache_capacity);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 20.0f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                         std::vector<float>(cache_capacity * head_size, 0.0f));
+
+  std::vector<float> past_value(cache_capacity * head_size, 5.0f);
+  std::fill(past_value.begin() + head_size, past_value.end(), 10.0f);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, cache_capacity, head_size}, past_value);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  constexpr int rotary_dim = head_size / 2;
+  tester.AddInput<float>("cos_cache", {total_sequence_length, rotary_dim},
+                         std::vector<float>(total_sequence_length * rotary_dim, 1.0f));
+  tester.AddInput<float>("sin_cache", {total_sequence_length, rotary_dim},
+                         std::vector<float>(total_sequence_length * rotary_dim, 0.0f));
+  tester.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {total_sequence_length - 1});
+
+  // The two resident rows are absolute positions 3 and 4. Their bias weights are 1:3,
+  // so the expected value is 10 * 1/4 + 20 * 3/4 = 17.5 in every head dimension.
+  tester.AddInput<float>("attention_bias", {batch_size, num_heads, sequence_length, total_sequence_length},
+                         {-100.0f, -100.0f, -100.0f, 0.0f, std::log(3.0f)});
+  tester.AddOptionalInputEdge<float>();  // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 17.5f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<float>(cache_capacity * head_size, 0.0f));
+  std::vector<float> expected_present_value(cache_capacity * head_size, 10.0f);
+  std::fill(expected_present_value.begin() + head_size, expected_present_value.end(), 20.0f);
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          expected_present_value);
+  tester.SetOutputTolerance(0.001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(GroupQueryAttentionTest, BidirectionalMask_CPU) {
   RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, 0, std::vector<float>(16, 2.5f));
 }
