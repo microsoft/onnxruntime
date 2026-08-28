@@ -2229,7 +2229,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain query/key/value/output types.</dd>
 <dt><tt>TS</tt> : tensor(float)</dt>
 <dd>State, gate, beta and compact state-update tensors are always float.</dd>

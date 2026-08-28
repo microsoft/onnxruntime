@@ -216,12 +216,43 @@ void AddCommonAttrs(OpTester& t, const Options& o) {
   if (o.scale != 0.0f) t.AddAttribute("scale", o.scale);
 }
 
+template <typename T>
+std::vector<T> ToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(data);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(data);
+  } else {
+    return data;
+  }
+}
+
+// Snaps floats to the grid of the operator's input type, so the reference sees the exact values
+// the kernel reads. Without it the tolerance has to absorb input rounding and stops measuring the
+// kernel: bfloat16 needs 4e-2 against unrounded inputs where 6e-3 suffices against rounded ones.
+template <typename T>
+std::vector<float> RoundToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, float>) {
+    return data;
+  } else {
+    const std::vector<T> narrowed = ToTensorType<T>(data);
+    std::vector<float> rounded(data.size());
+    for (size_t i = 0; i < data.size(); ++i) rounded[i] = narrowed[i].ToFloat();
+    return rounded;
+  }
+}
+
 // Runs the operator and compares against the float64 reference.
 // With rank4 the leading token axis is spelled [batch, sequence] instead of [total_tokens];
 // the buffers are byte-identical, only the declared shapes differ.
 template <typename T>
-void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in, float out_tol,
+void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
+  Inputs in = in_raw;
+  in.q = RoundToTensorType<T>(in_raw.q);
+  in.k = RoundToTensorType<T>(in_raw.k);
+  in.v = RoundToTensorType<T>(in_raw.v);
+
   std::vector<float> ref_out, ref_state;
   Reference(g, o, in, &ref_out, &ref_state);
 
@@ -238,15 +269,9 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in, float o
     return s;
   };
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    test.AddInput<MLFloat16>("query", shaped({g.hq, g.dk}), ToFloat16(in.q));
-    test.AddInput<MLFloat16>("key", shaped({g.hq, g.dk}), ToFloat16(in.k));
-    test.AddInput<MLFloat16>("value", shaped({g.hv, g.dv}), ToFloat16(in.v));
-  } else {
-    test.AddInput<float>("query", shaped({g.hq, g.dk}), in.q);
-    test.AddInput<float>("key", shaped({g.hq, g.dk}), in.k);
-    test.AddInput<float>("value", shaped({g.hv, g.dv}), in.v);
-  }
+  test.AddInput<T>("query", shaped({g.hq, g.dk}), ToTensorType<T>(in.q));
+  test.AddInput<T>("key", shaped({g.hq, g.dk}), ToTensorType<T>(in.k));
+  test.AddInput<T>("value", shaped({g.hv, g.dv}), ToTensorType<T>(in.v));
   if (in.cu_seqlens.empty()) {
     test.AddOptionalInputEdge<int32_t>();
   } else {
@@ -286,13 +311,8 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in, float o
     }
   }
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    test.AddOutput<MLFloat16>("output", shaped({out_heads, g.dv}), ToFloat16(ref_out),
-                              false, out_tol, out_tol);
-  } else {
-    test.AddOutput<float>("output", shaped({out_heads, g.dv}), ref_out,
-                          false, out_tol, out_tol);
-  }
+  test.AddOutput<T>("output", shaped({out_heads, g.dv}), ToTensorType<T>(ref_out),
+                    false, out_tol, out_tol);
   test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
                         state_tol);
   if (o.state_update_capacity > 0) {
@@ -508,6 +528,28 @@ TEST(GatedDeltaNetTest, Recurrent_Float32) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, 64, 32};
   RunTypedCase<float>(g, Options{}, MakeInputs(g, 149), 1e-4f, 1e-4f);
+}
+
+TEST(GatedDeltaNetTest, BFloat16UsesRecurrentFallback) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 6e-3f, 2e-3f);
+}
+
+// One token per request drives the warp-specialised decode kernel, a separate instantiation
+// from the chunk loop the case above exercises.
+TEST(GatedDeltaNetTest, BFloat16SingleTokenDecode) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{3, 3, 1, 2, kDim, kDim};
+  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 153), 6e-3f, 2e-3f);
+}
+
+TEST(GatedDeltaNetTest, BFloat16RaggedUnequalLengths) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{200, 3, 1, 2, kDim, kDim};
+  Inputs in = MakeInputs(g, 157);
+  in.cu_seqlens = {0, 40, 150, 200};
+  RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_SmallHeadSizes) {
@@ -1151,6 +1193,24 @@ TEST(GatedDeltaNetPlanTest, PicksNarrowChunkOnConsumerBlackwellSharedMemory) {
   const gdn::Plan tiny = gdn::SelectPlan(d, 48 * 1024);
   EXPECT_TRUE(tiny.supported);
   EXPECT_EQ(tiny.engine, gdn::Engine::kRecurrent);
+}
+
+TEST(GatedDeltaNetPlanTest, BFloat16UsesRecurrentEngine) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  gdn::Descriptor d{};
+  d.total_tokens = 64;
+  d.batch = 1;
+  d.num_heads_q = 1;
+  d.num_heads_k = 1;
+  d.num_heads_v = 2;
+  d.head_size_qk = 128;
+  d.head_size_v = 128;
+  d.io_type = gdn::IoType::kBFloat16;
+  d.sm_major = 8;
+
+  const auto plan = gdn::SelectPlan(d, 160 * 1024);
+  EXPECT_TRUE(plan.supported);
+  EXPECT_EQ(plan.engine, gdn::Engine::kRecurrent);
 }
 
 TEST(GatedDeltaNetPlanTest, RecurrentSharedMemoryIncludesBothNormalizationScalars) {

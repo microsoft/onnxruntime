@@ -3203,7 +3203,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
                 "head_size_qk + num_heads_v * head_size_v)).",
                 "TS", OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"},
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
         .TypeConstraint("TS", {"tensor(float)"},
                         "State, gate, beta and compact state-update tensors are always float.")

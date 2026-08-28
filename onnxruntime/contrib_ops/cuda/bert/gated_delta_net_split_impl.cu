@@ -45,6 +45,7 @@
 // what is an accumulator running the length of the sequence.
 
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 
 #include <algorithm>
 #include <mutex>
@@ -518,6 +519,13 @@ template Status LaunchGatedDeltaNetSplit<half>(const Descriptor&, const Plan&,
 template <>
 Status LaunchGatedDeltaNetSplit<float>(const Descriptor&, const Plan&, const VariantPack<float>&,
                                        float, cudaStream_t) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "GatedDeltaNet: the split engine requires float16 input");
+}
+
+template <>
+Status LaunchGatedDeltaNetSplit<__nv_bfloat16>(
+    const Descriptor&, const Plan&, const VariantPack<__nv_bfloat16>&, float, cudaStream_t) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "GatedDeltaNet: the split engine requires float16 input");
 }
