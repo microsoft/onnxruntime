@@ -33,6 +33,20 @@ EpContextReadRegistration GetEpContextReadRegistration(ORTSessionOptions* sessio
   return registration;
 }
 
+BOOL SetEpContextDataReadBlockCapturingObject(ORTSessionOptions* sessionOptions,
+                                              NSObject* __weak* weakCapturedObject,
+                                              NSError** error) {
+  NSObject* capturedObject = [[NSObject alloc] init];
+  *weakCapturedObject = capturedObject;
+  return [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        (void)capturedObject;
+        return [NSData data];
+      }
+                    maxDataSize:1
+                          error:error];
+}
+
 NSString* StatusMessage(const Ort::Status& status) {
   const std::string message = status.GetErrorMessage();
   NSString* result = [NSString stringWithUTF8String:message.c_str()];
@@ -566,20 +580,10 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
 
 - (void)testSessionRetainsEpContextDataReadBlockRegistration {
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
-  NSObject* capturedObject = [[NSObject alloc] init];
-  NSObject* __weak weakCapturedObject = capturedObject;
-  ORTEpContextDataReadBlock __nullable block =
-      ^NSData*(NSString* /*name*/, NSError** /*error*/) {
-        (void)capturedObject;
-        return [NSData data];
-      };
+  NSObject* __weak weakCapturedObject = nil;
   NSError* err = nil;
-  BOOL result = [sessionOptions setEpContextDataReadBlock:block
-                                              maxDataSize:1
-                                                    error:&err];
+  BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
   ORTAssertBoolResultSuccessful(result, err);
-  capturedObject = nil;
-  block = nil;
   XCTAssertNotNil(weakCapturedObject);
 
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
@@ -599,20 +603,10 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
 
 - (void)testFailedSessionConstructionReleasesEpContextDataReadBlockSnapshot {
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
-  NSObject* capturedObject = [[NSObject alloc] init];
-  NSObject* __weak weakCapturedObject = capturedObject;
-  ORTEpContextDataReadBlock __nullable block =
-      ^NSData*(NSString* /*name*/, NSError** /*error*/) {
-        (void)capturedObject;
-        return [NSData data];
-      };
+  NSObject* __weak weakCapturedObject = nil;
   NSError* err = nil;
-  BOOL result = [sessionOptions setEpContextDataReadBlock:block
-                                              maxDataSize:1
-                                                    error:&err];
+  BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
   ORTAssertBoolResultSuccessful(result, err);
-  capturedObject = nil;
-  block = nil;
   XCTAssertNotNil(weakCapturedObject);
 
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
