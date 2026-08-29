@@ -14,6 +14,19 @@ NS_ASSUME_NONNULL_BEGIN
 @class ORTValue;
 
 /**
+ * A block that supplies application-managed external EPContext data.
+ *
+ * Available since 1.30.
+ *
+ * The block may be called concurrently from arbitrary ONNX Runtime threads and must be thread-safe.
+ *
+ * @param name The logical name of the requested EPContext data.
+ * @param error Error information to set when returning nil.
+ * @return The requested data. Zero-length data is a successful empty payload. Return nil only on failure and set error.
+ */
+typedef NSData* _Nullable (^ORTEpContextDataReadBlock)(NSString* name, NSError** error);
+
+/**
  * An ORT session loads and runs a model.
  */
 @interface ORTSession : NSObject
@@ -188,6 +201,44 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)addConfigEntryWithKey:(NSString*)key
                         value:(NSString*)value
                         error:(NSError**)error;
+
+/**
+ * Registers a block that supplies application-managed external EPContext data during session initialization.
+ *
+ * Available since 1.30.
+ *
+ * The block is copied and retained by these options. Each `ORTSession` created from the options takes its own strong
+ * registration snapshot for the session lifetime, so replacing or clearing the block only affects future sessions.
+ * ONNX Runtime may invoke the block concurrently from arbitrary threads; the block and any captured state must be
+ * thread-safe. The returned bytes are copied before the block's returned `NSData` is released.
+ *
+ * Return zero-length `NSData` for a successful empty payload. Return nil only on failure and set the provided error.
+ * Returning nil without an error produces an ONNX Runtime failure status. Data larger than `maxDataSize` is rejected
+ * before the native output buffer is allocated.
+ *
+ * The Objective-C API exposes only the application-side read callback. It does not currently expose model compilation,
+ * so the EPContext data write callback is not applicable.
+ *
+ * @param block The synchronous block used to read EPContext data.
+ * @param maxDataSize A finite maximum payload size in bytes. Must be greater than zero and less than `NSUIntegerMax`.
+ * @param error Optional error information set if registration fails.
+ * @return Whether the block was registered successfully.
+ */
+- (BOOL)setEpContextDataReadBlock:(ORTEpContextDataReadBlock)block
+                      maxDataSize:(NSUInteger)maxDataSize
+                            error:(NSError**)error;
+
+/**
+ * Clears the block that supplies application-managed external EPContext data for future sessions.
+ *
+ * Available since 1.30.
+ *
+ * Sessions already created from these options retain their registration snapshot for the session lifetime.
+ *
+ * @param error Optional error information set if clearing fails.
+ * @return Whether the block was cleared successfully.
+ */
+- (BOOL)clearEpContextDataReadBlockWithError:(NSError**)error;
 
 /**
  * Registers custom ops for use with `ORTSession`s using this SessionOptions by calling the specified

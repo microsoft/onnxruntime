@@ -9,11 +9,50 @@
 #import "ort_session.h"
 #import "ort_value.h"
 
+#import "cxx_api.h"
+#import "ort_session_internal.h"
 #import "test/assertion_utils.h"
 
+#include <limits>
+#include <string>
 #include <vector>
 
 NS_ASSUME_NONNULL_BEGIN
+
+namespace {
+struct EpContextReadRegistration {
+  OrtReadNamedBufferFunc function = nullptr;
+  void* state = nullptr;
+  size_t maxDataSize = 0;
+};
+
+EpContextReadRegistration GetEpContextReadRegistration(ORTSessionOptions* sessionOptions) {
+  Ort::EpContextConfig config{[sessionOptions CXXAPIOrtSessionOptions]};
+  EpContextReadRegistration registration;
+  config.GetReadFunc(registration.function, registration.state, registration.maxDataSize);
+  return registration;
+}
+
+BOOL SetEpContextDataReadBlockCapturingObject(ORTSessionOptions* sessionOptions,
+                                              NSObject* __weak* weakCapturedObject,
+                                              NSError** error) {
+  NSObject* capturedObject = [[NSObject alloc] init];
+  *weakCapturedObject = capturedObject;
+  return [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        (void)capturedObject;
+        return [NSData data];
+      }
+                    maxDataSize:1
+                          error:error];
+}
+
+NSString* StatusMessage(const Ort::Status& status) {
+  const std::string message = status.GetErrorMessage();
+  NSString* result = [NSString stringWithUTF8String:message.c_str()];
+  return result ?: @"";
+}
+}  // namespace
 
 @interface ORTSessionTest : XCTestCase
 
@@ -286,6 +325,302 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   ORTAssertBoolResultSuccessful(registerResult, err);
 
   XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);
+}
+
+- (void)testEpContextDataReadBlockReturnsData {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSData* expectedData = [@"epcontext" dataUsingEncoding:NSUTF8StringEncoding];
+  __block NSString* receivedName = nil;
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* name, NSError** /*error*/) {
+        receivedName = name;
+        return expectedData;
+      }
+                    maxDataSize:1024
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  XCTAssertNotEqual(registration.function, nullptr);
+  XCTAssertNotEqual(registration.state, nullptr);
+  XCTAssertEqual(registration.maxDataSize, 1024U);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "model.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertTrue(status.IsOK(), @"%@", StatusMessage(status));
+  XCTAssertEqualObjects(receivedName, @"model.ctx");
+  XCTAssertEqual(dataSize, expectedData.length);
+
+  NSData* actualData = [NSData dataWithBytes:buffer length:dataSize];
+  allocator.Free(buffer);
+  XCTAssertEqualObjects(actualData, expectedData);
+}
+
+- (void)testEpContextDataReadBlockAllowsEmptyData {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return [NSData data];
+      }
+                    maxDataSize:1
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "empty.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertTrue(status.IsOK(), @"%@", StatusMessage(status));
+  XCTAssertEqual(buffer, nullptr);
+  XCTAssertEqual(dataSize, 0U);
+}
+
+- (void)testEpContextDataReadBlockRejectsInvalidAndOversizedLimits {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  ORTEpContextDataReadBlock block = ^NSData*(NSString* /*name*/, NSError** /*error*/) {
+    return [@"large" dataUsingEncoding:NSUTF8StringEncoding];
+  };
+
+  NSError* err = nil;
+  XCTAssertFalse([sessionOptions setEpContextDataReadBlock:block maxDataSize:0 error:&err]);
+  XCTAssertNotNil(err);
+
+  err = nil;
+  XCTAssertFalse([sessionOptions setEpContextDataReadBlock:block maxDataSize:NSUIntegerMax error:&err]);
+  XCTAssertNotNil(err);
+
+  err = nil;
+  BOOL result = [sessionOptions setEpContextDataReadBlock:block maxDataSize:4 error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "large.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertFalse(status.IsOK());
+  XCTAssertEqual(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  XCTAssertTrue([StatusMessage(status) containsString:@"exceeds maxDataSize"]);
+  XCTAssertEqual(buffer, nullptr);
+  XCTAssertEqual(dataSize, 0U);
+}
+
+- (void)testEpContextDataReadBlockPropagatesNSError {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** error) {
+        *error = [NSError errorWithDomain:@"EpContextReadTest"
+                                     code:7
+                                 userInfo:@{NSLocalizedDescriptionKey : @"read failed"}];
+        return nil;
+      }
+                    maxDataSize:1024
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "error.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertFalse(status.IsOK());
+  XCTAssertEqual(status.GetErrorCode(), ORT_FAIL);
+  XCTAssertTrue([StatusMessage(status) containsString:@"read failed"]);
+  XCTAssertEqual(buffer, nullptr);
+  XCTAssertEqual(dataSize, 0U);
+}
+
+- (void)testEpContextDataReadBlockRejectsNilWithoutNSError {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return nil;
+      }
+                    maxDataSize:1024
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "nil.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertFalse(status.IsOK());
+  XCTAssertEqual(status.GetErrorCode(), ORT_FAIL);
+  XCTAssertTrue([StatusMessage(status) containsString:@"without setting an error"]);
+  XCTAssertEqual(buffer, nullptr);
+  XCTAssertEqual(dataSize, 0U);
+}
+
+- (void)testEpContextDataReadBlockRejectsInvalidData {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return (NSData*)(id) @"not data";
+      }
+                    maxDataSize:1024
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "invalid.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertFalse(status.IsOK());
+  XCTAssertEqual(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  XCTAssertTrue([StatusMessage(status) containsString:@"not NSData"]);
+  XCTAssertEqual(buffer, nullptr);
+  XCTAssertEqual(dataSize, 0U);
+}
+
+- (void)testEpContextDataReadBlockContainsNSException {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        @throw [NSException exceptionWithName:@"EpContextReadException"
+                                       reason:@"callback failed"
+                                     userInfo:nil];
+      }
+                    maxDataSize:1024
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t dataSize = 1;
+  Ort::Status status{
+      registration.function(registration.state, "exception.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertFalse(status.IsOK());
+  XCTAssertEqual(status.GetErrorCode(), ORT_FAIL);
+  XCTAssertTrue([StatusMessage(status) containsString:@"Objective-C exception"]);
+  XCTAssertEqual(buffer, nullptr);
+  XCTAssertEqual(dataSize, 0U);
+}
+
+- (void)testEpContextDataReadBlockCanBeReplacedAndCleared {
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSError* err = nil;
+  BOOL result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return [@"first" dataUsingEncoding:NSUTF8StringEncoding];
+      }
+                    maxDataSize:16
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  err = nil;
+  result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return [@"discarded" dataUsingEncoding:NSUTF8StringEncoding];
+      }
+                    maxDataSize:0
+                          error:&err];
+  XCTAssertFalse(result);
+  XCTAssertNotNil(err);
+
+  EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
+  XCTAssertEqual(registration.maxDataSize, 16U);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = nullptr;
+  size_t dataSize = 0;
+  Ort::Status status{
+      registration.function(registration.state, "original.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertTrue(status.IsOK(), @"%@", StatusMessage(status));
+  NSData* actualData = [NSData dataWithBytes:buffer length:dataSize];
+  allocator.Free(buffer);
+  XCTAssertEqualObjects(actualData, [@"first" dataUsingEncoding:NSUTF8StringEncoding]);
+
+  err = nil;
+  result = [sessionOptions
+      setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        return [@"second" dataUsingEncoding:NSUTF8StringEncoding];
+      }
+                    maxDataSize:8
+                          error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  registration = GetEpContextReadRegistration(sessionOptions);
+  XCTAssertEqual(registration.maxDataSize, 8U);
+
+  buffer = nullptr;
+  dataSize = 0;
+  status = Ort::Status{
+      registration.function(registration.state, "replacement.ctx", allocator, &buffer, &dataSize)};
+  XCTAssertTrue(status.IsOK(), @"%@", StatusMessage(status));
+  actualData = [NSData dataWithBytes:buffer length:dataSize];
+  allocator.Free(buffer);
+  XCTAssertEqualObjects(actualData, [@"second" dataUsingEncoding:NSUTF8StringEncoding]);
+
+  result = [sessionOptions clearEpContextDataReadBlockWithError:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+
+  registration = GetEpContextReadRegistration(sessionOptions);
+  XCTAssertEqual(registration.function, nullptr);
+  XCTAssertEqual(registration.state, nullptr);
+  XCTAssertEqual(registration.maxDataSize, std::numeric_limits<size_t>::max());
+}
+
+- (void)testSessionRetainsEpContextDataReadBlockRegistration {
+  NSObject* __weak weakCapturedObject = nil;
+  @autoreleasepool {
+    ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+    NSError* err = nil;
+    BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
+    ORTAssertBoolResultSuccessful(result, err);
+    XCTAssertNotNil(weakCapturedObject);
+
+    ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                                modelPath:[ORTSessionTest getAddModelPath]
+                                           sessionOptions:sessionOptions
+                                                    error:&err];
+    ORTAssertNullableResultSuccessful(session, err);
+
+    result = [sessionOptions clearEpContextDataReadBlockWithError:&err];
+    ORTAssertBoolResultSuccessful(result, err);
+    sessionOptions = nil;
+    XCTAssertNotNil(weakCapturedObject);
+
+    session = nil;
+  }
+  XCTAssertNil(weakCapturedObject);
+}
+
+- (void)testFailedSessionConstructionReleasesEpContextDataReadBlockSnapshot {
+  NSObject* __weak weakCapturedObject = nil;
+  @autoreleasepool {
+    ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+    NSError* err = nil;
+    BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
+    ORTAssertBoolResultSuccessful(result, err);
+    XCTAssertNotNil(weakCapturedObject);
+
+    ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                                modelPath:@"invalid/path/to/model.onnx"
+                                           sessionOptions:sessionOptions
+                                                    error:&err];
+    ORTAssertNullableResultUnsuccessful(session, err);
+
+    sessionOptions = nil;
+  }
+  XCTAssertNil(weakCapturedObject);
 }
 
 - (void)testStringInputs {
