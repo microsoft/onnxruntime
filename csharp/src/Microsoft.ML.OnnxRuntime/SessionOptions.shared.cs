@@ -706,31 +706,50 @@ namespace Microsoft.ML.OnnxRuntime
         internal EpContextDataReadRegistration InvokeWithEpContextDataReadRegistration(
             Action<IntPtr> nativeAction)
         {
+            IntPtr clonedOptions = IntPtr.Zero;
+            EpContextDataReadRegistration registration = null;
             bool optionsRefAdded = false;
             try
             {
                 lock (_epContextDataReadRegistrationLock)
                 {
-                    DangerousAddRef(ref optionsRefAdded);
-                    var registration = _epContextDataReadRegistration;
-                    registration?.AddRef();
                     try
                     {
-                        nativeAction(DangerousGetHandle());
-                        return registration;
+                        DangerousAddRef(ref optionsRefAdded);
+                        registration = _epContextDataReadRegistration;
+                        registration?.AddRef();
+                        NativeApiStatus.VerifySuccess(
+                            NativeMethods.OrtCloneSessionOptions(DangerousGetHandle(), out clonedOptions));
                     }
                     catch
                     {
                         registration?.Release();
+                        registration = null;
                         throw;
                     }
+                    finally
+                    {
+                        if (optionsRefAdded)
+                        {
+                            DangerousRelease();
+                            optionsRefAdded = false;
+                        }
+                    }
                 }
+
+                nativeAction(clonedOptions);
+                return registration;
+            }
+            catch
+            {
+                registration?.Release();
+                throw;
             }
             finally
             {
-                if (optionsRefAdded)
+                if (clonedOptions != IntPtr.Zero)
                 {
-                    DangerousRelease();
+                    NativeMethods.OrtReleaseSessionOptions(clonedOptions);
                 }
             }
         }

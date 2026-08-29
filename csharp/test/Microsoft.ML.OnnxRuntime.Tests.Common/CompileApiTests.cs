@@ -6,11 +6,14 @@
 
 namespace Microsoft.ML.OnnxRuntime.Tests;
 
+using Google.Protobuf;
+using Onnx;
 using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Xunit;
 
 
@@ -348,6 +351,75 @@ public class CompileApiTests
             Assert.False(File.Exists(contextName));
             Assert.Throws<ObjectDisposedException>(() => retainedWriteData.GetSpan());
 
+            int originalWriteCount = 0;
+            int replacementWriteCount = 0;
+            Task replacementTask = null;
+            using (var reentrantCompileSessionOptions = new SessionOptions())
+            {
+                reentrantCompileSessionOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+                using var reentrantCompileOptions = new OrtModelCompilationOptions(reentrantCompileSessionOptions);
+                reentrantCompileOptions.SetInputModelFromBuffer(CreateIfMulModelWithoutCapturedInitializers());
+                reentrantCompileOptions.SetEpContextEmbedMode(false);
+                reentrantCompileOptions.SetEpContextBinaryInformation("./", "reentrant_write.onnx");
+                reentrantCompileOptions.SetEpContextDataWriteDelegate((_, data) =>
+                {
+                    Assert.NotEmpty(data.GetSpan().ToArray());
+                    if (++originalWriteCount == 1)
+                    {
+                        replacementTask = Task.Run(() =>
+                            reentrantCompileOptions.SetEpContextDataWriteDelegate(
+                                (_, _) => ++replacementWriteCount));
+                        if (!replacementTask.Wait(TimeSpan.FromSeconds(10)))
+                        {
+                            throw new TimeoutException(
+                                "Replacing the EPContext write callback from a worker thread timed out.");
+                        }
+                    }
+                });
+
+                IntPtr outputBuffer = IntPtr.Zero;
+                UIntPtr outputBufferSize = UIntPtr.Zero;
+                OrtAllocator allocator = OrtAllocator.DefaultInstance;
+                reentrantCompileOptions.SetOutputModelBuffer(
+                    allocator, ref outputBuffer, ref outputBufferSize);
+                try
+                {
+                    reentrantCompileOptions.CompileModel();
+                    Assert.NotEqual(IntPtr.Zero, outputBuffer);
+                    Assert.NotEqual(UIntPtr.Zero, outputBufferSize);
+                }
+                finally
+                {
+                    if (outputBuffer != IntPtr.Zero)
+                    {
+                        allocator.FreeMemory(outputBuffer);
+                    }
+                }
+            }
+            Assert.True(replacementTask.IsCompletedSuccessfully);
+            Assert.Equal(2, originalWriteCount);
+            Assert.Equal(0, replacementWriteCount);
+
+            Task reentrantClearTask = null;
+            using (var reentrantLoadOptions = new SessionOptions())
+            {
+                reentrantLoadOptions.SetEpContextDataReadDelegate((_, output) =>
+                {
+                    reentrantClearTask = Task.Run(reentrantLoadOptions.ClearEpContextDataReadDelegate);
+                    if (!reentrantClearTask.Wait(TimeSpan.FromSeconds(10)))
+                    {
+                        throw new TimeoutException(
+                            "Clearing SessionOptions from a callback worker thread timed out.");
+                    }
+
+                    contextPayload.CopyTo(output.Allocate(contextPayload.Length));
+                }, (ulong)contextPayload.Length);
+                reentrantLoadOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
+
+                using var reentrantSession = new InferenceSession(compiledModel, reentrantLoadOptions);
+                Assert.True(reentrantClearTask.IsCompletedSuccessfully);
+            }
+
             using (var missingOutputLoadOptions = new SessionOptions())
             {
                 missingOutputLoadOptions.SetEpContextDataReadDelegate((_, _) => { },
@@ -505,6 +577,22 @@ public class CompileApiTests
         var compileOptions = new OrtModelCompilationOptions(sessionOptions);
         sessionOptions.ClearEpContextDataReadDelegate();
         return compileOptions;
+    }
+
+    private static byte[] CreateIfMulModelWithoutCapturedInitializers()
+    {
+        ModelProto model = ModelProto.Parser.ParseFrom(
+            TestDataLoader.LoadModelFromEmbeddedResource("if_mul.onnx"));
+        NodeProto ifNode = model.Graph.Node.Single(node => node.OpType == "If");
+        foreach (AttributeProto branchAttribute in ifNode.Attribute.Where(
+                     attribute => attribute.Type == AttributeProto.Types.AttributeType.Graph))
+        {
+            NodeProto mulNode = branchAttribute.G.Node.Single(node => node.OpType == "Mul");
+            mulNode.Input[1] = "B";
+        }
+        model.Graph.Initializer.Clear();
+
+        return model.ToByteArray();
     }
 
     private sealed class EpContextDataReadCallbackTarget
