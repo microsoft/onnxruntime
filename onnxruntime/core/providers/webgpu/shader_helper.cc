@@ -427,7 +427,6 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   if (program_.SubgroupSize() != 0) {
     ss << "enable subgroup_size_control;\n";
   }
-#if !defined(__wasm__)
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
@@ -435,7 +434,6 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     // Since we use `subgroup_id` as the subgroup matrix builtin argument, we have to turn off this restriction
     ss << "diagnostic (off, chromium.subgroup_matrix_uniformity);\n";
   }
-#endif
 
   //
   // Section constants

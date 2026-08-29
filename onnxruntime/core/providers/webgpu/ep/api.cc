@@ -13,9 +13,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 
+#include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
+#include "core/session/onnxruntime_env_config_keys.h"
 
 // When this EP is statically linked into the host binary instead of being built as a separate plugin library, the
 // entry points below are given a prefix (e.g. `WebGpu_`) so that multiple statically linked plugin EPs can coexist
@@ -52,6 +55,11 @@ void ShutdownProtobufLibrary();
 }  // namespace protobuf
 }  // namespace google
 #endif
+
+namespace {
+// Set to "1" to allow WebGPU to be advertised against a CPU hardware device when no GPU hardware device is available.
+constexpr const char* kAllowSoftwareAdapterEnvironmentVariable = "ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER";
+}  // namespace
 
 extern "C" {
 //
@@ -102,11 +110,27 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(CreateEpFactories)(
                                                    "Not enough space to return EP factory. Need at least one.");
   }
 
+  Ort::KeyValuePairs env_config = Ort::GetEnvConfigEntries();
+  onnxruntime::webgpu::ep::Factory::Config factory_config;
+  const char* allow_virtual_devices_value = env_config.GetValue(kOrtEnvAllowVirtualDevices);
+  factory_config.allow_virtual_devices =
+      allow_virtual_devices_value != nullptr && std::strcmp(allow_virtual_devices_value, "1") == 0;
+
+  factory_config.allow_software_adapter =
+      onnxruntime::detail::GetEnvironmentVar(kAllowSoftwareAdapterEnvironmentVariable) == "1";
+
   // Initialize the global default logger
   ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
 
+  if (factory_config.allow_software_adapter) {
+    LOGS_DEFAULT(WARNING) << kAllowSoftwareAdapterEnvironmentVariable
+                          << "=1: WebGPU EP may use a CPU hardware device to make the WebGPU EP selectable as an ORT "
+                             "EP device when no GPU hardware device is available.";
+  }
+
   // Factory could use registration_name or define its own EP name.
-  std::unique_ptr<OrtEpFactory> factory = std::make_unique<onnxruntime::webgpu::ep::Factory>();
+  std::unique_ptr<OrtEpFactory> factory =
+      std::make_unique<onnxruntime::webgpu::ep::Factory>(factory_config);
 
   factories[0] = factory.release();
   *num_factories = 1;
