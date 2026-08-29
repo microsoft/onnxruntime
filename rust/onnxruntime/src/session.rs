@@ -243,8 +243,12 @@ extern_system_fn! {
         })) {
             Ok(status) => status,
             Err(payload) => {
-                // A user-provided panic payload may itself panic when dropped.
-                std::mem::forget(payload);
+                if let Err(drop_panic) =
+                    catch_unwind(AssertUnwindSafe(|| drop(payload)))
+                {
+                    // A user-provided panic payload may itself panic when dropped.
+                    std::mem::forget(drop_panic);
+                }
                 if !buffer.is_null() {
                     *buffer = ptr::null_mut();
                 }
@@ -1160,17 +1164,21 @@ mod tests {
         }
     }
 
-    struct PanicOnDrop;
+    struct CountedPanicPayload(Arc<AtomicUsize>);
 
-    impl Drop for PanicOnDrop {
+    impl Drop for CountedPanicPayload {
         fn drop(&mut self) {
-            panic!("panic payload drop");
+            self.0.fetch_add(1, Ordering::SeqCst);
         }
     }
 
     #[test]
-    fn trampoline_does_not_drop_panicking_panic_payload() {
-        let registration = test_registration(16, |_| std::panic::panic_any(PanicOnDrop));
+    fn trampoline_drops_owned_panic_payload() {
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let callback_drop_count = Arc::clone(&drop_count);
+        let registration = test_registration(16, move |_| {
+            std::panic::panic_any(CountedPanicPayload(Arc::clone(&callback_drop_count)))
+        });
         let allocator = default_allocator();
 
         unsafe {
@@ -1185,6 +1193,40 @@ mod tests {
             assert_eq!(code, sys::OrtErrorCode::ORT_FAIL);
             assert_eq!(message, "Rust EPContext data callback panicked");
         }
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
+    }
+
+    struct PanicOnDrop(Arc<AtomicUsize>);
+
+    impl Drop for PanicOnDrop {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            panic!("panic payload drop");
+        }
+    }
+
+    #[test]
+    fn trampoline_contains_panicking_panic_payload_destructor() {
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let callback_drop_count = Arc::clone(&drop_count);
+        let registration = test_registration(16, move |_| {
+            std::panic::panic_any(PanicOnDrop(Arc::clone(&callback_drop_count)))
+        });
+        let allocator = default_allocator();
+
+        unsafe {
+            let (status, buffer, data_size) = invoke(
+                &registration,
+                CStr::from_bytes_with_nul(b"panic\0").unwrap(),
+                allocator,
+            );
+            assert!(buffer.is_null());
+            assert_eq!(data_size, 0);
+            let (code, message) = take_status(status);
+            assert_eq!(code, sys::OrtErrorCode::ORT_FAIL);
+            assert_eq!(message, "Rust EPContext data callback panicked");
+        }
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
     }
 
     #[repr(C)]
