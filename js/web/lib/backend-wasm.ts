@@ -5,6 +5,7 @@ import { Backend, env, InferenceSession, InferenceSessionHandler } from 'onnxrun
 
 import { initializeOrtEp, initializeWebAssemblyAndOrtRuntime } from './wasm/proxy-wrapper';
 import { OnnxruntimeWebAssemblySessionHandler } from './wasm/session-handler-inference';
+import { validateSessionOptions } from './validate-session-options';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -87,6 +88,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     pathOrBuffer: string | Uint8Array,
     options?: InferenceSession.SessionOptions,
   ): Promise<InferenceSessionHandler> {
+    validateSessionOptions(options);
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(pathOrBuffer, options);
     return handler;

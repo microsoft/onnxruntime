@@ -23,16 +23,8 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
  public:
   AsyncWorker(Runtime& rt, std::shared_ptr<Env> env) : rt_(rt), env_(env), cancel_(false) {}
 
-  ~AsyncWorker() {
-    if (worker_.joinable()) {
-      if (worker_.get_id() != std::this_thread::get_id()) {
-        cancel_ = true;
-        onAbort();
-        worker_.join();
-      } else {
-        worker_.detach();
-      }
-    }
+  ~AsyncWorker() override {
+    abortAndJoin();
   }
 
   /**
@@ -79,6 +71,29 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
   }
 
  protected:
+  /**
+   * @brief Stop and join the worker while the derived object is still alive.
+   *
+   * A base destructor cannot dispatch virtual calls to a derived onAbort() implementation, so a
+   * derived worker with abortable state calls this from its destructor.
+   */
+  void abortAndJoin() noexcept {
+    if (worker_.joinable()) {
+      if (worker_.get_id() != std::this_thread::get_id()) {
+        cancel_ = true;
+        // Runs from a destructor, so an escaping exception would terminate the process. Ort calls
+        // made by an onAbort() override (e.g. RunOptions::SetTerminate) can throw.
+        try {
+          onAbort();
+        } catch (...) {
+        }
+        worker_.join();
+      } else {
+        worker_.detach();
+      }
+    }
+  }
+
   virtual void execute() = 0;
 
   virtual Value onResolve(Runtime& rt) = 0;

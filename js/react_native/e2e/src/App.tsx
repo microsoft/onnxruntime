@@ -5,8 +5,9 @@ import * as React from 'react';
 import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MNISTTest from './MNISTTest';
 import BasicTypesTest from './BasicTypesTest';
+import EPContextDataReadTest from './EPContextDataReadTest';
 
-type Page = 'home' | 'mnist' | 'basic-types';
+type Page = 'home' | 'mnist' | 'basic-types' | 'ep-context-data-read';
 
 interface State {
   currentPage: Page;
@@ -91,9 +92,7 @@ export default class App extends React.PureComponent<{}, State> {
                 accessibilityLabel="mnist-test-button"
               />
             </View>
-            <Text style={styles.description}>
-              Test MNIST model with image classification
-            </Text>
+            <Text style={styles.description}>Test MNIST model with image classification</Text>
           </View>
 
           <View style={styles.buttonContainer}>
@@ -104,9 +103,18 @@ export default class App extends React.PureComponent<{}, State> {
                 accessibilityLabel="basic-types-test-button"
               />
             </View>
-            <Text style={styles.description}>
-              Test various data types with basic models
-            </Text>
+            <Text style={styles.description}>Test various data types with basic models</Text>
+          </View>
+
+          <View style={styles.buttonContainer}>
+            <View style={styles.buttonWrapper}>
+              <Button
+                title="EPContext Data Read Test"
+                onPress={() => this.navigateTo('ep-context-data-read')}
+                accessibilityLabel="ep-context-data-read-test-button"
+              />
+            </View>
+            <Text style={styles.description}>Test the epContextDataRead session option and its lifetime</Text>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -124,6 +132,9 @@ export default class App extends React.PureComponent<{}, State> {
       case 'basic-types':
         testComponent = <BasicTypesTest />;
         break;
+      case 'ep-context-data-read':
+        testComponent = <EPContextDataReadTest />;
+        break;
       default:
         testComponent = <Text>Unknown test</Text>;
     }
@@ -131,15 +142,9 @@ export default class App extends React.PureComponent<{}, State> {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Button
-            title="← Back to Home"
-            onPress={() => this.navigateTo('home')}
-            accessibilityLabel="back-button"
-          />
+          <Button title="← Back to Home" onPress={() => this.navigateTo('home')} accessibilityLabel="back-button" />
         </View>
-        <ScrollView style={styles.testContent}>
-          {testComponent}
-        </ScrollView>
+        <ScrollView style={styles.testContent}>{testComponent}</ScrollView>
       </SafeAreaView>
     );
   }

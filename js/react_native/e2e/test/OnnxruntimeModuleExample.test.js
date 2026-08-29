@@ -57,4 +57,27 @@ describe('OnnxruntimeModuleExample', () => {
     // Check have no error
     await expect(element(by.label('statusError'))).not.toBeVisible();
   });
+
+  it('EPContext data read test should run successfully', async () => {
+    // Tap EPContext data read test button
+    if (platform === 'android') {
+      await element(by.label('ep-context-data-read-test-button')).tap();
+    } else {
+      await element(by.text('EPContext Data Read Test')).tap();
+    }
+
+    await delay(500);
+
+    // Run the tests
+    if (platform === 'android') {
+      await element(by.label('run-tests-button')).tap();
+    } else {
+      await element(by.text('Run All Tests')).tap();
+    }
+    // The aggregate stays visible above the results list, so lower off-screen rows cannot make this
+    // assertion pass accidentally. It reaches this exact text only after every check succeeds.
+    await waitFor(element(by.label('ep-context-data-read-summary')))
+      .toHaveText('11/11 checks passed')
+      .withTimeout(120000);
+  });
 });
