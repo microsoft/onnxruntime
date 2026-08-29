@@ -1,7 +1,7 @@
 # Agent Instructions for ONNX Runtime
 
 This file contains repository-wide guidance for coding agents. See
-[Extending Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
+[Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
 
 ## Path-Scoped Instructions
 
