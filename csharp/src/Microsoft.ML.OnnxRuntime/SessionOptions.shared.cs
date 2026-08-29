@@ -449,7 +449,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
         /// <exception cref="ArgumentException">epDevices was empty.</exception>
         /// <see cref="OrtEnv.GetEpDevices" />
-        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices,
                                             IReadOnlyDictionary<string, string> epOptions)
         {
             if (epDevices == null || epDevices.Count == 0)
@@ -481,7 +481,7 @@ namespace Microsoft.ML.OnnxRuntime
                         env.Handle,
                         epDevicePtrs,
                         (UIntPtr)epDevices.Count,
-                        epOptionsKeys,  
+                        epOptionsKeys,
                         epOptionsValues,
                         epOptionsCount));
             }
@@ -606,6 +606,155 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Delegate that supplies external EPContext data during session initialization.
+        /// Allocate and fill <paramref name="output"/> before returning. ORT takes ownership of the allocation
+        /// after a successful return.
+        /// </summary>
+        /// <param name="name">Logical UTF-8 name stored in the EPContext node.</param>
+        /// <param name="output">Allocator-backed output buffer.</param>
+        /// <remarks>ORT may invoke this delegate concurrently. The application must synchronize shared state.</remarks>
+        public delegate void ReadEpContextDataDelegate(string name, OrtEpContextDataBuffer output);
+
+        /// <summary>
+        /// Registers a delegate that supplies external EPContext data during session initialization.
+        /// The delegate must reject data larger than <paramref name="maxDataSize"/> before allocation;
+        /// <see cref="OrtEpContextDataBuffer"/> enforces that limit independently.
+        /// </summary>
+        /// <param name="readDelegate">Delegate that supplies the named data.</param>
+        /// <param name="maxDataSize">Required finite maximum payload size in bytes.</param>
+        public void SetEpContextDataReadDelegate(ReadEpContextDataDelegate readDelegate, ulong maxDataSize)
+        {
+            if (readDelegate == null)
+            {
+                throw new ArgumentNullException(nameof(readDelegate));
+            }
+
+            if (maxDataSize == 0 || maxDataSize == ulong.MaxValue ||
+                (UIntPtr.Size == 4 && maxDataSize >= uint.MaxValue))
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxDataSize));
+            }
+
+            var registration = new EpContextDataReadRegistration(readDelegate, maxDataSize);
+            bool optionsRefAdded = false;
+            IntPtr readOptions = IntPtr.Zero;
+
+            try
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtCreateEpContextDataReadOptions(out readOptions));
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtEpContextDataReadOptionsSetMaxDataSize(
+                        readOptions, new UIntPtr(maxDataSize)));
+
+                lock (_epContextDataReadRegistrationLock)
+                {
+                    DangerousAddRef(ref optionsRefAdded);
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetEpContextDataReadFunc(
+                        DangerousGetHandle(),
+                        registration.FunctionPointer,
+                        registration.State,
+                        readOptions));
+
+                    var previousRegistration = _epContextDataReadRegistration;
+                    _epContextDataReadRegistration = registration;
+                    previousRegistration?.Release();
+                }
+            }
+            catch
+            {
+                registration.Release();
+                throw;
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseEpContextDataReadOptions(readOptions);
+                if (optionsRefAdded)
+                {
+                    DangerousRelease();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears a previously registered EPContext data read delegate.
+        /// </summary>
+        public void ClearEpContextDataReadDelegate()
+        {
+            bool optionsRefAdded = false;
+            try
+            {
+                lock (_epContextDataReadRegistrationLock)
+                {
+                    DangerousAddRef(ref optionsRefAdded);
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetEpContextDataReadFunc(
+                        DangerousGetHandle(), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero));
+                    var previousRegistration = _epContextDataReadRegistration;
+                    _epContextDataReadRegistration = null;
+                    previousRegistration?.Release();
+                }
+            }
+            finally
+            {
+                if (optionsRefAdded)
+                {
+                    DangerousRelease();
+                }
+            }
+        }
+
+        internal EpContextDataReadRegistration InvokeWithEpContextDataReadRegistration(
+            Action<IntPtr> nativeAction)
+        {
+            IntPtr clonedOptions = IntPtr.Zero;
+            EpContextDataReadRegistration registration = null;
+            bool optionsRefAdded = false;
+            try
+            {
+                lock (_epContextDataReadRegistrationLock)
+                {
+                    try
+                    {
+                        DangerousAddRef(ref optionsRefAdded);
+                        registration = _epContextDataReadRegistration;
+                        registration?.AddRef();
+                        NativeApiStatus.VerifySuccess(
+                            NativeMethods.OrtCloneSessionOptions(DangerousGetHandle(), out clonedOptions));
+                    }
+                    catch
+                    {
+                        registration?.Release();
+                        registration = null;
+                        throw;
+                    }
+                    finally
+                    {
+                        if (optionsRefAdded)
+                        {
+                            DangerousRelease();
+                            optionsRefAdded = false;
+                        }
+                    }
+                }
+
+                nativeAction(clonedOptions);
+                return registration;
+            }
+            catch
+            {
+                registration?.Release();
+                throw;
+            }
+            finally
+            {
+                if (clonedOptions != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseSessionOptions(clonedOptions);
+                }
+            }
+        }
+
+        /// <summary>
         /// Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
         /// optimizations that can take advantage of fixed values (such as memory planning, etc)
         /// </summary>
@@ -659,7 +808,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
-                    handle, 
+                    handle,
                     funcPtr,
                     GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }
@@ -1138,6 +1287,8 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtReleaseSessionOptions(handle);
             handle = IntPtr.Zero;
 
+            ReleaseEpContextDataReadDelegateResources();
+
             if (_epSelectionPolicyConnectorHandle.IsAllocated)
             {
                 _epSelectionPolicyConnectorHandle.Free();
@@ -1154,6 +1305,97 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
         #endregion
+
+        internal sealed class EpContextDataReadRegistration
+        {
+            internal EpContextDataReadRegistration(ReadEpContextDataDelegate readDelegate, ulong maxDataSize)
+            {
+                _connector = new EpContextDataReadConnector(readDelegate, maxDataSize);
+                _nativeDelegate = new NativeMethods.DOrtReadNamedBufferDelegate(
+                    EpContextDataReadConnector.ReadEpContextDataDelegateWrapper);
+                _connectorHandle = GCHandle.Alloc(_connector);
+                FunctionPointer = Marshal.GetFunctionPointerForDelegate(_nativeDelegate);
+                State = GCHandle.ToIntPtr(_connectorHandle);
+            }
+
+            internal IntPtr FunctionPointer { get; }
+
+            internal IntPtr State { get; }
+
+            internal void AddRef()
+            {
+                System.Threading.Interlocked.Increment(ref _referenceCount);
+            }
+
+            internal void Release()
+            {
+                if (System.Threading.Interlocked.Decrement(ref _referenceCount) == 0)
+                {
+                    if (_connectorHandle.IsAllocated)
+                    {
+                        _connectorHandle.Free();
+                    }
+
+                    _connector = null;
+                    _nativeDelegate = null;
+                }
+            }
+
+            private EpContextDataReadConnector _connector;
+            private NativeMethods.DOrtReadNamedBufferDelegate _nativeDelegate;
+            private GCHandle _connectorHandle;
+            private int _referenceCount = 1;
+        }
+
+        private sealed class EpContextDataReadConnector
+        {
+            internal EpContextDataReadConnector(ReadEpContextDataDelegate readDelegate, ulong maxDataSize)
+            {
+                _readDelegate = readDelegate;
+                _maxDataSize = maxDataSize;
+            }
+
+            internal static IntPtr ReadEpContextDataDelegateWrapper(
+                IntPtr state, IntPtr name, IntPtr allocator, out IntPtr buffer, out UIntPtr dataSize)
+            {
+                buffer = IntPtr.Zero;
+                dataSize = UIntPtr.Zero;
+                try
+                {
+                    var connector = (EpContextDataReadConnector)GCHandle.FromIntPtr(state).Target;
+                    string dataName = NativeOnnxValueHelper.StringFromNativeUtf8(name);
+                    using (var output = new OrtEpContextDataBuffer(allocator, connector._maxDataSize))
+                    {
+                        connector._readDelegate(dataName, output);
+                        output.Detach(out buffer, out dataSize);
+                    }
+                    return IntPtr.Zero;
+                }
+                catch (Exception ex)
+                {
+                    string error = $"The C# EPContext data read delegate threw an exception: {ex.Message}";
+                    return NativeMethods.OrtCreateStatus(
+                        (uint)(ex is ArgumentException ? ErrorCode.InvalidArgument : ErrorCode.Fail),
+                        NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                }
+            }
+
+            private readonly ReadEpContextDataDelegate _readDelegate;
+            private readonly ulong _maxDataSize;
+        }
+
+        private void ReleaseEpContextDataReadDelegateResources()
+        {
+            lock (_epContextDataReadRegistrationLock)
+            {
+                var registration = _epContextDataReadRegistration;
+                _epContextDataReadRegistration = null;
+                registration?.Release();
+            }
+        }
+
+        private readonly object _epContextDataReadRegistrationLock = new object();
+        private EpContextDataReadRegistration _epContextDataReadRegistration;
 
         /// <summary>
         /// Helper class to connect C and C# usage of the EP selection policy delegate.
