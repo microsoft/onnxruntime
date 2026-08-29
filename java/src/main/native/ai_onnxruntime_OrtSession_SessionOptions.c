@@ -131,6 +131,21 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    cloneOptions
+ * Signature: (JJ)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_cloneOptions(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (void)jobj;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* clonedOptions = NULL;
+  checkOrtStatus(
+      jniEnv, api,
+      api->CloneSessionOptions((const OrtSessionOptions*)handle, &clonedOptions));
+  return (jlong)clonedOptions;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    closeOptions
  * Signature: (JJ)V
  */

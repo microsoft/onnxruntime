@@ -65,7 +65,7 @@ public class OrtSession implements AutoCloseable {
 
   @FunctionalInterface
   private interface NativeSessionCreator {
-    long create() throws OrtException;
+    long create(long optionsHandle) throws OrtException;
   }
 
   private static final class SessionCreationResult {
@@ -94,12 +94,9 @@ public class OrtSession implements AutoCloseable {
     this(
         createSession(
             options,
-            () ->
+            optionsHandle ->
                 createSession(
-                    OnnxRuntime.ortApiHandle,
-                    env.getNativeHandle(),
-                    modelPath,
-                    options.getNativeHandle())),
+                    OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, optionsHandle)),
         allocator);
   }
 
@@ -117,12 +114,9 @@ public class OrtSession implements AutoCloseable {
     this(
         createSession(
             options,
-            () ->
+            optionsHandle ->
                 createSession(
-                    OnnxRuntime.ortApiHandle,
-                    env.getNativeHandle(),
-                    modelArray,
-                    options.getNativeHandle())),
+                    OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, optionsHandle)),
         allocator);
   }
 
@@ -143,30 +137,32 @@ public class OrtSession implements AutoCloseable {
     this(
         createSession(
             options,
-            () ->
+            optionsHandle ->
                 createSession(
                     OnnxRuntime.ortApiHandle,
                     env.getNativeHandle(),
                     modelBuffer,
                     modelBuffer.position(),
                     modelBuffer.remaining(),
-                    options.getNativeHandle())),
+                    optionsHandle)),
         allocator);
   }
 
   private static SessionCreationResult createSession(
       SessionOptions options, NativeSessionCreator creator) throws OrtException {
-    synchronized (options) {
-      SessionOptions.EpContextDataReadCallbackRegistration registration =
-          options.retainEpContextDataReadCallbackRegistration();
-      boolean created = false;
+    try (SessionOptions.NativeSessionOptionsSnapshot snapshot = options.createSnapshot()) {
+      long nativeHandle = creator.create(snapshot.getNativeHandle());
+      boolean wrapped = false;
       try {
-        SessionCreationResult result = new SessionCreationResult(creator.create(), registration);
-        created = true;
+        SessionCreationResult result =
+            new SessionCreationResult(
+                nativeHandle, snapshot.getEpContextDataReadCallbackRegistration());
+        snapshot.transferEpContextDataReadCallbackRegistration();
+        wrapped = true;
         return result;
       } finally {
-        if (!created && registration != null) {
-          registration.release();
+        if (!wrapped) {
+          closeSession(OnnxRuntime.ortApiHandle, nativeHandle);
         }
       }
     }
@@ -672,7 +668,7 @@ public class OrtSession implements AutoCloseable {
   private native String endProfiling(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
-  private native void closeSession(long apiHandle, long nativeHandle);
+  private static native void closeSession(long apiHandle, long nativeHandle);
 
   /**
    * Builds the {@link OnnxModelMetadata} for this session.
@@ -712,6 +708,10 @@ public class OrtSession implements AutoCloseable {
      *
      * <p>ONNX Runtime may invoke this callback concurrently from multiple threads. Implementations
      * must synchronize access to shared state.
+     *
+     * <p>Session creation uses a snapshot of the source {@link SessionOptions}. Replacing or
+     * clearing the callback on those options from inside this callback does not affect the
+     * in-progress creation. Closing the source options while creation is in progress is rejected.
      */
     @FunctionalInterface
     public interface EpContextDataReadCallback {
@@ -747,6 +747,51 @@ public class OrtSession implements AutoCloseable {
         referenceCount--;
         if (referenceCount == 0) {
           releaseEpContextDataCallback(nativeHandle);
+        }
+      }
+
+      synchronized int getReferenceCount() {
+        return referenceCount;
+      }
+    }
+
+    static final class NativeSessionOptionsSnapshot implements AutoCloseable {
+      private final SessionOptions owner;
+      private final long nativeHandle;
+      private final EpContextDataReadCallbackRegistration callbackRegistration;
+      private boolean callbackRegistrationTransferred;
+      private boolean closed;
+
+      private NativeSessionOptionsSnapshot(
+          SessionOptions owner,
+          long nativeHandle,
+          EpContextDataReadCallbackRegistration callbackRegistration) {
+        this.owner = owner;
+        this.nativeHandle = nativeHandle;
+        this.callbackRegistration = callbackRegistration;
+      }
+
+      long getNativeHandle() {
+        return nativeHandle;
+      }
+
+      EpContextDataReadCallbackRegistration getEpContextDataReadCallbackRegistration() {
+        return callbackRegistration;
+      }
+
+      void transferEpContextDataReadCallbackRegistration() {
+        callbackRegistrationTransferred = true;
+      }
+
+      @Override
+      public void close() {
+        if (!closed) {
+          owner.closeOptions(OnnxRuntime.ortApiHandle, nativeHandle);
+          if (!callbackRegistrationTransferred && callbackRegistration != null) {
+            callbackRegistration.release();
+          }
+          owner.releaseSnapshot();
+          closed = true;
         }
       }
     }
@@ -838,6 +883,7 @@ public class OrtSession implements AutoCloseable {
     private final Map<String, String> configEntries;
 
     private EpContextDataReadCallbackRegistration epContextDataReadCallbackRegistration;
+    private int activeSnapshots;
 
     private boolean closed = false;
 
@@ -848,10 +894,18 @@ public class OrtSession implements AutoCloseable {
       configEntries = new LinkedHashMap<String, String>();
     }
 
-    /** Closes the session options, releasing any memory acquired. */
+    /**
+     * Closes the session options, releasing any memory acquired.
+     *
+     * @throws IllegalStateException If a native operation is currently using an options snapshot.
+     */
     @Override
     public synchronized void close() {
       if (!closed) {
+        if (activeSnapshots != 0) {
+          throw new IllegalStateException(
+              "Cannot close SessionOptions while a native operation is using a snapshot.");
+        }
         if (!customLibraryHandles.isEmpty()) {
           long[] longArray = new long[customLibraryHandles.size()];
           for (int i = 0; i < customLibraryHandles.size(); i++) {
@@ -935,12 +989,40 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
-    synchronized EpContextDataReadCallbackRegistration
-        retainEpContextDataReadCallbackRegistration() {
+    synchronized NativeSessionOptionsSnapshot createSnapshot() throws OrtException {
       checkClosed();
-      if (epContextDataReadCallbackRegistration != null) {
-        epContextDataReadCallbackRegistration.retain();
+      long snapshotHandle = cloneOptions(OnnxRuntime.ortApiHandle, nativeHandle);
+      boolean retained = false;
+      boolean created = false;
+      try {
+        if (epContextDataReadCallbackRegistration != null) {
+          epContextDataReadCallbackRegistration.retain();
+          retained = true;
+        }
+        NativeSessionOptionsSnapshot snapshot =
+            new NativeSessionOptionsSnapshot(
+                this, snapshotHandle, epContextDataReadCallbackRegistration);
+        activeSnapshots++;
+        created = true;
+        return snapshot;
+      } finally {
+        if (!created) {
+          closeOptions(OnnxRuntime.ortApiHandle, snapshotHandle);
+          if (retained) {
+            epContextDataReadCallbackRegistration.release();
+          }
+        }
       }
+    }
+
+    private synchronized void releaseSnapshot() {
+      if (activeSnapshots == 0) {
+        throw new IllegalStateException("SessionOptions snapshot is already released.");
+      }
+      activeSnapshots--;
+    }
+
+    synchronized EpContextDataReadCallbackRegistration getEpContextDataReadCallbackRegistration() {
       return epContextDataReadCallbackRegistration;
     }
 
@@ -1569,6 +1651,8 @@ public class OrtSession implements AutoCloseable {
 
     private native long createOptions(long apiHandle);
 
+    private native long cloneOptions(long apiHandle, long handle) throws OrtException;
+
     private native void setLoggerId(long apiHandle, long nativeHandle, String loggerId)
         throws OrtException;
 
@@ -1600,10 +1684,7 @@ public class OrtSession implements AutoCloseable {
     private native void closeOptions(long apiHandle, long nativeHandle);
 
     private static native long setEpContextDataReadCallback(
-        long apiHandle,
-        long nativeHandle,
-        EpContextDataReadCallback callback,
-        long maxDataSize)
+        long apiHandle, long nativeHandle, EpContextDataReadCallback callback, long maxDataSize)
         throws OrtException;
 
     private static native void clearEpContextDataReadCallback(long apiHandle, long nativeHandle)

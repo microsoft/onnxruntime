@@ -4,6 +4,7 @@
  */
 #include <jni.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include "OrtJniUtil.h"
@@ -108,6 +109,130 @@ static void detachCallbackThread(EpContextDataCallbackState* state, bool attache
     }
 }
 
+static bool decodeUtf8CodePoint(const unsigned char** cursor, uint32_t* codePoint) {
+  const unsigned char* input = *cursor;
+  const unsigned char first = input[0];
+  if (first <= 0x7f) {
+    *codePoint = first;
+    *cursor = input + 1;
+    return true;
+  }
+
+  const unsigned char second = input[1];
+  if (first >= 0xc2 && first <= 0xdf) {
+    if (second < 0x80 || second > 0xbf) {
+      return false;
+    }
+    *codePoint = ((uint32_t)(first & 0x1f) << 6) | (uint32_t)(second & 0x3f);
+    *cursor = input + 2;
+    return true;
+  }
+
+  if (first >= 0xe0 && first <= 0xef) {
+    if (second < 0x80 || second > 0xbf ||
+        (first == 0xe0 && second < 0xa0) ||
+        (first == 0xed && second > 0x9f)) {
+      return false;
+    }
+    const unsigned char third = input[2];
+    if (third < 0x80 || third > 0xbf) {
+      return false;
+    }
+    *codePoint = ((uint32_t)(first & 0x0f) << 12) |
+                 ((uint32_t)(second & 0x3f) << 6) |
+                 (uint32_t)(third & 0x3f);
+    *cursor = input + 3;
+    return true;
+  }
+
+  if (first >= 0xf0 && first <= 0xf4) {
+    if (second < 0x80 || second > 0xbf ||
+        (first == 0xf0 && second < 0x90) ||
+        (first == 0xf4 && second > 0x8f)) {
+      return false;
+    }
+    const unsigned char third = input[2];
+    if (third < 0x80 || third > 0xbf) {
+      return false;
+    }
+    const unsigned char fourth = input[3];
+    if (fourth < 0x80 || fourth > 0xbf) {
+      return false;
+    }
+    *codePoint = ((uint32_t)(first & 0x07) << 18) |
+                 ((uint32_t)(second & 0x3f) << 12) |
+                 ((uint32_t)(third & 0x3f) << 6) |
+                 (uint32_t)(fourth & 0x3f);
+    *cursor = input + 4;
+    return true;
+  }
+
+  return false;
+}
+
+static jstring createJavaStringFromUtf8(
+    const EpContextDataCallbackState* state, JNIEnv* jniEnv, const char* input,
+    OrtStatus** status) {
+  *status = NULL;
+  if (input == NULL) {
+    *status = createCallbackStatus(state, ORT_INVALID_ARGUMENT, "EPContext data name is null");
+    return NULL;
+  }
+
+  const unsigned char* cursor = (const unsigned char*)input;
+  size_t utf16Length = 0;
+  while (*cursor != '\0') {
+    uint32_t codePoint;
+    if (!decodeUtf8CodePoint(&cursor, &codePoint)) {
+      *status = createCallbackStatus(
+          state, ORT_INVALID_ARGUMENT, "EPContext data name is not valid UTF-8");
+      return NULL;
+    }
+
+    const size_t codeUnits = codePoint <= 0xffff ? 1 : 2;
+    if (utf16Length > (size_t)INT_MAX - codeUnits) {
+      *status = createCallbackStatus(
+          state, ORT_INVALID_ARGUMENT, "EPContext data name is too large for a Java string");
+      return NULL;
+    }
+    utf16Length += codeUnits;
+  }
+
+  jchar emptyString = 0;
+  jchar* utf16 = utf16Length == 0
+                     ? &emptyString
+                     : (jchar*)malloc(utf16Length * sizeof(jchar));
+  if (utf16 == NULL) {
+    *status = createCallbackStatus(
+        state, ORT_FAIL, "Failed to allocate the EPContext data name");
+    return NULL;
+  }
+
+  cursor = (const unsigned char*)input;
+  size_t outputIndex = 0;
+  while (*cursor != '\0') {
+    uint32_t codePoint;
+    (void)decodeUtf8CodePoint(&cursor, &codePoint);
+    if (codePoint <= 0xffff) {
+      utf16[outputIndex++] = (jchar)codePoint;
+    } else {
+      codePoint -= 0x10000;
+      utf16[outputIndex++] = (jchar)(0xd800 | (codePoint >> 10));
+      utf16[outputIndex++] = (jchar)(0xdc00 | (codePoint & 0x3ff));
+    }
+  }
+
+  jstring result = (*jniEnv)->NewString(jniEnv, utf16, (jsize)utf16Length);
+  if (utf16Length != 0) {
+    free(utf16);
+  }
+  if (result == NULL) {
+    *status = createJavaExceptionStatus(
+        state, jniEnv, "Failed to create the EPContext data name");
+  }
+  return result;
+}
+
 EpContextDataCallbackState* createEpContextDataCallbackState(
     JNIEnv* jniEnv, const OrtApi* api, jobject callback, const char* methodName,
     const char* methodSignature, size_t maxDataSize) {
@@ -169,11 +294,10 @@ OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
 
     *buffer = NULL;
     *dataSize = 0;
-    jstring javaName = (*jniEnv)->NewStringUTF(jniEnv, name);
+    jstring javaName = createJavaStringFromUtf8(state, jniEnv, name, &status);
     if (javaName == NULL) {
-        status = createJavaExceptionStatus(state, jniEnv, "Failed to create the EPContext data name");
-        detachCallbackThread(state, attached);
-        return status;
+      detachCallbackThread(state, attached);
+      return status;
     }
 
     jbyteArray javaData =
@@ -239,27 +363,30 @@ OrtStatus* ORT_API_CALL javaEpContextDataWriteCallback(
         return status;
     }
 
-    jstring javaName = (*jniEnv)->NewStringUTF(jniEnv, name);
-    jbyteArray javaData = (*jniEnv)->NewByteArray(jniEnv, (jsize)bufferSize);
-    if (javaName == NULL || javaData == NULL) {
+    jstring javaName = createJavaStringFromUtf8(state, jniEnv, name, &status);
+    jbyteArray javaData = NULL;
+    if (javaName != NULL) {
+      javaData = (*jniEnv)->NewByteArray(jniEnv, (jsize)bufferSize);
+    }
+    if (status == NULL && javaData == NULL) {
+      status = createJavaExceptionStatus(
+          state, jniEnv, "Failed to allocate Java EPContext callback arguments");
+    } else if (status == NULL) {
+      if (bufferSize != 0) {
+        (*jniEnv)->SetByteArrayRegion(
+            jniEnv, javaData, 0, (jsize)bufferSize, (const jbyte*)buffer);
+      }
+      if ((*jniEnv)->ExceptionCheck(jniEnv)) {
         status = createJavaExceptionStatus(
-            state, jniEnv, "Failed to allocate Java EPContext callback arguments");
-    } else {
-        if (bufferSize != 0) {
-            (*jniEnv)->SetByteArrayRegion(
-                jniEnv, javaData, 0, (jsize)bufferSize, (const jbyte*)buffer);
-        }
+            state, jniEnv, "Failed to copy EPContext data into Java");
+      } else {
+        (*jniEnv)->CallVoidMethod(
+            jniEnv, state->callback, state->method, javaName, javaData);
         if ((*jniEnv)->ExceptionCheck(jniEnv)) {
-            status = createJavaExceptionStatus(
-                state, jniEnv, "Failed to copy EPContext data into Java");
-        } else {
-            (*jniEnv)->CallVoidMethod(
-                jniEnv, state->callback, state->method, javaName, javaData);
-            if ((*jniEnv)->ExceptionCheck(jniEnv)) {
-                status = createJavaExceptionStatus(
-                    state, jniEnv, "EPContext data write callback failed");
-            }
+          status = createJavaExceptionStatus(
+              state, jniEnv, "EPContext data write callback failed");
         }
+      }
     }
 
     if (javaData != NULL) {

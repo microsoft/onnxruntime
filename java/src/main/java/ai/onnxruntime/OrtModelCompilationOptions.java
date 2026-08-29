@@ -14,10 +14,14 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   /**
    * Receives external EPContext data during model compilation.
    *
-   * <p>Each payload is copied into a new Java array that the application owns and may retain.
-   * ONNX Runtime may invoke this callback concurrently from multiple threads, so implementations
-   * must synchronize access to shared state. Throwing an exception fails compilation without
-   * falling back to filesystem output.
+   * <p>Each payload is copied into a new Java array that the application owns and may retain. ONNX
+   * Runtime may invoke this callback concurrently from multiple threads, so implementations must
+   * synchronize access to shared state. Throwing an exception fails compilation without falling
+   * back to filesystem output.
+   *
+   * <p>Methods that mutate or close the originating {@link OrtModelCompilationOptions} throw {@link
+   * IllegalStateException} while compilation is in progress. This also applies when they are called
+   * reentrantly from this callback.
    */
   @FunctionalInterface
   public interface EpContextDataWriteCallback {
@@ -68,14 +72,14 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   private final SessionOptions.EpContextDataReadCallbackRegistration
       epContextDataReadCallbackRegistration;
   private long epContextDataWriteCallbackHandle;
+  private boolean compilationInProgress;
 
   // Used to ensure the byte buffer doesn't get GC'd before the model is compiled.
   private ByteBuffer buffer;
 
   OrtModelCompilationOptions(
       long nativeHandle,
-      SessionOptions.EpContextDataReadCallbackRegistration
-          epContextDataReadCallbackRegistration) {
+      SessionOptions.EpContextDataReadCallbackRegistration epContextDataReadCallbackRegistration) {
     this.nativeHandle = nativeHandle;
     this.epContextDataReadCallbackRegistration = epContextDataReadCallbackRegistration;
   }
@@ -94,24 +98,24 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    */
   public static OrtModelCompilationOptions createFromSessionOptions(
       OrtEnvironment env, OrtSession.SessionOptions sessionOptions) throws OrtException {
-    synchronized (sessionOptions) {
-      SessionOptions.EpContextDataReadCallbackRegistration registration =
-          sessionOptions.retainEpContextDataReadCallbackRegistration();
-      boolean created = false;
+    try (SessionOptions.NativeSessionOptionsSnapshot snapshot = sessionOptions.createSnapshot()) {
+      long handle =
+          createFromSessionOptions(
+              OnnxRuntime.ortApiHandle,
+              OnnxRuntime.ortCompileApiHandle,
+              env.getNativeHandle(),
+              snapshot.getNativeHandle());
+      boolean wrapped = false;
       try {
-        long handle =
-            createFromSessionOptions(
-                OnnxRuntime.ortApiHandle,
-                OnnxRuntime.ortCompileApiHandle,
-                env.getNativeHandle(),
-                sessionOptions.getNativeHandle());
         OrtModelCompilationOptions options =
-            new OrtModelCompilationOptions(handle, registration);
-        created = true;
+            new OrtModelCompilationOptions(
+                handle, snapshot.getEpContextDataReadCallbackRegistration());
+        snapshot.transferEpContextDataReadCallbackRegistration();
+        wrapped = true;
         return options;
       } finally {
-        if (!created && registration != null) {
-          registration.release();
+        if (!wrapped) {
+          close(OnnxRuntime.ortCompileApiHandle, handle);
         }
       }
     }
@@ -126,9 +130,18 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
     }
   }
 
+  private void checkMutable() {
+    checkClosed();
+    if (compilationInProgress) {
+      throw new IllegalStateException(
+          "Cannot modify OrtModelCompilationOptions while model compilation is in progress.");
+    }
+  }
+
   @Override
   public synchronized void close() {
     if (!closed) {
+      checkMutable();
       close(OnnxRuntime.ortCompileApiHandle, nativeHandle);
       closed = true;
       if (epContextDataWriteCallbackHandle != 0) {
@@ -152,8 +165,8 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * @param inputModelPath The path to the model on disk.
    * @throws OrtException If the set failed.
    */
-  public void setInputModelPath(String inputModelPath) throws OrtException {
-    checkClosed();
+  public synchronized void setInputModelPath(String inputModelPath) throws OrtException {
+    checkMutable();
     setInputModelPath(
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, inputModelPath);
   }
@@ -170,8 +183,9 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * @param inputModelBuffer The buffer.
    * @throws OrtException If the buffer could not be set.
    */
-  public void setInputModelFromBuffer(ByteBuffer inputModelBuffer) throws OrtException {
-    checkClosed();
+  public synchronized void setInputModelFromBuffer(ByteBuffer inputModelBuffer)
+      throws OrtException {
+    checkMutable();
     if (!inputModelBuffer.isDirect()) {
       // if it's not a direct buffer, copy it.
       buffer = ByteBuffer.allocateDirect(inputModelBuffer.remaining());
@@ -202,8 +216,8 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * @param outputModelPath The output model path.
    * @throws OrtException If the path could not be set.
    */
-  public void setOutputModelPath(String outputModelPath) throws OrtException {
-    checkClosed();
+  public synchronized void setOutputModelPath(String outputModelPath) throws OrtException {
+    checkMutable();
     setOutputModelPath(
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, outputModelPath);
   }
@@ -221,9 +235,9 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * @param sizeThreshold Initializers larger than this threshold are stored in the file.
    * @throws OrtException If the path could not be set.
    */
-  public void setOutputExternalInitializersPath(
+  public synchronized void setOutputExternalInitializersPath(
       String outputExternalInitializersPath, long sizeThreshold) throws OrtException {
-    checkClosed();
+    checkMutable();
     // check positive
     setOutputExternalInitializersPath(
         OnnxRuntime.ortApiHandle,
@@ -251,8 +265,8 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    *     ep_cache_context attribute.
    * @throws OrtException If the set operation failed.
    */
-  public void setEpContextEmbedMode(boolean embedEpContext) throws OrtException {
-    checkClosed();
+  public synchronized void setEpContextEmbedMode(boolean embedEpContext) throws OrtException {
+    checkMutable();
     setEpContextEmbedMode(
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, embedEpContext);
   }
@@ -269,14 +283,11 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    */
   public synchronized void setEpContextDataWriteCallback(EpContextDataWriteCallback callback)
       throws OrtException {
-    checkClosed();
+    checkMutable();
     Objects.requireNonNull(callback, "callback must not be null");
     long callbackHandle =
         setEpContextDataWriteCallback(
-            OnnxRuntime.ortApiHandle,
-            OnnxRuntime.ortCompileApiHandle,
-            nativeHandle,
-            callback);
+            OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, callback);
     long previousHandle = epContextDataWriteCallbackHandle;
     epContextDataWriteCallbackHandle = callbackHandle;
     if (previousHandle != 0) {
@@ -290,7 +301,7 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * @throws OrtException If native registration fails.
    */
   public synchronized void clearEpContextDataWriteCallback() throws OrtException {
-    checkClosed();
+    checkMutable();
     clearEpContextDataWriteCallback(
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle);
     if (epContextDataWriteCallbackHandle != 0) {
@@ -305,8 +316,9 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * @param flags The compilation flags.
    * @throws OrtException If the set operation failed.
    */
-  public void setCompilationFlags(EnumSet<OrtCompileApiFlags> flags) throws OrtException {
-    checkClosed();
+  public synchronized void setCompilationFlags(EnumSet<OrtCompileApiFlags> flags)
+      throws OrtException {
+    checkMutable();
     setCompilationFlags(
         OnnxRuntime.ortApiHandle,
         OnnxRuntime.ortCompileApiHandle,
@@ -319,16 +331,31 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * OrtModelCompilationOptions.
    *
    * @throws OrtException If the compilation failed.
+   * @throws IllegalStateException If these options are closed or another compilation is in
+   *     progress.
    */
-  public synchronized void compileModel() throws OrtException {
-    checkClosed();
-    // Safe as the environment must exist to create one of these objects.
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
-    compileModel(
-        OnnxRuntime.ortApiHandle,
-        OnnxRuntime.ortCompileApiHandle,
-        env.getNativeHandle(),
-        nativeHandle);
+  public void compileModel() throws OrtException {
+    synchronized (this) {
+      checkClosed();
+      if (compilationInProgress) {
+        throw new IllegalStateException("Model compilation is already in progress.");
+      }
+      compilationInProgress = true;
+    }
+
+    try {
+      // Safe as the environment must exist to create one of these objects.
+      OrtEnvironment env = OrtEnvironment.getEnvironment();
+      compileModel(
+          OnnxRuntime.ortApiHandle,
+          OnnxRuntime.ortCompileApiHandle,
+          env.getNativeHandle(),
+          nativeHandle);
+    } finally {
+      synchronized (this) {
+        compilationInProgress = false;
+      }
+    }
   }
 
   private static native long createFromSessionOptions(
@@ -366,10 +393,7 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
       throws OrtException;
 
   private static native long setEpContextDataWriteCallback(
-      long apiHandle,
-      long compileApiHandle,
-      long nativeHandle,
-      EpContextDataWriteCallback callback)
+      long apiHandle, long compileApiHandle, long nativeHandle, EpContextDataWriteCallback callback)
       throws OrtException;
 
   private static native void clearEpContextDataWriteCallback(
