@@ -269,13 +269,24 @@ class MlasLinearAttentionTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
-    // (d_k, d_v) pairs chosen to straddle two independent boundaries:
+    // (d_k, d_v) pairs chosen to straddle three independent boundaries:
     //   - the d_k*d_v >= 4096 SGEMM threshold in the portable kernel (4096 is
     //     the inclusive boundary);
-    //   - the AVX-512 kernel's eligibility envelope, d_k % 16 == 0 &&
-    //     d_k <= 256 && d_v % 32 == 0. {32,64}, {64,64}, {128,128} are
-    //     eligible; the rest exercise the fallback to the portable kernel,
-    //     including {272,32} which fails only the d_k <= 256 bound.
+    //   - the AVX-512 envelope, d_k % 16 == 0 && d_k <= 256 && d_v % 32 == 0;
+    //   - the NEON envelope, which differs only in accepting d_k % 4 == 0,
+    //     since its q.k reduction is 4 wide rather than 16.
+    //
+    // Eligible on both: {32,64}, {64,64}, {48,96}, {128,128}, {256,32}.
+    // Eligible on NEON only (d_k % 4 but not % 16): {12,32}, {20,32}.
+    // Fallback everywhere: {8,8}, {16,16}, {24,40} fail d_v % 32, and
+    // {272,32} fails only the d_k <= 256 bound.
+    //
+    // The last four entries exist for specific edges, so do not drop them
+    // without checking what they cover: {12,32} runs the 4-wide dot tail with
+    // the 16-wide main loop skipped entirely, {20,32} runs main and tail
+    // together, and {256,32} is the accept side of d_k <= 256 - which is also
+    // the exact fit of both kernels' fixed d_k staging buffers, where an
+    // off-by-one would smash the stack.
     static const int kShapes[][2] = {
         {8, 8},
         {16, 16},
@@ -285,6 +296,9 @@ class MlasLinearAttentionTest : public MlasTestBase {
         {48, 96},
         {128, 128},
         {272, 32},
+        {12, 32},
+        {20, 32},
+        {256, 32},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,

@@ -27,6 +27,7 @@ class PagedAttention final : public CudaKernel {
   int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
   int local_window_size_;
+  bool is_causal_;
   bool do_rotary_;
   bool rotary_interleaved_;
   float scale_;

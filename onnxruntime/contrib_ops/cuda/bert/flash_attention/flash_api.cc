@@ -363,7 +363,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       bool is_bf16,
                       int local_window_size,
                       int max_num_blocks_per_seq,
-                      int page_block_size) {
+                      int page_block_size,
+                      int num_splits,
+                      void* softmax_lse_accum,
+                      void* out_accum) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
@@ -397,6 +400,20 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 
   params.total_q = total_q;
   params.dprops = &dprops;
+  const bool pure_decode = max_seqlen_q == 1 && total_q == batch_size;
+  if (num_splits > 1) {
+    ORT_RETURN_IF_NOT(pure_decode,
+                      "FlashAttention varlen split-KV requires exactly one query token per sequence.");
+    ORT_RETURN_IF_NOT(softmax_lse_accum != nullptr && out_accum != nullptr,
+                      "FlashAttention varlen split-KV requires LSE and output accumulator workspaces.");
+    // Varlen normally uses cu_seqlens_q and leaves the batch stride at zero. In pure decode the
+    // packed output has exactly one row per batch, so the split-combine kernel can address it as
+    // a dense [batch, 1, heads, head_size] tensor.
+    params.o_batch_stride = num_heads * head_size;
+    params.num_splits = num_splits;
+    params.softmax_lseaccum_ptr = softmax_lse_accum;
+    params.oaccum_ptr = out_accum;
+  }
   if (paged_KV) {
     params.block_table = block_table;
     params.block_table_batch_stride = max_num_blocks_per_seq;
