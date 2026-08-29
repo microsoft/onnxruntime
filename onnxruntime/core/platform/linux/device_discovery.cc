@@ -16,6 +16,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
+#include "core/common/pci_vendor_ids.h"
 #include "core/common/string_utils.h"
 
 namespace fs = std::filesystem;
@@ -122,8 +123,7 @@ std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
 
   // Currently, we only assume that all Nvidia GPUs are discrete.
 
-  constexpr auto kNvidiaPciId = 0x10de;
-  if (vendor_id == kNvidiaPciId) {
+  if (vendor_id == pci_vendor_ids::kNvidia) {
     return true;
   }
 
