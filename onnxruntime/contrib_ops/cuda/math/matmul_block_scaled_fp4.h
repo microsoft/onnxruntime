@@ -77,9 +77,9 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                const cudaDeviceProp& device_prop,
                                                cudaStream_t stream);
 
-// Largest M LaunchMatMulBlockQuantizedFp4WeightGemv is worth calling with, and will accept. The
-// tensor-core sub-path shares one pass over the packed weight across several row tiles; the scalar
-// fallback re-reads it per tile, so it stops paying much sooner. Callers must not exceed this.
+// Largest M selected for GEMV dispatch. The tensor-core default is conservative because the
+// crossover with dequantize + cuBLAS depends on the matrix shape; ORT_FP4_GEMV_MAX_M can raise the
+// limit through 64 for tuned workloads. The direct launcher accepts tensor-core cases through 64.
 int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop);
 
 // Repacks the [N, ceil(K/block_size)] row-major E4M3 weight-scale tensor into the swizzled layout

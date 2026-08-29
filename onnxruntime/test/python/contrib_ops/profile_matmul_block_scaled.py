@@ -211,6 +211,11 @@ def _fp4_native_sm120_enabled() -> bool:
     return os.environ.get("ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120", "").lower() in {"1", "true", "yes", "on"}
 
 
+def _env_enabled(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    return default if value is None else value.lower() in {"1", "true", "yes", "on"}
+
+
 def _fp4_native_sm120_supported(case: Case) -> bool:
     block_size = case.block_size or 16
     return (
@@ -225,7 +230,10 @@ def _fp4_native_sm120_supported(case: Case) -> bool:
 
 def _fp4_expected_path(case: Case) -> str:
     block_size = case.block_size or 16
-    if case.m > 0 and case.m <= 8 and block_size == 16 and case.k % 32 == 0:
+    gemv_max_m = 8
+    if torch.cuda.get_device_capability()[0] >= 8 and case.k % 128 == 0 and _env_enabled("ORT_FP4_GEMV_MMA", True):
+        gemv_max_m = int(os.environ.get("ORT_FP4_GEMV_MAX_M", "32"))
+    if case.m > 0 and case.m <= gemv_max_m and block_size == 16 and case.k % 32 == 0:
         return "fp4_gemv"
     if _fp4_native_sm120_supported(case):
         return "sm120_native_fp4_gemm"
@@ -302,7 +310,16 @@ def _fp8_reference(a: torch.Tensor, b_dequantized: torch.Tensor, bias: torch.Ten
 
 def _fp8_expected_path(case: Case) -> str:
     block_size = case.block_size or 128
-    if case.m > 0 and case.m <= 8 and case.k % 16 == 0 and block_size % 16 == 0:
+    gemv_max_m = 8
+    if (
+        torch.cuda.get_device_capability()[0] >= 8
+        and case.k % 64 == 0
+        and case.k >= 256
+        and block_size % 64 == 0
+        and _env_enabled("ORT_FP8_GEMV_MMA", True)
+    ):
+        gemv_max_m = int(os.environ.get("ORT_FP8_GEMV_MAX_M", "32"))
+    if case.m > 0 and case.m <= gemv_max_m and case.k % 16 == 0 and block_size % 16 == 0:
         return "fp8_gemv"
     return "fp8_dequant_cublas"
 

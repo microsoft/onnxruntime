@@ -89,9 +89,9 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const cudaDeviceProp& device_prop,
                                       cudaStream_t stream);
 
-// Largest M LaunchMatMulBlockScaledFp8Gemv is worth calling with, and will accept. The tensor-core
-// sub-path shares one pass over the FP8 weight across several row tiles; the FMA fallback re-reads
-// it per tile, so it stops paying much sooner. Callers must not exceed this.
+// Largest M selected for GEMV dispatch. The tensor-core default is conservative because the
+// crossover with dequantize + cuBLAS depends on the matrix shape; ORT_FP8_GEMV_MAX_M can raise the
+// limit through 64 for tuned workloads. The direct launcher accepts tensor-core cases through 64.
 int MatMulBlockScaledFp8GemvMaxM(int k, int block_size, const cudaDeviceProp& device_prop);
 
 }  // namespace onnxruntime::contrib::cuda
