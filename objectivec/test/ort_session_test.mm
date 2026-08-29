@@ -566,21 +566,20 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
 
 - (void)testSessionRetainsEpContextDataReadBlockRegistration {
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
-  NSObject* __weak weakCapturedObject = nil;
+  NSObject* capturedObject = [[NSObject alloc] init];
+  NSObject* __weak weakCapturedObject = capturedObject;
+  ORTEpContextDataReadBlock __nullable block =
+      ^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        (void)capturedObject;
+        return [NSData data];
+      };
   NSError* err = nil;
-  BOOL result;
-  @autoreleasepool {
-    NSObject* capturedObject = [[NSObject alloc] init];
-    weakCapturedObject = capturedObject;
-    result = [sessionOptions
-        setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
-          (void)capturedObject;
-          return [NSData data];
-        }
-                      maxDataSize:1
-                            error:&err];
-    ORTAssertBoolResultSuccessful(result, err);
-  }
+  BOOL result = [sessionOptions setEpContextDataReadBlock:block
+                                              maxDataSize:1
+                                                    error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+  capturedObject = nil;
+  block = nil;
   XCTAssertNotNil(weakCapturedObject);
 
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
@@ -600,20 +599,20 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
 
 - (void)testFailedSessionConstructionReleasesEpContextDataReadBlockSnapshot {
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
-  NSObject* __weak weakCapturedObject = nil;
+  NSObject* capturedObject = [[NSObject alloc] init];
+  NSObject* __weak weakCapturedObject = capturedObject;
+  ORTEpContextDataReadBlock __nullable block =
+      ^NSData*(NSString* /*name*/, NSError** /*error*/) {
+        (void)capturedObject;
+        return [NSData data];
+      };
   NSError* err = nil;
-  @autoreleasepool {
-    NSObject* capturedObject = [[NSObject alloc] init];
-    weakCapturedObject = capturedObject;
-    BOOL result = [sessionOptions
-        setEpContextDataReadBlock:^NSData*(NSString* /*name*/, NSError** /*error*/) {
-          (void)capturedObject;
-          return [NSData data];
-        }
-                      maxDataSize:1
-                            error:&err];
-    ORTAssertBoolResultSuccessful(result, err);
-  }
+  BOOL result = [sessionOptions setEpContextDataReadBlock:block
+                                              maxDataSize:1
+                                                    error:&err];
+  ORTAssertBoolResultSuccessful(result, err);
+  capturedObject = nil;
+  block = nil;
   XCTAssertNotNil(weakCapturedObject);
 
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
