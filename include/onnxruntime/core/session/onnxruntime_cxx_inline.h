@@ -1562,6 +1562,10 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
     OrtReadNamedBufferFunc read_func, void* state, size_t max_data_size) {
+  if (read_func == nullptr) {
+    return ClearEpContextDataReadFunc();
+  }
+
   EpContextDataReadOptions options;
   options.SetMaxDataSize(max_data_size);
   ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, options));

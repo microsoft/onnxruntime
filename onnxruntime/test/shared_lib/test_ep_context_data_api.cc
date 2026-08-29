@@ -288,13 +288,13 @@ TEST(EpContextDataApiTest, ConfigIsAnImmutableSnapshotOfSessionOptions) {
   EXPECT_EQ(max_data_size, kEpContextApiTestMaxDataSize / 2);
 }
 
-TEST(EpContextDataApiTest, ReadFuncCanBeCleared) {
+TEST(EpContextDataApiTest, ReadFuncCanBeClearedWithSetter) {
   Ort::SessionOptions session_options;
 
   EpContextReadCallbackState callback_state{};
   session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state,
                                            kEpContextApiTestMaxDataSize);
-  session_options.ClearEpContextDataReadFunc();
+  session_options.SetEpContextDataReadFunc(nullptr, &callback_state, 0);
 
   Ort::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
