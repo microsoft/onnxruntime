@@ -460,6 +460,14 @@ A workable order:
    `kOrtHardwareDevice_MetadataKey_IsVirtual`, which is what keeps it distinct from the virtual device — that path
    is allocator-less by design and cannot back a real session.
 
+   A later change on `main` added a second fallback to `GetSupportedDevicesImpl` alongside the virtual device: when
+   no GPU device is discovered, `allow_software_adapter` (opt-in via the `kAllowSoftwareAdapterEnvironmentVariable`
+   environment variable) advertises WebGPU against the *CPU* `OrtHardwareDevice`. It does not change the analysis
+   above. Both upstream fallbacks work around a device the discovery layer failed to enumerate; they are opt-in
+   precisely because misreporting a device is not safe to do by default. Under Emscripten the device is genuinely
+   there and cheaply detectable, so fixing discovery keeps the default path correct and needs no opt-in. The
+   primary matching loop that our discovered GPU device flows through is unchanged by that work.
+
    One accepted side effect: `ep_library_internal.cc` creates an internal `WebGpuEpFactory` in a
    `USE_WEBGPU && !ORT_USE_EP_API_ADAPTERS` build, so today's `static_lib` ORT Web build starts producing an
    `OrtEpDevice` where it previously produced none. That build selects by name and is slated for removal, so the
