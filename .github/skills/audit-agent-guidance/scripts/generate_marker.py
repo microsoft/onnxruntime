@@ -43,7 +43,7 @@ def main() -> None:
     args = parser.parse_args()
     commit = args.commit or current_commit()
 
-    print(f"Agent-Guidance-Audit: version=1; base=main; audited-commit={commit}")
+    print(f"Agent-Guidance-Audit: version=1; audited-commit={commit}")
 
 
 if __name__ == "__main__":
