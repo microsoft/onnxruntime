@@ -10,7 +10,8 @@ namespace cuda {
 namespace {
 
 constexpr int kRowsPerLaunch = 8;
-constexpr int kMaxM = 64;
+constexpr int kMaxSupportedM = 64;
+constexpr int kMaxDefaultDispatchM = 1;
 constexpr int kMaxN = 1024;
 constexpr int kMinK = 128;
 constexpr int kThreads = 256;
@@ -121,7 +122,7 @@ size_t SmallNGemvCounterElements(int n) {
 }
 
 bool CanUseSmallNGemv(int64_t m, int64_t n, int64_t k, const void* a, const void* b, const void* c) {
-  if (m < 1 || m > kMaxM || n < 1 || n > kMaxN || k < kMinK) return false;
+  if (m < 1 || m > kMaxDefaultDispatchM || n < 1 || n > kMaxN || k < kMinK) return false;
   if (k > (1 << 20)) return false;
   const uintptr_t align = reinterpret_cast<uintptr_t>(a) | reinterpret_cast<uintptr_t>(b) |
                           reinterpret_cast<uintptr_t>(c);
@@ -130,6 +131,8 @@ bool CanUseSmallNGemv(int64_t m, int64_t n, int64_t k, const void* a, const void
 
 Status LaunchSmallNGemv(cudaStream_t stream, const half* a, const half* b, half* c,
                         int m, int n, int k, float* ws, unsigned int* counter) {
+  ORT_RETURN_IF_NOT(m >= 1 && m <= kMaxSupportedM,
+                    "SmallNGemv supports M in [1, ", kMaxSupportedM, "], got ", m, ".");
   const int split_k = SmallNGemvSplitK(n, k);
   for (int row = 0; row < m; row += kRowsPerLaunch) {
     const int rows = (m - row < kRowsPerLaunch) ? m - row : kRowsPerLaunch;
