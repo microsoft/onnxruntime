@@ -3,7 +3,7 @@ use tracing::debug;
 use onnxruntime_sys as sys;
 
 use crate::{
-    environment::{Environment, _Environment},
+    environment::{_Environment, Environment},
     error::{assert_not_null_pointer, status_to_result, OrtError, Result},
     AllocatorType, MemType,
 };

@@ -18,6 +18,12 @@ pub enum OrtError {
     /// For errors with libloading
     #[error("Failed to load or call onnxruntime library {0}")]
     Library(#[from] libloading::Error),
+    /// The loaded ONNX Runtime library does not provide the C API version used by these bindings.
+    #[error("Loaded ONNX Runtime does not support C API version {requested}")]
+    UnsupportedApiVersion {
+        /// C API version requested by the generated bindings.
+        requested: u32,
+    },
     /// The C API can message to the caller using a C `char *` which needs to be converted
     /// to Rust's `String`. This operation can fail.
     #[error("Failed to construct String")]
@@ -138,6 +144,21 @@ pub enum OrtError {
     IsTensorCheck,
 }
 
+/// Error returned by an EPContext data read callback.
+///
+/// Callback errors are returned to ONNX Runtime and stop session initialization. They never
+/// cause ONNX Runtime to fall back to reading the requested data from disk.
+#[non_exhaustive]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum EpContextDataCallbackError {
+    /// The requested data name or callback input is invalid.
+    #[error("Invalid EPContext data request: {0}")]
+    InvalidArgument(String),
+    /// The callback could not provide the requested data.
+    #[error("Failed to read EPContext data: {0}")]
+    Fail(String),
+}
+
 /// Error used when dimensions of input (from model and from inference call)
 /// do not match (as they should).
 #[non_exhaustive]
@@ -256,6 +277,26 @@ pub(crate) fn status_to_result(
 ) -> std::result::Result<(), OrtApiError> {
     let status_wrapper: OrtStatusWrapper = status.into();
     status_wrapper.into()
+}
+
+pub(crate) fn status_to_result_with_api(
+    status: *const sys::OrtStatus,
+    api: *const sys::OrtApi,
+) -> std::result::Result<(), OrtApiError> {
+    if status.is_null() {
+        return Ok(());
+    }
+
+    let raw = unsafe { (*api).GetErrorMessage.unwrap()(status) };
+    let result = match char_p_to_string(raw) {
+        Ok(message) => Err(OrtApiError::Msg(message)),
+        Err(OrtError::StringConversion(OrtApiError::IntoStringError(error))) => {
+            Err(OrtApiError::IntoStringError(error))
+        }
+        Err(error) => Err(OrtApiError::Msg(error.to_string())),
+    };
+    unsafe { (*api).ReleaseStatus.unwrap()(status as *mut sys::OrtStatus) };
+    result
 }
 
 /// A wrapper around a function on `OrtApi` that maps the status code into [`OrtApiError`]
