@@ -7,13 +7,12 @@
 #include <TargetConditionals.h>
 
 #include "core/common/logging/logging.h"
-#include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 
 namespace {
 
-constexpr auto kApplePciVendorId = OrtDevice::VendorIds::APPLE;
+constexpr auto kApplePciVendorId = 0x106B;
 constexpr auto kAppleVendorName = "Apple";
 
 std::vector<OrtHardwareDevice> GetGpuDevices() {

@@ -28,7 +28,7 @@ class CoreMLEpFactory : public EpFactoryInternalImpl {
  public:
   // Report "Microsoft" and VendorIds::MICROSOFT as the factory vendor identifiers, like the other internal
   // factories (CPU, DML, and WebGPU): the factory vendor identifies who provides the EP implementation, not the
-  // hardware vendor. Discovered Apple hardware devices keep their own "Apple" / VendorIds::APPLE identifiers.
+  // hardware vendor. Discovered Apple hardware devices keep their own Apple vendor identifiers.
   // Because the factory vendor does not match the Apple hardware vendor, device ordering gives CoreML no vendor
   // affinity. When multiple EPs target the same NPU or GPU with equal vendor affinity, they are ordered by
   // EP name.
