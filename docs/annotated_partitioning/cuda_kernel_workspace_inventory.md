@@ -331,6 +331,11 @@ cache state, and device properties including SM version and `multiProcessorCount
 **Static determinability:** 🔀 — Runtime-exact when sizing receives the backend selected by the CUDA kernel. For AOT,
 use the maximum workspace across feasible backend recipes when exact selection is not provable, or report estimation
 as unavailable when a required contract is missing. See the linked roadmap for the exact/safe-bound/unavailable model.
+PA and PMHA have Level-1 CUDA EP estimates (currently log-only) and Level-2 declarations. PA declares projection
+slot 0 plus Attention slot 1 when nonzero; PMHA declares Attention slot 0. Planner budget consumption and PA
+multi-slot placement remain follow-up work. The current Level-2 boundary represents both unavailable and explicit-zero
+results with no requirements; because `WorkspaceInputShape` has no shape provenance, the PA/PMHA adapter treats
+zero-shaped hints as unavailable.
 
 ---
 

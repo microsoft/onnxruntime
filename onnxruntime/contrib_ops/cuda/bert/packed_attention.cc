@@ -10,6 +10,10 @@
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
+#endif
+
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -165,6 +169,34 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
 
   return Status::OK();
 }
+
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+// An unavailable adapter estimate is represented by no Level-2 requirements.
+template <typename T>
+Status PackedAttention<T>::DeclareWorkspaceRequirements(
+    gsl::span<const WorkspaceInputShape> input_shapes,
+    /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
+
+  PackedAttentionWorkspaceEstimateConfig config;
+  config.op = PackedAttentionWorkspaceOperator::PackedAttention;
+  config.element_size = sizeof(T);
+  config.num_heads = num_heads_;
+  config.qkv_hidden_sizes_count = qkv_hidden_sizes_.size();
+  for (size_t i = 0;
+       i < qkv_hidden_sizes_.size() && i < config.qkv_hidden_sizes.size();
+       ++i) {
+    config.qkv_hidden_sizes[i] = qkv_hidden_sizes_[i];
+  }
+
+  const auto estimate = EstimatePackedAttentionWorkspace(
+      config, input_shapes, this->GetDeviceProp(), *this->kernel_options_);
+  if (estimate.has_value()) {
+    SetPackedAttentionWorkspaceRequirements(config.op, *estimate, requirements);
+  }
+  return Status::OK();
+}
+#endif
 
 template <typename T>
 Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {

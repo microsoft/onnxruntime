@@ -5,9 +5,9 @@
 This work provides operator-specific workspace estimation for the CUDA Attention family. It defines how an
 Attention kernel derives a workspace recipe from a plain problem description and a selected backend.
 
-The generic memory-estimation framework is a separate work track and is out of scope here. That track includes L1/L2
-callback plumbing, kernel registration, shape and max-shape infrastructure, optional-input contracts at the framework
-boundary, partition budgeting, memory planning, and planned-root or preallocation integration.
+The generic memory-estimation framework is a separate work track. PA and PMHA now use its Level-1 and Level-2
+declaration points, but partition budgeting, memory planning, and planned-root or preallocation integration remain
+outside this operator-specific work.
 
 The Attention work owns:
 
@@ -146,7 +146,7 @@ The planned operator-specific sequence is:
 3. `PagedAttention`.
 4. High-value decoder-specific variants.
 5. Separate memory models for Linear, Sparse, Longformer, quantized, and ONNX Attention operators.
-6. Thin Attention-specific adapters to the generic framework after its API stabilizes.
+6. Continue the generic planner integration after its budget and multi-slot contracts stabilize.
 
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
@@ -170,3 +170,37 @@ Each Attention family must provide:
 - no dependency from the reusable recipe on graph or CUDA runtime types.
 
 This document defines operator-estimation work tracks and invariants. It does not prescribe a public framework API.
+
+## PA/PMHA framework follow-up
+
+The PA/PMHA follow-up connects the graph-free recipes to the current Phase-A framework:
+
+- **Level 1:** CUDA EP `GetCapability()` translates positional node inputs, uses max-shape inference when available
+  (and graph metadata otherwise), enumerates routes that can be reached by some valid runtime geometry up to the
+  supplied shape, and logs the aggregate. This estimate is
+  currently **log-only**. It does not change the resource-accountant value or the partition accept/reject decision.
+- **Level 2:** constructed PA and PMHA kernels translate `WorkspaceInputShape` entries and declare nonzero workspace
+  slots. Missing mandatory inputs, present inputs without required shape metadata, partial required dimensions,
+  malformed geometry, and checked overflow produce no declaration rather than a zero-byte estimate.
+- **Zero-shaped hints:** `WorkspaceInputShape` does not identify whether a shape came from concrete graph metadata or
+  max-shape inference. The adapter therefore treats any zero extent as unavailable and emits no declaration rather
+  than interpreting it as a proven empty runtime output. The current Level-2 requirements boundary represents both
+  unavailable estimates and explicit zero estimates as an empty requirement list, so it cannot expose that
+  distinction. Exact-zero behavior remains available in the graph-free single-route recipe.
+
+Route aggregation does not evaluate the runtime cascade only at the supplied maximum sequence length: dispatch gates
+such as Flash and FP32 MEA thresholds or attention-bias alignment are non-monotonic across smaller runtime shapes.
+Every backend that can be reached for some valid shape up to the supplied geometry is sized at that maximum geometry.
+Unfused is always retained as a possible fallback for a nonempty problem, including alongside Flash, MEA, and
+TensorRT candidates. If any included route cannot be safely bounded, estimation is unavailable. Mutually exclusive
+route workspaces are combined with `max`, never `sum`. PA then adds its simultaneously-live projection allocation:
+
+```text
+PA   = projection + max(feasible attention routes)
+PMHA = max(feasible attention routes)
+```
+
+Level-2 slot IDs are stable: PA uses slot 0 for projection and slot 1 for Attention; PMHA uses slot 0 for Attention.
+All slots use `alignment_bytes=0`, meaning allocator-default alignment. No planner consumes these declarations yet;
+future planner work must preserve PA's multiple simultaneously-live slots. Runtime continues to allocate both buffers
+dynamically with `GetScratchBuffer`; this work adds no preallocated-workspace API.

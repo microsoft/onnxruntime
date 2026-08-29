@@ -20,6 +20,43 @@ enum class PackedAttentionBackend {
   Unfused,
 };
 
+enum class PackedAttentionBackendMask : uint32_t {
+  None = 0,
+  Trt = 1U << 0,
+  Flash = 1U << 1,
+  MemoryEfficient = 1U << 2,
+  Unfused = 1U << 3,
+};
+
+constexpr PackedAttentionBackendMask operator|(PackedAttentionBackendMask left,
+                                               PackedAttentionBackendMask right) noexcept {
+  return static_cast<PackedAttentionBackendMask>(
+      static_cast<uint32_t>(left) | static_cast<uint32_t>(right));
+}
+
+constexpr bool HasPackedAttentionBackend(PackedAttentionBackendMask mask,
+                                         PackedAttentionBackend backend) noexcept {
+  PackedAttentionBackendMask flag = PackedAttentionBackendMask::None;
+  switch (backend) {
+    case PackedAttentionBackend::Trt:
+      flag = PackedAttentionBackendMask::Trt;
+      break;
+    case PackedAttentionBackend::Flash:
+      flag = PackedAttentionBackendMask::Flash;
+      break;
+    case PackedAttentionBackend::MemoryEfficient:
+      flag = PackedAttentionBackendMask::MemoryEfficient;
+      break;
+    case PackedAttentionBackend::Unfused:
+      flag = PackedAttentionBackendMask::Unfused;
+      break;
+    default:
+      return false;
+  }
+
+  return (static_cast<uint32_t>(mask) & static_cast<uint32_t>(flag)) != 0;
+}
+
 enum class PackedAttentionWorkspaceError {
   None,
   InvalidArgument,
@@ -196,6 +233,16 @@ struct PackedAttentionWorkspaceResult {
   PackedAttentionWorkspaceRecipe recipe;
 };
 
+// AOT routes are mutually exclusive. The attention component is therefore the
+// maximum single-route recipe, while PA's projection is simultaneously live
+// with that component.
+struct PackedAttentionWorkspaceAggregate {
+  PackedAttentionWorkspaceStatus status;
+  size_t projection_bytes = 0;
+  size_t attention_workspace_bytes = 0;
+  size_t total_workspace_bytes = 0;
+};
+
 PackedAttentionWorkspaceStatus CheckedPackedAttentionAdd(size_t left, size_t right, size_t& result) noexcept;
 
 PackedAttentionWorkspaceStatus CheckedPackedAttentionMultiply(size_t left, size_t right,
@@ -217,6 +264,14 @@ PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
 
 PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
     const PackedMultiHeadAttentionProblem& problem) noexcept;
+
+PackedAttentionWorkspaceAggregate GetPackedAttentionWorkspaceAggregate(
+    const PackedAttentionProblem& problem,
+    PackedAttentionBackendMask feasible_backends) noexcept;
+
+PackedAttentionWorkspaceAggregate GetPackedMultiHeadAttentionWorkspaceAggregate(
+    const PackedMultiHeadAttentionProblem& problem,
+    PackedAttentionBackendMask feasible_backends) noexcept;
 
 PackedAttentionWorkspaceStatus ValidatePackedAttentionWorkspaceRecipe(
     const PackedAttentionWorkspaceRecipe& recipe) noexcept;
