@@ -16,6 +16,53 @@
 #include <utility>
 #include <vector>
 
+namespace {
+
+struct ModelBufferView {
+  const uint8_t* data = nullptr;
+  size_t size = 0;
+};
+
+ModelBufferView GetModelBufferView(Napi::ArrayBuffer buffer, int64_t byteOffset, int64_t byteLength) {
+  const size_t bufferLength = buffer.ByteLength();
+  if (byteOffset < 0 || byteLength < 0 || static_cast<uint64_t>(byteOffset) > bufferLength ||
+      static_cast<uint64_t>(byteLength) > bufferLength - static_cast<size_t>(byteOffset)) {
+    throw Napi::RangeError::New(buffer.Env(), "Model buffer offset or length is out of range.");
+  }
+
+  const size_t length = static_cast<size_t>(byteLength);
+  const auto* data =
+      length == 0 ? nullptr
+                  : static_cast<const uint8_t*>(buffer.Data()) + static_cast<size_t>(byteOffset);
+  return {data, length};
+}
+
+void ReadSessionMetadata(Ort::Session& session, std::vector<std::string>& inputNames,
+                         std::vector<Ort::TypeInfo>& inputTypes, std::vector<std::string>& outputNames,
+                         std::vector<Ort::TypeInfo>& outputTypes) {
+  Ort::AllocatorWithDefaultOptions allocator;
+
+  size_t count = session.GetInputCount();
+  inputNames.reserve(count);
+  inputTypes.reserve(count);
+  for (size_t i = 0; i < count; i++) {
+    auto inputName = session.GetInputNameAllocated(i, allocator);
+    inputNames.emplace_back(inputName.get());
+    inputTypes.push_back(session.GetInputTypeInfo(i));
+  }
+
+  count = session.GetOutputCount();
+  outputNames.reserve(count);
+  outputTypes.reserve(count);
+  for (size_t i = 0; i < count; i++) {
+    auto outputName = session.GetOutputNameAllocated(i, allocator);
+    outputNames.emplace_back(outputName.get());
+    outputTypes.push_back(session.GetOutputTypeInfo(i));
+  }
+}
+
+}  // namespace
+
 /**
  * LoadModelWorker constructs the native Ort::Session on a libuv worker thread.
  *
@@ -23,8 +70,8 @@
  * requirement for `sessionOptions.epContextDataRead`: ONNX Runtime calls that callback while the session
  * is being created and the call has to be marshalled back to the JavaScript thread.
  *
- * The worker owns everything the native constructor needs, including references to the JavaScript values
- * that back the model path/buffer and the session options, so that they stay alive until it completes.
+ * The worker owns everything the native constructor needs, including copied model/external-data buffers
+ * and the callback state, so that they remain valid until construction completes.
  */
 class LoadModelWorker : public Napi::AsyncWorker {
  public:
@@ -57,16 +104,10 @@ class LoadModelWorker : public Napi::AsyncWorker {
   // Copy the model before yielding to JavaScript. A persistent reference does not pin an ArrayBuffer's
   // backing store, which can be detached or transferred while the worker is running.
   void SetModelBuffer(Napi::ArrayBuffer buffer, int64_t byteOffset, int64_t byteLength) {
-    const size_t bufferLength = buffer.ByteLength();
-    if (byteOffset < 0 || byteLength < 0 || static_cast<uint64_t>(byteOffset) > bufferLength ||
-        static_cast<uint64_t>(byteLength) > bufferLength - static_cast<size_t>(byteOffset)) {
-      throw Napi::RangeError::New(buffer.Env(), "Model buffer offset or length is out of range.");
-    }
-
-    modelDataLength_ = static_cast<size_t>(byteLength);
+    const auto view = GetModelBufferView(buffer, byteOffset, byteLength);
+    modelDataLength_ = view.size;
     if (modelDataLength_ != 0) {
-      const auto* data = static_cast<const uint8_t*>(buffer.Data()) + static_cast<size_t>(byteOffset);
-      modelDataStorage_.assign(data, data + modelDataLength_);
+      modelDataStorage_.assign(view.data, view.data + modelDataLength_);
       modelData_ = modelDataStorage_.data();
     }
     useModelBuffer_ = true;
@@ -89,26 +130,7 @@ class LoadModelWorker : public Napi::AsyncWorker {
         session_ = std::make_unique<Ort::Session>(ortObjects->env, modelPath_.c_str(), sessionOptions_);
       }
 
-      // cache input/output names and types
-      Ort::AllocatorWithDefaultOptions allocator;
-
-      size_t count = session_->GetInputCount();
-      inputNames_.reserve(count);
-      inputTypes_.reserve(count);
-      for (size_t i = 0; i < count; i++) {
-        auto inputName = session_->GetInputNameAllocated(i, allocator);
-        inputNames_.emplace_back(inputName.get());
-        inputTypes_.push_back(session_->GetInputTypeInfo(i));
-      }
-
-      count = session_->GetOutputCount();
-      outputNames_.reserve(count);
-      outputTypes_.reserve(count);
-      for (size_t i = 0; i < count; i++) {
-        auto outputName = session_->GetOutputNameAllocated(i, allocator);
-        outputNames_.emplace_back(outputName.get());
-        outputTypes_.push_back(session_->GetOutputTypeInfo(i));
-      }
+      ReadSessionMetadata(*session_, inputNames_, inputTypes_, outputNames_, outputTypes_);
     } catch (std::exception const& e) {
       ReleaseNativeSession();
       SetError(e.what());
@@ -304,6 +326,57 @@ void InferenceSessionWrap::ReleaseEpContextDataReadState() noexcept {
   }
 }
 
+Napi::Value InferenceSessionWrap::LoadModelSynchronously(const Napi::CallbackInfo& info, bool isModelPath,
+                                                         const Napi::Object& options,
+                                                         Ort::SessionOptions&& sessionOptions) {
+  Napi::Env env = info.Env();
+  auto deferred = Napi::Promise::Deferred::New(env);
+  this->loading_ = true;
+
+  try {
+    auto* ortObjects = OrtSingletonData::GetOrtObjects();
+    ORT_NAPI_THROW_ERROR_IF(ortObjects == nullptr, env, "ONNX Runtime is not initialized.");
+
+    std::unique_ptr<Ort::Session> session;
+    if (isModelPath) {
+      auto value = info[0].As<Napi::String>();
+#ifdef _WIN32
+      auto modelPath = value.Utf16Value();
+      std::wstring wideModelPath{modelPath.begin(), modelPath.end()};
+      session = std::make_unique<Ort::Session>(ortObjects->env, wideModelPath.c_str(), sessionOptions);
+#else
+      auto modelPath = value.Utf8Value();
+      session = std::make_unique<Ort::Session>(ortObjects->env, modelPath.c_str(), sessionOptions);
+#endif
+    } else {
+      const auto view = GetModelBufferView(info[0].As<Napi::ArrayBuffer>(),
+                                           info[1].As<Napi::Number>().Int64Value(),
+                                           info[2].As<Napi::Number>().Int64Value());
+      session = std::make_unique<Ort::Session>(ortObjects->env, view.data, view.size, sessionOptions);
+    }
+
+    std::vector<std::string> inputNames;
+    std::vector<Ort::TypeInfo> inputTypes;
+    std::vector<std::string> outputNames;
+    std::vector<Ort::TypeInfo> outputTypes;
+    ReadSessionMetadata(*session, inputNames, inputTypes, outputNames, outputTypes);
+    AdoptLoadedSession(std::move(session), std::move(inputNames), std::move(inputTypes),
+                       std::move(outputNames), std::move(outputTypes), options);
+    deferred.Resolve(env.Undefined());
+  } catch (Napi::Error const& e) {
+    ResetAfterFailedLoad();
+    deferred.Reject(e.Value());
+  } catch (std::exception const& e) {
+    ResetAfterFailedLoad();
+    deferred.Reject(Napi::Error::New(env, e.what()).Value());
+  } catch (...) {
+    ResetAfterFailedLoad();
+    deferred.Reject(Napi::Error::New(env, "Failed to create the inference session.").Value());
+  }
+
+  return deferred.Promise();
+}
+
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::EscapableHandleScope scope(env);
@@ -327,9 +400,15 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   std::unique_ptr<LoadModelWorker> worker;
   try {
     Ort::SessionOptions sessionOptions;
-    std::vector<std::vector<char>> externalDataBuffers;
-    ParseSessionOptions(options, sessionOptions, externalDataBuffers);
     ParseEpContextDataReadOptions(options, sessionOptions, this->epContextDataReadState_);
+
+    if (!this->epContextDataReadState_) {
+      ParseSessionOptions(options, sessionOptions);
+      return scope.Escape(LoadModelSynchronously(info, isModelPath, options, std::move(sessionOptions)));
+    }
+
+    std::vector<std::vector<char>> externalDataBuffers;
+    ParseSessionOptions(options, sessionOptions, &externalDataBuffers);
 
     worker = std::make_unique<LoadModelWorker>(env, *this, info.This().As<Napi::Object>(), options,
                                                std::move(sessionOptions), this->epContextDataReadState_,

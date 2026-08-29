@@ -200,7 +200,7 @@ void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort
 }
 
 void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
-                         std::vector<std::vector<char>>& externalDataBuffers) {
+                         std::vector<std::vector<char>>* externalDataBuffers) {
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");
@@ -382,7 +382,7 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
                                     "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
 
         auto data = obj.Get("data");
-        const char* source;
+        char* source;
         size_t size;
         if (data.IsBuffer()) {
           source = data.As<Napi::Buffer<char>>().Data();
@@ -392,11 +392,15 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
           source = reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset();
           size = typedArray.ByteLength();
         }
-        externalDataBuffers.emplace_back();
-        if (size != 0) {
-          externalDataBuffers.back().assign(source, source + size);
+        if (externalDataBuffers != nullptr) {
+          externalDataBuffers->emplace_back();
+          if (size != 0) {
+            externalDataBuffers->back().assign(source, source + size);
+          }
+          buffs.push_back(externalDataBuffers->back().data());
+        } else {
+          buffs.push_back(source);
         }
-        buffs.push_back(externalDataBuffers.back().data());
         sizes.push_back(size);
       }
       sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);

@@ -55,6 +55,12 @@ const styles = StyleSheet.create({
   buttonContainer: {
     marginBottom: 20,
   },
+  summary: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#333',
+  },
   resultsContainer: {
     flex: 1,
   },
@@ -310,28 +316,33 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
 
     try {
       const bytes = await readAsset(MODEL_ASSET);
+      const paddedBytes = Buffer.alloc(bytes.length + 16);
+      bytes.copy(paddedBytes, 8);
+      const modelBytes = paddedBytes.subarray(8, 8 + bytes.length);
 
-      await this.expectRejected(bytes, 0, { epContextDataRead: { maxDataSize: 1024 } });
-      await this.expectRejected(bytes, 1, { epContextDataRead: { callback: 'not-a-function', maxDataSize: 1024 } });
-      await this.expectRejected(bytes, 2, { epContextDataRead: { callback: validCallback } });
-      await this.expectRejected(bytes, 3, { epContextDataRead: { callback: validCallback, maxDataSize: 0 } });
-      await this.expectRejected(bytes, 4, { epContextDataRead: { callback: validCallback, maxDataSize: -1 } });
-      await this.expectRejected(bytes, 5, { epContextDataRead: { callback: validCallback, maxDataSize: 1.5 } });
-      await this.expectRejected(bytes, 6, {
+      await this.expectRejected(modelBytes, 0, { epContextDataRead: { maxDataSize: 1024 } });
+      await this.expectRejected(modelBytes, 1, {
+        epContextDataRead: { callback: 'not-a-function', maxDataSize: 1024 },
+      });
+      await this.expectRejected(modelBytes, 2, { epContextDataRead: { callback: validCallback } });
+      await this.expectRejected(modelBytes, 3, { epContextDataRead: { callback: validCallback, maxDataSize: 0 } });
+      await this.expectRejected(modelBytes, 4, { epContextDataRead: { callback: validCallback, maxDataSize: -1 } });
+      await this.expectRejected(modelBytes, 5, { epContextDataRead: { callback: validCallback, maxDataSize: 1.5 } });
+      await this.expectRejected(modelBytes, 6, {
         epContextDataRead: { callback: validCallback, maxDataSize: Number.POSITIVE_INFINITY },
       });
-      await this.expectRejected(bytes, 7, {
+      await this.expectRejected(modelBytes, 7, {
         epContextDataRead: { callback: validCallback, maxDataSize: Number.MAX_SAFE_INTEGER + 2 },
       });
 
-      await this.runValidOptionCheck(bytes, 8);
-      await this.runLifecycleCheck(bytes, 9);
-      await this.runFailedLoadCheck(bytes, 10);
+      await this.runValidOptionCheck(modelBytes, 8);
+      await this.runLifecycleCheck(modelBytes, 9);
+      await this.runFailedLoadCheck(modelBytes, 10);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.setState((prevState) => ({
         testResults: prevState.testResults.map((result) =>
-          result.status === 'pending' || result.status === 'running' ? { ...result, status: 'error', message } : result
+          result.status === 'pending' || result.status === 'running' ? { ...result, status: 'error', message } : result,
         ),
       }));
     }
@@ -341,6 +352,15 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
 
   render(): React.JSX.Element {
     const { testResults, isRunning } = this.state;
+    const successCount = testResults.filter((result) => result.status === 'success').length;
+    const errorCount = testResults.filter((result) => result.status === 'error').length;
+    const summary = isRunning
+      ? `${successCount}/${CHECK_NAMES.length} checks passed`
+      : successCount === CHECK_NAMES.length
+        ? `${successCount}/${CHECK_NAMES.length} checks passed`
+        : errorCount > 0
+          ? `${errorCount} check${errorCount === 1 ? '' : 's'} failed`
+          : 'Ready to run';
 
     return (
       <View style={styles.container}>
@@ -355,6 +375,10 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
             accessibilityLabel="run-tests-button"
           />
         </View>
+
+        <Text style={styles.summary} accessibilityLabel="ep-context-data-read-summary">
+          {summary}
+        </Text>
 
         <ScrollView style={styles.resultsContainer}>
           {testResults.map((result) => (

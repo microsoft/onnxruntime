@@ -94,8 +94,8 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   ): Promise<OnnxruntimeSessionHandler> {
     initOrt();
 
-    // The native binding creates the session asynchronously and snapshots model/external data before
-    // yielding so JavaScript can safely release, mutate, or transfer its original buffers.
+    // A callback-enabled session is created asynchronously so the event loop can service synchronous
+    // EPContext reads. The native binding retains the synchronous zero-copy path otherwise.
     const inferenceSession = new binding.InferenceSession();
     if (typeof pathOrBuffer === 'string') {
       await inferenceSession.loadModel(pathOrBuffer, options);

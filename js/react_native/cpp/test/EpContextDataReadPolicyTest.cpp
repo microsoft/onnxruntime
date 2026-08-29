@@ -1,17 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Standalone unit test for the EPContext data read policy helpers. These helpers deliberately have
-// no JSI or ONNX Runtime dependency so they can be compiled and run on any host:
-//
-//   cl /std:c++20 /EHsc /I.. EpContextDataReadPolicyTest.cpp ..\EpContextDataReadPolicy.cpp
-//   g++ -std=c++20 -I.. EpContextDataReadPolicyTest.cpp ../EpContextDataReadPolicy.cpp -o policy_test
-//
-// The file is not part of the shipped library: it is referenced by neither android/CMakeLists.txt
-// nor the podspec source glob.
-
 #include "EpContextDataReadPolicy.h"
+#include "LoadModelArgumentPolicy.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
@@ -96,11 +89,54 @@ void testCheckDataSize() {
         "reports the configured limit in the limit error");
 }
 
+void testLoadModelArgumentLayout() {
+  using Type = onnxruntimejsi::LoadModelArgumentType;
+
+  constexpr std::array pathArguments{Type::String, Type::Object};
+  const auto pathLayout = onnxruntimejsi::resolveLoadModelArgumentLayout(
+      pathArguments.data(), pathArguments.size());
+  check(pathLayout.valid, "accepts the path overload");
+  check(!pathLayout.usesModelBuffer, "identifies the path overload");
+  check(pathLayout.optionsIndex == 1,
+        "selects path options from argument 1");
+
+  constexpr std::array bufferArguments{
+      Type::ArrayBuffer, Type::Number, Type::Number, Type::Object};
+  const auto bufferLayout = onnxruntimejsi::resolveLoadModelArgumentLayout(
+      bufferArguments.data(), bufferArguments.size());
+  check(bufferLayout.valid, "accepts the buffer overload");
+  check(bufferLayout.usesModelBuffer, "identifies the buffer overload");
+  check(bufferLayout.optionsIndex == 3,
+        "selects buffer options from argument 3");
+
+  constexpr std::array missingBufferOptions{
+      Type::ArrayBuffer, Type::Number, Type::Number};
+  check(!onnxruntimejsi::resolveLoadModelArgumentLayout(
+             missingBufferOptions.data(), missingBufferOptions.size())
+             .valid,
+        "rejects a buffer overload without options");
+
+  constexpr std::array wrongBufferOffset{
+      Type::ArrayBuffer, Type::Object, Type::Number, Type::Object};
+  check(!onnxruntimejsi::resolveLoadModelArgumentLayout(
+             wrongBufferOffset.data(), wrongBufferOffset.size())
+             .valid,
+        "rejects a non-numeric buffer offset");
+
+  constexpr std::array extraPathArgument{
+      Type::String, Type::Object, Type::Other};
+  check(!onnxruntimejsi::resolveLoadModelArgumentLayout(
+             extraPathArgument.data(), extraPathArgument.size())
+             .valid,
+        "rejects extra path arguments");
+}
+
 }  // namespace
 
 int main() {
   testParseMaxDataSize();
   testCheckDataSize();
+  testLoadModelArgumentLayout();
 
   if (g_failures != 0) {
     std::printf("%d check(s) failed\n", g_failures);

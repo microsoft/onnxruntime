@@ -78,6 +78,7 @@ add_library(
   ../cpp/EpContextDataReadCallback.cpp
   ../cpp/EpContextDataReadPolicy.cpp
   ../cpp/InferenceSessionHostObject.cpp
+  ../cpp/LoadModelArgumentPolicy.cpp
   ../cpp/JsiUtils.cpp
   ../cpp/SessionUtils.cpp
   ../cpp/TensorUtils.cpp)

@@ -44,17 +44,20 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   static Napi::Value ListSupportedBackends(const Napi::CallbackInfo& info);
 
   /**
-   * [async] create the session.
+   * Create the session and return a Promise.
    *
-   * The native session is constructed on a worker thread so that the JavaScript event loop stays
-   * available. This is required because ONNX Runtime may call back into JavaScript (see
-   * `sessionOptions.epContextDataRead`) while the session is being created.
+   * Sessions with `sessionOptions.epContextDataRead` are constructed on a worker thread so that the
+   * JavaScript event loop stays available for the callback. Other sessions retain the synchronous,
+   * zero-copy native construction path and return an already-settled Promise.
    *
    * @param arg0 either a string (file path) or an ArrayBuffer
    * @returns a Promise that resolves when the session is created
    * @throw error if the arguments are invalid or the session options cannot be parsed
    */
   Napi::Value LoadModel(const Napi::CallbackInfo& info);
+
+  Napi::Value LoadModelSynchronously(const Napi::CallbackInfo& info, bool isModelPath,
+                                     const Napi::Object& options, Ort::SessionOptions&& sessionOptions);
 
   // following functions have to be called after model is loaded.
 

@@ -88,9 +88,10 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
-    "bootstrap-no-pods": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
+    "bootstrap-no-pods": "npm run test:cpp && npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
     "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
+    "test:cpp": "cmake -S cpp/test -B build/cpp-test && cmake --build build/cpp-test --config Release && ctest --test-dir build/cpp-test -C Release --output-on-failure",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
     "unpack-common": "npm --prefix e2e install ./e2e/onnxruntime-common.tgz",
     "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",

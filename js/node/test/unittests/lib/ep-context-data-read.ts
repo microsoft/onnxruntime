@@ -127,6 +127,35 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
 
   // #region asynchronous session construction
 
+  it('uses the synchronous fast path for a model path without a callback', async () => {
+    const session = new binding.InferenceSession();
+    const promise = session.loadModel(SMALL_MODEL_PATH, {});
+
+    // The no-callback path finishes native construction before loadModel returns, while preserving
+    // the Promise API for callers.
+    assert.deepStrictEqual(
+      session.inputMetadata.map(({ name }) => name),
+      ['input'],
+    );
+    await promise;
+    session.dispose();
+  });
+
+  it('uses the synchronous fast path for a model buffer without an effective callback', async () => {
+    const modelData = new Uint8Array(fs.readFileSync(SMALL_MODEL_PATH));
+    const session = new binding.InferenceSession();
+    const promise = session.loadModel(modelData.buffer, modelData.byteOffset, modelData.byteLength, {
+      epContextDataRead: null,
+    } as unknown as InferenceSession.SessionOptions);
+
+    assert.deepStrictEqual(
+      session.inputMetadata.map(({ name }) => name),
+      ['input'],
+    );
+    await promise;
+    session.dispose();
+  });
+
   it('the event loop stays available while the session is being created', async function () {
     // eslint-disable-next-line no-invalid-this
     this.timeout(60000);
@@ -204,6 +233,7 @@ describe('UnitTests - InferenceSession.SessionOptions.epContextDataRead', () => 
     const modelData = new Uint8Array(fs.readFileSync(MODEL_PATH));
     const session = new binding.InferenceSession();
     const promise = session.loadModel(modelData.buffer, modelData.byteOffset, modelData.byteLength, validOptions());
+    assert.throws(() => session.inputMetadata, /not initialized/i);
     structuredClone(modelData.buffer, { transfer: [modelData.buffer] });
     assert.strictEqual(modelData.byteLength, 0);
 

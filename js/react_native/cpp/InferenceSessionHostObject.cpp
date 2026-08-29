@@ -1,26 +1,76 @@
 #include "InferenceSessionHostObject.h"
 #include "AsyncWorker.h"
 #include "JsiUtils.h"
+#include "LoadModelArgumentPolicy.h"
 #include "SessionUtils.h"
 #include "TensorUtils.h"
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace facebook::jsi;
 
 namespace onnxruntimejsi {
+
+namespace {
+
+LoadModelArgumentType getLoadModelArgumentType(Runtime& runtime,
+                                               const Value& value) {
+  if (value.isString()) {
+    return LoadModelArgumentType::String;
+  }
+  if (value.isNumber()) {
+    return LoadModelArgumentType::Number;
+  }
+  if (value.isObject()) {
+    return value.asObject(runtime).isArrayBuffer(runtime)
+               ? LoadModelArgumentType::ArrayBuffer
+               : LoadModelArgumentType::Object;
+  }
+  return LoadModelArgumentType::Other;
+}
+
+size_t parseBufferIndex(Runtime& runtime, const Value& value,
+                        const char* argumentName) {
+  const double raw = value.asNumber();
+  if (!std::isfinite(raw) || raw < 0 || std::trunc(raw) != raw ||
+      raw >= static_cast<double>(std::numeric_limits<size_t>::max())) {
+    throw JSError(runtime,
+                  std::string("loadModel ") + argumentName +
+                      " must be a non-negative integer representable as size_t");
+  }
+  return static_cast<size_t>(raw);
+}
+
+}  // namespace
 
 class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
  public:
   LoadModelAsyncWorker(Runtime& runtime, const Value* arguments, size_t count,
                        std::shared_ptr<InferenceSessionHostObject> session)
       : AsyncWorker(runtime, session->env_), session_(session) {
-    if (count < 1)
-      throw JSError(runtime, "loadModel requires at least 1 argument");
-    if (arguments[0].isString()) {
+    std::array<LoadModelArgumentType, 4> argumentTypes{};
+    const size_t classifiedCount = std::min(count, argumentTypes.size());
+    for (size_t i = 0; i < classifiedCount; ++i) {
+      argumentTypes[i] = getLoadModelArgumentType(runtime, arguments[i]);
+    }
+    const auto layout = resolveLoadModelArgumentLayout(
+        argumentTypes.data(), classifiedCount);
+    if (!layout.valid || count != classifiedCount) {
+      throw JSError(
+          runtime,
+          "loadModel expects (modelPath, options) or "
+          "(buffer, byteOffset, byteLength, options)");
+    }
+
+    useModelBuffer_ = layout.usesModelBuffer;
+    if (!useModelBuffer_) {
       modelPath_ = arguments[0].asString(runtime).utf8(runtime);
       if (modelPath_.find("file:/") == 0) {
         modelPath_ = modelPath_.substr(5);
@@ -28,20 +78,24 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
           modelPath_ = modelPath_.substr(2);
         }
       }
-    } else if (arguments[0].isObject() &&
-               arguments[0].asObject(runtime).isArrayBuffer(runtime)) {
+    } else {
       auto arrayBufferObj = arguments[0].asObject(runtime);
       auto arrayBuffer = arrayBufferObj.getArrayBuffer(runtime);
-      modelData_ = arrayBuffer.data(runtime);
-      modelDataLength_ = arrayBuffer.size(runtime);
-    } else {
-      throw JSError(runtime, "Model path or buffer is required");
+      const size_t byteOffset =
+          parseBufferIndex(runtime, arguments[1], "byteOffset");
+      const size_t byteLength =
+          parseBufferIndex(runtime, arguments[2], "byteLength");
+      const size_t bufferSize = arrayBuffer.size(runtime);
+      if (byteOffset > bufferSize || byteLength > bufferSize - byteOffset) {
+        throw JSError(runtime, "loadModel buffer range is out of bounds");
+      }
+      if (byteLength > 0) {
+        const auto* begin = arrayBuffer.data(runtime) + byteOffset;
+        modelData_.assign(begin, begin + byteLength);
+      }
     }
-    keepValue(runtime, arguments[0]);
-    if (count > 1) {
-      parseSessionOptions(runtime, arguments[1], sessionOptions_, session->env_,
-                          epContextDataRead_);
-    }
+    parseSessionOptions(runtime, arguments[layout.optionsIndex], sessionOptions_,
+                        session->env_, epContextDataRead_);
     abortEpContextDataRead_ = epContextDataRead_;
     // The state stays private to this worker until Ort::Session construction succeeds. Nothing is
     // published to the host object here, so a rejected load releases it deterministically in
@@ -52,9 +106,10 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
 
  protected:
   void execute() {
-    if (modelPath_.empty()) {
+    if (useModelBuffer_) {
       loadedSession_ = std::make_shared<Ort::Session>(
-          session_->env_->getOrtEnv(), modelData_, modelDataLength_,
+          session_->env_->getOrtEnv(),
+          modelData_.empty() ? nullptr : modelData_.data(), modelData_.size(),
           sessionOptions_);
     } else {
       loadedSession_ = std::make_shared<Ort::Session>(
@@ -103,8 +158,8 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
 
   std::string error_;
   std::string modelPath_;
-  void* modelData_;
-  size_t modelDataLength_;
+  bool useModelBuffer_ = false;
+  std::vector<uint8_t> modelData_;
   std::shared_ptr<InferenceSessionHostObject> session_;
   Ort::SessionOptions sessionOptions_;
   // Strong snapshot of the state referenced by sessionOptions_, owned solely by this worker until

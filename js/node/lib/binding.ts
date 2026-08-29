@@ -20,8 +20,8 @@ type RunOptions = InferenceSession.RunOptions;
 /**
  * Binding exports a simple inference session object wrap.
  *
- * `loadModel()` is asynchronous: the native session is constructed on a worker thread so that the
- * JavaScript event loop stays available while ONNX Runtime initializes the session.
+ * `loadModel()` returns a Promise. A session that registers a synchronous JavaScript callback is
+ * constructed on a worker thread so that the event loop remains available to service that callback.
  */
 export declare namespace Binding {
   export interface ValueMetadata {
