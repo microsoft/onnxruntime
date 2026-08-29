@@ -4079,6 +4079,10 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(RegisterOnnxOperatorKernels(kernel_registry));
 #ifdef ORT_CPU_FP16_GEMM_MATMUL_ENABLED
+  // Kernel registration is process-wide and based on the default backend
+  // selector config (nullptr => use_kleidiai=true). A session can still
+  // disable KleidiAI via kOrtSessionOptionsMlasDisableKleidiAi, in which case
+  // MatMul/Gemm may run their non-accelerated fp16 fallback for these kernels.
   if (MlasHalfGemmAccelerationSupported(nullptr)) {
     ORT_RETURN_IF_ERROR(RegisterFp16GemmMatMulKernels(kernel_registry));
   }
