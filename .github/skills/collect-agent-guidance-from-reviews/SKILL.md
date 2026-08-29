@@ -91,6 +91,14 @@ backward.
 
 Read the marker only from a merged PR. An abandoned or unmerged collection must not advance the cutoff.
 
+## Subagent Delegation
+
+If the frozen PR set will not fit reliably in one context, assign whole PRs to subagents using the same evidence and
+generalization rules. Do not split one PR across agents because its review discussion and final diff must be interpreted
+together. Have subagents return candidate evidence and omission reasons without editing guidance. The coordinating
+agent remains responsible for cross-PR deduplication, coverage searches, confidence, final candidate selection, and all
+edits.
+
 ## Workflow
 
 ### 1. Enumerate merged PRs
