@@ -413,6 +413,13 @@ export interface OrtInferenceAPIs {
     providerOptionsValues: number,
     numKeys: number,
   ): Promise<number>;
+  _OrtAppendExecutionProviderV2(
+    sessionOptionsHandle: number,
+    name: number,
+    providerOptionsKeys: number,
+    providerOptionsValues: number,
+    numKeys: number,
+  ): Promise<number>;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;

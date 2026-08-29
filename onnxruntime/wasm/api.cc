@@ -16,6 +16,7 @@ WGPUDevice GetDevice(int);
 }  // namespace onnxruntime
 #endif
 
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -178,6 +179,35 @@ int OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
                                const char* const* provider_options_values,
                                size_t num_keys) {
   return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, provider_options_keys, provider_options_values, num_keys);
+}
+
+int OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
+                                 const char* name,
+                                 const char* const* provider_options_keys,
+                                 const char* const* provider_options_values,
+                                 size_t num_keys) {
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_ep_devices = 0;
+  RETURN_ERROR_CODE_IF_ERROR(GetEpDevices, g_env, &ep_devices, &num_ep_devices);
+
+  for (size_t i = 0; i < num_ep_devices; ++i) {
+    const char* ep_name = Ort::GetApi().EpDevice_EpName(ep_devices[i]);
+    if (ep_name != nullptr && std::strcmp(ep_name, name) == 0) {
+      return CHECK_STATUS(SessionOptionsAppendExecutionProvider_V2, session_options, g_env,
+                          &ep_devices[i], static_cast<size_t>(1),
+                          provider_options_keys, provider_options_values, num_keys);
+    }
+  }
+
+  std::ostringstream message;
+  message << "No execution provider device is registered for '" << name << "'. Registered devices:";
+  if (num_ep_devices == 0) {
+    message << " (none)";
+  }
+  for (size_t i = 0; i < num_ep_devices; ++i) {
+    message << " '" << Ort::GetApi().EpDevice_EpName(ep_devices[i]) << "'";
+  }
+  return CheckStatus(Ort::GetApi().CreateStatus(ORT_NOT_FOUND, message.str().c_str()));
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,

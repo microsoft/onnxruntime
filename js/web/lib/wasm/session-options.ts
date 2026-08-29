@@ -79,6 +79,10 @@ const setExecutionProviders = async (
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
     const epOptions: Array<[number, number]> = [];
+    // True when the EP is selected as a plugin EP (by OrtEpDevice) rather than by ORT's built-in EP name table.
+    // The built-in name table has no WebGPU entry in an ORT_USE_EP_API_ADAPTERS build, which is what the wasm
+    // binary paired with this bundle is built as (see BUILD_DEFS.DISABLE_WEBGPU below).
+    let selectAsPluginEp = false;
 
     // check EP name
     switch (epName) {
@@ -99,7 +103,10 @@ const setExecutionProviders = async (
         break;
       case 'webgpu':
         if (!BUILD_DEFS.DISABLE_WEBGPU) {
-          epName = 'WebGPU';
+          // The plugin EP is registered under its canonical name (OrtEpFactory::GetName), not the short 'WebGPU'
+          // alias that ORT's built-in EP name table used.
+          epName = 'WebGpuExecutionProvider';
+          selectAsPluginEp = true;
           let customDevice: GPUDevice | undefined;
 
           if (typeof ep !== 'string') {
@@ -197,8 +204,12 @@ const setExecutionProviders = async (
         getInstance().setValue(valuesOffset + i * getInstance().PTR_SIZE, epOptions[i][1], '*');
       }
     }
+    const appendFn = selectAsPluginEp
+      ? getInstance()._OrtAppendExecutionProviderV2
+      : getInstance()._OrtAppendExecutionProvider;
     if (
-      (await getInstance()._OrtAppendExecutionProvider(
+      (await appendFn.call(
+        getInstance(),
         sessionOptionsHandle,
         epNameDataOffset,
         keysOffset,

@@ -95,6 +95,22 @@ int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t
                                                     size_t num_keys);
 
 /**
+ * append an execution provider for a session, selecting it as a plugin EP by name.
+ *
+ * Unlike OrtAppendExecutionProvider, which resolves the name against ORT's built-in EP table, this looks the
+ * name up among the OrtEpDevice instances registered with the environment and appends the matching one through
+ * SessionOptionsAppendExecutionProvider_V2. It is how a statically linked plugin EP is selected.
+ *
+ * @param name the EP name as reported by the EP factory, e.g. "WebGpuExecutionProvider"
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
+                                                      const char* name,
+                                                      const char* const* provider_options_keys,
+                                                      const char* const* provider_options_values,
+                                                      size_t num_keys);
+
+/**
  * add a free dimension override for one dimension of a session's input.
  */
 int EMSCRIPTEN_KEEPALIVE OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
