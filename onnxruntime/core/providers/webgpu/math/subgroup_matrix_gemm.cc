@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 #include <cstdint>
@@ -223,5 +221,3 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
 
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

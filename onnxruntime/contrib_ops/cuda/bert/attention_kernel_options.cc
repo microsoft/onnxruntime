@@ -186,6 +186,9 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
   if (effective_kv_length_bound.has_value()) {
     sstream << " EffectiveKvLengthBound=" << effective_kv_length_bound.value();
   }
+  if (xqa_page_table_expanded.has_value()) {
+    sstream << " XqaPageTable=" << (xqa_page_table_expanded.value() ? "expanded" : "native");
+  }
 
   // Output text in Cyan color to make it easier to spot.
   std::cout << "\x1B[36m" << sstream.str() << "\x1B[0m" << std::endl;
