@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp4_tiling.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime::contrib::cuda {
