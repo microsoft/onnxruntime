@@ -70,8 +70,10 @@ TEST(CPUExecutionProviderTest, Float16GemmRunsOnCpu) {
                            {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f)});
   test.AddInput<MLFloat16>("B", {2, 2},
                            {MLFloat16(5.0f), MLFloat16(6.0f), MLFloat16(7.0f), MLFloat16(8.0f)});
+  test.AddInput<MLFloat16>("C", {2, 2},
+                           {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f)});
   test.AddOutput<MLFloat16>("Y", {2, 2},
-                            {MLFloat16(19.0f), MLFloat16(22.0f), MLFloat16(43.0f), MLFloat16(50.0f)});
+                            {MLFloat16(20.0f), MLFloat16(24.0f), MLFloat16(46.0f), MLFloat16(54.0f)});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
