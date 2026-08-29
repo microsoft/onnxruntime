@@ -27,11 +27,11 @@ OrtStatus* CreateCallbackStatus(OrtErrorCode code, NSString* message) {
   return Ort::GetApi().CreateStatus(code, messageCstr != nullptr ? messageCstr : "EPContext data read block failed");
 }
 
-OrtStatus* ORT_API_CALL EpContextDataReadCallback(void* state,
-                                                  const char* name,
-                                                  OrtAllocator* allocator,
-                                                  void** buffer,
-                                                  size_t* dataSize);
+OrtStatus* _Nullable ORT_API_CALL EpContextDataReadCallback(void* state,
+                                                            const char* name,
+                                                            OrtAllocator* allocator,
+                                                            void** buffer,
+                                                            size_t* dataSize);
 }  // namespace
 
 NS_ASSUME_NONNULL_BEGIN
@@ -62,11 +62,11 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 namespace {
-OrtStatus* ORT_API_CALL EpContextDataReadCallback(void* state,
-                                                  const char* name,
-                                                  OrtAllocator* allocator,
-                                                  void** buffer,
-                                                  size_t* dataSize) {
+OrtStatus* _Nullable ORT_API_CALL EpContextDataReadCallback(void* state,
+                                                            const char* name,
+                                                            OrtAllocator* allocator,
+                                                            void** buffer,
+                                                            size_t* dataSize) {
   if (buffer == nullptr || dataSize == nullptr) {
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
                                       "EPContext data read callback received null output parameters");
