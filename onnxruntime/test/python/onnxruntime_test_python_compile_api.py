@@ -2,10 +2,14 @@
 # Licensed under the MIT License.
 from __future__ import annotations
 
+import gc
 import os
 import platform
+import subprocess
 import sys
+import threading
 import unittest
+import weakref
 from collections.abc import Sequence
 
 import onnx
@@ -13,7 +17,8 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
+from onnxruntime.capi.onnxruntime_inference_collection import ModelCompiler
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument, ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -23,6 +28,80 @@ available_providers = list(onnxrt.get_available_providers())
 
 
 class TestCompileApi(AutoEpTestCase):
+    def test_callback_finalizers_can_reenter_configuration(self):
+        child_code = r"""
+import sys
+
+import onnxruntime as ort
+
+events = []
+
+
+class ReadCallback:
+    def __init__(self, options):
+        self.options = options
+
+    def __call__(self, _name, _output):
+        pass
+
+    def __del__(self):
+        self.options.clear_ep_context_data_read_func()
+        events.append("read")
+
+
+class SelectionCallback:
+    def __init__(self, options):
+        self.options = options
+
+    def __call__(self, _devices, _model_metadata, _runtime_metadata, _max_selections):
+        return []
+
+    def __del__(self):
+        self.options.set_provider_selection_policy(ort.OrtExecutionProviderDevicePolicy.PREFER_GPU)
+        events.append("selection")
+
+
+class WriteCallback:
+    def __init__(self, compiler):
+        self.compiler = compiler
+
+    def __call__(self, _name, _data):
+        pass
+
+    def __del__(self):
+        self.compiler.clear_ep_context_data_write_func()
+        events.append("write")
+
+
+read_options = ort.SessionOptions()
+read_callback = ReadCallback(read_options)
+read_options.set_ep_context_data_read_func(read_callback, 1)
+del read_callback
+read_options.clear_ep_context_data_read_func()
+
+selection_options = ort.SessionOptions()
+selection_callback = SelectionCallback(selection_options)
+selection_options.set_provider_selection_policy_delegate(selection_callback)
+del selection_callback
+selection_options.set_provider_selection_policy(ort.OrtExecutionProviderDevicePolicy.PREFER_GPU)
+
+compiler = ort.ModelCompiler(ort.SessionOptions(), sys.argv[1], embed_compiled_data_into_model=True)
+write_callback = WriteCallback(compiler)
+compiler.set_ep_context_data_write_func(write_callback)
+del write_callback
+compiler.clear_ep_context_data_write_func()
+
+assert events == ["read", "selection", "write"], events
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", child_code, get_name("mul_1.onnx")],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+
     def test_compile_with_files_prefer_npu_policy(self):
         """
         Tests compiling a model (to/from files) using an EP selection policy (PREFER_NPU).
@@ -99,6 +178,220 @@ class TestCompileApi(AutoEpTestCase):
 
         self.unregister_execution_provider_library(ep_name)
 
+    def test_external_ep_context_data_callbacks(self):
+        ep_lib_path = get_shared_library_filename_for_platform("example_plugin_ep")
+        try:
+            ep_lib_path = get_name(ep_lib_path)
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        ep_name = "python_ep_context"
+        self.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
+        try:
+            ep_device = next((device for device in onnxrt.get_ep_devices() if device.ep_name == ep_name), None)
+            self.assertIsNotNone(ep_device)
+            assert ep_device is not None
+
+            input_model_path = get_name("mul_1.onnx")
+            write_count = 0
+            read_count = 0
+            context_name = ""
+            context_payload = b""
+            retained_write_data = None
+            retained_read_output = None
+            retained_failed_write_data = None
+            retained_failed_read_output = None
+
+            write_failure_options = onnxrt.SessionOptions()
+            write_failure_options.add_provider_for_devices([ep_device], {})
+            write_failure_compiler: ModelCompiler = onnxrt.ModelCompiler(
+                write_failure_options, input_model_path, embed_compiled_data_into_model=False
+            )
+
+            def fail_write(_name: str, data: onnxrt.OrtEpContextData):
+                nonlocal retained_failed_write_data
+                retained_failed_write_data = data
+                raise ValueError("synthetic Python EPContext write failure")
+
+            write_failure_compiler.set_ep_context_data_write_func(fail_write)
+            with self.assertRaises(Fail) as context:
+                write_failure_compiler.compile_to_bytes()
+            self.assertIn("synthetic Python EPContext write failure", str(context.exception))
+            assert retained_failed_write_data is not None
+            with self.assertRaises(RuntimeError):
+                retained_failed_write_data.read()
+
+            compile_options = onnxrt.SessionOptions()
+            compile_options.add_provider_for_devices([ep_device], {})
+            compiler: ModelCompiler = onnxrt.ModelCompiler(
+                compile_options, input_model_path, embed_compiled_data_into_model=False
+            )
+            compiler_ref = weakref.ref(compiler)
+
+            def write_context(name: str, data: onnxrt.OrtEpContextData):
+                nonlocal write_count, context_name, context_payload, retained_write_data
+                write_count += 1
+                context_name = name
+                retained_write_data = data
+                model_compiler = compiler_ref()
+                self.assertIsNotNone(model_compiler)
+                assert model_compiler is not None
+                with self.assertRaises(RuntimeError) as context:
+                    model_compiler.clear_ep_context_data_write_func()
+                self.assertIn("while compilation is in progress", str(context.exception))
+                midpoint = data.size // 2
+                context_payload = data.read(0, midpoint) + data.read(midpoint)
+
+            compiler.set_ep_context_data_write_func(write_context)
+            compiled_model = compiler.compile_to_bytes()
+
+            self.assertEqual(write_count, 1)
+            self.assertTrue(context_name)
+            self.assertTrue(context_payload)
+            assert retained_write_data is not None
+            self.assertFalse(os.path.exists(context_name))
+            with self.assertRaises(RuntimeError):
+                retained_write_data.read()
+
+            missing_output_options = onnxrt.SessionOptions()
+            missing_output_options.set_ep_context_data_read_func(lambda _name, _output: None, len(context_payload))
+            missing_output_options.add_provider_for_devices([ep_device], {})
+            with self.assertRaises(InvalidArgument) as context:
+                onnxrt.InferenceSession(compiled_model, sess_options=missing_output_options)
+            self.assertIn("must allocate its output buffer", str(context.exception))
+            self.assertFalse(os.path.exists(context_name))
+
+            oversized_options = onnxrt.SessionOptions()
+            oversized_options.set_ep_context_data_read_func(
+                lambda _name, output: output.allocate(len(context_payload) + 1), len(context_payload)
+            )
+            oversized_options.add_provider_for_devices([ep_device], {})
+            with self.assertRaises(Fail) as context:
+                onnxrt.InferenceSession(compiled_model, sess_options=oversized_options)
+            self.assertIn("configured maximum size", str(context.exception))
+            self.assertFalse(os.path.exists(context_name))
+
+            failure_options = onnxrt.SessionOptions()
+
+            def fail_read(_name: str, output: onnxrt.OrtEpContextDataBuffer):
+                nonlocal retained_failed_read_output
+                retained_failed_read_output = output
+                output.allocate(len(context_payload))
+                raise ValueError("synthetic Python EPContext read failure")
+
+            failure_options.set_ep_context_data_read_func(fail_read, len(context_payload))
+            failure_options.add_provider_for_devices([ep_device], {})
+            with self.assertRaises(Fail) as context:
+                onnxrt.InferenceSession(compiled_model, sess_options=failure_options)
+            self.assertIn("synthetic Python EPContext read failure", str(context.exception))
+            self.assertFalse(os.path.exists(context_name))
+            assert retained_failed_read_output is not None
+            with self.assertRaises(RuntimeError):
+                retained_failed_read_output.write(b"x")
+
+            load_options = onnxrt.SessionOptions()
+
+            def read_context(name: str, output: onnxrt.OrtEpContextDataBuffer):
+                nonlocal read_count, retained_read_output
+                read_count += 1
+                self.assertEqual(name, context_name)
+                retained_read_output = output
+                output.allocate(len(context_payload))
+                midpoint = len(context_payload) // 2
+                output.write(context_payload[:midpoint])
+                output.write(context_payload[midpoint:], midpoint)
+
+            load_options.set_ep_context_data_read_func(read_context, len(context_payload))
+            load_options.add_provider_for_devices([ep_device], {})
+            session = onnxrt.InferenceSession(compiled_model, sess_options=load_options)
+            self.assertIsNotNone(session)
+            self.assertEqual(read_count, 1)
+            assert retained_read_output is not None
+            with self.assertRaises(RuntimeError):
+                retained_read_output.write(b"x")
+
+            propagated_load_options = session.get_session_options()
+            propagated_load_options.add_provider_for_devices([ep_device], {})
+            load_options.clear_ep_context_data_read_func()
+            del load_options, session
+            gc.collect()
+
+            propagated_session = onnxrt.InferenceSession(compiled_model, sess_options=propagated_load_options)
+            self.assertIsNotNone(propagated_session)
+            self.assertEqual(read_count, 2)
+
+            compile_read_count = 0
+            source_compile_options = onnxrt.SessionOptions()
+
+            def read_context_for_compile(name: str, output: onnxrt.OrtEpContextDataBuffer):
+                nonlocal compile_read_count
+                compile_read_count += 1
+                self.assertEqual(name, context_name)
+                output.allocate(len(context_payload))
+                output.write(context_payload)
+
+            read_context_for_compile_ref = weakref.ref(read_context_for_compile)
+            source_compile_options.set_ep_context_data_read_func(read_context_for_compile, len(context_payload))
+            source_compile_options.add_provider_for_devices([ep_device], {})
+            retained_compiler: ModelCompiler = onnxrt.ModelCompiler(
+                source_compile_options, input_model_path, embed_compiled_data_into_model=True
+            )
+            source_compile_options.clear_ep_context_data_read_func()
+            del source_compile_options, read_context_for_compile
+            gc.collect()
+
+            self.assertIsNotNone(read_context_for_compile_ref())
+            self.assertTrue(retained_compiler.compile_to_bytes())
+            self.assertEqual(compile_read_count, 0)
+            self.assertFalse(os.path.exists(context_name))
+
+            del retained_compiler
+            gc.collect()
+            self.assertIsNone(read_context_for_compile_ref())
+
+            concurrent_options = onnxrt.SessionOptions()
+            concurrent_options.add_provider_for_devices([ep_device], {})
+            concurrent_compiler: ModelCompiler = onnxrt.ModelCompiler(
+                concurrent_options, input_model_path, embed_compiled_data_into_model=False
+            )
+            callback_started = threading.Event()
+            release_callback = threading.Event()
+            compile_errors: list[BaseException] = []
+            concurrent_compiler_ref = weakref.ref(concurrent_compiler)
+
+            def blocking_write(_name: str, _data: onnxrt.OrtEpContextData):
+                callback_started.set()
+                self.assertTrue(release_callback.wait(timeout=10))
+
+            def compile_in_thread():
+                try:
+                    model_compiler = concurrent_compiler_ref()
+                    if model_compiler is None:
+                        raise RuntimeError("ModelCompiler was released before compilation started")
+                    model_compiler.compile_to_bytes()
+                except BaseException as exception:
+                    compile_errors.append(exception)
+
+            concurrent_compiler.set_ep_context_data_write_func(blocking_write)
+            compile_thread = threading.Thread(target=compile_in_thread)
+            compile_thread.start()
+            try:
+                self.assertTrue(callback_started.wait(timeout=10))
+                with self.assertRaises(Fail) as context:
+                    concurrent_compiler.compile_to_bytes()
+                self.assertIn("Compilation is already in progress", str(context.exception))
+            finally:
+                release_callback.set()
+                compile_thread.join(timeout=10)
+
+            self.assertFalse(compile_thread.is_alive())
+            self.assertEqual(compile_errors, [])
+
+            del propagated_session, concurrent_compiler, compiler, write_failure_compiler
+            gc.collect()
+        finally:
+            self.unregister_execution_provider_library(ep_name)
+
     def test_compile_with_ep_selection_delegate(self):
         """
         Tests compiling a model (to/from files) using an EP selection delegate callback.
@@ -129,6 +422,7 @@ class TestCompileApi(AutoEpTestCase):
 
         session_options = onnxrt.SessionOptions()
         session_options.set_provider_selection_policy_delegate(my_delegate)
+        delegate_ref = weakref.ref(my_delegate)
 
         model_compiler = onnxrt.ModelCompiler(
             session_options,
@@ -136,8 +430,16 @@ class TestCompileApi(AutoEpTestCase):
             embed_compiled_data_into_model=True,
             external_initializers_file_path=None,
         )
+        del session_options, my_delegate
+        gc.collect()
+        self.assertIsNotNone(delegate_ref())
+
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
+
+        del model_compiler
+        gc.collect()
+        self.assertIsNone(delegate_ref())
 
     def test_compile_with_input_and_output_files(self):
         """
