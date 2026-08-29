@@ -6,7 +6,6 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
-#include <algorithm>
 #include <cstring>
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
@@ -690,7 +689,7 @@ Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
   return config;
 }
 
-// Picks the (KSplit, ColTiles) shape for the tensor-core GEMV.
+// PickFp4MmaConfig picks the (KSplit, ColTiles) shape for the tensor-core GEMV.
 //
 // A warp owns 16 output columns, so the column grid is 16x smaller than the scalar path's.
 // Wide column blocks (ColTiles = 4) give the best weight locality, but only pay off once N
@@ -705,45 +704,9 @@ Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
 //   N =  17408, K = 8192 (tuned)         61.4 ->  55.0 us (1.12x) KSplit 8,  ColTiles 1
 //   N =    512, K = 2048 (gate/up)                  3.34 us        KSplit 16, ColTiles 1
 //   N =   2048, K =  512 (down)                     2.97 us        KSplit 4,  ColTiles 1
-Fp4MmaConfig PickFp4MmaConfigImpl(int n, int k, int sm_count) {
-  constexpr int kTargetGridWaves = 4;
-  constexpr int kLongReductionGridWaves = 8;
-  constexpr int kLongReductionWindows = 64;
-  const int windows = k >> 7;  // >= 1; the launcher only takes this path when k % 128 == 0
-  const int col_tiles = (n + 15) / 16;
-
-  const int wide_col_blocks = (col_tiles + 3) / 4;
-  if (wide_col_blocks >= kTargetGridWaves * sm_count &&
-      (windows < kLongReductionWindows || wide_col_blocks >= kLongReductionGridWaves * sm_count)) {
-    return ApplyFp4MmaConfigOverrides({std::min(2, windows), 4}, n, k);
-  }
-  if (col_tiles >= kTargetGridWaves * sm_count) {
-    const int k_split = windows >= kLongReductionWindows ? 8 : std::min(2, windows);
-    return ApplyFp4MmaConfigOverrides({k_split, 1}, n, k);
-  }
-  // Column-starved: give every block as many K-split warps as there are windows, up to the
-  // 16-warp (512-thread) block ceiling.
-  int k_split = 1;
-  while (k_split < 16 && k_split * 2 <= windows) {
-    k_split <<= 1;
-  }
-  return ApplyFp4MmaConfigOverrides({k_split, 1}, n, k);
-}
-
 }  // namespace
 
 #endif  // CUDA_VERSION >= 12080
-
-Fp4MmaConfig PickFp4MmaConfig(int n, int k, int sm_count) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
-  return PickFp4MmaConfigImpl(n, k, sm_count);
-#else
-  ORT_UNUSED_PARAMETER(n);
-  ORT_UNUSED_PARAMETER(k);
-  ORT_UNUSED_PARAMETER(sm_count);
-  return {1, 1};
-#endif
-}
 
 Status LaunchDequantizeNvFp4(void* b_dequant,
                              const void* b_packed,
@@ -851,7 +814,8 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns 16 * tile + g and
   // + 8, and stores output rows 2t and 2t + 1 of those two columns.
   if (device_prop.major >= 8 && k % 128 == 0 && m <= 8 && Fp4GemvMmaEnabled()) {
-    const Fp4MmaConfig cfg = PickFp4MmaConfigImpl(n, k, device_prop.multiProcessorCount);
+    const Fp4MmaConfig cfg = ApplyFp4MmaConfigOverrides(
+        PickFp4MmaConfig(n, k, device_prop.multiProcessorCount), n, k);
     const int cols_per_block = 16 * cfg.col_tiles;
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};
     const dim3 mma_blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block)};
