@@ -54,6 +54,11 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   }
   return ep_context_node_ptrs;
 }
+
+bool VitisAIExecutionProvider::MayProduceEpContextNodesWithoutCompilation() const {
+  return ep_ctx_enabled_ && !ep_ctx_embed_mode_;
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup, const GraphOptimizerRegistry& /* graph_optimizer_registry */, IResourceAccountant* /* resource_accountant */) const {
   if (graph_viewer.IsSubgraph()) {

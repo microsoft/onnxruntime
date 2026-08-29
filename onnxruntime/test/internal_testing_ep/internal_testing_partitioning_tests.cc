@@ -138,9 +138,15 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 
 class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider {
  public:
-  explicit DirectAssignmentEpContextTestExecutionProvider(bool produces_ep_context_nodes = false)
+  explicit DirectAssignmentEpContextTestExecutionProvider(bool produces_ep_context_nodes = false,
+                                                          bool* get_ep_context_nodes_called = nullptr,
+                                                          uint32_t ep_context_data_support = OrtEpContextDataSupportFlags_NONE,
+                                                          bool claims_ep_context_node = true)
       : IExecutionProvider{"DirectAssignmentEpContextTestExecutionProvider"},
-        produces_ep_context_nodes_{produces_ep_context_nodes} {
+        produces_ep_context_nodes_{produces_ep_context_nodes},
+        get_ep_context_nodes_called_{get_ep_context_nodes_called},
+        ep_context_data_support_{ep_context_data_support},
+        claims_ep_context_node_{claims_ep_context_node} {
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -151,7 +157,8 @@ class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
     for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
       const auto* node = graph_viewer.GetNode(node_index);
-      if (node != nullptr && node->Domain() == kMSDomain && node->OpType() == "EPContext") {
+      if (claims_ep_context_node_ && node != nullptr &&
+          node->Domain() == kMSDomain && node->OpType() == "EPContext") {
         ep_context_node_ = node;
         auto sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node_index);
@@ -163,6 +170,10 @@ class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider
   }
 
   const InlinedVector<const Node*> GetEpContextNodes() const override {
+    if (get_ep_context_nodes_called_ != nullptr) {
+      *get_ep_context_nodes_called_ = true;
+    }
+
     InlinedVector<const Node*> nodes;
     if (produces_ep_context_nodes_ && ep_context_node_ != nullptr) {
       nodes.push_back(ep_context_node_);
@@ -171,8 +182,20 @@ class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider
     return nodes;
   }
 
+  bool MayProduceEpContextNodesWithoutCompilation() const override {
+    return produces_ep_context_nodes_;
+  }
+
+  Status GetEpContextDataSupport(uint32_t& supported_flags) const override {
+    supported_flags = ep_context_data_support_;
+    return Status::OK();
+  }
+
  private:
   const bool produces_ep_context_nodes_;
+  bool* const get_ep_context_nodes_called_;
+  const uint32_t ep_context_data_support_;
+  const bool claims_ep_context_node_;
   mutable const Node* ep_context_node_{nullptr};
 };
 
@@ -296,9 +319,18 @@ OrtStatus* ORT_API_CALL NoopEpContextWriteCallback(void*, const char*, const voi
   return nullptr;
 }
 
+OrtStatus* ORT_API_CALL NoopModelWriteCallback(void*, const void*, size_t) {
+  return nullptr;
+}
+
 Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes,
                                                   bool read_callback_registered,
-                                                  bool write_callback_required) {
+                                                  bool write_callback_required,
+                                                  GraphPartitioner::Mode mode = GraphPartitioner::Mode::kNormal,
+                                                  bool* get_ep_context_nodes_called = nullptr,
+                                                  uint32_t ep_context_data_support =
+                                                      OrtEpContextDataSupportFlags_NONE,
+                                                  bool claims_ep_context_node = true) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
   Model model("PartitionDirectAssignmentExternalEpContext",
               false,
@@ -324,7 +356,8 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
 
   ExecutionProviders execution_providers;
   auto& default_logger = DefaultLoggingManager().DefaultLogger();
-  auto ep = std::make_unique<DirectAssignmentEpContextTestExecutionProvider>(produces_ep_context_nodes);
+  auto ep = std::make_unique<DirectAssignmentEpContextTestExecutionProvider>(
+      produces_ep_context_nodes, get_ep_context_nodes_called, ep_context_data_support, claims_ep_context_node);
   ep->SetLogger(&default_logger);
   const std::string ep_type = ep->Type();
   ORT_RETURN_IF_ERROR(execution_providers.Add(ep_type, std::move(ep)));
@@ -348,12 +381,14 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
     model_gen_options.enable = true;
     model_gen_options.embed_ep_context_in_model = false;
     model_gen_options.ep_context_data_write_func = {NoopEpContextWriteCallback, nullptr};
+    model_gen_options.output_model_location =
+        epctx::BufferWriteFuncHolder{NoopModelWriteCallback, nullptr};
   }
 
   FuncManager func_mgr;
   return partitioner.Partition(graph, func_mgr, transform_layout_fn,
                                ConfigOptions{}, default_logger, nullptr /*layering_index*/,
-                               GraphPartitioner::Mode::kNormal,
+                               mode,
                                model_gen_options,
                                read_callback_registered);
 }
@@ -519,17 +554,50 @@ TEST(InternalTestingEP, ExternalEpContextReadCallbackRequiresSupportForDirectAss
 }
 
 TEST(InternalTestingEP, ExternalEpContextWriteCallbackRequiresSupportForNonCompileProducer) {
+  bool get_ep_context_nodes_called = false;
   const auto status = PartitionDirectAssignmentExternalEpContext(
-      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/);
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called);
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(),
               testing::HasSubstr("does not support the registered EPContext data write callback"));
+  EXPECT_FALSE(get_ep_context_nodes_called);
+}
+
+TEST(InternalTestingEP, ExternalEpContextWriteCallbackRequiresSupportForProducerWithoutCapabilities) {
+  bool get_ep_context_nodes_called = false;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called, OrtEpContextDataSupportFlags_NONE,
+      false /*claims_ep_context_node*/);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data write callback"));
+  EXPECT_FALSE(get_ep_context_nodes_called);
 }
 
 TEST(InternalTestingEP, ExternalEpContextWriteCallbackAllowsDirectAssignmentWithoutProducedContext) {
   const auto status = PartitionDirectAssignmentExternalEpContext(
       false /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/);
   EXPECT_STATUS_OK(status);
+}
+
+TEST(InternalTestingEP, ExternalEpContextWriteCallbackAllowsSupportedNonCompileProducer) {
+  bool get_ep_context_nodes_called = false;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called, OrtEpContextDataSupportFlags_WRITE);
+  EXPECT_STATUS_OK(status);
+  EXPECT_TRUE(get_ep_context_nodes_called);
+}
+
+TEST(InternalTestingEP, OrtFormatExternalEpContextReadCallbackRequiresSupportForDirectAssignment) {
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      false /*produces_ep_context_nodes*/, true /*read_callback_registered*/, false /*write_callback_required*/,
+      GraphPartitioner::Mode::kOrtFormatLoad);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data read callback"));
 }
 
 // Validates that the resource accountant is updated correctly across the NHWC two-pass

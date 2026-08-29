@@ -19,10 +19,7 @@ callback, the per-initializer location callback, in-memory external initializers
 mode) are **pre-existing** ORT compile/session APIs and are described here only for context.
 
 > **API status:** The callback transport is part of the stable C and C++ API starting in ONNX Runtime 1.30.
-> The V28 name-based experimental functions remain as deprecated forwarding shims through ONNX Runtime 1.31 and are
-> eligible for removal in 1.32. New code should use the stable `OrtApi`, `OrtCompileApi`, `OrtEpApi`, and
-> `Ort::EpContextConfig` members described below. The V28 read setter retains its legacy unbounded size policy only for
-> compatibility; stable callers must provide a finite maximum.
+> Applications should use the `OrtApi`, `OrtCompileApi`, `OrtEpApi`, and `Ort::EpContextConfig` members described below.
 
 ## Background
 
