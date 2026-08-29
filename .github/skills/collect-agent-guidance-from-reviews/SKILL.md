@@ -297,7 +297,7 @@ Open a PR ready for human review with a description using this structure:
 
 ## Collection metadata
 
-`<marker field from .github/skills/collect-agent-guidance-from-reviews/scripts/list_merged_prs.py output>`
+<marker field from .github/skills/collect-agent-guidance-from-reviews/scripts/list_merged_prs.py output>
 ```
 
 The PR description and commits provide provenance. Avoid adding source-history narration to the guidance itself unless
