@@ -579,43 +579,47 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
 }
 
 - (void)testSessionRetainsEpContextDataReadBlockRegistration {
-  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
   NSObject* __weak weakCapturedObject = nil;
-  NSError* err = nil;
-  BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
-  ORTAssertBoolResultSuccessful(result, err);
-  XCTAssertNotNil(weakCapturedObject);
+  @autoreleasepool {
+    ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+    NSError* err = nil;
+    BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
+    ORTAssertBoolResultSuccessful(result, err);
+    XCTAssertNotNil(weakCapturedObject);
 
-  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
-                                              modelPath:[ORTSessionTest getAddModelPath]
-                                         sessionOptions:sessionOptions
-                                                  error:&err];
-  ORTAssertNullableResultSuccessful(session, err);
+    ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                                modelPath:[ORTSessionTest getAddModelPath]
+                                           sessionOptions:sessionOptions
+                                                    error:&err];
+    ORTAssertNullableResultSuccessful(session, err);
 
-  result = [sessionOptions clearEpContextDataReadBlockWithError:&err];
-  ORTAssertBoolResultSuccessful(result, err);
-  sessionOptions = nil;
-  XCTAssertNotNil(weakCapturedObject);
+    result = [sessionOptions clearEpContextDataReadBlockWithError:&err];
+    ORTAssertBoolResultSuccessful(result, err);
+    sessionOptions = nil;
+    XCTAssertNotNil(weakCapturedObject);
 
-  session = nil;
+    session = nil;
+  }
   XCTAssertNil(weakCapturedObject);
 }
 
 - (void)testFailedSessionConstructionReleasesEpContextDataReadBlockSnapshot {
-  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
   NSObject* __weak weakCapturedObject = nil;
-  NSError* err = nil;
-  BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
-  ORTAssertBoolResultSuccessful(result, err);
-  XCTAssertNotNil(weakCapturedObject);
+  @autoreleasepool {
+    ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+    NSError* err = nil;
+    BOOL result = SetEpContextDataReadBlockCapturingObject(sessionOptions, &weakCapturedObject, &err);
+    ORTAssertBoolResultSuccessful(result, err);
+    XCTAssertNotNil(weakCapturedObject);
 
-  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
-                                              modelPath:@"invalid/path/to/model.onnx"
-                                         sessionOptions:sessionOptions
-                                                  error:&err];
-  ORTAssertNullableResultUnsuccessful(session, err);
+    ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                                modelPath:@"invalid/path/to/model.onnx"
+                                           sessionOptions:sessionOptions
+                                                    error:&err];
+    ORTAssertNullableResultUnsuccessful(session, err);
 
-  sessionOptions = nil;
+    sessionOptions = nil;
+  }
   XCTAssertNil(weakCapturedObject);
 }
 
