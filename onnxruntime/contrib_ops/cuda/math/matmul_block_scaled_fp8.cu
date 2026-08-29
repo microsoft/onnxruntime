@@ -701,8 +701,15 @@ bool Fp8GemvMmaEnabled() {
 // Larger speculative batches are split into two launches so they keep the same per-row arithmetic
 // instead of switching to the dequantize + cuBLAS path.
 constexpr int kFp8MmaGemvTileM = 32;
-constexpr int kFp8MmaGemvMaxM = 64;
+constexpr int kFp8MmaGemvSupportedMaxM = 64;
 constexpr int kFp8ScalarGemvMaxM = 8;
+
+int Fp8MmaGemvDispatchMaxM() {
+  static const int max_m = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_MAX_M", 32);
+  ORT_ENFORCE(max_m >= 1 && max_m <= kFp8MmaGemvSupportedMaxM,
+              "ORT_FP8_GEMV_MAX_M must be in [1, ", kFp8MmaGemvSupportedMaxM, "], got ", max_m, ".");
+  return max_m;
+}
 
 }  // namespace
 
@@ -834,7 +841,7 @@ Status LaunchQuantizeDequantizeActivationFp8(void* a_out,
 int MatMulBlockScaledFp8GemvMaxM(int k, int block_size, const cudaDeviceProp& device_prop) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   if (device_prop.major >= 8 && k % 64 == 0 && k >= 256 && block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
-    return kFp8MmaGemvMaxM;
+    return Fp8MmaGemvDispatchMaxM();
   }
   return kFp8ScalarGemvMaxM;
 #else
@@ -873,7 +880,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
 
   if (m > kFp8MmaGemvTileM) {
     ORT_RETURN_IF_NOT(device_prop.major >= 8 && k % 64 == 0 && k >= 256 &&
-                          block_size % 64 == 0 && m <= kFp8MmaGemvMaxM && Fp8GemvMmaEnabled(),
+                          block_size % 64 == 0 && m <= kFp8MmaGemvSupportedMaxM && Fp8GemvMmaEnabled(),
                       "MatMulBlockQuantizedFp8Weight GEMV supports M above ", kFp8MmaGemvTileM,
                       " only on the mma sub-path, got M=", m, ".");
     const size_t element_size = is_bf16 ? sizeof(__nv_bfloat16) : sizeof(half);

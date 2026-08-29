@@ -83,6 +83,13 @@ constexpr int kFp4MmaGemvTileM = 32;
 constexpr int kFp4MmaGemvMaxM = 64;
 constexpr int kFp4ScalarGemvMaxM = 8;
 
+int Fp4MmaGemvDispatchMaxM() {
+  static const int max_m = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_MAX_M", 32);
+  ORT_ENFORCE(max_m >= 1 && max_m <= kFp4MmaGemvMaxM,
+              "ORT_FP4_GEMV_MAX_M must be in [1, ", kFp4MmaGemvMaxM, "], got ", max_m, ".");
+  return max_m;
+}
+
 // Largest M tile the GEMV will fold into a single block. M is at most kGemvMaxM (8) at the
 // call site; beyond 4 rows the register pressure from the per-row accumulators and the A
 // fragments starts to cost more occupancy than the extra weight reuse buys.
@@ -900,7 +907,7 @@ Status LaunchAddBiasNvFp4(void* y,
 int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
   if (device_prop.major >= 8 && k % 128 == 0 && Fp4GemvMmaEnabled()) {
-    return kFp4MmaGemvMaxM;
+    return Fp4MmaGemvDispatchMaxM();
   }
 #else
   ORT_UNUSED_PARAMETER(k);
