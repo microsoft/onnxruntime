@@ -163,6 +163,12 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
       N_b = padded_b_stride_;
     }
 
+    // The kernel keeps its operand loads in bounds by shifting a trailing partial
+    // tile back, which is only possible when the tile fits within M and N.
+    if (M < tiling->tile_m || N_b < tiling->tile_n) {
+      return Status::OK();
+    }
+
     const Tensor* bias = has_bias ? inputs[2] : nullptr;
 
     const uint32_t tile_m = tiling->tile_m;
