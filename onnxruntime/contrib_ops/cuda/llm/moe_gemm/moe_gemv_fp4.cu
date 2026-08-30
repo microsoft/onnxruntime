@@ -161,12 +161,156 @@ struct TypeTag {
 template <typename T>
 using Fp4GemvAccT = std::conditional_t<std::is_same<T, half>::value, half, float>;
 
+__device__ __forceinline__ float DecodeE4M3Fn(uint8_t code) {
+  const int sign = code & 0x80;
+  const int exponent = (code >> 3) & 0x0f;
+  const int mantissa = code & 0x07;
+  if ((code & 0x7f) == 0) {
+    return sign ? -0.0f : 0.0f;
+  }
+  if (exponent == 0x0f && mantissa == 0x07) {
+    return __int_as_float(0x7fffffff);
+  }
+  const float value = exponent == 0
+                          ? ldexpf(static_cast<float>(mantissa), -9)
+                          : ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f, exponent - 7);
+  return sign ? -value : value;
+}
+
+// NVFP4 schema weights are [E, K, N/2], with adjacent output columns in the two nibbles of
+// each byte. A generic remapped ColumnMajor iterator would make every lane gather strided bytes.
+// Instead, each warp owns 16 adjacent output columns: its eight N lanes load eight contiguous
+// packed bytes for each of four K lanes, then reduce the four partial K streams in-register.
+// This keeps the raw initializer directly consumable while giving each K row one coalesced N slice.
+template <typename T, bool FusedSwiGlu, bool EnableBias>
+__global__ void MoeGemvFp4RawNPackedKernel(
+    const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
+    const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
+    int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+    cutlass_kernels::ActivationParams activation_params,
+    const int* permuted_row_to_source_row, int num_rows) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  constexpr int kWarpSize = 32;
+  constexpr int kWarpsPerBlock = 4;
+  constexpr int kColsPerWarp = 16;
+  constexpr unsigned kFullMask = 0xffffffffu;
+
+  const int row = static_cast<int>(blockIdx.x);
+  int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
+#pragma unroll 1
+  for (int e = 0; e < num_experts && permuted_row_to_expert == nullptr; ++e) {
+    if (row >= static_cast<int>(expert_first_token_offset[e + 1])) {
+      expert = e + 1;
+      continue;
+    }
+    break;
+  }
+  if (expert < 0 || expert >= num_experts) {
+    return;
+  }
+
+  const int lane = threadIdx.x % kWarpSize;
+  const int warp = threadIdx.x / kWarpSize;
+  const int n_pair = lane % (kColsPerWarp / 2);
+  const int k_lane = lane / (kColsPerWarp / 2);
+  const int n0 = (static_cast<int>(blockIdx.y) * kWarpsPerBlock + warp) * kColsPerWarp + n_pair * 2;
+  const bool valid_n = n0 < n;
+  const int source_row = permuted_row_to_source_row ? permuted_row_to_source_row[row] % num_rows : row;
+
+  const T* row_act = act + static_cast<int64_t>(source_row) * k;
+  const uint8_t* expert_weight = weight + static_cast<int64_t>(expert) * weight_expert_stride;
+  const uint8_t* expert_scales = block_scales + static_cast<int64_t>(expert) * scale_expert_stride;
+  const float global_scale = global_scales[expert];
+  const T* expert_bias = EnableBias ? bias + static_cast<int64_t>(expert) * n : nullptr;
+
+  float acc0 = 0.0f;
+  float acc1 = 0.0f;
+  for (int k_idx = k_lane; k_idx < k; k_idx += 4) {
+    float a = n_pair == 0 ? static_cast<float>(row_act[k_idx]) : 0.0f;
+    a = __shfl_sync(kFullMask, a, k_lane * (kColsPerWarp / 2));
+    if (valid_n) {
+      const uint8_t packed = expert_weight[static_cast<int64_t>(k_idx) * (n / 2) + n0 / 2];
+      const int k_blocks = k / 16;
+      const T scale0 = static_cast<T>(
+          DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n0) * k_blocks + k_idx / 16]) * global_scale);
+      const T scale1 = static_cast<T>(
+          DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n0 + 1) * k_blocks + k_idx / 16]) * global_scale);
+      const T weight0 = fiv::Fp4I2FConverter<T>::decode(packed & 0x0f);
+      const T weight1 = fiv::Fp4I2FConverter<T>::decode(packed >> 4);
+      const T scaled_weight0 = static_cast<T>(static_cast<float>(weight0) * static_cast<float>(scale0));
+      const T scaled_weight1 = static_cast<T>(static_cast<float>(weight1) * static_cast<float>(scale1));
+      acc0 += static_cast<float>(scaled_weight0) * a;
+      acc1 += static_cast<float>(scaled_weight1) * a;
+    }
+  }
+
+  acc0 += __shfl_xor_sync(kFullMask, acc0, 8);
+  acc1 += __shfl_xor_sync(kFullMask, acc1, 8);
+  acc0 += __shfl_xor_sync(kFullMask, acc0, 16);
+  acc1 += __shfl_xor_sync(kFullMask, acc1, 16);
+  if (k_lane != 0 || !valid_n) {
+    return;
+  }
+
+  if constexpr (EnableBias) {
+    acc0 += static_cast<float>(expert_bias[n0]);
+    acc1 += static_cast<float>(expert_bias[n0 + 1]);
+  }
+  if constexpr (FusedSwiGlu) {
+    const float* alpha = activation_params.swiglu_alpha;
+    const float* beta = activation_params.swiglu_beta;
+    const float* limit = activation_params.swiglu_limit;
+    const float activation_alpha = alpha ? alpha[expert] : activation_params.alpha;
+    const float activation_beta = beta ? beta[expert] : activation_params.beta;
+    const float activation_limit = limit ? limit[expert] : activation_params.limit;
+    if (isfinite(activation_limit)) {
+      acc0 = fminf(acc0, activation_limit);
+      acc1 = fminf(fmaxf(acc1, -activation_limit), activation_limit);
+    }
+    acc1 += activation_beta;
+    const float sigmoid = 1.0f / (1.0f + expf(-activation_alpha * acc0));
+    out[static_cast<int64_t>(row) * (n / 2) + n0 / 2] = static_cast<T>(acc0 * sigmoid * acc1);
+  } else {
+    out[static_cast<int64_t>(row) * n + n0] = static_cast<T>(acc0);
+    out[static_cast<int64_t>(row) * n + n0 + 1] = static_cast<T>(acc1);
+  }
+#endif
+}
+
+template <typename T, bool FusedSwiGlu>
+void LaunchMoeGemvFp4RawNPacked(
+    const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
+    const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
+    int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
+    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream) {
+  constexpr int kThreads = 128;
+  constexpr int kColsPerBlock = 64;
+  const int64_t weight_expert_stride = n * k / 2;
+  const int64_t scale_expert_stride = n * (k / 16);
+  const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>((n + kColsPerBlock - 1) / kColsPerBlock));
+  if (bias != nullptr) {
+    MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, true><<<grid, kThreads, 0, stream>>>(
+        act, weight, block_scales, global_scales, bias, out,
+        expert_first_token_offset, permuted_row_to_expert, num_experts,
+        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+        permuted_row_to_source_row, static_cast<int>(num_rows));
+  } else {
+    MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, false><<<grid, kThreads, 0, stream>>>(
+        act, weight, block_scales, global_scales, bias, out,
+        expert_first_token_offset, permuted_row_to_expert, num_experts,
+        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+        permuted_row_to_source_row, static_cast<int>(num_rows));
+  }
+}
+
 // MXFP4 GEMV shape support. Mirrors is_moe_gemv_supported but for the non-interleaved
 // ColumnMajor layout: kInterleave = 1, so n need only be divisible by the CtaN tile width
 // selected by `config`, and the per-thread step is StepK = 128 / activation_bits = 8
 // (not 128 / weight_bits).
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
-                               MoeGemvConfig config, bool sm80_pair_interleaved) {
+                               MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed) {
   if (sm < 80) {
     return false;
   }
@@ -185,6 +329,9 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
   if (expanded_num_rows > kMaxProfiledExpandedRowsForSmallProblemDim &&
       (n < kMinProfiledProblemDimForExpandedRowsAbove4 || k < kMinProfiledProblemDimForExpandedRowsAbove4)) {
     return false;
+  }
+  if (raw_n_packed) {
+    return group_size == 16 && n % 2 == 0;
   }
   if (sm80_pair_interleaved || Fp4MoeGemvUseInterleaved()) {
     // Interleaved path: ColumnMajorInterleaved (kInterleave = 4, kStepK = 32), fixed CtaN =
@@ -228,7 +375,7 @@ bool is_moe_gemv_fp4_sm80_layout_supported(int64_t n, int64_t k, int group_size)
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                                MoeGemvConfig config) {
   return is_moe_gemv_fp4_supported(sm, expanded_num_rows, n, k, group_size, config,
-                                   /*sm80_pair_interleaved=*/false);
+                                   /*sm80_pair_interleaved=*/false, /*raw_n_packed=*/false);
 }
 
 bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size) {
@@ -236,11 +383,24 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
 }
 
 template <typename T>
-void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
+void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T* scales,
+                                   const uint8_t* raw_block_scales, const float* raw_global_scales,
+                                   const T* bias, T* out,
                                    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                    int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
-                                   int sm, MoeGemvConfig config, bool sm80_pair_interleaved, cudaStream_t stream) {
+                                   int sm, MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
+                                   cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
+  if (raw_n_packed) {
+    ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
+    ORT_ENFORCE(raw_block_scales != nullptr && raw_global_scales != nullptr,
+                "Raw N-packed NVFP4 GEMV requires block and global scales.");
+    LaunchMoeGemvFp4RawNPacked<T, false>(
+        act, weight, raw_block_scales, raw_global_scales, bias, out,
+        expert_first_token_offset, permuted_row_to_expert, num_experts,
+        expanded_num_rows, n, k, cutlass_kernels::ActivationParams{}, nullptr, expanded_num_rows, stream);
+    return;
+  }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
   // CtaN. Taken either via the opt-in env knob or because the caller pre-packed a single
   // SM80-grouped-GEMM buffer (sm80_pair_interleaved) that this kernel un-permutes while decoding.
@@ -291,12 +451,24 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
 
 template <typename T>
 void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
-    const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
+    const T* act, const uint8_t* weight, const T* scales, const uint8_t* raw_block_scales,
+    const float* raw_global_scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
+    bool raw_n_packed,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
+  if (raw_n_packed) {
+    ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
+    ORT_ENFORCE(raw_block_scales != nullptr && raw_global_scales != nullptr,
+                "Raw N-packed NVFP4 GEMV requires block and global scales.");
+    LaunchMoeGemvFp4RawNPacked<T, true>(
+        act, weight, raw_block_scales, raw_global_scales, bias, out,
+        expert_first_token_offset, permuted_row_to_expert, num_experts,
+        expanded_num_rows, inter_size * 2, k, activation_params, permuted_row_to_source_row, num_rows, stream);
+    return;
+  }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
   // CtaN, fusing SwiGLU. Taken either via the opt-in env knob or because the caller pre-packed a
   // single SM80-grouped-GEMM buffer (sm80_pair_interleaved). SwiGLU fusion is orthogonal to the
@@ -348,20 +520,24 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
 }
 
 template void launch_moe_gemv_fp4_symmetric<half>(
-    const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, cudaStream_t);
+    const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
+    const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
-    const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool,
+    const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
+    const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool, bool,
     const int*, int64_t, cudaStream_t);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
-    const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, cudaStream_t);
+    const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
+    const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
-    const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
+    const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    MoeGemvConfig, bool, const int*, int64_t, cudaStream_t);
+    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t);
 #endif
 
 }  // namespace moe_gemv
