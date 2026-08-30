@@ -145,6 +145,26 @@ PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_op
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+InlinedHashSet<std::string> ParseDisabledOptimizersConfig(std::string_view disabled_string) {
+  std::string normalized{disabled_string};
+  std::replace(normalized.begin(), normalized.end(), ';', ',');
+
+  const auto disabled_list = utils::SplitString(normalized, ",");
+  InlinedHashSet<std::string> disabled_rules_and_transformers;
+  disabled_rules_and_transformers.reserve(disabled_list.size());
+
+  for (const auto disabled_rule_or_transformer : disabled_list) {
+    std::string trimmed_name = utils::TrimString(disabled_rule_or_transformer);
+    if (!trimmed_name.empty()) {
+      disabled_rules_and_transformers.insert(std::move(trimmed_name));
+    }
+  }
+
+  return disabled_rules_and_transformers;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 // Parse a spin backoff max config value (exponential-backoff cap). Defaults to
 // 1 (no backoff, one SpinPause() per iteration). Values >= 2 enable backoff.
 unsigned int ParseSpinBackoffMax(std::string_view str, const char* config_key,
@@ -500,11 +520,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     auto disabled_string = session_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsDisableSpecifiedOptimizers, "");
     if (!disabled_string.empty()) {
-      const auto disabled_list = utils::SplitString(disabled_string, ";");
-      InlinedHashSet<std::string> disabled_rules_and_transformers;
-      disabled_rules_and_transformers.reserve(disabled_list.size());
-      disabled_rules_and_transformers.insert(disabled_list.cbegin(), disabled_list.cend());
-      ORT_THROW_IF_ERROR(FilterEnabledOptimizers(std::move(disabled_rules_and_transformers)));
+      ORT_THROW_IF_ERROR(FilterEnabledOptimizers(ParseDisabledOptimizersConfig(disabled_string)));
     }
   }
 #endif
