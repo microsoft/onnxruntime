@@ -977,7 +977,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // 2t and 2t + 1 of those two columns. Rows past MTiles * 8 have nowhere to live, so the scalar
   // GEMV takes over -- and that one re-reads the packed weight once per row tile, which is why the
   // cap below is much lower without the mma.
-  if (device_prop.major >= 8 && k % 128 == 0  && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
+  if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
     const Fp4MmaConfig cfg = ApplyFp4MmaConfigOverrides(
         PickFp4MmaConfig(n, k, device_prop.multiProcessorCount), n, k);
     const int cols_per_block = 16 * cfg.col_tiles;
