@@ -113,6 +113,12 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
       return Status::OK();
     }
 
+    // The kernel keeps its operand loads in bounds by shifting a trailing partial
+    // tile back, which is only possible when the tile fits within M and N.
+    if (M < tiling->tile_m || N < tiling->tile_n) {
+      return Status::OK();
+    }
+
     TensorShape output_shape{{static_cast<int64_t>(M), static_cast<int64_t>(N)}};
     auto* output = context.Output(0, output_shape);
     if (output->Shape().Size() == 0) {
