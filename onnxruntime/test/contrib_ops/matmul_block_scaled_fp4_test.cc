@@ -5,7 +5,12 @@
 // Needed for the CUDA_VERSION check below. MatMulBlockQuantizedFp4Weight relies on the NVFP4
 // conversion intrinsics that are only available in CUDA 12.8 and newer.
 #include <cuda.h>
+#include <cuda_runtime_api.h>
+
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp4_tiling.h"
 #endif
+
+#include <algorithm>
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -521,10 +526,9 @@ struct MmaShape {
   int64_t k;
 };
 
-// N = 8704 gives 544 column tiles, i.e. 136 blocks at ColTiles = 4, which is above the SM count
-// of every current device and so selects the wide shape. N = 36 leaves 4 columns in the last
-// 16-column tile, which is the only way to make a lane's *low* column fall out of range (N = 40
-// only exercises the high column), so it covers the lo_ok == false predication.
+// N = 8704 gives 544 column tiles and exercises a large, ragged grid. N = 36 leaves 4 columns in
+// the last 16-column tile, which is the only way to make a lane's *low* column fall out of range
+// (N = 40 only exercises the high column), so it covers the lo_ok == false predication.
 constexpr MmaShape kMmaShapes[] = {{36, 128}, {40, 128}, {512, 256}, {2048, 512}, {8704, 256}};
 
 }  // namespace
@@ -603,6 +607,30 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundaries) {
+  struct Case {
+    int64_t n;
+    int64_t k;
+    int k_split;
+    int col_tiles;
+  };
+  constexpr int sm_count = 132;
+  const Case cases[] = {
+      {64 * sm_count, 5120, 2, 1},        // 4 waves of single-column blocks, ordinary reduction
+      {64 * sm_count, 8192, 8, 1},        // same grid, long reduction retains KSplit 8
+      {512 * sm_count, 512, 2, 4},        // 8 waves of four-column blocks
+      {64 * sm_count - 16, 2048, 16, 1},  // just below 4 single-column waves
+  };
+
+  for (const Case& shape : cases) {
+    SCOPED_TRACE("N = " + std::to_string(shape.n) + ", K = " + std::to_string(shape.k));
+    const auto config = onnxruntime::contrib::cuda::PickFp4MmaConfig(
+        static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count);
+    EXPECT_EQ(config.k_split, shape.k_split);
+    EXPECT_EQ(config.col_tiles, shape.col_tiles);
   }
 }
 

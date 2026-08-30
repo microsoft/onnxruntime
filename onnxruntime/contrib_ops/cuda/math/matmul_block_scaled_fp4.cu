@@ -6,7 +6,6 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
-#include <algorithm>
 #include <cstring>
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
@@ -768,38 +767,53 @@ bool Fp4GemvMmaEnabled() {
   return enabled;
 }
 
-struct Fp4MmaConfig {
-  int k_split;
-  int col_tiles;
-};
+Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
+  static int const k_split =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_KSPLIT", 0);
+  static int const col_tiles =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_COL_TILES", 0);
+  static int const match_n =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_MATCH_N", 0);
+  static int const match_k =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_MATCH_K", 0);
+  ORT_ENFORCE(k_split == 0 || k_split == 1 || k_split == 2 || k_split == 4 ||
+                  k_split == 8 || k_split == 16,
+              "ORT_FP4_GEMV_KSPLIT must be 0, 1, 2, 4, 8, or 16.");
+  ORT_ENFORCE(col_tiles == 0 || col_tiles == 1 || col_tiles == 4,
+              "ORT_FP4_GEMV_COL_TILES must be 0, 1, or 4.");
+  ORT_ENFORCE(match_n >= 0 && match_k >= 0,
+              "ORT_FP4_GEMV_MATCH_N and ORT_FP4_GEMV_MATCH_K must be non-negative.");
 
-// Picks the (KSplit, ColTiles) shape for the tensor-core GEMV.
+  if ((match_n != 0 && n != match_n) || (match_k != 0 && k != match_k)) {
+    return config;
+  }
+
+  if (k_split != 0) {
+    config.k_split = k_split;
+  }
+  if (col_tiles != 0) {
+    config.col_tiles = col_tiles;
+  }
+  ORT_ENFORCE(config.col_tiles == 1 || config.k_split <= 2,
+              "ORT_FP4_GEMV_COL_TILES=4 supports only KSplit 1 or 2.");
+  return config;
+}
+
+// PickFp4MmaConfig picks the (KSplit, ColTiles) shape for the tensor-core GEMV.
 //
 // A warp owns 16 output columns, so the column grid is 16x smaller than the scalar path's.
 // Wide column blocks (ColTiles = 4) give the best weight locality, but only pay off once N
-// alone still covers a full wave of SMs; below that the block count collapses and the
-// device idles, so columns are traded back for K-split warps. Measured on H200 (132 SMs,
-// M = 4, half), scalar path -> best tensor-core config:
+// alone covers several waves of SMs; below that the block count collapses and the device
+// idles, so columns are traded back before adding more K-split warps. Long reductions retain
+// KSplit 8 until wide column blocks cover eight waves. Measured on H200
+// (132 SMs, M = 4, half). Rows marked "tuned" compare this selector against the previous
+// selector; the other rows record the selected tensor-core configuration and latency:
 //
-//   N = 248320, K = 2048 (lm_head)      538.5 -> 107.7 us (5.00x)  KSplit 2,  ColTiles 4
-//   N =    512, K = 2048 (gate/up)        3.90 ->  3.34 us (1.11x) KSplit 16, ColTiles 1
-//   N =   2048, K =  512 (down)           4.16 ->  2.97 us (1.40x) KSplit 4,  ColTiles 1
-Fp4MmaConfig PickFp4MmaConfig(int n, int k, int sm_count) {
-  const int windows = k >> 7;  // >= 1; the launcher only takes this path when k % 128 == 0
-  const int col_tiles = (n + 15) / 16;
-
-  if ((col_tiles + 3) / 4 >= sm_count) {
-    return {std::min(2, windows), 4};
-  }
-  // Column-starved: give every block as many K-split warps as there are windows, up to the
-  // 16-warp (512-thread) block ceiling.
-  int k_split = 1;
-  while (k_split < 16 && k_split * 2 <= windows) {
-    k_split <<= 1;
-  }
-  return {k_split, 1};
-}
-
+//   N = 248320, K = 2048 (lm_head)                 107.7 us        KSplit 2,  ColTiles 4
+//   N =  17408, K = 5120 (gate/up, tuned) 50.7 ->  46.6 us (1.09x) KSplit 2,  ColTiles 1
+//   N =  17408, K = 8192 (tuned)         61.4 ->  55.0 us (1.12x) KSplit 8,  ColTiles 1
+//   N =    512, K = 2048 (gate/up)                  3.34 us        KSplit 16, ColTiles 1
+//   N =   2048, K =  512 (down)                     2.97 us        KSplit 4,  ColTiles 1
 }  // namespace
 
 #endif  // CUDA_VERSION >= 12080
@@ -963,8 +977,9 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // 2t and 2t + 1 of those two columns. Rows past MTiles * 8 have nowhere to live, so the scalar
   // GEMV takes over -- and that one re-reads the packed weight once per row tile, which is why the
   // cap below is much lower without the mma.
-  if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
-    const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k, device_prop.multiProcessorCount);
+  if (device_prop.major >= 8 && k % 128 == 0  && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
+    const Fp4MmaConfig cfg = ApplyFp4MmaConfigOverrides(
+        PickFp4MmaConfig(n, k, device_prop.multiProcessorCount), n, k);
     const int cols_per_block = 16 * cfg.col_tiles;
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};

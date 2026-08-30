@@ -13,9 +13,7 @@
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
-#if !defined(__wasm__)
 #include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
-#endif
 
 namespace onnxruntime {
 namespace webgpu {
@@ -123,7 +121,6 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   }
   bool has_bias = context.InputCount() > 2;
 
-#if !defined(__wasm__)
   // Lazily create the subgroup-matrix implementation (with a vendor-specific tiling
   // policy) on the first Compute call. PrePack is only invoked for constant
   // initializers, so it cannot be relied on when B is a runtime tensor (e.g. batched
@@ -140,7 +137,6 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
       return Status::OK();
     }
   }
-#endif
 
   if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
 
