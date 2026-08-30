@@ -137,7 +137,8 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
             try:
                 prepacked_output = self._run_model(prepacked_model, a)
             except Exception as exc:
-                if "compact fpA_intB build supports prepacked weights only" in str(exc):
+                outside_compact_contract = block_size != 32 or has_bias or weight_prepacked != 1
+                if outside_compact_contract and "compact fpA_intB build supports prepacked weights only" in str(exc):
                     self.skipTest("case is outside the compact fpA_intB build contract")
                 raise
 

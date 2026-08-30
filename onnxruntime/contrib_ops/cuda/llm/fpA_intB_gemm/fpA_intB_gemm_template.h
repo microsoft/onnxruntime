@@ -45,7 +45,7 @@
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
-#if !defined(EXCLUDE_SM_90) && !defined(USE_FPA_INTB_GEMM_SM80_ONLY)
+#if !defined(EXCLUDE_SM_90) && !defined(USE_COMPACT_FPA_INTB_GEMM)
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm_template_sm90.h"
 #endif
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -370,11 +370,23 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
   // printf("######## sm=%d, alpha: %f m:%d n:%d, k:%d, group_size:%d, workspace_bytes:%zu config:%s\n", sm_, alpha, m, n, k, group_size, workspace_bytes, config_str.c_str());
   ORT_ENFORCE(sm_ >= 75);
 
-#if USE_FPA_INTB_GEMM_SM80_ONLY
-  ORT_ENFORCE(sm_ >= 80);
-  dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
-                           QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
-                                                 workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
+#if USE_COMPACT_FPA_INTB_GEMM
+  if (sm_ < 80) {
+    dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm75,
+                             QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k,
+                                                   group_size, workspace_ptr, workspace_bytes, gemm_config, stream,
+                                                   occupancy);
+  } else if (sm_ == 89) {
+    dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm89,
+                             QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k,
+                                                   group_size, workspace_ptr, workspace_bytes, gemm_config, stream,
+                                                   occupancy);
+  } else {
+    dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
+                             QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k,
+                                                   group_size, workspace_ptr, workspace_bytes, gemm_config, stream,
+                                                   occupancy);
+  }
 #else
   if (sm_ < 80) {
     dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm75,

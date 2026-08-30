@@ -53,7 +53,7 @@ namespace {
 constexpr int32_t kFp16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 constexpr int32_t kBf16 = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 constexpr int32_t kFp32 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
 constexpr int64_t kDefaultBits = 8;
 #else
 constexpr int64_t kDefaultBits = 4;
@@ -124,6 +124,10 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(90, kMatMulNBitsWeightNotPrepacked), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(80, kMatMulNBitsWeightPrepackedSm90), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(80, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(86, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(89, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(100, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(120, kMatMulNBitsWeightNotPrepacked), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(75, kMatMulNBitsWeightNotPrepacked), 80);
 }
 
@@ -132,7 +136,7 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
 // ---------------------------------------------------------------------------
 TEST(MatMulNBitsWorkspace, EligibilityBasic) {
   EXPECT_TRUE(CheckDefault());
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
   EXPECT_FALSE(CheckDefault(kBf16));
 #else
   EXPECT_TRUE(CheckDefault(kBf16));
@@ -171,7 +175,7 @@ TEST(MatMulNBitsWorkspace, EligibilityInt8Alignment) {
   EXPECT_FALSE(CheckDefault(kFp16, /*N*/ 16, 1024, /*nbits*/ 8, 32));
 }
 
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
 TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 4));
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8));
@@ -183,7 +187,13 @@ TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
                             false, 80, 1, false, /*bias*/ true));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
-                            false, /*sm*/ 75));
+                            false, /*sm*/ 70));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, /*sm*/ 100));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, /*sm*/ 120));
 }
 #else
 TEST(MatMulNBitsWorkspace, EligibilitySm90PrepackedConstraints) {

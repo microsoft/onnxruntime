@@ -124,7 +124,7 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option) {
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
   const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
@@ -153,12 +153,12 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
     return false;
   }
 
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
   const bool base_ok = block_size == 32 && (nbits == 4 || nbits == 8) &&
                        !has_zero_points && !has_g_idx && !has_bias &&
                        weight_prepacked != kMatMulNBitsWeightPrepackedSm90 &&
                        N % (nbits == 8 ? 32 : 64) == 0 &&
-                       K % block_size == 0 && device_sm >= 80;
+                       K % block_size == 0 && device_sm >= 75;
 #else
   // block_size in {32,64,128} already guarantees block_size != 0, so K % block_size is well-defined.
   const bool base_ok = (block_size == 32 || block_size == 64 || block_size == 128) &&
@@ -345,7 +345,7 @@ int64_t MatMulNBits<T>::RequiredWeightPrepackedFormat() const {
 // here (non-inline, single definition, inside the CUDA EP translation unit that observes
 // COMPILE_HOPPER_TMA_GEMMS).
 bool IsNativeSm90FpAIntBGemmCompiled() {
-#if defined(COMPILE_HOPPER_TMA_GEMMS) && !defined(USE_FPA_INTB_GEMM_SM80_ONLY)
+#if defined(COMPILE_HOPPER_TMA_GEMMS) && !defined(USE_COMPACT_FPA_INTB_GEMM)
   return true;
 #else
   return false;
@@ -355,10 +355,10 @@ bool IsNativeSm90FpAIntBGemmCompiled() {
 void ValidateSm90PrepackedWeightSupport(int sm, int64_t block_size) {
   // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
   // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
-  // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
+  // block_size=32 is only supported by the non-Hopper kernel + GEMV path.
   ORT_ENFORCE(sm == 90,
               "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm);
-#if !defined(COMPILE_HOPPER_TMA_GEMMS) || defined(USE_FPA_INTB_GEMM_SM80_ONLY)
+#if !defined(COMPILE_HOPPER_TMA_GEMMS) || defined(USE_COMPACT_FPA_INTB_GEMM)
   // The native SM90 (Hopper) fpA_intB TMA/WGMMA kernel is not compiled in this build (for
   // example Windows/MSVC, where CUDA 13 NVCC host stubs hit MSVC C2719 with over-aligned TMA
   // parameters; see docs/contrib_ops/cuda/moe_qmoe.md section 14.1). The SM90 weight layout
@@ -379,7 +379,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 
   using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
   KernelType cuda_kernel_type;
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
   if constexpr (std::is_same_v<T, MLFloat16>) {
     ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
@@ -427,20 +427,24 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   }
 #endif
 
-  // On SM90 the half/bf16 weight-only path can run either the native Hopper (SM90 TMA/WGMMA) kernel
-  // or the SM80 (Ampere) mixed-GEMM kernel (which also runs on Hopper via GemmFpAIntB::operator()).
+  // The half/bf16 weight-only path can run either the native Hopper (SM90 TMA/WGMMA) kernel or the
+  // non-Hopper mixed-GEMM kernels.
   //   - Native SM90 (sm == 90): keep the runner targeting SM90 so getConfigs() enumerates Hopper
   //     tactics (tile_config_sm90) and getWorkspaceSize() reserves the stream-K workspace; opt in to
   //     the native kernel via setUseSm90Native(true).
-  //   - SM80 compat (sm == 80 while the device is SM90): force the runner to SM80 so tactic
-  //     enumeration and workspace sizing stay consistent with the dispatched SM80 kernel (the runner
-  //     otherwise defaults to the detected device SM and would enumerate Hopper tactics the SM80
-  //     dispatch cannot consume, leaving no CUTLASS GEMM tactic for M>=16).
+  //   - Non-Hopper compact mode: target SM75 below Ampere, SM89 on Ada, and the SM80 compatibility
+  //     kernel otherwise. Full mode retains its existing device-specific selection, except that an
+  //     SM90 device using the SM80 weight layout is forced to the SM80 compatibility path.
+#if USE_COMPACT_FPA_INTB_GEMM
+  const int runner_sm = sm_ < 80 ? sm_ : (sm_ == 89 ? 89 : 80);
+  weightOnlyGemmRunner_->setArch(runner_sm);
+#else
   if (sm == 90) {
     weightOnlyGemmRunner_->setUseSm90Native(true);
   } else if (sm_ == 90) {
     weightOnlyGemmRunner_->setArch(sm);
   }
+#endif
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
@@ -652,7 +656,7 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
     return Status::OK();
   }
 
-  // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
+  // Use the same packing/workspace architecture rule as the runtime request.
   const int effective_sm = FpAIntBPackingSmForKernel();
   std::optional<size_t> ws;
   try {
@@ -774,7 +778,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path
       // (GEMV CUDA kernel vs CUTLASS GEMM), the weight format, and the device/packing SM so that
-      // SM90 correctness issues (e.g. running the SM80 kernel on Hopper) can be traced.
+      // SM90 layout-selection issues can be traced.
       static const bool fpA_intB_debug =
           ParseEnvironmentVariableWithDefault<int>("ORT_FPA_INTB_DEBUG", 0) != 0;
       if (fpA_intB_debug) {
@@ -789,7 +793,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                   << " has_bias=" << (bias_data != nullptr ? 1 : 0)
                   << " has_zero_points=" << (has_zero_points_ ? 1 : 0)
                   << " weight_format=" << weight_fmt
-                  << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : (FpAIntBPackingSmForKernel() == 90 ? "CUTLASS(sm90 gemm)" : "CUTLASS(sm80 gemm)"))
+                  << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : (FpAIntBPackingSmForKernel() == 90 ? "CUTLASS(hopper gemm)" : "CUTLASS(non-hopper gemm)"))
                   << " tactic=" << bestTactic->toString()
                   << std::endl;
       }

@@ -36,9 +36,10 @@ using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
 namespace {
 constexpr bool kPipelineMode = true;  // CI pipeline?
+constexpr int kMinSupportedSm = 75;
 
 std::vector<int> get_m_list() {
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
   return {1, 15, 16, 32, 128, 512};
 #else
   if (kPipelineMode) {
@@ -50,7 +51,7 @@ std::vector<int> get_m_list() {
 }
 
 std::vector<std::pair<int, int>> get_n_k_list(wo::KernelType kernel_type) {
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
   std::vector<std::pair<int, int>> shapes{{2880, 4096}, {5120, 2880}};
   if (kernel_type == wo::KernelType::FP16Int8Groupwise) {
     shapes.emplace_back(201088, 2880);
@@ -174,7 +175,7 @@ struct cutlassTypeMapper {
     static std::string WTypeStr() { return WSizeInBits == 4 ? "Int4" : "Int8"; }                \
   };
 
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
 CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int8Groupwise, half, uint8_t, 8,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
 CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int4Groupwise, half, cutlass::uint4b_t, 4,
@@ -394,7 +395,7 @@ class KernelTestFixture : public ::testing::Test {
     void* p_bias = nullptr;
 
     if (block_size_ != 0) {
-#if !USE_FPA_INTB_GEMM_SM80_ONLY
+#if !USE_COMPACT_FPA_INTB_GEMM
       p_zeros = d_zeros_->data();
 #endif
       if constexpr (has_bias) {
@@ -428,8 +429,9 @@ class KernelTestFixture : public ::testing::Test {
     using WType = typename cutlassTypeMapper<KT>::WType;
     using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
     auto runner = std::make_shared<CutlassFpAIntBGemmRunner<AType, WType, cutlassTypeMapper<KT>::QuantOp>>();
-#if USE_FPA_INTB_GEMM_SM80_ONLY
-    runner->setArch(80);
+#if USE_COMPACT_FPA_INTB_GEMM
+    int const arch = onnxruntime::llm::common::getSMVersion();
+    runner->setArch(arch < 80 ? arch : (arch == 89 ? 89 : 80));
 #else
     if (onnxruntime::llm::common::getSMVersion() == 90) {
       runner->setUseSm90Native(true);
@@ -584,7 +586,7 @@ class KernelTestFixture : public ::testing::Test {
 
 }  // namespace
 
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
 using Fp16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int8Groupwise, false, false, true>;
 using Fp16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwise, false, false, true>;
 #else
@@ -596,15 +598,14 @@ using Bf16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwis
 
 TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
   int const arch = onnxruntime::llm::common::getSMVersion();
-  if (arch < 75) {
-    std::cout << "Skip fp16 int8 groupwise GEMM kernel for SM < 75" << std::endl;
-    return;
+  if (arch < kMinSupportedSm) {
+    GTEST_SKIP() << "fp16 int8 groupwise GEMM kernel requires SM " << kMinSupportedSm << " or later";
   }
 
   for (auto m : get_m_list()) {
     for (const auto& [n, k] : get_n_k_list(wo::KernelType::FP16Int8Groupwise)) {
       InitBuffers(m, n, k,
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
                   32
 #else
                   64
@@ -617,15 +618,14 @@ TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
 
 TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   int const arch = onnxruntime::llm::common::getSMVersion();
-  if (arch < 75) {
-    std::cout << "Skip fp16 int4 groupwise GEMM kernel for SM < 75" << std::endl;
-    return;
+  if (arch < kMinSupportedSm) {
+    GTEST_SKIP() << "fp16 int4 groupwise GEMM kernel requires SM " << kMinSupportedSm << " or later";
   }
 
   for (auto m : get_m_list()) {
     for (const auto& [n, k] : get_n_k_list(wo::KernelType::FP16Int4Groupwise)) {
       InitBuffers(m, n, k,
-#if USE_FPA_INTB_GEMM_SM80_ONLY
+#if USE_COMPACT_FPA_INTB_GEMM
                   32
 #else
                   64
@@ -636,7 +636,7 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   }
 }
 
-#if !USE_FPA_INTB_GEMM_SM80_ONLY
+#if !USE_COMPACT_FPA_INTB_GEMM
 TEST_F(Bf16Int8GroupwiseTest, BF16_Int8_Gemm_CudaKernel) {
   int const arch = onnxruntime::llm::common::getSMVersion();
   if (arch < 80) {
