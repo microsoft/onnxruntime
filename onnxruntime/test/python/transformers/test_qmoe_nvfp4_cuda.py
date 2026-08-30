@@ -310,6 +310,7 @@ class TestQMoENVFP4(unittest.TestCase):
         use_swiglu=False,
         block_size=NVFP4_BLOCK_SIZE,
         gemv_mode=None,
+        disable_prepacking=False,
         input_scale=1.0,
         atol_override=None,
         router_logits_override=None,
@@ -373,6 +374,8 @@ class TestQMoENVFP4(unittest.TestCase):
 
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        if disable_prepacking:
+            opts.add_session_config_entry("session.disable_prepacking", "1")
         # gemv_mode toggles the fused FP4 GEMV decode path (read once in the QMoE op ctor during
         # session creation): "1" forces it on, "0" forces the dequant fallback, None leaves the
         # default. Restore the previous value right after the session is built.
@@ -566,7 +569,7 @@ class TestQMoENVFP4(unittest.TestCase):
         self._run_nvfp4_moe_test(
             hidden_size=64,
             inter_size=64,
-            num_experts=4,
+            num_experts=16,
             top_k=2,
             num_tokens=32,
             onnx_dtype=TensorProto.FLOAT16,
@@ -664,6 +667,18 @@ class TestQMoENVFP4(unittest.TestCase):
             gemv_mode="1",
         )
 
+    def test_nvfp4_fp16_gemv_qwen_flash_decode_shape(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=16,
+            top_k=10,
+            num_tokens=1,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
     def test_nvfp4_bf16_gemv_decode_swiglu(self):
         self._run_nvfp4_moe_test(
             hidden_size=512,
@@ -675,6 +690,33 @@ class TestQMoENVFP4(unittest.TestCase):
             use_swiglu=True,
             gemv_mode="1",
         )
+
+    def test_nvfp4_fp16_gemv_route_debug(self):
+        # Run in a fresh process because QMoE reads the debug and GEMV env switches when the
+        # session constructs the kernel. The route line proves this shape did not merely pass
+        # through the numerically equivalent raw dequant fallback.
+        self._skip_if_no_fp4()
+        env = dict(os.environ)
+        env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
+        env["ORT_ENABLE_FP4_GEMV"] = "1"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "-v",
+                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.test_nvfp4_fp16_gemv_decode_swiglu",
+            ],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0, output)
+        self.assertIn("Operator=QMoE", output)
+        self.assertIn("Route=fp4_gemv", output)
 
     def test_nvfp4_fp16_gemv_scales_weights_before_multiply(self):
         # Overflow guard for accumulate_column_tile(): it must apply the group scale to the
@@ -707,6 +749,18 @@ class TestQMoENVFP4(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="0",
+        )
+
+    def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=64,
+            inter_size=64,
+            num_experts=4,
+            top_k=2,
+            num_tokens=4,
+            onnx_dtype=TensorProto.FLOAT16,
+            gemv_mode="1",
+            disable_prepacking=True,
         )
 
     @parameterized.expand(
@@ -756,8 +810,9 @@ class TestQMoENVFP4(unittest.TestCase):
 
     def test_nvfp4_fp16_gemv_expanded_rows_above_window_limit(self):
         # 9 tokens x top_k 8 = 72 > kMaxProfiledExpandedRowsFp4, so the GEMV path is rejected
-        # even with gemv_mode="1" and the run must still be correct on the dequant fallback.
-        self._run_nvfp4_moe_test(
+        # even with gemv_mode="1". Both sessions must dequantize the retained raw initializer;
+        # compare them to the Torch reference and directly to each other.
+        shape = dict(
             hidden_size=512,
             inter_size=512,
             num_experts=8,
@@ -765,7 +820,14 @@ class TestQMoENVFP4(unittest.TestCase):
             num_tokens=9,
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
-            gemv_mode="1",
+        )
+        enabled_fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        raw_fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="0")
+        max_diff = (enabled_fallback.float() - raw_fallback.float()).abs().max().item()
+        self.assertLess(
+            max_diff,
+            0.12,
+            f"NVFP4 enabled fallback diverged from raw-layout fallback: max_diff={max_diff:.6f}",
         )
 
     def test_nvfp4_fp16_gemv_long_k_tiling(self):
