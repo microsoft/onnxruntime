@@ -30,9 +30,11 @@ import json
 import math
 import os
 import statistics
+import sys
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -41,6 +43,13 @@ from onnx import TensorProto, helper
 
 import onnxruntime
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail as OrtFail
+
+_TRANSFORMERS_TEST_DIR = Path(__file__).resolve().parents[1] / "transformers"
+sys.path.insert(0, str(_TRANSFORMERS_TEST_DIR))
+try:
+    from env_var_helper import scoped_env_var
+finally:
+    sys.path.pop(0)
 
 try:
     import nvtx
@@ -211,6 +220,11 @@ def _fp4_native_sm120_enabled() -> bool:
     return os.environ.get("ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120", "").lower() in {"1", "true", "yes", "on"}
 
 
+def _env_enabled(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    return default if value is None else value.lower() in {"1", "true", "yes", "on"}
+
+
 def _fp4_native_sm120_supported(case: Case) -> bool:
     block_size = case.block_size or 16
     return (
@@ -225,7 +239,10 @@ def _fp4_native_sm120_supported(case: Case) -> bool:
 
 def _fp4_expected_path(case: Case) -> str:
     block_size = case.block_size or 16
-    if case.m > 0 and case.m <= 8 and block_size == 16 and case.k % 32 == 0:
+    gemv_max_m = 8
+    if torch.cuda.get_device_capability()[0] >= 8 and case.k % 128 == 0 and _env_enabled("ORT_FP4_GEMV_MMA", True):
+        gemv_max_m = int(os.environ.get("ORT_FP4_GEMV_MAX_M", "32"))
+    if case.m > 0 and case.m <= gemv_max_m and block_size == 16 and case.k % 32 == 0:
         return "fp4_gemv"
     if _fp4_native_sm120_supported(case):
         return "sm120_native_fp4_gemm"
@@ -302,7 +319,16 @@ def _fp8_reference(a: torch.Tensor, b_dequantized: torch.Tensor, bias: torch.Ten
 
 def _fp8_expected_path(case: Case) -> str:
     block_size = case.block_size or 128
-    if case.m > 0 and case.m <= 8 and case.k % 16 == 0 and block_size % 16 == 0:
+    gemv_max_m = 8
+    if (
+        torch.cuda.get_device_capability()[0] >= 8
+        and case.k % 64 == 0
+        and case.k >= 256
+        and block_size % 64 == 0
+        and _env_enabled("ORT_FP8_GEMV_MMA", True)
+    ):
+        gemv_max_m = int(os.environ.get("ORT_FP8_GEMV_MAX_M", "32"))
+    if case.m > 0 and case.m <= gemv_max_m and case.k % 16 == 0 and block_size % 16 == 0:
         return "fp8_gemv"
     return "fp8_dequant_cublas"
 
@@ -481,6 +507,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--activation-dtype", choices=["fp16", "bf16"], default="fp16")
     parser.add_argument("--bias", action="store_true", help="Enable bias input")
     parser.add_argument("--w8a8", action="store_true", help="FP8 only: statically quantize A to FP8 (a_scale)")
+    parser.add_argument("--gemv-max-m", type=int, help="Temporarily override the selected format's GEMV M limit")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--repeat", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
@@ -492,11 +519,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     _require_cuda()
+    if args.gemv_max_m is not None and not 1 <= args.gemv_max_m <= 64:
+        raise ValueError("--gemv-max-m must be in [1, 64].")
     single_case_args = [args.m is not None, args.n is not None, args.k is not None]
     if any(single_case_args) and not all(single_case_args):
         raise ValueError("Single-case mode requires all of --m, --n and --k.")
 
-    results = [run_case(case, args.warmup, args.repeat, args.atol, args.rtol) for case in _default_cases(args)]
+    env_name = f"ORT_{args.op.upper()}_GEMV_MAX_M"
+    env_scope = scoped_env_var(env_name, str(args.gemv_max_m)) if args.gemv_max_m is not None else nullcontext()
+    with env_scope:
+        results = [run_case(case, args.warmup, args.repeat, args.atol, args.rtol) for case in _default_cases(args)]
     failures = [result for result in results if not result["passed"]]
     if failures:
         raise SystemExit(f"{len(failures)} case(s) failed accuracy checks")

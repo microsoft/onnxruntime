@@ -454,7 +454,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeRowTiledBf16) {
 }
 
 // Exercises the tensor-core GEMV sub-path (mma.m16n8k16), which the launcher selects on SM80+
-// when K is a multiple of 128 and M <= 8. None of the tests above reach it (they use K = 32/64).
+// when K is a multiple of 128. None of the tests above reach it (they use K = 32/64).
 //
 // That path permutes the K axis so every lane's loads are contiguous, and folds the per-block
 // E4M3 scale into the decoded weight instead of flushing the accumulator per block. A K
@@ -539,7 +539,9 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesFp16) {
   }
 
   for (const auto& shape : kMmaShapes) {
-    for (int m_val : {1, 3, 4, 8}) {
+    // 1-8 use one row tile, 9-16 two and 17-32 four. M=33 and 64 exercise a partial and full
+    // second launch, respectively; odd values leave masked rows that must not be written.
+    for (int m_val : {1, 3, 4, 8, 9, 16, 17, 32, 33, 64}) {
       const int64_t m = m_val;
       const int64_t n = shape.n;
       const int64_t k = shape.k;
@@ -574,7 +576,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
   constexpr int64_t n = 512;
   constexpr int64_t k = 256;
 
-  for (int m_val : {1, 4, 8}) {
+  for (int m_val : {1, 4, 8, 16, 32, 33, 64}) {
     const int64_t m = m_val;
     SCOPED_TRACE("M = " + std::to_string(m));
 
@@ -708,11 +710,12 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
 }
 
 // ---------------------------------------------------------------------------
-// Prefill (M > kGemvMaxM) dequantize + cuBLAS path.
+// Prefill dequantize + cuBLAS path.
 //
 // LaunchDequantizeNvFp4 picks DequantizeNvFp4Vec8Kernel when K % 8 == 0 and block_size is even,
 // and the scalar DequantizeNvFp4Kernel otherwise. The cases below cover both sides of that guard;
-// every one uses M > 8 so the decode GEMV is skipped and the dequant actually runs.
+// every one uses a block_size other than 16, which the decode GEMV does not handle, so the dequant
+// actually runs regardless of M.
 // ---------------------------------------------------------------------------
 
 // Vectorized path: K % 8 == 0, even block_size, scale boundaries inside every 8-element chunk,
