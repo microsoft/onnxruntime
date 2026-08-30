@@ -1,0 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <limits>
+#include <cassert>
+#include <chrono>
+#include <vector>
+
+#include <gsl/gsl>
