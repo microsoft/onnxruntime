@@ -1090,9 +1090,8 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias_Prepacked) {
 
 // A prepacked weight (weight_prepacked!=0) forces the fpA_intB path on regardless of the enable
 // flag, and the constructor ORT_ENFORCEs that the path is actually supported for the node. Here the
-// block_size (256) is outside the fpA_intB-supported set {32, 64, 128}, so kernel construction is
-// rejected up front with "weight_prepacked requires the fpA_intB path, but it is unsupported ...",
-// even though ORT_FPA_INTB_GEMM is enabled.
+// block_size (256) is outside the fpA_intB-supported set, so kernel construction is rejected up front
+// with a build-specific diagnostic even though ORT_FPA_INTB_GEMM is enabled.
 TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
@@ -1106,7 +1105,11 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
   opts.block_size = 256;
   opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 1;
+#if USE_COMPACT_FPA_INTB_GEMM
+  opts.expected_failure = "This compact fpA_intB build supports";
+#else
   opts.expected_failure = "weight_prepacked requires";
+#endif
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
