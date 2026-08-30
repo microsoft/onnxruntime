@@ -27,6 +27,42 @@ MatMulOptImpl* MatMulComputeCache::GetOrCreateSubgroupMatrixImpl(const ComputeCo
   return subgroup_impl_.get();
 }
 
+std::optional<MatMulNaiveProgramInfo> AnalyzeMatMulNaiveProgram(
+    const TensorShape& a_shape,
+    const TensorShape& b_shape,
+    bool is_channels_last) {
+  MatMulComputeHelper helper;
+  if (!helper.Compute(a_shape, b_shape).IsOK() || helper.N() >= 8 || helper.K() >= 8) {
+    return std::nullopt;
+  }
+
+  const uint32_t m = narrow<uint32_t>(helper.M());
+  const uint32_t n = narrow<uint32_t>(helper.N());
+  const uint32_t k = narrow<uint32_t>(helper.K());
+  const uint32_t components = narrow<uint32_t>(GetMaxComponents(n));
+  const uint32_t a_components = narrow<uint32_t>(GetMaxComponents(k));
+  const uint32_t output_number = narrow<uint32_t>(GetMaxComponents(m));
+  const TensorShape output_shape = helper.OutputShape();
+  const size_t output_rank = output_shape.NumDimensions();
+  const TensorShape outer_dims =
+      output_rank > 2 ? output_shape.Slice(0, output_rank - 2) : TensorShape({});
+
+  return MatMulNaiveProgramInfo{
+      m,
+      n,
+      k,
+      components,
+      a_components,
+      output_number,
+      narrow<uint32_t>(output_shape.Size() / components / output_number),
+      is_channels_last ? components : 1u,
+      output_rank,
+      ReduceShapeByComponents(a_shape, a_components),
+      ReduceShapeByComponents(b_shape, components),
+      TensorShape({outer_dims.Size(), m, n / components}),
+      outer_dims};
+}
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     MatMul,
     kOnnxDomain,
@@ -67,19 +103,21 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
+  const int a_components = a.NumComponents();
+  const int components = b.NumComponents();  // components of N
+
   std::string process_bias;
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = is_channels_last_ ? "value += output_value_t(bias[col]);" : "value += output_value_t(bias[row + i]);";
+    process_bias = is_channels_last_
+                       ? "value += output_value_t(bias[col / " + std::to_string(components) + "]);"
+                       : "value += output_value_t(bias[row + i]);";
   }
 
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                       ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims");
-
-  int a_components = a.NumComponents();
-  int components = b.NumComponents();  // components of N
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let col = (global_idx % (uniforms.N / " << components << ")) * " << components << ";\n"
@@ -138,9 +176,8 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   }
 
   return ComputeMatMul(&context, Activation(), inputs, output_tensor,
-                       /*is_channels_last=*/true, TensorShape(), TensorShape(),
-                       &compute_cache_, b_is_constant_,
-                       /*enable_standalone_optimizations=*/true);
+                       /*is_channels_last=*/false, TensorShape(), TensorShape(),
+                       &compute_cache_, b_is_constant_);
 }
 
 Status ComputeMatMul(ComputeContext* context,
@@ -148,13 +185,14 @@ Status ComputeMatMul(ComputeContext* context,
                      const TensorShape& input_a_reshape,
                      const TensorShape& input_b_reshape,
                      MatMulComputeCache* cache,
-                     bool b_is_constant,
-                     bool enable_standalone_optimizations) {
+                     bool b_is_constant) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
-  TensorShape a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
-  TensorShape b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
+  const TensorShape logical_a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
+  const TensorShape logical_b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
+  TensorShape a_shape = logical_a_shape;
+  TensorShape b_shape = logical_b_shape;
 
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
@@ -196,44 +234,36 @@ Status ComputeMatMul(ComputeContext* context,
       return Status::OK();
     }
   }
-  if (enable_standalone_optimizations && helper.N() < 8 && helper.K() < 8) {
-    const uint32_t m = narrow<uint32_t>(helper.M());
-    const uint32_t n = narrow<uint32_t>(helper.N());
-    const uint32_t k = narrow<uint32_t>(helper.K());
-    const auto components = GetMaxComponents(n);
-    const auto a_components = GetMaxComponents(k);
-    const auto output_number = GetMaxComponents(m);
-    const uint32_t output_size = narrow<uint32_t>(helper.OutputShape().Size() / components / output_number);
-    const size_t output_rank = helper.OutputShape().NumDimensions();
-    const TensorShape naive_outer_dims =
-        output_rank > 2 ? helper.OutputShape().Slice(0, output_rank - 2) : TensorShape({});
-    const int64_t naive_batch_size = naive_outer_dims.Size();
-    const int64_t a_rows = a->Shape().NumDimensions() > 1
-                               ? a->Shape()[a->Shape().NumDimensions() - 2]
-                               : 1;
-    const TensorShape output_shape_shader({naive_batch_size, a_rows, helper.N() / components});
-    constexpr bool naive_is_channels_last = false;
-    MatMulNaiveProgram program{activation, output_rank, output_number, has_bias, naive_is_channels_last};
+  const auto naive_info = AnalyzeMatMulNaiveProgram(logical_a_shape, logical_b_shape, is_channels_last);
+  if (naive_info.has_value()) {
+    MatMulNaiveProgram program{activation, naive_info->output_rank,
+                               naive_info->output_number, has_bias, is_channels_last};
     program
-        .CacheHint(activation.CacheKey(), std::to_string(components), std::to_string(a_components),
-                   std::to_string(output_number), std::to_string(naive_is_channels_last))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
+        .CacheHint(activation.CacheKey(), std::to_string(naive_info->components),
+                   std::to_string(naive_info->a_components),
+                   std::to_string(naive_info->output_number), std::to_string(is_channels_last))
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank,
+                     naive_info->a_program_shape, narrow<int>(naive_info->a_components)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank,
+                     naive_info->b_program_shape, narrow<int>(naive_info->components)}});
     if (has_bias) {
-      program.AddInput({inputs[2], ProgramTensorMetadataDependency::Rank, 1});
+      program.AddInput({inputs[2], ProgramTensorMetadataDependency::Rank,
+                        ReduceShapeByComponents(inputs[2]->Shape(), naive_info->bias_components),
+                        narrow<int>(naive_info->bias_components)});
     }
     program
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
-        .SetDispatchGroupSize(CeilDiv(output_size, 64u))
-        .AddIndices(naive_outer_dims)
-        .AddUniformVariables({{output_size}, {m}, {n}, {k}});
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None,
+                      naive_info->output_program_shape, narrow<int>(naive_info->components)}})
+        .SetDispatchGroupSize(CeilDiv(naive_info->output_size, 64u))
+        .AddIndices(naive_info->outer_dims)
+        .AddUniformVariables({{naive_info->output_size}, {naive_info->M}, {naive_info->N}, {naive_info->K}});
     AppendActivationUniformsData(activation, program);
     return context->RunProgram(program);
   }
 
-  if (enable_standalone_optimizations &&
-      intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
-    return intel::ApplyMatMulIntel(*context, activation, inputs, output_tensor);
+  if (intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
+    return intel::ApplyMatMulIntel(*context, activation, inputs, logical_a_shape, logical_b_shape,
+                                   output_tensor, is_channels_last);
   }
 
   // helpful dimension variables
@@ -283,7 +313,10 @@ Status ComputeMatMul(ComputeContext* context,
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context->KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context->GetSplitKConfig();
-    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
+    const bool split_k_layout_supported = !has_bias || is_channels_last;
+    const bool need_split_k = split_k_config.UseSplitK(
+        is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer,
+        dim_inner, split_k_layout_supported);
     if (need_split_k) {
       ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
 

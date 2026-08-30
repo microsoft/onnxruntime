@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul_naive.h"
 #include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -14,6 +15,53 @@ namespace onnxruntime {
 namespace test {
 
 #if !defined(__wasm__)
+
+TEST(MatMulNaiveProgramTest, UsesLogicalChannelsLastConvShapes) {
+  const auto info = webgpu::AnalyzeMatMulNaiveProgram(
+      TensorShape({1, 64, 4}), TensorShape({1, 4, 6}),
+      /*is_channels_last=*/true);
+
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->M, 64u);
+  EXPECT_EQ(info->N, 6u);
+  EXPECT_EQ(info->K, 4u);
+  EXPECT_EQ(info->components, 2u);
+  EXPECT_EQ(info->a_components, 4u);
+  EXPECT_EQ(info->output_number, 4u);
+  EXPECT_EQ(info->output_size, 48u);
+  EXPECT_EQ(info->bias_components, 2u);
+  EXPECT_EQ(info->a_program_shape.AsShapeVector(), TensorShapeVector({1, 64, 1}));
+  EXPECT_EQ(info->b_program_shape.AsShapeVector(), TensorShapeVector({1, 4, 3}));
+  EXPECT_EQ(info->output_program_shape.AsShapeVector(), TensorShapeVector({1, 64, 3}));
+  EXPECT_EQ(info->outer_dims.AsShapeVector(), TensorShapeVector({1}));
+}
+
+TEST(MatMulNaiveProgramTest, UsesScalarBiasForChannelsFirstConv) {
+  const auto info = webgpu::AnalyzeMatMulNaiveProgram(
+      TensorShape({1, 6, 4}), TensorShape({1, 4, 4}),
+      /*is_channels_last=*/false);
+
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->bias_components, 1u);
+}
+
+TEST(MatMulNaiveProgramTest, FlattensBroadcastDimensionsForShaderIndexing) {
+  const auto info = webgpu::AnalyzeMatMulNaiveProgram(
+      TensorShape({2, 1, 4, 4}), TensorShape({1, 3, 4, 6}),
+      /*is_channels_last=*/false);
+
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->output_rank, 4u);
+  EXPECT_EQ(info->outer_dims.AsShapeVector(), TensorShapeVector({2, 3}));
+  EXPECT_EQ(info->output_program_shape.AsShapeVector(), TensorShapeVector({6, 4, 3}));
+}
+
+TEST(MatMulNaiveProgramTest, DeclinesNonSmallProblem) {
+  EXPECT_FALSE(webgpu::AnalyzeMatMulNaiveProgram(
+                   TensorShape({1, 64, 8}), TensorShape({1, 8, 6}),
+                   /*is_channels_last=*/true)
+                   .has_value());
+}
 
 TEST(SubgroupMatrixMatMulTest, AnalyzesShared2DWeight) {
   const auto problem = webgpu::AnalyzeSubgroupMatrixMatMulProblem(
@@ -256,6 +304,17 @@ template <int version = 13>
 void RunBothTypes(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
   RunTestTyped<float, version>(a_dims, b_dims);
   RunTestTyped<MLFloat16, version>(a_dims, b_dims);
+}
+
+TEST(MatMulNaiveProgramTest, Broadcast4DExecution) {
+  RunTestTyped<float>({3, 1, 1, 2}, {2, 2, 2});
+  RunTestTyped<float>({2, 2, 3, 2}, {2, 1});
+  RunTestTyped<float>({2, 3, 2}, {3, 2, 2, 1});
+}
+
+TEST(MatMulNaiveProgramTest, VectorExecution) {
+  RunTestTyped<float>({2}, {2, 3});
+  RunTestTyped<float>({3}, {3});
 }
 
 // 2D aligned baseline shapes.

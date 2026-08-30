@@ -1519,6 +1519,37 @@ TEST(ConvFp16Test, WebGpuSubgroupPointwiseBias) {
   RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::Bias);
 }
 
+TEST(ConvFp16Test, WebGpuNaivePointwiseNhwcBias) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  OpTester test("Conv", 11, onnxruntime::kMSInternalNHWCDomain);
+  test.AddAttribute("group", static_cast<int64_t>(1));
+  test.AddAttribute("kernel_shape", vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("strides", vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", vector<int64_t>{1, 1});
+
+  test.AddInput<MLFloat16>("X", {1, 1, 2, 4},
+                           vector<MLFloat16>(8, MLFloat16(1.0f)));
+  test.AddInput<MLFloat16>("W", {6, 4, 1, 1},
+                           vector<MLFloat16>(24, MLFloat16(1.0f)),
+                           /*is_initializer=*/true);
+  test.AddInput<MLFloat16>("B", {6},
+                           {MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(2.0f),
+                            MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(5.0f)},
+                           /*is_initializer=*/true);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 2, 6},
+                            {MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                             MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f),
+                             MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                             MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)},
+                            /*no_sort=*/false, 0.01f, 0.01f);
+  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST(ConvFp16Test, WebGpuSubgroupPointwiseNhwcFusedConvClip) {
   RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::FusedClip);

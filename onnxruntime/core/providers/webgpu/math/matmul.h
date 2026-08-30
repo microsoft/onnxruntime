@@ -9,6 +9,7 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul_naive.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -50,8 +51,7 @@ Status ComputeMatMul(ComputeContext* context, const Activation& activation, std:
                      const TensorShape& input_a_reshape = TensorShape(),
                      const TensorShape& input_b_reshape = TensorShape(),
                      MatMulComputeCache* cache = nullptr,
-                     bool b_is_constant = false,
-                     bool enable_standalone_optimizations = false);
+                     bool b_is_constant = false);
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,

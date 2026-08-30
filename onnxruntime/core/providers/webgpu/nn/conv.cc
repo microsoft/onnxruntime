@@ -251,39 +251,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (has_bias) {
       matmul_inputs.push_back(bias);
     }
-    auto N = matmul_output_shape[2];
-    auto matmul_first_input_numdims = matmul_input_reshapes[0].NumDimensions();
-    auto K = matmul_input_reshapes[0].GetDims()[matmul_first_input_numdims - 1];
-    if (N < 8 && K < 8) {
-      const auto components = GetMaxComponents(N);
-      const auto a_components = GetMaxComponents(K);
-      const auto output_number = GetMaxComponents(output_shape[1]);
-      uint32_t output_size = static_cast<uint32_t>(output_shape.Size() / components / output_number);
-      const size_t output_rank = matmul_output_shape.NumDimensions();
-      TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
-      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
-      program
-          .CacheHint(activation_.CacheKey(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
-          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
-                      {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
-      if (has_bias) {
-        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, ReduceShapeByComponents(bias->Shape(), components), components});
-      }
-      program
-          .AddOutputs({{output, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(matmul_output_shape, components), int(components)}})
-          .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
-          .AddIndices(outer_dims)
-          .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
-      // Activation uniforms must remain last because definitions and values are matched by index.
-      AppendActivationUniformsData(activation_, program);
-      return context.RunProgram(program);
-    } else {
-      const auto cache_policy = GetPointwiseConvMatMulCachePolicy(
-          is_channels_last, matmul_inputs[1], transposed_kernel_.get(), matmul_compute_cache_);
-      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
-                           matmul_input_reshapes[0], matmul_input_reshapes[1],
-                           cache_policy.cache, cache_policy.b_is_constant);
-    }
+    const auto cache_policy = GetPointwiseConvMatMulCachePolicy(
+        is_channels_last, matmul_inputs[1], transposed_kernel_.get(), matmul_compute_cache_);
+    return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
+                         matmul_input_reshapes[0], matmul_input_reshapes[1],
+                         cache_policy.cache, cache_policy.b_is_constant);
   }
   // Transpose weights when necessary
   Tensor transposed_kernel;
