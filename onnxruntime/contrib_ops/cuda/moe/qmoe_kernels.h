@@ -20,7 +20,8 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int num_shared_experts = 0);
 
 void LaunchSoftmaxTopK(
     const half* logits,
@@ -30,7 +31,8 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int num_shared_experts = 0);
 
 void LaunchSoftmaxTopK(
     const __nv_bfloat16* logits,
@@ -40,7 +42,8 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int num_shared_experts = 0);
 
 void LaunchSparseMixerTop2(
     const float* input,

@@ -132,6 +132,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_awq = false;
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
 
+  // Shared-expert fusion: the last ``num_shared_experts_`` expert slots are
+  // always-on shared experts (see SoftmaxTopKKernel). Each token is routed to
+  // its ``k_`` routed experts plus all shared experts, so the per-token selection
+  // buffers hold ``k_total`` entries while the grouped GEMM operates over
+  // ``moe_params.num_experts`` (already includes the shared slots).
+  ORT_RETURN_IF_NOT(num_shared_experts_ < moe_params.num_experts,
+                    "num_shared_experts (", num_shared_experts_, ") must be < num_experts (",
+                    moe_params.num_experts, ").");
+  const int64_t k_total = k_ + num_shared_experts_;
+
   if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
     auto tactics = moe_runner.getTactics();
     if (!tactics.empty()) {
@@ -142,7 +152,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     mGemmProfiler.setAllocator(std::move(allocator));
-    mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(this->k_),
+    mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_total),
                                     static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
                                     static_cast<int64_t>(this->block_size_), kernel_activation_type,
                                     false, true, parallelism_config, sm);
@@ -204,12 +214,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
-      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_),
+      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_total),
       kernel_activation_type, parallelism_config, use_awq);
 
   // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
   // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
-  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_total);
   size_t scales_bytes = expanded_rows * sizeof(float);
   size_t indices_bytes = expanded_rows * sizeof(int);
   size_t permutation_bytes = expanded_rows * sizeof(int);
@@ -259,7 +269,8 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(moe_params.num_experts),
           static_cast<int>(k_),
           normalize_routing_weights_,
-          stream);
+          stream,
+          static_cast<int>(num_shared_experts_));
     } else {
       LaunchSoftmaxTopK(
           reinterpret_cast<const float*>(router_probs->DataRaw()),
@@ -269,7 +280,8 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(moe_params.num_experts),
           static_cast<int>(k_),
           normalize_routing_weights_,
-          stream);
+          stream,
+          static_cast<int>(num_shared_experts_));
     }
   }
 
@@ -342,7 +354,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       quant_params,
       static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
       static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
-      static_cast<int>(k_),
+      static_cast<int>(k_total),
       workspace_ptr,
       reinterpret_cast<void*>(output->template MutableData<T>()),
       unpermuted_row_to_permuted_row,
