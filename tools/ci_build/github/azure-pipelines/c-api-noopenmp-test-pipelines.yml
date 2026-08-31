@@ -86,6 +86,7 @@ stages:
     parameters:
       artifactName: 'onnxruntime-android-qnn-aar'
       packageName: 'onnxruntime-android-qnn'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       #TODO: get this information from the setup stage
       QnnSDKVersion: '2.42.0.251225'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
