@@ -9,6 +9,14 @@ The generic memory-estimation framework is a separate work track. PA and PMHA no
 declaration points, but partition budgeting, memory planning, and planned-root or preallocation integration remain
 outside this operator-specific work.
 
+Related design and rollout:
+
+- [Constrained-environment memory roadmap](https://github.com/microsoft/onnxruntime/issues/29775)
+- [Generic workspace framework and future allocation modes](future_directions_constrained_env.md#phase-a-workspace-pre-declaration-declareworkspacerequirements)
+- [Optional-aware Level-2 input-shape contract](https://github.com/microsoft/onnxruntime/pull/32312)
+- [Activation memory-pattern planner](https://github.com/microsoft/onnxruntime/pull/32071)
+- [PA/PMHA Level-1 and Level-2 adapters](https://github.com/microsoft/onnxruntime/pull/32321)
+
 The Attention work owns:
 
 - graph-free problem descriptions and checked workspace recipes;
