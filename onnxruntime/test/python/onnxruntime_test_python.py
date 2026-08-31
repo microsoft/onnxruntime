@@ -2057,6 +2057,17 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
             io_binding.bind_ortvalue_output(output_name, owned_by(1))
 
+        # update_inplace shares the rule, so a same-context source must copy through.
+        payload = np.arange(np.prod(session.get_inputs()[0].shape), dtype=np.float32).reshape(
+            session.get_inputs()[0].shape
+        )
+        destination = WebGpuValue(onnxrt.OrtValue.ortvalue_from_numpy(payload.copy())._get_c_value())
+        destination._session = FakeSession(0)
+        destination.update_inplace(owned_by(0))
+        np.testing.assert_array_equal(destination.numpy(), np.zeros_like(payload))
+        with self.assertRaisesRegex(ValueError, "must originate from the same session"):
+            destination.update_inplace(owned_by(1))
+
     def test_foreign_webgpu_context_predicate(self):
         """Unit-test the copy_tensors context predicate without needing a second WebGPU context.
 

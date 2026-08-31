@@ -88,18 +88,24 @@ def _graph_annotation_id(run_options) -> int:
         raise ValueError(f"Run option '{_GPU_GRAPH_ID_RUN_CONFIG_KEY}' must be an integer, got {entry!r}.") from None
 
 
+def _is_ortvalue_session_compatible(ortvalue, target_session) -> bool:
+    """Whether ``target_session`` can share ``ortvalue``'s buffer.
+
+    Sessionless values come from a shared allocator. A session-owned WebGPU buffer is
+    usable by any session on the same WebGPU context.
+    """
+    if ortvalue._session is None or target_session is None or ortvalue._session is target_session:
+        return True
+    return ortvalue._is_webgpu_buffer and ortvalue._session.webgpu_context_id() == target_session.webgpu_context_id()
+
+
 def _validate_ortvalue_session_compatibility(ortvalue, target_session, action) -> None:
     """Reject an OrtValue that the target session cannot share buffers with.
 
     ``action`` is the verb used in the message, e.g. ``"used with"`` or ``"bound to"``.
-    Sessionless values come from a shared allocator. A session-owned WebGPU buffer is
-    usable by any session on the same WebGPU context.
     """
-    if ortvalue._session is None or ortvalue._session is target_session:
-        return
-    if ortvalue._is_webgpu_buffer and ortvalue._session.webgpu_context_id() == target_session.webgpu_context_id():
-        return
-    raise ValueError(f"Session-scoped OrtValue must be {action} the session that created it.")
+    if not _is_ortvalue_session_compatible(ortvalue, target_session):
+        raise ValueError(f"Session-scoped OrtValue must be {action} the session that created it.")
 
 
 class AdapterFormat:
@@ -1588,7 +1594,7 @@ class OrtValue:
                     "WebGPU OrtValue copies require WebGPU source and destination values; "
                     "use IOBinding.copy_outputs_to_cpu for readback."
                 )
-            if self._session is not None and data._session is not None and data._session is not self._session:
+            if not _is_ortvalue_session_compatible(data, self._session):
                 raise ValueError("Session-scoped OrtValues must originate from the same session.")
 
             self._ortvalue.update_inplace(data._ortvalue)
