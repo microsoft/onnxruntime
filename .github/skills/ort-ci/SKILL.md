@@ -1,6 +1,7 @@
 ---
 name: ort-ci
-description: Trigger, re-run, and unblock ONNX Runtime CI checks on a GitHub pull request. Use this skill when a required check is stuck, missing, failed, or needs re-running. Nearly all ORT CI runs as GitHub Actions workflows; only the "Linux Android Emulator QNN CI Pipeline" remains on Azure Pipelines, plus the bot-driven "license/cla" and "Python format" lint checks. Triggers on: rerun CI, retrigger checks, stuck check, missing pipeline, failed CI, license/cla, Python format failure, Doc Gen CI failure, operator docs out of date, /azp run.
+description: |
+  Trigger, re-run, and unblock ONNX Runtime CI checks on a GitHub pull request. Use this skill when a required check is stuck, missing, failed, or needs re-running. Nearly all ORT CI runs as GitHub Actions workflows; only the "Linux Android Emulator QNN CI Pipeline" remains on Azure Pipelines, plus the bot-driven "license/cla" and "Python format" lint checks. Triggers on: rerun CI, retrigger checks, stuck check, missing pipeline, failed CI, license/cla, Python format failure, Doc Gen CI failure, operator docs out of date, /azp run.
 ---
 
 # ONNX Runtime CI Management

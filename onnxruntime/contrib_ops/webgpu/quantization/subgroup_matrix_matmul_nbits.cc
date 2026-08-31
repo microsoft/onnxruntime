@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
@@ -301,5 +299,3 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif

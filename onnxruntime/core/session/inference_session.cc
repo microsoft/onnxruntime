@@ -1802,17 +1802,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
     // Insert cast node/s.
     {
-      const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+      // The full list, custom registries included: the transformer decides whether a node has a usable CPU
+      // kernel, and a kernel from a custom registry counts. Keeping only the CPU EP's own registry (the last
+      // entry, per the design of GetKernelRegistriesByProviderType) would make a node covered by a custom
+      // fp16 kernel look kernel-less, so it would be rewritten to fp32 and the custom kernel never used.
+      InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
           kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
 
-      const KernelRegistry* cpu_regs = nullptr;
-      if (!kernel_regs.empty()) {
-        // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
-        //       of GetKernelRegistriesByProviderType function.
-        cpu_regs = kernel_regs[kernel_regs.size() - 1];
-      }
-
-      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs, on_partition_assignment_fn};
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", std::move(kernel_regs),
+                                                    on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));

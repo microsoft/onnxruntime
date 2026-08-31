@@ -10,7 +10,6 @@
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
-#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -39,7 +38,7 @@ PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
     : TrtFusedAttention<T>(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int32_t>(num_heads);
+  num_heads_ = num_heads;
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -56,119 +55,48 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
                                                 const TensorShape& token_offset_shape,
                                                 const TensorShape& cu_seq_len_shape,
                                                 const Tensor* attention_bias,
-                                                PackedAttentionParameters& parameters) const {
-  // Shapes of inputs and output:
-  // When Q, K and V are not packed:
-  //   Input 'query':                      (token_count, hidden_size)
-  //   Input 'key':                        (token_count, hidden_size)
-  //   Input 'value':                      (token_count, v_hidden_size)
-  // When Q, K and V are packed:
-  //   Input 'query':                      (token_count, num_heads, 3, head_size)
-  //   Input 'key':                        None
-  //   Input 'value':                      None
-  // Input 'token_offset':                 (batch_size, sequence_length)
-  // Input 'cumulative_sequence_length':   (batch_size + 1)
-  // Input 'attention_bias':               (batch_size or 1, num_heads or 1, sequence_length, sequence_length) or None
-  // Output 'output':                      (token_count, v_hidden_size)
-
-  const auto& query_dims = query_shape.GetDims();
-  if (query_dims.size() != 2 && query_dims.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' is expected to have 2 or 4 dimensions in packing mode, got ",
-                           query_dims.size());
+                                                PackedAttentionParameters& parameters,
+                                                PackedMultiHeadAttentionProblem& problem) const {
+  PackedMultiHeadAttentionInputShapes inputs;
+  inputs.query = MakePackedAttentionShape(query_shape);
+  inputs.token_offset = MakePackedAttentionShape(token_offset_shape);
+  inputs.cumulative_sequence_length = MakePackedAttentionShape(cu_seq_len_shape);
+  inputs.element_size = sizeof(T);
+  inputs.num_heads = GetNumHeads();
+  inputs.has_key = key != nullptr;
+  inputs.has_value = value != nullptr;
+  inputs.has_bias = bias != nullptr;
+  inputs.has_attention_bias = attention_bias != nullptr;
+  if (key != nullptr) {
+    inputs.key = MakePackedAttentionShape(key->Shape());
   }
-  int64_t token_count = query_dims[0];
-  int64_t hidden_size = (query_dims.size() == 2) ? query_dims[1] : (query_dims[1] * query_dims[3]);
-
-  const auto& token_offset_dims = token_offset_shape.GetDims();
-  if (token_offset_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'token_offset' is expected to have 2 dimensions in packing mode, got ",
-                           token_offset_dims.size());
+  if (value != nullptr) {
+    inputs.value = MakePackedAttentionShape(value->Shape());
   }
-
-  int64_t batch_size = token_offset_dims[0];
-  int64_t sequence_length = token_offset_dims[1];
-
-  int64_t v_hidden_size = hidden_size;
-  if (query_dims.size() == 4) {
-    if (key != nullptr || value != nullptr) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'key' and 'value' is expected to be empty when 'query' has 4 dimensions in packing mode");
-    }
-  } else {  // query_dims.size() == 2
-    if (key == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' is expected when 'query' has 2 dimensions in packing mode");
-    }
-
-    const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 2 dimension, got ",
-                             key_dims.size());
-    }
-    if (key_dims != query_dims) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' and 'key' is expected to have same shape");
-    }
-
-    if (value == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'value' is expected when 'query' has 2 dimensions in packing mode");
-    }
-    const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 2 dimensions, got ",
-                             value_dims.size());
-    }
-    if (value_dims[0] != token_count) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 2 dimension 0 should have same length as dimension 0 of input 0");
-    }
-    v_hidden_size = value_dims[1];
-  }
-
   if (bias != nullptr) {
-    const auto& bias_dims = bias->Shape().GetDims();
-    if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                             bias_dims.size());
-    }
-
-    if (bias_dims[0] != hidden_size + hidden_size + v_hidden_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' size is expected to be ",
-                             hidden_size + hidden_size + v_hidden_size, ", got ", bias_dims[0]);
-    }
+    inputs.bias = MakePackedAttentionShape(bias->Shape());
   }
-
-  const auto& cu_seq_len_dims = cu_seq_len_shape.GetDims();
-  if (cu_seq_len_dims.size() != 1 || cu_seq_len_dims[0] != batch_size + 1) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
-  }
-
-  const int num_heads = this->GetNumHeads();
-
-  gsl::span<const int64_t> attention_bias_dims;
   if (attention_bias != nullptr) {
-    attention_bias_dims = attention_bias->Shape().GetDims();
-    ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
-        attention_bias_dims, batch_size, num_heads, sequence_length, sequence_length));
+    inputs.attention_bias = MakePackedAttentionShape(attention_bias->Shape());
   }
-  parameters.broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
-  parameters.broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
 
-  parameters.batch_size = static_cast<int>(batch_size);
-  parameters.sequence_length = static_cast<int>(sequence_length);
+  auto problem_result = BuildPackedMultiHeadAttentionProblem(inputs);
+  ORT_RETURN_IF_ERROR(PackedAttentionWorkspaceStatusToStatus(problem_result.status));
+  problem = problem_result.problem;
+
+  parameters.broadcast_attn_bias_dim_0 = problem.broadcast_attn_bias_dim_0;
+  parameters.broadcast_attn_bias_dim_1 = problem.broadcast_attn_bias_dim_1;
+
+  parameters.batch_size = problem.batch_size;
+  parameters.sequence_length = problem.sequence_length;
   parameters.input_hidden_size = -1;  // not applicable
-  parameters.hidden_size = static_cast<int>(hidden_size);
-  parameters.v_hidden_size = static_cast<int>(v_hidden_size);
-  parameters.head_size = static_cast<int>(hidden_size) / num_heads;
-  parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
-  parameters.num_heads = num_heads;
+  parameters.hidden_size = problem.hidden_size;
+  parameters.v_hidden_size = problem.v_hidden_size;
+  parameters.head_size = problem.qk_head_size;
+  parameters.v_head_size = problem.v_head_size;
+  parameters.num_heads = problem.num_heads;
   parameters.scale = this->GetScale();
-  parameters.token_count = static_cast<int32_t>(token_count);
+  parameters.token_count = problem.token_count;
 
   return Status::OK();
 }
@@ -186,6 +114,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   PackedAttentionParameters parameters;
+  PackedMultiHeadAttentionProblem problem;
   parameters.use_tf32 = this->UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(query->Shape(),
                                   key,
@@ -194,10 +123,15 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                   token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
                                   attention_bias,
-                                  parameters));
+                                  parameters,
+                                  problem));
 
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
+
+  if (output->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   auto& device_prop = this->GetDeviceProp();
 
@@ -251,23 +185,20 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
-  constexpr size_t element_size = sizeof(T);
-  // When the source and target format is same (like TN3H => TN3H, or TNH => TNH) and no bias, need not transpose qkv.
-  const bool no_qkv_workspace = (fused_runner != nullptr && key == nullptr && bias == nullptr) ||
-                                ((use_memory_efficient_attention || use_flash_attention) &&
-                                 value != nullptr &&
-                                 bias == nullptr);
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
-                                                   parameters.batch_size,
-                                                   parameters.num_heads,
-                                                   parameters.head_size,
-                                                   parameters.v_head_size,
-                                                   parameters.sequence_length,
-                                                   fused_runner,
-                                                   use_flash_attention,
-                                                   use_memory_efficient_attention,
-                                                   no_qkv_workspace);
-  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, this->GetComputeStream(context));
+  problem.backend = use_flash_attention
+                        ? PackedAttentionBackend::Flash
+                        : (fused_runner != nullptr
+                               ? PackedAttentionBackend::Trt
+                               : (use_memory_efficient_attention
+                                      ? PackedAttentionBackend::MemoryEfficient
+                                      : PackedAttentionBackend::Unfused));
+  problem.trt_runner_available = fused_runner != nullptr;
+  auto workspace_result = GetPackedMultiHeadAttentionWorkspaceRecipe(problem);
+  ORT_RETURN_IF_ERROR(PackedAttentionWorkspaceStatusToStatus(workspace_result.status));
+  const PackedAttentionWorkspaceRecipe& workspace_recipe = workspace_result.recipe;
+
+  auto work_space = this->template GetScratchBuffer<void>(
+      workspace_recipe.attention_workspace_bytes, this->GetComputeStream(context));
 
   PackedMultiHeadAttentionData<CudaT> data;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
@@ -284,8 +215,12 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-  data.no_qkv_workspace = no_qkv_workspace;
-  data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
+  data.no_qkv_workspace = workspace_recipe.no_qkv_workspace;
+  data.source_qkv_format =
+      problem.qkv_format == PackedMultiHeadAttentionQkvFormat::Packed
+          ? AttentionQkvFormat::QKV_TN3H
+          : AttentionQkvFormat::Q_K_V_TNH;
+  data.workspace_recipe = workspace_recipe;
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }

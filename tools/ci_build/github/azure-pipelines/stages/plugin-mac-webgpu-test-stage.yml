@@ -45,3 +45,4 @@ stages:
       displayName: 'Install and test Python package'
       env:
         ORT_TEST_VERBOSE: $(OrtTestVerbose)
+        ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE: '1'
