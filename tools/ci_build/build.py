@@ -303,11 +303,14 @@ def generate_vcpkg_install_options(build_dir, args):
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
+        terrapin_path_candidates = [
+            args.terrapin_retrieval_tool_path,
+            shutil.which("TerrapinRetrievalTool"),
+            "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe",
+        ]
+
+        terrapin_cmd_path = next(path for path in terrapin_path_candidates if os.path.exists(path))
+
         if terrapin_cmd_path is not None:
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
