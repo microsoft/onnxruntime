@@ -92,7 +92,7 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(
+        createSessionWithOptionsSnapshot(
             options,
             optionsHandle ->
                 createSession(
@@ -112,7 +112,7 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(
+        createSessionWithOptionsSnapshot(
             options,
             optionsHandle ->
                 createSession(
@@ -135,7 +135,7 @@ public class OrtSession implements AutoCloseable {
       OrtEnvironment env, ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(
+        createSessionWithOptionsSnapshot(
             options,
             optionsHandle ->
                 createSession(
@@ -148,7 +148,9 @@ public class OrtSession implements AutoCloseable {
         allocator);
   }
 
-  private static SessionCreationResult createSession(
+  // Native session creation may synchronously invoke EPContext callbacks. Snapshot options and
+  // callback ownership under synchronization, then invoke native creation outside the source lock.
+  private static SessionCreationResult createSessionWithOptionsSnapshot(
       SessionOptions options, NativeSessionCreator creator) throws OrtException {
     try (SessionOptions.NativeSessionOptionsSnapshot snapshot = options.createSnapshot()) {
       long nativeHandle = creator.create(snapshot.getNativeHandle());

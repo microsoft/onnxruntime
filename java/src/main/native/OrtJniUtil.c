@@ -170,7 +170,9 @@ static bool decodeUtf8CodePoint(const unsigned char** cursor, uint32_t* codePoin
   return false;
 }
 
-static jstring createJavaStringFromUtf8(
+// ORT callback names use standard UTF-8, while NewStringUTF expects JNI modified UTF-8.
+// Decode strictly to UTF-16 for NewString so supplementary characters are handled correctly.
+static jstring createJavaStringFromStandardUtf8(
     const EpContextDataCallbackState* state, JNIEnv* jniEnv, const char* input,
     OrtStatus** status) {
   *status = NULL;
@@ -294,7 +296,7 @@ OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
 
     *buffer = NULL;
     *dataSize = 0;
-    jstring javaName = createJavaStringFromUtf8(state, jniEnv, name, &status);
+    jstring javaName = createJavaStringFromStandardUtf8(state, jniEnv, name, &status);
     if (javaName == NULL) {
       detachCallbackThread(state, attached);
       return status;
@@ -363,7 +365,7 @@ OrtStatus* ORT_API_CALL javaEpContextDataWriteCallback(
         return status;
     }
 
-    jstring javaName = createJavaStringFromUtf8(state, jniEnv, name, &status);
+    jstring javaName = createJavaStringFromStandardUtf8(state, jniEnv, name, &status);
     jbyteArray javaData = NULL;
     if (javaName != NULL) {
       javaData = (*jniEnv)->NewByteArray(jniEnv, (jsize)bufferSize);

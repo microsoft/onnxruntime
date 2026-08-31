@@ -189,6 +189,7 @@ public class CompileApiTest {
       Assertions.assertEquals(0, clearedWriteCount.get());
       Assertions.assertTrue(Files.exists(clearedWriteModelPath.resolveSibling(contextName.get())));
 
+      // Supplementary characters distinguish standard UTF-8 from JNI modified UTF-8.
       String supplementaryContextPrefix = "context-\uD83D\uDE80-";
       int namePaddingLength =
           contextName.get().getBytes(StandardCharsets.UTF_8).length
