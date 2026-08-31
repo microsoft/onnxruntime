@@ -220,11 +220,15 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
 
     if (params.attn_bias != nullptr) {
-      p.bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : p.num_queries * p.num_keys;
+      p.bias_strideH = params.broadcast_attn_bias_dim_1
+                           ? 0
+                           : static_cast<int64_t>(p.num_queries) * p.num_keys;
       p.bias_strideM = p.num_keys;
       p.bias_strideB = params.broadcast_attn_bias_dim_0
                            ? 0
-                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * p.num_queries * p.num_keys);
+                           : static_cast<int64_t>(
+                                 params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) *
+                                 p.num_queries * p.num_keys;
     } else {
       p.bias_strideH = 0;
       p.bias_strideM = 0;
@@ -297,10 +301,14 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
     int num_queries = params.sequence_length;
     int bias_strideM = num_keys;
     // Broadcast dimensions use stride=0, which satisfies any alignment (0 % N == 0).
-    int bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : num_queries * num_keys;
-    int bias_strideB = params.broadcast_attn_bias_dim_0
-                           ? 0
-                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * num_queries * num_keys);
+    int64_t bias_strideH = params.broadcast_attn_bias_dim_1
+                               ? 0
+                               : static_cast<int64_t>(num_queries) * num_keys;
+    int64_t bias_strideB = params.broadcast_attn_bias_dim_0
+                               ? 0
+                               : static_cast<int64_t>(
+                                     params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) *
+                                     num_queries * num_keys;
     is_aligned = is_aligned &&
                  bias_strideM % AlignedAK::kAlignmentQ == 0 &&
                  (params.num_heads <= 1 || bias_strideH % AlignedAK::kAlignmentQ == 0) &&

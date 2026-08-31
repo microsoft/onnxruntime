@@ -34,9 +34,11 @@ ExampleExternalResourceImporter::ExampleExternalResourceImporter(const ApiPtrs& 
 bool ORT_API_CALL ExampleExternalResourceImporter::CanImportMemoryImpl(
     _In_ const OrtExternalResourceImporterImpl* /*this_ptr*/,
     _In_ OrtExternalMemoryHandleType handle_type) noexcept {
-  // The example EP supports both D3D12 resource and heap handle types for testing
+  // The example EP supports D3D12 resource, D3D12 heap, and host allocation
+  // handle types for testing.
   return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
-         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP ||
+         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION;
 }
 
 /*static*/

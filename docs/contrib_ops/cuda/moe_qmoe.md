@@ -1367,8 +1367,12 @@ CMake gates relevant to MoE/QMoE (see [cmake/CMakeLists.txt](cmake/CMakeLists.tx
 | `ENABLE_BF16` | CUDA ≥ 11.0 | BF16 weight/activation paths. |
 | `ENABLE_FP8`  | CUDA ≥ 11.8 | FP8 e4m3 instantiations and `QuantParams::FP8`. |
 | `ENABLE_FP4`  | CUDA ≥ 12.8 | FP4 e2m1 type (`__nv_fp4_e2m1`) and FP4 traits. |
-| `onnxruntime_USE_FP4_QMOE` | user opt-in (requires `ENABLE_FP4`) | Enables FP4 / WFP4AFP8 kernel instantiations and CUTLASS launchers. |
+| `onnxruntime_USE_FP4_QMOE` | ON by default for CUDA builds (requires `ENABLE_FP4`) | Enables FP4 / WFP4AFP8 kernel instantiations and CUTLASS launchers. Set to `OFF` to exclude them. |
 | `EXCLUDE_SM_100`, `EXCLUDE_SM_120` | architecture exclusion | Drops the corresponding generated kernels. |
+
+`onnxruntime_USE_FP4_QMOE` is enabled automatically when `onnxruntime_USE_CUDA=ON`.
+It remains `OFF` for non-CUDA builds and can be explicitly disabled for CUDA builds with
+`-Donnxruntime_USE_FP4_QMOE=OFF` when the additional FP4 kernel instantiations are not needed.
 
 CUDA architecture defaults:
 - CUDA 12.8+ : `60;70;75;80;86;89;90;100;120`
@@ -1406,8 +1410,7 @@ endif()
 
 ### 14.1 MSVC and TMA grouped MoE GEMM
 
-Windows/MSVC builds intentionally do not define the grouped TMA MoE compile
-switches:
+Windows/MSVC builds normally do not define the grouped TMA MoE compile switches:
 
 - `COMPILE_HOPPER_TMA_GROUPED_GEMMS`
 - `COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS`
@@ -1433,11 +1436,11 @@ MSVC. Runtime dispatch mirrors this build-time choice:
   for forward compatibility, but it is also unavailable when the Hopper grouped
   TMA switch is disabled by MSVC.
 
-The intent is to keep Windows CUDA packaging builds working while avoiding a
-misleading or invalid fallback for QMoE configurations whose data layout requires
-TMA/block-scaled kernels. Re-enable these switches for MSVC only after the CUDA
-host-stub alignment issue is fixed or the launcher ABI is changed to avoid
-over-aligned by-value parameters.
+When FP4 QMoE is enabled for SM120, the build defines the SM120 grouped-TMA switch
+and compiles that object library with the MSVC host option `/Zc:__cplusplus-`.
+NVCC still compiles device code as C++20, while CUDA 13's `CUtensorMap` keeps its
+128-byte payload with ordinary host alignment in the generated stub. This avoids
+MSVC `C2719` without changing the device descriptor layout.
 
 ### 14.2 LLM object library and SM120 native SASS
 
@@ -1456,16 +1459,14 @@ Architecture filtering of the LLM library (`onnxruntime_filter_cuda_archs`):
 | Platform / config | LLM library archs | Rationale |
 |---|---|---|
 | Linux (any) | includes `120-real` (native SASS) | LLM kernels run natively on SM120; no JIT warm-up; robust to real-only arch lists. |
-| Windows/MSVC, `USE_FP4_QMOE=OFF` | excludes `120-real`, keeps virtual `compute_120` PTX (`EXCLUDE_SM120_REAL`) | native `sm_120a` pulls CCCL `tcgen05` PTX headers that fail to compile with the MSVC host toolchain; SM120 devices JIT from the kept PTX. |
-| any platform, `USE_FP4_QMOE=ON` | includes `120-real` | the NVFP4 native path emits `cvt.e2m1x2` in `expandInputRowsKernel`, valid only for real `sm_120a` and **not** expressible in virtual `compute_120` PTX. |
+| Windows/MSVC, general LLM objects | replaces `120-real` with virtual `compute_120` PTX | Native `sm_120a` pulls CCCL `tcgen05` PTX headers that fail to compile with the MSVC host toolchain; SM120 devices JIT ordinary LLM kernels from PTX. |
+| any platform, FP4 QMoE objects | includes `120-real` in a dedicated object library | The NVFP4 native path emits `cvt.e2m1x2` in `expandInputRowsKernel`, valid only for real `sm_120a` and **not** expressible in virtual `compute_120` PTX. |
 
 > **CUDA 209 gotcha (real-only arch list).** If the LLM library excludes `120-real` **and** the
-> configured arch list carries no virtual `compute_120` PTX entry (e.g.
-> `CMAKE_CUDA_ARCHITECTURES="86-real;120-real"`), the library ends up with no loadable SM120 image at
-> all, and an SM120 GPU fails at EP load / first kernel launch with `no kernel image is available for
-> execution on the device` (CUDA error 209). On Linux this cannot happen because the LLM library
-> keeps `120-real`. On Windows/MSVC, ensure a virtual `compute_120` PTX arch is present (e.g.
-> `86-real;120-real;120-virtual`) so the JIT fallback works. Verify native SASS is present with
+> configured arch list carries no virtual `compute_120` PTX entry, the library can end up with no
+> loadable SM120 image and fail with CUDA error 209. The MSVC architecture filter now replaces each
+> requested SM120-family real architecture with its virtual counterpart for the general LLM target,
+> while the FP4 QMoE target retains native SASS. Verify native SASS is present with
 > `cuobjdump libonnxruntime_providers_cuda.so | grep 'arch ='` (use the toolkit-matched `cuobjdump`;
 > an older one in `PATH` may misparse the multi-arch fatbin and abort).
 
@@ -1484,17 +1485,11 @@ Architecture filtering of the LLM library (`onnxruntime_filter_cuda_archs`):
   FP4, the QMoE op currently routes only `sm_ >= 120` through the native FP4
   runner. SM90/SM100 fall back to dequantization. (Remove `sm_ < 120` and
   rebuild to enable native FP4 on those SMs once validated.)
-- **Windows/MSVC native TMA QMoE**: grouped TMA MoE kernels are disabled on MSVC
-  because CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters.
-  Standard MoE can fall back to SM80 kernels; native QMoE FP4/block-scaled modes
-  cannot. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
-- **Windows/MSVC SM120 LLM library**: the general LLM object library excludes
-  native `sm_120a` on MSVC (CCCL `tcgen05` PTX headers do not compile with the
-  MSVC host toolchain) and relies on virtual `compute_120` PTX + JIT. As a result
-  a real-only SM120 arch list can leave the library with no loadable image
-  (CUDA error 209) — keep a `compute_120` (virtual) arch on MSVC. NVFP4 QMoE
-  (`USE_FP4_QMOE`) requires native `sm_120a` for `cvt.e2m1x2` and is therefore a
-  non-MSVC configuration in practice. See [§14.2](#142-llm-object-library-and-sm120-native-sass).
+- **Windows/MSVC SM120 split**: ordinary LLM kernels use virtual `compute_120`
+  PTX to avoid CCCL `tcgen05` host-compile failures. FP4 QMoE conversion, runner,
+  and grouped-TMA launchers are isolated into native `sm_120a` object libraries;
+  the TMA target uses the host-only `CUtensorMap` alignment workaround described
+  in [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
 - **WFP4AFP8 native** requires SM100+ hardware; only the dequant fallback path
   is validated end-to-end so far.
 - **In-`PrePack` INT weight layout transform** (`weights_prepacked=0`) is

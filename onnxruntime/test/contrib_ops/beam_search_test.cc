@@ -3,15 +3,20 @@
 
 #include <memory>
 #include <vector>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
+#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/util/include/current_test_name.h"
 #include "test/unittest_util/model_tester.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -21,6 +26,16 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(WhisperEncoderSubgraphTest, ReportsInvalidSecondInputName) {
+  NodeArg encoder_input("encoder_input_ids", nullptr);
+  NodeArg invalid_decoder_input("wrong_name", nullptr);
+
+  const auto status = contrib::transformers::ValidateWhisperEncoderInputNames(encoder_input, invalid_decoder_input);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("got: wrong_name"));
+}
 
 TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsOversizedVocabSize) {
   contrib::transformers::BeamSearchParameters parameters;
@@ -87,6 +102,86 @@ TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
   parameters.beginning_timestamp_token_id = 1;
 
   EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
+}
+
+TEST(BeamSearchTest, ExpandBufferSupportsRankGreaterThanFour) {
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1, 2, 3, 4, 5}), allocator, input);
+
+  OrtValue expanded;
+  ASSERT_STATUS_OK(contrib::GenerationCpuDeviceHelper::ExpandBuffer<float>(
+      nullptr, input, 2, allocator, expanded, true, 0));
+
+  EXPECT_EQ(expanded.Get<Tensor>().Shape(), TensorShape({2, 2, 3, 4, 5}));
+}
+
+namespace {
+
+class TestSubgraph final : public contrib::transformers::Subgraph {
+ public:
+  TestSubgraph(const Node& node, const GraphViewer& subgraph)
+      : Subgraph(node, "decoder", subgraph) {}
+
+  using Subgraph::GetParameters;
+
+  Status Validate(const std::vector<const NodeArg*>&,
+                  const std::vector<const NodeArg*>&) override {
+    return Status::OK();
+  }
+};
+
+void LoadGptBeamSearchGraph(std::shared_ptr<Model>& model,
+                            const Node*& beam_search_node,
+                            const Graph*& decoder_graph) {
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx"),
+                               model, nullptr, DefaultLoggingManager().DefaultLogger()));
+
+  beam_search_node = nullptr;
+  for (const Node& node : model->MainGraph().Nodes()) {
+    if (node.OpType() == "BeamSearch") {
+      beam_search_node = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(beam_search_node, nullptr);
+  decoder_graph = beam_search_node->GetGraphAttribute("decoder");
+  ASSERT_NE(decoder_graph, nullptr);
+}
+
+}  // namespace
+
+TEST(BeamSearchTest, GptSubgraphRejectsMissingLogitsShape) {
+  std::shared_ptr<Model> model;
+  const Node* beam_search_node = nullptr;
+  const Graph* decoder_graph = nullptr;
+  ASSERT_NO_FATAL_FAILURE(LoadGptBeamSearchGraph(model, beam_search_node, decoder_graph));
+
+  GraphViewer decoder_viewer(*decoder_graph);
+  contrib::transformers::GptSubgraph gpt_subgraph(*beam_search_node, "decoder", decoder_viewer);
+  auto outputs = decoder_viewer.GetOutputs();
+
+  auto* logits_type = const_cast<ONNX_NAMESPACE::TypeProto*>(outputs[0]->TypeAsProto());
+  ASSERT_NE(logits_type, nullptr);
+  logits_type->mutable_tensor_type()->clear_shape();
+
+  const Status status = gpt_subgraph.Validate(decoder_viewer.GetInputs(), outputs);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("logits output shape cannot be nullptr"));
+}
+
+TEST(BeamSearchTest, SubgraphParametersRejectMissingPastShape) {
+  std::shared_ptr<Model> model;
+  const Node* beam_search_node = nullptr;
+  const Graph* decoder_graph = nullptr;
+  ASSERT_NO_FATAL_FAILURE(LoadGptBeamSearchGraph(model, beam_search_node, decoder_graph));
+
+  GraphViewer decoder_viewer(*decoder_graph);
+  TestSubgraph subgraph(*beam_search_node, decoder_viewer);
+  const Status status = subgraph.GetParameters(nullptr, decoder_viewer.GetOutputs()[0]->Shape(), true);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("past state shape cannot be nullptr"));
 }
 
 void RunGptBeamSearchFp32() {
