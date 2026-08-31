@@ -15,7 +15,7 @@
 namespace ONNX_NAMESPACE {
 class FunctionProto;
 class GraphProto;
-}
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 
