@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/moe/moe_cpu.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
+#include "contrib_ops/moe_profiler.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/gemm_helper.h"
@@ -13,6 +14,7 @@
 #include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 
 #include <algorithm>
 #include <vector>
@@ -76,6 +78,15 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const int64_t num_tokens = input_shape.Size() / input_shape[input_shape.NumDimensions() - 1];
   const int64_t hidden_size = input_shape[input_shape.NumDimensions() - 1];
   const int64_t num_experts = router_shape[1];
+  const size_t routing_element_count =
+      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
+  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  const TimePoint instrumentation_start =
+      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
                     "MoE attribute 'k' must be <= num_experts; got k=", k_,
@@ -427,6 +438,12 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
 
     float* out_ptr = reinterpret_cast<float*>(output->MutableData<T>());
     memcpy(out_ptr, final_output_float, output_buffer_size * sizeof(float));
+  }
+  if (instrumentation != nullptr) {
+    RecordMoeRoutingEvent(*instrumentation, Node(),
+                          gsl::make_span(route_expert, routing_element_count),
+                          gsl::make_span(route_scale, routing_element_count),
+                          num_tokens, k_, instrumentation_start);
   }
   return Status::OK();
 }

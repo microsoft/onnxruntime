@@ -4,6 +4,11 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+
+#include "core/framework/run_instrumentation.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -15,6 +20,113 @@ namespace onnxruntime {
 class SessionState;
 class ExecutionFrame;
 
+class RunInstrumentationContext {
+ public:
+  static constexpr size_t kMaxMoeRoutingRecordsPerRun = 1024;
+  static constexpr size_t kMaxMoeRoutingElementsPerRun = 2'000'000;
+
+  RunInstrumentationContext(uint64_t iteration_index, std::string request_id, profiling::Profiler& profiler)
+      : iteration_index_(iteration_index), request_id_(std::move(request_id)), profiler_(profiler) {}
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunInstrumentationContext);
+
+  uint64_t IterationIndex() const noexcept { return iteration_index_; }
+  const std::string& RequestId() const noexcept { return request_id_; }
+  TimePoint StartProfiling() const { return std::chrono::high_resolution_clock::now(); }
+  uint64_t ProfilerStartTimeNs() const noexcept { return profiler_.GetStartTimeNs(); }
+
+  void RecordMoeRoutingEvent(const TimePoint& start_time,
+                             const TimePoint& end_time,
+                             std::string_view node_name,
+                             NodeIndex node_index,
+                             std::string expert_ids_json,
+                             std::string router_weights_json,
+                             int64_t num_rows,
+                             int64_t top_k,
+                             int execution_device_id,
+                             int64_t completion_ns,
+                             std::string_view completion_timestamp_source) const {
+    InlinedHashMap<std::string, std::string> args;
+    args["iteration_index"] = std::to_string(iteration_index_);
+    args["request_id"] = profiling::MakeStringEventArg(request_id_);
+    args["node_name"] = profiling::MakeStringEventArg(node_name);
+    args["node_index"] = std::to_string(node_index);
+    args["layer_id"] = std::to_string(node_index);
+    args["expert_ids"] = std::move(expert_ids_json);
+    args["router_weights"] = std::move(router_weights_json);
+    args["num_rows"] = std::to_string(num_rows);
+    args["top_k"] = std::to_string(top_k);
+    args["execution_device_id"] = std::to_string(execution_device_id);
+    args["moe_completed_ns"] = std::to_string(completion_ns);
+    args["moe_completion_timestamp_source"] = std::string(completion_timestamp_source);
+    profiler_.RecordEvent(
+        profiling::NODE_EVENT, "moe_routing", start_time, end_time, std::move(args));
+  }
+
+  void AddDeferredRecord(std::unique_ptr<DeferredRunInstrumentationRecord> record) const {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    deferred_records_.push_back(std::move(record));
+  }
+
+  bool TryReserveMoeRoutingRecord(size_t element_count) const {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    if (moe_routing_record_count_ >= kMaxMoeRoutingRecordsPerRun ||
+        element_count > kMaxMoeRoutingElementsPerRun - moe_routing_element_count_) {
+      ++dropped_moe_routing_record_count_;
+      dropped_moe_routing_element_count_ += element_count;
+      return false;
+    }
+
+    ++moe_routing_record_count_;
+    moe_routing_element_count_ += element_count;
+    return true;
+  }
+
+  void AddMoeStatisticsTruncationArgs(InlinedHashMap<std::string, std::string>& args) const {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    if (dropped_moe_routing_record_count_ == 0) {
+      return;
+    }
+
+    args["moe_statistics_truncated"] = "1";
+    args["moe_statistics_dropped_records"] = std::to_string(dropped_moe_routing_record_count_);
+    args["moe_statistics_dropped_routing_elements"] =
+        std::to_string(dropped_moe_routing_element_count_);
+    args["moe_statistics_max_records_per_run"] =
+        std::to_string(kMaxMoeRoutingRecordsPerRun);
+    args["moe_statistics_max_routing_elements_per_run"] =
+        std::to_string(kMaxMoeRoutingElementsPerRun);
+  }
+
+  Status FlushDeferredRecords() {
+    InlinedVector<std::unique_ptr<DeferredRunInstrumentationRecord>> records;
+    {
+      std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+      records = std::move(deferred_records_);
+    }
+
+    Status status = Status::OK();
+    for (auto& record : records) {
+      const std::string error_message = record->Emit();
+      if (status.IsOK() && !error_message.empty()) {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message);
+      }
+    }
+    return status;
+  }
+
+ private:
+  uint64_t iteration_index_;
+  std::string request_id_;
+  profiling::Profiler& profiler_;
+  mutable std::mutex deferred_records_mutex_;
+  mutable InlinedVector<std::unique_ptr<DeferredRunInstrumentationRecord>> deferred_records_;
+  mutable size_t moe_routing_record_count_{0};
+  mutable size_t moe_routing_element_count_{0};
+  mutable size_t dropped_moe_routing_record_count_{0};
+  mutable size_t dropped_moe_routing_element_count_{0};
+};
+
 class OpKernelContextInternal : public OpKernelContext {
  public:
   explicit OpKernelContextInternal(const SessionState& session_state,
@@ -23,8 +135,10 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const logging::Logger& logger,
                                    const bool& terminate_flag,
                                    Stream* stream,
-                                   profiling::Profiler* run_profiler = nullptr)
-      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
+                                   profiling::Profiler* run_profiler = nullptr,
+                                   const RunInstrumentationContext* run_instrumentation_context = nullptr)
+      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger,
+                        run_instrumentation_context),
         session_state_(session_state),
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {

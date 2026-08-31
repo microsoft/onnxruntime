@@ -304,7 +304,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       this->context_.Logger(),
                                       this->ort_stream_,
                                       /*sync_subgraph_fetches*/ false,
-                                      this->context_.GetRunProfiler());
+                                      this->context_.GetRunProfiler(),
+                                      this->context_.GetRunInstrumentationContext());
     } else {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
       const_cast<SessionState&>(this->decoder_session_state_).IncrementGraphExecutionCounter();
@@ -319,7 +320,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       this->context_.Logger(),
                                       this->ort_stream_,
                                       /*sync_subgraph_fetches*/ false,
-                                      this->context_.GetRunProfiler());
+                                      this->context_.GetRunProfiler(),
+                                      this->context_.GetRunInstrumentationContext());
     }
 
     ORT_RETURN_IF_ERROR(status);

@@ -16,6 +16,7 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
+#include "core/common/json_utils.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
 #include "core/common/string_utils.h"
@@ -107,6 +108,125 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace {
+
+constexpr uint64_t kFnv1aOffsetBasis = 14695981039346656037ULL;
+constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
+
+void UpdateFnv1a(const void* data, size_t size, uint64_t& hash) {
+  const auto* bytes = static_cast<const uint8_t*>(data);
+  for (size_t i = 0; i < size; ++i) {
+    hash ^= bytes[i];
+    hash *= kFnv1aPrime;
+  }
+}
+
+void UpdateFnv1aUint64(uint64_t value, uint64_t& hash) {
+  uint8_t bytes[sizeof(value)];
+  for (size_t i = 0; i < sizeof(value); ++i) {
+    bytes[i] = static_cast<uint8_t>(value & 0xff);
+    value >>= 8;
+  }
+  UpdateFnv1a(bytes, sizeof(bytes), hash);
+}
+
+Status CreateMoeRunMetadata(gsl::span<const std::string> feed_names,
+                            gsl::span<const OrtValue> feeds,
+                            std::string& input_shapes_json,
+                            std::string& input_token_hash,
+                            std::string& input_token_hash_status) {
+  ORT_RETURN_IF_NOT(feed_names.size() == feeds.size(),
+                    "MoE expert statistics requires the same number of input names and values.");
+
+  std::ostringstream input_shapes;
+  input_shapes << "{";
+  const Tensor* token_tensor = nullptr;
+  const Tensor* first_tensor = nullptr;
+  bool input_ids_present = false;
+  size_t tensor_count = 0;
+
+  for (size_t i = 0; i < feeds.size(); ++i) {
+    if (feed_names[i] == "input_ids") {
+      input_ids_present = true;
+      if (!feeds[i].IsTensor()) {
+        input_token_hash_status = "not_a_tensor";
+      }
+    }
+    if (!feeds[i].IsTensor()) {
+      continue;
+    }
+
+    const Tensor& tensor = feeds[i].Get<Tensor>();
+    if (first_tensor == nullptr) {
+      first_tensor = &tensor;
+    }
+    if (feed_names[i] == "input_ids") {
+      token_tensor = &tensor;
+    }
+
+    if (tensor_count++ != 0) {
+      input_shapes << ",";
+    }
+    common::WriteJsonString(input_shapes, feed_names[i]);
+    input_shapes << ":[";
+    const auto& dims = tensor.Shape().GetDims();
+    for (size_t dim_idx = 0; dim_idx < dims.size(); ++dim_idx) {
+      if (dim_idx != 0) {
+        input_shapes << ",";
+      }
+      input_shapes << dims[dim_idx];
+    }
+    input_shapes << "]";
+  }
+  input_shapes << "}";
+  input_shapes_json = input_shapes.str();
+  input_token_hash = "null";
+
+  if (input_ids_present && token_tensor == nullptr) {
+    return Status::OK();
+  }
+  const bool using_fallback_tensor = token_tensor == nullptr;
+  if (using_fallback_tensor) {
+    token_tensor = first_tensor;
+  }
+  if (token_tensor == nullptr) {
+    input_token_hash_status = "absent";
+    return Status::OK();
+  }
+  if (token_tensor->Location().device.Type() != OrtDevice::CPU) {
+    input_token_hash_status = "device_memory";
+    return Status::OK();
+  }
+#ifdef ENABLE_STRIDED_TENSORS
+  if (!token_tensor->IsContiguous()) {
+    input_token_hash_status = "non_contiguous";
+    return Status::OK();
+  }
+#endif
+  if (token_tensor->IsDataTypeString()) {
+    input_token_hash_status = "string_tensor";
+    return Status::OK();
+  }
+
+  uint64_t hash = kFnv1aOffsetBasis;
+  UpdateFnv1aUint64(static_cast<uint64_t>(token_tensor->GetElementType()), hash);
+  const auto& token_dims = token_tensor->Shape().GetDims();
+  UpdateFnv1aUint64(static_cast<uint64_t>(token_dims.size()), hash);
+  for (const int64_t dim : token_dims) {
+    UpdateFnv1aUint64(static_cast<uint64_t>(dim), hash);
+  }
+  const size_t data_size = token_tensor->SizeInBytes();
+  UpdateFnv1aUint64(static_cast<uint64_t>(data_size), hash);
+  if (data_size != 0) {
+    UpdateFnv1a(token_tensor->DataRaw(), data_size, hash);
+  }
+
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << std::setfill('0') << std::setw(16) << hash;
+
+  input_token_hash = hash_stream.str();
+  input_token_hash_status = using_fallback_tensor ? "fallback_tensor" : "ok";
+  return Status::OK();
+}
 
 // Parse a spin duration config value (in microseconds) from a string.
 // Returns kSpinDurationDefault (-1) if the config is not explicitly set.
@@ -2417,6 +2537,29 @@ common::Status InferenceSession::Initialize() {
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
 
+    const std::string& enable_moe_statistics =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
+    if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+          " must be set to either \"0\" or \"1\". Received: \"", enable_moe_statistics, "\".");
+    }
+    enable_moe_expert_statistics_ = enable_moe_statistics == "1";
+    if (enable_moe_expert_statistics_ && !session_profiler_.IsEnabled()) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+          "=1 requires session profiling to be enabled.");
+    }
+    if (enable_moe_expert_statistics_) {
+      for (const auto& execution_provider : execution_providers_) {
+        if (execution_provider->IsGraphCaptureEnabled()) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+              "=1 is not supported when graph capture is enabled by ", execution_provider->Type(), ".");
+        }
+      }
+    }
+
     bool have_cpu_ep = false;
 
     {
@@ -3298,6 +3441,33 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     run_profiler->StartProfiling(profile_file);
   }
 
+  const bool collect_moe_statistics =
+      enable_moe_expert_statistics_ && session_profiler_.IsEnabled();
+  std::optional<RunInstrumentationContext> run_instrumentation_context;
+  InlinedHashMap<std::string, std::string> model_run_args;
+  std::string input_shapes_json;
+  std::string input_token_hash;
+  std::string input_token_hash_status;
+  InlinedVector<AllocatorPtr> arenas_to_shrink;
+  if (collect_moe_statistics) {
+    ORT_RETURN_IF_NOT(is_inited_, "Session not initialized.");
+    ORT_RETURN_IF_NOT(
+        run_options.config_options.GetConfigOrDefault(
+            kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0",
+        "MoE expert statistics requires execution-provider synchronization at the end of each run.");
+    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        CreateMoeRunMetadata(feed_names, feeds, input_shapes_json, input_token_hash,
+                             input_token_hash_status));
+    const std::string& shrink_memory_arenas =
+        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
+    if (!shrink_memory_arenas.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
+    }
+  }
+
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
@@ -3348,8 +3518,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-    InlinedVector<AllocatorPtr> arenas_to_shrink;
-
     ORT_TRY {
       if (!is_inited_) {
         LOGS(*session_logger_, ERROR) << "Session was not initialized";
@@ -3359,14 +3527,16 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      if (!collect_moe_statistics) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      }
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
           run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
 
-      if (!shrink_memory_arenas.empty()) {
+      if (!collect_moe_statistics && !shrink_memory_arenas.empty()) {
         ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
       }
 
@@ -3412,6 +3582,16 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
 
+      if (retval.IsOK() && collect_moe_statistics) {
+        const uint64_t iteration_index = moe_iteration_index_.fetch_add(1, std::memory_order_relaxed);
+        run_instrumentation_context.emplace(iteration_index, run_options.run_tag, session_profiler_);
+        model_run_args["iteration_index"] = std::to_string(iteration_index);
+        model_run_args["request_id"] = profiling::MakeStringEventArg(run_options.run_tag);
+        model_run_args["input_shapes"] = std::move(input_shapes_json);
+        model_run_args["input_token_hash"] = std::move(input_token_hash);
+        model_run_args["input_token_hash_status"] = std::move(input_token_hash_status);
+      }
+
 #ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
         // TODO: this method is not thread safe, if multiple Run happened in parallel we might hit race condition issue.
@@ -3447,7 +3627,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                      device_stream_collection_holder,
 #endif
                                      run_logger,
-                                     run_profiler ? &*run_profiler : nullptr);
+                                     run_profiler ? &*run_profiler : nullptr,
+                                     run_instrumentation_context ? &*run_instrumentation_context : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3455,6 +3636,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
+      }
+
+      if (run_instrumentation_context) {
+        const Status instrumentation_status = run_instrumentation_context->FlushDeferredRecords();
+        run_instrumentation_context->AddMoeStatisticsTruncationArgs(model_run_args);
+        if (retval.IsOK() && !instrumentation_status.IsOK()) {
+          retval = instrumentation_status;
+        }
       }
 
       if (run_profiler) {
@@ -3553,7 +3742,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp,
+                                            std::move(model_run_args));
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");

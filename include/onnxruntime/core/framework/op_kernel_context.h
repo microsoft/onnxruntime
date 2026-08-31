@@ -3,6 +3,7 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
+class RunInstrumentationContext;
 class Stream;
 namespace concurrency {
 class ThreadPool;
@@ -14,9 +15,14 @@ class OpKernelContext {
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
+                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger,
+                  _In_opt_ const RunInstrumentationContext* run_instrumentation_context = nullptr);
 
   virtual ~OpKernelContext() = default;
+
+  const RunInstrumentationContext* GetRunInstrumentationContext() const noexcept {
+    return run_instrumentation_context_;
+  }
 
   /**
   Return the number of inputs for a variadic argument.
@@ -223,6 +229,7 @@ class OpKernelContext {
   int node_output_start_index_{-1};
 
   Stream* stream_;
+  const RunInstrumentationContext* run_instrumentation_context_{};
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists
