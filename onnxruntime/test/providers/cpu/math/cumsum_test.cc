@@ -24,7 +24,7 @@ void RunEmptyAxisFailureTest(std::vector<std::unique_ptr<IExecutionProvider>> ex
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
 }
 
-void RunCudaInt64BlockScanTest(int64_t outer, int64_t width, int64_t inner) {
+void RunCudaInt64Test(int64_t outer, int64_t width, int64_t inner) {
   const int64_t element_count = outer * width * inner;
   std::vector<int64_t> input(element_count);
   for (int64_t i = 0; i < element_count; ++i) {
@@ -332,8 +332,16 @@ TEST(CumSumTest, CudaInt64BlockScanMultiTile) {
     GTEST_SKIP() << "CUDA execution provider is not available";
   }
 
-  RunCudaInt64BlockScanTest(1, 1000, 1);
-  RunCudaInt64BlockScanTest(2, 513, 3);
+  RunCudaInt64Test(1, 1000, 1);
+  RunCudaInt64Test(2, 513, 3);
+}
+
+TEST(CumSumTest, CudaInt64GenericKernelWidthTwo) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  RunCudaInt64Test(1, 2, 1);
 }
 
 TEST(CumSumTest, _1DTestdouble) {

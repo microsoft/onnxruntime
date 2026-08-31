@@ -94,10 +94,10 @@ __global__ void _CumSumInt64BlockKernel(
   }
   __syncthreads();
 
-  for (int tile = 0; tile < width; tile += BlockSize) {
-    const int axis_offset = tile + tid;
+  for (int64_t tile = 0; tile < width; tile += BlockSize) {
+    const int64_t axis_offset = tile + tid;
     const bool is_valid = axis_offset < width;
-    const int axis_index = reverse ? width - 1 - axis_offset : axis_offset;
+    const int64_t axis_index = reverse ? width - 1 - axis_offset : axis_offset;
     const int64_t input_index =
         is_valid ? (outer * width + axis_index) * inner + inner_index : 0;
     const uint64_t value = is_valid ? static_cast<uint64_t>(input_data[input_index]) : 0;
