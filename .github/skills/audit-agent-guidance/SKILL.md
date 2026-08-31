@@ -33,7 +33,8 @@ Inventory all agent guidance:
 - `.github/skills/**/SKILL.md`;
 - documents explicitly linked from those files as canonical guidance.
 
-Record the full commit ID of the default-branch state being audited before making changes.
+Record the full commit ID of the default-branch state being audited before making changes. Audit only the committed
+guidance and repository state at that snapshot; do not account for changes proposed in open PRs.
 
 Generate the marker instead of constructing it manually:
 
@@ -83,8 +84,7 @@ Evaluate each guidance unit against all applicable dimensions.
 
 - Identify guidance that could be replaced by tests, linters, type-system constraints, safer APIs, schema validation,
   or CI checks.
-- Once mechanical enforcement is established and discoverable, remove guidance unless agents still need workflow
-  guidance to use or diagnose it.
+- Once mechanical enforcement is established and discoverable, remove redundant prose guidance.
 
 ### Context value
 
@@ -126,9 +126,6 @@ For each guidance unit, record:
 
 Use the path and heading as the stable identity defined in
 [`docs/Agent_Coding_Guidance.md`](../../../docs/Agent_Coding_Guidance.md).
-
-Search open guidance-collection and guidance-audit PRs before proposing changes. If another open PR modifies the same
-canonical guidance unit, do not create a competing edit; report the overlap or coordinate with the existing PR.
 
 ### 2. Validate current claims
 
@@ -201,11 +198,6 @@ Audited commit: `<full commit ID>`.
 
 | Commit | Guidance unit | Outcome | Evidence | Replacement or destination |
 |---|---|---|---|---|
-
-## Retained after review
-
-| Guidance unit | Validation performed |
-|---|---|
 
 ## Follow-up enforcement work
 

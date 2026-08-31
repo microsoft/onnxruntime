@@ -193,18 +193,12 @@ Also link the source review comment(s) from the candidate commit message and PR 
 
 ### 6. Search for existing coverage
 
-Before proposing text, inspect:
+Before proposing text, inspect the committed guidance and enforcement on the current default branch:
 
 - `AGENTS.md`;
 - matching `.github/instructions/**/*.instructions.md`;
 - relevant `.github/skills/**/SKILL.md` files;
-- existing tests, linters, validation scripts, safer APIs, and compiler checks;
-- open or recently merged guidance-collection and guidance-audit PRs that may already address the pattern.
-
-Compare the candidate with any open guidance PR that modifies the same canonical guidance unit. If the open PR already
-expresses the same lesson, omit the candidate as duplicate coverage and reference that PR in the omitted-candidates
-section. If the candidate proposes a different change, retain it and explicitly describe the overlap or conflict with
-the open PR in the proposed-guidance-changes table's Notes column. Do not push to another skill's automation branch.
+- existing tests, linters, validation scripts, safer APIs, and compiler checks.
 
 ### 7. Choose the guidance response
 
@@ -289,8 +283,8 @@ Open a PR ready for human review with a description using this structure:
 
 ## Proposed guidance changes
 
-| Commit | Source review | Failure class | Destination | Confidence | Notes |
-|---|---|---|---|---|---|
+| Commit | Source review | Failure class | Destination | Confidence |
+|---|---|---|---|---|
 
 ## Omitted candidates
 
