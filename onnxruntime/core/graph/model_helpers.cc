@@ -5,6 +5,7 @@
 
 #include "core/graph/model_helpers.h"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -177,11 +178,87 @@ Status ValidateCallGraphAcyclic(const LocalFunctionCallGraph& call_graph) {
   return Status::OK();
 }
 
+Status ValidateCallGraphDepth(const LocalFunctionCallGraph& call_graph,
+                              gsl::span<const std::string_view> roots) {
+  InlinedHashMap<std::string_view, size_t> call_depths;
+  call_depths.reserve(call_graph.size());
+  InlinedHashSet<std::string_view> visited;
+  InlinedVector<std::string_view> postorder;
+
+  struct DfsFrame {
+    std::string_view function_id;
+    size_t next_callee_index;
+  };
+  InlinedVector<DfsFrame> dfs_stack;
+
+  for (const auto root_id : roots) {
+    if (call_graph.find(root_id) == call_graph.end()) {
+      continue;
+    }
+    if (!visited.insert(root_id).second) {
+      continue;
+    }
+
+    dfs_stack.push_back({root_id, 0});
+    while (!dfs_stack.empty()) {
+      auto& frame = dfs_stack.back();
+      const auto function_it = call_graph.find(frame.function_id);
+      if (function_it == call_graph.end() || frame.next_callee_index >= function_it->second.size()) {
+        postorder.push_back(frame.function_id);
+        dfs_stack.pop_back();
+        continue;
+      }
+
+      const auto callee_id = function_it->second[frame.next_callee_index++];
+      if (call_graph.find(callee_id) != call_graph.end() && visited.insert(callee_id).second) {
+        dfs_stack.push_back({callee_id, 0});
+      }
+    }
+  }
+
+  for (const auto function_id : postorder) {
+    size_t call_depth = 1;
+    const auto function_it = call_graph.find(function_id);
+    ORT_ENFORCE(function_it != call_graph.end());
+    for (const auto callee_id : function_it->second) {
+      const auto callee_depth_it = call_depths.find(callee_id);
+      if (callee_depth_it != call_depths.end()) {
+        call_depth = std::max(call_depth, callee_depth_it->second + 1);
+      }
+    }
+
+    call_depths.emplace(function_id, call_depth);
+  }
+
+  for (const auto root_id : roots) {
+    const auto depth_it = call_depths.find(root_id);
+    if (depth_it != call_depths.end() && depth_it->second > kMaxModelLocalFunctionCallDepth) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, NOT_IMPLEMENTED,
+          "Model local function call depth ", depth_it->second,
+          " exceeds the maximum supported depth of ", kMaxModelLocalFunctionCallDepth, ".");
+    }
+  }
+
+  return Status::OK();
+}
+
 Status ValidateModelLocalFunctionAcyclic(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions) {
   LocalFunctionCallGraph call_graph;
   ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
   return ValidateCallGraphAcyclic(call_graph);
+}
+
+Status ValidateModelLocalFunctionCallDepth(
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    const ONNX_NAMESPACE::GraphProto& main_graph) {
+  LocalFunctionCallGraph call_graph;
+  ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
+  InlinedHashSet<std::string_view> seen_calls;
+  InlinedVector<std::string_view> root_calls;
+  CollectLocalFunctionCalls(main_graph.node(), model_local_functions, seen_calls, root_calls);
+  return ValidateCallGraphDepth(call_graph, root_calls);
 }
 
 }  // namespace onnxruntime

@@ -157,6 +157,8 @@ class Model {
 
   const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
 
+  common::Status ValidateLocalFunctionCallDepth(const ONNX_NAMESPACE::GraphProto& graph_proto) const;
+
 #else
   // Get model's IR version.
   // Return <kNoVersion> if not specified.

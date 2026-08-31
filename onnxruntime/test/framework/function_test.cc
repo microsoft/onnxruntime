@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <array>
 #include <sstream>
 
 #include "core/graph/onnx_protobuf.h"
@@ -539,6 +540,134 @@ TEST(FunctionTest, CallGraphAcyclic_SharedCallsDiamondNoCycle) {
   call_graph[c] = {d};
   call_graph[d] = {};
   ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphDepth_MaximumDepthAccepted) {
+  std::vector<std::string> function_ids;
+  function_ids.reserve(onnxruntime::kMaxModelLocalFunctionCallDepth);
+  for (size_t i = 0; i < onnxruntime::kMaxModelLocalFunctionCallDepth; ++i) {
+    function_ids.push_back("function_" + std::to_string(i));
+  }
+
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  for (size_t i = 0; i < function_ids.size(); ++i) {
+    auto& callees = call_graph[function_ids[i]];
+    if (i + 1 < function_ids.size()) {
+      callees.push_back(function_ids[i + 1]);
+    }
+  }
+
+  const std::array<std::string_view, 1> roots{function_ids[0]};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphDepth(call_graph, roots));
+}
+
+TEST(FunctionTest, CallGraphDepth_UnreachableExcessiveDepthAccepted) {
+  std::vector<std::string> function_ids;
+  function_ids.reserve(onnxruntime::kMaxModelLocalFunctionCallDepth + 2);
+  for (size_t i = 0; i < onnxruntime::kMaxModelLocalFunctionCallDepth + 2; ++i) {
+    function_ids.push_back("function_" + std::to_string(i));
+  }
+
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[function_ids[0]] = {};
+  for (size_t i = 1; i < function_ids.size(); ++i) {
+    auto& callees = call_graph[function_ids[i]];
+    if (i + 1 < function_ids.size()) {
+      callees.push_back(function_ids[i + 1]);
+    }
+  }
+
+  const std::array<std::string_view, 1> roots{function_ids[0]};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphDepth(call_graph, roots));
+}
+
+TEST(FunctionTest, CallGraphDepth_ExcessiveSharedTailRejected) {
+  std::vector<std::string> function_ids;
+  function_ids.reserve(onnxruntime::kMaxModelLocalFunctionCallDepth + 2);
+  for (size_t i = 0; i < onnxruntime::kMaxModelLocalFunctionCallDepth + 2; ++i) {
+    function_ids.push_back("function_" + std::to_string(i));
+  }
+
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[function_ids[0]] = {function_ids[2]};
+  call_graph[function_ids[1]] = {function_ids[0], function_ids[2]};
+  for (size_t i = 2; i < function_ids.size(); ++i) {
+    auto& callees = call_graph[function_ids[i]];
+    if (i + 1 < function_ids.size()) {
+      callees.push_back(function_ids[i + 1]);
+    }
+  }
+
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+  const std::array<std::string_view, 1> roots{function_ids[1]};
+  const auto status = onnxruntime::ValidateCallGraphDepth(call_graph, roots);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+static ONNX_NAMESPACE::ModelProto CreateLocalFunctionChainModel(size_t call_depth) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+
+  auto* graph = model_proto.mutable_graph();
+  graph->set_name("local_function_chain");
+  auto* graph_input = graph->add_input();
+  graph_input->set_name("x");
+  graph_input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* graph_output = graph->add_output();
+  graph_output->set_name("y");
+  graph_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* graph_node = graph->add_node();
+  graph_node->set_domain("local");
+  graph_node->set_op_type("function_0");
+  graph_node->add_input("x");
+  graph_node->add_output("y");
+
+  for (size_t i = 0; i < call_depth; ++i) {
+    auto* function = model_proto.add_functions();
+    function->set_domain("local");
+    function->set_name("function_" + std::to_string(i));
+    function->add_input("x");
+    function->add_output("y");
+    auto* function_onnx_opset = function->add_opset_import();
+    function_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+    function_onnx_opset->set_version(16);
+    auto* function_local_opset = function->add_opset_import();
+    function_local_opset->set_domain("local");
+    function_local_opset->set_version(1);
+
+    auto* node = function->add_node();
+    node->set_op_type(i + 1 < call_depth ? "function_" + std::to_string(i + 1) : "Identity");
+    if (i + 1 < call_depth) {
+      node->set_domain("local");
+    }
+    node->add_input("x");
+    node->add_output("y");
+  }
+
+  return model_proto;
+}
+
+TEST(FunctionTest, LoadFromBytes_ExcessiveLocalFunctionDepthReturnsStatus) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  const auto status = Model::LoadFromBytes(static_cast<int>(serialized_model.size()), serialized_model.data(),
+                                           model, nullptr, logger);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
 // --- Model-level integration tests ---
