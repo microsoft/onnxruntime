@@ -100,6 +100,8 @@ XQA_PAGED_DECL(LaunchXQAPagedFp8KernelBF16);
   size_t fn##_WorkspaceSize(const cudaDeviceProp& device_prop, const int batch_size, \
                             const int kv_num_heads, const int max_pages_per_seq, const int max_query_len)
 
+XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecFp16Kernel);
+XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecBf16Kernel);
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecInt8Kernel);
 #ifdef USE_FP8_KV_CACHE
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecFp8Kernel);
@@ -199,6 +201,7 @@ Status LaunchXQAPagedSpecDecKernel(
     const float* k_cache_scale,
     const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
+    const bool is_bf16,
     void* workspace,
     size_t workspace_size) {
   if (device_prop.major < 8 || head_size != 256 || kv_num_heads <= 0 || num_heads / kv_num_heads != 6) {
@@ -212,6 +215,14 @@ Status LaunchXQAPagedSpecDecKernel(
       max_query_len, cumulative_seqlens_q, spec_dec_mask, attention_sinks, k_cache_scale,        \
       v_cache_scale, workspace, workspace_size
 
+  if (kv_quant_type == XqaQuantType::kNone) {
+    return is_bf16 ? H256::LaunchXQAPagedSpecDecBf16Kernel(XQA_PAGED_SPEC_DEC_ARGS)
+                   : H256::LaunchXQAPagedSpecDecFp16Kernel(XQA_PAGED_SPEC_DEC_ARGS);
+  }
+  if (is_bf16) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Speculative paged XQA does not support BF16 query/output with quantized KV cache.");
+  }
   if (kv_quant_type == XqaQuantType::kInt8) {
     return H256::LaunchXQAPagedSpecDecInt8Kernel(XQA_PAGED_SPEC_DEC_ARGS);
   }
@@ -221,7 +232,7 @@ Status LaunchXQAPagedSpecDecKernel(
   }
 #endif
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "Speculative paged XQA only supports INT8 or FP8 KV cache.");
+                         "Speculative paged XQA does not support the requested KV cache type.");
 #undef XQA_PAGED_SPEC_DEC_ARGS
 }
 
@@ -232,6 +243,10 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
     int max_pages_per_seq,
     int max_query_len,
     XqaQuantType kv_quant_type) {
+  if (kv_quant_type == XqaQuantType::kNone) {
+    return H256::LaunchXQAPagedSpecDecFp16Kernel_WorkspaceSize(
+        device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
+  }
   if (kv_quant_type == XqaQuantType::kInt8) {
     return H256::LaunchXQAPagedSpecDecInt8Kernel_WorkspaceSize(
         device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
@@ -246,6 +261,9 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
 }
 
 size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(XqaQuantType kv_quant_type) {
+  if (kv_quant_type == XqaQuantType::kNone) {
+    return H256::LaunchXQAPagedSpecDecFp16Kernel_SmemSize(6, 1);
+  }
   if (kv_quant_type == XqaQuantType::kInt8) {
     return H256::LaunchXQAPagedSpecDecInt8Kernel_SmemSize(6, 1);
   }

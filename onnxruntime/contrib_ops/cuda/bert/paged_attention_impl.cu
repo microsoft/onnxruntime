@@ -1635,6 +1635,7 @@ Status PagedXqaDecodeAttention(
         scale, parameters.local_window_size, data.past_seqlens,
         data.max_query_len, data.cumulative_seqlens_q, data.xqa_spec_dec_mask,
         attention_sinks, xqa_k_scale, xqa_v_scale, kv_quant_type,
+        std::is_same<T, BFloat16>::value,
         data.xqa_workspace, data.xqa_workspace_size));
   } else {
     ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(

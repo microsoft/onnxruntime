@@ -621,6 +621,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 #endif
   std::vector<BFloat16> key_cache_bf16;
   std::vector<BFloat16> value_cache_bf16;
+  const bool native_bf16_cache = c.bf16_query && !quantized_cache;
   OrtValue key_cache_value;
   OrtValue value_cache_value;
   if (c.int8_cache) {
@@ -653,7 +654,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     key_cache_value = make_gpu(key_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_value = make_gpu(value_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
 #endif
-  } else if (c.bf16_query) {
+  } else if (native_bf16_cache) {
     key_cache_bf16.reserve(key_cache_data.size());
     value_cache_bf16.reserve(value_cache_data.size());
     for (const auto value : key_cache_data) key_cache_bf16.emplace_back(value.ToFloat());
@@ -687,7 +688,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     key_cache_out_value = make_gpu(key_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_out_value = make_gpu(value_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
 #endif
-  } else if (c.bf16_query) {
+  } else if (native_bf16_cache) {
     key_cache_out_value = make_gpu(key_cache_bf16, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_out_value = make_gpu(value_cache_bf16, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
   } else {
@@ -771,8 +772,13 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
             const int cache_index = CacheIndex(new_block_id, new_slot % block_size, kv_head, dim,
                                                block_size, kv_num_heads, head_size);
             const int input_index = (token * kv_num_heads + kv_head) * head_size + dim;
-            key_cache_data[cache_index] = key_data[input_index];
-            value_cache_data[cache_index] = value_data[input_index];
+            if (native_bf16_cache) {
+              key_cache_bf16[cache_index] = key_data_bf16[input_index];
+              value_cache_bf16[cache_index] = value_data_bf16[input_index];
+            } else {
+              key_cache_data[cache_index] = key_data[input_index];
+              value_cache_data[cache_index] = value_data[input_index];
+            }
           }
         }
       }
@@ -796,7 +802,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
               const int query_index = (token * num_heads + q_head) * head_size + dim;
               const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
                                                  block_size, kv_num_heads, head_size);
-              dot += query_data[query_index].ToFloat() * key_cache_data[cache_index].ToFloat();
+              const float query_element = c.bf16_query ? query_data_bf16[query_index].ToFloat()
+                                                       : query_data[query_index].ToFloat();
+              const float key_element = native_bf16_cache ? key_cache_bf16[cache_index].ToFloat()
+                                                          : key_cache_data[cache_index].ToFloat();
+              dot += query_element * key_element;
             }
             scores[slot] = dot * scale;
             max_score = std::max(max_score, scores[slot]);
@@ -813,7 +823,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                   block_table_data[b * max_num_blocks_per_seq + slot / block_size];
               const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
                                                  block_size, kv_num_heads, head_size);
-              numerator += scores[slot] * value_cache_data[cache_index].ToFloat();
+              const float value_element = native_bf16_cache ? value_cache_bf16[cache_index].ToFloat()
+                                                            : value_cache_data[cache_index].ToFloat();
+              numerator += scores[slot] * value_element;
             }
             const int output_index = (token * num_heads + q_head) * head_size + dim;
             const float actual_output = c.bf16_query
@@ -1212,13 +1224,15 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheMultiTokenBoundFallsBack) {
   }
   IoBindingCase c;
   c.batch_size = 2;
+  c.token_count = 9;
+  c.cumulative_seqlens_q = {0, 9, 9};
   c.num_heads = 6;
   c.kv_num_heads = 1;
   c.head_size = 256;
   c.num_blocks = 32;
   c.max_num_blocks_per_seq = 8;
-  c.past_seqlen = 2047;
-  c.attention_metadata = {2, 2048, 2048};
+  c.past_seqlen = 2039;
+  c.attention_metadata = {9, 2048, 2048};
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -1227,6 +1241,85 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheMultiTokenBoundFallsBack) {
   EXPECT_TRUE(debug_output.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
               debug_output.find("SdpaKernel=DECODER_ATTENTION") != std::string::npos)
       << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecNativeFp16CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 8;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 0, 0, 0, 0, 0, 0, 0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 8;
+  c.past_seqlen = 249;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 256, 256};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecNativeBf16CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.past_seqlen = 249;
+  c.bf16_query = true;
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.replay_past_seqlens = {{122}, {249}, {122}};
+  c.attention_metadata = {7, 256, 256};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {

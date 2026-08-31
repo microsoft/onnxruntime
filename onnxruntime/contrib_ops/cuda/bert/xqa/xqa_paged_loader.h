@@ -53,8 +53,9 @@ Status LaunchXQAPagedKernel(
     void* workspace,
     size_t workspace_size);
 
-// Multi-token speculative-verification launcher. The first implementation is deliberately limited
-// to the DFlash2 target geometry: FP16 query/output, H256, group size 6, and INT8/FP8 paged KV.
+// Multi-token speculative-verification launcher. The implementation is deliberately limited to
+// the DFlash2 target geometry: FP16/BF16 query/output, H256, group size 6, and matching native or
+// INT8/FP8 paged KV.
 Status LaunchXQAPagedSpecDecKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
@@ -78,6 +79,7 @@ Status LaunchXQAPagedSpecDecKernel(
     const float* k_cache_scale,
     const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
+    const bool is_bf16,  // dtype of query and output; native cache has the same dtype
     void* workspace,
     size_t workspace_size);
 

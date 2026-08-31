@@ -440,8 +440,15 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const int group_size = parameters.num_heads / parameters.kv_num_heads;
   constexpr bool kIsFp16Cache =
       std::is_same<T, MLFloat16>::value && std::is_same<TCACHE, MLFloat16>::value;
+  constexpr bool kIsNativeSpecXqaCache =
+      (std::is_same<T, MLFloat16>::value && std::is_same<TCACHE, MLFloat16>::value) ||
+      (std::is_same<T, BFloat16>::value && std::is_same<TCACHE, BFloat16>::value);
   const bool fp16_xqa_eligible =
       enable_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
+      parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
+      (parameters.block_size % kXqaTokensPerPage) == 0;
+  const bool native_spec_xqa_eligible =
+      enable_xqa_ && has_metadata_bounds && kIsNativeSpecXqaCache && device_prop.major >= 8 &&
       parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0;
   const bool is_fp8_cache = IsFp8CacheType<TCACHE>();
@@ -456,8 +463,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
       (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9));
   const bool xqa_spec_dec_candidate =
-      decode_eligible && quantized_xqa_eligible && has_metadata_bounds &&
-      std::is_same<T, MLFloat16>::value && parameters.head_size == 256 && group_size == 6 &&
+      decode_eligible && has_metadata_bounds &&
+      ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
+      parameters.head_size == 256 && group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
