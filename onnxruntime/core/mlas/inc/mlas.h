@@ -108,7 +108,7 @@ Abstract:
 // Define whether an accelerated half-GEMM backend can be available for this build.
 //
 #if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
-    defined(USE_KLEIDIAI) || defined(MLAS_TARGET_RISCV64)
+    (defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)) || defined(MLAS_TARGET_RISCV64)
 #define MLAS_HALF_GEMM_ACCELERATION_POSSIBLE
 #endif
 
