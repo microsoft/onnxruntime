@@ -9,12 +9,28 @@
 #include <thread>
 #include <vector>
 
+#if defined(ORT_CPUINFO_TEST_USE_XNNPACK)
+#include <xnnpack.h>
+#endif
+
+#if defined(ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
+extern "C" bool cpuinfo_is_initialized;
+#endif
+
 namespace {
 
 bool HasValidCpuinfoState() {
   return cpuinfo_get_processors_count() != 0 &&
          cpuinfo_get_processors() != nullptr &&
          cpuinfo_get_processor(0) != nullptr;
+}
+
+bool IsCpuinfoDeinitialized() {
+#if defined(ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
+  return !cpuinfo_is_initialized;
+#else
+  return true;
+#endif
 }
 
 bool TestSequentialConsumers() {
@@ -46,6 +62,11 @@ bool TestSequentialConsumers() {
 
   cpuinfo_deinitialize();
 
+  if (!IsCpuinfoDeinitialized()) {
+    std::cerr << "cpuinfo remained initialized after the final consumer released it" << std::endl;
+    return false;
+  }
+
   if (!first_consumer_release_preserved_state) {
     std::cerr << "cpuinfo released shared state while another consumer was still active" << std::endl;
     return false;
@@ -56,6 +77,11 @@ bool TestSequentialConsumers() {
     return false;
   }
   cpuinfo_deinitialize();
+
+  if (!IsCpuinfoDeinitialized()) {
+    std::cerr << "cpuinfo remained initialized after the reinitialized consumer released it" << std::endl;
+    return false;
+  }
 
   return true;
 }
@@ -121,8 +147,30 @@ bool TestConcurrentConsumers() {
   }
   cpuinfo_deinitialize();
 
+  if (!IsCpuinfoDeinitialized()) {
+    std::cerr << "cpuinfo remained initialized after concurrent use" << std::endl;
+    return false;
+  }
+
   return true;
 }
+
+#if defined(ORT_CPUINFO_TEST_USE_XNNPACK)
+bool TestXnnpackReleasesCpuinfo() {
+  if (xnn_initialize(nullptr) != xnn_status_success) {
+    std::cerr << "XNNPACK initialization failed" << std::endl;
+    return false;
+  }
+
+  if (!IsCpuinfoDeinitialized()) {
+    std::cerr << "XNNPACK retained a cpuinfo reference after hardware discovery" << std::endl;
+    return false;
+  }
+
+  xnn_deinitialize();
+  return true;
+}
+#endif
 
 }  // namespace
 
@@ -130,6 +178,12 @@ int main() {
   if (!TestSequentialConsumers() || !TestConcurrentConsumers()) {
     return EXIT_FAILURE;
   }
+
+#if defined(ORT_CPUINFO_TEST_USE_XNNPACK)
+  if (!TestXnnpackReleasesCpuinfo()) {
+    return EXIT_FAILURE;
+  }
+#endif
 
   return EXIT_SUCCESS;
 }

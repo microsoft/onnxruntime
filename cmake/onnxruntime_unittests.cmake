@@ -1987,16 +1987,40 @@ endif()
   endif()
 
   if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    onnxruntime_add_executable(
-      onnxruntime_cpuinfo_refcount_test
-      ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
-    target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
-    add_test(
-      NAME onnxruntime_cpuinfo_refcount_test
-      COMMAND onnxruntime_cpuinfo_refcount_test)
-    set_target_properties(
-      onnxruntime_cpuinfo_refcount_test
-      PROPERTIES FOLDER "ONNXRuntimeTest")
+    set(onnxruntime_cpuinfo_test_library cpuinfo)
+    get_target_property(onnxruntime_cpuinfo_aliased_target cpuinfo ALIASED_TARGET)
+    if(onnxruntime_cpuinfo_aliased_target)
+      set(onnxruntime_cpuinfo_test_library ${onnxruntime_cpuinfo_aliased_target})
+    endif()
+    get_target_property(onnxruntime_cpuinfo_library_type ${onnxruntime_cpuinfo_test_library} TYPE)
+    if(onnxruntime_cpuinfo_library_type STREQUAL "STATIC_LIBRARY")
+      onnxruntime_add_executable(
+        onnxruntime_cpuinfo_refcount_test
+        ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
+      target_compile_definitions(
+        onnxruntime_cpuinfo_refcount_test
+        PRIVATE ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
+      if(onnxruntime_USE_XNNPACK)
+        target_compile_definitions(
+          onnxruntime_cpuinfo_refcount_test
+          PRIVATE ORT_CPUINFO_TEST_USE_XNNPACK)
+        if(onnxruntime_USE_VCPKG)
+          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_HDR})
+        else()
+          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_INCLUDE_DIR})
+        endif()
+        target_link_libraries(
+          onnxruntime_cpuinfo_refcount_test
+          PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
+      endif()
+      target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
+      add_test(
+        NAME onnxruntime_cpuinfo_refcount_test
+        COMMAND onnxruntime_cpuinfo_refcount_test)
+      set_target_properties(
+        onnxruntime_cpuinfo_refcount_test
+        PROPERTIES FOLDER "ONNXRuntimeTest")
+    endif()
   endif()
 
   # shared lib
