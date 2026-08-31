@@ -19,6 +19,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 #include "core/graph/model.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/inference_session.h"
@@ -4714,7 +4715,8 @@ static std::vector<float> RunGQAReference(
     const std::vector<float>& query_data,
     const std::vector<float>& key_data,
     const std::vector<float>& value_data,
-    bool do_rotary) {
+    bool do_rotary,
+    bool use_fp16 = false) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = sequence_length;  // no past
@@ -4726,12 +4728,19 @@ static std::vector<float> RunGQAReference(
     tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
   }
 
-  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
-
-  tester.AddOptionalInputEdge<float>();  // past_key
-  tester.AddOptionalInputEdge<float>();  // past_value
+  if (use_fp16) {
+    tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size}, ToFloat16(query_data));
+    tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(key_data));
+    tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(value_data));
+    tester.AddOptionalInputEdge<MLFloat16>();  // past_key
+    tester.AddOptionalInputEdge<MLFloat16>();  // past_value
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    tester.AddOptionalInputEdge<float>();  // past_key
+    tester.AddOptionalInputEdge<float>();  // past_value
+  }
 
   std::vector<int32_t> seqlens_k(batch_size, total_sequence_length - 1);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
@@ -4749,25 +4758,49 @@ static std::vector<float> RunGQAReference(
         sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
       }
     }
-    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    if (use_fp16) {
+      tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, ToFloat16(cos_cache));
+      tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, ToFloat16(sin_cache));
+    } else {
+      tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+      tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    }
   } else {
-    tester.AddOptionalInputEdge<float>();  // cos_cache
-    tester.AddOptionalInputEdge<float>();  // sin_cache
+    if (use_fp16) {
+      tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+      tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+    } else {
+      tester.AddOptionalInputEdge<float>();  // cos_cache
+      tester.AddOptionalInputEdge<float>();  // sin_cache
+    }
   }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
   const int present_size = batch_size * kv_num_heads * total_sequence_length * head_size;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                          std::vector<float>(present_size, 0.0f));
+  if (use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                                std::vector<MLFloat16>(output_size));
+    tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                                std::vector<MLFloat16>(present_size));
+    tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                                std::vector<MLFloat16>(present_size));
+  } else {
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            std::vector<float>(present_size, 0.0f));
+  }
 
   tester.SetOutputTolerance(1e6f);
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
@@ -4777,6 +4810,16 @@ static std::vector<float> RunGQAReference(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
+  if (use_fp16) {
+    const MLFloat16* out_data = fetches[0].Get<Tensor>().Data<MLFloat16>();
+    std::vector<float> output;
+    output.reserve(output_size);
+    for (int i = 0; i < output_size; ++i) {
+      output.push_back(out_data[i].ToFloat());
+    }
+    return output;
+  }
+
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
   return std::vector<float>(out_data, out_data + output_size);
 }
@@ -4792,11 +4835,14 @@ static std::vector<float> RunGQATurboQuantNoPast(
     const std::vector<float>& key_data,
     const std::vector<float>& value_data,
     bool do_rotary,
-    uint32_t bit_width = 4) {
+    uint32_t bit_width = 4,
+    bool use_fp16 = false) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = sequence_length;  // no past
-  const int kv_head_dim = (head_size * static_cast<int>(bit_width) + 32) / 32;
+  const size_t element_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
+  const int kv_head_dim =
+      static_cast<int>(contrib::webgpu::KvCacheQuantizedHeadSize(head_size, bit_width, element_size));
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -4805,13 +4851,21 @@ static std::vector<float> RunGQATurboQuantNoPast(
     tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
   }
 
-  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
-
-  // Empty past with compressed head dim so shape inference derives correct present shape.
-  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
-  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+  if (use_fp16) {
+    tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size}, ToFloat16(query_data));
+    tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(key_data));
+    tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(value_data));
+    tester.AddInput<MLFloat16>("past_key",
+                               {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+    tester.AddInput<MLFloat16>("past_value",
+                               {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    tester.AddInput<float>("past_key", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+    tester.AddInput<float>("past_value", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+  }
 
   std::vector<int32_t> seqlens_k(batch_size, total_sequence_length - 1);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
@@ -4829,25 +4883,51 @@ static std::vector<float> RunGQATurboQuantNoPast(
         sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
       }
     }
-    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    if (use_fp16) {
+      tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, ToFloat16(cos_cache));
+      tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, ToFloat16(sin_cache));
+    } else {
+      tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+      tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    }
   } else {
-    tester.AddOptionalInputEdge<float>();  // cos_cache
-    tester.AddOptionalInputEdge<float>();  // sin_cache
+    if (use_fp16) {
+      tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+      tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+    } else {
+      tester.AddOptionalInputEdge<float>();  // cos_cache
+      tester.AddOptionalInputEdge<float>();  // sin_cache
+    }
   }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
   const int present_size = batch_size * kv_num_heads * total_sequence_length * kv_head_dim;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
+  if (use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                                std::vector<MLFloat16>(output_size));
+    tester.AddOutput<MLFloat16>("present_key",
+                                {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                                std::vector<MLFloat16>(present_size));
+    tester.AddOutput<MLFloat16>("present_value",
+                                {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                                std::vector<MLFloat16>(present_size));
+  } else {
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                            std::vector<float>(present_size, 0.0f));
+  }
 
   tester.SetOutputTolerance(1e6f);
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
@@ -4857,6 +4937,16 @@ static std::vector<float> RunGQATurboQuantNoPast(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
+  if (use_fp16) {
+    const MLFloat16* out_data = fetches[0].Get<Tensor>().Data<MLFloat16>();
+    std::vector<float> output;
+    output.reserve(output_size);
+    for (int i = 0; i < output_size; ++i) {
+      output.push_back(out_data[i].ToFloat());
+    }
+    return output;
+  }
+
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
   return std::vector<float>(out_data, out_data + output_size);
 }
@@ -5130,6 +5220,83 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) 
                                              /*bit_width=*/8);
   ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.02f,
                             /*max_absolute_error=*/0.03f);
+}
+
+static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width) {
+  auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithTurboQuant(bit_width);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::mt19937 rng(1234);
+  std::bernoulli_distribution sign_dist(0.5);
+  std::vector<float> qk_signs(head_size);
+  std::vector<float> value_signs(head_size);
+  for (int d = 0; d < head_size; ++d) {
+    qk_signs[d] = sign_dist(rng) ? 1.0f : -1.0f;
+    value_signs[d] = sign_dist(rng) ? 1.0f : -1.0f;
+  }
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (int s = 0; s < sequence_length; ++s) {
+    const float key_value = s % 2 == 0 ? 90.0f : 100.0f;
+    const float value_value = s % 2 == 0 ? 0.25f : 0.75f;
+    for (int h = 0; h < num_heads; ++h) {
+      for (int d = 0; d < head_size; ++d) {
+        query_data[(s * num_heads + h) * head_size + d] = 100.0f * qk_signs[d];
+      }
+    }
+    for (int d = 0; d < head_size; ++d) {
+      key_data[s * kv_hidden_size + d] = key_value * qk_signs[d];
+      value_data[s * kv_hidden_size + d] = value_value * value_signs[d];
+    }
+  }
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/false);
+  const auto actual =
+      bit_width == 0
+          ? RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                            query_data, key_data, value_data, /*do_rotary=*/false, /*use_fp16=*/true)
+          : RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                   query_data, key_data, value_data, /*do_rotary=*/false,
+                                   bit_width, /*use_fp16=*/true);
+  const float relative_rmse_tolerance = bit_width == 4 ? 0.2f : 0.01f;
+  const float absolute_error_tolerance = bit_width == 4 ? 0.5f : 0.01f;
+  ExpectBlockQuantInt8Close(reference, actual, relative_rmse_tolerance, absolute_error_tolerance);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_SplitReduce) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/0);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_FP16_HighMagnitude_FlashPrefill) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/4);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_FP16_HighMagnitude_SplitReduce) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/4);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_HighMagnitude_FlashPrefill) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/8);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_HighMagnitude_SplitReduce) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/8);
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Decode) {
