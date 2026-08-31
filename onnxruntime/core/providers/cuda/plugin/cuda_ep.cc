@@ -267,6 +267,12 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
+    if (ep->config_.enable_cuda_graph &&
+        node.GetOperatorType() == "GatherND" &&
+        node.GetDomain() == kOnnxDomain) {
+      continue;
+    }
+
     const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
