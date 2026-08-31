@@ -27,7 +27,7 @@ struct KernelRegistryAndStatus {
 };
 }  // namespace
 
-#if defined(MLAS_HALF_GEMM_ACCELERATION_POSSIBLE) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD))
+#if defined(MLAS_HALF_GEMM_ACCELERATION_POSSIBLE)
 #define ORT_CPU_FP16_GEMM_MATMUL_REGISTRATION_ENABLED
 #endif
 
@@ -3771,10 +3771,19 @@ Status RegisterFp16GemmMatMulKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, MLFloat16,
                                                                   MatMul)>,
   };
-  for (auto& function_table_entry : function_table) {
-    KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {
-      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+
+  if constexpr (std::size(function_table) > 1) {
+    // Kernel registration is process-wide and based on the default backend
+    // selector config (nullptr => use_kleidiai=true). A session can still
+    // disable KleidiAI via kOrtSessionOptionsMlasDisableKleidiAi, in which case
+    // MatMul/Gemm may run their non-accelerated fp16 fallback for these kernels.
+    if (MlasHalfGemmAccelerationSupported(nullptr)) {
+      for (auto& function_table_entry : function_table) {
+        KernelCreateInfo info = function_table_entry();
+        if (info.kernel_def != nullptr) {
+          ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+        }
+      }
     }
   }
 
@@ -4078,13 +4087,7 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(RegisterOnnxOperatorKernels(kernel_registry));
 #ifdef ORT_CPU_FP16_GEMM_MATMUL_REGISTRATION_ENABLED
-  // Kernel registration is process-wide and based on the default backend
-  // selector config (nullptr => use_kleidiai=true). A session can still
-  // disable KleidiAI via kOrtSessionOptionsMlasDisableKleidiAi, in which case
-  // MatMul/Gemm may run their non-accelerated fp16 fallback for these kernels.
-  if (MlasHalfGemmAccelerationSupported(nullptr)) {
-    ORT_RETURN_IF_ERROR(RegisterFp16GemmMatMulKernels(kernel_registry));
-  }
+  ORT_RETURN_IF_ERROR(RegisterFp16GemmMatMulKernels(kernel_registry));
 #endif
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   if (MlasFp16AccelerationSupported()) {
