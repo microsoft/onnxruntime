@@ -80,8 +80,9 @@ constexpr int64_t kE2eBlockSize = 32;
 constexpr int64_t kE2eBits = 4;
 constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
 
-// Builds a minimal single-node MatMulNBits model with the valid optional-input layout
-// [A, B, scales, "", "", bias] and returns its serialized ModelProto bytes.
+// Builds a minimal single-node MatMulNBits model and returns its serialized ModelProto bytes.
+// The compact fpA_intB path does not support bias. Other builds use the valid optional-input
+// layout [A, B, scales, "", "", bias] to exercise positional Level-2 shape resolution.
 //
 // When `m_dim_param` is null (default), input A's leading dimension is the fully-static `kE2eM`.
 // When it is non-null, the leading dimension is instead symbolic.
@@ -150,13 +151,15 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr) {
   }
   *scales->mutable_raw_data() = std::move(scale_raw);
 
-  // bias initializer: fp16 {N}, zero-filled. Supplying it after two omitted optional inputs is the
+#if !USE_COMPACT_FPA_INTB_GEMM
+  // Bias initializer: fp16 {N}, zero-filled. Supplying it after two omitted optional inputs is the
   // regression layout for positional Level-2 input-shape resolution.
   auto* bias = graph->add_initializer();
   bias->set_name("bias");
   bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   bias->add_dims(kE2eN);
   bias->mutable_raw_data()->assign(static_cast<size_t>(kE2eN * sizeof(uint16_t)), '\0');
+#endif
 
   // MatMulNBits node.
   auto* node = graph->add_node();
@@ -168,7 +171,11 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr) {
   node->add_input("scales");
   node->add_input("");
   node->add_input("");
+#if USE_COMPACT_FPA_INTB_GEMM
+  node->add_input("");
+#else
   node->add_input("bias");
+#endif
   node->add_output("Y");
   auto add_int_attr = [node](const char* name, int64_t v) {
     auto* attr = node->add_attribute();
@@ -411,12 +418,16 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
 
   const auto input_shapes =
       ResolveNodeInputShapes(*mm_node, &graph, positive_inferred_shapes);
-  ASSERT_EQ(input_shapes.size(), 6u);
   ASSERT_NE(input_shapes[0].GetShape(), nullptr);
   EXPECT_EQ(*input_shapes[0].GetShape(), TensorShape({kE2eM, kE2eK}));
+  ASSERT_EQ(input_shapes.size(), 6u);
   EXPECT_EQ(input_shapes[3].GetState(), WorkspaceInputShapeState::Missing);
   EXPECT_EQ(input_shapes[4].GetState(), WorkspaceInputShapeState::Missing);
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_EQ(input_shapes[5].GetState(), WorkspaceInputShapeState::Missing);
+#else
   EXPECT_EQ(input_shapes[5].GetState(), WorkspaceInputShapeState::PresentWithShape);
+#endif
   InlinedVector<WorkspaceRequirement> requirements;
   // DeclareWorkspaceRequirements is virtual on OpKernel; this dispatches into the MatMulNBits override.
   ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
@@ -514,12 +525,16 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   // resolver used for shape hints. The two optional holes and the bias must retain their positions.
   const auto zero_m_input_shapes =
       ResolveNodeInputShapes(*mm_node, &graph, zero_m_inferred_shapes);
-  ASSERT_EQ(zero_m_input_shapes.size(), 6u);
   ASSERT_NE(zero_m_input_shapes[0].GetShape(), nullptr);
   EXPECT_EQ(*zero_m_input_shapes[0].GetShape(), zero_m_a_shape);
+  ASSERT_EQ(zero_m_input_shapes.size(), 6u);
   EXPECT_EQ(zero_m_input_shapes[3].GetState(), WorkspaceInputShapeState::Missing);
   EXPECT_EQ(zero_m_input_shapes[4].GetState(), WorkspaceInputShapeState::Missing);
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_EQ(zero_m_input_shapes[5].GetState(), WorkspaceInputShapeState::Missing);
+#else
   EXPECT_EQ(zero_m_input_shapes[5].GetState(), WorkspaceInputShapeState::PresentWithShape);
+#endif
 
   InlinedVector<WorkspaceRequirement> zero_m_requirements;
   ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
