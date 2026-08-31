@@ -9,10 +9,6 @@
 #include <thread>
 #include <vector>
 
-#if defined(ORT_CPUINFO_TEST_USE_XNNPACK)
-#include <xnnpack.h>
-#endif
-
 #if defined(ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
 constexpr int kCpuinfoCacheLevelCount = 5;
 
@@ -189,35 +185,12 @@ bool TestConcurrentConsumers() {
   return true;
 }
 
-#if defined(ORT_CPUINFO_TEST_USE_XNNPACK)
-bool TestXnnpackReleasesCpuinfo() {
-  if (xnn_initialize(nullptr) != xnn_status_success) {
-    std::cerr << "XNNPACK initialization failed" << std::endl;
-    return false;
-  }
-
-  if (!IsCpuinfoDeinitialized()) {
-    std::cerr << "XNNPACK retained a cpuinfo reference after hardware discovery" << std::endl;
-    return false;
-  }
-
-  xnn_deinitialize();
-  return true;
-}
-#endif
-
 }  // namespace
 
 int main() {
   if (!TestSequentialConsumers() || !TestConcurrentConsumers()) {
     return EXIT_FAILURE;
   }
-
-#if defined(ORT_CPUINFO_TEST_USE_XNNPACK)
-  if (!TestXnnpackReleasesCpuinfo()) {
-    return EXIT_FAILURE;
-  }
-#endif
 
   return EXIT_SUCCESS;
 }

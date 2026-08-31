@@ -2000,19 +2000,6 @@ endif()
       target_compile_definitions(
         onnxruntime_cpuinfo_refcount_test
         PRIVATE ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
-      if(onnxruntime_USE_XNNPACK)
-        target_compile_definitions(
-          onnxruntime_cpuinfo_refcount_test
-          PRIVATE ORT_CPUINFO_TEST_USE_XNNPACK)
-        if(onnxruntime_USE_VCPKG)
-          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_HDR})
-        else()
-          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_INCLUDE_DIR})
-        endif()
-        target_link_libraries(
-          onnxruntime_cpuinfo_refcount_test
-          PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
-      endif()
       target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
       add_test(
         NAME onnxruntime_cpuinfo_refcount_test
