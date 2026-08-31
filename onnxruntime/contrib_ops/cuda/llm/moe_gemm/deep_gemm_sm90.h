@@ -1,18 +1,20 @@
-#pragma once
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-#include <cstddef>
-#include <cstdint>
+#pragma once
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
 #include <cuda_runtime_api.h>
 
+#include <cstddef>
+#include <cstdint>
+
 namespace onnxruntime::llm::kernels::deep_gemm_sm90 {
 
-// The fixed-shape model owns 256 / world experts; eight and four ranks are the supported splits,
-// and the grouped GEMM takes the count as a template argument, so both are instantiated.
+// Only the validated eight-rank split is supported. The 64-expert four-rank split exhausts
+// device memory while PrePack creates the persistent FP8 weights and therefore stays on QMoE.
 constexpr int kNumExpertsWorld8 = 32;
-constexpr int kNumExpertsWorld4 = 64;
 constexpr int kPaddedTokensPerExpert = 64;
 constexpr int kMaxTokensPerExpert = 8;
 constexpr int kHiddenSize = 4096;
@@ -20,7 +22,7 @@ constexpr int kInterSize = 2048;
 constexpr int kFc1OutputSize = 4096;
 
 constexpr bool NumExpertsSupported(int64_t num_experts) {
-  return num_experts == kNumExpertsWorld8 || num_experts == kNumExpertsWorld4;
+  return num_experts == kNumExpertsWorld8;
 }
 
 // The FP8 1D2D kernel scales A per (row, 128 contiguous K) and B per [128 N, 128 K] block.

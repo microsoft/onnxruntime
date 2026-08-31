@@ -3,15 +3,18 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
-#include "core/common/narrow.h"
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/cub.cuh"
-#include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
-#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
+
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
+
 #include <algorithm>
 #include <cfloat>
+
+#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
+#include "core/common/narrow.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {

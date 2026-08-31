@@ -911,7 +911,7 @@ The path is enabled only when every construction-time constraint holds:
 | GPU | SM90 with exactly 132 SMs and at least 120 GiB global memory (H200) |
 | QMoE mode | `quant_type="fp4"`, BF16 activation/output, `k=6` |
 | Activation | `activation_type="swiglu"`, `swiglu_fusion=1` (interleaved gate/value) |
-| Local experts | 32 |
+| Local experts | 32 (the validated 8-rank split) |
 | Hidden / local intermediate | 4096 / 2048 |
 | FC1 packed weight shape | `[32, 4096, 2048]` (`[E, K, 2*inter/2]`) |
 | FC2 packed weight shape | `[32, 2048, 2048]` (`[E, inter, hidden/2]`) |
@@ -922,6 +922,11 @@ shapes are `[32, 4096, 128]` for FC1 and `[32, 4096, 64]` for FC2. Once all thre
 FC are available, `LaunchQMoEQuantizeFp4WeightsToFp8` creates the persistent E4M3 expert-weight
 buffer and FP32 `[128 N, 128 K]` block scales, verifies element-wise round-trip exactness, and
 releases that path's staged MXFP4 weight and scale copies.
+
+The 4-rank split with 64 local experts is intentionally unsupported. Its doubled persistent
+conversion footprint exhausts device memory during `PrePack` in the tested deployment. Such a
+graph does not pass the static DeepGEMM gate and continues through the standard QMoE path even
+when `ORT_QMOE_FP4_DEEPGEMM=1`.
 
 Each invocation has additional runtime gates:
 

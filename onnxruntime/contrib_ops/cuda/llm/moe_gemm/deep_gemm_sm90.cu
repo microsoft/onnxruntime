@@ -348,14 +348,9 @@ void Run(const __nv_bfloat16* compact_input, const int64_t* offsets,
          const __nv_fp8_e4m3* fc2_weights, const float* fc2_weight_scales,
          __nv_bfloat16* compact_output, int num_experts, float alpha, float beta, float limit,
          void* workspace, cudaStream_t stream) {
-  if (num_experts == kNumExpertsWorld8) {
-    RunImpl<kNumExpertsWorld8>(compact_input, offsets, fc1_weights, fc1_weight_scales, fc2_weights,
-                               fc2_weight_scales, compact_output, alpha, beta, limit, workspace, stream);
-  } else {
-    ORT_ENFORCE(num_experts == kNumExpertsWorld4, "DeepGEMM: unsupported expert count ", num_experts);
-    RunImpl<kNumExpertsWorld4>(compact_input, offsets, fc1_weights, fc1_weight_scales, fc2_weights,
-                               fc2_weight_scales, compact_output, alpha, beta, limit, workspace, stream);
-  }
+  ORT_ENFORCE(num_experts == kNumExpertsWorld8, "DeepGEMM: unsupported expert count ", num_experts);
+  RunImpl<kNumExpertsWorld8>(compact_input, offsets, fc1_weights, fc1_weight_scales, fc2_weights,
+                             fc2_weight_scales, compact_output, alpha, beta, limit, workspace, stream);
 }
 
 }  // namespace onnxruntime::llm::kernels::deep_gemm_sm90

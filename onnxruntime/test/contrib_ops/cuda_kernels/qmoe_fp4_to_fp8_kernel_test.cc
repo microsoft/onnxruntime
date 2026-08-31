@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace onnxruntime {
@@ -86,7 +87,12 @@ ConversionResult ConvertSingleBlock(uint8_t default_scale, float global_scale,
 
 TEST(CUDA_EP_Unittest, QMoEFp4ToFp8PreservesExactPowerOfTwoScale) {
   const ConversionResult result = ConvertSingleBlock(127, 448.0f / 6.0f);
-  EXPECT_FLOAT_EQ(result.scale, 448.0f / (6.0f * 64.0f));
+  const float expected_scale = 448.0f / (6.0f * 64.0f);
+  uint32_t result_scale_bits = 0;
+  uint32_t expected_scale_bits = 0;
+  std::memcpy(&result_scale_bits, &result.scale, sizeof(result_scale_bits));
+  std::memcpy(&expected_scale_bits, &expected_scale, sizeof(expected_scale_bits));
+  EXPECT_EQ(result_scale_bits, expected_scale_bits);
   EXPECT_EQ(result.inexact, 0);
 }
 

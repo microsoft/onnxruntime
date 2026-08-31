@@ -2130,7 +2130,7 @@ std::map<std::string, std::pair<size_t, size_t>>
 CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>::getWorkspaceDeviceBufferSizes(
     const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
     const int experts_per_token, ActivationType activation_type,
-    bool use_awq) {
+    bool use_awq, int swiglu_fusion) {
   size_t num_moe_inputs = experts_per_token * num_rows;
   const size_t permuted_elems = num_moe_inputs * hidden_size;
   const size_t interbuf_elems = num_moe_inputs * inter_size;
@@ -2219,7 +2219,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
     if (use_fp4_deep_gemm_ && num_rows > 0 && num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
         hidden_size == deep_gemm_sm90::kHiddenSize && inter_size == deep_gemm_sm90::kInterSize &&
         deep_gemm_sm90::NumExpertsSupported(num_experts_per_node) && experts_per_token == 6 &&
-        activation_type == ActivationType::Swiglu && !use_awq) {
+        activation_type == ActivationType::Swiglu && swiglu_fusion == 1 && !use_awq) {
       fp4_deep_gemm_workspace_size = deep_gemm_sm90::GetWorkspaceSize(num_experts_per_node);
     }
   }
@@ -2266,11 +2266,11 @@ template <class T, class WeightType, class OutputType, class InputType, class Sc
 size_t CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>::getWorkspaceSize(
     const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size, const int num_experts,
     const int experts_per_token, ActivationType activation_type, MOEParallelismConfig parallelism_config,
-    bool use_awq) {
+    bool use_awq, int swiglu_fusion) {
   const int ep_size = parallelism_config.ep_size;
   ORT_ENFORCE(num_experts % ep_size == 0, "Number of experts must be a multiple of ep size");
   auto sizes_map = getWorkspaceDeviceBufferSizes(num_rows, hidden_size, inter_size, num_experts / ep_size,
-                                                 experts_per_token, activation_type, use_awq);
+                                                 experts_per_token, activation_type, use_awq, swiglu_fusion);
   std::vector<size_t> sizes(sizes_map.size());
   std::transform(sizes_map.begin(), sizes_map.end(), sizes.begin(), [](auto& v) { return v.second.first; });
   size_t size = onnxruntime::llm::common::calculateTotalWorkspaceSize(sizes.data(), sizes.size());
@@ -2282,9 +2282,9 @@ template <class T, class WeightType, class OutputType, class InputType, class Sc
 void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>::configureWsPtrs(char* ws_ptr,
                                                                                                       const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
                                                                                                       const int experts_per_token, ActivationType activation_type, MOEParallelismConfig parallelism_config,
-                                                                                                      bool use_awq) {
+                                                                                                      bool use_awq, int swiglu_fusion) {
   auto workspaces = getWorkspaceDeviceBufferSizes(num_rows, hidden_size, inter_size, num_experts_per_node,
-                                                  experts_per_token, activation_type, use_awq);
+                                                  experts_per_token, activation_type, use_awq, swiglu_fusion);
 
   auto getWsPtr = [&](auto type, const std::string& name) {
     return workspaces.at(name).first ? reinterpret_cast<decltype(type)*>(ws_ptr + workspaces.at(name).second)
@@ -2845,7 +2845,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   const int num_experts_per_node = full_num_experts / parallelism_config.ep_size;
 
   configureWsPtrs(workspace_ptr, num_rows, hidden_size, inter_size, num_experts_per_node, experts_per_token,
-                  fc1_activation_type, parallelism_config, use_awq);
+                  fc1_activation_type, parallelism_config, use_awq, activation_params.swiglu_fusion);
 
   int start_expert = num_experts_per_node * parallelism_config.ep_rank;
   int end_expert = start_expert + num_experts_per_node;

@@ -1025,7 +1025,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
             tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-            activation_type_, parallelism_config, use_awq);
+            activation_type_, parallelism_config, use_awq, swiglu_fusion);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
         runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
       }
@@ -1117,7 +1117,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
             tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-            activation_type_, parallelism_config, use_awq);
+            activation_type_, parallelism_config, use_awq, swiglu_fusion);
         workspace_size = std::max(workspace_size, tile_config.workspace_size);
         runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
       }
@@ -2765,7 +2765,9 @@ void QMoE::TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr 
   output_scales = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);
 
   // The conversion is bit-exact only while every block's MXFP4 group exponents fit in e4m3's
-  // range; the kernel verifies that per element and raises this flag otherwise.
+  // range. The kernel verifies every element and sets inexact_flag on any mismatch. The host
+  // check below is the safety boundary for using the converted weights: never retain them or
+  // silently continue on the DeepGEMM path when the flag is set.
   auto inexact_flag = IAllocator::MakeUniquePtr<void>(alloc, sizeof(int), true);
   CUDA_CALL_THROW(cudaMemsetAsync(inexact_flag.get(), 0, sizeof(int), stream));
   LaunchQMoEQuantizeFp4WeightsToFp8(
@@ -2777,6 +2779,8 @@ void QMoE::TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr 
   int inexact = 0;
   CUDA_CALL_THROW(cudaMemcpyAsync(&inexact, inexact_flag.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  // Fail closed before releasing the staged MXFP4 inputs. ORT session creation then reports the
+  // unsupported conversion instead of allowing inference with non-bit-exact FP8 weights.
   ORT_ENFORCE(inexact == 0,
               "QMoE FP4 DeepGEMM: MXFP4 fc", fc,
               " weights do not convert losslessly to FP8 e4m3 (a [128 N, 128 K] block spans more "

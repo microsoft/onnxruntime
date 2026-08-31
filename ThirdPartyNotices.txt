@@ -6344,6 +6344,7 @@ Copyright (c) Microsoft Corporation. All rights reserved.
    limitations under the License.
 _____
 DeepSeek DeepGEMM (https://github.com/deepseek-ai/DeepGEMM)
+Commit: 559d79fb6994a58b8a15b4b93bf13ccc16edf247
 
 MIT License
 

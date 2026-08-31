@@ -279,7 +279,8 @@ class CutlassMoeFCRunnerInterface {
   virtual ~CutlassMoeFCRunnerInterface() = default;
   virtual size_t getWorkspaceSize(const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size,
                                   const int num_experts, const int experts_per_token, ActivationType activation_type,
-                                  MOEParallelismConfig parallelism_config, bool use_awq) = 0;
+                                  MOEParallelismConfig parallelism_config, bool use_awq,
+                                  int swiglu_fusion = 0) = 0;
   virtual void setTactic(std::optional<cutlass_extensions::CutlassGemmConfig> gemm1_config,
                          std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config) = 0;
   virtual std::vector<cutlass_extensions::CutlassGemmConfig> getTactics() = 0;
@@ -420,7 +421,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
 
   size_t getWorkspaceSize(const int64_t num_rows, const int64_t hidden_size, const int64_t fc1_output_size,
                           const int num_experts, const int experts_per_token, ActivationType activation_type,
-                          MOEParallelismConfig parallelism_config, bool use_awq) override;
+                          MOEParallelismConfig parallelism_config, bool use_awq,
+                          int swiglu_fusion = 0) override;
 
   void setTactic(std::optional<cutlass_extensions::CutlassGemmConfig> gemm1_config,
                  std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config) override {
@@ -591,11 +593,11 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   std::map<std::string, std::pair<size_t, size_t>> getWorkspaceDeviceBufferSizes(const int64_t num_rows,
                                                                                  const int64_t hidden_size, const int64_t inter_size, const int num_experts_per_node,
                                                                                  const int experts_per_token, ActivationType activation_type,
-                                                                                 bool use_awq);
+                                                                                 bool use_awq, int swiglu_fusion);
   void configureWsPtrs(char* ws_ptr, const int64_t num_rows, const int64_t hidden_size, const int64_t inter_size,
                        const int num_experts_per_node, const int experts_per_token, ActivationType activation_type,
                        MOEParallelismConfig parallelism_config,
-                       bool use_awq);
+                       bool use_awq, int swiglu_fusion);
 
  private:
   bool mayHaveDifferentGEMMOutputType() const {
