@@ -309,7 +309,9 @@ def generate_vcpkg_install_options(build_dir, args):
             "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe",
         ]
 
-        terrapin_cmd_path = next(path for path in terrapin_path_candidates if os.path.exists(path))
+        terrapin_cmd_path = next(
+            path for path in terrapin_path_candidates if (path is not None and os.path.exists(path))
+        )
 
         if terrapin_cmd_path is not None:
             vcpkg_install_options.append(
