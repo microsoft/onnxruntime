@@ -228,19 +228,20 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     }
 
     const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
+    const int packing_ratio = onnxruntime::llm::kernels::weight_only::FP16_BITS / SafeInt<int>(nbits);
+    const int packed_n = SafeInt<int>(N) / packing_ratio;
+    const int original_n = packed_n * packing_ratio;
     const auto profiler_runner_workspace =
         onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-            profile_max_m, SafeInt<int>(N), SafeInt<int>(K), sm,
+            profile_max_m, original_n, SafeInt<int>(K), sm,
             device_prop.multiProcessorCount);
     if (!profiler_runner_workspace.has_value()) {
       return std::nullopt;
     }
 
-    const size_t packed_n = static_cast<size_t>(
-        SafeInt<int64_t>(N) / (onnxruntime::llm::kernels::weight_only::FP16_BITS / nbits));
     const auto profiler_scratch =
         onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
-            profile_max_m, packed_n, SafeInt<size_t>(K), SafeInt<int>(nbits),
+            profile_max_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
             SafeInt<size_t>(block_size), *profiler_runner_workspace);
     if (!profiler_scratch.has_value()) {
       return std::nullopt;
@@ -251,7 +252,7 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     if (m.has_value()) {
       estimate->runtime_workspace_bytes =
           onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-              SafeInt<int>(*m), SafeInt<int>(N), SafeInt<int>(K), sm,
+              SafeInt<int>(*m), original_n, SafeInt<int>(K), sm,
               device_prop.multiProcessorCount);
     }
 

@@ -259,7 +259,7 @@ const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
 
 }  // namespace
 
-TEST(MatMulNBitsWorkspace, GetCapabilityBudgetIncludesLazyProfileScratchForKnownM) {
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
@@ -276,10 +276,10 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetIncludesLazyProfileScratchForKnown
                 {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
   const std::string model_bytes = BuildMatMulNBitsModelBytes();
 
-  // profile_m=1 limits the initial profile sweep, but the static M=256 can later trigger lazy
-  // profiling of the rounded M=256 bucket. The structured Level-1 total is above 1000 KiB and
-  // below 1100 KiB only when that larger lazy-profile scratch is included. The two budgets prove
-  // that CUDA GetCapability admits against the largest scratch allocation runtime can request.
+  // profile_m=1 limits the initial profile sweep, but static M=256 can later trigger lazy
+  // profiling of the rounded M=256 bucket. That scratch allocation is sequential and is reported
+  // as an initialization peak rather than summed into the additive hard budget. The remaining
+  // initializer, output, runtime-workspace, and persistent-prepack total is between 530 and 560 KiB.
   {
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
@@ -287,7 +287,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetIncludesLazyProfileScratchForKnown
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "1100,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "560,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -306,7 +306,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetIncludesLazyProfileScratchForKnown
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "530,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));

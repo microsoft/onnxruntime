@@ -115,6 +115,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 }
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
+  maxM = std::max<size_t>(1, maxM);
   const int original_n =
       static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
   const auto scratch_size = ComputeWeightOnlyGemmProfilerScratchSize(

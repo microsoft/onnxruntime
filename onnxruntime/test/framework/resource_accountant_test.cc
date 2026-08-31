@@ -200,7 +200,7 @@ TEST(ResourceAccountantTest, WorkspaceEstimateCommittedOnlyForAcceptedNodes) {
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000});
 }
 
-TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndAddsPrepackMemory) {
+TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndReportsInitializationScratchPeak) {
   SharedWeightGraph h;
   ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
   std::optional<ResourceAccountantMap> acc_map;
@@ -212,7 +212,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndAddsPrepackM
       /*persistent_prepack_bytes=*/300,
       /*temporary_prepack_bytes=*/400};
   auto resource_count = accountant->ComputeResourceCount(*h.node_a, level1_estimate);
-  EXPECT_EQ(GetSizeT(resource_count), size_t{2950});
+  EXPECT_EQ(GetSizeT(resource_count), size_t{2550});
   const auto pending_workspace =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index());
   EXPECT_EQ(pending_workspace.bytes, size_t{250});
@@ -230,7 +230,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndAddsPrepackM
   EXPECT_EQ(accountant->GetCommittedPersistentPrepackEstimate(), size_t{300});
   EXPECT_EQ(accountant->GetCommittedTemporaryPrepackEstimate(), size_t{400});
   EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().estimator, size_t{1});
-  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2950});
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2550});
 }
 
 TEST(ResourceAccountantTest, Level1MemoryEstimateKeepsFallbackWhenRuntimeWorkspaceIsUnknown) {
@@ -245,7 +245,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateKeepsFallbackWhenRuntimeWorkspa
       /*persistent_prepack_bytes=*/300,
       /*temporary_prepack_bytes=*/400};
   const auto resource_count = accountant->ComputeResourceCount(*h.node_a, level1_estimate);
-  EXPECT_EQ(GetSizeT(resource_count), size_t{3700});
+  EXPECT_EQ(GetSizeT(resource_count), size_t{3300});
 
   const auto pending_workspace =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index());
@@ -253,6 +253,38 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateKeepsFallbackWhenRuntimeWorkspa
   EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kFallback);
   EXPECT_EQ(pending_workspace.persistent_prepack_bytes, size_t{300});
   EXPECT_EQ(pending_workspace.temporary_prepack_bytes, size_t{400});
+}
+
+TEST(ResourceAccountantTest, InitializationScratchIsCommittedAsPeakAndExcludedFromBudget) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  const auto cost_a = accountant->ComputeResourceCount(
+      *h.node_a,
+      Level1MemoryEstimate{
+          /*runtime_workspace_bytes=*/250,
+          /*persistent_prepack_bytes=*/0,
+          /*temporary_prepack_bytes=*/400});
+  const auto cost_b = accountant->ComputeResourceCount(
+      *h.node_b,
+      Level1MemoryEstimate{
+          /*runtime_workspace_bytes=*/250,
+          /*persistent_prepack_bytes=*/0,
+          /*temporary_prepack_bytes=*/700});
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(h.node_a->Index());
+  sub_graph.nodes.push_back(h.node_b->Index());
+  sub_graph.SetAccountant(accountant);
+  sub_graph.AppendNodeCost(cost_a);
+  sub_graph.AppendNodeCost(cost_b);
+  sub_graph.AccountForAllNodes();
+
+  EXPECT_EQ(accountant->GetCommittedTemporaryPrepackEstimate(), size_t{700});
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), GetSizeT(cost_a) + GetSizeT(cost_b));
 }
 
 TEST(ResourceAccountantTest, CommittedWorkspaceRejectsOverflow) {
@@ -651,21 +683,24 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
-TEST(RealAccountantTest, FactoryRetainsSessionConfigForLevel1Estimation) {
+TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   ConfigOptions config;
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
+  ASSERT_STATUS_OK(config.AddConfigEntry("unrelated.config", "not copied"));
 
   std::optional<ResourceAccountantMap> acc_map;
   ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
   ASSERT_TRUE(acc_map.has_value());
   auto* accountant = acc_map->at(kCudaExecutionProvider).get();
 
-  EXPECT_EQ(accountant->GetSessionConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-            std::optional<std::string>{"1"});
-  EXPECT_FALSE(accountant->GetSessionConfigEntry("missing.config").has_value());
+  const auto& estimator_config = accountant->GetWorkspaceEstimatorConfig();
+  EXPECT_EQ(estimator_config.cuda_fpa_intb_gemm, std::optional<std::string>{"1"});
+  EXPECT_EQ(estimator_config.cuda_fpa_intb_profile_m, std::optional<std::string>{"1,16"});
 }
 
 // Factory returns empty optional when no config is set.

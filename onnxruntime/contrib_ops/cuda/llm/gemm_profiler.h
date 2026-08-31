@@ -216,16 +216,6 @@ class GemmPluginProfiler {
 
   float profileTacticForProblem(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream);
 
-  int nextPowerOfTwo(int v) const {
-    --v;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    return ++v;
-  }
-
  protected:
   RunnerPtr mRunner{nullptr};
 
@@ -308,7 +298,12 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   mDims = dims;
   mHasWeightOnlyCudaKernel = hasWeightOnlyCudaKernel;
 
-  int const maxM = RoundUpProfileM(static_cast<int>(dims.maxM), getMaxProfileM());
+  const int max_profile_m = getMaxProfileM();
+  const int maxM = dims.maxM <= 1
+                       ? 1
+                   : dims.maxM >= max_profile_m
+                       ? max_profile_m
+                       : RoundUpProfileM(static_cast<int>(dims.maxM), max_profile_m);
 
   size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
 
@@ -402,7 +397,7 @@ std::vector<int> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashTyp
       buckets.push_back(m);
     }
   } else {
-    for (int m = std::max(1, nextPowerOfTwo(minM)); m < maxM; m *= 2) {
+    for (int m = std::max(1, RoundUpProfileM(minM, getMaxProfileM())); m < maxM; m *= 2) {
       buckets.push_back(m);
     }
   }

@@ -17,6 +17,7 @@
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#include <algorithm>
 #include <fstream>
 #include <optional>
 
@@ -65,13 +66,13 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // Initializer bytes are charged separately, so persistent prepack estimates
   // must include only additional allocations, not storage reused directly from
   // an initializer (for example, an offline-prepacked weight). Persistent
-  // prepack and initialization-scratch estimates are additional conservative
-  // charges in both paths. MatMulNBits tactic profiling runs synchronously while
+  // prepack estimates are additional conservative charges in both paths.
+  // Initialization scratch remains diagnostic rather than part of the additive
+  // hard budget. MatMulNBits tactic profiling runs synchronously while
   // each kernel is constructed, and PrePack() calls run sequentially after
   // kernel creation; their scratch buffers are therefore created and released
-  // one at a time. Their true session-wide requirement is a peak rather than the
-  // sum charged here. Exact peak modeling requires tracking persistent memory
-  // and initialization scratch headroom separately.
+  // one at a time. Their true session-wide requirement is a peak, which cannot
+  // be represented by the reversible per-node ResourceCount scalar.
   //
   // GetCapability may probe nodes that are not ultimately assigned to this EP,
   // so per-node weights and workspace remain pending. CommitResourcesForNode()
@@ -111,7 +112,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         const SafeInt<size_t> resource_count =
             SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
             stats.total_dynamic_sizes + selected_workspace +
-            persistent_prepack_bytes + temporary_prepack_bytes;
+            persistent_prepack_bytes;
         return static_cast<size_t>(resource_count);
       }
 
@@ -161,7 +162,6 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     // Otherwise, GetSizeInBytesFromTensorTypeProto will only succeed when all dims
     // are known (static shape).
     SafeInt<size_t> output_size = 0;
-    const auto* graph_for_shapes = node.GetContainingGraph();
     for (const auto* output_def : node.OutputDefs()) {
       if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
       const auto* type_proto = output_def->TypeAsProto();
@@ -169,9 +169,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
 
       size_t size = 0;
       // Try max-shape inference first for dynamic outputs
-      if (graph_for_shapes != nullptr && !max_shapes.Empty()) {
+      if (!max_shapes.Empty()) {
         if (const TensorShape* max_shape =
-                max_shapes.GetShape(graph_for_shapes, output_def->Name())) {
+                max_shapes.GetShape(graph, output_def->Name())) {
           const auto& tensor_type = type_proto->tensor_type();
           if (tensor_type.has_elem_type()) {
             const SafeInt<size_t> inferred_size =
@@ -183,8 +183,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         }
       }
       // Fall back to static shape
-      if (size == 0) {
-        utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK();
+      if (size == 0 &&
+          !utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK()) {
+        continue;
       }
       output_size += size;
     }
@@ -220,7 +221,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             persistent_prepack_bytes,
             temporary_prepack_bytes});
     return static_cast<size_t>(estimated + selected_workspace +
-                               persistent_prepack_bytes + temporary_prepack_bytes);
+                               persistent_prepack_bytes);
   }
 
   void ResetPendingResourcesImpl() override {
@@ -283,9 +284,10 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     const size_t new_persistent_prepack_estimate =
         static_cast<size_t>(SafeInt<size_t>(committed_persistent_prepack_estimate_) +
                             selection.persistent_prepack_bytes);
+    // Kernel construction and PrePack() are sequential today, so committed
+    // initialization scratch is a session-wide peak rather than a sum.
     const size_t new_temporary_prepack_estimate =
-        static_cast<size_t>(SafeInt<size_t>(committed_temporary_prepack_estimate_) +
-                            selection.temporary_prepack_bytes);
+        std::max(committed_temporary_prepack_estimate_, selection.temporary_prepack_bytes);
 
     committed_workspace_estimate_ = new_workspace_estimate;
     committed_persistent_prepack_estimate_ = new_persistent_prepack_estimate;
@@ -489,9 +491,12 @@ Status CreateAccountants(
   }
 
   if (result.has_value()) {
+    WorkspaceEstimatorConfig estimator_config{
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
     for (auto& [ep_type, accountant] : *result) {
       ORT_UNUSED_PARAMETER(ep_type);
-      accountant->SetSessionConfigOptions(config_options.GetConfigOptionsMap());
+      accountant->SetWorkspaceEstimatorConfig(estimator_config);
     }
   }
 

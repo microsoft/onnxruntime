@@ -383,11 +383,17 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
     InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pass1_workspace_estimates;
     if (params.resource_accountant != nullptr) {
+      const InlinedHashSet<NodeIndex> temporarily_assigned_nodes{
+          nodes_temporarily_assigned_to_ep.begin(), nodes_temporarily_assigned_to_ep.end()};
       for (const auto& capability : capabilities) {
         const auto& sub_graph = *capability->sub_graph;
         if (sub_graph.IsAccountingEnabled()) {
           for (size_t i = 0, limit = sub_graph.nodes.size(); i < limit; ++i) {
             const NodeIndex node_index = sub_graph.nodes[i];
+            if (!temporarily_assigned_nodes.contains(node_index)) {
+              continue;
+            }
+
             pass1_node_costs.insert_or_assign(node_index, sub_graph.GetNodeCost(i));
             pass1_workspace_estimates.insert_or_assign(
                 node_index, params.resource_accountant->GetPendingWorkspaceEstimateSelection(node_index));
@@ -395,12 +401,14 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         }
       }
 
-      // Provisionally reserve every pass-1 cost before the second GetCapability call. Pass 2 may
+      // Provisionally reserve costs only for nodes that were actually tagged in pass 1. Pass 2 may
       // introduce newly claimable nodes, and its admission decisions must include the cost of
       // pass-1 survivors. Nodes that do not survive pass 2 are rolled back below.
-      for (const auto& [node_index, cost] : pass1_node_costs) {
-        ORT_UNUSED_PARAMETER(node_index);
-        params.resource_accountant->AddConsumedAmount(cost);
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (const auto cost_it = pass1_node_costs.find(node_index);
+            cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->AddConsumedAmount(cost_it->second);
+        }
       }
     }
 
@@ -1561,8 +1569,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
         const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
         const size_t categorized_estimate =
             static_cast<size_t>(SafeInt<size_t>(workspace_estimate) +
-                                persistent_prepack_estimate +
-                                temporary_prepack_estimate);
+                                persistent_prepack_estimate);
         const size_t non_workspace_estimate =
             total_estimate >= categorized_estimate
                 ? total_estimate - categorized_estimate
@@ -1571,7 +1578,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                            << "non-workspace memory: " << non_workspace_estimate << " bytes, "
                            << "workspace memory: " << workspace_estimate << " bytes, "
                            << "persistent prepack memory: " << persistent_prepack_estimate << " bytes, "
-                           << "initialization scratch memory: " << temporary_prepack_estimate << " bytes, "
+                           << "peak initialization scratch memory (not included in budget): "
+                           << temporary_prepack_estimate << " bytes, "
                            << "total estimated memory: " << total_estimate << " bytes, "
                            << "workspace sources: fallback=" << source_counts.fallback
                            << ", profile=" << source_counts.profile

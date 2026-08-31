@@ -168,7 +168,10 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 // Dropped nodes therefore never leak budget.
 class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
  public:
-  AccountingNhwcTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {
+  explicit AccountingNhwcTestExecutionProvider(
+      std::optional<NodeIndex> unassignable_capability_node_index = std::nullopt)
+      : IExecutionProvider{kCudaExecutionProvider},
+        unassignable_capability_node_index_(unassignable_capability_node_index) {
   }
 
   DataLayout GetPreferredLayout() const override {
@@ -236,6 +239,18 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
 
       const bool already_claimed = (assigned_ep == Type());
 
+      if (unassignable_capability_node_index_.has_value() && !second_pass && is_log_softmax) {
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->SetAccountant(resource_accountant);
+        sub_graph->nodes.push_back(node->Index());
+        sub_graph->nodes.push_back(*unassignable_capability_node_index_);
+        sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(
+            *node, GetNhwcAccountingTestEstimate(node->OpType())));
+        sub_graph->AppendNodeCost(ResourceCount{size_t{0}});
+        capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+        continue;
+      }
+
       auto capability = utils::MakeComputeCapability(graph_viewer,
                                                      std::vector<const Node*>{node},
                                                      generate_metadef_name,
@@ -295,6 +310,7 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
  private:
   mutable ModelMetadefIdGenerator metadef_id_generator_;
   mutable IResourceAccountant* observed_accountant_ = nullptr;
+  std::optional<NodeIndex> unassignable_capability_node_index_;
 };
 
 }  // namespace
@@ -631,6 +647,125 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admissi
   EXPECT_EQ(*observed_temporary_prepack, conv_estimate.temporary_prepack_bytes);
   EXPECT_EQ(observed_source_counts->estimator, size_t{1});
   EXPECT_EQ(observed_source_counts->fallback, size_t{0});
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingDoesNotReserveUnassignedCapability) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingDoesNotReserveUnassignedCapability",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::vector<int64_t> tensor_shape{1, 1, 3, 3};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
+  auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* log_softmax_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* removed_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  builder.AddConvNode(input, weights, conv_output);
+  builder.AddNode(
+      "LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{log_softmax_output});
+  builder.AddNode("Relu", std::vector<NodeArg*>{log_softmax_output}, std::vector<NodeArg*>{output});
+  Node& removed_node = builder.AddNode(
+      "Identity", std::vector<NodeArg*>{input}, std::vector<NodeArg*>{removed_output});
+  const NodeIndex removed_node_index = removed_node.Index();
+  graph.RemoveNode(removed_node_index);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  Node* conv_node = nullptr;
+  Node* log_softmax_node = nullptr;
+  Node* relu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      conv_node = &node;
+    } else if (node.OpType() == "LogSoftmax") {
+      log_softmax_node = &node;
+    } else if (node.OpType() == "Relu") {
+      relu_node = &node;
+    }
+  }
+  ASSERT_NE(conv_node, nullptr);
+  ASSERT_NE(log_softmax_node, nullptr);
+  ASSERT_NE(relu_node, nullptr);
+
+  ConfigOptions reference_config;
+  ASSERT_STATUS_OK(reference_config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  std::optional<ResourceAccountantMap> reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(reference_config, PathString(), reference_accountants));
+  ASSERT_TRUE(reference_accountants.has_value());
+  auto* reference_accountant = reference_accountants->at(kCudaExecutionProvider).get();
+  const size_t expected_conv_cost = std::get<size_t>(reference_accountant->ComputeResourceCount(
+      *conv_node, GetNhwcAccountingTestEstimate("Conv")));
+  const size_t conflicting_cost = std::get<size_t>(reference_accountant->ComputeResourceCount(
+      *log_softmax_node, GetNhwcAccountingTestEstimate("LogSoftmax")));
+  const size_t expected_relu_cost = std::get<size_t>(reference_accountant->ComputeResourceCount(
+      *relu_node, GetNhwcAccountingTestEstimate("Relu")));
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(removed_node_index);
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  const size_t memory_threshold = expected_conv_cost + expected_relu_cost;
+  const std::string partitioning_settings = std::to_string(memory_threshold) + ",";
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings,
+      partitioning_settings.c_str()));
+  bool pass2_only_relu_assigned = false;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph& assignment_graph, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
+        if (assigned_ep_type != kCudaExecutionProvider) {
+          return;
+        }
+
+        for (NodeIndex node_index : capability.sub_graph->nodes) {
+          const Node* assigned_node = assignment_graph.GetNode(node_index);
+          if (assigned_node != nullptr && assigned_node->OpType() == "Relu") {
+            pass2_only_relu_assigned = true;
+          }
+        }
+      };
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(
+      krm, execution_providers, std::move(graph_optimizer_registry),
+      []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+  layout_transformation::DebugGraphFn debug_graph_fn;
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/,
+                            GraphPartitioner::Mode::kNormal,
+                            epctx::ModelGenOptions{},
+                            debug_graph_fn));
+
+  EXPECT_TRUE(pass2_only_relu_assigned)
+      << "The pass-2 Relu must fit when the rejected LogSoftmax capability is not reserved.";
+  EXPECT_GT(conflicting_cost, size_t{0});
 }
 
 // Infrastructure that was used to check NNAPI coverage.

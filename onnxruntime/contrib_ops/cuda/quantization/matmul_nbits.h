@@ -87,13 +87,6 @@ inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstima
   }
 }
 
-// Session-option config keys. These are readable by BOTH the built-in CUDA EP and the CUDA plugin
-// EP: every kernel is created via KernelRegistryManager::CreateKernel, which injects the
-// session-level ConfigOptions, and the plugin CUDA EP wraps a CUDAExecutionProvider that reuses this
-// same kernel. Each key overrides its ORT_* environment-variable equivalent (config wins).
-//   ep.cuda.fpa_intb_gemm       <-> ORT_FPA_INTB_GEMM       (0/off, 1/on)
-//   ep.cuda.fpa_intb_profile_m  <-> ORT_FPA_INTB_PROFILE_M  (initial profile M buckets)
-
 // Resolves a setting from the session config first (per-session, EP-agnostic), then the environment
 // variable, else empty. Session config wins so a model/session can override a process-wide env var.
 inline std::string ResolveFpAIntBConfigOrEnv(const OpKernelInfo& info, const char* config_key,

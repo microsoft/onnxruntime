@@ -3538,10 +3538,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
       // allocations remain separate so their different lifetimes are visible in reporting.
       if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
-        const auto fpa_intb_gemm =
-            resource_accountant->GetSessionConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm);
-        const auto profile_m =
-            resource_accountant->GetSessionConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM);
+        const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
+        const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
+        const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
         const contrib::cuda::MatMulNBitsMemoryEstimateOptions estimate_options{
             fpa_intb_gemm.has_value()
                 ? std::optional<std::string_view>{*fpa_intb_gemm}

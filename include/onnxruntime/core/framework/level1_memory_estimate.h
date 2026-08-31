@@ -10,11 +10,11 @@ namespace onnxruntime {
 
 // Partition-time memory estimate for allocations whose sizes are known before
 // kernel creation. The fields remain separate because they have different
-// lifetimes even while the current byte-count accountant conservatively charges
-// all of them to the node's budget. Prepack memory contributes to a conservative
-// initialization-time upper bound, not exact lifetime-aware or steady-state
-// accounting. The accountant separately charges original initializers at their
-// planned device locations before PrePack() runs. These fields must therefore
+// lifetimes. Persistent memory is charged to the additive node budget, while
+// initialization scratch is reported as a session-wide peak because kernel
+// construction and PrePack() are sequential. The accountant separately charges
+// original initializers at their planned device locations before PrePack() runs.
+// These fields must therefore
 // describe only additional destination and scratch allocations that can coexist
 // with those initializers; a destination reused directly from an initializer
 // (for example, an offline-prepacked weight) must not be reported again. The
