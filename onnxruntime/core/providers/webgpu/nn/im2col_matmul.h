@@ -20,11 +20,13 @@ namespace webgpu {
 
 class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
  public:
-  Im2ColMatMulProgram(bool has_bias,
+  Im2ColMatMulProgram(const Activation& activation,
+                      bool has_bias,
                       uint32_t tile_m,
                       uint32_t tile_n,
                       uint32_t vec_size,
                       bool use_subgroup) : Program("Im2ColMatMul"),
+                                           activation_(activation),
                                            has_bias_(has_bias),
                                            tile_m_(tile_m),
                                            tile_n_(tile_n),
@@ -50,9 +52,11 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
       {"K_tiles", ProgramUniformVariableDataType::Uint32},
       {"dilations", ProgramUniformVariableDataType::Uint32},
       {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32});
+      {"strides", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
+  const Activation& activation_;
   bool has_bias_;
 
   uint32_t tile_m_;
@@ -63,12 +67,12 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const bool is_fused,
                                  const TensorShape kernel_shape,
                                  const uint32_t group,
                                  const MLDataType data_type);
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
+                                const Activation& activation,
                                 const bool is_channels_last,
                                 const std::vector<uint32_t>& dilations,
                                 const std::vector<uint32_t>& pads,

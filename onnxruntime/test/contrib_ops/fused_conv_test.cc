@@ -347,6 +347,34 @@ TEST(FusedConvTest, Conv2D_Bias_Relu) {
   RunConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
+// Clip carries both activation parameters as uniforms, so this covers the
+// parameterized-activation plumbing of the fused conv kernels.
+TEST(FusedConvTest, Conv2D_Bias_Clip) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Clip",                       // activation
+      vector<float>{0.0f, 20.0f}    // activation_parameters
+  };
+
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  vector<float> B = {1.0f, 1.0f};
+  vector<int64_t> B_shape = {2};
+  // Pre-activation: {13, 17, 25, 29} and {-11, -15, -23, -27}.
+  auto expected_vals = {13.0f, 17.0f, 20.0f, 20.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  // CUDA's FusedConv only implements Relu, so it is excluded here.
+  RunConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
+            false /*disable_cpu*/, true /*disable_cuda*/);
+}
+
 #if defined(USE_CUDA)
 
 TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
