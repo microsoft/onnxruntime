@@ -32,6 +32,7 @@ using namespace onnxruntime::cuda;
 // ORT_MATMULNBITS_CHUNK_SIZE overrides the default chunk size (32768).
 constexpr const char* kForceChunkedEnvVar = "ORT_MATMULNBITS_FORCE_CHUNKED";
 constexpr const char* kChunkSizeEnvVar = "ORT_MATMULNBITS_CHUNK_SIZE";
+constexpr const char* kTraceDispatchEnvVar = "ORT_MATMULNBITS_TRACE_DISPATCH";
 constexpr int64_t kDefaultChunkTargetRows = 32768;
 
 #if USE_FPA_INTB_GEMM
@@ -182,6 +183,7 @@ class MatMulNBits final : public CudaKernel {
     sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
     force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    trace_dispatch_ = ParseEnvironmentVariableWithDefault<int>(kTraceDispatchEnvVar, 0) != 0;
     chunk_target_rows_ = ParseEnvironmentVariableWithDefault<int64_t>(kChunkSizeEnvVar, kDefaultChunkTargetRows);
     if (chunk_target_rows_ < 1) {
       chunk_target_rows_ = kDefaultChunkTargetRows;
@@ -328,6 +330,7 @@ class MatMulNBits final : public CudaKernel {
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
   bool force_chunked_{false};
+  bool trace_dispatch_{false};
   int64_t chunk_target_rows_{kDefaultChunkTargetRows};
 
 #if USE_FPA_INTB_GEMM

@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
+#include <cstdio>
 #include <cstdint>
 #include <optional>
 
@@ -813,6 +814,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
             stream)) {
+      if (trace_dispatch_) {
+        std::printf("[MatMulNBitsDispatch] route=fused m=%d n=%d k=%d scratch_bytes=0\n", m, n, k);
+      }
       return Status::OK();
     }
 
@@ -834,6 +838,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
             stream)) {
+      if (trace_dispatch_) {
+        std::printf("[MatMulNBitsDispatch] route=fused_bias_retry m=%d n=%d k=%d scratch_bytes=0\n",
+                    m, n, k);
+      }
       LaunchMatMulNBitsBiasAdd<CudaT>(
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           reinterpret_cast<const CudaT*>(bias_data),
@@ -870,6 +878,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Allocate scratch: full size normally, chunk size if chunked path will be used
   const int64_t scratch_n = will_use_chunked ? chunk_target_rows : N_;
+  if (trace_dispatch_) {
+    std::printf("[MatMulNBitsDispatch] route=fallback m=%d n=%d k=%d scratch_bytes=%lld chunked=%d\n",
+                m, n, k,
+                static_cast<long long>(scratch_n * K_padded * static_cast<int64_t>(sizeof(T))),
+                will_use_chunked ? 1 : 0);
+  }
   IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(scratch_n * K_padded, this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
