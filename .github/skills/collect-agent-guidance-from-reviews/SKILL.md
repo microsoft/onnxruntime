@@ -75,8 +75,8 @@ python .github/skills/collect-agent-guidance-from-reviews/scripts/list_merged_pr
 
 For the first collection, add `--since <UTC timestamp>`. Omit `--through` to freeze the current UTC time, or pass it
 explicitly when resuming a run that already established a cutoff. An explicit `--since` overrides marker discovery and
-may also be used for a deliberate backfill or rescan. Store output outside the repository unless it is needed only
-transiently.
+may also be used for a deliberate backfill or rescan. Write output to an operating-system temp directory, such as
+`$RUNNER_TEMP` in CI, that is outside the repository working tree. Do not write it to any path inside the working tree.
 
 `scripts/generate_marker.py` remains available for reconstructing a marker from an already established interval. Do not
 use it to choose a new cutoff after PR analysis has started.
@@ -87,7 +87,8 @@ collection window.
 Discover previous collection PRs by searching descriptions of PRs merged into `main` for the exact versioned marker
 prefix. Parse every matching marker, reject malformed timestamps, and use the maximum `harvested-through` timestamp
 rather than the PR with the latest merge time. This prevents overlapping collection runs from moving the cursor
-backward.
+backward. If no valid marker is found, stop with an error requiring an explicit `--since` value. Do not fall back to
+collecting all historical merged PRs.
 
 Read the marker only from a merged PR. An abandoned or unmerged collection must not advance the cutoff.
 
@@ -106,6 +107,9 @@ edits.
 Start with the PRs emitted by `scripts/list_merged_prs.py`. For each one, retrieve changed files, reviews, review threads,
 and comments using `gh`. The helper has already verified `baseRefName == "main"` from PR metadata rather than inferring
 the target from the merge commit's reachability.
+
+If the script returns zero PRs, report the collection window and stop without creating a branch or PR. This is distinct
+from finding PRs with no actionable guidance; both are valid no-change results.
 
 Exclude:
 
@@ -197,10 +201,19 @@ Before proposing text, inspect:
 - existing tests, linters, validation scripts, safer APIs, and compiler checks;
 - open or recently merged guidance-collection and guidance-audit PRs that may already address the pattern.
 
-If an open guidance PR modifies the same canonical guidance unit, do not create a competing edit. Either omit the
-candidate pending that PR or, when operating on the same automation-owned branch, incorporate the evidence there.
+Compare the candidate with any open guidance PR that modifies the same canonical guidance unit. If the open PR already
+expresses the same lesson, omit the candidate as duplicate coverage and reference that PR in the omitted-candidates
+section. If the candidate proposes a different change, retain it and explicitly describe the overlap or conflict with
+the open PR in the proposed-guidance-changes table's Notes column. Do not push to another skill's automation branch.
 
 ### 7. Choose the guidance response
+
+Apply these checks to each candidate in order:
+
+1. If it is a Copilot comment, apply the step 3 filters first.
+2. If the lesson is mechanically enforceable, record it as follow-up enforcement work and stop classifying it.
+3. If existing guidance already covers it correctly, record it in the omitted-candidates section and stop classifying it.
+4. Otherwise, apply the classification table below.
 
 Classify each candidate as one of:
 
@@ -210,17 +223,16 @@ Classify each candidate as one of:
 | Covered but repeatedly missed | Improve discoverability, scope, wording, examples, or mechanical enforcement. |
 | Mechanically enforceable | Prefer a follow-up test/tooling change; do not add redundant prose merely to produce output. |
 | Localized invariant | Update the narrowest matching path-scoped instruction. |
-| Complex reusable workflow | Refine an existing domain skill, or create one only when the lesson requires a repeatable multi-step workflow. |
+| Complex reusable workflow | Refine an existing domain skill. If none applies, record a proposed new skill as follow-up work. |
 | Repository-wide stable convention | Update `AGENTS.md` sparingly. |
 | Uncertain, subjective, or one-off | Omit it. |
 
 An immediate refinement of existing guidance is a valid collection result; collection is not append-only.
 
-A single review comment rarely justifies a new skill. Prefer a path-scoped instruction when the lesson can be expressed
-as one invariant. Create a skill only when applying the lesson requires substantial diagnostic context, ordered steps,
-specialized validation, or several related pitfalls that agents must use together. Multiple accepted comments showing
-the same workflow strengthen the case, although one high-impact comment may be sufficient when the full workflow is
-demonstrated and validated by the merged change.
+A single review comment does not justify a new skill. Prefer a path-scoped instruction when the lesson can be expressed
+as an invariant. Refine an existing skill when review evidence exposes a gap in a reusable workflow. Do not create new
+skills through this collection workflow; record the need and supporting evidence as follow-up work for separate design
+and review.
 
 Assign confidence based on the evidence for the review outcome and the proposed generalization:
 
@@ -277,8 +289,8 @@ Open a PR ready for human review with a description using this structure:
 
 ## Proposed guidance changes
 
-| Commit | Source review | Failure class | Destination | Confidence |
-|---|---|---|---|---|
+| Commit | Source review | Failure class | Destination | Confidence | Notes |
+|---|---|---|---|---|---|
 
 ## Omitted candidates
 
