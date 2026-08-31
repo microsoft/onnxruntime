@@ -261,8 +261,14 @@ int WindowsEnv::DefaultNumCores() {
 
 #if defined(_M_ARM64) && !defined(_M_ARM64EC)
 
-  // Whether to confine the default intra-op thread pool to performance cores on Windows ARM64 systems
-  // to improve latency for workloads with many small operations.
+// Whether to confine the default intra-op thread pool to performance cores on Windows ARM64 systems
+// to improve latency for workloads with many small operations.
+//
+// Controlled by the ORT_ARM64_USE_ALL_CORES environment variable:
+//   unset, empty, or "0" -> performance cores only (default)
+//   any other value      -> all cores, i.e. the pre-existing behaviour
+//
+// Only takes effect on heterogeneous parts; homogeneous parts and ARM64EC are unaffected.
 static bool Arm64ShouldUsePerformanceCoresOnly() {
   static const bool use_performance_cores_only = []() {
     size_t length = 0;
@@ -284,13 +290,6 @@ static bool Arm64ShouldUsePerformanceCoresOnly() {
 #endif
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
-#if defined(_M_ARM64) && !defined(_M_ARM64EC)
-  // Prefer the performance cores of a heterogeneous part. See
-  // Arm64ShouldUsePerformanceCoresOnly above for why.
-  if (!performance_cores_.empty() && Arm64ShouldUsePerformanceCoresOnly()) {
-    return static_cast<int>(performance_cores_.size());
-  }
-#endif
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
 #if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID)
   // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
@@ -338,7 +337,12 @@ std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
   if (performance_cores_.size() > 1 && Arm64ShouldUsePerformanceCoresOnly()) {
     std::vector<LogicalProcessors> affinities;
     affinities.reserve(performance_cores_.size());
-    affinities.emplace_back();  // caller thread, left unpinned
+    // The first entry is the caller's slot: ThreadPool erases it and then creates
+    // degree_of_parallelism - 1 workers, so N entries pin N-1 workers. The performance
+    // core left out of the list is where the unpinned calling thread runs. Pinning a
+    // worker there as well pushes the caller onto an efficiency core, which slows down
+    // every parallel section.
+    affinities.emplace_back();
     affinities.insert(affinities.end(), performance_cores_.begin(), performance_cores_.end() - 1);
     return affinities;
   }

@@ -103,13 +103,12 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       // On big (P-Core) / little (E-Core) CPU designs affinity overrides QoS and has high power usage
 
       // On Windows ARM, use performance cores to avoid delays from slower cores.
-    #if defined(_M_ARM64) && !defined(_M_ARM64EC)
-          constexpr bool use_default_affinities_on_client = true;
-    #else
-          constexpr bool use_default_affinities_on_client = false;
-    #endif
-      if (IsWindowsServer() || use_default_affinities_on_client) {
-
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+      constexpr bool enable_affinity_on_arm64_client = true;
+#else
+      constexpr bool enable_affinity_on_arm64_client = false;
+#endif
+      if (IsWindowsServer() || enable_affinity_on_arm64_client) {
         auto default_affinities = Env::Default().GetDefaultThreadAffinities();
         if (default_affinities.size() <= 1) {
           return nullptr;
