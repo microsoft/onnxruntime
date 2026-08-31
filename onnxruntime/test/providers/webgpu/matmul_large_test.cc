@@ -130,30 +130,6 @@ TEST(SubgroupMatrixMatMulTest, PostTilingPolicyDeclinesPartialKBlock) {
       problem, /*config_k=*/16, /*b_is_constant=*/false, /*has_persistent_cache=*/false));
 }
 
-TEST(SubgroupMatrixMatMulTest, PointwiseConvOnlyCachesPersistentRightOperand) {
-  const int persistent_kernel = 0;
-  const int per_run_transpose = 0;
-  int compute_cache = 0;
-
-  const auto persistent_policy = webgpu::GetPointwiseConvMatMulCachePolicy(
-      /*is_channels_last=*/true, &persistent_kernel, &persistent_kernel, compute_cache);
-  EXPECT_EQ(persistent_policy.cache, &compute_cache);
-  EXPECT_TRUE(persistent_policy.b_is_constant);
-
-  const auto transient_policy = webgpu::GetPointwiseConvMatMulCachePolicy(
-      /*is_channels_last=*/true, &per_run_transpose, &persistent_kernel, compute_cache);
-  EXPECT_EQ(transient_policy.cache, &compute_cache);
-  EXPECT_FALSE(transient_policy.b_is_constant);
-
-  EXPECT_FALSE(webgpu::GetPointwiseConvMatMulCachePolicy(
-                   /*is_channels_last=*/false, &persistent_kernel, &persistent_kernel, compute_cache)
-                   .b_is_constant);
-  EXPECT_FALSE(webgpu::GetPointwiseConvMatMulCachePolicy(
-                   /*is_channels_last=*/true, &per_run_transpose,
-                   static_cast<const int*>(nullptr), compute_cache)
-                   .b_is_constant);
-}
-
 TEST(SubgroupMatrixMatMulTest, OutputWriterAppliesBiasThenActivationThenStore) {
   webgpu::Activation activation;
   activation.activation_kind_ = webgpu::ActivationKind::Clip;

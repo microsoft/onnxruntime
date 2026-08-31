@@ -3,28 +3,6 @@
 
 #pragma once
 
-namespace onnxruntime {
-namespace webgpu {
-
-template <typename CacheT>
-struct PointwiseConvMatMulCachePolicy {
-  CacheT* cache;
-  bool b_is_constant;
-};
-
-template <typename TensorT, typename CacheT>
-constexpr PointwiseConvMatMulCachePolicy<CacheT> GetPointwiseConvMatMulCachePolicy(
-    bool is_channels_last,
-    const TensorT* right_operand,
-    const TensorT* persistent_kernel,
-    CacheT& cache) {
-  return {&cache,
-          is_channels_last && persistent_kernel != nullptr && right_operand == persistent_kernel};
-}
-
-}  // namespace webgpu
-}  // namespace onnxruntime
-
 #include <cstdint>
 #include <functional>
 #include <optional>
