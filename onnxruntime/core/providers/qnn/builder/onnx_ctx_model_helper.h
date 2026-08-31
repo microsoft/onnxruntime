@@ -43,7 +43,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 QnnBackendManager* qnn_backend_manager,
                                 QnnModelLookupTable& qnn_models,
                                 int64_t max_spill_fill_size,
-                                const epctx::EpContextDataCallbacks& callbacks);
+                                const EpContextDataCallbacks& callbacks);
 
 Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                               uint32_t total_context_size,
@@ -56,7 +56,7 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                QnnModelLookupTable& qnn_models,
                                const logging::Logger& logger,
                                int64_t max_spill_fill_size,
-                               const epctx::EpContextDataCallbacks& callbacks);
+                               const EpContextDataCallbacks& callbacks);
 
 Status CreateEPContextNodes(Model* model,
                             unsigned char* buffer,
@@ -70,6 +70,6 @@ Status CreateEPContextNodes(Model* model,
                             const logging::Logger& logger,
                             bool share_ep_contexts,
                             bool stop_share_ep_contexts,
-                            const epctx::EpContextDataCallbacks& callbacks);
+                            const EpContextDataCallbacks& callbacks);
 }  // namespace qnn
 }  // namespace onnxruntime

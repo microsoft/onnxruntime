@@ -39,6 +39,7 @@ struct QnnEpContextCallbackState {
   bool fail_write = false;
   bool fail_read = false;
   bool return_empty = false;
+  bool return_null_buffer = false;
   std::string write_name;
   std::string read_name;
   std::vector<char> payload;
@@ -79,6 +80,9 @@ static OrtStatus* ORT_API_CALL LoadQnnEpContextData(void* state, const char* nam
     return nullptr;
   }
   *buffer_size = callback_state.payload.size();
+  if (callback_state.return_null_buffer) {
+    return nullptr;
+  }
   if (callback_state.payload.empty()) {
     return nullptr;
   }
@@ -627,7 +631,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
       FAIL() << "Expected oversized QNN EPContext callback payload rejection";
     } catch (const Ort::Exception& ex) {
       oversized_error = ex.what();
-      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_GRAPH);
     }
     EXPECT_TRUE(callback_state.read_called);
     EXPECT_EQ(callback_state.read_count, 1u);
@@ -646,7 +650,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
       FAIL() << "Expected empty QNN EPContext callback payload rejection";
     } catch (const Ort::Exception& ex) {
       empty_error = ex.what();
-      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_GRAPH);
     }
     EXPECT_TRUE(callback_state.read_called);
     EXPECT_EQ(callback_state.read_count, 2u);
@@ -655,6 +659,23 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
 
     callback_state.return_empty = false;
     callback_state.read_called = false;
+    callback_state.return_null_buffer = true;
+    std::string null_buffer_error;
+    try {
+      Ort::Session session(*ort_env, output_model_buffer, output_model_buffer_size, session_options);
+      FAIL() << "Expected null QNN EPContext callback buffer rejection";
+    } catch (const Ort::Exception& ex) {
+      null_buffer_error = ex.what();
+      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_GRAPH);
+    }
+    EXPECT_TRUE(callback_state.read_called);
+    EXPECT_EQ(callback_state.read_count, 3u);
+    EXPECT_THAT(null_buffer_error,
+                testing::HasSubstr("EPContext read callback returned a null buffer for non-empty QNN context data"));
+    EXPECT_FALSE(std::filesystem::exists(target_dir + bin_file_name));
+
+    callback_state.return_null_buffer = false;
+    callback_state.read_called = false;
     callback_state.fail_read = true;
     std::string read_error;
     try {
@@ -662,9 +683,10 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
       FAIL() << "Expected QNN EPContext read callback failure";
     } catch (const Ort::Exception& ex) {
       read_error = ex.what();
+      EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_GRAPH);
     }
     EXPECT_TRUE(callback_state.read_called);
-    EXPECT_EQ(callback_state.read_count, 3u);
+    EXPECT_EQ(callback_state.read_count, 4u);
     EXPECT_THAT(read_error, testing::HasSubstr("synthetic QNN EPContext read callback failure"));
     EXPECT_FALSE(std::filesystem::exists(target_dir + bin_file_name));
 
@@ -674,7 +696,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, session_options)));
 
     EXPECT_TRUE(callback_state.read_called);
-    EXPECT_EQ(callback_state.read_count, 4u);
+    EXPECT_EQ(callback_state.read_count, 5u);
     EXPECT_EQ(callback_state.read_name, callback_state.write_name);
     EXPECT_FALSE(std::filesystem::exists(target_dir + bin_file_name));
     allocator.Free(output_model_buffer);

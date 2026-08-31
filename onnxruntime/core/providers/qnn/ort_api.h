@@ -56,10 +56,23 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
+#include <limits>
 #include <memory>
 #include <vector>
 
 namespace onnxruntime {
+namespace qnn {
+
+struct EpContextDataCallbacks {
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  size_t read_max_data_size = std::numeric_limits<size_t>::max();
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* write_state = nullptr;
+};
+
+}  // namespace qnn
+
 #if BUILD_QNN_EP_STATIC_LIB
 using Node_EdgeEnd = Node::EdgeEnd;
 #endif

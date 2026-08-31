@@ -9,7 +9,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/framework/ep_context_options.h"
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
@@ -24,7 +23,7 @@ namespace onnxruntime {
 class QNNExecutionProvider : public IExecutionProvider {
  public:
   explicit QNNExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options,
-                                epctx::EpContextDataCallbacks ep_context_data_callbacks = {});
+                                qnn::EpContextDataCallbacks ep_context_data_callbacks = {});
   virtual ~QNNExecutionProvider();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QNNExecutionProvider);
 
@@ -114,7 +113,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::string context_node_name_prefix_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
-  epctx::EpContextDataCallbacks ep_context_data_callbacks_{};
+  qnn::EpContextDataCallbacks ep_context_data_callbacks_{};
   int32_t vtcm_size_in_mb_ = 0;
   bool enable_vtcm_backup_buffer_sharing_ = false;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;

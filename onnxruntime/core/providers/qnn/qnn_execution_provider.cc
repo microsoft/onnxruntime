@@ -300,7 +300,7 @@ static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(c
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const ConfigOptions* config_options,
-                                           epctx::EpContextDataCallbacks ep_context_data_callbacks)
+                                           qnn::EpContextDataCallbacks ep_context_data_callbacks)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider},
       ep_context_data_callbacks_{ep_context_data_callbacks} {
   InitOrtCppApi();

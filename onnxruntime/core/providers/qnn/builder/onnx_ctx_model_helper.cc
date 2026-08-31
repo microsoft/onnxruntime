@@ -7,7 +7,6 @@
 #include <fstream>
 #include <filesystem>
 
-#include "core/framework/error_code_helper.h"
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model.h"
@@ -15,6 +14,20 @@
 
 namespace onnxruntime {
 namespace qnn {
+namespace {
+
+Status ConvertAndReleaseCallbackStatus(OrtStatus* status) {
+  Ort::Status callback_status{status};
+  if (callback_status.IsOK()) {
+    return Status::OK();
+  }
+
+  return Status(common::StatusCategory::ONNXRUNTIME,
+                static_cast<int>(callback_status.GetErrorCode()),
+                callback_status.GetErrorMessage());
+}
+
+}  // namespace
 
 bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
   // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type
@@ -88,7 +101,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 QnnBackendManager* qnn_backend_manager,
                                 QnnModelLookupTable& qnn_models,
                                 int64_t max_spill_fill_size,
-                                const epctx::EpContextDataCallbacks& callbacks) {
+                                const EpContextDataCallbacks& callbacks) {
   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
   NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
@@ -116,8 +129,9 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                                      allocator,
                                                      &context_buffer,
                                                      &context_buffer_size);
-    std::unique_ptr<void, Ort::AllocatedFree> context_buffer_guard{context_buffer, Ort::AllocatedFree{allocator}};
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(callback_status));
+    std::unique_ptr<void, Ort::detail::AllocatedFree> context_buffer_guard{
+        context_buffer, Ort::detail::AllocatedFree{allocator}};
+    ORT_RETURN_IF_ERROR(ConvertAndReleaseCallbackStatus(callback_status));
     if (context_buffer_size > callbacks.read_max_data_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "QNN EPContext read callback exceeded the configured maximum size.");
@@ -217,7 +231,7 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                QnnModelLookupTable& qnn_models,
                                const logging::Logger& logger,
                                int64_t max_spill_fill_size,
-                               const epctx::EpContextDataCallbacks& callbacks) {
+                               const EpContextDataCallbacks& callbacks) {
   ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
   Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager,
                                            qnn_models, max_spill_fill_size, callbacks);
@@ -243,7 +257,7 @@ Status CreateEPContextNodes(Model* model,
                             const logging::Logger& logger,
                             bool share_ep_contexts,
                             bool stop_share_ep_contexts,
-                            const epctx::EpContextDataCallbacks& callbacks) {
+                            const EpContextDataCallbacks& callbacks) {
   auto& graph = model->MainGraph();
 
   using namespace ONNX_NAMESPACE;
@@ -310,10 +324,10 @@ Status CreateEPContextNodes(Model* model,
         // 2. share_ep_context enabled, only write for the last session which has stop_share_ep_contexts enabled
         if (!share_ep_contexts || (share_ep_contexts && stop_share_ep_contexts)) {
           if (callbacks.write_func != nullptr) {
-            ORT_RETURN_IF_ERROR(ToStatusAndRelease(callbacks.write_func(callbacks.write_state,
-                                                                        context_cache_name.c_str(),
-                                                                        buffer,
-                                                                        SafeInt<size_t>(buffer_size))));
+            ORT_RETURN_IF_ERROR(ConvertAndReleaseCallbackStatus(callbacks.write_func(callbacks.write_state,
+                                                                                     context_cache_name.c_str(),
+                                                                                     buffer,
+                                                                                     SafeInt<size_t>(buffer_size))));
           } else {
             std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
             if (!of_stream) {
