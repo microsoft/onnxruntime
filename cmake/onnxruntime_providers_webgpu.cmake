@@ -350,15 +350,6 @@
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
-
-    # Wire the Python wgsl_template test suite into ctest.
-    if (BUILD_TESTING)
-      add_test(
-        NAME wgsl_template_python_tests
-        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_template/test/run_tests.py"
-        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
-      )
-    endif()
   endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)

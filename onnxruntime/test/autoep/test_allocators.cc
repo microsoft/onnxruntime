@@ -33,6 +33,10 @@ struct DummyAllocator : OrtAllocator {
     Shrink = nullptr;
   }
 
+  size_t NumAllocations() const {
+    return static_cast<size_t>(stats.num_allocs);
+  }
+
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
     auto& impl = *static_cast<DummyAllocator*>(this_);
     ++impl.stats.num_allocs;
@@ -96,6 +100,36 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
 
   // optional. ORT owns the allocator but we want to test the release implementation
   ort_env->ReleaseSharedAllocator(example_ep.get(), OrtDeviceMemoryType_DEFAULT);
+}
+
+TEST(SharedAllocators, CustomAllocatorRemainsActiveDuringEpRegistration) {
+  Ort::MemoryInfo custom_memory_info{"ExampleEP GPU",
+                                     OrtMemoryInfoDeviceType_GPU,
+                                     /*vendor_id*/ 0xBE57,
+                                     /*device_id*/ 0,
+                                     OrtDeviceMemoryType_DEFAULT,
+                                     /*alignment*/ 0,
+                                     OrtDeviceAllocator};
+  DummyAllocator custom_allocator{custom_memory_info};
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "custom_allocator_registration_test"};
+  RegisteredEpDeviceUniquePtr example_ep;
+
+  env.RegisterAllocator(&custom_allocator);
+  auto unregister_allocator = gsl::finally([&] {
+    Ort::Status ignored{Ort::GetApi().UnregisterAllocator(env, custom_memory_info)};
+  });
+
+  auto allocator = env.GetSharedAllocator(custom_memory_info);
+  ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &custom_allocator);
+
+  Utils::RegisterAndGetExampleEp(env, Utils::example_ep_info, example_ep);
+
+  allocator = env.GetSharedAllocator(custom_memory_info);
+  ASSERT_EQ(static_cast<OrtAllocator*>(allocator), &custom_allocator);
+
+  auto allocation = allocator.GetAllocation(256);
+  ASSERT_NE(allocation.get(), nullptr);
+  EXPECT_EQ(custom_allocator.NumAllocations(), 1u);
 }
 
 TEST(SharedAllocators, GetSharedAllocator) {

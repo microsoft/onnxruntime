@@ -164,10 +164,17 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   set(_llm_srcs)
   set(_llm_sm90_srcs)
   set(_llm_fp4_srcs)
+  set(_llm_excluded_srcs)
   foreach(_src IN LISTS _list)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
+      if(onnxruntime_USE_FPA_INTB_GEMM AND NOT onnxruntime_USE_FPA_INTB_GEMM_FULL AND
+         ((_src MATCHES "/fpA_intB_gemm/" AND
+          NOT _src MATCHES "/fpA_intB_gemm/fp16_int(4|8)_gemm_scaleonly\\.cu$") OR
+          (_src MATCHES "/fpA_intB_gemv/dispatcher_" AND
+          NOT _src MATCHES "/fpA_intB_gemv/dispatcher_fp16_int(4|8)\\.cu$")))
+        list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
-      if(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
+      elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
       elseif(onnxruntime_USE_FP4_QMOE AND
              _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
@@ -187,6 +194,9 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   endif()
   if(_llm_fp4_srcs)
     list(REMOVE_ITEM _list ${_llm_fp4_srcs})
+  endif()
+  if(_llm_excluded_srcs)
+    list(REMOVE_ITEM _list ${_llm_excluded_srcs})
   endif()
 
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
