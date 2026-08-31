@@ -20,6 +20,8 @@ stages:
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
       os: windows
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
     templateContext:
       sdl:
         codeSignValidation:

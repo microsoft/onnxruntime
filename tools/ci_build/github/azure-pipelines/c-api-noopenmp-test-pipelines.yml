@@ -93,12 +93,14 @@ stages:
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    PoolDemands: 'ImageOverride -equals onnxruntime-win2025-nvme-x64'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_android.yml
   parameters:
     AgentPool : 'onnxruntime-Win-CPU-VS2022-Latest'
+    PoolDemands: 'ImageOverride -equals onnxruntime-win2025-nvme-x64'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_linux.yml
@@ -124,6 +126,7 @@ stages:
 - template: nodejs/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    PoolDemands: 'ImageOverride -equals onnxruntime-win2025-nvme-x64'
     StageSuffix: 'Win_CPU_x64'
 
 - template: nodejs/templates/test_linux.yml
@@ -134,6 +137,7 @@ stages:
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    PoolDemands: 'ImageOverride -equals onnxruntime-win2025-nvme-x64'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -142,6 +146,7 @@ stages:
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    PoolDemands: 'ImageOverride -equals onnxruntime-win2025-nvme-x64'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -221,7 +226,10 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-x64
-    agentPool: onnxruntime-Win-CPU-VS2022-Latest
+    agentPool:
+      name: onnxruntime-Win-CPU-VS2022-Latest
+      demands:
+      - ImageOverride -equals onnxruntime-win2025-nvme-x64
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing
@@ -230,7 +238,10 @@ stages:
     - job: Windows_Packaging_cuda_Testing
       workspace:
         clean: all
-      pool: onnxruntime-Win2022-GPU-A10
+      pool:
+        name: onnxruntime-Win2022-GPU-A10
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
       timeoutInMinutes: 180
       steps:
         - checkout: self
@@ -285,7 +296,10 @@ stages:
     - job: Windows_Packaging_tensorrt_Testing
       workspace:
         clean: all
-      pool: onnxruntime-Win2022-GPU-A10
+      pool:
+        name: onnxruntime-Win2022-GPU-A10
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
       timeoutInMinutes: 180
       steps:
         - checkout: self

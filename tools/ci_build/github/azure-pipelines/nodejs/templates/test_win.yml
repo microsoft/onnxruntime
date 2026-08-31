@@ -1,6 +1,7 @@
 parameters:
   AgentPool: 'Win-CPU'
   StageSuffix: ''
+  PoolDemands: ''
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}
   dependsOn:
@@ -13,6 +14,8 @@ stages:
     timeoutInMinutes: 120
     pool:
       name: ${{ parameters.AgentPool }}
+      ${{ if ne(parameters.PoolDemands, '') }}:
+        demands: ${{ parameters.PoolDemands }}
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'

@@ -63,6 +63,8 @@ extends:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
+        demands:
+        - ImageOverride -equals onnxruntime-win2025-nvme-x64
     stages:
 
     - template: templates/stages/mac-ios-packaging-build-stage.yml

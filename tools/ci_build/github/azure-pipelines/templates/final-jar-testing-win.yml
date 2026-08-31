@@ -1,6 +1,9 @@
 parameters:
 - name: PoolName
   type: string
+- name: PoolDemands
+  type: string
+  default: ''
 
 stages:
 - stage: Final_Jar_Testing_Windows
@@ -11,6 +14,8 @@ stages:
       clean: all
     pool:
       name: ${{ parameters.PoolName }}
+      ${{ if ne(parameters.PoolDemands, '') }}:
+        demands: ${{ parameters.PoolDemands }}
     templateContext:
       type: validationJob
     variables:
