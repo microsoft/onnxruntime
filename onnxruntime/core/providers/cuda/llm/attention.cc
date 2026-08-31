@@ -51,26 +51,32 @@ bool HasOutput(const NodeType& node, size_t output_index) {
 // A stable, greppable log tag for tests to detect that the redundant present-copy was skipped.
 constexpr const char* kPresentCopySkippedTag = "present_copy_skipped";
 
-// Returns the SESSION logger for a kernel, so kernel logging honours this session's
-// log_severity_level / logid instead of the process-global default logger.
-//
-// OpKernelContext::Logger() is not reachable from an execution provider compiled as a shared
-// provider (the bridged OpKernelContext in core/providers/shared_library/provider_wrappedtypes.h
-// does not expose it), so the logger is taken from the kernel's execution provider instead:
-// InferenceSession::RegisterExecutionProvider calls IExecutionProvider::SetLogger with the session
-// logger, so this is the same logger the session's own log severity configures. Falls back to the
-// default logger only if the EP has no logger set (not expected during Compute).
-//
-// Known limitation: this assumes the EP instance is exclusively owned by one session's lifetime.
-// That holds for the standard CUDA EP registration path — CUDAProviderFactory::CreateProvider()
-// (core/providers/cuda/cuda_provider_factory.cc) constructs a fresh provider per session — but it
-// would not hold if a raw IExecutionProvider instance were manually shared across sessions (as
-// e.g. the XNNPACK EP supports), since IExecutionProvider::SetLogger stores an unsynchronized raw
-// pointer that each RegisterExecutionProvider call overwrites. Closing that gap would require
-// exposing OpKernelContext::Logger() through the shared-library provider bridge.
-inline const logging::Logger& KernelSessionLogger(const OpKernelInfo& info) {
+// Log through the kernel's session logger in both CUDA build modes. In the plugin build,
+// GetExecutionProvider() returns the internal CUDA shim rather than the session-owned plugin EP,
+// so the logger must be obtained through the kernel-info API. Avoid KernelInfo::GetLogger because
+// it throws on retrieval failure; a missing logger should only suppress this diagnostic.
+inline void LogPresentCopySkipped(const OpKernelInfo& info) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  const OrtLogger* ort_logger = nullptr;
+  OrtStatus* status = Ort::GetApi().KernelInfo_GetLogger(info.GetKernelInfo(), &ort_logger);
+  if (status != nullptr) {
+    Ort::GetApi().ReleaseStatus(status);
+    return;
+  }
+
+  // A successful KernelInfo_GetLogger guarantees a valid logger and that kernel APIs are enabled,
+  // so constructing this cached-severity wrapper cannot fail for a registered session kernel.
+  const Ort::Logger logger{ort_logger};
+  ORT_CXX_LOGF_NOEXCEPT(logger, ORT_LOGGING_LEVEL_VERBOSE,
+                        "Attention: %s (present output aliases the input KV cache buffer).",
+                        kPresentCopySkippedTag);
+#else
   const logging::Logger* logger = info.GetExecutionProvider()->GetLogger();
-  return logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger();
+  // Session registration assigns the EP logger, so the fallback is not expected during Compute.
+  LOGS(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger(), VERBOSE)
+      << "Attention: " << kPresentCopySkippedTag
+      << " (present output aliases the input KV cache buffer).";
+#endif
 }
 
 // Copies a 4-D BNSH KV tensor into the corresponding present_* output, unless the two
@@ -105,7 +111,7 @@ inline const logging::Logger& KernelSessionLogger(const OpKernelInfo& info) {
 //
 // `dst == nullptr` (present output not requested by the caller) is a no-op.
 inline Status CopyKVToPresent(const Tensor* src, Tensor* dst, cudaStream_t stream,
-                              const logging::Logger& logger) {
+                              const OpKernelInfo& info) {
   if (dst == nullptr) {
     return Status::OK();
   }
@@ -113,8 +119,7 @@ inline Status CopyKVToPresent(const Tensor* src, Tensor* dst, cudaStream_t strea
                     "CopyKVToPresent requires identical src/dst sizes; this only holds when "
                     "past_sequence_length == 0 (see callers' gating).");
   if (src->DataRaw() == dst->MutableDataRaw()) {
-    LOGS(logger, VERBOSE) << "Attention: " << kPresentCopySkippedTag
-                          << " (present output aliases the input KV cache buffer).";
+    LogPresentCopySkipped(info);
     return Status::OK();
   }
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst->MutableDataRaw(), src->DataRaw(),
@@ -581,7 +586,6 @@ Status Attention<T>::RunFlashAttention(
 
   // --- Populate present_key/value (BNSH) from K/V (BSNH or BNSH) ---
   // Skip for decode path where mha_fwd_kvcache already populated present buffers.
-  const logging::Logger& kv_copy_logger = llm_attention_detail::KernelSessionLogger(Info());
   if (!present_kv_already_populated) {
     if (present_key != nullptr && is_bsnh) {
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -591,7 +595,7 @@ Status Attention<T>::RunFlashAttention(
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_key != nullptr && !is_bsnh) {
       // present output may alias the cache buffer; see CopyKVToPresent.
-      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, kv_copy_logger));
+      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, Info()));
     }
     if (present_value != nullptr && is_bsnh) {
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -601,7 +605,7 @@ Status Attention<T>::RunFlashAttention(
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_value != nullptr && !is_bsnh) {
       // present output may alias the cache buffer; see CopyKVToPresent.
-      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, kv_copy_logger));
+      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, Info()));
     }
   }
 
@@ -811,7 +815,6 @@ Status Attention<T>::RunCudnnSdpaAttention(
   // K/V are the full external cache after TensorScatter; mirror RunFlashAttention's Path-1/prompt
   // population (transpose BSNH→BNSH for 3D inputs, D2D copy for 4D BNSH inputs). For 4D BNSH the
   // copy is skipped when present_* aliases the K/V buffer (see CopyKVToPresent). ---
-  const logging::Logger& kv_copy_logger = llm_attention_detail::KernelSessionLogger(Info());
   if (present_key != nullptr && is_bsnh) {
     ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
         parameters.batch_size, parameters.kv_sequence_length,
@@ -819,7 +822,7 @@ Status Attention<T>::RunCudnnSdpaAttention(
         K->Data<T>(), present_key->MutableData<T>(),
         cuda_stream, device_prop.maxThreadsPerBlock));
   } else if (present_key != nullptr && !is_bsnh) {
-    ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, kv_copy_logger));
+    ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, Info()));
   }
   if (present_value != nullptr && is_bsnh) {
     ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -828,7 +831,7 @@ Status Attention<T>::RunCudnnSdpaAttention(
         V->Data<T>(), present_value->MutableData<T>(),
         cuda_stream, device_prop.maxThreadsPerBlock));
   } else if (present_value != nullptr && !is_bsnh) {
-    ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, kv_copy_logger));
+    ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, Info()));
   }
 
   return Status::OK();
@@ -1253,7 +1256,6 @@ Status Attention<T>::RunMemoryEfficientAttention(
 
   // Populate present_key/present_value (BNSH) if requested.
   // Skip for decode path where LaunchConcatNewToPastKV already populated present buffers.
-  const logging::Logger& kv_copy_logger = llm_attention_detail::KernelSessionLogger(Info());
   if (!present_kv_already_populated) {
     if (present_key != nullptr && is_bsnh) {
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -1263,7 +1265,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_key != nullptr && !is_bsnh) {
       // present output may alias the cache buffer; see CopyKVToPresent.
-      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, kv_copy_logger));
+      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, Info()));
     }
     if (present_value != nullptr && is_bsnh) {
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
@@ -1273,7 +1275,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
           cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_value != nullptr && !is_bsnh) {
       // present output may alias the cache buffer; see CopyKVToPresent.
-      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, kv_copy_logger));
+      ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, Info()));
     }
   }
 
@@ -1549,7 +1551,6 @@ Status Attention<T>::RunUnfusedAttention(
   }
 
   // -------- Populate present_key/present_value if requested ------------------
-  const logging::Logger& kv_copy_logger = llm_attention_detail::KernelSessionLogger(Info());
   if (!present_already_populated) {
     if (present_key != nullptr) {
       if (is_bsnh) {
@@ -1558,7 +1559,7 @@ Status Attention<T>::RunUnfusedAttention(
                                                    cuda_stream, max_threads));
       } else {
         // present output may alias the cache buffer; see CopyKVToPresent.
-        ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, kv_copy_logger));
+        ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(K, present_key, cuda_stream, Info()));
       }
     }
     if (present_value != nullptr) {
@@ -1568,7 +1569,7 @@ Status Attention<T>::RunUnfusedAttention(
                                                    cuda_stream, max_threads));
       } else {
         // present output may alias the cache buffer; see CopyKVToPresent.
-        ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, kv_copy_logger));
+        ORT_RETURN_IF_ERROR(llm_attention_detail::CopyKVToPresent(V, present_value, cuda_stream, Info()));
       }
     }
   }

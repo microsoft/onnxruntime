@@ -2213,9 +2213,9 @@ class TestCausalTensorScatterBottomRight(unittest.TestCase):
 _PRESENT_COPY_SKIPPED_TAG = "present_copy_skipped"
 _ORT_LOG_SEVERITY_VERBOSE = 0
 
-# CopyKVToPresent logs through this SESSION's logger (llm_attention_detail::KernelSessionLogger,
-# which returns the logger InferenceSession hands the execution provider), so the tag is controlled
-# purely by session_options.log_severity_level — no process-global logger mutation is needed.
+# CopyKVToPresent logs through this session's logger: the plugin build uses the kernel-info logger,
+# while the legacy build uses the logger assigned to the EP. Thus the tag is controlled purely by
+# session_options.log_severity_level — no process-global logger mutation is needed.
 # Every ORT log line carries its session's logid, so a unique logid lets the assertions below
 # require BOTH the tag AND this test's own logid on the SAME line. fd 2 is a process-global
 # descriptor: without the logid anchor, a concurrently running session (e.g. a parallel test
@@ -2310,9 +2310,8 @@ def _run_tensorscatter_attention_4d(
         use_4d=True,
     )
 
-    # llm_attention_detail::CopyKVToPresent logs via LOGS(KernelSessionLogger(...), VERBOSE), i.e.
-    # through this session's own logger, so session_options.log_severity_level alone controls it and a
-    # unique session logid anchors the assertions to this session (see _PRESENT_COPY_SKIP_TEST_LOGID).
+    # CopyKVToPresent uses the kernel-info logger in plugin builds and the EP logger in legacy
+    # builds. Both are session-anchored, so the unique logid anchors assertions to this session.
     # ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO is still process-global state and must be restored even
     # if session creation itself throws, so everything from here to the run is wrapped in one
     # try/finally.
@@ -2487,13 +2486,14 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
             )
 
         self._check_dispatched_tier(name, expected_kernel, sdpa_kernel, is_supported)
-        self.assertRegex(
-            log_text,
-            _PRESENT_COPY_SKIPPED_LINE,
-            f"[{name}] present_key/value aliased the cache buffer but no captured log line carries "
-            f"both this session's logid ('{_PRESENT_COPY_SKIP_TEST_LOGID}') and the "
-            f"'{_PRESENT_COPY_SKIPPED_TAG}' tag — the D2D self-copy may have run "
-            "unconditionally again.",
+        skipped_copy_records = _PRESENT_COPY_SKIPPED_LINE.findall(log_text)
+        self.assertEqual(
+            2,
+            len(skipped_copy_records),
+            f"[{name}] present_key/value aliased the cache buffer, so exactly two captured log records "
+            f"(one for K and one for V) must carry both this session's logid "
+            f"('{_PRESENT_COPY_SKIP_TEST_LOGID}') and the '{_PRESENT_COPY_SKIPPED_TAG}' tag; "
+            f"got {len(skipped_copy_records)}.",
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
@@ -2522,12 +2522,14 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
             )
 
         self._check_dispatched_tier(name, expected_kernel, sdpa_kernel, is_supported)
-        self.assertNotRegex(
-            log_text,
-            _PRESENT_COPY_SKIPPED_LINE,
-            f"[{name}] present_key/value used SEPARATE buffers from the cache, but a log line with "
-            f"this session's logid ('{_PRESENT_COPY_SKIP_TEST_LOGID}') still carries the "
-            f"'{_PRESENT_COPY_SKIPPED_TAG}' tag — the aliasing check may have a false positive.",
+        skipped_copy_records = _PRESENT_COPY_SKIPPED_LINE.findall(log_text)
+        self.assertEqual(
+            0,
+            len(skipped_copy_records),
+            f"[{name}] present_key/value used SEPARATE buffers from the cache, but "
+            f"{len(skipped_copy_records)} log record(s) with this session's logid "
+            f"('{_PRESENT_COPY_SKIP_TEST_LOGID}') carry the '{_PRESENT_COPY_SKIPPED_TAG}' tag — "
+            "the aliasing check may have a false positive.",
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
