@@ -2031,16 +2031,34 @@ endif()
       add_test(NAME onnxruntime_shared_lib_dlopen_test COMMAND onnxruntime_shared_lib_dlopen_test WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
       set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-      if(CPUINFO_SUPPORTED AND NOT onnxruntime_MINIMAL_BUILD)
+      if(onnxruntime_cpuinfo_library_type STREQUAL "STATIC_LIBRARY")
+        onnxruntime_add_shared_library(
+          onnxruntime_cpuinfo_dlopen_test_library
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test_library.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test_library.def)
+        target_include_directories(
+          onnxruntime_cpuinfo_dlopen_test_library
+          PRIVATE ${ONNXRUNTIME_ROOT})
+        target_link_libraries(
+          onnxruntime_cpuinfo_dlopen_test_library
+          PRIVATE onnxruntime_common cpuinfo)
+
         onnxruntime_add_executable(
           onnxruntime_shared_lib_cpuinfo_dlopen_test
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
-        add_dependencies(onnxruntime_shared_lib_cpuinfo_dlopen_test ${all_dependencies} onnxruntime)
+        add_dependencies(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          onnxruntime_cpuinfo_dlopen_test_library)
+        target_compile_definitions(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          PRIVATE
+          ORT_CPUINFO_DLOPEN_TEST_LIBRARY=L"$<TARGET_FILE_NAME:onnxruntime_cpuinfo_dlopen_test_library>")
         add_test(
           NAME onnxruntime_shared_lib_cpuinfo_dlopen_test
           COMMAND onnxruntime_shared_lib_cpuinfo_dlopen_test
-          WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_cpuinfo_dlopen_test>)
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_cpuinfo_dlopen_test_library>)
         set_target_properties(
+          onnxruntime_cpuinfo_dlopen_test_library
           onnxruntime_shared_lib_cpuinfo_dlopen_test
           PROPERTIES FOLDER "ONNXRuntimeTest")
       endif()

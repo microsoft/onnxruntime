@@ -14,7 +14,22 @@
 #endif
 
 #if defined(ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
-extern "C" bool cpuinfo_is_initialized;
+constexpr int kCpuinfoCacheLevelCount = 5;
+
+extern "C" {
+extern bool cpuinfo_is_initialized;
+extern struct cpuinfo_processor* cpuinfo_processors;
+extern struct cpuinfo_core* cpuinfo_cores;
+extern struct cpuinfo_cluster* cpuinfo_clusters;
+extern struct cpuinfo_package* cpuinfo_packages;
+extern struct cpuinfo_cache* cpuinfo_cache[kCpuinfoCacheLevelCount];
+extern uint32_t cpuinfo_processors_count;
+extern uint32_t cpuinfo_cores_count;
+extern uint32_t cpuinfo_clusters_count;
+extern uint32_t cpuinfo_packages_count;
+extern uint32_t cpuinfo_cache_count[kCpuinfoCacheLevelCount];
+extern uint32_t cpuinfo_max_cache_size;
+}
 #endif
 
 namespace {
@@ -27,7 +42,26 @@ bool HasValidCpuinfoState() {
 
 bool IsCpuinfoDeinitialized() {
 #if defined(ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
-  return !cpuinfo_is_initialized;
+  if (cpuinfo_is_initialized ||
+      cpuinfo_processors != nullptr ||
+      cpuinfo_cores != nullptr ||
+      cpuinfo_clusters != nullptr ||
+      cpuinfo_packages != nullptr ||
+      cpuinfo_processors_count != 0 ||
+      cpuinfo_cores_count != 0 ||
+      cpuinfo_clusters_count != 0 ||
+      cpuinfo_packages_count != 0 ||
+      cpuinfo_max_cache_size != 0) {
+    return false;
+  }
+
+  for (int level = 0; level < kCpuinfoCacheLevelCount; ++level) {
+    if (cpuinfo_cache[level] != nullptr || cpuinfo_cache_count[level] != 0) {
+      return false;
+    }
+  }
+
+  return true;
 #else
   return true;
 #endif
