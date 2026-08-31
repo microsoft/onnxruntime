@@ -148,6 +148,23 @@ void SwapLastTwoDims(NodeArg& arg) {
   arg.SetShape(swapped);
 }
 
+// Rejects Value cache formats that a Transpose pair cannot express, independently of how much of
+// the layout the node already carries.
+Status ValidateCacheFormat(const Node& node) {
+  // A 4-bit Value cache is uint8 with two values packed into each byte along head_size. A byte-wise
+  // Transpose moves whole bytes, so it cannot convert between BNHS and BNSH packing, and the
+  // declared-shape swap would be wrong as well. Reject rather than silently producing bad results
+  // on any EP that does not fuse the Transposes away.
+  const bool value_cache_is_quantized = GetStringAttr(node, "v_quant_type", "NONE") != "NONE";
+  const int64_t bit_width = GetIntAttr(node, "kv_cache_bit_width", 8);
+  ORT_RETURN_IF(value_cache_is_quantized && bit_width == 4,
+                "GroupQueryAttention node '", DescribeNode(node), "' uses a 4-bit quantized Value cache, which is ",
+                "not supported with the BNHS Value layout ('", kOrtSessionOptionsGqaValueLayout,
+                "'). Two 4-bit values are packed per byte along head_size and cannot be transposed byte-wise.");
+
+  return Status::OK();
+}
+
 // Decides what to do with one node, without mutating the graph.
 //
 // Returns an error for a topology the application would observe as inconsistent: it asked for BNHS,
@@ -158,6 +175,12 @@ void SwapLastTwoDims(NodeArg& arg) {
 // a cache stays BNSH by design; see the scope note on kOrtSessionOptionsGqaValueLayout.
 Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger& logger, bool& transform) {
   transform = false;
+
+  // Checked before the layout state, so that a model which already carries the Transposes is
+  // rejected too. A 4-bit cache is unsupported whether this run would insert the Transposes or a
+  // previous one already did: accepting an already converted node here would let the model
+  // initialize and then run the invalid byte-wise transpose on any EP that does not fuse it.
+  ORT_RETURN_IF_ERROR(ValidateCacheFormat(node));
 
   switch (GetValueLayoutState(graph, node)) {
     case ValueLayoutState::kFull:
@@ -177,17 +200,6 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
     case ValueLayoutState::kNone:
       break;
   }
-
-  // A 4-bit Value cache is uint8 with two values packed into each byte along head_size. A byte-wise
-  // Transpose moves whole bytes, so it cannot convert between BNHS and BNSH packing, and the
-  // declared-shape swap would be wrong as well. Reject rather than silently producing bad results
-  // on any EP that does not fuse the Transposes away.
-  const bool value_cache_is_quantized = GetStringAttr(node, "v_quant_type", "NONE") != "NONE";
-  const int64_t bit_width = GetIntAttr(node, "kv_cache_bit_width", 8);
-  ORT_RETURN_IF(value_cache_is_quantized && bit_width == 4,
-                "GroupQueryAttention node '", DescribeNode(node), "' uses a 4-bit quantized Value cache, which is ",
-                "not supported with the BNHS Value layout ('", kOrtSessionOptionsGqaValueLayout,
-                "'). Two 4-bit values are packed per byte along head_size and cannot be transposed byte-wise.");
 
   const bool has_past_value = HasInput(node, kPastValueInputIndex);
   const bool has_present_value = HasOutput(node, kPresentValueOutputIndex);

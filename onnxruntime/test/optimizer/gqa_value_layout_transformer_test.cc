@@ -18,6 +18,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -72,6 +73,11 @@ struct BuildOptions {
   // Feed past_value through a value-layout Transpose from a BNHS graph input while leaving
   // present_value as a plain BNSH graph output, i.e. a half-converted node.
   bool partially_transformed = false;
+  // Wire both Value operands through value-layout Transposes to BNHS graph boundaries, i.e. a model
+  // that already carries the conversion, as one saved via session.optimized_model_filepath would.
+  bool already_transformed = false;
+
+  bool TransposedPastValue() const { return partially_transformed || already_transformed; }
 
   // Fill the past caches with a pattern that varies along both sequence_length and head_size, and
   // set the sequence lengths so the kernel actually reads them. Without this the caches are zero and
@@ -115,10 +121,11 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
       past_value = forwarded;
     }
 
-    if (opts.partially_transformed) {
-      // Emulate a hand-edited model: past_value already arrives BNHS through a value-layout
-      // Transpose, while present_value below is left as a plain BNSH graph output. The original
-      // past_value graph input is left dangling, which is legal and irrelevant here.
+    if (opts.TransposedPastValue()) {
+      // past_value already arrives BNHS through a value-layout Transpose. With
+      // already_transformed the present side is converted to match; with partially_transformed it
+      // is left as a plain BNSH graph output, giving a half-converted node. The original past_value
+      // graph input is left dangling, which is legal and irrelevant here.
       NodeArg* bnhs_input = builder.MakeInput<MLFloat16>(
           std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, kMaxSeq}, MLFloat16(0.0f), MLFloat16(0.0f));
       NodeArg* bnsh = builder.MakeIntermediate<MLFloat16>(cache_shape);
@@ -142,10 +149,15 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
   // to the graph output.
   NodeArg* present_value = &empty_arg;
   NodeArg* identity_target = nullptr;
+  NodeArg* bnhs_present_target = nullptr;
   if (!opts.no_present_value) {
     if (opts.present_value_behind_identity) {
       present_value = builder.MakeIntermediate<MLFloat16>(present_shape);
       identity_target = builder.MakeOutput<MLFloat16>(present_shape);
+    } else if (opts.already_transformed) {
+      present_value = builder.MakeIntermediate<MLFloat16>(present_shape);
+      bnhs_present_target = builder.MakeOutput<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, opts.PresentCacheLength()});
     } else {
       present_value = builder.MakeOutput<MLFloat16>(present_shape);
     }
@@ -163,6 +175,11 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
   if (opts.four_bit_value_cache) {
     gqa.AddAttribute("v_quant_type", std::string("PER_CHANNEL"));
     gqa.AddAttribute("kv_cache_bit_width", static_cast<int64_t>(4));
+  }
+
+  if (bnhs_present_target != nullptr) {
+    Node& transpose = builder.AddNode("Transpose", {present_value}, {bnhs_present_target});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
   }
 
   if (opts.present_value_also_consumed_internally) {
@@ -686,6 +703,20 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsPartiallyTransformedNode) {
       "applied to only one of past_value / present_value");
 }
 
+// A model saved after the transform was applied is left alone on reload.
+TEST_F(GqaValueLayoutTransformerTest, SkipsAnAlreadyTransformedModel) {
+  BuildOptions opts;
+  opts.already_transformed = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectTransposeCount(graph, 2); },
+      // Still exactly the two Transposes the model arrived with: no second pair was added.
+      [](Graph& graph) { return ExpectBnhsBoundary(graph); }));
+}
+
 TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCache) {
   BuildOptions opts;
   opts.four_bit_value_cache = true;
@@ -693,6 +724,21 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCache) {
 
   // Two 4-bit values are packed per byte along head_size, so a byte-wise Transpose cannot express
   // the layout change. Failing loudly beats silently producing wrong results on a non-fusing EP.
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "4-bit quantized Value cache");
+}
+
+// The same rejection must apply to a model that already carries the Transposes. Classifying it as
+// already-converted and returning early would let a 4-bit model initialize and then execute the
+// invalid byte-wise transpose on any EP that does not fuse it.
+TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCacheOnAnAlreadyTransformedModel) {
+  BuildOptions opts;
+  opts.four_bit_value_cache = true;
+  opts.already_transformed = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
                            TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
@@ -743,7 +789,14 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValue) {
 
   InferenceSessionWrapper session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
-  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Invalid value for session option");
+
+  // An unrecognized option value is a caller error, so the code must be INVALID_ARGUMENT rather than
+  // the generic FAIL. A model that cannot satisfy a recognized value reports FAIL instead, and
+  // applications distinguish the two to decide whether falling back to BNSH is worth trying.
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid value for session option"));
 }
 
 // The design accepts that a non-fusing EP executes the inserted transposes. That fallback is only
@@ -905,7 +958,12 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsOrtFormatModel) {
 
   InferenceSessionWrapper session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
-  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "is not supported for ORT format models");
+
+  // Also a caller error: the option is valid, but not for this model format.
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("is not supported for ORT format models"));
 }
 
 TEST_F(GqaValueLayoutTransformerTest, AllowsOrtFormatModelWithTheDefaultLayout) {
