@@ -88,6 +88,20 @@ def _graph_annotation_id(run_options) -> int:
         raise ValueError(f"Run option '{_GPU_GRAPH_ID_RUN_CONFIG_KEY}' must be an integer, got {entry!r}.") from None
 
 
+def _validate_ortvalue_session_compatibility(ortvalue, target_session, action) -> None:
+    """Reject an OrtValue that the target session cannot share buffers with.
+
+    ``action`` is the verb used in the message, e.g. ``"used with"`` or ``"bound to"``.
+    Sessionless values come from a shared allocator. A session-owned WebGPU buffer is
+    usable by any session on the same WebGPU context.
+    """
+    if ortvalue._session is None or ortvalue._session is target_session:
+        return
+    if ortvalue._is_webgpu_buffer and ortvalue._session.webgpu_context_id() == target_session.webgpu_context_id():
+        return
+    raise ValueError(f"Session-scoped OrtValue must be {action} the session that created it.")
+
+
 class AdapterFormat:
     """
     This class is used to create adapter files from python structures
@@ -335,13 +349,7 @@ class Session:
         for value in values:
             if not isinstance(value, OrtValue):
                 continue
-            # Sessionless values come from a shared allocator. A session-owned WebGPU buffer is
-            # usable by any session on the same WebGPU context.
-            if value._session is not None and value._session is not self._sess:
-                if not (
-                    value._is_webgpu_buffer and value._session.webgpu_context_id() == self._sess.webgpu_context_id()
-                ):
-                    raise ValueError("Session-scoped OrtValue must be used with the session that created it.")
+            _validate_ortvalue_session_compatibility(value, self._sess, "used with")
 
     def _validate_graph_capture_run_api(self, run_options=None):
         if not self._sess.is_webgpu_graph_capture_enabled():
@@ -1121,8 +1129,7 @@ class IOBinding:
         :param name: input name
         :param ortvalue: OrtValue instance to bind
         """
-        if ortvalue._session is not None and ortvalue._session is not self._session:
-            raise ValueError("Session-scoped OrtValue must be bound to the session that created it.")
+        _validate_ortvalue_session_compatibility(ortvalue, self._session, "bound to")
         self._reject_if_pinned("rebind inputs")
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
         self._bound_inputs[name] = ortvalue
@@ -1178,8 +1185,7 @@ class IOBinding:
         :param name: output name
         :param ortvalue: OrtValue instance to bind
         """
-        if ortvalue._session is not None and ortvalue._session is not self._session:
-            raise ValueError("Session-scoped OrtValue must be bound to the session that created it.")
+        _validate_ortvalue_session_compatibility(ortvalue, self._session, "bound to")
         self._reject_if_pinned("rebind outputs")
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
         self._bound_outputs[name] = ortvalue

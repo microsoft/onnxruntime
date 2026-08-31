@@ -2011,9 +2011,10 @@ class TestInferenceSession(unittest.TestCase):
             owned.update_inplace(foreign)
 
     def test_ortvalue_ownership_allows_matching_webgpu_context(self):
-        """A WebGPU buffer from another session is accepted only on a matching WebGPU context.
+        """run() and IOBinding share one rule: a WebGPU buffer from another session is
+        accepted only when the WebGPU contexts match.
 
-        The context id is injected because a second WebGPU context needs caller-supplied Dawn
+        Context ids are injected because a second WebGPU context needs caller-supplied Dawn
         handles, which Python cannot reach.
         """
 
@@ -2031,17 +2032,30 @@ class TestInferenceSession(unittest.TestCase):
             def __init__(self, session):
                 self._sess = session
 
-        source = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros((2, 2), dtype=np.float32))
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_name = session.get_inputs()[0].name
+        output_name = session.get_outputs()[0].name
+        source = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros(session.get_inputs()[0].shape, dtype=np.float32))
+
+        def owned_by(context_id):
+            value = WebGpuValue(source._get_c_value())
+            value._session = FakeSession(context_id)
+            return value
+
         target = FakeOwner(FakeSession(0))
+        onnxrt.InferenceSession._validate_ortvalue_ownership(target, [owned_by(0)])
+        with self.assertRaisesRegex(ValueError, "must be used with the session that created it"):
+            onnxrt.InferenceSession._validate_ortvalue_ownership(target, [owned_by(1)])
 
-        same_context = WebGpuValue(source._get_c_value())
-        same_context._session = FakeSession(0)
-        onnxrt.InferenceSession._validate_ortvalue_ownership(target, [same_context])
-
-        other_context = WebGpuValue(source._get_c_value())
-        other_context._session = FakeSession(1)
-        with self.assertRaisesRegex(ValueError, "session that created it"):
-            onnxrt.InferenceSession._validate_ortvalue_ownership(target, [other_context])
+        # The binding paths apply the same rule, so they must accept the same value.
+        io_binding = session.io_binding()
+        io_binding._session = FakeSession(0)
+        io_binding.bind_ortvalue_input(input_name, owned_by(0))
+        io_binding.bind_ortvalue_output(output_name, owned_by(0))
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_input(input_name, owned_by(1))
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_output(output_name, owned_by(1))
 
     def test_foreign_webgpu_context_predicate(self):
         """Unit-test the copy_tensors context predicate without needing a second WebGPU context.
