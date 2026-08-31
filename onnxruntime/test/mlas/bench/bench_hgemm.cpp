@@ -3,6 +3,8 @@
 
 #include "mlas.h"
 #include "bench_util.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 #include "core/util/thread_utils.h"
 
 #include <stdexcept>
@@ -87,3 +89,45 @@ static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
 }
 BENCHMARK_CAPTURE(HGEMM, LLM_TransB, false, true)->Apply(GemmLLMSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, LLM_B, false, false)->Apply(GemmLLMSizeProducts)->UseRealTime();
+
+static void GemmDecodeSizes(benchmark::internal::Benchmark* b) {
+  b->ArgNames(hgemm_bench_arg_names);
+  b->Args({1, 4096, 4096});
+  b->Args({1, 11008, 4096});
+  b->Args({1, 4096, 11008});
+}
+BENCHMARK_CAPTURE(HGEMM, Decode_TransB, false, true)->Apply(GemmDecodeSizes)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMM, Decode_B, false, false)->Apply(GemmDecodeSizes)->UseRealTime();
+
+void HGEMMDecodeEigen(benchmark::State& state, bool transB) {
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+
+  auto A = RandomVectorUniform(M * K, MLAS_FP16(-1.0f), MLAS_FP16(1.0f));
+  auto B = RandomVectorUniform(N * K, MLAS_FP16(-1.0f), MLAS_FP16(1.0f));
+  std::vector<MLAS_FP16> C(M * N);
+
+  const MLAS_FP16 alpha(1.0f);
+  const MLAS_FP16 beta(0.0f);
+  OrtThreadPoolParams tpo;
+  tpo.thread_pool_size = 8;
+  tpo.auto_set_affinity = true;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
+      onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+
+  for (auto _ : state) {
+    onnxruntime::math::Gemm<Eigen::half>(
+        CblasNoTrans, transB ? CblasTrans : CblasNoTrans,
+        static_cast<ptrdiff_t>(M), static_cast<ptrdiff_t>(N), static_cast<ptrdiff_t>(K),
+        *reinterpret_cast<const Eigen::half*>(&alpha),
+        reinterpret_cast<const Eigen::half*>(A.data()),
+        reinterpret_cast<const Eigen::half*>(B.data()),
+        *reinterpret_cast<const Eigen::half*>(&beta),
+        reinterpret_cast<Eigen::half*>(C.data()), tp.get(), nullptr);
+  }
+}
+
+BENCHMARK_CAPTURE(HGEMMDecodeEigen, DecodeEigen_TransB, true)->Apply(GemmDecodeSizes)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMMDecodeEigen, DecodeEigen_B, false)->Apply(GemmDecodeSizes)->UseRealTime();

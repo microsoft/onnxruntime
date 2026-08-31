@@ -1739,6 +1739,16 @@ MlasHGemmSupported(
     );
 
 /**
+ * @brief Check whether current CPU supports the M=1 half precision GEMV path.
+ */
+bool
+MLASCALL
+MlasHalfGemmDecodeSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
  * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
  */
 template <typename T>

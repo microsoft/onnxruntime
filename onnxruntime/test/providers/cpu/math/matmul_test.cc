@@ -9,6 +9,8 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
+#include <cmath>
+
 namespace onnxruntime {
 namespace test {
 
@@ -411,6 +413,35 @@ TEST(MathOpTest, MatMulFloat16Cpu) {
                             {MLFloat16(25.0f), MLFloat16(28.0f),
                              MLFloat16(57.0f), MLFloat16(64.0f),
                              MLFloat16(89.0f), MLFloat16(100.0f)});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulFloat16CpuDecode) {
+  constexpr int64_t K = 33;
+  constexpr int64_t N = 65;
+  std::vector<MLFloat16> a(K);
+  std::vector<MLFloat16> b(K * N);
+  for (int64_t k = 0; k < K; ++k) {
+    a[k] = MLFloat16(static_cast<float>((k % 7) - 3) * 0.125f);
+    for (int64_t n = 0; n < N; ++n) {
+      b[k * N + n] = MLFloat16(static_cast<float>(((k + n) % 11) - 5) * 0.0625f);
+    }
+  }
+
+  std::vector<MLFloat16> expected(N);
+  for (int64_t n = 0; n < N; ++n) {
+    float sum = 0.0f;
+    for (int64_t k = 0; k < K; ++k) {
+      sum = std::fma(float(a[k]), float(b[k * N + n]), sum);
+    }
+    expected[n] = MLFloat16(sum);
+  }
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {1, K}, a);
+  test.AddInput<MLFloat16>("B", {K, N}, b);
+  test.AddOutput<MLFloat16>("Y", {1, N}, expected);
+  test.SetOutputTolerance(0.005f);
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 

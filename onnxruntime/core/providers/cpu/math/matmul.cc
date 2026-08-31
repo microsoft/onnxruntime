@@ -405,6 +405,26 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(false);
 
+  if (M == 1 && packed_b_ == nullptr &&
+      MlasHalfGemmDecodeSupported(CblasNoTrans, CblasNoTrans)) {
+    const auto alpha = MLFloat16(1.0f);
+    const auto beta = MLFloat16(0.0f);
+    InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      data[i].A = a_data + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = b_data + helper.RightOffsets()[i];
+      data[i].ldb = ldb;
+      data[i].C = y_data + helper.OutputOffsets()[i];
+      data[i].ldc = N;
+      data[i].alpha = alpha.val;
+      data[i].beta = beta.val;
+    }
+
+    MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, data.data(), max_len, thread_pool);
+    return Status::OK();
+  }
+
   // Guard against using generic half GEMM when no accelerated implementation is
   // available. Native packing support currently also signals an accelerated
   // backend path.
