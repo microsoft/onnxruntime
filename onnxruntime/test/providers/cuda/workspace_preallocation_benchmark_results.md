@@ -233,6 +233,55 @@ regions. Internal fragmentation was 8,116 bytes. The paired latency run was 3.4%
 slower with preallocation; as with the other single paired measurements, this
 does not establish a stable latency effect.
 
+### Qwen 3 8B
+
+Model:
+`qwen3-8b-cuda-gpu:2`
+
+- 36 decoder layers
+- 8 key/value heads
+- 253 CUDA `MatMulNBits` nodes
+- 253 nodes declared nonzero workspace for the tested shape
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 253 | +253 |
+| Largest workspace | 0 B | 4,254,208 B | +4,254,208 B |
+| Serialized ONNX graph | 485,603 B | 485,603 B | 0 B |
+| Serialized external tensor data | 5,937,758,208 B (5,662.69 MiB) | 5,937,758,208 B (5,662.69 MiB) | 0 B |
+| Post-initialization arena total | 11,305,310,464 B (10,781.58 MiB) | 11,305,310,464 B (10,781.58 MiB) | 0 B |
+| Post-initialization direct reserved bytes | 5,367,709,696 B (5,119.05 MiB) | 5,367,709,696 B (5,119.05 MiB) | 0 B |
+| Post-initialization BFC region capacity | 5,937,600,768 B (5,662.54 MiB) | 5,937,600,768 B (5,662.54 MiB) | 0 B |
+| Post-initialization arena slack | 5,289,545,728 B (5,044.50 MiB) | 5,289,545,728 B (5,044.50 MiB) | 0 B |
+| Shrink reclaimed after warmup | 5,289,545,728 B (5,044.50 MiB) | 5,289,545,728 B (5,044.50 MiB) | 0 B |
+| Measured arena reservation | 638,632,448 B | 638,833,664 B | **+201,216 B** |
+| Final arena slack | 638,632,448 B | 638,833,664 B | **+201,216 B** |
+| Internal fragmentation | 248 B | 248 B | 0 B |
+| Internal fragmentation ratio | 0.00000412% | 0.00000412% | 0 pp |
+| Arena allocation calls | 21,573 | 12,212 | **-43.4%** |
+| WDDM initialization peak | 11,690 MiB | 11,690 MiB | **0 MiB** |
+| WDDM post-initialization usage | 11,116 MiB | 11,116 MiB | **0 MiB** |
+| WDDM pre-inference usage | 6,176 MiB | 6,176 MiB | **0 MiB** |
+| WDDM inference peak | 6,792 MiB | 6,792 MiB | **0 MiB** |
+| WDDM inference increase | 616 MiB | 616 MiB | **0 MiB** |
+| Average latency | 287.63 ms | 283.46 ms | **-1.5%** |
+| P50 latency | 288.04 ms | 283.76 ms | **-1.5%** |
+| P90 latency | 294.03 ms | 287.30 ms | **-2.3%** |
+| Initialization | 123.02 s | 146.40 s | +19.0% |
+
+Workspace preallocation did not reduce the controlled CUDA arena reservation for
+this model and shape. It added 201,216 bytes (approximately 197 KiB), while
+eliminating 9,361 allocator calls. The process-scoped WDDM inference peak was
+unchanged. The 30-run latency distributions had no multi-second outliers and
+were slightly faster with preallocation, although a single paired run does not
+establish a stable latency effect.
+
+The 5,662.69 MiB serialized external-data file closely matches the 5,662.54 MiB
+BFC region capacity created during initialization. The separate 5,119.05 MiB of
+direct reserves primarily represents persistent prepacked buffers. After
+warmup, `Shrink()` reclaimed 5,044.50 MiB of completely free BFC regions.
+Internal fragmentation was only 248 bytes.
+
 ### Hy-MT2 1.8B
 
 Model:
@@ -286,15 +335,16 @@ configurations.
 | Qwen 2.5 1.5B | **-6 MiB** | **-4,003,328 B** | **-30.0%** | **-16.5%** |
 | Qwen 2.5 7B | **0 MiB** | +530,432 B | **-30.0%** | -0.9% |
 | Qwen 3.5 2B Text | **-8 MiB** | **-6,779,136 B** | **-40.1%** | +3.4% |
+| Qwen 3 8B | **0 MiB** | +201,216 B | **-43.4%** | **-1.5%** |
 | Hy-MT2 1.8B | **0 MiB** | +115,200 B | **-43.2%** | +9.9% |
 
 The memory benefit scales with the model's workspace requirement at this longer
 sequence length. Qwen 2.5 reused approximately 3.82 MiB of activation storage,
 and Qwen 3.5 reused approximately 6.47 MiB. Their process-scoped WDDM inference
-peaks decreased by 6 MiB and 8 MiB, respectively. Qwen 2.5 7B and Hy-MT2 did not
-produce net reservation reductions for the tested shape. All four models
-substantially reduced allocator calls. Latency moved in different directions
-across the single paired runs.
+peaks decreased by 6 MiB and 8 MiB, respectively. Qwen 2.5 7B, Qwen 3 8B, and
+Hy-MT2 did not produce net reservation reductions for the tested shape. All five
+models substantially reduced allocator calls. Latency moved in different
+directions across the single paired runs.
 
 ## NVIDIA T1000
 
