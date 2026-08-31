@@ -310,7 +310,8 @@ def generate_vcpkg_install_options(build_dir, args):
         ]
 
         terrapin_cmd_path = next(
-            path for path in terrapin_path_candidates if (path is not None and os.path.exists(path))
+            (path for path in terrapin_path_candidates if path is not None and os.path.exists(path)),
+            None,
         )
 
         if terrapin_cmd_path is not None:
