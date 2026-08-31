@@ -204,7 +204,7 @@ common::Status OpenVINOExecutionProvider::Compile(
           shared_context_->Serialize(stream);
           std::string payload = std::move(stream).str();
           const std::string name = PathToUTF8String(shared_context_->GetBinPath().filename().native());
-          ORT_RETURN_IF_ERROR(ToStatusAndRelease(session_context_.ep_context_data_write_func(
+          ORT_RETURN_IF_ERROR(ConvertAndReleaseCallbackStatus(session_context_.ep_context_data_write_func(
               session_context_.ep_context_data_write_state, name.c_str(), payload.data(), payload.size())));
         } else {
           shared_context_->Serialize();

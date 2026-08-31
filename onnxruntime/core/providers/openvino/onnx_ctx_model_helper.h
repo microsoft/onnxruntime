@@ -15,10 +15,15 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+Status ConvertAndReleaseCallbackStatus(OrtStatus* status);
+
 struct ModelBlobWrapper {
-  ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor& tensor) : stream_(std::move(stream)), tensor_(tensor) {}
+  ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor& tensor,
+                   std::filesystem::path model_path = {})
+      : stream_(std::move(stream)), tensor_(tensor), model_path_(std::move(model_path)) {}
   std::unique_ptr<std::istream> stream_;
   ov::Tensor tensor_;  // May be empty if model blob is provided as stream only.
+  std::filesystem::path model_path_;
 };
 
 // Utilities to handle EPContext node export and parsing of an EPContext node

@@ -2,9 +2,10 @@
 // Licensed under the MIT License
 
 #include <cctype>
-#include <string>
 #include <fstream>
+#include <limits>
 #include <memory>
+#include <string>
 #include <unordered_set>
 #include <vector>
 #include <algorithm>
@@ -33,10 +34,59 @@ class CallbackBufferIStream final : public std::istream {
  private:
   class MemoryStreamBuf final : public std::streambuf {
    public:
-    MemoryStreamBuf(void* buffer, size_t buffer_size) {
-      char* begin = static_cast<char*>(buffer);
-      setg(begin, begin, begin != nullptr ? begin + buffer_size : nullptr);
+    MemoryStreamBuf(void* buffer, size_t buffer_size)
+        : begin_{static_cast<char*>(buffer)}, size_{buffer_size} {
+      setg(begin_, begin_, begin_ + size_);
     }
+
+   protected:
+    pos_type seekoff(off_type offset, std::ios_base::seekdir direction,
+                     std::ios_base::openmode mode) override {
+      if ((mode & std::ios_base::in) == 0) {
+        return pos_type{off_type{-1}};
+      }
+
+      size_t base{};
+      if (direction == std::ios_base::beg) {
+        base = 0;
+      } else if (direction == std::ios_base::cur) {
+        base = static_cast<size_t>(gptr() - begin_);
+      } else if (direction == std::ios_base::end) {
+        base = size_;
+      } else {
+        return pos_type{off_type{-1}};
+      }
+
+      size_t position{};
+      if (offset >= 0) {
+        const auto delta = static_cast<uintmax_t>(offset);
+        if (delta > size_ - base) {
+          return pos_type{off_type{-1}};
+        }
+        position = base + static_cast<size_t>(delta);
+      } else {
+        const auto delta = static_cast<uintmax_t>(-(offset + 1)) + 1;
+        if (delta > base) {
+          return pos_type{off_type{-1}};
+        }
+        position = base - static_cast<size_t>(delta);
+      }
+
+      if (position > static_cast<uintmax_t>(std::numeric_limits<off_type>::max())) {
+        return pos_type{off_type{-1}};
+      }
+
+      setg(begin_, begin_ + position, begin_ + size_);
+      return pos_type{static_cast<off_type>(position)};
+    }
+
+    pos_type seekpos(pos_type position, std::ios_base::openmode mode) override {
+      return seekoff(static_cast<off_type>(position), std::ios_base::beg, mode);
+    }
+
+   private:
+    char* begin_;
+    size_t size_;
   };
 
   std::unique_ptr<void, OrtAllocatorDeleter> buffer_;
@@ -47,12 +97,13 @@ Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
                          size_t max_data_size, const std::string& name,
                          std::unique_ptr<CallbackBufferIStream>& stream) {
   OrtAllocator* allocator = nullptr;
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(Ort::GetApi().GetAllocatorWithDefaultOptions(&allocator)));
+  ORT_RETURN_IF_ERROR(onnxruntime::openvino_ep::ConvertAndReleaseCallbackStatus(
+      Ort::GetApi().GetAllocatorWithDefaultOptions(&allocator)));
   void* buffer = nullptr;
   size_t buffer_size = 0;
   OrtStatus* callback_status = read_func(read_state, name.c_str(), allocator, &buffer, &buffer_size);
   std::unique_ptr<void, OrtAllocatorDeleter> buffer_guard{buffer, OrtAllocatorDeleter{allocator}};
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(callback_status));
+  ORT_RETURN_IF_ERROR(onnxruntime::openvino_ep::ConvertAndReleaseCallbackStatus(callback_status));
   if (buffer_size > max_data_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "OpenVINO EPContext read callback exceeded the configured maximum size.");
@@ -60,6 +111,10 @@ Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
   if (buffer_size == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "OpenVINO EPContext read callback returned an empty payload.");
+  }
+  if (buffer_size > static_cast<uintmax_t>(std::numeric_limits<std::streamoff>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "OpenVINO EPContext read callback payload is too large to stream.");
   }
   ORT_RETURN_IF(buffer == nullptr,
                 "EPContext read callback returned a null buffer for non-empty OpenVINO context data.");
@@ -71,6 +126,17 @@ Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
 
 namespace onnxruntime {
 namespace openvino_ep {
+
+Status ConvertAndReleaseCallbackStatus(OrtStatus* status) {
+  Ort::Status callback_status{status};
+  if (callback_status.IsOK()) {
+    return Status::OK();
+  }
+
+  return Status(common::StatusCategory::ONNXRUNTIME,
+                static_cast<int>(callback_status.GetErrorCode()),
+                callback_status.GetErrorMessage());
+}
 
 EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedContextManager> shared_context_manager)
     : openvino_sdk_version_(std::move(ov_sdk_version)), logger_(logger), shared_context_manager_(std::move(shared_context_manager)) {
@@ -208,12 +274,18 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(
                       ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
     }
     result.reset();  // Release the stream as we will get the native blob from SharedContext
-    return std::make_unique<ModelBlobWrapper>(shared_context.GetNativeBlobAsStream(partition_name),
-                                              shared_context.GetNativeBlob(partition_name));
+    std::shared_ptr<SharedContext> filesystem_context;
+    SharedContext* native_blob_context = &shared_context;
+    if (!embed_mode && !callback_backed) {
+      filesystem_context = shared_context_manager_->GetOrCreateSharedContext(blob_filepath);
+      native_blob_context = filesystem_context.get();
+    }
+    return std::make_unique<ModelBlobWrapper>(native_blob_context->GetNativeBlobAsStream(partition_name),
+                                              native_blob_context->GetNativeBlob(partition_name));
   }
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
-  return std::make_unique<ModelBlobWrapper>(std::move(result), ov::Tensor());
+  return std::make_unique<ModelBlobWrapper>(std::move(result), ov::Tensor(), std::move(blob_filepath));
 }
 
 bool EPCtxHandler::CheckForOVEPCtxNodeInGraph(const GraphViewer& graph_viewer) const {
@@ -265,7 +337,13 @@ bool EPCtxHandler::CheckEPCacheContextAttribute(const GraphViewer& graph_viewer,
   const auto& attrs = node->GetAttributes();
   auto it = attrs.find(EP_CACHE_CONTEXT);
   if (it != attrs.end()) {
-    return it->second().s().find(target_attr_extn) != std::string::npos;
+    auto context_filename = std::filesystem::path{it->second().s()}.filename().string();
+    auto target_filename = std::filesystem::path{target_attr_extn}.filename().string();
+    std::transform(context_filename.begin(), context_filename.end(), context_filename.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(target_filename.begin(), target_filename.end(), target_filename.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return context_filename == target_filename;
   }
   return false;
 }

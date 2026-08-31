@@ -125,7 +125,7 @@ OrtStatus* ORT_API_CALL LoadOpenVINOEpContextData(void* state, const char* name,
 
 std::string GetExternalEpContextDataName(const std::filesystem::path& model_path) {
   ONNX_NAMESPACE::ModelProto model_proto;
-  ORT_THROW_IF_ERROR(Model::Load(model_path, model_proto));
+  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(model_path, model_proto));
   for (const auto& node : model_proto.graph().node()) {
     if (node.op_type() != "EPContext") {
       continue;
@@ -358,6 +358,62 @@ TEST_F(OVEPEPContextOVIRTests, RunEpCtxOvirModel) {
   // OVIR encapsulation detection).
   Ort::Session session(*ort_env, kOvirModelPath, session_options);
 
+  RunAndValidate(session);
+}
+
+TEST_F(OVEPEPContextOVIRTests, RunEpCtxOvirModelFromArray) {
+  std::ifstream model_stream(kOvirModelPath, std::ios::binary);
+  ASSERT_TRUE(model_stream);
+  const std::string model_data{std::istreambuf_iterator<char>{model_stream},
+                               std::istreambuf_iterator<char>{}};
+
+  Ort::SessionOptions session_options;
+  const std::filesystem::path absolute_model_path = std::filesystem::absolute(kOvirModelPath);
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, absolute_model_path.string().c_str());
+  std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+  session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+  Ort::Session session(*ort_env, model_data.data(), model_data.size(), session_options);
+  RunAndValidate(session);
+}
+
+TEST_F(OVEPEPContextOVIRTests, RunEpCtxOvirModelWithMixedCaseExtension) {
+  const std::filesystem::path out_dir = std::filesystem::path("testdata") / "ovir_epctx_mixed_case";
+  std::filesystem::remove_all(out_dir);
+  std::filesystem::create_directories(out_dir);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(out_dir); });
+
+  const std::filesystem::path model_path = out_dir / "mixed_case.onnx";
+  const std::filesystem::path xml_path = out_dir / "mixed_case.XML";
+  const std::filesystem::path bin_path = out_dir / "mixed_case.bin";
+  std::filesystem::copy_file("testdata/mul_1_ep_ctx_ovir.xml", xml_path);
+  std::filesystem::copy_file("testdata/mul_1_ep_ctx_ovir.bin", bin_path);
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ASSERT_STATUS_OK(Model::Load(kOvirModelPath, model_proto));
+  bool updated_context_name = false;
+  for (auto& node : *model_proto.mutable_graph()->mutable_node()) {
+    if (node.op_type() != "EPContext") {
+      continue;
+    }
+    for (auto& attribute : *node.mutable_attribute()) {
+      if (attribute.name() == "ep_cache_context") {
+        attribute.set_s(xml_path.filename().string());
+        updated_context_name = true;
+      }
+    }
+  }
+  ASSERT_TRUE(updated_context_name);
+  {
+    std::ofstream output_stream(model_path, std::ios::binary);
+    ASSERT_TRUE(output_stream);
+    ASSERT_TRUE(model_proto.SerializeToOstream(&output_stream));
+  }
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+  session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+  Ort::Session session(*ort_env, model_path.c_str(), session_options);
   RunAndValidate(session);
 }
 
@@ -620,98 +676,70 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiExternalDataUsesCallbacks) 
   EXPECT_TRUE(callback_state.read_called);
   EXPECT_EQ(callback_state.read_count, 4u);
   RunAndValidate(session);
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ASSERT_STATUS_OK(Model::Load(epctx_model, model_proto));
+  const std::filesystem::path substring_model = out_dir / "native_callback_name.onnx";
+  const std::string substring_name = "native_callback_name.xml_native.bin";
+  bool updated_context_name = false;
+  for (auto& node : *model_proto.mutable_graph()->mutable_node()) {
+    if (node.op_type() != "EPContext") {
+      continue;
+    }
+    for (auto& attribute : *node.mutable_attribute()) {
+      if (attribute.name() == "ep_cache_context") {
+        attribute.set_s(substring_name);
+        updated_context_name = true;
+      }
+    }
+  }
+  ASSERT_TRUE(updated_context_name);
+  {
+    std::ofstream model_stream(substring_model, std::ios::binary);
+    ASSERT_TRUE(model_stream);
+    ASSERT_TRUE(model_proto.SerializeToOstream(&model_stream));
+  }
+
+  callback_state.name = substring_name;
+  callback_state.read_called = false;
+  ASSERT_NO_THROW((Ort::Session(*ort_env, substring_model.c_str(), session_options)));
+  EXPECT_TRUE(callback_state.read_called);
+  EXPECT_FALSE(std::filesystem::exists(substring_model.parent_path() / substring_name));
 }
 
-TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackRunsOncePerDistinctExternalName) {
+TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackUsesDistinctExternalNames) {
   const std::filesystem::path out_dir = std::filesystem::path("testdata") / "ovir_epctx_distinct_callbacks";
   std::filesystem::remove_all(out_dir);
   std::filesystem::create_directories(out_dir);
   auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(out_dir); });
 
-  const std::filesystem::path epctx_model = out_dir / "mul_1_ovir_epctx.onnx";
-  OpenVINOEpContextCallbackState write_state;
-  {
+  const std::array<std::filesystem::path, 2> epctx_models = {
+      out_dir / "first_epctx.onnx",
+      out_dir / "second_epctx.onnx",
+  };
+  std::array<OpenVINOEpContextCallbackState, 2> write_states;
+  for (size_t i = 0; i < epctx_models.size(); ++i) {
     Ort::SessionOptions session_options;
     std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
     compile_options.SetInputModelPath(kOvirModelPath);
-    compile_options.SetOutputModelPath(epctx_model.c_str());
+    compile_options.SetOutputModelPath(epctx_models[i].c_str());
     compile_options.SetEpContextEmbedMode(false);
-    compile_options.SetEpContextDataWriteFunc(StoreOpenVINOEpContextData, &write_state);
-    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    compile_options.SetEpContextDataWriteFunc(StoreOpenVINOEpContextData, &write_states[i]);
+    Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
   }
-  ASSERT_EQ(write_state.write_count, 1u);
-  ASSERT_FALSE(write_state.name.empty());
-  ASSERT_FALSE(write_state.payload.empty());
-
-  ONNX_NAMESPACE::ModelProto model_proto;
-  ASSERT_STATUS_OK(Model::Load(epctx_model, model_proto));
-  auto* graph = model_proto.mutable_graph();
-
-  ONNX_NAMESPACE::NodeProto original_context_node;
-  for (const auto& node : graph->node()) {
-    if (node.op_type() == "EPContext") {
-      original_context_node.CopyFrom(node);
-      break;
-    }
-  }
-  ASSERT_FALSE(original_context_node.op_type().empty());
-
-  std::vector<ONNX_NAMESPACE::ValueInfoProto> original_output_infos;
-  original_output_infos.reserve(original_context_node.output_size());
-  for (const auto& output_name : original_context_node.output()) {
-    const ONNX_NAMESPACE::ValueInfoProto* output_info = nullptr;
-    for (const auto& graph_output : graph->output()) {
-      if (graph_output.name() == output_name) {
-        output_info = &graph_output;
-        break;
-      }
-    }
-    ASSERT_NE(output_info, nullptr) << "Missing graph output type for " << output_name;
-    original_output_infos.push_back(*output_info);
-  }
-
-  const std::string second_name = "second_" + write_state.name;
-  auto add_context_clone = [&](const std::string& suffix, const std::string& context_name) {
-    auto* clone = graph->add_node();
-    clone->CopyFrom(original_context_node);
-    clone->set_name(original_context_node.name() + suffix);
-
-    bool updated_context_name = false;
-    for (auto& attribute : *clone->mutable_attribute()) {
-      if (attribute.name() == "main_context") {
-        attribute.set_i(0);
-      } else if (attribute.name() == "ep_cache_context") {
-        attribute.set_s(context_name);
-        updated_context_name = true;
-      }
-    }
-    ASSERT_TRUE(updated_context_name);
-
-    for (int output_index = 0; output_index < clone->output_size(); ++output_index) {
-      const std::string cloned_output_name = clone->output(output_index) + suffix;
-      clone->set_output(output_index, cloned_output_name);
-      auto* graph_output = graph->add_output();
-      graph_output->CopyFrom(original_output_infos[output_index]);
-      graph_output->set_name(cloned_output_name);
-    }
-  };
-
-  add_context_clone("_duplicate", write_state.name);
-  add_context_clone("_second", second_name);
-
-  const std::filesystem::path patched_model = out_dir / "mul_1_ovir_epctx_patched.onnx";
-  {
-    std::ofstream model_stream(patched_model, std::ios::binary);
-    ASSERT_TRUE(model_stream);
-    ASSERT_TRUE(model_proto.SerializeToOstream(&model_stream));
-  }
+  ASSERT_NE(write_states[0].name, write_states[1].name);
 
   OpenVINOEpContextCallbackState read_state;
-  read_state.payloads_by_name.emplace(write_state.name, write_state.payload);
-  read_state.payloads_by_name.emplace(second_name, write_state.payload);
+  for (const auto& write_state : write_states) {
+    ASSERT_EQ(write_state.write_count, 1u);
+    ASSERT_FALSE(write_state.name.empty());
+    ASSERT_FALSE(write_state.payload.empty());
+    read_state.payloads_by_name.emplace(write_state.name, write_state.payload);
+  }
 
   Ort::SessionOptions session_options;
   session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &read_state,
@@ -719,9 +747,13 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackRunsOncePerDistinctExtern
   std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
-  ASSERT_NO_THROW((Ort::Session(*ort_env, patched_model.c_str(), session_options)));
+  for (const auto& epctx_model : epctx_models) {
+    ASSERT_NO_THROW((Ort::Session(*ort_env, epctx_model.c_str(), session_options)));
+  }
+
   EXPECT_EQ(read_state.read_count, 2u);
-  EXPECT_THAT(read_state.read_names, testing::UnorderedElementsAre(write_state.name, second_name));
+  EXPECT_THAT(read_state.read_names,
+              testing::UnorderedElementsAre(write_states[0].name, write_states[1].name));
 }
 
 TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiWriteCallbackErrorDoesNotFallbackToDisk) {
