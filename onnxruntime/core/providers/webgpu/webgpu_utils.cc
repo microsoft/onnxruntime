@@ -107,6 +107,18 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       configs_per_dim_inner_range_.emplace_back(3072, 8.0);
       configs_per_dim_inner_range_.emplace_back(4096, 6.0);
     }
+  } else if (adapter_info.vendor == std::string_view{"nvidia"} &&
+             adapter_info.architecture == std::string_view{"pascal"}) {
+    // Rate thresholds are the Intel discrete table, the most permissive one already in tree.
+    // split_dim_inner is 128 rather than that table's 256, swept over 128, 256 and 512 on a TITAN V,
+    // which reports this architecture. 128 was fastest on EfficientNet-B0 and tied on ResNet-50. It
+    // wins on two counts: finer partitions per dispatch, and through the derived
+    // min_dim_inner_with_split_k_, six more EfficientNet dispatches qualifying at K = 480.
+    //
+    // Scoped to the architecture actually measured, matching the Intel branch above.
+    SetDefaultThresholds();
+    split_dim_inner_ = 128;
+    min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
   }
 
   if (override_mode == SplitKOverride::ForceOn && !enable_split_k_) {
