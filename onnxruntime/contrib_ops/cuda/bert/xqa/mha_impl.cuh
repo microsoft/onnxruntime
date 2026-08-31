@@ -1438,7 +1438,8 @@ CUBIN_EXPORT __global__
 #endif
       ;
 #if SLIDING_WINDOW && SPEC_DEC && !IS_SPEC_DEC_TREE
-  const uint32_t tok0SeqLen = cacheSeqLen - actualQSeqLen + 1 + idxHeadTokenInGrp;  // ctaTokOffset;
+  const uint32_t tok0SeqLen =
+      cacheSeqLen - actualQSeqLen + 1 + idxHeadTokenInGrp / headGrpSize;  // ctaTokOffset;
   const int32_t tok0WinBeg = int32_t(tok0SeqLen) - int32_t(slidingWinSize);
   const uint32_t nbTotalSkipTokens = mha::max(0, tok0WinBeg);
 

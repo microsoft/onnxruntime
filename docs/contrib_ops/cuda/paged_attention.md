@@ -1303,8 +1303,9 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > inside this backend keeps a stricter gate — it needs `token_count == batch_size` *and*
 > `max_query_len == 1` because its output layout is one row per batch index rather than per query
 > token. Quantized-cache XQA may obtain the latter from `attention_metadata` or, failing that, from
-> the readback. A separate token-major speculative XQA path admits `token_count > batch_size` when
-> metadata bounds `max_query_len` to 2–8 and the H256/group-6 FP16-query specialization is eligible.
+> the readback. A separate token-major speculative XQA path uses replay-safe metadata bounds instead
+> of an aggregate token-count heuristic: it admits `max_query_len` 2–8 when the H256/group-6
+> FP16-query specialization is eligible, including batches with inactive zero-query requests.
 > Native FP16-cache XQA
 > requires metadata and otherwise remains on Flash when eligible or uses the portable paged
 > decoder. `ORT_DISABLE_DECODER_ATTENTION=1` disables both paged XQA and the portable paged-decode

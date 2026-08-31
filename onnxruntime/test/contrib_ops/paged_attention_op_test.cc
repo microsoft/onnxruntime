@@ -77,6 +77,7 @@ struct IoBindingCase {
   bool int8_cache = false;
   bool fp8_cache = false;
   bool bf16_query = false;
+  bool per_channel_scales = false;
   bool enable_cuda_graph = false;
   bool irregular_layout = false;
   bool discriminating_attention = false;
@@ -291,8 +292,18 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   const int cache_elems = num_blocks * block_size * kv_num_heads * head_size;
   constexpr float cache_scale = 0.01f;
   const bool quantized_cache = c.int8_cache || c.fp8_cache;
+  const int scale_elements = kv_num_heads * head_size;
+  std::vector<float> k_scale_data(c.per_channel_scales ? scale_elements : 1, cache_scale);
+  std::vector<float> v_scale_data(c.per_channel_scales ? scale_elements : 1, cache_scale);
+  if (c.per_channel_scales) {
+    for (int i = 0; i < scale_elements; ++i) {
+      k_scale_data[i] = cache_scale * (1 + i % 2);
+      v_scale_data[i] = cache_scale * (2 - i % 2);
+    }
+  }
 
   ASSERT_FALSE(c.int8_cache && c.fp8_cache);
+  ASSERT_FALSE(c.per_channel_scales && !quantized_cache);
 #if defined(DISABLE_FLOAT8_TYPES)
   ASSERT_FALSE(c.fp8_cache);
 #endif
@@ -375,10 +386,19 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   NodeArg* k_scale_arg = &empty_optional_arg;
   NodeArg* v_scale_arg = &empty_optional_arg;
   if (quantized_cache) {
-    k_scale_arg = &graph.GetOrCreateNodeArg(
-        "k_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
-    v_scale_arg = &graph.GetOrCreateNodeArg(
-        "v_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
+    if (c.per_channel_scales) {
+      k_scale_arg = &graph.GetOrCreateNodeArg(
+          "k_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                     {kv_num_heads, 1, head_size}));
+      v_scale_arg = &graph.GetOrCreateNodeArg(
+          "v_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                     {kv_num_heads, 1, head_size}));
+    } else {
+      k_scale_arg = &graph.GetOrCreateNodeArg(
+          "k_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
+      v_scale_arg = &graph.GetOrCreateNodeArg(
+          "v_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
+    }
   }
   std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
                                       &cumulative_sequence_length_arg, &past_seqlens_arg, &block_table_arg,
@@ -413,8 +433,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       {"do_rotary", utils::MakeAttribute("do_rotary", int64_t{0})},
   };
   if (quantized_cache) {
-    attrs.emplace("k_quant_type", utils::MakeAttribute("k_quant_type", std::string{"PER_TENSOR"}));
-    attrs.emplace("v_quant_type", utils::MakeAttribute("v_quant_type", std::string{"PER_TENSOR"}));
+    const std::string quant_type = c.per_channel_scales ? "PER_CHANNEL" : "PER_TENSOR";
+    attrs.emplace("k_quant_type", utils::MakeAttribute("k_quant_type", quant_type));
+    attrs.emplace("v_quant_type", utils::MakeAttribute("v_quant_type", quant_type));
   }
   auto& node = graph.AddNode("paged_attention", "PagedAttention", "IOBinding cache test",
                              input_defs, output_defs, &attrs, onnxruntime::kMSDomain);
@@ -605,11 +626,15 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   if (c.int8_cache) {
     key_cache_int8.reserve(key_cache_data.size());
     value_cache_int8.reserve(value_cache_data.size());
-    for (const auto value : key_cache_data) {
-      key_cache_int8.push_back(static_cast<int8_t>(std::round(value.ToFloat() / cache_scale)));
+    for (size_t i = 0; i < key_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      key_cache_int8.push_back(
+          static_cast<int8_t>(std::round(key_cache_data[i].ToFloat() / k_scale_data[scale_index])));
     }
-    for (const auto value : value_cache_data) {
-      value_cache_int8.push_back(static_cast<int8_t>(std::round(value.ToFloat() / cache_scale)));
+    for (size_t i = 0; i < value_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      value_cache_int8.push_back(
+          static_cast<int8_t>(std::round(value_cache_data[i].ToFloat() / v_scale_data[scale_index])));
     }
     key_cache_value = make_gpu(key_cache_int8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_value = make_gpu(value_cache_int8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
@@ -617,8 +642,14 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   } else if (c.fp8_cache) {
     key_cache_fp8.reserve(key_cache_data.size());
     value_cache_fp8.reserve(value_cache_data.size());
-    for (const auto value : key_cache_data) key_cache_fp8.emplace_back(value.ToFloat() / cache_scale);
-    for (const auto value : value_cache_data) value_cache_fp8.emplace_back(value.ToFloat() / cache_scale);
+    for (size_t i = 0; i < key_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      key_cache_fp8.emplace_back(key_cache_data[i].ToFloat() / k_scale_data[scale_index]);
+    }
+    for (size_t i = 0; i < value_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      value_cache_fp8.emplace_back(value_cache_data[i].ToFloat() / v_scale_data[scale_index]);
+    }
     key_cache_value = make_gpu(key_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_value = make_gpu(value_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
 #endif
@@ -666,8 +697,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   OrtValue k_scale_value;
   OrtValue v_scale_value;
   if (quantized_cache) {
-    k_scale_value = make_gpu(std::vector<float>{cache_scale}, TensorShape({1}));
-    v_scale_value = make_gpu(std::vector<float>{cache_scale}, TensorShape({1}));
+    const TensorShape scale_shape = c.per_channel_scales
+                                        ? TensorShape({kv_num_heads, 1, head_size})
+                                        : TensorShape({1});
+    k_scale_value = make_gpu(k_scale_data, scale_shape);
+    v_scale_value = make_gpu(v_scale_data, scale_shape);
   }
 
   std::unique_ptr<IOBinding> io_binding;
@@ -811,13 +845,15 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     cache_data_type = DataTypeImpl::GetType<Float8E4M3FN>();
   }
 #endif
-  auto read_cache_value = [&](const Tensor& tensor, size_t offset) {
+  auto read_cache_value = [&](const Tensor& tensor, size_t offset, const std::vector<float>& scale_data) {
     if (c.int8_cache) {
-      return tensor.Data<int8_t>()[offset] * cache_scale;
+      const size_t scale_index = c.per_channel_scales ? offset % scale_elements : 0;
+      return tensor.Data<int8_t>()[offset] * scale_data[scale_index];
     }
 #if !defined(DISABLE_FLOAT8_TYPES)
     if (c.fp8_cache) {
-      return tensor.Data<Float8E4M3FN>()[offset].ToFloat() * cache_scale;
+      const size_t scale_index = c.per_channel_scales ? offset % scale_elements : 0;
+      return tensor.Data<Float8E4M3FN>()[offset].ToFloat() * scale_data[scale_index];
     }
 #endif
     return c.bf16_query ? tensor.Data<BFloat16>()[offset].ToFloat()
@@ -836,8 +872,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       const size_t cache_update_offset =
           static_cast<size_t>(CacheIndex(block_id, past_seqlen % block_size, 0, 0,
                                          block_size, kv_num_heads, head_size));
-      EXPECT_NEAR(read_cache_value(cpu_key_cache, cache_update_offset), 0.03f, 1e-3f);
-      EXPECT_NEAR(read_cache_value(cpu_value_cache, cache_update_offset), 0.04f + 0.02f * b, 1e-3f);
+      EXPECT_NEAR(read_cache_value(cpu_key_cache, cache_update_offset, k_scale_data), 0.03f, 1e-3f);
+      EXPECT_NEAR(read_cache_value(cpu_value_cache, cache_update_offset, v_scale_data),
+                  0.04f + 0.02f * b, 1e-3f);
     }
     ASSERT_EQ(outputs.size(), 1u);
     return;
@@ -878,10 +915,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
               CacheIndex(block_id, slot % block_size, kv_head, dim, block_size, kv_num_heads, head_size));
           const size_t input_offset =
               static_cast<size_t>((token * kv_num_heads + kv_head) * head_size + dim);
-          EXPECT_NEAR(read_cache_value(cpu_key_cache_out, cache_update_offset),
+          EXPECT_NEAR(read_cache_value(cpu_key_cache_out, cache_update_offset, k_scale_data),
                       key_data[input_offset].ToFloat(), 1e-3f)
               << "batch=" << b << ", token=" << token << ", kv_head=" << kv_head << ", dim=" << dim;
-          EXPECT_NEAR(read_cache_value(cpu_value_cache_out, cache_update_offset),
+          EXPECT_NEAR(read_cache_value(cpu_value_cache_out, cache_update_offset, v_scale_data),
                       value_data[input_offset].ToFloat(), 1e-3f)
               << "batch=" << b << ", token=" << token << ", kv_head=" << kv_head << ", dim=" << dim;
         }
@@ -1209,18 +1246,19 @@ TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {
   }
 
   IoBindingCase c;
-  c.batch_size = 3;
-  c.token_count = 9;
-  c.cumulative_seqlens_q = {0, 0, 2, 9};
+  c.batch_size = 8;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 0, 0, 0, 0, 0, 0, 0, 7};
   c.num_heads = 6;
   c.kv_num_heads = 1;
   c.head_size = 256;
-  c.num_blocks = 3;
-  c.past_seqlen = 122;
+  c.num_blocks = 8;
+  c.past_seqlen = 249;
   c.int8_cache = true;
+  c.per_channel_scales = true;
   c.irregular_layout = true;
   c.discriminating_attention = true;
-  c.attention_metadata = {7, 129, 129};
+  c.attention_metadata = {7, 256, 256};
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -1229,7 +1267,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{

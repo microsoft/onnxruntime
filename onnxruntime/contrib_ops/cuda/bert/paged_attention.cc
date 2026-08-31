@@ -458,7 +458,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool xqa_spec_dec_candidate =
       decode_eligible && quantized_xqa_eligible && has_metadata_bounds &&
       std::is_same<T, MLFloat16>::value && parameters.head_size == 256 && group_size == 6 &&
-      max_query_len_bound > 1 && max_query_len_bound <= 8 && parameters.token_count > parameters.batch_size;
+      max_query_len_bound > 1 && max_query_len_bound <= 8;
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
   bool use_paged_decode =
