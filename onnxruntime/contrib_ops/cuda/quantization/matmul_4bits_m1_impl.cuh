@@ -123,9 +123,9 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     }                                                                                             \
   } while (false)
 
-  UnRollReduction(16);
-  UnRollReduction(4);
-  UnRollReduction(1);
+    UnRollReduction(16);
+    UnRollReduction(4);
+    UnRollReduction(1);
 #undef UnRollReduction
   }
 
@@ -176,28 +176,28 @@ bool TryMatMul4BitsM1(
 
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, 1);
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
-#define MATMUL_FLOAT4B_M1_LAUNCH(bs, has_zp, pipeline)                                         \
+#define MATMUL_FLOAT4B_M1_LAUNCH(bs, has_zp, pipeline)                                             \
   MatMulFloat4BitsKernelM1<T, bs, has_zp, pipeline><<<blocks, threads, shared_mem_size, stream>>>( \
       output, a_data, b_data_quant, scales_data, zero_points, 1, n, k, blocks_per_K)
 
-#define MATMUL_FLOAT4B_M1_DISPATCH(bs)                                                     \
-  if constexpr (std::is_same<T, half>::value && bs == 32) {                               \
-    const bool use_pipeline = ShouldUseMatMul4BitsM1Pipeline(n, sm_count);                 \
-    if (zero_points != nullptr) {                                                          \
-      if (use_pipeline) {                                                                  \
-        MATMUL_FLOAT4B_M1_LAUNCH(bs, true, true);                                          \
-      } else {                                                                             \
-        MATMUL_FLOAT4B_M1_LAUNCH(bs, true, false);                                         \
-      }                                                                                    \
-    } else if (use_pipeline) {                                                             \
-      MATMUL_FLOAT4B_M1_LAUNCH(bs, false, true);                                           \
-    } else {                                                                               \
-      MATMUL_FLOAT4B_M1_LAUNCH(bs, false, false);                                          \
-    }                                                                                      \
-  } else if (zero_points != nullptr) {                                                     \
-    MATMUL_FLOAT4B_M1_LAUNCH(bs, true, false);                                             \
-  } else {                                                                                 \
-    MATMUL_FLOAT4B_M1_LAUNCH(bs, false, false);                                            \
+#define MATMUL_FLOAT4B_M1_DISPATCH(bs)                                     \
+  if constexpr (std::is_same<T, half>::value && bs == 32) {                \
+    const bool use_pipeline = ShouldUseMatMul4BitsM1Pipeline(n, sm_count); \
+    if (zero_points != nullptr) {                                          \
+      if (use_pipeline) {                                                  \
+        MATMUL_FLOAT4B_M1_LAUNCH(bs, true, true);                          \
+      } else {                                                             \
+        MATMUL_FLOAT4B_M1_LAUNCH(bs, true, false);                         \
+      }                                                                    \
+    } else if (use_pipeline) {                                             \
+      MATMUL_FLOAT4B_M1_LAUNCH(bs, false, true);                           \
+    } else {                                                               \
+      MATMUL_FLOAT4B_M1_LAUNCH(bs, false, false);                          \
+    }                                                                      \
+  } else if (zero_points != nullptr) {                                     \
+    MATMUL_FLOAT4B_M1_LAUNCH(bs, true, false);                             \
+  } else {                                                                 \
+    MATMUL_FLOAT4B_M1_LAUNCH(bs, false, false);                            \
   }
 
   if (block_size == 16) {

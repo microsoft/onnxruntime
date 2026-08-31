@@ -27,6 +27,7 @@ Usage:
 
 import argparse
 import json
+import os
 import time
 from contextlib import nullcontext
 
@@ -131,6 +132,27 @@ def make_session(model):
     return onnxruntime.InferenceSession(model, so, providers=["CUDAExecutionProvider"])
 
 
+def is_block32_pipeline_eligible(m, k, n, block_size, bits, dtype, with_zero_point, device_props):
+    if m != 1 or bits != 4 or block_size != 32 or dtype != "fp16" or n % 8 != 0 or k % 8 != 0:
+        return False
+
+    router_gemv_enabled = (
+        not with_zero_point
+        and n == 32
+        and k == 2880
+        and os.environ.get("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", "0") not in {"1", "True", "true"}
+    )
+    if router_gemv_enabled:
+        return False
+
+    blocks_per_k = (k + block_size - 1) // block_size
+    shared_mem_size = 2 * blocks_per_k * 8
+    if with_zero_point:
+        shared_mem_size += ((blocks_per_k + 1) // 2) * 8 * 2
+
+    return shared_mem_size <= device_props.shared_memory_per_block and n // 8 < device_props.multi_processor_count * 8
+
+
 def run_case(name, m, k, n, block_size, bits, dtype, warmup, repeat, with_zero_point):
     onnx_dtype = _OT[dtype]
     torch_dtype = _TT[dtype]
@@ -159,14 +181,7 @@ def run_case(name, m, k, n, block_size, bits, dtype, warmup, repeat, with_zero_p
             best = min(best, (time.perf_counter() - t0) / repeat)
     us = best * 1e6
     device_props = torch.cuda.get_device_properties(0)
-    pipeline_eligible = (
-        m == 1
-        and bits == 4
-        and block_size == 32
-        and dtype == "fp16"
-        and n % 8 == 0
-        and n // 8 < device_props.multi_processor_count * 8
-    )
+    pipeline_eligible = is_block32_pipeline_eligible(m, k, n, block_size, bits, dtype, with_zero_point, device_props)
     result = {
         "case": name,
         "m": m,
