@@ -122,6 +122,16 @@ constexpr ModelProfile kQwen25_7BProfile{
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen2.5-7b-instruct-cuda-gpu-4\\v4\\model.onnx",
     28, 4, 128, 152064, 151643, 141, CacheLayout::Transformer};
 
+constexpr ModelProfile kDeepSeekR1Qwen7BProfile{
+    "deepseek-r1-distill-qwen-7b",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\deepseek-r1-distill-qwen-7b-cuda-gpu-4\\v4\\model.onnx",
+    28, 4, 128, 152064, 151646, 141, CacheLayout::Transformer};
+
+constexpr ModelProfile kQwen3_8BProfile{
+    "qwen3-8b",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen3-8b-cuda-gpu-2\\v2\\model.onnx",
+    36, 8, 128, 151936, 151643, 253, CacheLayout::Transformer};
+
 class CudaMemorySampler {
  public:
   explicit CudaMemorySampler(int device_id) : device_id_(device_id) {
@@ -343,10 +353,17 @@ const ModelProfile& GetModelProfile() {
   if (model_name == kQwen25_7BProfile.name) {
     return kQwen25_7BProfile;
   }
+  if (model_name == kDeepSeekR1Qwen7BProfile.name) {
+    return kDeepSeekR1Qwen7BProfile;
+  }
+  if (model_name == kQwen3_8BProfile.name) {
+    return kQwen3_8BProfile;
+  }
 
   ORT_THROW("ORT_WORKSPACE_BENCHMARK_MODEL must be ", kHyMT2Profile.name, ", ",
-            kQwen25Profile.name, ", ", kQwen35Profile.name, ", or ",
-            kQwen25_7BProfile.name, ", but got: ", model_name);
+            kQwen25Profile.name, ", ", kQwen35Profile.name, ", ",
+            kQwen25_7BProfile.name, ", ", kDeepSeekR1Qwen7BProfile.name, ", or ",
+            kQwen3_8BProfile.name, ", but got: ", model_name);
 }
 
 std::string BuildMaxShapeOverride(const ModelProfile& profile) {
