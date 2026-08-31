@@ -277,7 +277,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
                                                                                head_sink,
-                                                                               parameters));
+                                                                               parameters,
+                                                                               /*support_windowed_attention_bias=*/true));
 
   // Populate quantization fields in parameters.
   parameters.k_quant_type = k_quant_type_;
@@ -317,6 +318,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is out of range [0, ", present_kv_seqlen, ")");
+      }
+      if (windowed && attention_bias != nullptr && seqlens_k_data[b] >= attention_bias->Shape()[3]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " exceeds the attention_bias sequence dimension ", attention_bias->Shape()[3], ".");
       }
       if ((windowed || !parameters.is_first_prompt) &&
           static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
@@ -507,9 +513,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* attention_present_key = present_k;
   Tensor* attention_present_value = present_v;
   const Tensor* attention_seqlens_k = seqlens_k;
+  const int32_t* attention_bias_offsets = nullptr;
 
   std::vector<WindowedStep> windowed_steps;
   std::vector<int32_t> windowed_cache_seqlens;
+  std::vector<int32_t> windowed_attention_bias_offsets;
   std::optional<Tensor> windowed_seqlens_tensor;
   std::optional<Tensor> staged_key_tensor;
   std::optional<Tensor> staged_value_tensor;
@@ -529,6 +537,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     PlanWindowedKvCache(seqlens_k->Data<int32_t>(), batch_size, sequence_length, windowed_capacity,
                         local_window_size_, windowed_steps, windowed_cache_seqlens, windowed_use_staging,
                         windowed_staged_capacity);
+    if (attention_bias != nullptr) {
+      windowed_attention_bias_offsets.resize(batch_size);
+      for (int b = 0; b < batch_size; ++b) {
+        windowed_attention_bias_offsets[b] = seqlens_k->Data<int32_t>()[b] - windowed_cache_seqlens[b];
+      }
+      attention_bias_offsets = windowed_attention_bias_offsets.data();
+    }
 
     // Rows are moved verbatim, so the row size is taken from the cache tensor itself and covers
     // fp32/fp16 as well as the int8 and (nibble-packed) int4 quantized layouts.
@@ -623,7 +638,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       if (use_flash) {
         return ApplyAttentionQuantizedFlash(
             q_rotary, k_data_q, v_data_q,
-            attention_bias,
+            attention_bias, attention_bias_offsets,
             attention_past_key, attention_past_value,
             output, attention_present_key, attention_present_value, attention_seqlens_k,
             k_scale->Data<float>(), v_scale->Data<float>(),
@@ -632,7 +647,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
       return ApplyAttentionQuantized(
           q_rotary, k_data_q, v_data_q, head_sink_data,
-          attention_bias, attention_past_key, attention_past_value,
+          attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
           output, attention_present_key, attention_present_value, output_qk, attention_seqlens_k,
           k_scale->Data<float>(), v_scale->Data<float>(),
           mlas_quant_type, parameters, allocator, context);
@@ -661,14 +676,15 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                              attention_present_key != nullptr && attention_present_value != nullptr;
       if (use_flash) {
         return ApplyAttentionFlash(q_rotary, k_data, v_data,
-                                   attention_bias, attention_past_key, attention_past_value,
+                                   attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
                                    output, attention_present_key, attention_present_value, attention_seqlens_k,
                                    parameters, allocator, context);
       }
     }
 
     return ApplyAttention(q_rotary, k_data, v_data,
-                          head_sink_data, attention_bias, attention_past_key, attention_past_value, output,
+                          head_sink_data, attention_bias, attention_bias_offsets,
+                          attention_past_key, attention_past_value, output,
                           attention_present_key, attention_present_value,
                           output_qk, attention_seqlens_k, parameters, allocator, context);
   };

@@ -232,7 +232,7 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
     TensorShape state_shape;
     ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
         state_window_, static_cast<int>(batch_size), static_cast<int>(channels),
-        static_cast<int>(pad), past_state_tensor, state_shape));
+        static_cast<int>(pad), past_state_tensor, state_shape, "CausalConvWithState"));
     Tensor* present_state_tensor = context->Output(1, state_shape);
     float* present_data = present_state_tensor->MutableData<float>();
 

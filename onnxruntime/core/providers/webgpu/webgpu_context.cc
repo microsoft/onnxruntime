@@ -229,11 +229,9 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_features_.insert(supported_features.features[i]);
     }
     // cache adapter info
-#if !defined(__wasm__)
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
-#endif
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
 
     // create buffer manager
@@ -797,8 +795,8 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   constexpr wgpu::FeatureName features[]{
 #if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
-      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
 #endif
+      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
