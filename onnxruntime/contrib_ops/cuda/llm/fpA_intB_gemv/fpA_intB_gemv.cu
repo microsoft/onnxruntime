@@ -44,6 +44,10 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s) {
   }
 
   ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+  EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+#else
   if (arch < 80) {
     EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
     EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
@@ -71,11 +75,16 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s) {
     EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
     EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
   }
+#endif
 #undef EXEC_W4A8
 #undef EXEC
 }
 
 bool is_supported(int arch, KernelType kernel_type) {
+#if USE_COMPACT_FPA_INTB_GEMM
+  return arch >= 75 &&
+         (kernel_type == KernelType::FP16Int8Groupwise || kernel_type == KernelType::FP16Int4Groupwise);
+#else
 #define SUPPORT(Type)      \
   if (kernel_type == Type) \
     return true;
@@ -97,6 +106,7 @@ bool is_supported(int arch, KernelType kernel_type) {
   }
   return false;
 #undef SUPPORT
+#endif
 }
 
 }  // namespace fpA_intB_gemv

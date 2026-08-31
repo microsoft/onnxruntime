@@ -1090,9 +1090,8 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias_Prepacked) {
 
 // A prepacked weight (weight_prepacked!=0) forces the fpA_intB path on regardless of the enable
 // flag, and the constructor ORT_ENFORCEs that the path is actually supported for the node. Here the
-// block_size (256) is outside the fpA_intB-supported set {32, 64, 128}, so kernel construction is
-// rejected up front with "weight_prepacked requires the fpA_intB path, but it is unsupported ...",
-// even though ORT_FPA_INTB_GEMM is enabled.
+// block_size (256) is outside the fpA_intB-supported set, so kernel construction is rejected up front
+// with a build-specific diagnostic even though ORT_FPA_INTB_GEMM is enabled.
 TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
@@ -1106,7 +1105,11 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
   opts.block_size = 256;
   opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 1;
+#if USE_COMPACT_FPA_INTB_GEMM
+  opts.expected_failure = "This compact fpA_intB build supports";
+#else
   opts.expected_failure = "weight_prepacked requires";
+#endif
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
@@ -1114,8 +1117,8 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
 
 // weight_prepacked=2 selects the native SM90 (Hopper) mixed-GEMM layout. It is rejected up front
 // unless the device is SM90 and block_size is 64 or 128 (the SM90 TMA kernel requires group_size to
-// be a multiple of the 64-element Hopper K tile, so block_size=32 is SM80-only). When the fpA_intB
-// path is compiled in, all rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
+// be a multiple of the 64-element Hopper K tile, so block_size=32 uses the non-Hopper kernel). When
+// the fpA_intB path is compiled in, all rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
 // assertion is stable across machine/build combinations: non-Hopper hits the compute-capability
 // guard, SM90 without native TMA support hits the build-support guard, and SM90 with native TMA
 // support hits the block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel
