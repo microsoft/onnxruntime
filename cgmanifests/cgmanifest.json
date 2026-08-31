@@ -18,7 +18,7 @@
         "maven": {
           "GroupId": "com.google.protobuf",
           "ArtifactId": "protobuf-java",
-          "Version": "3.25.5"
+          "Version": "4.33.6"
         },
         "DevelopmentDependency": true
       }
@@ -344,6 +344,16 @@
           "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
         },
         "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "edf33f80035575b82f1fafd5f9bd0dc0d2064e94",
+          "repositoryUrl": "https://github.com/microsoft/cpp_client_telemetry.git"
+        },
+        "comments": "1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms (macOS, Linux, Android, iOS)."
       }
     }
   ],

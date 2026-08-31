@@ -229,5 +229,79 @@ TEST(RemovePaddingTest, RemovePaddingBatch3_AllWithPadding) {
       total_tokens);
 }
 
+// Out-of-range sequence_token_count values must be clamped to [0, sequence_length] so the kernel
+// stays inside the token_offset allocation of batch_size * sequence_length entries.
+TEST(RemovePaddingTest, RemovePaddingBatch1_TokenCountAboveSequenceLength) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int total_tokens = 2;
+  int max_token_count = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  // Far beyond sequence_length; clamped to sequence_length.
+  std::vector<int32_t> sequence_token_count_data = {0x40000000};
+
+  std::vector<float> output_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<int32_t> token_offset_data = {0, 1};
+
+  std::vector<int32_t> cumulated_seq_len_data = {0, 2};
+
+  RunRemovePaddingTests(
+      input_data,
+      sequence_token_count_data,
+      output_data,
+      token_offset_data,
+      cumulated_seq_len_data,
+      max_token_count,
+      batch_size,
+      sequence_length,
+      hidden_size,
+      total_tokens);
+}
+
+TEST(RemovePaddingTest, RemovePaddingBatch2_NegativeTokenCount) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int total_tokens = 2;
+  int max_token_count = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.1f, 0.2f, 0.3f, 0.4f,
+      0.5f, 0.6f, 0.7f, 0.8f};
+
+  // Negative count is clamped to 0, so the first sequence contributes no tokens.
+  std::vector<int32_t> sequence_token_count_data = {-5, 2};
+
+  std::vector<float> output_data = {
+      0.1f, 0.2f, 0.3f, 0.4f,
+      0.5f, 0.6f, 0.7f, 0.8f};
+
+  std::vector<int32_t> token_offset_data = {2, 3, 0, 1};
+
+  std::vector<int32_t> cumulated_seq_len_data = {0, 0, 2};
+
+  RunRemovePaddingTests(
+      input_data,
+      sequence_token_count_data,
+      output_data,
+      token_offset_data,
+      cumulated_seq_len_data,
+      max_token_count,
+      batch_size,
+      sequence_length,
+      hidden_size,
+      total_tokens);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

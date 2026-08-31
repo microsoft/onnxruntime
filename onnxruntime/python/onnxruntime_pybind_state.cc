@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <mutex>
+#include <thread>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_model_compiler.h"
@@ -137,20 +138,124 @@ AdaptedProviderOptions AdaptProviderOptionsForRegisteredPluginEp(const std::stri
 
 }  // namespace
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// "Global initializer calls a non-constexpr function." Therefore you can't use ORT APIs in the other global initializers.
-// TODO: we may delay-init this variable
-#pragma warning(disable : 26426)
-#endif
-static Env& platform_env = Env::Default();
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-#endif
-
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
+struct PendingPythonReleases {
+  std::mutex mutex;
+  std::vector<PyObject*> objects;
+  std::vector<PyObject*> cleanup_thread_objects;
+  bool callback_scheduled = false;
+  bool cleanup_thread_running = false;
+};
+
+PendingPythonReleases& GetPendingPythonReleases() {
+  static auto* pending_releases = new PendingPythonReleases();
+  return *pending_releases;
+}
+
+int DrainPendingPythonReleases(void*) {
+  std::vector<PyObject*> objects;
+  auto& pending_releases = GetPendingPythonReleases();
+  {
+    std::lock_guard<std::mutex> lock{pending_releases.mutex};
+    objects.swap(pending_releases.objects);
+    pending_releases.callback_scheduled = false;
+  }
+
+  for (PyObject* object : objects) {
+    Py_DECREF(object);
+  }
+
+  return 0;
+}
+
+void DrainCleanupThreadPythonReleases() {
+  for (;;) {
+    std::vector<PyObject*> objects;
+    auto& pending_releases = GetPendingPythonReleases();
+    {
+      std::lock_guard<std::mutex> lock{pending_releases.mutex};
+      if (pending_releases.cleanup_thread_objects.empty()) {
+        pending_releases.cleanup_thread_running = false;
+        return;
+      }
+      objects.swap(pending_releases.cleanup_thread_objects);
+    }
+
+    {
+      py::gil_scoped_acquire acquire;
+      for (PyObject* object : objects) {
+        Py_DECREF(object);
+      }
+    }
+  }
+}
+
+void ReleasePythonObjectOnCleanupThread(PyObject* object) noexcept {
+  auto& pending_releases = GetPendingPythonReleases();
+  std::lock_guard<std::mutex> lock{pending_releases.mutex};
+  ORT_TRY {
+    pending_releases.cleanup_thread_objects.push_back(object);
+  }
+  ORT_CATCH(...) {
+    // Retaining the reference is safer than releasing it on the ORT worker.
+    return;
+  }
+
+  if (!pending_releases.cleanup_thread_running) {
+    pending_releases.cleanup_thread_running = true;
+    std::thread* cleanup_thread = nullptr;
+    ORT_TRY {
+      cleanup_thread = new std::thread(DrainCleanupThreadPythonReleases);
+    }
+    ORT_CATCH(...) {
+      pending_releases.cleanup_thread_running = false;
+      return;
+    }
+
+    ORT_TRY {
+      cleanup_thread->detach();
+      delete cleanup_thread;
+    }
+    ORT_CATCH(...) {
+      // The valid thread remains joinable and will drain the queue. Leak its
+      // handle rather than destroying it and terminating the process.
+    }
+  }
+}
+
+void DeferPythonRelease(PyObject* object) noexcept {
+  if (object == nullptr) {
+    return;
+  }
+
+  bool release_on_cleanup_thread = false;
+  ORT_TRY {
+    auto& pending_releases = GetPendingPythonReleases();
+    std::lock_guard<std::mutex> lock{pending_releases.mutex};
+    pending_releases.objects.push_back(object);
+    if (!pending_releases.callback_scheduled &&
+        Py_AddPendingCall(DrainPendingPythonReleases, nullptr) != 0) {
+      pending_releases.objects.pop_back();
+      release_on_cleanup_thread = true;
+    } else {
+      pending_releases.callback_scheduled = true;
+    }
+  }
+  ORT_CATCH(...) {
+    release_on_cleanup_thread = true;
+  }
+
+  if (release_on_cleanup_thread) {
+    ReleasePythonObjectOnCleanupThread(object);
+  }
+}
+
 struct AsyncResource {
+  std::vector<py::object> feed_objects;
+  py::object session;
+  py::object run_options;
+
   std::vector<OrtValue> feeds;
   std::vector<const OrtValue*> feeds_raw;
 
@@ -167,6 +272,7 @@ struct AsyncResource {
   py::object user_data;
 
   void ReserveFeeds(size_t sz) {
+    feed_objects.reserve(sz);
     feeds.reserve(sz);
     feeds_raw.reserve(sz);
     feed_names.reserve(sz);
@@ -194,33 +300,44 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
 
   auto invoke_callback = [&]() {
     std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
-    Ort::Status status(ort_status);
+    PyObject* session = async_resource->session.release().ptr();
 
-    // return on error
-    if (!status.IsOK()) {
-      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
-      return;
-    }
-
-    std::vector<py::object> rfetch;
-    rfetch.reserve(num_outputs);
-    size_t pos = 0;
-    for (size_t ith = 0; ith < num_outputs; ++ith) {
-      const auto& fet = *outputs[ith];
-      if (fet.IsAllocated()) {
-        if (fet.IsTensor()) {
-          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
-        } else if (fet.IsSparseTensor()) {
-          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-        } else {
-          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
-        }
+    try {
+      Ort::Status status(ort_status);
+      if (!status.IsOK()) {
+        async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
       } else {
-        rfetch.push_back(py::none());
+        std::vector<py::object> rfetch;
+        rfetch.reserve(num_outputs);
+        size_t pos = 0;
+        for (size_t ith = 0; ith < num_outputs; ++ith) {
+          const auto& fet = *outputs[ith];
+          if (fet.IsAllocated()) {
+            if (fet.IsTensor()) {
+              rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+            } else if (fet.IsSparseTensor()) {
+              rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+            } else {
+              rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+            }
+          } else {
+            rfetch.push_back(py::none());
+          }
+          ++pos;
+        }
+        async_resource->callback(rfetch, async_resource->user_data, "");
       }
-      ++pos;
+    } catch (py::error_already_set& ex) {
+      ex.discard_as_unraisable("onnxruntime.InferenceSession.run_async callback");
+    } catch (const std::exception& ex) {
+      PyErr_SetString(PyExc_RuntimeError, ex.what());
+      PyErr_WriteUnraisable(Py_None);
+    } catch (...) {
+      PyErr_SetString(PyExc_RuntimeError, "Unknown exception in run_async callback");
+      PyErr_WriteUnraisable(Py_None);
     }
-    async_resource->callback(rfetch, async_resource->user_data, "");
+
+    DeferPythonRelease(session);
   };
 
   if (PyGILState_Check()) {
@@ -1671,10 +1788,10 @@ void addGlobalMethods(py::module& m) {
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
   m.def(
-      "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
+      "enable_telemetry_events", []() -> void { Env::Default().GetTelemetryProvider().EnableTelemetryEvents(); },
       "Enables platform-specific telemetry collection where applicable.");
   m.def(
-      "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
+      "disable_telemetry_events", []() -> void { Env::Default().GetTelemetryProvider().DisableTelemetryEvents(); },
       "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
@@ -2895,30 +3012,38 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              return result;
            })
       .def("run_async",
-           [](PyInferenceSession* sess,
+           [](py::object session,
               const std::vector<std::string>& output_names,
               const std::map<std::string, py::object>& pyfeeds,
               PyCallback callback, py::object user_data = {},
-              RunOptions* run_options = nullptr)
+              py::object run_options = py::none())
                -> void {
-             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+             auto* sess = session.cast<PyInferenceSession*>();
+             auto* run_options_ptr = run_options.is_none()
+                                         ? nullptr
+                                         : run_options.cast<RunOptions*>();
+             if (run_options_ptr != nullptr && !run_options_ptr->active_adapters.empty()) {
                LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
                    << "run_async has active adapters specified, but won't have an effect";
              }
 
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->session = std::move(session);
+             async_resource->run_options = std::move(run_options);
              async_resource->callback = callback;
              async_resource->user_data = user_data;
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
              for (const auto& feed : pyfeeds) {
                if (!feed.second.is(py::none())) {
+                 async_resource->feed_objects.push_back(feed.second);
                  OrtValue ml_value;
                  auto px = sess->GetSessionHandle()->GetModelInputs();
                  if (!px.first.IsOK() || !px.second) {
                    throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
                  }
-                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first,
+                                      async_resource->feed_objects.back(), &ml_value);
                  ThrowIfPyErrOccured();
                  async_resource->feeds.push_back(ml_value);
                  async_resource->feeds_raw.push_back(&async_resource->feeds.back());
@@ -2933,7 +3058,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
                async_resource->fetches_raw.push_back({});
              }
-             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             const RunOptions* run_async_option = run_options_ptr ? run_options_ptr : &async_resource->default_run_option;
              common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
                                                                         gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
                                                                         gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),

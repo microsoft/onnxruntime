@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <chrono>
 #include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
@@ -2911,6 +2912,47 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalData) {
   ASSERT_EQ(split_node_ptr->OutputDefs().size(), 16u);
 }
 
+TEST_F(GraphTest, RejectsUnregisteredInMemoryInitializer) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("source");
+
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("malformed_initializer");
+  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  initializer->add_dims(1);
+  ExternalDataInfo::SetExternalLocationToProto(
+      utils::kTensorProtoNativeEndianMemoryAddressTag, 1, sizeof(std::string), *initializer);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Identity");
+  node->add_input(initializer->name());
+  node->add_output("output");
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  std::shared_ptr<Model> source_model;
+  ORT_TRY {
+    const auto status = Model::Load(std::move(model_proto), source_model, nullptr, *logger_);
+    EXPECT_FALSE(status.IsOK());
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()), ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
+
 // Test for shape inference with in-memory external data using InferenceSession
 // This test more accurately reproduces the issue by going through the full session initialization
 // which includes graph optimizations that trigger the in-memory externalization
@@ -3314,6 +3356,10 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
                                                                     output_model_proto));
 
   const auto& output_graph = output_model_proto.graph();
+
+  ASSERT_EQ(output_graph.input_size(), 1);
+  ASSERT_EQ(output_graph.output_size(), 1);
+  ASSERT_EQ(output_graph.node_size(), 2);
 
   // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
   // and there should be no duplicates.
@@ -3804,6 +3850,30 @@ TEST_F(GraphTest, GH_Issue_29071_HasExternalDataInMemory) {
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/gh_issue_29071_if_constant_folding.onnx")));
   ASSERT_STATUS_OK(session_object.Initialize());
+}
+
+// Regression test for exponential subgraph type/shape inferencing.
+// A model with deeply nested Loop nodes (each subgraph containing a single nested Loop) previously
+// triggered O(2^depth) re-traversal during Graph::Resolve because both InferAndVerifyTypeMatch and
+// the "verify subgraphs" loop in VerifyNodeAndOpMatch independently recursed into every subgraph.
+// With 30 levels that made model loading take many minutes/hours. The fix memoizes subgraphs that
+// already had type/shape inferencing performed, collapsing the work back to O(depth). This test
+// simply verifies the model loads well within a generous time bound.
+TEST_F(GraphTest, DeeplyNestedLoopSubgraphsResolveInReasonableTime) {
+  const auto start = std::chrono::steady_clock::now();
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/30_nested_loops.onnx"), model, nullptr, *logger_));
+
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  const auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+
+  // Without the memoization fix this takes many minutes (exponential in the nesting depth).
+  // A generous 60s bound reliably distinguishes the fixed O(depth) behavior from the regression
+  // without being flaky on slow/debug builds.
+  EXPECT_LT(elapsed_seconds, 60) << "Loading the 30-level nested Loop model took " << elapsed_seconds
+                                 << "s, which suggests the subgraph type/shape inferencing recursion "
+                                    "regression has returned.";
 }
 
 }  // namespace test

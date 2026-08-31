@@ -1576,6 +1576,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <returns></returns>
   Status ConvertInitializersIntoOrtValues();
 
+  /// <summary>
+  /// Validates that all in-memory external data references are backed by matching OrtValues.
+  /// </summary>
+  Status ValidateInMemoryInitializers();
+
   /**
    * @brief This function examines the specified initializers in the graph and converts them inline
    *        if any has external data in memory.
@@ -1843,6 +1848,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     std::unordered_map<std::string_view, NodeIndex> node_name_to_index;
     std::unordered_set<Node*> nodes_with_subgraphs;
 
+    // Subgraphs that already had type/shape inferencing performed during this Resolve pass via the
+    // containing op's inference function (e.g. Scan/If/Loop). The "verify subgraphs" loop in
+    // VerifyNodeAndOpMatch uses this to avoid redundantly re-verifying the same subgraph, which
+    // would otherwise cause exponential re-traversal of deeply nested subgraphs.
+    std::unordered_set<const Graph*> inferred_subgraphs;
+
     // check if the provided name is an input/initialize/node output of this Graph instance during Graph::Resolve.
     // Graph::node_args_ can have stale entries so we can't rely on that.
     bool IsLocalValue(const std::string& name) const;
@@ -1856,6 +1867,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       inputs_and_initializers.clear();
       node_name_to_index.clear();
       nodes_with_subgraphs.clear();
+      inferred_subgraphs.clear();
     }
 
    private:

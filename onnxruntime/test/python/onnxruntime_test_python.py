@@ -12,7 +12,9 @@ import platform
 import queue
 import sys
 import threading
+import time
 import unittest
+import weakref
 
 import numpy as np
 from helper import get_name
@@ -685,7 +687,9 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_run_async(self):
         event = threading.Event()
+        allow_callback = threading.Event()
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        input_ref = None
 
         class MyData:
             def __init__(self, id):
@@ -697,6 +701,8 @@ class TestInferenceSession(unittest.TestCase):
         my_data = MyData(123456)
 
         def callback(res: np.ndarray, data: MyData, err: str) -> None:
+            self.assertTrue(allow_callback.wait(10))
+            self.assertIsNotNone(input_ref())
             self.assertEqual(len(err), 0)
             self.assertEqual(len(res), 1)
             self.assertEqual(data.get_id(), 123456)
@@ -709,10 +715,22 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, providers=available_providers)
 
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        sess.run_async(["Y"], {"X": x}, callback, my_data)
+        input_ref = weakref.ref(x)
+        run_options = onnxrt.RunOptions()
+        sess.run_async(["Y"], {"X": x}, callback, my_data, run_options)
+        del x
+        del run_options
+        del sess
+        gc.collect()
+        allow_callback.set()
 
         event.wait(10)  # timeout in 10 sec
         self.assertTrue(event.is_set())
+        deadline = time.monotonic() + 10
+        while input_ref() is not None and time.monotonic() < deadline:
+            gc.collect()
+            time.sleep(0.01)
+        self.assertIsNone(input_ref())
 
     def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:

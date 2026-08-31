@@ -379,6 +379,14 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
   ORT_ENFORCE(input_dims.NumDimensions() == 4 || input_dims.NumDimensions() == 5, "Only 4-D or 5-D tensor is supported");
 
+  // Spatial dimensions must be non-empty for sampling: the output is sized by the grid, so a zero-size
+  // input spatial dimension would otherwise lead to invalid index computations during interpolation.
+  for (size_t i = 2; i < input_dims.NumDimensions(); ++i) {
+    ORT_RETURN_IF_NOT(input_dims[i] > 0,
+                      "Input spatial dimensions must be non-empty for sampling. Dimension ", i,
+                      " has size ", input_dims[i]);
+  }
+
   auto N = input_dims[0];
   auto C = input_dims[1];
   ORT_ENFORCE(grid_dims[0] == N, "Grid batch size ", grid_dims[0], " does not match input batch size ", N);

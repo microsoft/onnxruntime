@@ -15,6 +15,7 @@ PrePackedWeights PrePackedWeights::CreateReferringCopy() const {
   }
 
   copy.buffer_sizes_ = buffer_sizes_;
+  copy.has_kernel_owned_packed_weights_ = has_kernel_owned_packed_weights_;
   return copy;
 }
 
@@ -105,6 +106,17 @@ std::optional<PrePackedWeights> PrepackedWeightsForGraph::ReplaceWithReferenceIf
     key_to_blobs_.erase(it);
   }
   return result;
+}
+
+void PrepackedWeightsForGraph::DiscardAndReplaceWithReferenceIfSaving(
+    const std::string& weight_name,
+    const std::string& key,
+    const PrePackedWeights& refer_to) {
+  if (save_mode_on_) {
+    WritePackedMaybeForSave(weight_name, key, refer_to.CreateReferringCopy());
+  } else {
+    key_to_blobs_.erase(key);
+  }
 }
 
 }  // namespace onnxruntime

@@ -8,6 +8,7 @@ import sys
 import warnings
 
 from util import (
+    is_linux,
     is_macOS,
     is_windows,
 )
@@ -435,7 +436,6 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Must be >=14.40")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
-    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
     parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
@@ -829,6 +829,14 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
     webgpu_group.add_argument(
+        "--use_dawn_agility_sdk",
+        action="store_true",
+        help=(
+            "Build Dawn's D3D12 backend with the Agility SDK for local development "
+            "(Windows desktop x86, x64, or ARM64 only; packaging unsupported)."
+        ),
+    )
+    webgpu_group.add_argument(
         "--wgsl_template",
         choices=["static"],
         default="static",
@@ -869,6 +877,13 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
+    # Telemetry arguments (cross-platform)
+    parser.add_argument(
+        "--no_telemetry",
+        dest="use_telemetry",
+        action="store_false",
+        help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
+    )
 
 
 def is_cross_compiling(args: argparse.Namespace) -> bool:
@@ -889,6 +904,39 @@ def is_cross_compiling(args: argparse.Namespace) -> bool:
             getattr(args, "use_gdk", False),  # GDK args added conditionally
         ]
     )
+
+
+def target_supports_telemetry(args: argparse.Namespace) -> bool:
+    """Returns whether the selected build target has a telemetry provider."""
+    if (
+        args.build_wasm
+        or getattr(args, "disable_exceptions", False)
+        or getattr(args, "rv64", False)
+        or getattr(args, "visionos", False)
+        or getattr(args, "tvos", False)
+        or getattr(args, "macos", None) == "Catalyst"
+    ):
+        return False
+
+    if getattr(args, "android", False) or is_windows() or is_macOS():
+        return True
+
+    if not is_linux():
+        return False
+
+    return platform.machine().lower() in {
+        "aarch64",
+        "amd64",
+        "arm",
+        "arm64",
+        "armv6l",
+        "armv7l",
+        "armv8l",
+        "i386",
+        "i686",
+        "x86",
+        "x86_64",
+    }
 
 
 # --- Main Argument Parsing Function ---
@@ -975,6 +1023,9 @@ def parse_arguments() -> argparse.Namespace:
     # Treat --build_wasm_static_lib as implying --build_wasm
     if args.build_wasm_static_lib:
         args.build_wasm = True
+
+    if not target_supports_telemetry(args):
+        args.use_telemetry = False
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:

@@ -1,0 +1,65 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// PagedAttention — scatter unpacked K and V into the block-based (paged) KV cache.
+//
+// Scope for Phase 1b.1:
+//   - Non-packed layout only (key and value provided as separate 2D tensors).
+//   - No rotary (do_rotary must be false at the C++ side; a separate WGSL
+//     variant handles the fused rotary + scatter path in Phase 1b.2).
+//   - Each invocation writes one (token, kv_head, dim) element to both
+//     key_cache and value_cache. Vectorisation lands in a follow-up commit.
+//
+// Address model (matches the CUDA implementation in paged_attention_impl.cu):
+//   seq_idx    : which sequence in the batch this packed token belongs to
+//                (found by a linear scan of cumulative_sequence_length).
+//   local_tok  : offset of this token within its sequence (0-based).
+//   abs_slot   : absolute position in the sequence's KV cache
+//                = past_seqlens[seq_idx] + local_tok.
+//   block_off  : abs_slot / block_size — index into block_table[seq_idx].
+//   slot_in_bk : abs_slot % block_size — offset within the block.
+//   block_id   : block_table[seq_idx, block_off] — physical block index
+//                into key_cache / value_cache.
+//
+// Layout expected:
+//   key   : (token_count, kv_hidden_size)
+//   value : (token_count, kv_hidden_size)
+//   key_cache / value_cache : (num_blocks, block_size, kv_num_heads, head_size)
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .getByIndices .setByIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  // global_idx enumerates (token_idx, kv_head_idx, dim_idx) in row-major order:
+  //   dim_idx      = global_idx % head_size
+  //   kv_head_idx  = (global_idx / head_size) % kv_num_heads
+  //   token_idx    = global_idx / (kv_num_heads * head_size)
+  let dim_idx = global_idx % uniforms.head_size;
+  let kv_head_idx = (global_idx / uniforms.head_size) % uniforms.kv_num_heads;
+  let token_idx = global_idx / (uniforms.kv_num_heads * uniforms.head_size);
+
+  var seq_idx: u32 = 0u;
+  for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
+    let hi = u32(cumulative_sequence_length.getByOffset(i + 1u));
+    if (token_idx < hi) {
+      seq_idx = i;
+      break;
+    }
+  }
+
+  let cum_lo = u32(cumulative_sequence_length.getByOffset(seq_idx));
+  let local_tok = token_idx - cum_lo;
+  let past_len = u32(past_seqlens.getByOffset(seq_idx));
+  let abs_slot = past_len + local_tok;
+  let block_off = abs_slot / uniforms.block_size;
+  let slot_in_bk = abs_slot % uniforms.block_size;
+  let block_id = u32(block_table.getByIndices(vec2<u32>(seq_idx, block_off)));
+
+  let src_col = kv_head_idx * uniforms.head_size + dim_idx;
+  let k_val = key.getByIndices(vec2<u32>(token_idx, src_col));
+  let v_val = value.getByIndices(vec2<u32>(token_idx, src_col));
+  key_cache.setByIndices(vec4<u32>(block_id, slot_in_bk, kv_head_idx, dim_idx), k_val);
+  value_cache.setByIndices(vec4<u32>(block_id, slot_in_bk, kv_head_idx, dim_idx), v_val);
+}
