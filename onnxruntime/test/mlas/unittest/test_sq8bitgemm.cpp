@@ -775,7 +775,10 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     });
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes<8>((int)(block_len), true, (int)k_size, (int)n_size,
+    const int block_size = static_cast<int>(block_len);
+    const int rows = static_cast<int>(k_size);
+    const int columns = static_cast<int>(n_size);
+    MlasBlockwiseQuantizedBufferSizes<8>(block_size, true, rows, columns,
                                          q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     auto* inputB = packedB_.GetBuffer(q_data_size_in_bytes, true);
@@ -787,11 +790,11 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         inputScale,
         inputZp,
         B,
-        block_len,
+        block_size,
         true,
-        k_size,
-        n_size,
-        n_size,
+        rows,
+        columns,
+        columns,
         nullptr);
 
     MlasDequantizeBlockwise<float, 8>(
@@ -799,10 +802,10 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         inputB,
         inputScale,
         inputZp,
-        block_len,
+        block_size,
         true,
-        k_size,
-        n_size,
+        rows,
+        columns,
         nullptr);
 
     size_t bufferSize =
