@@ -7,8 +7,10 @@
 // path on an adapter that would otherwise leave it disabled, or `off` to force it off. The value is
 // read when the WebGPU context is created, so it must be set before the process starts.
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -16,6 +18,7 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/tensor.h"
+#include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -167,7 +170,62 @@ void RunMatMulAgainstReference(const std::vector<int64_t>& a_dims, const std::ve
   RunMatMulAgainstReferenceTyped<float>(a_dims, b_dims, y_dims);
 }
 
+// A fused activation reaches ComputeMatMul only through Conv's 1x1 path, so the activation gate is
+// exercised through FusedConv rather than a bare MatMul. Squeeze-and-excite shape: many channels in,
+// few out, which is what the rate gate selects for.
+void RunFusedConvAgainstReference(const char* activation_name,
+                                  const std::vector<float>& activation_params,
+                                  const std::function<float(float)>& apply) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  constexpr int64_t kIn = 1024;
+  constexpr int64_t kOut = 16;
+  const std::vector<int64_t> x_dims{1, kIn, 1, 1};
+  const std::vector<int64_t> w_dims{kOut, kIn, 1, 1};
+
+  RandomValueGenerator random{1234};
+  std::vector<float> x_vals(random.Gaussian<float>(AsSpan(x_dims), 0.0f, 0.25f));
+  std::vector<float> w_vals(random.Gaussian<float>(AsSpan(w_dims), 0.0f, 0.25f));
+
+  std::vector<float> expected(kOut);
+  for (int64_t o = 0; o < kOut; ++o) {
+    float acc = 0.0f;
+    for (int64_t c = 0; c < kIn; ++c) {
+      acc += x_vals[static_cast<size_t>(c)] * w_vals[static_cast<size_t>(o * kIn + c)];
+    }
+    expected[static_cast<size_t>(o)] = apply(acc);
+  }
+
+  OpTester test("FusedConv", 1, kMSDomain);
+  test.AddAttribute("activation", activation_name);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
+  if (!activation_params.empty()) {
+    test.AddAttribute("activation_params", activation_params);
+  }
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddInput<float>("W", w_dims, w_vals);
+  test.AddOutput<float>("Y", {1, kOut, 1, 1}, expected);
+  test.SetOutputAbsErr("Y", 1e-3f);
+  test.SetOutputRelErr("Y", 1e-3f);
+  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
 }  // namespace
+
+// The activation must be applied to the completed sum, not per split. That is only distinguishable
+// when some partial sums differ in sign from the total, which the Gaussian inputs provide.
+TEST(MatMul_SplitK, FusedConvReluAppliedAfterReduction) {
+  RunFusedConvAgainstReference("Relu", {}, [](float v) { return v > 0.0f ? v : 0.0f; });
+}
+
+// Alpha 1 is SiLU, the only QuickGelu the gate admits.
+TEST(MatMul_SplitK, FusedConvSiluAppliedAfterReduction) {
+  RunFusedConvAgainstReference("QuickGelu", {1.0f},
+                               [](float v) { return v / (1.0f + std::exp(-v)); });
+}
 
 // EfficientNet-B0's classifier shape: M = 1, N = 1000, K = 1280. `dim_inner / split_dim_inner` is
 // exactly 5, so every split covers a full 256-wide slice.
@@ -202,12 +260,16 @@ TEST(MatMul_SplitK, GemvClassifierShapeFloat16) {
 }
 
 // The reduction's `has_bias && !is_gemm` branch is only reachable through Conv, since ONNX MatMul has
-// no bias input. Conv's 1x1 fast path forwards its bias into `ComputeMatMul`.
-TEST(MatMul_SplitK, Conv1x1BiasAppliedOnceByReduction) {
+// no bias input. Conv's 1x1 fast path forwards its bias into `ComputeMatMul`. With an activation the
+// reduction must compute `act(sum + b)`; the two are distinguishable because Relu is not additive.
+void RunConv1x1BiasAgainstReference(const char* activation_name,
+                                    const std::function<float(float)>& apply) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
+
+  SCOPED_TRACE(activation_name == nullptr ? "no activation" : activation_name);
 
   constexpr int64_t kInChannels = 512;  // dim_inner
   constexpr int64_t kOutChannels = 64;  // dim_b_outer
@@ -233,11 +295,15 @@ TEST(MatMul_SplitK, Conv1x1BiasAppliedOnceByReduction) {
       for (int64_t c = 0; c < kInChannels; ++c) {
         sum += w_vals[static_cast<size_t>(m * kInChannels + c)] * x_vals[static_cast<size_t>(c * kSpatial + p)];
       }
-      expected[static_cast<size_t>(m * kSpatial + p)] = sum + b_vals[static_cast<size_t>(m)];
+      expected[static_cast<size_t>(m * kSpatial + p)] = apply(sum + b_vals[static_cast<size_t>(m)]);
     }
   }
 
-  OpTester test("Conv", 11);
+  const bool fused = activation_name != nullptr;
+  OpTester test(fused ? "FusedConv" : "Conv", fused ? 1 : 11, fused ? kMSDomain : kOnnxDomain);
+  if (fused) {
+    test.AddAttribute("activation", activation_name);
+  }
   test.AddAttribute("group", static_cast<int64_t>(1));
   test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
@@ -249,6 +315,16 @@ TEST(MatMul_SplitK, Conv1x1BiasAppliedOnceByReduction) {
   test.SetOutputAbsErr("Y", 1e-3f);
   test.SetOutputRelErr("Y", 1e-3f);
   test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+TEST(MatMul_SplitK, Conv1x1BiasAppliedOnceByReduction) {
+  RunConv1x1BiasAgainstReference(nullptr, [](float v) { return v; });
+}
+
+// Bias and activation together. `act(sum + b)` and `act(sum) + b` differ, and only the first is
+// correct, so this guards the order the reduction applies them in.
+TEST(MatMul_SplitK, Conv1x1BiasThenActivation) {
+  RunConv1x1BiasAgainstReference("Relu", [](float v) { return v > 0.0f ? v : 0.0f; });
 }
 
 // Identical input must produce identical output bytes. Compared as raw bit patterns rather than with

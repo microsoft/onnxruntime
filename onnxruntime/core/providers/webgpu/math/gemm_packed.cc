@@ -114,7 +114,8 @@ Status ApplyGemmPacked(const Tensor* a,
   // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
   const bool output_is_vec4 = output_components == 4;
   // We need to use `true` as `is_channels_last` to meet the requirement in `UseSplitK`.
-  const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
+  // Gemm fuses no activation.
+  const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, Activation{}, /*batch_size*/ 1, M, N, K);
   if (need_split_k) {
     ORT_RETURN_IF_NOT(N % 4 == 0, "Split-K GEMM requires N to be a multiple of 4.");
 

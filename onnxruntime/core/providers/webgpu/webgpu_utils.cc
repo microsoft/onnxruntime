@@ -30,6 +30,15 @@ SplitKOverride ReadSplitKOverride() {
   return SplitKOverride::Default;
 }
 
+// Activations the Split-K reduction has been measured with. Relu and unit-alpha QuickGelu, which is
+// SiLU, cover the fused convolutions in ResNet and EfficientNet. Other kinds are excluded pending
+// measurement, since each one changes which dispatches take the Split-K path.
+bool IsActivationSupportedBySplitK(const Activation& activation) {
+  return activation.activation_kind_ == ActivationKind::None ||
+         activation.activation_kind_ == ActivationKind::Relu ||
+         activation.HasUnitQuickGeluAlpha();
+}
+
 }  // namespace
 
 TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components) {
@@ -131,7 +140,7 @@ uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
 
 bool SplitKConfig::UseSplitK(
     bool is_vec4,
-    ActivationKind activation_kind,
+    const Activation& activation,
     uint64_t batch_size,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
@@ -143,8 +152,8 @@ bool SplitKConfig::UseSplitK(
 
   bool use_split_k = true;
 
-  // TODO: support the cases below.
-  use_split_k &= activation_kind == ActivationKind::None;
+  use_split_k &= IsActivationSupportedBySplitK(activation);
+  // TODO: support the scalar (non-vec4) path.
   use_split_k &= is_vec4;
 
   // Larger batches increase parallelism on their own, so we temporarily set a batch size threshold

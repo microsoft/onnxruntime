@@ -276,7 +276,7 @@ Status ComputeMatMul(ComputeContext* context,
   Tensor partials;
 
   const SplitKConfig& split_k_config = context->GetSplitKConfig();
-  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
+  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
   if (need_split_k) {
     ORT_RETURN_IF_NOT(is_vec4, "Split-K MatMul requires vec4 packing.");
     ORT_RETURN_IF_NOT(dim_b_outer % 4 == 0, "Split-K MatMul requires dim_b_outer to be a multiple of 4.");
@@ -306,9 +306,13 @@ Status ComputeMatMul(ComputeContext* context,
                            TensorShape{static_cast<int64_t>(scratch_elems)}, components);
   }
 
-  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
+  // Pass 1 writes partial sums and never applies the activation, so clearing it keeps the pipeline
+  // cache key from splitting on an activation the shader does not emit.
+  const Activation matmul_activation = need_split_k ? Activation{} : activation;
+
+  MatMulProgram matmul_program{matmul_activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
   matmul_program
-      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
+      .CacheHint(matmul_activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
@@ -317,7 +321,7 @@ Status ComputeMatMul(ComputeContext* context,
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddOutput(std::move(output));
   // Activation uniforms must remain last because definitions and values are matched by index.
-  AppendActivationUniformsData(activation, matmul_program);
+  AppendActivationUniformsData(matmul_activation, matmul_program);
 
   if (use_bias_in_matmul) {
     auto bias_components = is_channels_last ? components : 1;
