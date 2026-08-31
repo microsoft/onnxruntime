@@ -1,7 +1,7 @@
 # BNHS Value layout for GroupQueryAttention
 
 Status: partially implemented (see [Sequencing](#8-sequencing))
-Last updated: 2026-08-27
+Last updated: 2026-08-31
 
 ## Motivation
 
@@ -87,7 +87,16 @@ static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_l
 ```
 
 **2.2** Validate at session initialization. Anything other than `"BNSH"` or `"BNHS"` returns
-`ORT_INVALID_ARGUMENT` with the offending value in the message. No silent fallback.
+`ORT_INVALID_ARGUMENT` with the offending value in the message. No silent fallback. Note
+`ORT_RETURN_IF_NOT` produces `ORT_FAIL`, so this needs an explicit `ORT_MAKE_STATUS(..., INVALID_ARGUMENT, ...)`.
+
+**Status codes.** The two situations are deliberately distinguishable, because they call for
+different responses from an application:
+
+| Situation | Code |
+|---|---|
+| Unrecognized option value; option set on an ORT format model | `ORT_INVALID_ARGUMENT` — the caller passed something wrong |
+| Recognized value, but this model's topology or cache format cannot satisfy it (section 3.5) | `ORT_FAIL` — the option is fine, the model is not, so falling back to BNSH may work |
 
 ## 3. The graph transform
 
@@ -247,6 +256,13 @@ skipping would make the option self-inconsistent, so `ClassifyNode` returns an e
 - **A Value cache tensor that is not rank 4** (a declared shape of any other rank; an undeclared shape
   imposes no constraint and is fine).
 
+**Check order matters.** `ValidateCacheFormat` (the 4-bit check) runs *before* the layout-state switch
+in `ClassifyNode`, not after it. A 4-bit cache is unsupported whether this run would insert the
+Transposes or a previous one already did, so classifying an already-converted node as `kFull` and
+returning early would let such a model initialize and then execute the invalid byte-wise transpose on
+a non-fusing EP. The rank check stays after the switch, because it only constrains a conversion this
+run is about to perform.
+
 Supporting shared boundaries would mean converting each boundary once and rewiring every BNSH user of
 it, which is more than this design needs for the single-cache-per-layer models it targets.
 
@@ -325,7 +341,9 @@ A minimal build reaches the ORT format path instead, which is handled in section
 
 The value constants `kGqaValueLayoutBNSH` / `kGqaValueLayoutBNHS` live in the transformer header and
 are header-only `constexpr`, so `PartitionOrtFormatModel` can use them in a minimal build without
-pulling in the translation unit.
+pulling in the translation unit. The header is therefore included unconditionally: guarding the
+include on the build flavour would leave those constants undefined in a pure minimal build, where
+`PartitionOrtFormatModel` is compiled and needs them.
 
 ### Fallback cost
 
@@ -342,9 +360,13 @@ insertion. Silently ignoring the option there is not safe: with dynamic or coinc
 cache dimensions the application's BNHS buffers pass input validation and the model computes on
 transposed data, producing wrong results with no error.
 
-`PartitionOrtFormatModel` therefore **rejects** the option outright. An ORT format model that had the
-transform applied at conversion time already carries the BNHS boundary shapes in the model itself and
-must be loaded without setting the option.
+`PartitionOrtFormatModel` therefore **rejects** the option outright, with `ORT_INVALID_ARGUMENT`. An
+ORT format model that had the transform applied at conversion time already carries the BNHS boundary
+shapes in the model itself and must be loaded without setting the option.
+
+That check is deliberately **not** guarded on the build flavour. A minimal build serves ORT format
+models only — `InferenceSession::Initialize` refuses anything else — so this is the only place the
+option can be caught there, and guarding it would let a minimal build silently ignore the option.
 
 Adding real support — running the transformer on the ORT format path — would require the transformer
 in minimal builds (see 4.3) and is deferred until a consumer needs it.
@@ -367,6 +389,9 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - Errors, per section 3.5: a `past_value` graph input shared by two GQA nodes; a `present_value` graph
   output also consumed inside the graph; a node with the layout applied to only one operand; a 4-bit
   quantized Value cache.
+- An already-converted model is left alone (`kFull`), and an already-converted **4-bit** model is
+  still rejected. The second case is what pins down the check order in 3.5; verified to fail when
+  `ValidateCacheFormat` runs after the layout-state switch.
 - The graph is left untouched when validation fails (section 3.6). Two independent GQA nodes, one
   convertible and one not, asserted for both build orders — `GetNodesInTopologicalOrder()` does not
   follow insertion order for independent nodes, and only the order that presents the convertible node
@@ -379,8 +404,9 @@ model into an `InferenceSessionWrapper`:
 - The transform is applied at `ORT_DISABLE_ALL`. This is the test that pins down the placement
   decision in 4.1; a registered level 1 optimizer would be skipped entirely at that level.
 - No transposes are inserted for the default `"BNSH"` value.
-- An invalid value fails session initialization.
-- An ORT format model fails session initialization when the option is set, and loads normally when it
+- An invalid value fails session initialization with `ORT_INVALID_ARGUMENT` (code asserted, not just
+  the message).
+- An ORT format model fails session initialization with `ORT_INVALID_ARGUMENT` when the option is set, and loads normally when it
   is not.
 
 Subgraphs are not covered by a test. `ApplyImpl` returns immediately for `graph_level != 0` and never
