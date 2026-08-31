@@ -7,8 +7,10 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #include <limits>
+#include <string>
 
 namespace onnxruntime {
 namespace contrib {
@@ -28,26 +30,28 @@ constexpr uint32_t kRmsWorkgroupSize = 64;
 
 // Emits a WGSL `raw_at(b, p, g, c)` that reads the raw (un-normalized) value at a virtual position of
 // "past_state history followed by the current chunk". Missing history reads as zero, which is exactly
-// what a fresh sequence contributes. Requires `sequence_length`, `state_length`, `hc_mult` and
-// `hidden_size` uniforms on the program.
+// what a fresh sequence contributes. `components` selects a scalar or vecN result and
+// `hidden_stride` must be the uniform holding the matching per-(b, p, g) row stride.
 void AppendRawAtWgsl(ShaderHelper& shader, const ShaderVariableHelper& input,
-                     const ShaderVariableHelper* past_state) {
+                     const ShaderVariableHelper* past_state, int components,
+                     const std::string& hidden_stride) {
+  const std::string row_offset = ") * " + hidden_stride + " + c";
   shader.AdditionalImplementation()
-      << "fn raw_at(b: u32, p: u32, g: u32, c: u32) -> f32 {\n"
+      << "alias raw_value_t = " << MakeScalarOrVectorType(components, "f32") << ";\n"
+      << "fn raw_at(b: u32, p: u32, g: u32, c: u32) -> raw_value_t {\n"
       << "  if (p >= uniforms.state_length) {\n"
       << "    let t = p - uniforms.state_length;\n"
-      << "    return f32("
-      << input.GetByOffset("((b * uniforms.sequence_length + t) * uniforms.hc_mult + g) * uniforms.hidden_size + c")
+      << "    return raw_value_t("
+      << input.GetByOffset("((b * uniforms.sequence_length + t) * uniforms.hc_mult + g" + row_offset)
       << ");\n"
       << "  }\n";
   if (past_state != nullptr) {
     shader.AdditionalImplementation()
-        << "  return f32("
-        << past_state->GetByOffset(
-               "((b * uniforms.state_length + p) * uniforms.hc_mult + g) * uniforms.hidden_size + c")
+        << "  return raw_value_t("
+        << past_state->GetByOffset("((b * uniforms.state_length + p) * uniforms.hc_mult + g" + row_offset)
         << ");\n";
   } else {
-    shader.AdditionalImplementation() << "  return 0.0;\n";
+    shader.AdditionalImplementation() << "  return raw_value_t(0.0);\n";
   }
   shader.AdditionalImplementation() << "}\n";
 }
@@ -61,7 +65,11 @@ Status ShortConvInvRmsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& inv_rms = shader.AddOutput("inv_rms", ShaderUsage::UseUniform);
 
-  AppendRawAtWgsl(shader, input, past_state);
+  // input and past_state are both contiguous over the hidden dimension, which is exactly the axis
+  // this reduction runs over, so the loads vectorize directly.
+  const int components = input.NumComponents();
+
+  AppendRawAtWgsl(shader, input, past_state, components, "uniforms.hidden_vec_size");
   shader.AdditionalImplementation() << "var<workgroup> row_partials: array<f32, " << kRmsWorkgroupSize << ">;\n";
 
   shader.MainFunctionBody()
@@ -72,9 +80,10 @@ Status ShortConvInvRmsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let p = (row / uniforms.hc_mult) % virtual_length;\n"
       << "  let b = row / (virtual_length * uniforms.hc_mult);\n"
       << "  var sum_sq = 0.0;\n"
-      << "  for (var i = local_idx; i < uniforms.hidden_size; i += " << kRmsWorkgroupSize << "u) {\n"
+      << "  for (var i = local_idx; i < uniforms.hidden_vec_size; i += " << kRmsWorkgroupSize << "u) {\n"
       << "    let v = raw_at(b, p, g, i);\n"
-      << "    sum_sq += v * v;\n"
+      << "    let v_squared = v * v;\n"
+      << "    sum_sq += " << SumVector("v_squared", components) << ";\n"
       << "  }\n"
       << "  row_partials[local_idx] = sum_sq;\n"
       << "  workgroupBarrier();\n"
@@ -104,7 +113,12 @@ Status ShortConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation() << engram_helper::kStableSigmoidWgsl << engram_helper::kSiluWgsl;
-  AppendRawAtWgsl(shader, input, past_state);
+  // This program stays scalar over the hidden dimension. input, norm_scale, bias and output are all
+  // contiguous across hidden channels, but weight is laid out as (channel, 1, kernel_size), so the
+  // weights of adjacent channels at a fixed tap are strided by kernel_size. Binding weight with
+  // multiple components would combine the wrong elements; vectorizing here needs either per-lane
+  // gathers or a transposed/prepacked weight, which is a separate benchmark-driven change.
+  AppendRawAtWgsl(shader, input, past_state, 1, "uniforms.hidden_size");
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
@@ -143,19 +157,22 @@ Status ShortConvPresentStateProgram::GenerateShaderCode(ShaderHelper& shader) co
   if (has_past_state_) {
     past_state = &shader.AddInput("past_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
-  const auto& present_state = shader.AddOutput("present_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& present_state = shader.AddOutput("present_state", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  AppendRawAtWgsl(shader, input, past_state);
+  // A straight copy along the contiguous hidden dimension, so it vectorizes unconditionally.
+  const int components = input.NumComponents();
+
+  AppendRawAtWgsl(shader, input, past_state, components, "uniforms.hidden_vec_size");
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
-      << "  let c = global_idx % uniforms.hidden_size;\n"
-      << "  let g = (global_idx / uniforms.hidden_size) % uniforms.hc_mult;\n"
-      << "  let slot = (global_idx / (uniforms.hc_mult * uniforms.hidden_size)) % uniforms.state_length;\n"
-      << "  let b = global_idx / (uniforms.state_length * uniforms.hc_mult * uniforms.hidden_size);\n"
+      << "  let c = global_idx % uniforms.hidden_vec_size;\n"
+      << "  let g = (global_idx / uniforms.hidden_vec_size) % uniforms.hc_mult;\n"
+      << "  let slot = (global_idx / (uniforms.hc_mult * uniforms.hidden_vec_size)) % uniforms.state_length;\n"
+      << "  let b = global_idx / (uniforms.state_length * uniforms.hc_mult * uniforms.hidden_vec_size);\n"
       // present_state holds the trailing state_length virtual positions, still un-normalized.
       << "  let value = raw_at(b, slot + uniforms.sequence_length, g, c);\n"
-      << "  " << present_state.SetByOffset("global_idx", "present_state_element_t(value)") << "\n";
+      << "  " << present_state.SetByOffset("global_idx", "present_state_value_t(value)") << "\n";
   return Status::OK();
 }
 
@@ -225,11 +242,14 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
   // the raw history (rather than storing normalized history) makes a chunked run bit-exact against a
   // full-sequence run for every element type.
   const int64_t virtual_rows = batch_size * (state_length + sequence_length) * hc_mult;
+  const int components = onnxruntime::webgpu::GetMaxComponents(hidden_size);
+  const int64_t hidden_vec_size = hidden_size / components;
   Tensor inv_rms = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({virtual_rows}));
   ShortConvInvRmsProgram inv_rms_program{has_past_state};
-  inv_rms_program.CacheHint(has_past_state).AddInput({input, ProgramTensorMetadataDependency::Type});
+  inv_rms_program.CacheHint(has_past_state, components)
+      .AddInput({input, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components});
   if (has_past_state) {
-    inv_rms_program.AddInput({past_state, ProgramTensorMetadataDependency::Type});
+    inv_rms_program.AddInput({past_state, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components});
   }
   inv_rms_program.AddOutput({&inv_rms, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(kRmsWorkgroupSize)
@@ -239,6 +259,7 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
                             {onnxruntime::narrow<uint32_t>(state_length)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_size)},
+                            {onnxruntime::narrow<uint32_t>(hidden_vec_size)},
                             {epsilon_}});
   ORT_RETURN_IF_ERROR(context.RunProgram(inv_rms_program));
 
@@ -270,17 +291,19 @@ Status ShortConv::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
   ShortConvPresentStateProgram present_program{has_past_state};
-  present_program.CacheHint(has_past_state).AddInput({input, ProgramTensorMetadataDependency::Type});
+  present_program.CacheHint(has_past_state, components)
+      .AddInput({input, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components});
   if (has_past_state) {
-    present_program.AddInput({past_state, ProgramTensorMetadataDependency::Type});
+    present_program.AddInput({past_state, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components});
   }
-  present_program.AddOutput({present_state, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(present_total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(present_total)},
+  const int64_t present_total_vec = present_total / components;
+  present_program.AddOutput({present_state, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, components})
+      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(present_total_vec) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(present_total_vec)},
                             {onnxruntime::narrow<uint32_t>(sequence_length)},
                             {onnxruntime::narrow<uint32_t>(state_length)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
-                            {onnxruntime::narrow<uint32_t>(hidden_size)}});
+                            {onnxruntime::narrow<uint32_t>(hidden_vec_size)}});
   return context.RunProgram(present_program);
 }
 

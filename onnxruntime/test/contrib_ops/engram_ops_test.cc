@@ -314,6 +314,68 @@ void RunEngramGateTest(float tolerance) {
   RunOnSupportedProviders<T>(test);
 }
 
+// Exercises hidden_size == 4 with hc_mult > 1 and non-unit norm scales. On WebGPU this is the only
+// case that selects the vec4 component path through the gate reduction and the broadcast pass, and
+// hc_mult > 1 makes a per-row rather than per-token scale lookup observable.
+template <typename T>
+void RunEngramGateVectorizedTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr int64_t kBatch = 1;
+  constexpr int64_t kSequence = 2;
+  constexpr int64_t kHcMult = 2;
+  constexpr int64_t kHidden = 4;
+  constexpr int64_t kRows = kBatch * kSequence * kHcMult;
+
+  const std::vector<float> key = MakeRamp(static_cast<size_t>(kRows * kHidden), -0.9f, 0.3f);
+  const std::vector<float> query = MakeRamp(static_cast<size_t>(kRows * kHidden), 1.2f, -0.25f);
+  const std::vector<float> value = MakeRamp(static_cast<size_t>(kBatch * kSequence * kHidden), 0.4f, 0.35f);
+  const std::vector<float> key_scale = MakeRamp(static_cast<size_t>(kHcMult * kHidden), 0.6f, 0.1f);
+  const std::vector<float> query_scale = MakeRamp(static_cast<size_t>(kHcMult * kHidden), 1.4f, -0.15f);
+
+  std::vector<float> expected(static_cast<size_t>(kRows * kHidden));
+  for (int64_t row = 0; row < kRows; ++row) {
+    const int64_t g = row % kHcMult;
+    const int64_t token = row / kHcMult;
+    float key_sum_sq = 0.0f;
+    float query_sum_sq = 0.0f;
+    for (int64_t c = 0; c < kHidden; ++c) {
+      const float k = key[static_cast<size_t>(row * kHidden + c)];
+      const float q = query[static_cast<size_t>(row * kHidden + c)];
+      key_sum_sq += k * k;
+      query_sum_sq += q * q;
+    }
+    const float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(kHidden) + kEpsilon);
+    const float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(kHidden) + kEpsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < kHidden; ++c) {
+      const auto scale_index = static_cast<size_t>(g * kHidden + c);
+      const float normed_key = key[static_cast<size_t>(row * kHidden + c)] * key_inv * key_scale[scale_index];
+      const float normed_query =
+          query[static_cast<size_t>(row * kHidden + c)] * query_inv * query_scale[scale_index];
+      dot += normed_key * normed_query;
+    }
+    dot /= std::sqrt(static_cast<float>(kHidden));
+    const float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < kHidden; ++c) {
+      expected[static_cast<size_t>(row * kHidden + c)] =
+          gate * value[static_cast<size_t>(token * kHidden + c)];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {kBatch, kSequence, kHcMult, kHidden}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {kBatch, kSequence, kHcMult, kHidden}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {kBatch, kSequence, kHidden}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {kHcMult, kHidden}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {kHcMult, kHidden}, ToTensorType<T>(query_scale));
+  test.AddOutput<T>("output", {kBatch, kSequence, kHcMult, kHidden}, ToTensorType<T>(expected), false, tolerance,
+                    tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
 // ---------------------------------------------------------------------------------------------
 // NGramHashMapping
 // ---------------------------------------------------------------------------------------------
@@ -394,21 +456,10 @@ void RunNGramHashMappingTest() {
   test.Run();
 }
 
-}  // namespace
-
-TEST(EngramOpsTest, NGramHashMappingInt64) {
-  RunNGramHashMappingTest<int64_t>();
-}
-
-// int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
-TEST(EngramOpsTest, NGramHashMappingInt32) {
-  RunNGramHashMappingTest<int32_t>();
-}
-
 // A decode step must hash the same n-gram window as the corresponding position of a full-sequence
 // run. Without past_ids the preceding tokens would silently fall back to pad_id.
-TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequence) {
-  using T = int64_t;
+template <typename T>
+void RunNGramHashMappingChunkedTest() {
   const std::vector<T> ids{3, 4, 5, 6};
   const std::vector<T> multipliers{11, 13, 17};
   const std::vector<T> vocab_sizes{101, 103, 107, 109};
@@ -446,6 +497,27 @@ TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequence) {
             {ids[2], ids[3]});
 }
 
+}  // namespace
+
+TEST(EngramOpsTest, NGramHashMappingInt64) {
+  RunNGramHashMappingTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
+TEST(EngramOpsTest, NGramHashMappingInt32) {
+  RunNGramHashMappingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt64) {
+  RunNGramHashMappingChunkedTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so this is the case that gives the WebGPU
+// past_ids/present_ids shaders any execution coverage at all.
+TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt32) {
+  RunNGramHashMappingChunkedTest<int32_t>();
+}
+
 TEST(EngramOpsTest, ShortConvFloat) {
   RunShortConvTest<float>(1e-4f);
 }
@@ -460,6 +532,14 @@ TEST(EngramOpsTest, EngramGateFloat) {
 
 TEST(EngramOpsTest, EngramGateFloat16) {
   RunEngramGateTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateVectorizedFloat) {
+  RunEngramGateVectorizedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateVectorizedFloat16) {
+  RunEngramGateVectorizedTest<MLFloat16>(3e-3f);
 }
 
 TEST(EngramOpsTest, ShortConvBFloat16) {
@@ -521,6 +601,19 @@ TEST(EngramOpsTest, ShortConvChunkedFloat16) {
   config.hidden_size = 2;
   config.kernel_size = 3;
   RunShortConvChunkedTest<MLFloat16>(config, {2, 1, 1}, /*with_bias=*/false, 5e-3f);
+}
+
+// hidden_size == 4 is the only width that selects the WebGPU vec4 component path through the RMS
+// reduction and the present_state copy, so the chunked contract has to hold there too.
+TEST(EngramOpsTest, ShortConvChunkedVectorizedHiddenSize) {
+  ShortConvConfig config;
+  config.batch_size = 2;
+  config.sequence_length = 4;
+  config.hc_mult = 2;
+  config.hidden_size = 4;
+  config.kernel_size = 3;
+  config.dilation = 2;
+  RunShortConvChunkedTest<float>(config, {2, 1, 1}, /*with_bias=*/true, 1e-4f);
 }
 
 // A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make

@@ -7,6 +7,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #include <limits>
 
@@ -34,8 +35,13 @@ Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query_norm_scale = shader.AddInput("query_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& gate = shader.AddOutput("gate", ShaderUsage::UseUniform);
 
+  // key, query and both norm scales are all contiguous over the hidden dimension and share its
+  // length, so one component count vectorizes every load in the reduction.
+  const int components = key.NumComponents();
+
   shader.AdditionalImplementation()
       << engram_helper::kStableSigmoidWgsl << engram_helper::kEngramGateArgWgsl
+      << "alias gate_f32_t = " << MakeScalarOrVectorType(components, "f32") << ";\n"
       << "var<workgroup> key_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
       << "var<workgroup> query_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
       << "var<workgroup> dot_partials: array<f32, " << kGateWorkgroupSize << ">;\n";
@@ -44,18 +50,21 @@ Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let row = workgroup_idx;\n"
       << "  if (row >= uniforms.rows) { return; }\n"
       << "  let g = row % uniforms.hc_mult;\n"
-      << "  let row_base = row * uniforms.hidden_size;\n"
-      << "  let scale_base = g * uniforms.hidden_size;\n"
+      << "  let row_base = row * uniforms.hidden_vec_size;\n"
+      << "  let scale_base = g * uniforms.hidden_vec_size;\n"
       << "  var key_sum_sq = 0.0;\n"
       << "  var query_sum_sq = 0.0;\n"
       << "  var dot_numerator = 0.0;\n"
-      << "  for (var d = local_idx; d < uniforms.hidden_size; d += " << kGateWorkgroupSize << "u) {\n"
-      << "    let key_value = f32(" << key.GetByOffset("row_base + d") << ");\n"
-      << "    let query_value = f32(" << query.GetByOffset("row_base + d") << ");\n"
-      << "    key_sum_sq += key_value * key_value;\n"
-      << "    query_sum_sq += query_value * query_value;\n"
-      << "    dot_numerator += key_value * f32(" << key_norm_scale.GetByOffset("scale_base + d")
-      << ") * query_value * f32(" << query_norm_scale.GetByOffset("scale_base + d") << ");\n"
+      << "  for (var d = local_idx; d < uniforms.hidden_vec_size; d += " << kGateWorkgroupSize << "u) {\n"
+      << "    let key_value = gate_f32_t(" << key.GetByOffset("row_base + d") << ");\n"
+      << "    let query_value = gate_f32_t(" << query.GetByOffset("row_base + d") << ");\n"
+      << "    let key_squared = key_value * key_value;\n"
+      << "    let query_squared = query_value * query_value;\n"
+      << "    let dot_terms = key_value * gate_f32_t(" << key_norm_scale.GetByOffset("scale_base + d")
+      << ") * query_value * gate_f32_t(" << query_norm_scale.GetByOffset("scale_base + d") << ");\n"
+      << "    key_sum_sq += " << SumVector("key_squared", components) << ";\n"
+      << "    query_sum_sq += " << SumVector("query_squared", components) << ";\n"
+      << "    dot_numerator += " << SumVector("dot_terms", components) << ";\n"
       << "  }\n"
       << "  key_partials[local_idx] = key_sum_sq;\n"
       << "  query_partials[local_idx] = query_sum_sq;\n"
@@ -81,15 +90,21 @@ Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+
+  // value and output are both contiguous over the hidden dimension, and the gate is constant across
+  // it, so one invocation can broadcast the gate over a whole vecN of channels.
+  const int components = value.NumComponents();
+
+  shader.AdditionalImplementation() << "alias gate_f32_t = " << MakeScalarOrVectorType(components, "f32") << ";\n";
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
-      << "  let c = global_idx % uniforms.hidden_size;\n"
-      << "  let row = global_idx / uniforms.hidden_size;\n"
+      << "  let c = global_idx % uniforms.hidden_vec_size;\n"
+      << "  let row = global_idx / uniforms.hidden_vec_size;\n"
       << "  let token = row / uniforms.hc_mult;\n"
-      << "  let value_element = f32(" << value.GetByOffset("token * uniforms.hidden_size + c") << ");\n"
-      << "  " << output.SetByOffset("global_idx", "output_element_t(" + gate.GetByOffset("row") + " * value_element)")
+      << "  let value_element = gate_f32_t(" << value.GetByOffset("token * uniforms.hidden_vec_size + c") << ");\n"
+      << "  " << output.SetByOffset("global_idx", "output_value_t(" + gate.GetByOffset("row") + " * value_element)")
       << "\n";
   return Status::OK();
 }
@@ -129,32 +144,38 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
 
   // First pass: one scalar gate per (token, g) row.
   const int64_t rows = batch_size * sequence_length * hc_mult;
+  const int components = onnxruntime::webgpu::GetMaxComponents(hidden_size);
+  const int64_t hidden_vec_size = hidden_size / components;
   Tensor gate = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({rows}));
   EngramGateScalarProgram gate_program;
   gate_program
-      .AddInputs({{key, ProgramTensorMetadataDependency::Type},
-                  {query, ProgramTensorMetadataDependency::Type},
-                  {key_norm_scale, ProgramTensorMetadataDependency::Type},
-                  {query_norm_scale, ProgramTensorMetadataDependency::Type}})
+      .CacheHint(components)
+      .AddInputs({{key, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
+                  {query, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
+                  {key_norm_scale, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
+                  {query_norm_scale, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components}})
       .AddOutput({&gate, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(kGateWorkgroupSize)
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(rows)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_size)},
+                            {onnxruntime::narrow<uint32_t>(hidden_vec_size)},
                             {epsilon_}});
   ORT_RETURN_IF_ERROR(context.RunProgram(gate_program));
 
   // Second pass: broadcast the shared gate over the value channels.
+  const int64_t total_vec = total / components;
   EngramGateProgram program;
   program
-      .AddInputs({{value, ProgramTensorMetadataDependency::Type},
+      .CacheHint(components)
+      .AddInputs({{value, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
                   {&gate, ProgramTensorMetadataDependency::Type}})
-      .AddOutput({output, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total)},
+      .AddOutput({output, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, components})
+      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total_vec) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_vec)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
-                            {onnxruntime::narrow<uint32_t>(hidden_size)}});
+                            {onnxruntime::narrow<uint32_t>(hidden_vec_size)}});
   return context.RunProgram(program);
 }
 

@@ -26,6 +26,7 @@ class ShortConvInvRmsProgram final : public Program<ShortConvInvRmsProgram> {
                                           {"state_length", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
@@ -62,7 +63,7 @@ class ShortConvPresentStateProgram final : public Program<ShortConvPresentStateP
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"state_length", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_size", ProgramUniformVariableDataType::Uint32});
+                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_state_;

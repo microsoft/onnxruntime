@@ -22,17 +22,18 @@ class EngramGateScalarProgram final : public Program<EngramGateScalarProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
 };
 
-// Broadcasts the per-row gate over the value channels, one invocation per output element.
+// Broadcasts the per-row gate over the value channels, one invocation per vecN of output channels.
 class EngramGateProgram final : public Program<EngramGateProgram> {
  public:
   EngramGateProgram() : Program{"EngramGate"} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_size", ProgramUniformVariableDataType::Uint32});
+                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32});
 };
 
 class EngramGate final : public WebGpuKernel {
