@@ -1,14 +1,17 @@
-"""Single source of truth for the vcpkg tool release supported by ONNX Runtime."""
+"""Accessors for the vcpkg tool release supported by ONNX Runtime."""
 
-_VCPKG_RELEASE_TAG = "2026.07.29"
-_VCPKG_SHA512 = "af46e8608069258d8ead737553c765f013d6d8303b48e45c0fe0c49f765ca6a535a81c10cafa70999c8a4ccdf71bce770c36b01607a745c649a838e5d75c5806"
+import json
+from pathlib import Path
+
+with Path(__file__).with_suffix(".json").open(encoding="utf-8") as info_file:
+    _VCPKG_TOOL_INFO: dict[str, str] = json.load(info_file)
 
 
 def get_vcpkg_release_tag() -> str:
     """Returns the Git tag of the vcpkg release supported by ONNX Runtime."""
-    return _VCPKG_RELEASE_TAG
+    return _VCPKG_TOOL_INFO["release_tag"]
 
 
 def get_vcpkg_sha512() -> str:
     """Returns the SHA-512 digest of the vcpkg release supported by ONNX Runtime."""
-    return _VCPKG_SHA512
+    return _VCPKG_TOOL_INFO["sha512"]
