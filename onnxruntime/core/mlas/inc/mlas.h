@@ -1848,8 +1848,7 @@ MlasFp16AccelerationSupported();
  */
 bool MLASCALL
 MlasHalfGemmAccelerationSupported(
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-    );
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
  * @brief Interface for half gemm post processors.
