@@ -495,7 +495,7 @@ __device__ inline void applyMaskFromInput(const Warp& warp, WarpAcc& acc, const 
 
             const bool begMaskFlag = ctaNeedBegMask ? (begMask & (1ULL << col)) : true;
 
-            acc(m, n)(i, j) = maskFlag && begMaskFlag && col < nbValidCols ? acc(m, n)(i, j) : safeInitRowMax;
+            acc(m, n)(i, j) = maskFlag && begMaskFlag && col < nbValidCols ? acc(m, n)(i, j) : SAFE_INIT_ROW_MAX;
           }
         }
       }
@@ -1292,6 +1292,9 @@ CUBIN_EXPORT __global__
   // Variable query sequence length support.
   const bool variableQSeqLen = qCuSeqLens != nullptr;
   const uint32_t actualQSeqLen = variableQSeqLen ? uint32_t(qCuSeqLens[idxReq + 1] - qCuSeqLens[idxReq]) : qSeqLen;
+  if (actualQSeqLen == 0) {
+    return;
+  }
   // Same as idxReq * qSeqLen if all sequences all the same.
   // Take different beams as different requests/sequences currently.
   const uint32_t reqSeqOffset = variableQSeqLen ? uint32_t(qCuSeqLens[idxReq]) : (qSeqLen * idxReq);
@@ -1429,7 +1432,11 @@ CUBIN_EXPORT __global__
   }
 #endif
 
-  const uint32_t cacheSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq);
+  const uint32_t cacheSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq)
+#if SPEC_DEC
+                               + (actualQSeqLen > 0 ? actualQSeqLen - 1 : 0)
+#endif
+      ;
 #if SLIDING_WINDOW && SPEC_DEC && !IS_SPEC_DEC_TREE
   const uint32_t tok0SeqLen = cacheSeqLen - actualQSeqLen + 1 + idxHeadTokenInGrp;  // ctaTokOffset;
   const int32_t tok0WinBeg = int32_t(tok0SeqLen) - int32_t(slidingWinSize);

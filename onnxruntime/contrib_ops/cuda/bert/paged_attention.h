@@ -55,6 +55,7 @@ class PagedAttention final : public CudaKernel {
   // -1 = not yet resolved, 0 = the kernel needs more shared memory than this device allows,
   // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};
+  mutable std::atomic<int> xqa_spec_dec_shared_memory_ok_{-1};
   const AttentionKernelOptions* kernel_options_;
 };
 
