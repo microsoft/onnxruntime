@@ -986,7 +986,7 @@ TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
 TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
   profiling::Profiler profiler;
   profiler.Initialize(&logging::LoggingManager::DefaultLogger());
-  RunInstrumentationContext instrumentation{0, "request", profiler};
+  RunInstrumentationContext instrumentation{"request", profiler};
 
   EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
       RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
@@ -1094,9 +1094,9 @@ TEST(InferenceSessionTests, MoeExpertStatisticsAddsCorrelatedModelRunArgs) {
   }
 
   ASSERT_EQ(model_run_args.size(), 3U);
-  EXPECT_EQ(model_run_args[0]["iteration_index"], "0");
-  EXPECT_EQ(model_run_args[1]["iteration_index"], "1");
-  EXPECT_EQ(model_run_args[2]["iteration_index"], "2");
+  EXPECT_FALSE(model_run_args[0].contains("iteration_index"));
+  EXPECT_FALSE(model_run_args[1].contains("iteration_index"));
+  EXPECT_FALSE(model_run_args[2].contains("iteration_index"));
   EXPECT_EQ(model_run_args[0]["request_id"], "[request \"one\"]");
   EXPECT_EQ(model_run_args[1]["request_id"], "request two");
   EXPECT_EQ(model_run_args[2]["request_id"], "request three");

@@ -1620,9 +1620,6 @@ struct ProviderHostImpl : ProviderHost {
       const OpKernelContext* p) override {
     return p->GetRunInstrumentationContext();
   }
-  uint64_t RunInstrumentationContext__IterationIndex(const RunInstrumentationContext* p) override {
-    return p->IterationIndex();
-  }
   const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) override {
     return p->RequestId();
   }

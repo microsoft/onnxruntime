@@ -156,7 +156,6 @@ The implementation reuses ONNX Runtime's built-in `profiling::Profiler` and its 
 
 The existing `model_run` event is extended with:
 
-- `iteration_index`, monotonically increasing within the session;
 - `input_shapes`, containing the concrete dimensions of every model input for that iteration;
 - `input_token_hash`, a stable hash used to align identical CPU and CUDA iterations without storing tokens;
 - `request_id`, a stable identifier that does not expose prompt text.
@@ -165,15 +164,16 @@ Its existing `dur` value is the wall-clock duration of the complete iteration, n
 
 Input dimensions are required even when `request_id` is present. During autoregressive generation the sequence-length dimension normally increases; a decrease relative to the previous iteration marks the transition to the next sequence. The analysis script validates this boundary against `request_id` and reports inconsistent traces.
 
-MoE routing decisions are added as profiler events correlated with `iteration_index`. No separate JSONL or Parquet writer is added.
+MoE routing decisions are added as profiler events correlated with the enclosing `model_run`, its input shapes, and
+`request_id`. No separate JSONL or Parquet writer is added.
 
-A later output-prediction study extends these events with sampled MoE outputs. This extension remains behind `session.enable_moe_expert_statistics=1` and is disabled unless an explicit sampling configuration is provided. It records the source `(iteration_index, token_index, layer_id)`, output shape and type, and either the sampled output vector or a documented deterministic projection. It must not emit every full activation by default because that would make the JSON traces impractically large.
+A later output-prediction study extends these events with sampled MoE outputs. This extension remains behind `session.enable_moe_expert_statistics=1` and is disabled unless an explicit sampling configuration is provided. It records the source `(request_id, input_shapes, token_index, layer_id)`, output shape and type, and either the sampled output vector or a documented deterministic projection. It must not emit every full activation by default because that would make the JSON traces impractically large.
 
 Each routing record contains:
 
 | Field | Meaning |
 |---|---|
-| `run_id`, `request_id`, `iteration_index` | Reproducible benchmark, sequence, and iteration identifiers. |
+| `run_id`, `request_id` | Reproducible benchmark and sequence identifiers. |
 | `input_shapes` | Concrete model-input dimensions for detecting sequence growth and reset. |
 | `input_token_hash` | Stable identifier for joining CPU and CUDA iterations with identical token inputs. |
 | `token_index`, `layer_id` | Position of the routing decision in the generated sequence. |

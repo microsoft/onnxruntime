@@ -1428,7 +1428,6 @@ struct ProviderHost {
   // Run instrumentation support — appended at end to preserve vtable ABI compatibility.
   virtual const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
       const OpKernelContext* p) = 0;
-  virtual uint64_t RunInstrumentationContext__IterationIndex(const RunInstrumentationContext* p) = 0;
   virtual const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) = 0;
   virtual TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) = 0;
   virtual uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) = 0;

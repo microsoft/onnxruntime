@@ -25,12 +25,11 @@ class RunInstrumentationContext {
   static constexpr size_t kMaxMoeRoutingRecordsPerRun = 1024;
   static constexpr size_t kMaxMoeRoutingElementsPerRun = 2'000'000;
 
-  RunInstrumentationContext(uint64_t iteration_index, std::string request_id, profiling::Profiler& profiler)
-      : iteration_index_(iteration_index), request_id_(std::move(request_id)), profiler_(profiler) {}
+  RunInstrumentationContext(std::string request_id, profiling::Profiler& profiler)
+      : request_id_(std::move(request_id)), profiler_(profiler) {}
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunInstrumentationContext);
 
-  uint64_t IterationIndex() const noexcept { return iteration_index_; }
   const std::string& RequestId() const noexcept { return request_id_; }
   TimePoint StartProfiling() const { return std::chrono::high_resolution_clock::now(); }
   uint64_t ProfilerStartTimeNs() const noexcept { return profiler_.GetStartTimeNs(); }
@@ -47,7 +46,6 @@ class RunInstrumentationContext {
                              int64_t completion_ns,
                              std::string_view completion_timestamp_source) const {
     InlinedHashMap<std::string, std::string> args;
-    args["iteration_index"] = std::to_string(iteration_index_);
     args["request_id"] = profiling::MakeStringEventArg(request_id_);
     args["node_name"] = profiling::MakeStringEventArg(node_name);
     args["node_index"] = std::to_string(node_index);
@@ -116,7 +114,6 @@ class RunInstrumentationContext {
   }
 
  private:
-  uint64_t iteration_index_;
   std::string request_id_;
   profiling::Profiler& profiler_;
   mutable std::mutex deferred_records_mutex_;

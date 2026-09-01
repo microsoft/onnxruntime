@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <map>
 #include <optional>
 #include <string>
@@ -936,8 +935,6 @@ class InferenceSession {
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
-  bool enable_moe_expert_statistics_{false};
-  std::atomic<uint64_t> moe_iteration_index_{0};
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryProfiler memory_profiler_;

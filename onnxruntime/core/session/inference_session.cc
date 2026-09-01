@@ -2544,13 +2544,13 @@ common::Status InferenceSession::Initialize() {
           ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
           " must be set to either \"0\" or \"1\". Received: \"", enable_moe_statistics, "\".");
     }
-    enable_moe_expert_statistics_ = enable_moe_statistics == "1";
-    if (enable_moe_expert_statistics_ && !session_profiler_.IsEnabled()) {
+    const bool enable_moe_expert_statistics = enable_moe_statistics == "1";
+    if (enable_moe_expert_statistics && !session_profiler_.IsEnabled()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
           "=1 requires session profiling to be enabled.");
     }
-    if (enable_moe_expert_statistics_) {
+    if (enable_moe_expert_statistics) {
       for (const auto& execution_provider : execution_providers_) {
         if (execution_provider->IsGraphCaptureEnabled()) {
           return ORT_MAKE_STATUS(
@@ -3442,7 +3442,9 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   }
 
   const bool collect_moe_statistics =
-      enable_moe_expert_statistics_ && session_profiler_.IsEnabled();
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" &&
+      session_profiler_.IsEnabled();
   std::optional<RunInstrumentationContext> run_instrumentation_context;
   InlinedHashMap<std::string, std::string> model_run_args;
   std::string input_shapes_json;
@@ -3583,9 +3585,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       }
 
       if (retval.IsOK() && collect_moe_statistics) {
-        const uint64_t iteration_index = moe_iteration_index_.fetch_add(1, std::memory_order_relaxed);
-        run_instrumentation_context.emplace(iteration_index, run_options.run_tag, session_profiler_);
-        model_run_args["iteration_index"] = std::to_string(iteration_index);
+        run_instrumentation_context.emplace(run_options.run_tag, session_profiler_);
         model_run_args["request_id"] = profiling::MakeStringEventArg(run_options.run_tag);
         model_run_args["input_shapes"] = std::move(input_shapes_json);
         model_run_args["input_token_hash"] = std::move(input_token_hash);

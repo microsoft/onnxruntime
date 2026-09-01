@@ -2648,7 +2648,7 @@ TEST(MoETest, MoECpuRoutingProfileHasCorrelatedSchema) {
 
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& args = routing_events[0]["args"];
-  EXPECT_EQ(args["iteration_index"], "0");
+  EXPECT_FALSE(args.contains("iteration_index"));
   EXPECT_EQ(args["request_id"], "{routing \"request\"}");
   EXPECT_EQ(args["expert_ids"], nlohmann::json({0, 1}));
   ASSERT_EQ(args["router_weights"].size(), 2U);
@@ -2750,7 +2750,7 @@ TEST(MoETest, MoECudaRoutingProfileHasCorrelatedSchema) {
   EXPECT_LT(std::distance(profile_json.begin(), routing_event),
             std::distance(profile_json.begin(), model_run_event));
   const auto& args = (*routing_event)["args"];
-  EXPECT_EQ(args["iteration_index"], "0");
+  EXPECT_FALSE(args.contains("iteration_index"));
   EXPECT_EQ(args["request_id"], "cuda request");
   EXPECT_EQ(args["expert_ids"], nlohmann::json({0, 1}));
   EXPECT_EQ(args["router_weights"], nlohmann::json({1.0f, 1.0f}));
@@ -2841,7 +2841,7 @@ TEST(MoETest, QMoECudaTiledRoutingProfileCapturesEveryTile) {
   EXPECT_LT(std::distance(profile_json.begin(), routing_event),
             std::distance(profile_json.begin(), model_run_event));
   const auto& args = (*routing_event)["args"];
-  EXPECT_EQ(args["iteration_index"], "0");
+  EXPECT_FALSE(args.contains("iteration_index"));
   EXPECT_EQ(args["request_id"], "qmoe tiled request");
   EXPECT_EQ(args["expert_ids"], nlohmann::json({0, 1, 0}));
   EXPECT_EQ(args["router_weights"], nlohmann::json({1.0f, 1.0f, 1.0f}));
