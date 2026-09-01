@@ -193,7 +193,10 @@ describe('API Tests - InferenceSession.run()', async () => {
     try {
       const buffer = new ArrayBuffer(64);
       const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-      const running = localSession.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 0, 5), [1, 5]) });
+      const running = localSession.run(
+        { input },
+        { output: new Tensor('float32', new Float32Array(buffer, 0, 5), [1, 5]) },
+      );
       await assert.rejects(
         localSession.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 4, 5), [1, 5]) }),
         /Preallocated output buffer is already in use/,

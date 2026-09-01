@@ -175,6 +175,26 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
  public:
   using OutputBufferLease = OrtInstanceData::OutputBufferLease;
 
+  // Everything the completion callback needs to know about one fetched output. Holding it in a
+  // single structure keeps a null fetch to one default-constructed element instead of placeholder
+  // entries pushed into several vectors that must stay in lockstep.
+  struct OutputBinding {
+    std::string name;
+    // The caller supplied a tensor for this output rather than asking ORT to allocate one.
+    bool reuse{false};
+    // The caller's tensor is CPU-backed, so ORT allocates and OnOK() copies into it.
+    bool copy_to_js{false};
+    // Type and shape the caller's tensor declares, checked against what the model produced.
+    PreallocatedOutputInfo declared;
+    // Indices into the keep_alive array: the caller's Tensor, the buffer written, the leased
+    // resource.
+    uint32_t js_value_index{0};
+    uint32_t js_data_index{0};
+    uint32_t lease_key_index{0};
+    size_t lease_byte_offset{0};
+    size_t lease_byte_length{0};
+  };
+
   RunAsyncWorker(InferenceSessionWrap& session, const Napi::Object& feed, const Napi::Object& fetch,
                  const Napi::Object& options, Napi::Promise::Deferred deferred)
       : Napi::AsyncWorker(session.Value().Env(), "InferenceSession.run", session.Value()),
@@ -202,17 +222,12 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     for (const auto& name : session.outputNames_) {
       if (fetch.Has(name)) {
         auto value = fetch.Get(name);
-        output_names_.push_back(name);
-        reuse_output_.push_back(!value.IsNull());
-        if (value.IsNull()) {
+        OutputBinding output;
+        output.name = name;
+        output.reuse = !value.IsNull();
+
+        if (!output.reuse) {
           output_values_.emplace_back(nullptr);
-          output_expected_.emplace_back();
-          output_buffer_offsets_.push_back(0);
-          output_buffer_lengths_.push_back(0);
-          output_js_value_indices_.push_back(0);
-          output_js_data_indices_.push_back(0);
-          output_buffer_key_indices_.push_back(0);
-          copy_output_to_js_.push_back(false);
         } else {
           NapiTensorConversion conversion;
           auto output_value = NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_,
@@ -222,18 +237,16 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           // the declared type and shape before copying it into the caller's buffer. Device outputs
           // carry the caller's memory and are bound directly, so ORT writes into it and no copy is
           // needed.
-          copy_output_to_js_.push_back(static_cast<OrtValue*>(output_value) == nullptr);
+          output.copy_to_js = static_cast<OrtValue*>(output_value) == nullptr;
           output_values_.push_back(std::move(output_value));
-          uint32_t data_index = 0;
-          uint32_t buffer_key_index = 0;
-          output_js_value_indices_.push_back(
-              KeepTensorAndDataAlive(keep_alive, value, conversion, &data_index, &buffer_key_index));
-          output_expected_.push_back(std::move(conversion.declared));
-          output_js_data_indices_.push_back(data_index);
-          output_buffer_key_indices_.push_back(buffer_key_index);
-          output_buffer_offsets_.push_back(conversion.dataByteOffset);
-          output_buffer_lengths_.push_back(conversion.dataByteLength);
+
+          output.js_value_index =
+              KeepTensorAndDataAlive(keep_alive, value, conversion, &output.js_data_index, &output.lease_key_index);
+          output.declared = std::move(conversion.declared);
+          output.lease_byte_offset = conversion.dataByteOffset;
+          output.lease_byte_length = conversion.dataByteLength;
         }
+        outputs_.push_back(std::move(output));
       }
     }
 
@@ -249,12 +262,11 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
   void AcquireOutputBufferLeases() {
     auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
-    for (size_t i = 0; i < output_names_.size(); ++i) {
-      if (reuse_output_[i]) {
-        output_buffer_leases_.push_back(
-            OrtInstanceData::AcquireOutputBufferLease(
-                keep_alive.Get(output_buffer_key_indices_[i]).As<Napi::Object>(),
-                output_buffer_offsets_[i], output_buffer_lengths_[i]));
+    for (const auto& output : outputs_) {
+      if (output.reuse) {
+        output_buffer_leases_.push_back(OrtInstanceData::AcquireOutputBufferLease(
+            keep_alive.Get(output.lease_key_index).As<Napi::Object>(), output.lease_byte_offset,
+            output.lease_byte_length));
       }
     }
   }
@@ -268,9 +280,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       }
 
       std::vector<const char*> output_names_cstr;
-      output_names_cstr.reserve(output_names_.size());
-      for (const auto& name : output_names_) {
-        output_names_cstr.push_back(name.c_str());
+      output_names_cstr.reserve(outputs_.size());
+      for (const auto& output : outputs_) {
+        output_names_cstr.push_back(output.name.c_str());
       }
 
       if (preferred_output_locations_.empty()) {
@@ -289,8 +301,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         io_binding_->BindInput(input_names_cstr[i], input_values_[i]);
       }
 
-      for (size_t i = 0; i < output_names_.size(); ++i) {
-        if (reuse_output_[i]) {
+      for (size_t i = 0; i < outputs_.size(); ++i) {
+        if (outputs_[i].reuse) {
           if (static_cast<OrtValue*>(output_values_[i]) != nullptr) {
             // Device output: ORT writes straight into the caller's buffer.
             io_binding_->BindOutput(output_names_cstr[i], output_values_[i]);
@@ -307,7 +319,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
       session_->session_->Run(run_options_, *io_binding_);
       output_values_ = io_binding_->GetOutputValues();
-      if (output_values_.size() != output_names_.size()) {
+      if (output_values_.size() != outputs_.size()) {
         SetError("Output count mismatch.");
       }
     } catch (const std::exception& e) {
@@ -326,13 +338,14 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       // would otherwise hand back a failed promise with some of the caller's buffers already
       // holding this run's results.
       for (size_t i = 0; i < output_values_.size(); ++i) {
-        if (copy_output_to_js_[i]) {
-          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
-                                            output_expected_[i]);
-        } else if (reuse_output_[i]) {
+        const auto& output = outputs_[i];
+        if (output.copy_to_js) {
+          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], keep_alive.Get(output.js_data_index),
+                                            output.declared);
+        } else if (output.reuse) {
           // A device output is handed straight back to the caller, so nothing would otherwise
           // notice that the model produced a different type or shape than the tensor declares.
-          ValidateOrtValueMatchesDeclared(env_, output_values_[i], output_expected_[i]);
+          ValidateOrtValueMatchesDeclared(env_, output_values_[i], output.declared);
         }
       }
 
@@ -340,17 +353,18 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       // to a caller-owned buffer has to happen after the last operation that can reject.
       auto result = Napi::Object::New(env_);
       for (size_t i = 0; i < output_values_.size(); ++i) {
-        if (reuse_output_[i]) {
-          result.Set(output_names_[i], keep_alive.Get(output_js_value_indices_[i]));
+        const auto& output = outputs_[i];
+        if (output.reuse) {
+          result.Set(output.name, keep_alive.Get(output.js_value_index));
         } else {
-          result.Set(output_names_[i], OrtValueToNapiValue(env_, std::move(output_values_[i])));
+          result.Set(output.name, OrtValueToNapiValue(env_, std::move(output_values_[i])));
         }
       }
 
       for (size_t i = 0; i < output_values_.size(); ++i) {
-        if (copy_output_to_js_[i]) {
-          CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
-                                       output_expected_[i]);
+        if (outputs_[i].copy_to_js) {
+          CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(outputs_[i].js_data_index),
+                                       outputs_[i].declared);
         }
       }
       Complete();
@@ -438,16 +452,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   std::vector<OrtValueOwner> gpu_value_owners_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> input_values_;
-  std::vector<std::string> output_names_;
+  std::vector<OutputBinding> outputs_;
+  // Parallel to outputs_. Kept separate because Ort::Session::Run() and Ort::IoBinding both want a
+  // contiguous array of Ort::Value, and IoBinding replaces the whole vector with its results.
   std::vector<Ort::Value> output_values_;
-  std::vector<PreallocatedOutputInfo> output_expected_;
-  std::vector<bool> reuse_output_;
-  std::vector<uint32_t> output_js_value_indices_;
-  std::vector<uint32_t> output_js_data_indices_;
-  std::vector<uint32_t> output_buffer_key_indices_;
-  std::vector<size_t> output_buffer_offsets_;
-  std::vector<size_t> output_buffer_lengths_;
-  std::vector<bool> copy_output_to_js_;
   std::vector<OutputBufferLease> output_buffer_leases_;
   std::vector<int> preferred_output_locations_;
   std::unique_ptr<Ort::IoBinding> io_binding_;
