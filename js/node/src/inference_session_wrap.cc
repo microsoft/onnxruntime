@@ -205,16 +205,21 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         reuse_output_.push_back(!value.IsNull());
         if (value.IsNull()) {
           output_values_.emplace_back(nullptr);
+          output_expected_.emplace_back();
           output_js_value_indices_.push_back(0);
           output_js_data_indices_.push_back(0);
           output_buffer_key_indices_.push_back(0);
           copy_output_to_js_.push_back(false);
         } else {
+          PreallocatedOutputInfo expected;
           auto output_value = NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_,
-                                                  NapiValueUsage::kPreallocatedOutput, &gpu_value_owners_);
-          copy_output_to_js_.push_back(output_value.GetTensorMemoryInfo().GetDeviceType() ==
-                                       OrtMemoryInfoDeviceType_CPU);
+                                                  NapiValueUsage::kPreallocatedOutput, &gpu_value_owners_, &expected);
+          // CPU outputs come back empty: ORT allocates them and OnOK() validates the result against
+          // 'expected' before copying it into the caller's buffer. Device outputs carry the caller's
+          // memory and are bound directly, so ORT writes into it and no copy is needed.
+          copy_output_to_js_.push_back(static_cast<OrtValue*>(output_value) == nullptr);
           output_values_.push_back(std::move(output_value));
+          output_expected_.push_back(std::move(expected));
           uint32_t data_index = 0;
           uint32_t buffer_key_index = 0;
           output_js_value_indices_.push_back(
@@ -276,7 +281,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
       for (size_t i = 0; i < output_names_.size(); ++i) {
         if (reuse_output_[i]) {
-          io_binding_->BindOutput(output_names_cstr[i], output_values_[i]);
+          if (static_cast<OrtValue*>(output_values_[i]) != nullptr) {
+            // Device output: ORT writes straight into the caller's buffer.
+            io_binding_->BindOutput(output_names_cstr[i], output_values_[i]);
+          } else {
+            // Preallocated CPU output: ORT allocates and OnOK() copies into the caller's buffer.
+            io_binding_->BindOutput(output_names_cstr[i], cpu_memory_info_);
+          }
         } else if (preferred_output_locations_[i] == DATA_LOCATION_GPU_BUFFER) {
           io_binding_->BindOutput(output_names_cstr[i], gpu_buffer_memory_info_);
         } else {
@@ -303,7 +314,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
       for (size_t i = 0; i < output_values_.size(); ++i) {
         if (copy_output_to_js_[i]) {
-          CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]));
+          CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
+                                       output_expected_[i]);
         }
         result.Set(output_names_[i], reuse_output_[i] ? keep_alive.Get(output_js_value_indices_[i])
                                                       : OrtValueToNapiValue(env_, std::move(output_values_[i])));
@@ -403,6 +415,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   std::vector<Ort::Value> input_values_;
   std::vector<std::string> output_names_;
   std::vector<Ort::Value> output_values_;
+  std::vector<PreallocatedOutputInfo> output_expected_;
   std::vector<bool> reuse_output_;
   std::vector<uint32_t> output_js_value_indices_;
   std::vector<uint32_t> output_js_data_indices_;

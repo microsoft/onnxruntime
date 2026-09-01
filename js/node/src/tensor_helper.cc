@@ -4,6 +4,7 @@
 #include <cmath>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 
 #include "common.h"
@@ -124,7 +125,8 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 // currently only support tensor
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
                                OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
-                               std::vector<OrtValueOwner>* value_owners) {
+                               std::vector<OrtValueOwner>* value_owners,
+                               PreallocatedOutputInfo* preallocated_info) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -226,15 +228,37 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
       size_t bufferByteLength = tensorDataTypedArray.ByteLength();
+      // Wrapping the JS buffer validates that it is large enough for 'dims'. The wrapper itself is
+      // never handed to ORT: the buffer may be detached, resized or rewritten from JS while an
+      // asynchronous run is in flight.
       auto sourceValue = Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
                                                   dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+
+      if (usage == NapiValueUsage::kPreallocatedOutput) {
+        // Hand the declared type and shape back so that the result can be validated against them
+        // before it is copied into the caller's buffer. ORT performs those checks itself for a
+        // preallocated fetch (InferenceSession::ValidateInputsOutputs and
+        // IExecutionFrame::GetOrCreateNodeOutputMLValue) but skips them entirely for an
+        // unallocated one, so they have to happen here instead.
+        if (preallocated_info != nullptr) {
+          preallocated_info->elementType = elemType;
+          preallocated_info->dims = dims;
+        }
+
+        // Return an empty OrtValue so that ORT allocates the output itself. Handing ORT a
+        // preallocated fetch is not safe: it is free to replace the fetch instead of filling it
+        // (see utils::BatchOrCopyMLValue, which assigns over the target when the producing device
+        // already satisfies it), which would leave our tensor unwritten and silently copy
+        // uninitialized memory back to the caller. The caller copies ORT's own output into the JS
+        // buffer once the run completes.
+        return Ort::Value{nullptr};
+      }
+
       Ort::AllocatorWithDefaultOptions allocator;
       auto copiedValue = Ort::Value::CreateTensor(allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
-      if (usage == NapiValueUsage::kInput) {
-        const size_t tensorByteLength = sourceValue.GetTensorSizeInBytes();
-        if (tensorByteLength > 0) {
-          memcpy(copiedValue.GetTensorMutableRawData(), sourceValue.GetTensorRawData(), tensorByteLength);
-        }
+      const size_t tensorByteLength = sourceValue.GetTensorSizeInBytes();
+      if (tensorByteLength > 0) {
+        memcpy(copiedValue.GetTensorMutableRawData(), sourceValue.GetTensorRawData(), tensorByteLength);
       }
       return copiedValue;
     } else {
@@ -258,7 +282,42 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
   }
 }
 
-void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination) {
+namespace {
+std::string DescribeElementType(ONNXTensorElementDataType type) {
+  const auto index = static_cast<size_t>(type);
+  if (index < ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT && DATA_TYPE_ID_TO_NAME_MAP[index] != nullptr) {
+    return DATA_TYPE_ID_TO_NAME_MAP[index];
+  }
+  return "element type " + std::to_string(index);
+}
+
+std::string DescribeShape(const std::vector<int64_t>& dims) {
+  std::string description = "[";
+  for (size_t i = 0; i < dims.size(); ++i) {
+    if (i > 0) {
+      description += ",";
+    }
+    description += std::to_string(dims[i]);
+  }
+  return description + "]";
+}
+}  // namespace
+
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
+                                  const PreallocatedOutputInfo& expected) {
+  // ORT allocated this output itself and so never saw the type and shape the caller declared.
+  // Reject a mismatch rather than reinterpreting the model's bytes as the declared type or
+  // leaving part of the caller's buffer holding data from a previous run.
+  auto typeAndShapeInfo = value.GetTensorTypeAndShapeInfo();
+  const auto elementType = typeAndShapeInfo.GetElementType();
+  ORT_NAPI_THROW_TYPEERROR_IF(elementType != expected.elementType, env,
+                              "Preallocated output tensor has type ", DescribeElementType(expected.elementType),
+                              ", but the model produced ", DescribeElementType(elementType), ".");
+
+  const auto shape = typeAndShapeInfo.GetShape();
+  ORT_NAPI_THROW_ERROR_IF(shape != expected.dims, env, "Preallocated output tensor has shape ",
+                          DescribeShape(expected.dims), ", but the model produced ", DescribeShape(shape), ".");
+
   ORT_NAPI_THROW_TYPEERROR_IF(!destination.IsTypedArray(), env,
                               "Preallocated output Tensor.data must remain a typed array.");
 

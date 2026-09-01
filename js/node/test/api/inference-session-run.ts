@@ -98,6 +98,34 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('rejects a preallocated CPU output whose type differs from the model output', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      // Same byte length as the float32 output, so only a type check can catch this.
+      const output = new Tensor('int32', new Int32Array(5), [1, 5]);
+
+      await assert.rejects(localSession.run({ input }, { output }), /Preallocated output tensor has type int32/);
+      assert.deepStrictEqual(Array.from(output.data as Int32Array), [0, 0, 0, 0, 0]);
+    } finally {
+      await localSession.release();
+    }
+  });
+
+  it('rejects a preallocated CPU output whose shape differs from the model output', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      // Same element count and byte length as the [1,5] output, so only a shape check can catch this.
+      const output = new Tensor('float32', new Float32Array(5), [5, 1]);
+
+      await assert.rejects(localSession.run({ input }, { output }), /Preallocated output tensor has shape \[5,1\]/);
+      assert.deepStrictEqual(Array.from(output.data as Float32Array), [0, 0, 0, 0, 0]);
+    } finally {
+      await localSession.release();
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
