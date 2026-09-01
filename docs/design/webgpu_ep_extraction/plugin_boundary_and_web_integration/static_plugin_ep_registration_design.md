@@ -576,8 +576,11 @@ compared:
 
 | Artifact | `static_lib` | `static_plugin` | Delta |
 | --- | ---: | ---: | ---: |
-| `ort-wasm-simd-threaded.asyncify.wasm` | 26,243,969 B | 26,190,991 B | **−52,978 B (−0.20%)** |
-| `ort-wasm-simd-threaded.asyncify.mjs` | 53,218 B | 53,218 B | 0 |
+| `ort-wasm-simd-threaded.asyncify.wasm` | 26,550,879 B | 26,488,911 B | **−61,968 B (−0.23%)** |
+| `ort-wasm-simd-threaded.asyncify.mjs` | 53,249 B | 53,249 B | 0 |
+
+(Both binaries rebuilt after merging `main`. An earlier pre-merge pair measured −52,978 B / −0.20%; the merge added
+kernels to both builds and did not change the relationship.)
 
 **There is no size regression** — `static_plugin` is marginally smaller. Both configurations compiled cleanly with
 every reduced-size flag, which empirically confirms the analysis above. The plugin build plausibly comes out ahead
@@ -631,35 +634,70 @@ places the plugin path could plausibly cost something:
 - **compute-bound** — 16 chained `[512, 512]` `MatMul`s. Host-side per-node cost is negligible against the GPU
   work.
 
-Three runs per model per build; the table reports the median of the three per-run P50 values.
+Three runs per model per build. **The two builds must be sampled interleaved** — one round is
+`plugin/dispatch, plugin/compute, lib/dispatch, lib/compute`, repeated — rather than all samples of one build
+followed by all samples of the other. This machine drifts: a build that has just finished, a warm browser, or a
+warm GPU shifts timings by more than the effect being measured, and sequential sampling aliases that drift onto
+the build under test. The sequential methodology used for the first pass understated a real regression by nearly
+an order of magnitude (see below). The table reports the median of the three per-run P50 values.
 
 | Metric | `static_lib` | `static_plugin` | Delta |
 | --- | ---: | ---: | ---: |
-| dispatch-bound, per-run P50 | 10.90 ms | 11.80 ms | +0.9 ms (+8%) |
-| compute-bound, per-run P50 | 7.00 ms | 7.30 ms | +0.3 ms (+4%, within noise) |
-| session init, dispatch model | 1136 ms | 1172 ms | +36 ms (+3%) |
-| session init, compute model | 1250 ms | 1290 ms | +40 ms (+3%) |
-| `suite0` net test time | 44.95 / 45.28 s | 45.71 / 44.93 s | none measurable |
+| dispatch-bound, per-run P50 | 11.20 ms | 12.00 ms | +0.8 ms (+7%) |
+| compute-bound, per-run P50 | 7.70 ms | 7.80 ms | +0.1 ms (within noise) |
 
 Reading of these numbers:
 
-- **Execution is not measurably slower in any realistic case.** The compute-bound difference is inside run-to-run
-  variance, and `suite0`'s net test time — 2152 models, two samples per build — is indistinguishable between the
-  two builds.
-- **A dispatch-bound graph pays roughly 8%.** That is the cost of routing per-node kernel work through the C API
-  adapters instead of a direct in-process virtual call. It only shows up when nodes do essentially no GPU work,
-  which is the worst case by construction rather than a representative one. Amortized over ~300 nodes it is on the
-  order of 3 µs per node.
-- **Session creation costs about 3%.** This covers plugin EP registration, `GetCapability` and kernel creation
-  through the C API. Note the absolute figure is dominated by fetching and parsing the model, so the true relative
-  cost of the plugin machinery within session creation is higher than 3% — but it is tens of milliseconds once,
-  not per inference.
+- **Execution is not measurably slower once GPU work dominates.** The compute-bound samples overlap
+  (`static_plugin` 7.80 / 7.80 / 7.40 against `static_lib` 7.90 / 7.00 / 7.70 — the plugin build's best sample
+  beats two of the three control samples), so the difference is not resolvable at this sample count.
+- **A dispatch-bound graph pays roughly 7%.** That is the cost of routing per-node kernel work through the C API
+  adapters instead of a direct in-process virtual call. Unlike the compute-bound case this one does separate
+  cleanly — the plugin build's slowest control sample is still faster than its own fastest sample. It only shows
+  up when nodes do essentially no GPU work, which is the worst case by construction rather than a representative
+  one. Amortized over ~300 nodes it is on the order of 3 µs per node.
+- **Session creation costs about 3%** (measured pre-merge: 1136 → 1172 ms and 1250 → 1290 ms for the two models).
+  This covers plugin EP registration, `GetCapability` and kernel creation through the C API. The absolute figure
+  is dominated by fetching and parsing the model, so the true relative cost of the plugin machinery within session
+  creation is higher than 3% — but it is tens of milliseconds once, not per inference.
 
-A caution on methodology: the *total* wall time the test runner prints for `suite0` is not a usable metric. It
-varied between 3 min 15 s and 4 min 04 s for the **same** `static_lib` binary across two runs, and `static_plugin`
-produced both 4 min 13 s and 3 min 16 s. Only the second figure it prints — net test time, excluding the
-per-model `before all` session-creation hooks — is stable enough to compare, and by that measure the two builds
-are equal. An early single-sample comparison of the total figure suggested a 29% regression that does not exist.
+Two cautions on methodology:
+
+- The *total* wall time the test runner prints for `suite0` is not a usable metric. It varied between 3 min 15 s
+  and 4 min 04 s for the **same** `static_lib` binary across two runs. Only the second figure it prints — net test
+  time, excluding the per-model `before all` session-creation hooks — is stable enough to compare, and by that
+  measure the two builds are equal. An early single-sample comparison of the total figure suggested a 29%
+  regression that does not exist.
+- Timings taken with `--webgpu.profiling.mode=default` are inflated by the timestamp queries and must never be
+  compared against timings taken without it.
+
+#### The shared allocator must defer zero-initialize submission during a run
+
+Interleaved sampling exposed a genuine, code-level regression in the plugin path that sequential sampling had
+hidden: the compute-bound model ran at 9.90 ms against the control's 7.30 ms, **+36%**, with no overlap between
+the two sample sets. That the dispatch-bound model — 300 nodes against the compute model's 16 — did *not* show a
+proportional cost ruled out a fixed per-node or per-run overhead and pointed at something scaling with bytes
+allocated rather than with node count.
+
+The cause was buffer zero-initialization. `BufferManager::Create` clears a buffer recycled from the cache, and
+`GpuBufferAllocator` takes a `should_submit_zero_initialize` predicate deciding whether that clear is submitted
+before `Create` returns. During `Session::Run` it must **not** be: the clear is encoded into the run's own command
+encoder and rides along with the run's submission, preserving dispatch batching. Outside a run there is no
+upcoming submission to piggyback on, so the clear must be submitted immediately. `WebGpuExecutionProvider` and the
+plugin factory's per-EP allocator both passed `!IsRunActive()`, but the factory's **shared** allocator — the one
+backing intermediate tensors — hardcoded `true`, forcing a queue submit for every intermediate buffer mid-run.
+The compute model allocates sixteen 1 MB intermediates, so it paid sixteen forced submits per inference.
+
+The shared allocator is created by `CreateAllocatorImpl` before any EP instance exists, so it had no EP to ask —
+which is why the predicate was stubbed out rather than wired up. The fix moves the run-active flag onto
+`WebGpuContext`, which is both reachable from the allocator and the more correct owner: it holds
+`current_command_encoder_` / `current_compute_pass_encoder_`, the very state that batching depends on.
+`WebGpuExecutionProvider` sets it in `OnRunStart` / `OnRunEnd` and its `IsRunActive()` now delegates to the
+context, so all three allocator sites read one source of truth. With the fix the compute-bound gap disappears into
+noise, as the table above shows.
+
+This bug predates the ORT Web migration and affects any consumer of the WebGPU plugin EP, not just the web build;
+it is a candidate to land separately from the static-plugin work.
 
 
 
