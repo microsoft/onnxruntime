@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -286,7 +287,8 @@ struct IsAnyOf<T, H, Tail...> {
 template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t, BFloat16,
+                                              double, uint32_t, uint64_t, BFloat16, std::complex<float>,
+                                              std::complex<double>,
                                               Int4x2, UInt4x2, Int2x4, UInt2x4
 #if !defined(DISABLE_FLOAT8_TYPES)
                                               ,
