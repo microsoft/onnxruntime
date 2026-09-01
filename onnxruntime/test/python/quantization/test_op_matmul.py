@@ -5,10 +5,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import os
+import tempfile
 import unittest
 
 import numpy as np
 import onnx
+import onnx.numpy_helper
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
@@ -475,6 +478,84 @@ class TestOpMatMul(unittest.TestCase):
     @unittest.skip(reason="Too many bins for data range.")
     def test_quantize_matmul_e4m3fn_p3_f16(self):
         self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT16, 19, 9)
+
+
+class TestQOperator4BitWeights(unittest.TestCase):
+    """Static quantization of weights to INT4/UINT4 in QOperator format.
+
+    The existing 4-bit coverage only exercises QDQ format, which packs weights via
+    quant_utils.quantize_onnx_initializer. QOperator format goes through
+    BaseQuantizer.quantize_initializer_impl / quantize_weight_per_channel_impl instead.
+    """
+
+    def setUp(self):
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp_dir = self._tmp_dir.name
+
+    def tearDown(self):
+        self._tmp_dir.cleanup()
+
+    def construct_matmul_model(self, model_path, weight):
+        #  (input) --MatMul(weight)--> (output)
+        nodes = [helper.make_node("MatMul", ["input", "weight"], ["output"], name="matmul_node")]
+        graph = helper.make_graph(
+            nodes,
+            "matmul_4bit_weight",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, weight.shape[0]])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, weight.shape[1]])],
+            [onnx.numpy_helper.from_array(weight, "weight")],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, model_path)
+
+    def quantize_and_check_weight(self, weight_type, per_channel):
+        expected_proto_type = TensorProto.INT4 if weight_type == QuantType.QInt4 else TensorProto.UINT4
+        weight = np.random.default_rng(0).random((4, 8)).astype(np.float32)
+
+        model_fp_path = os.path.join(self.tmp_dir, "matmul_fp.onnx")
+        model_q_path = os.path.join(self.tmp_dir, "matmul_quant.onnx")
+        self.construct_matmul_model(model_fp_path, weight)
+
+        data_reader = TestDataFeeds([{"input": np.random.rand(1, 4).astype(np.float32)} for _ in range(3)])
+        quantize_static(
+            model_fp_path,
+            model_q_path,
+            data_reader,
+            quant_format=QuantFormat.QOperator,
+            per_channel=per_channel,
+            activation_type=QuantType.QUInt8,
+            weight_type=weight_type,
+        )
+
+        quantized_model = onnx.load(model_q_path)
+        onnx.checker.check_model(quantized_model)
+        initializers = {init.name: init for init in quantized_model.graph.initializer}
+
+        q_weight_init = initializers["weight_quantized"]
+        self.assertEqual(q_weight_init.data_type, expected_proto_type)
+        self.assertEqual(list(q_weight_init.dims), list(weight.shape))
+
+        q_weight = onnx.numpy_helper.to_array(q_weight_init).astype(np.float32)
+        scale = onnx.numpy_helper.to_array(initializers["weight_scale"]).astype(np.float32)
+        zero_point = onnx.numpy_helper.to_array(initializers["weight_zero_point"]).astype(np.float32)
+        self.assertEqual(scale.shape, (weight.shape[1],) if per_channel else ())
+
+        # Dequantized values must be within half a quantization step of the originals.
+        dequantized = (q_weight - zero_point) * scale
+        np.testing.assert_allclose(dequantized, weight, atol=scale.max() / 2 + 1e-6)
+
+    def test_quantize_matmul_weight_s4(self):
+        self.quantize_and_check_weight(QuantType.QInt4, per_channel=False)
+
+    def test_quantize_matmul_weight_u4(self):
+        self.quantize_and_check_weight(QuantType.QUInt4, per_channel=False)
+
+    def test_quantize_matmul_weight_s4_per_channel(self):
+        self.quantize_and_check_weight(QuantType.QInt4, per_channel=True)
+
+    def test_quantize_matmul_weight_u4_per_channel(self):
+        self.quantize_and_check_weight(QuantType.QUInt4, per_channel=True)
 
 
 if __name__ == "__main__":
