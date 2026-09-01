@@ -11,10 +11,18 @@
 
 using OrtValueOwner = std::shared_ptr<OrtValue>;
 
+enum class NapiValueUsage {
+  kInput,
+  kPreallocatedOutput,
+};
+
 // convert a Javascript OnnxValue object to an OrtValue object
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
-                               OrtMemoryInfo* webgpu_memory_info, bool copy_cpu_data = false,
+                               OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
                                std::vector<OrtValueOwner>* value_owners = nullptr);
+
+// copy an OrtValue tensor into an existing Javascript TypedArray
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination);
 
 // convert an OrtValue object to a Javascript OnnxValue object
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value);

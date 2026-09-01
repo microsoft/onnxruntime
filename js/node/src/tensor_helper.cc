@@ -123,7 +123,7 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 
 // currently only support tensor
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
-                               OrtMemoryInfo* webgpu_memory_info, bool copy_cpu_data,
+                               OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
                                std::vector<OrtValueOwner>* value_owners) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
@@ -164,7 +164,8 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
   auto tensorTypeString = tensorTypeValue.As<Napi::String>().Utf8Value();
 
   if (tensorTypeString == "string") {
-    ORT_NAPI_THROW_TYPEERROR_IF(!copy_cpu_data, env, "Preallocated string output tensors are not supported.");
+    ORT_NAPI_THROW_TYPEERROR_IF(usage == NapiValueUsage::kPreallocatedOutput, env,
+                                "Preallocated string output tensors are not supported.");
 
     auto tensorDataValue = tensorObject.Get("data");
 
@@ -227,16 +228,15 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       size_t bufferByteLength = tensorDataTypedArray.ByteLength();
       auto sourceValue = Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
                                                   dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
-      if (copy_cpu_data) {
-        Ort::AllocatorWithDefaultOptions allocator;
-        auto copiedValue = Ort::Value::CreateTensor(allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+      Ort::AllocatorWithDefaultOptions allocator;
+      auto copiedValue = Ort::Value::CreateTensor(allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+      if (usage == NapiValueUsage::kInput) {
         const size_t tensorByteLength = sourceValue.GetTensorSizeInBytes();
         if (tensorByteLength > 0) {
           memcpy(copiedValue.GetTensorMutableRawData(), sourceValue.GetTensorRawData(), tensorByteLength);
         }
-        return copiedValue;
       }
-      return sourceValue;
+      return copiedValue;
     } else {
       ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_GPU_BUFFER, env, "Tensor.location must be 'gpu-buffer' for IO binding.");
 
@@ -256,6 +256,29 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       return Ort::Value::CreateTensor(webgpu_memory_info, gpuBuffer, dataByteLength, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
     }
   }
+}
+
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination) {
+  ORT_NAPI_THROW_TYPEERROR_IF(!destination.IsTypedArray(), env,
+                              "Preallocated output Tensor.data must remain a typed array.");
+
+  auto typedArray = destination.As<Napi::TypedArray>();
+  const size_t sourceByteLength = value.GetTensorSizeInBytes();
+  ORT_NAPI_THROW_ERROR_IF(typedArray.ByteLength() < sourceByteLength, env,
+                          "Preallocated output tensor buffer was detached or is too small.");
+  if (sourceByteLength == 0) {
+    return;
+  }
+
+  auto arrayBuffer = typedArray.ArrayBuffer();
+  const size_t byteOffset = typedArray.ByteOffset();
+  const size_t arrayBufferByteLength = arrayBuffer.ByteLength();
+  ORT_NAPI_THROW_ERROR_IF(byteOffset > arrayBufferByteLength ||
+                              sourceByteLength > arrayBufferByteLength - byteOffset,
+                          env, "Preallocated output tensor buffer was detached or is too small.");
+  auto* data = static_cast<char*>(arrayBuffer.Data());
+  ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "Preallocated output tensor buffer was detached.");
+  memcpy(data + byteOffset, value.GetTensorRawData(), sourceByteLength);
 }
 
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {

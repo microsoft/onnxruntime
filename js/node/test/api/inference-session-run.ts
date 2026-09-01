@@ -91,6 +91,29 @@ describe('API Tests - InferenceSession.run()', async () => {
     await localSession.release();
   });
 
+  it('reuses a preallocated CPU output', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const output = new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]);
+
+    const result = await localSession.run({ input }, { output });
+    assert.strictEqual(result.output, output);
+    assertTensorEqual(output, input);
+    await localSession.release();
+  });
+
+  it('rejects a detached preallocated CPU output buffer', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const outputData = new Float32Array(5);
+    const output = new Tensor('float32', outputData, [1, 5]);
+
+    const run = localSession.run({ input }, { output });
+    structuredClone(outputData.buffer, { transfer: [outputData.buffer] });
+    await assert.rejects(run, /Preallocated output tensor buffer was detached/);
+    await localSession.release();
+  });
+
   it('reuses a preallocated GPU output', async function () {
     if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
       // eslint-disable-next-line no-invalid-this
