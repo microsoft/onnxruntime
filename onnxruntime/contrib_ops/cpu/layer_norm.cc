@@ -9,8 +9,8 @@
 namespace onnxruntime {
 namespace contrib {
 // original LayerNormalization contrib op (incorrectly using onnx domain though).
-// U (mean/inv_std_var) is constrained to float by the contrib schema, so narrow-float types
-// register U=float to match.  The actual compute path already uses U=float for all types.
+// The narrow-float registrations use U=float. The double registration retains U=double;
+// both choices are schema-valid.
 #define REGISTER_CONTRIB_KERNELS(T, U)                                                                      \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 1, 16, T, kCpuExecutionProvider, \
                                           KernelDefBuilder()                                                \

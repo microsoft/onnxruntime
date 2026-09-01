@@ -111,8 +111,8 @@ inline Eigen::Index ToEigenIndex(int64_t v) {
 }
 
 // Write a statistic value (mean or 1/denom) into the output buffer.
-// U is the stat output type — always float for narrow-float T (the ONNX spec
-// constrains Mean/InvStdDev to float, and the contrib schema does the same).
+// U is the stat output type — always float for narrow-float T. The ONNX spec
+// requires it, and the contrib narrow-float registrations use it.
 template <typename U>
 ORT_FORCEINLINE void WriteStat(U* dst, ptrdiff_t index, double v) {
   dst[index] = gsl::narrow_cast<U>(v);
