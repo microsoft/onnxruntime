@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <cstddef>
+
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
@@ -14,6 +17,26 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+struct FlashAttentionSplitPlan {
+  size_t num_splits = 0;
+  size_t softmax_lse_accum_bytes = 0;
+  size_t out_accum_bytes = 0;
+};
+
+FlashAttentionSplitPlan GetFlashAttentionSplitPlan(
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int cache_capacity,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    int multi_processor_count,
+    int local_window_size,
+    bool use_fast_decode,
+    bool reserve_for_capture,
+    bool is_capturing);
 
 template <typename T, typename U>
 Status QkvToContext(

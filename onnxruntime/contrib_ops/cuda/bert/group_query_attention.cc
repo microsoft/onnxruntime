@@ -48,6 +48,68 @@ KVQuantizationType StringToKVQuantizationType(std::string s) {
 }
 }  // namespace
 
+#if USE_FLASH_ATTENTION
+FlashAttentionSplitPlan GetFlashAttentionSplitPlan(
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int cache_capacity,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    int multi_processor_count,
+    int local_window_size,
+    bool use_fast_decode,
+    bool reserve_for_capture,
+    bool is_capturing) {
+  auto get_plan = [&](size_t kv_length, size_t heads_for_split) {
+    return onnxruntime::flash::get_num_splits_and_buffer_sizes(
+        static_cast<size_t>(batch_size), static_cast<size_t>(sequence_length), kv_length,
+        heads_for_split, static_cast<size_t>(head_size), static_cast<size_t>(multi_processor_count));
+  };
+
+  auto effective_kv_length = [&](int kv_length) {
+    size_t length = static_cast<size_t>(std::max(kv_length, 0));
+    if (use_fast_decode && local_window_size > 0) {
+      length = std::min(length, static_cast<size_t>(local_window_size));
+    }
+    return length;
+  };
+
+  const size_t heads_for_split = static_cast<size_t>(use_fast_decode ? kv_num_heads : num_heads);
+  const auto live_plan = get_plan(effective_kv_length(total_sequence_length), heads_for_split);
+  const size_t live_num_splits = std::get<0>(live_plan);
+  if (!use_fast_decode) {
+    return {live_num_splits, std::get<1>(live_plan), std::get<2>(live_plan)};
+  }
+
+  // Warm-up must reserve the replay-invariant workspace before capture starts, while eager launches
+  // continue using the live-length split count to avoid empty-split overhead at short context.
+  const bool needs_capture_workspace = reserve_for_capture || is_capturing;
+  size_t capture_num_splits = live_num_splits;
+  if (needs_capture_workspace) {
+    const auto capture_plan = get_plan(effective_kv_length(cache_capacity), heads_for_split);
+    capture_num_splits = std::get<0>(capture_plan);
+  }
+
+  const size_t num_splits = is_capturing ? capture_num_splits : live_num_splits;
+  const size_t workspace_num_splits =
+      needs_capture_workspace ? std::max(live_num_splits, capture_num_splits) : live_num_splits;
+  if (workspace_num_splits <= 1) {
+    return {num_splits, 0, 0};
+  }
+
+  const size_t lse_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
+      workspace_num_splits, static_cast<size_t>(batch_size), static_cast<size_t>(num_heads),
+      static_cast<size_t>(sequence_length));
+  const size_t rounded_head_size = (static_cast<size_t>(head_size) + 31) / 32 * 32;
+  const size_t out_bytes = onnxruntime::flash::get_out_accum_size(
+      workspace_num_splits, static_cast<size_t>(batch_size), static_cast<size_t>(num_heads),
+      static_cast<size_t>(sequence_length), rounded_head_size);
+  return {num_splits, lse_bytes, out_bytes};
+}
+#endif
+
 #define REGISTER_KERNEL_TYPED(T, U)                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
       GroupQueryAttention,                                                            \
@@ -94,6 +156,7 @@ constexpr int kHeadSinkInputIndex = 11;
 template <typename T, typename U>
 GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
+  enable_cuda_graph_ = info.GetExecutionProvider()->IsGraphCaptureEnabled();
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
@@ -705,24 +768,25 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Allocate Flash specific buffers (Softmax LSE, Accum)
     size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
 
-    int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
-    size_t sequence_length_for_split = static_cast<size_t>(parameters.total_sequence_length);
-    if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
-      sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
-    }
-
-    auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, sequence_length_for_split, num_heads_for_split,
-        parameters.head_size, device_prop.multiProcessorCount);
-
-    parameters.num_splits = static_cast<int>(num_splits);
-
-    if (data.use_flash_attention_fast_decode && num_splits > 1) {
-      // The heuristic used kv_num_heads to maximize occupancy for the GQA-aware kernel.
-      // However, the LSE and Accum buffers must store results for ALL num_heads.
-      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
-      auto round_multiple = [](size_t x, size_t m) { return (x + m - 1) / m * m; };
-      out_accum_bytes = onnxruntime::flash::get_out_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, round_multiple(parameters.head_size, 32));
+    const auto split_plan = GetFlashAttentionSplitPlan(
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length,
+        parameters.seqlen_present_kv_cache, parameters.num_heads, parameters.kv_num_heads,
+        parameters.head_size, device_prop.multiProcessorCount, parameters.local_window_size,
+        data.use_flash_attention_fast_decode,
+        enable_cuda_graph_,
+        onnxruntime::llm::common::isCapturing(Stream(context)));
+    parameters.num_splits = static_cast<int>(split_plan.num_splits);
+    size_t softmax_lse_accum_bytes = split_plan.softmax_lse_accum_bytes;
+    size_t out_accum_bytes = split_plan.out_accum_bytes;
+    size_t active_softmax_lse_accum_bytes = 0;
+    size_t active_out_accum_bytes = 0;
+    if (parameters.num_splits > 1) {
+      active_softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
+          split_plan.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
+      const size_t rounded_head_size = (static_cast<size_t>(parameters.head_size) + 31) / 32 * 32;
+      active_out_accum_bytes = onnxruntime::flash::get_out_accum_size(
+          split_plan.num_splits, parameters.batch_size, parameters.num_heads,
+          parameters.sequence_length, rounded_head_size);
     }
 
     softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
@@ -730,13 +794,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 
     auto cuda_stream = Stream(context);
-    if (softmax_lse_accum_bytes > 0) {
+    if (active_softmax_lse_accum_bytes > 0) {
       // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
       // However, the standard Flash kernel often doesn't zero it globally.
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, softmax_lse_accum_bytes, cuda_stream));
+      CUDA_RETURN_IF_ERROR(
+          cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, active_softmax_lse_accum_bytes, cuda_stream));
     }
-    if (out_accum_bytes > 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, out_accum_bytes, cuda_stream));
+    if (active_out_accum_bytes > 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, active_out_accum_bytes, cuda_stream));
     }
 
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
@@ -896,6 +961,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
+    if (data.use_flash_attention) {
+      debug_info.num_splits = std::max(1, parameters.num_splits);
+    }
 
     debug_info.Print("GroupQueryAttention",
                      this->Node().Name(),
