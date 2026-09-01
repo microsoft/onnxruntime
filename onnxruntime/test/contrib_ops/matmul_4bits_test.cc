@@ -90,9 +90,9 @@ struct TestOptions {
 
   bool disable_cpu_ep_fallback{false};
 
-  // When set, runs the session with session.prepack.enable_parallel = "1", i.e. with
+  // When set, explicitly runs the session with session.prepack.enable_parallel = "1", i.e. with
   // SessionState::PrepackConstantInitializedTensors fanning kernel->PrePack() calls out across the
-  // intra-op thread pool. Numeric output must be identical to the sequential (default) path.
+  // intra-op thread pool. Numeric output must be identical to the sequential path.
   bool enable_parallel_prepack{false};
 
   bool has_zero_point{false};
@@ -859,9 +859,9 @@ TEST(MatMulNBits, ParallelPrepack) {
     SessionOptions session_options;
     session_options.intra_op_param.thread_pool_size = 4;
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
-    if (parallel) {
+    if (!parallel) {
       ASSERT_STATUS_OK(
-          session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+          session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "0"));
     }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));

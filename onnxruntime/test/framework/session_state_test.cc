@@ -1076,7 +1076,6 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsE
   GTEST_SKIP() << "Exceptions are disabled.";
 #else
   SessionOptions sess_options;
-  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
 
   Model model("parallel_prepack_exception", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,

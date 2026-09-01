@@ -173,9 +173,10 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 
 // Enable running each node's kernel->PrePack() call (constant-initializer weight pre-packing, done
 // once during session Initialize()) across the intra-op thread pool instead of a single thread.
-// "1": enable; "0": disable. The default is "0". PrePack() is where the real, potentially large,
+// "1": enable; "0": disable. The default is "1", and it only takes effect when the intra-op thread
+// pool has a degree of parallelism greater than one. PrePack() is where the real, potentially large,
 // CPU work (and page-ins for mmap'd external-data tensors) happens for ops like MatMulNBits, so this
-// can noticeably reduce load time for models dominated by such ops. Only takes effect when
+// can noticeably reduce load time for models dominated by such ops. It also only takes effect when
 // cross-session pre-packed-weight caching (OrtApi::AddInitializer /
 // SessionOptions.AddInitializer-based sharing) is NOT in use for this session -- that path is
 // already serialized across sessions and is left untouched. Bookkeeping shared across nodes

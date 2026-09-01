@@ -816,9 +816,10 @@ Status SessionState::PrepackConstantInitializedTensors(
   };
 
   std::vector<const Node*> parallel_prepack_nodes;
+  auto* intra_op_thread_pool = GetThreadPool();
   if (!should_cache_prepacked_weights_for_shared_initializers &&
-      GetThreadPool() != nullptr &&
-      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1") {
+      concurrency::ThreadPool::DegreeOfParallelism(intra_op_thread_pool) > 1 &&
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "1") == "1") {
     parallel_prepack_nodes.reserve(GetGraphViewer().NumberOfNodes());
     for (auto& node : GetGraphViewer().Nodes()) {
       if (is_parallel_prepack_candidate(node)) {
@@ -887,7 +888,7 @@ Status SessionState::PrepackConstantInitializedTensors(
   std::vector<Status> statuses(parallel_prepack_nodes.size());
   std::atomic<bool> cancellation_requested{false};
   concurrency::ThreadPool::TrySimpleParallelFor(
-      GetThreadPool(), static_cast<std::ptrdiff_t>(parallel_prepack_nodes.size()),
+      intra_op_thread_pool, static_cast<std::ptrdiff_t>(parallel_prepack_nodes.size()),
       [&](std::ptrdiff_t i) {
         if (sess_options_.IsLoadCancellationFlagSet()) {
           cancellation_requested = true;
