@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param channels_last
 #param has_bias
 #param has_conv_state
 #param output_present_state
@@ -29,6 +30,22 @@ $MAIN {
   let batch_idx = bc_idx / channels;
   let channel_idx = bc_idx % channels;
 
+  // Both layouts are dense, so a strided (batch, position, channel) view covers them: the base is
+  // the (batch, channel) origin and successive positions are pos_stride elements apart.
+#if channels_last
+  // (batch_size, sequence_length, d_1, ..., d_n), channels = d_1 * ... * d_n
+  let input_base = batch_idx * channels * input_length + channel_idx;
+  let input_pos_stride = channels;
+  let state_base = batch_idx * channels * state_length + channel_idx;
+  let state_pos_stride = channels;
+#else
+  // (batch_size, channels, sequence_length)
+  let input_base = (batch_idx * channels + channel_idx) * input_length;
+  let input_pos_stride = 1u;
+  let state_base = (batch_idx * channels + channel_idx) * state_length;
+  let state_pos_stride = 1u;
+#endif
+
   // Perform depthwise causal convolution for this (batch, channel, pos).
   // The convolution window looks back state_length positions.
   // With conv_state providing the history before position 0, the
@@ -53,21 +70,18 @@ $MAIN {
 
 #if has_conv_state
     if (virtual_pos < state_length) {
-      // Read from conv_state: (B, D, state_length)
-      let state_idx = (batch_idx * channels + channel_idx) * state_length + virtual_pos;
-      val = conv_state[state_idx];
+      // Read from conv_state
+      val = conv_state[state_base + virtual_pos * state_pos_stride];
     } else {
-      // Read from input: (B, D, L)
+      // Read from input
       let input_pos = virtual_pos - state_length;
-      let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
-      val = input[input_idx];
+      val = input[input_base + input_pos * input_pos_stride];
     }
 #else
     // No conv_state: pad with zeros for positions before the input
     if (virtual_pos >= state_length) {
       let input_pos = virtual_pos - state_length;
-      let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
-      val = input[input_idx];
+      val = input[input_base + input_pos * input_pos_stride];
     }
 #endif
 
@@ -83,9 +97,8 @@ $MAIN {
   acc = silu(acc);
 #endif
 
-  // Write output: (B, D, L)
-  let out_idx = (batch_idx * channels + channel_idx) * input_length + pos;
-  output[out_idx] = acc;
+  // Write output
+  output[input_base + pos * input_pos_stride] = acc;
 
 #if output_present_state
   // Write present_state: the last state_length elements from the
@@ -100,23 +113,19 @@ $MAIN {
 
 #if has_conv_state
       if (vp < state_length) {
-        let si = (batch_idx * channels + channel_idx) * state_length + vp;
-        state_val = conv_state[si];
+        state_val = conv_state[state_base + vp * state_pos_stride];
       } else {
         let ip = vp - state_length;
-        let ii = (batch_idx * channels + channel_idx) * input_length + ip;
-        state_val = input[ii];
+        state_val = input[input_base + ip * input_pos_stride];
       }
 #else
       if (vp >= state_length) {
         let ip = vp - state_length;
-        let ii = (batch_idx * channels + channel_idx) * input_length + ip;
-        state_val = input[ii];
+        state_val = input[input_base + ip * input_pos_stride];
       }
 #endif
 
-      let ps_idx = (batch_idx * channels + channel_idx) * state_length + s;
-      present_state[ps_idx] = state_val;
+      present_state[state_base + s * state_pos_stride] = state_val;
     }
   }
 #endif
