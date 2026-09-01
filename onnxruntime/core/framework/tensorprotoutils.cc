@@ -676,7 +676,14 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            ? std::filesystem::path(location)
                            : (tensor_proto_dir / location);
 
-  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+      tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    const TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+    ORT_RETURN_IF(tensor_shape.Size() < 0, "External initializer has negative dimensions");
+    tensor_byte_size = Float6E2M3::CalcNumFloat6Bytes(gsl::narrow_cast<size_t>(tensor_shape.Size()));
+  } else {
+    ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  }
   const size_t external_data_length = external_data_info->GetLength();
   ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
                     "TensorProto: ", tensor_proto.name(),
@@ -869,6 +876,30 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 #if !defined(DISABLE_FLOAT4_TYPES)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 #endif
+
+template <typename FLOAT6_TYPE>
+Status UnpackFloat6TensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                          const std::filesystem::path& tensor_proto_dir,
+                                          size_t expected_num_elements, FLOAT6_TYPE* p_data) {
+  ORT_RETURN_IF(p_data == nullptr, "nullptr == p_data");
+  std::vector<uint8_t> packed_data;
+  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, packed_data));
+  return UnpackFloat6Tensor(tensor, packed_data.data(), packed_data.size(), p_data, expected_num_elements);
+}
+
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir,
+                                    size_t expected_num_elements, Float6E2M3* p_data) {
+  return UnpackFloat6TensorWithExternalData(tensor, tensor_proto_dir, expected_num_elements, p_data);
+}
+
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir,
+                                    size_t expected_num_elements, Float6E3M2* p_data) {
+  return UnpackFloat6TensorWithExternalData(tensor, tensor_proto_dir, expected_num_elements, p_data);
+}
 
 #define INSTANTIATE_UNPACK_EXTERNAL_TENSOR(type)                                                                 \
   template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const std::filesystem::path&, \
