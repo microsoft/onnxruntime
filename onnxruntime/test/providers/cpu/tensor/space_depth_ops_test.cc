@@ -60,6 +60,102 @@ TEST(TensorOpTest, RejectsBlocksizeWhoseSquareExceedsInt64) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("multiple of (block_size * block_size)"));
 }
 
+TEST(TensorOpTest, SpaceToDepthOpset28Modes) {
+  constexpr int64_t blocksize = 2;
+  const std::vector<float> input = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f,
+                                    8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f};
+
+  for (const auto& [mode, expected] : std::vector<std::pair<std::string, std::vector<float>>>{
+           {"DCR", {0.f, 2.f, 8.f, 10.f, 1.f, 3.f, 9.f, 11.f, 4.f, 6.f, 12.f, 14.f, 5.f, 7.f, 13.f, 15.f}},
+           {"CRD", {0.f, 2.f, 1.f, 3.f, 4.f, 6.f, 5.f, 7.f, 8.f, 10.f, 9.f, 11.f, 12.f, 14.f, 13.f, 15.f}}}) {
+    OpTester test("SpaceToDepth", 28);
+    test.AddAttribute("blocksize", blocksize);
+    test.AddAttribute("mode", mode.c_str());
+    test.AddInput<float>("input", {1, 2, 2, 4}, input);
+    test.AddOutput<float>("output", {1, 8, 1, 2}, expected);
+    test.Run();
+  }
+}
+
+TEST(TensorOpTest, SpaceToDepthOpset28BlocksizeThree) {
+  OpTester test("SpaceToDepth", 28);
+  test.AddAttribute("blocksize", int64_t{3});
+  test.AddAttribute("mode", "CRD");
+  test.AddInput<float>("input", {1, 1, 3, 6},
+                       {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+                        9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f});
+  test.AddOutput<float>("output", {1, 9, 1, 2},
+                        {0.f, 3.f, 6.f, 9.f, 12.f, 15.f, 1.f, 4.f, 7.f,
+                         10.f, 13.f, 16.f, 2.f, 5.f, 8.f, 11.f, 14.f, 17.f});
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceOpset28Modes) {
+  constexpr int64_t blocksize = 2;
+  const std::vector<float> expected = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f,
+                                       8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f};
+
+  for (const auto& [mode, input] : std::vector<std::pair<std::string, std::vector<float>>>{
+           {"DCR", {0.f, 2.f, 8.f, 10.f, 1.f, 3.f, 9.f, 11.f, 4.f, 6.f, 12.f, 14.f, 5.f, 7.f, 13.f, 15.f}},
+           {"CRD", {0.f, 2.f, 1.f, 3.f, 4.f, 6.f, 5.f, 7.f, 8.f, 10.f, 9.f, 11.f, 12.f, 14.f, 13.f, 15.f}}}) {
+    OpTester test("DepthToSpace", 28);
+    test.AddAttribute("blocksize", blocksize);
+    test.AddAttribute("mode", mode.c_str());
+    test.AddInput<float>("input", {1, 8, 1, 2}, input);
+    test.AddOutput<float>("output", {1, 2, 2, 4}, expected);
+    test.Run();
+  }
+}
+
+TEST(TensorOpTest, DepthToSpaceOpset28BlocksizeThree) {
+  OpTester test("DepthToSpace", 28);
+  test.AddAttribute("blocksize", int64_t{3});
+  test.AddAttribute("mode", "CRD");
+  test.AddInput<float>("input", {1, 9, 1, 2},
+                       {0.f, 3.f, 6.f, 9.f, 12.f, 15.f, 1.f, 4.f, 7.f,
+                        10.f, 13.f, 16.f, 2.f, 5.f, 8.f, 11.f, 14.f, 17.f});
+  test.AddOutput<float>("output", {1, 1, 3, 6},
+                        {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+                         9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f});
+  test.Run();
+}
+
+TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
+  {
+    OpTester test("SpaceToDepth", 28);
+    test.AddAttribute("blocksize", int64_t{2});
+    test.AddAttribute("mode", "invalid");
+    test.AddInput<float>("input", {1, 1, 2, 2}, {0.f, 1.f, 2.f, 3.f});
+    test.AddOutput<float>("output", {1, 4, 1, 1}, {0.f, 1.f, 2.f, 3.f});
+    test.Run(OpTester::ExpectResult::kExpectFailure, "only 'DCR' and 'CRD' modes are supported");
+  }
+
+  {
+    OpTester test("DepthToSpace", 28);
+    test.AddAttribute("blocksize", int64_t{2});
+    test.AddAttribute("mode", "invalid");
+    test.AddInput<float>("input", {1, 4, 1, 1}, {0.f, 1.f, 2.f, 3.f});
+    test.AddOutput<float>("output", {1, 1, 2, 2}, {0.f, 1.f, 2.f, 3.f});
+    test.Run(OpTester::ExpectResult::kExpectFailure, "only 'DCR' and 'CRD' modes are supported");
+  }
+
+  {
+    OpTester test("SpaceToDepth", 28);
+    test.AddAttribute("blocksize", int64_t{2});
+    test.AddInput<float>("input", {1, 1, 3, 4}, std::vector<float>(12));
+    test.AddOutput<float>("output", {1, 4, 1, 2}, std::vector<float>(8));
+    test.Run(OpTester::ExpectResult::kExpectFailure, "input height to be a multiple");
+  }
+
+  {
+    OpTester test("DepthToSpace", 28);
+    test.AddAttribute("blocksize", int64_t{2});
+    test.AddInput<float>("input", {1, 3, 1, 1}, std::vector<float>(3));
+    test.AddOutput<float>("output", {1, 1, 2, 2}, std::vector<float>(4));
+    test.Run(OpTester::ExpectResult::kExpectFailure, "input depth to be a multiple");
+  }
+}
+
 TEST(TensorOpTest, SpaceToDepthTest_1) {
   OpTester test("SpaceToDepth");
   constexpr int64_t blocksize = 2;
