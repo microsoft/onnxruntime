@@ -290,6 +290,11 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
         value_owners->push_back(*valueOwner);
       }
 
+      if (conversion != nullptr) {
+        conversion->declared.elementType = elemType;
+        conversion->declared.dims = dims;
+      }
+
       size_t dataByteLength = DATA_TYPE_ELEMENT_SIZE_MAP[elemType] * elementSize;
       return Ort::Value::CreateTensor(webgpu_memory_info, gpuBuffer, dataByteLength, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
     }
@@ -317,8 +322,8 @@ std::string DescribeShape(const std::vector<int64_t>& dims) {
 }
 }  // namespace
 
-void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
-                                       const PreallocatedOutputInfo& expected) {
+void ValidateOrtValueMatchesDeclared(Napi::Env env, const Ort::Value& value,
+                                     const PreallocatedOutputInfo& expected) {
   // ORT allocated this output itself and so never saw the type and shape the caller declared.
   // Reject a mismatch rather than reinterpreting the model's bytes as the declared type or
   // leaving part of the caller's buffer holding data from a previous run.
@@ -331,6 +336,11 @@ void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, N
   const auto shape = typeAndShapeInfo.GetShape();
   ORT_NAPI_THROW_ERROR_IF(shape != expected.dims, env, "Preallocated output tensor has shape ",
                           DescribeShape(expected.dims), ", but the model produced ", DescribeShape(shape), ".");
+}
+
+void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
+                                       const PreallocatedOutputInfo& expected) {
+  ValidateOrtValueMatchesDeclared(env, value, expected);
 
   ORT_NAPI_THROW_TYPEERROR_IF(!destination.IsTypedArray(), env,
                               "Preallocated output Tensor.data must remain a typed array.");
@@ -355,7 +365,10 @@ void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, N
 
 void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
                                   const PreallocatedOutputInfo& expected) {
-  ValidateOrtValueForNapiTypedArray(env, value, destination, expected);
+  // Precondition: ValidateOrtValueForNapiTypedArray() has already accepted this pair. Callers with
+  // several preallocated outputs must validate all of them before copying any, so that a rejection
+  // cannot leave some caller buffers already overwritten.
+  (void)expected;
 
   const size_t sourceByteLength = value.GetTensorSizeInBytes();
   if (sourceByteLength == 0) {

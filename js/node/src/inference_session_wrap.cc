@@ -329,6 +329,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         if (copy_output_to_js_[i]) {
           ValidateOrtValueForNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
                                             output_expected_[i]);
+        } else if (reuse_output_[i]) {
+          // A device output is handed straight back to the caller, so nothing would otherwise
+          // notice that the model produced a different type or shape than the tensor declares.
+          ValidateOrtValueMatchesDeclared(env_, output_values_[i], output_expected_[i]);
         }
       }
 

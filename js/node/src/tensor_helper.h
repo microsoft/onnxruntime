@@ -55,7 +55,11 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
                                NapiTensorConversion* conversion = nullptr);
 
 // check that an OrtValue tensor matches the type and shape the caller declared for a preallocated
-// output and fits in its Javascript TypedArray, without writing anything
+// output; applies to device outputs too, which have no Javascript buffer to copy into
+void ValidateOrtValueMatchesDeclared(Napi::Env env, const Ort::Value& value, const PreallocatedOutputInfo& expected);
+
+// check that an OrtValue tensor matches the caller's declared type and shape and fits in its
+// Javascript TypedArray, without writing anything
 //
 // Callers holding several preallocated outputs should validate all of them before copying any, so
 // that a rejection cannot leave some of the caller's buffers already overwritten.
