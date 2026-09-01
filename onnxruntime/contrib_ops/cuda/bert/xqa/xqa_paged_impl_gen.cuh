@@ -7,6 +7,7 @@
 // Expected macros:
 //   NAMESPACE_NAME: name of the namespace (e.g. grp8_int8_paged)
 //   GRP_SIZE:       integer value for HEAD_GRP_SIZE
+//   XQA_PAGED_SPEC_DEC: 1 for multi-token speculative decoding, 0 otherwise
 
 namespace NAMESPACE_NAME {
 // Undefine dependent guard to allow header re-processing
@@ -47,6 +48,11 @@ inline Status Launch(
     [[maybe_unused]] const float scale,
     [[maybe_unused]] const int local_window_size,
     [[maybe_unused]] const int* past_seq_lens,
+#if XQA_PAGED_SPEC_DEC
+    [[maybe_unused]] const int max_query_len,
+    [[maybe_unused]] const int* cumulative_seqlens_q,
+    [[maybe_unused]] const uint32_t* spec_dec_mask,
+#endif
     [[maybe_unused]] const float* attention_sinks,
     [[maybe_unused]] const float* k_cache_scale,
     [[maybe_unused]] const float* v_cache_scale,
@@ -67,6 +73,11 @@ inline Status Launch(
 
   if (workspace != nullptr) {
     uint32_t nbSeq = static_cast<uint32_t>(batch_size * kv_num_heads);
+#if XQA_PAGED_SPEC_DEC
+    const uint32_t token_blocks_per_group =
+        divUp(static_cast<uint32_t>(max_query_len * GRP_SIZE), static_cast<uint32_t>(M_TILESIZE));
+    nbSeq *= token_blocks_per_group;
+#endif
     size_t semaphore_size = nbSeq * sizeof(uint32_t);
     size_t padded_sem_size = roundUp<size_t>(semaphore_size, 128);
 
@@ -95,6 +106,13 @@ inline Status Launch(
                                         : max_seq_len;
 #endif
 
+#if XQA_PAGED_SPEC_DEC
+  const SpecDecParams spec_dec_params{
+      static_cast<uint32_t>(max_query_len),
+      reinterpret_cast<const uint32_t*>(cumulative_seqlens_q),
+      reinterpret_cast<const MaskType*>(spec_dec_mask)};
+#endif
+
   launchMHA(
       device_prop,
       static_cast<uint32_t>(kv_num_heads),
@@ -113,6 +131,9 @@ inline Status Launch(
       static_cast<uint32_t>(batch_size),
       k_cache_scale,
       v_cache_scale,
+#if XQA_PAGED_SPEC_DEC
+      spec_dec_params,
+#endif
       semaphores,
       scratch,
       stream);
@@ -121,6 +142,29 @@ inline Status Launch(
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA is only supported on Ampere (SM80) or newer GPUs.");
 #endif
 }
+
+#if XQA_PAGED_SPEC_DEC
+inline size_t GetWorkspaceSize(
+    const cudaDeviceProp& device_prop,
+    const int batch_size,
+    const int kv_num_heads,
+    const int max_pages_per_seq,
+    const int max_query_len) {
+#ifdef XQA_HAS_SM80_TARGET
+  const uint32_t max_seq_len = static_cast<uint32_t>(max_pages_per_seq) * tokensPerPage;
+  const uint32_t token_blocks_per_group =
+      divUp(static_cast<uint32_t>(max_query_len * GRP_SIZE), static_cast<uint32_t>(M_TILESIZE));
+  const uint32_t nb_seq = static_cast<uint32_t>(batch_size * kv_num_heads) * token_blocks_per_group;
+  const size_t semaphore_size = nb_seq * sizeof(uint32_t);
+  const size_t padded_semaphore_size = roundUp<size_t>(semaphore_size, 128);
+  const uint32_t nb_sub_seq_per_seq = computeNbSubSeqPerSeqMHA(
+      device_prop, static_cast<uint32_t>(batch_size), static_cast<uint32_t>(kv_num_heads), max_seq_len);
+  return padded_semaphore_size + NAMESPACE_NAME::GetScratchSize(nb_seq, nb_sub_seq_per_seq);
+#else
+  return 0;
+#endif
+}
+#endif
 
 #ifndef GENERATE_CUBIN
 // See xqa_impl_gen.cuh::GetSmemSize.
