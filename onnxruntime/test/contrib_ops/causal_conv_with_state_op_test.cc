@@ -1115,14 +1115,15 @@ TEST(CausalConvWithStateTest, StateWindowRejectsEmptySequence) {
 // shape below. When `window` > `input_length` the slots below W - L hold no position from this
 // call and are zero-filled, with or without a past_state.
 static void RunCausalConvStateWindowTest(int batch_size, int channels, int input_length,
-                                         int kernel_size, int window, bool with_past_state) {
+                                         int kernel_size, int window, bool with_past_state,
+                                         int dilation = 1, bool channels_last = false) {
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "CUDA execution provider not available";
     return;
   }
 
-  const int state_length = kernel_size - 1;
+  const int state_length = (kernel_size - 1) * dilation;
   const std::string activation = "silu";
 
   std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
@@ -1158,7 +1159,7 @@ static void RunCausalConvStateWindowTest(int batch_size, int channels, int input
   CausalConvWithStateReference(
       input_data, weight_data, &bias_data, past,
       expected_output, expected_state,
-      batch_size, channels, input_length, kernel_size, activation);
+      batch_size, channels, input_length, kernel_size, activation, dilation);
 
   // Slot j holds the state after the first (input_length - window + j + 1) positions; slots for
   // non-positive prefixes are never computed by the kernel and stay zero. The window axis leads
@@ -1177,17 +1178,49 @@ static void RunCausalConvStateWindowTest(int batch_size, int channels, int input
       CausalConvWithStateReference(
           slice_prefix(input_data, prefix), weight_data, &bias_data, past,
           prefix_output, prefix_state,
-          batch_size, channels, prefix, kernel_size, activation);
+          batch_size, channels, prefix, kernel_size, activation, dilation);
     }
     std::copy_n(prefix_state.begin(), batch_slot_elems,
                 expected_state_window.begin() + static_cast<size_t>(j) * batch_slot_elems);
   }
 
+  // Every (B, C, length) block above is channels-first; channels_last only permutes the memory
+  // layout of the activation and state tensors, so convert them here and leave the math alone.
+  auto to_layout = [&](const std::vector<float>& data, int length) {
+    return channels_last ? ToChannelsLast(data, batch_size, channels, length) : data;
+  };
+  // The window axis leads the batch axis, so a windowed state tensor is `window` independent
+  // (B, C, state_length) blocks that each convert on their own.
+  auto to_layout_windowed = [&](const std::vector<float>& data) {
+    if (!channels_last) return data;
+    std::vector<float> out(data.size());
+    for (int j = 0; j < window; ++j) {
+      std::vector<float> slot(data.begin() + static_cast<size_t>(j) * batch_slot_elems,
+                              data.begin() + static_cast<size_t>(j + 1) * batch_slot_elems);
+      std::vector<float> converted = ToChannelsLast(slot, batch_size, channels, state_length);
+      std::copy(converted.begin(), converted.end(),
+                out.begin() + static_cast<size_t>(j) * batch_slot_elems);
+    }
+    return out;
+  };
+  const std::vector<int64_t> act_dims =
+      channels_last ? std::vector<int64_t>{batch_size, input_length, channels}
+                    : std::vector<int64_t>{batch_size, channels, input_length};
+  const std::vector<int64_t> state_dims =
+      channels_last ? std::vector<int64_t>{window, batch_size, state_length, channels}
+                    : std::vector<int64_t>{window, batch_size, channels, state_length};
+
   OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
   test.AddAttribute<std::string>("activation", activation);
   test.AddAttribute<int64_t>("state_window", static_cast<int64_t>(window));
+  if (dilation != 1) {
+    test.AddAttribute<int64_t>("dilation", static_cast<int64_t>(dilation));
+  }
+  if (channels_last) {
+    test.AddAttribute<int64_t>("channels_last", static_cast<int64_t>(1));
+  }
 
-  test.AddInput<float>("input", {batch_size, channels, input_length}, input_data);
+  test.AddInput<float>("input", act_dims, to_layout(input_data, input_length));
   test.AddInput<float>("weight", {channels, 1, kernel_size}, weight_data);
   test.AddInput<float>("bias", {channels}, bias_data);
   if (with_past_state) {
@@ -1195,14 +1228,13 @@ static void RunCausalConvStateWindowTest(int batch_size, int channels, int input
     std::vector<float> past_state_window(static_cast<size_t>(window) * batch_slot_elems, -1e4f);
     std::copy_n(conv_state_data.begin(), batch_slot_elems,
                 past_state_window.begin() + static_cast<size_t>(window - 1) * batch_slot_elems);
-    test.AddInput<float>("past_state", {window, batch_size, channels, state_length}, past_state_window);
+    test.AddInput<float>("past_state", state_dims, to_layout_windowed(past_state_window));
   } else {
     test.AddOptionalInputEdge<float>();
   }
 
-  test.AddOutput<float>("output", {batch_size, channels, input_length}, expected_output);
-  test.AddOutput<float>("present_state", {window, batch_size, channels, state_length},
-                        expected_state_window);
+  test.AddOutput<float>("output", act_dims, to_layout(expected_output, input_length));
+  test.AddOutput<float>("present_state", state_dims, to_layout_windowed(expected_state_window));
   test.SetOutputAbsErr("output", 0.01f);
   test.SetOutputAbsErr("present_state", 0.01f);
 
@@ -1241,6 +1273,51 @@ TEST(CausalConvWithStateTest, StateWindow_DecodeFixedK) {
 TEST(CausalConvWithStateTest, StateWindow_DecodeGenericK) {
   RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
                                /*kernel_size=*/7, /*window=*/3, /*with_past_state=*/false);
+}
+
+// state_window composes with dilation: state_length becomes (K-1)*dilation, so every slot is
+// wider and the prefill kernel's per-slot stride changes with it.
+TEST(CausalConvWithStateTest, StateWindow_Dilated) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/6,
+                               /*kernel_size=*/3, /*window=*/3, /*with_past_state=*/true,
+                               /*dilation=*/2);
+}
+
+// L > 128 with dilation routes to the single-channel prefill kernel instead of the batched one.
+TEST(CausalConvWithStateTest, StateWindow_DilatedLongPrefill) {
+  RunCausalConvStateWindowTest(/*batch_size=*/1, /*channels=*/8, /*input_length=*/140,
+                               /*kernel_size=*/3, /*window=*/4, /*with_past_state=*/true,
+                               /*dilation=*/3);
+}
+
+// dilation > 1 disables the fixed-K decode specialization, so this exercises the generic decode
+// kernel's windowed state writes.
+TEST(CausalConvWithStateTest, StateWindow_DilatedDecode) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/3, /*window=*/3, /*with_past_state=*/true,
+                               /*dilation=*/2);
+}
+
+// state_window composes with channels_last, which selects the channels-last prefill kernel and
+// changes the position stride of both the activation and the windowed state tensors.
+TEST(CausalConvWithStateTest, StateWindow_ChannelsLast) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/6,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/true,
+                               /*dilation=*/1, /*channels_last=*/true);
+}
+
+// channels_last decode: the strided state layout also disables the fixed-K decode specialization.
+TEST(CausalConvWithStateTest, StateWindow_ChannelsLastDecode) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/true,
+                               /*dilation=*/1, /*channels_last=*/true);
+}
+
+// Both layout attributes at once, on the long-prefill shape.
+TEST(CausalConvWithStateTest, StateWindow_ChannelsLastDilated) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/140,
+                               /*kernel_size=*/3, /*window=*/4, /*with_past_state=*/true,
+                               /*dilation=*/2, /*channels_last=*/true);
 }
 
 // W > L with a past_state: the kernel writes only slot W-1, so the leading W-1 slots must come
@@ -1705,6 +1782,22 @@ TEST(ContribOpVarlenCausalConvWithStateTest, DilatedDecode) {
   c.with_initial_state = true;
   c.state_update_capacity = 1;
   c.capture_count = {1, 1, 1};
+  RunVarlenCausalConvCase(c);
+}
+
+// Multi-token requests with a positive state_update_capacity: the ragged (non-decode) path must
+// capture the compact state update while striding its taps. DilatedRagged leaves the capacity at
+// zero and DilatedDecode only reaches the decode kernel, so this is the only case that runs the
+// general kernel's capture with dilation > 1. The capture counts deliberately straddle both the
+// capacity and the per-request sequence length so the clamping is exercised too.
+TEST(ContribOpVarlenCausalConvWithStateTest, DilatedRaggedWithStateUpdate) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {5, 1, 3};
+  c.kernel_size = 3;
+  c.dilation = 2;
+  c.with_initial_state = true;
+  c.state_update_capacity = 4;
+  c.capture_count = {5, 0, 2};
   RunVarlenCausalConvCase(c);
 }
 

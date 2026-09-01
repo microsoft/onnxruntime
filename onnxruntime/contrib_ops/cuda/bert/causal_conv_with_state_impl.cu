@@ -347,6 +347,85 @@ __global__ void CausalConvPrefillKernelBatched(
   }
 }
 
+// =============================================================================
+// Channels-last prefill kernel: L>1, one thread per (batch, position, channel)
+// with the channel as the fastest-moving thread axis.
+//
+// Grid:  (ceil(channels / threads), seq_len, batch_size)
+// Block: (threads, 1, 1)
+// Shared memory: none
+//
+// The shared-memory kernels above stage one channel per block and walk positions, which is
+// coalesced only when positions are contiguous. Under channels_last the contiguous axis is the
+// channel, so that access pattern turns every load and store into a strided gather. Here adjacent
+// threads hold adjacent channels, so each convolution tap, each state read and every store is a
+// single contiguous transaction. Staging is unnecessary because the overlapping taps of
+// neighbouring positions are served by L1/L2 rather than shared memory.
+// =============================================================================
+template <typename T>
+__global__ void CausalConvPrefillKernelChannelsLast(
+    const T* __restrict__ input,       // [B, L, C]
+    const T* __restrict__ weight,      // [C, 1, K]
+    const T* __restrict__ bias,        // [C] or nullptr
+    const T* __restrict__ past_state,  // [W, B, K-1, C] or nullptr
+    T* __restrict__ output,            // [B, L, C]
+    T* __restrict__ present_state,     // [W, B, K-1, C]
+    int seq_len,
+    int channels,
+    int kernel_size,
+    int dilation,
+    CausalConvLayout act_layout,
+    CausalConvLayout state_layout,
+    bool apply_silu,
+    int batch_size,
+    int state_window) {  // W: axis-0 extent of past_state / present_state (>= 1)
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= channels) {
+    return;
+  }
+  const int l = blockIdx.y;
+  const int b = blockIdx.z;
+
+  const int pad = (kernel_size - 1) * dilation;
+  const int64_t state_pos_stride = state_layout.pos_stride;
+  // Window-major: one slot spans the whole batch. Slot W-1 holds the state after the last token of
+  // the previous step, which is the only slot past_state is read from.
+  const int64_t slot_stride = (int64_t)batch_size * channels * pad;
+  const int64_t last_slot_offset =
+      (int64_t)(state_window - 1) * slot_stride + state_layout.Offset(b, 0, c);
+
+  // Reads the virtual stream [past_state (pad samples), input (seq_len samples)] at index `vp`.
+  auto sample = [&](int vp) -> float {
+    if (vp >= pad) {
+      return to_float(input[act_layout.Offset(b, vp - pad, c)]);
+    }
+    return past_state != nullptr
+               ? to_float(past_state[last_slot_offset + (int64_t)vp * state_pos_stride])
+               : 0.0f;
+  };
+
+  float sum = (bias != nullptr) ? to_float(bias[c]) : 0.0f;
+  for (int k = 0; k < kernel_size; ++k) {
+    sum += to_float(weight[(int64_t)c * kernel_size + k]) * sample(l + k * dilation);
+  }
+  if (apply_silu) {
+    sum = silu_fn(sum);
+  }
+  output[act_layout.Offset(b, l, c)] = from_float<T>(sum);
+
+  // The carry state after token l is the pad-length window ending at that token, i.e. virtual
+  // stream positions [l + 1, l + pad]. It goes into the right-aligned slot l + W - seq_len;
+  // earlier tokens fall outside the window. The last token always maps to slot W-1.
+  const int first = seq_len > state_window ? seq_len - state_window : 0;
+  if (l >= first) {
+    T* ps = present_state + (int64_t)(l + state_window - seq_len) * slot_stride +
+            state_layout.Offset(b, 0, c);
+    for (int p = 0; p < pad; ++p) {
+      ps[(int64_t)p * state_pos_stride] = from_float<T>(sample(l + 1 + p));
+    }
+  }
+}
+
 }  // anonymous namespace
 
 template <typename T>
@@ -407,6 +486,22 @@ Status LaunchCausalConvWithStateKernel(
   } else {
     // Prefill path: choose between batched (short seq) or single-channel (long seq) kernel
     int pad = (kernel_size - 1) * dilation;
+
+    // Under channels_last the contiguous axis is the channel, so use the kernel whose fastest
+    // thread axis is the channel; the shared-memory kernels below would gather every access.
+    // gridDim.y is capped at 65535; longer sequences fall through to the shared-memory kernels,
+    // which handle either layout correctly (just less efficiently).
+    constexpr int kMaxGridDimY = 65535;
+    if (act_layout.chan_stride == 1 && seq_len <= kMaxGridDimY) {
+      int threads = channels >= 256 ? 256 : ((channels + 31) / 32) * 32;
+      threads = std::min(threads, max_threads_per_block);
+      const dim3 grid((channels + threads - 1) / threads, seq_len, batch_size);
+      CausalConvPrefillKernelChannelsLast<T><<<grid, threads, 0, stream>>>(
+          input, weight, bias, past_state, output, present_state,
+          seq_len, channels, kernel_size, dilation, act_layout, state_layout, apply_silu,
+          batch_size, state_window);
+      return CUDA_CALL(cudaGetLastError());
+    }
 
     // For short sequences, batch multiple channels per block to improve occupancy.
     // CPB=4: each block handles 4 channels, reducing block count by 4x.

@@ -100,8 +100,44 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
                       "vocab_sizes must be positive; entry ", h, " is ", static_cast<int64_t>(vocab_data[h]));
   }
 
+  if (input_shape.Size() != 0) {
+    T* output_data = output->MutableData<T>();
+    const int64_t total = batch_size * sequence_length;
+    ThreadPool::TryParallelFor(
+        context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total), static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
+        [&](ptrdiff_t begin, ptrdiff_t end) {
+          for (int64_t linear = begin; linear < end; ++linear) {
+            const int64_t t = linear % sequence_length;
+            const int64_t b = linear / sequence_length;
+            const int64_t input_base = b * sequence_length;
+            const int64_t output_base = linear * num_heads;
+
+            for (int64_t n = 2; n <= max_ngram_size_; ++n) {
+              T mix = 0;
+              for (int64_t k = 0; k < n; ++k) {
+                const int64_t source_t = t - k;
+                const T token = source_t >= 0 ? input_data[input_base + source_t]
+                                              : HistoryId(past_data, b, state_length + source_t, state_length);
+                const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
+                mix = k == 0 ? product : static_cast<T>(mix ^ product);
+              }
+
+              const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
+              for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
+                const int64_t out_h = ngram_offset + h;
+                // vocab_sizes was validated to be positive above, so the modulo is always well defined.
+                output_data[output_base + out_h] = engram_helper::PositiveMod(mix, vocab_data[out_h]);
+              }
+            }
+          }
+        });
+  }
+
   // present_ids is the right-aligned trailing window of (past_ids ++ input_ids), so it is well defined
-  // even when this call is shorter than the window.
+  // even when this call is shorter than the window. It is written last because past_ids may share
+  // its allocation, and the hash loop above still needs the original history. Within this loop the
+  // aliased case is safe too: slot j writes index j and reads index j + sequence_length, so the walk
+  // is strictly ahead of itself.
   if (present_ids != nullptr) {
     T* present_data = present_ids->MutableData<T>();
     for (int64_t b = 0; b < batch_size; ++b) {
@@ -114,41 +150,6 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
       }
     }
   }
-
-  if (input_shape.Size() == 0) {
-    return Status::OK();
-  }
-
-  T* output_data = output->MutableData<T>();
-  const int64_t total = batch_size * sequence_length;
-  ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total), static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
-      [&](ptrdiff_t begin, ptrdiff_t end) {
-        for (int64_t linear = begin; linear < end; ++linear) {
-          const int64_t t = linear % sequence_length;
-          const int64_t b = linear / sequence_length;
-          const int64_t input_base = b * sequence_length;
-          const int64_t output_base = linear * num_heads;
-
-          for (int64_t n = 2; n <= max_ngram_size_; ++n) {
-            T mix = 0;
-            for (int64_t k = 0; k < n; ++k) {
-              const int64_t source_t = t - k;
-              const T token = source_t >= 0 ? input_data[input_base + source_t]
-                                            : HistoryId(past_data, b, state_length + source_t, state_length);
-              const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
-              mix = k == 0 ? product : static_cast<T>(mix ^ product);
-            }
-
-            const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
-            for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
-              const int64_t out_h = ngram_offset + h;
-              // vocab_sizes was validated to be positive above, so the modulo is always well defined.
-              output_data[output_base + out_h] = engram_helper::PositiveMod(mix, vocab_data[out_h]);
-            }
-          }
-        }
-      });
 
   return Status::OK();
 }

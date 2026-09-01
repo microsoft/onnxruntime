@@ -377,7 +377,50 @@ void RunNGramHashMappingChunkedTest() {
             {ids[2], ids[3]});
 }
 
+// An empty input_ids tensor must still thread history through present_ids unchanged. This is the
+// only case that reaches the WebGPU kernel's sequence_length == 0 specialization, which drops the
+// input_ids binding entirely because WebGPU rejects zero-sized storage bindings.
+template <typename T>
+void RunNGramHashMappingEmptySequenceTest() {
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> past{3, 4};
+
+  auto run = [&](bool with_past) {
+    OpTester test("NGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddInput<T>("input_ids", {1, 0}, {});
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+    if (with_past) {
+      test.AddInput<T>("past_ids", {1, 2}, past);
+    } else {
+      test.AddOptionalInputEdge<T>();
+    }
+    test.AddOutput<T>("hash_ids", {1, 0, 4}, {});
+    // With no new tokens the window is unchanged; without a past_ids it is all pad_id.
+    test.AddOutput<T>("present_ids", {1, 2},
+                      with_past ? past : std::vector<T>{static_cast<T>(kPadId), static_cast<T>(kPadId)});
+    test.Run();
+  };
+
+  run(/*with_past=*/true);
+  run(/*with_past=*/false);
+}
+
 }  // namespace
+
+TEST(EngramOpsTest, NGramHashMappingEmptySequenceInt64) {
+  RunNGramHashMappingEmptySequenceTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so this is what covers its zero-length
+// specialization.
+TEST(EngramOpsTest, NGramHashMappingEmptySequenceInt32) {
+  RunNGramHashMappingEmptySequenceTest<int32_t>();
+}
 
 TEST(EngramOpsTest, NGramHashMappingInt64) {
   RunNGramHashMappingTest<int64_t>();
