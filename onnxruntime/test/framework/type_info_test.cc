@@ -4,8 +4,10 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "model_builder_utils.h"
+#include <complex>
 
+#include "model_builder_utils.h"
+#include "core/framework/data_types.h"
 #include "core/framework/onnxruntime_optional_type_info.h"
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
@@ -111,6 +113,29 @@ TEST(TypeInfoTests, OptionalWithTensorProto) {
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, contained_type.tensor_type_info->GetElementType());
   ASSERT_TRUE(contained_type.tensor_type_info->HasShape());
   ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.tensor_type_info->GetShape()->GetDims()));
+}
+
+TEST(TypeInfoTests, ComplexTensorSequenceAndOptionalTypes) {
+  ONNX_NAMESPACE::TypeProto complex64_tensor;
+  complex64_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64);
+
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(complex64_tensor),
+            DataTypeImpl::GetTensorType<std::complex<float>>());
+
+  ONNX_NAMESPACE::TypeProto complex128_tensor;
+  complex128_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128);
+
+  ONNX_NAMESPACE::TypeProto complex128_sequence;
+  complex128_sequence.mutable_sequence_type()->mutable_elem_type()->CopyFrom(complex128_tensor);
+
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(complex128_sequence),
+            DataTypeImpl::GetSequenceTensorType<std::complex<double>>());
+
+  ONNX_NAMESPACE::TypeProto optional_complex64_tensor;
+  optional_complex64_tensor.mutable_optional_type()->mutable_elem_type()->CopyFrom(complex64_tensor);
+
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_complex64_tensor),
+            DataTypeImpl::GetOptionalType<Tensor, std::complex<float>>());
 }
 
 #if !defined(DISABLE_ML_OPS)

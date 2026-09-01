@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <complex>
 #include <cstdint>
 #include <string>
 
@@ -79,6 +80,14 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint64_t
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<std::complex<float>>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<std::complex<double>>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128;
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
