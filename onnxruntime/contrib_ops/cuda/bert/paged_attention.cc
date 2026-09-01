@@ -462,6 +462,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       (parameters.block_size % kXqaTokensPerPage) == 0 &&
       is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
       (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9));
+  // Speculative verification steps (2..8 new tokens per sequence) run on the paged XQA kernel with
+  // a packed lower-triangular mask built by PagedXqaSpecDecCausalMaskKernel. The gate is the
+  // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
+  // token_count <= batch_size while still carrying a multi-token sequence.
   const bool xqa_spec_dec_candidate =
       decode_eligible && has_metadata_bounds &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&

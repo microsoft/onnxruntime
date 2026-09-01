@@ -2379,12 +2379,106 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         self._check_xqa(paged_kv_block_size=64)
 
     def test_multi_token_step_falls_back(self):
-        # More than one new token in a sequence: XQA emits one row per sequence, so this has to use
-        # a backend that handles a ragged step.
+        # More than one new token in a sequence: without 'attention_metadata' the speculative XQA
+        # specialization is not eligible, so this has to use a backend that handles a ragged step.
         config = self._config(
             sequence_length=2, kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR"
         )
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+@unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
+class TestPagedAttentionXqaSpeculative(unittest.TestCase):
+    """Coverage for the multi-token (speculative decoding) paged XQA specialization.
+
+    Head size 256 / group size 6 / quantized cache / 2..8 new tokens per sequence routes a
+    speculative verification step onto XQA with a packed lower-triangular mask instead of the
+    ragged fallback. The mask is the whole point of these tests: a kernel that ignores it lets a
+    draft token attend to its own future, which stays inside a loose tolerance when K and V barely
+    vary with position. `parity_check_paged_attention` uses random K/V and a torch reference, so a
+    dropped mask shows up as a large error on every row except the last."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def _check(self, new_seqlens=None, rtol=5e-3, atol=5e-3, **overrides):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 8,
+            "total_sequence_length": 1024,
+            "num_heads": 6,
+            "kv_num_heads": 1,
+            "head_size": 256,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        features = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in {
+            "kv_cache_type": "int8",
+            "k_quant_type": "PER_TENSOR",
+            "v_quant_type": "PER_TENSOR",
+            "use_attention_metadata": True,
+            **features,
+        }.items():
+            setattr(config, key, value)
+        override = None
+        if new_seqlens is not None:
+            override = torch.tensor(new_seqlens, dtype=torch.int32)
+        parity_check_paged_attention(config, rtol=rtol, atol=atol, new_seqlens_override=override)
+
+    @parameterized.expand([(f"q{q}", q) for q in range(2, 9)])
+    def test_spec_dec_query_length(self, _, query_length):
+        self._check(sequence_length=query_length, new_seqlens=[query_length] * 4)
+
+    def test_spec_dec_dispatches_to_xqa(self):
+        config = Config(4, 8, 1024, 6, 1, 256, 256, False, False, False, False, 0.0)
+        for key, value in {
+            "kv_cache_type": "int8",
+            "k_quant_type": "PER_TENSOR",
+            "v_quant_type": "PER_TENSOR",
+            "use_attention_metadata": True,
+        }.items():
+            setattr(config, key, value)
+        with patch.dict(os.environ, {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"}):
+            debug_output = capture_native_stdout(
+                lambda: parity_check_paged_attention(
+                    config, rtol=5e-3, atol=5e-3, new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32)
+                )
+            )
+        self.assertIn("SdpaKernel=XQA", debug_output)
+
+    @parameterized.expand([("ragged", [1, 8, 3, 8]), ("inactive", [0, 0, 0, 7]), ("uniform2", [2, 2, 2, 2])])
+    def test_spec_dec_ragged_batch(self, _, new_seqlens):
+        # A continuous-batching step mixes acceptance lengths, and a scheduled sequence may
+        # contribute no token at all.
+        self._check(new_seqlens=new_seqlens)
+
+    @parameterized.expand([("64", 64), ("256", 256), ("1000", 1000), ("8192", 8192)])
+    def test_spec_dec_context_length(self, _, total_sequence_length):
+        # 8192 splits the sequence across CTAs and reduces through the XQA scratch; 1000 is not
+        # page aligned, so the masked tail straddles the last two tiles.
+        self._check(batch_size=2, total_sequence_length=total_sequence_length, new_seqlens=[8, 8])
+
+    @parameterized.expand([("128", 128), ("512", 512)])
+    def test_spec_dec_block_size(self, _, block_size):
+        self._check(batch_size=2, paged_kv_block_size=block_size, new_seqlens=[8, 8])
+
+    def test_spec_dec_per_channel_scales(self):
+        self._check(k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL")
+
+    def test_spec_dec_batch_one(self):
+        self._check(batch_size=1, new_seqlens=[8])
+
+    def test_bound_above_specialization_falls_back(self):
+        # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend
+        # and still be correct.
+        self._check(sequence_length=9, new_seqlens=[9] * 4)
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")

@@ -1520,6 +1520,8 @@ __global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const
   }
 }
 
+// Lower-triangular packed mask for the speculative XQA kernel: row = query token (global, packed
+// token-major), bit p of word w = "may attend to draft token w*32+p".
 __global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
                                                 const int* __restrict__ cumulative_seqlens_q,
                                                 const int batch_size,
@@ -1544,9 +1546,20 @@ __global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
   }
 
   const int local_row = token_id - cumulative_seqlens_q[lo];
-  const int allowed_bits = max(0, min(32, local_row + 1 - word * 32));
-  mask[i] = allowed_bits == 32 ? ~uint32_t{0}
-                               : (allowed_bits == 0 ? 0u : ((uint32_t{1} << allowed_bits) - 1u));
+  const int allowed_bits = local_row + 1 - word * 32;
+  // Do NOT write this as `clamped == 32`. ptxas (CUDA 13.0.48) folds min/max into VIMNMX.RELU and
+  // then reuses that instruction's clamp predicate for an equality test against the clamp bound
+  // with inverted polarity, so `max(0, min(32, x)) == 32` is true for every x. That silently made
+  // every mask word all-ones, i.e. no intra-block causal mask at all.
+  uint32_t value;
+  if (allowed_bits >= 32) {
+    value = ~uint32_t{0};
+  } else if (allowed_bits <= 0) {
+    value = 0u;
+  } else {
+    value = (uint32_t{1} << allowed_bits) - 1u;
+  }
+  mask[i] = value;
 }
 
 template <typename T, typename TCACHE>
