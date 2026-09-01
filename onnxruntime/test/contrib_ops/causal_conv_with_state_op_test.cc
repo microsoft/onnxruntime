@@ -104,24 +104,57 @@ void CausalConvWithStateReference(
   }
 }
 
-// Returns a WebGPU EP if it is available and has the CausalConvWithState kernel registered,
-// or nullptr otherwise.
-std::unique_ptr<IExecutionProvider> TryGetEpWithCausalConvWithState() {
-  auto ep = DefaultWebGpuExecutionProvider();
-  if (!ep) {
-    ep = DefaultCpuExecutionProvider();
+bool EpHasCausalConvWithState(const IExecutionProvider& ep) {
+  auto kernel_registry = ep.GetKernelRegistry();
+  if (!kernel_registry) {
+    return true;
   }
+  const KernelCreateInfo* info = nullptr;
+  KernelRegistry::TypeConstraintMap type_constraints;
+  auto status = kernel_registry->TryFindKernel(
+      ep.Type(), "CausalConvWithState", kMSDomain, 1,
+      type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
+  return status.IsOK();
+}
 
-  auto kernel_registry = ep->GetKernelRegistry();
-  if (kernel_registry) {
-    const KernelCreateInfo* info = nullptr;
-    KernelRegistry::TypeConstraintMap type_constraints;
-    auto status = kernel_registry->TryFindKernel(
-        ep->Type(), "CausalConvWithState", kMSDomain, 1,
-        type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
-    if (!status.IsOK()) return nullptr;
+// Returns every locally available EP that registers the CausalConvWithState kernel, so a single
+// test case covers CUDA, WebGPU and CPU in whichever build it runs in rather than picking one.
+// OpTester silently skips a case whose type is unsupported by the EP (e.g. fp16 on CPU), so the
+// same list is used for both element types.
+std::vector<std::unique_ptr<IExecutionProvider>> GetEpsWithCausalConvWithState() {
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+
+  auto add = [&eps](std::unique_ptr<IExecutionProvider> ep) {
+    if (ep && EpHasCausalConvWithState(*ep)) {
+      eps.push_back(std::move(ep));
+    }
+  };
+
+#ifdef USE_CUDA
+  if (HasCudaEnvironment(0)) {
+    add(DefaultCudaExecutionProvider());
   }
-  return ep;
+#endif
+  add(DefaultWebGpuExecutionProvider());
+  add(DefaultCpuExecutionProvider());
+
+  return eps;
+}
+
+// Rewrites channels-first (batch_size, channels, length) data into the channels-last
+// (batch_size, length, channels) layout that channels_last = 1 consumes.
+std::vector<float> ToChannelsLast(const std::vector<float>& data, int batch_size, int channels,
+                                  int length) {
+  std::vector<float> out(data.size());
+  for (int b = 0; b < batch_size; ++b) {
+    for (int c = 0; c < channels; ++c) {
+      for (int l = 0; l < length; ++l) {
+        out[(static_cast<size_t>(b) * length + l) * channels + c] =
+            data[(static_cast<size_t>(b) * channels + c) * length + l];
+      }
+    }
+  }
+  return out;
 }
 
 }  // anonymous namespace
@@ -139,30 +172,64 @@ static void RunCausalConvWithStateTest(
     int kernel_size,
     const std::string& activation,
     TensorType tensor_type,
-    int dilation = 1) {
-  auto ep = TryGetEpWithCausalConvWithState();
-  if (!ep) {
+    int dilation = 1,
+    bool channels_last = false,
+    const std::vector<int64_t>* channel_dims = nullptr) {
+  auto eps = GetEpsWithCausalConvWithState();
+  if (eps.empty()) {
     GTEST_SKIP() << "CausalConvWithState kernel not registered";
     return;
   }
 
-  int state_length = (kernel_size - 1) * dilation;
+  const int state_length = (kernel_size - 1) * dilation;
 
-  std::vector<int64_t> input_shape = {batch_size, channels, input_length};
-  std::vector<int64_t> weight_shape = {channels, 1, kernel_size};
-  std::vector<int64_t> bias_shape = {channels};
-  std::vector<int64_t> state_shape = {batch_size, channels, state_length};
-  std::vector<int64_t> output_shape = {batch_size, channels, input_length};
+  // The trailing channel axes are only meaningful for channels_last; a caller that keeps
+  // hyper-connections and hidden size separate passes them here instead of reshaping.
+  std::vector<int64_t> trailing_channel_dims =
+      channel_dims != nullptr ? *channel_dims : std::vector<int64_t>{channels};
 
-  {
+  std::vector<int64_t> input_shape;
+  std::vector<int64_t> state_shape;
+  if (channels_last) {
+    input_shape = {batch_size, input_length};
+    state_shape = {batch_size, state_length};
+    input_shape.insert(input_shape.end(), trailing_channel_dims.begin(), trailing_channel_dims.end());
+    state_shape.insert(state_shape.end(), trailing_channel_dims.begin(), trailing_channel_dims.end());
+  } else {
+    input_shape = {batch_size, channels, input_length};
+    state_shape = {batch_size, channels, state_length};
+  }
+  const std::vector<int64_t> weight_shape = {channels, 1, kernel_size};
+  const std::vector<int64_t> bias_shape = {channels};
+  const std::vector<int64_t> output_shape = input_shape;
+
+  // The reference always produces channels-first data; convert once so both layouts are checked
+  // against the same numbers.
+  const std::vector<float> input_values =
+      channels_last ? ToChannelsLast(input_data, batch_size, channels, input_length) : input_data;
+  const std::vector<float> output_values =
+      channels_last ? ToChannelsLast(expected_output, batch_size, channels, input_length) : expected_output;
+  const std::vector<float> state_values =
+      channels_last ? ToChannelsLast(expected_state, batch_size, channels, state_length) : expected_state;
+  std::vector<float> conv_state_values;
+  if (conv_state_data != nullptr) {
+    conv_state_values = channels_last
+                            ? ToChannelsLast(*conv_state_data, batch_size, channels, state_length)
+                            : *conv_state_data;
+  }
+
+  for (auto& ep : eps) {
     OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
     test.AddAttribute<std::string>("activation", activation);
     if (dilation != 1) {
       test.AddAttribute<int64_t>("dilation", static_cast<int64_t>(dilation));
     }
+    if (channels_last) {
+      test.AddAttribute<int64_t>("channels_last", static_cast<int64_t>(1));
+    }
 
     if (tensor_type == TensorType::kFloat) {
-      test.AddInput<float>("input", input_shape, input_data);
+      test.AddInput<float>("input", input_shape, input_values);
       test.AddInput<float>("weight", weight_shape, weight_data);
 
       if (bias_data != nullptr) {
@@ -172,15 +239,15 @@ static void RunCausalConvWithStateTest(
       }
 
       if (conv_state_data != nullptr) {
-        test.AddInput<float>("past_state", state_shape, *conv_state_data);
+        test.AddInput<float>("past_state", state_shape, conv_state_values);
       } else {
         test.AddOptionalInputEdge<float>();
       }
 
-      test.AddOutput<float>("output", output_shape, expected_output);
-      test.AddOutput<float>("present_state", state_shape, expected_state);
+      test.AddOutput<float>("output", output_shape, output_values);
+      test.AddOutput<float>("present_state", state_shape, state_values);
     } else {
-      test.AddInput<MLFloat16>("input", input_shape, ToFloat16(input_data));
+      test.AddInput<MLFloat16>("input", input_shape, ToFloat16(input_values));
       test.AddInput<MLFloat16>("weight", weight_shape, ToFloat16(weight_data));
 
       if (bias_data != nullptr) {
@@ -190,13 +257,13 @@ static void RunCausalConvWithStateTest(
       }
 
       if (conv_state_data != nullptr) {
-        test.AddInput<MLFloat16>("past_state", state_shape, ToFloat16(*conv_state_data));
+        test.AddInput<MLFloat16>("past_state", state_shape, ToFloat16(conv_state_values));
       } else {
         test.AddOptionalInputEdge<MLFloat16>();
       }
 
-      test.AddOutput<MLFloat16>("output", output_shape, ToFloat16(expected_output));
-      test.AddOutput<MLFloat16>("present_state", state_shape, ToFloat16(expected_state));
+      test.AddOutput<MLFloat16>("output", output_shape, ToFloat16(output_values));
+      test.AddOutput<MLFloat16>("present_state", state_shape, ToFloat16(state_values));
     }
 
     test.SetOutputAbsErr("output", 0.01f);
@@ -218,7 +285,9 @@ static void RunCausalConvWithStateTests(
     int input_length,
     int kernel_size,
     const std::string& activation = "silu",
-    int dilation = 1) {
+    int dilation = 1,
+    bool channels_last = false,
+    const std::vector<int64_t>* channel_dims = nullptr) {
   // Compute expected output using reference implementation
   std::vector<float> expected_output;
   std::vector<float> expected_state;
@@ -232,14 +301,14 @@ static void RunCausalConvWithStateTests(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation,
-      TensorType::kFloat, dilation);
+      TensorType::kFloat, dilation, channels_last, channel_dims);
 
   // FP16 test
   RunCausalConvWithStateTest(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation,
-      TensorType::kFloat16, dilation);
+      TensorType::kFloat16, dilation, channels_last, channel_dims);
 }
 
 // =============================================================================
@@ -840,6 +909,152 @@ TEST(CausalConvWithStateTest, DilatedSequenceVsTokenByToken) {
                               batch_size, channels, seq_len, kernel_size, "none", dilation);
 }
 
+// =============================================================================
+// channels_last tests
+//
+// channels_last = 1 consumes the (batch_size, sequence_length, ...channels) layout that a
+// short-convolution block naturally produces, so the graph does not need a Transpose before and
+// after the op. The tests below feed the same numbers through both layouts and compare against
+// the same channels-first reference.
+// =============================================================================
+
+TEST(CausalConvWithStateTest, ChannelsLastNoState) {
+  int batch_size = 2, channels = 3, input_length = 4, kernel_size = 3;
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = 0.5f * std::sin(static_cast<float>(i) * 0.37f);
+  }
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = 0.25f * std::cos(static_cast<float>(i) * 0.21f);
+  }
+
+  RunCausalConvWithStateTests(input_data, weight_data, nullptr, nullptr,
+                              batch_size, channels, input_length, kernel_size, "none", 1,
+                              /*channels_last=*/true);
+}
+
+TEST(CausalConvWithStateTest, ChannelsLastWithStateAndBias) {
+  int batch_size = 2, channels = 3, input_length = 5, kernel_size = 3;
+  int state_length = kernel_size - 1;
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = 0.5f * std::sin(static_cast<float>(i) * 0.29f);
+  }
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = 0.25f * std::cos(static_cast<float>(i) * 0.21f);
+  }
+  std::vector<float> bias_data(channels);
+  for (int c = 0; c < channels; ++c) bias_data[c] = 0.01f * static_cast<float>(c) - 0.02f;
+  std::vector<float> conv_state(static_cast<size_t>(batch_size) * channels * state_length);
+  for (size_t i = 0; i < conv_state.size(); ++i) {
+    conv_state[i] = 0.1f * std::cos(static_cast<float>(i) * 0.3f);
+  }
+
+  RunCausalConvWithStateTests(input_data, weight_data, &bias_data, &conv_state,
+                              batch_size, channels, input_length, kernel_size, "silu", 1,
+                              /*channels_last=*/true);
+}
+
+// sequence_length == 1 is the decode step. In this layout a token's channels are contiguous, so
+// the decode path reads one dense row per sequence.
+TEST(CausalConvWithStateTest, ChannelsLastSingleTokenDecode) {
+  int batch_size = 2, channels = 4, input_length = 1, kernel_size = 4;
+  int state_length = kernel_size - 1;
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels);
+  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = 0.3f * static_cast<float>(i) - 0.5f;
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = 0.2f * std::cos(static_cast<float>(i) * 0.4f);
+  }
+  std::vector<float> conv_state(static_cast<size_t>(batch_size) * channels * state_length);
+  for (size_t i = 0; i < conv_state.size(); ++i) conv_state[i] = 0.05f * static_cast<float>(i) - 0.1f;
+
+  RunCausalConvWithStateTests(input_data, weight_data, nullptr, &conv_state,
+                              batch_size, channels, input_length, kernel_size, "silu", 1,
+                              /*channels_last=*/true);
+}
+
+TEST(CausalConvWithStateTest, ChannelsLastDilated) {
+  int batch_size = 1, channels = 3, input_length = 6, kernel_size = 3, dilation = 2;
+  int state_length = (kernel_size - 1) * dilation;
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = 0.4f * std::sin(static_cast<float>(i) * 0.51f);
+  }
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = 0.3f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  std::vector<float> conv_state(static_cast<size_t>(batch_size) * channels * state_length);
+  for (size_t i = 0; i < conv_state.size(); ++i) conv_state[i] = 0.07f * static_cast<float>(i) - 0.2f;
+
+  RunCausalConvWithStateTests(input_data, weight_data, nullptr, &conv_state,
+                              batch_size, channels, input_length, kernel_size, "silu", dilation,
+                              /*channels_last=*/true);
+}
+
+// A short-convolution block that keeps hyper-connections and hidden size as separate axes feeds
+// (batch, sequence, hc_mult, hidden) directly: every trailing axis is a channel axis, so the
+// caller needs no Reshape either.
+TEST(CausalConvWithStateTest, ChannelsLastMultipleChannelAxes) {
+  int batch_size = 2, hc_mult = 2, hidden = 3, input_length = 4, kernel_size = 3;
+  int channels = hc_mult * hidden;
+  int state_length = kernel_size - 1;
+
+  std::vector<float> input_data(static_cast<size_t>(batch_size) * channels * input_length);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = 0.35f * std::sin(static_cast<float>(i) * 0.23f);
+  }
+  std::vector<float> weight_data(static_cast<size_t>(channels) * kernel_size);
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = 0.25f * std::cos(static_cast<float>(i) * 0.31f);
+  }
+  std::vector<float> bias_data(channels);
+  for (int c = 0; c < channels; ++c) bias_data[c] = 0.02f * static_cast<float>(c) - 0.05f;
+  std::vector<float> conv_state(static_cast<size_t>(batch_size) * channels * state_length);
+  for (size_t i = 0; i < conv_state.size(); ++i) conv_state[i] = 0.04f * static_cast<float>(i) - 0.15f;
+
+  const std::vector<int64_t> channel_dims = {hc_mult, hidden};
+  RunCausalConvWithStateTests(input_data, weight_data, &bias_data, &conv_state,
+                              batch_size, channels, input_length, kernel_size, "silu", 1,
+                              /*channels_last=*/true, &channel_dims);
+}
+
+// channels_last only defines a 1-D causal axis, so it must be rejected for ndim != 1 rather than
+// silently reinterpreting the trailing axes.
+TEST(CausalConvWithStateTest, ChannelsLastRejectsNdimAboveOne) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddAttribute<int64_t>("ndim", 2);
+  test.AddInput<float>("input", {1, 2, 1}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 2, 1}, {0.5f, 1.25f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {2.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "");
+}
+
+TEST(CausalConvWithStateTest, ChannelsLastOutOfRangeIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("channels_last", 2);
+  test.AddInput<float>("input", {1, 2, 1}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 2, 1}, {0.5f, 1.25f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {2.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "channels_last must be 0 or 1");
+}
+
 TEST(CausalConvWithStateTest, DilationBelowOneIsRejected) {
   OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
   test.AddAttribute<std::string>("activation", "none");
@@ -1127,7 +1342,7 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
 namespace {
 
 // Returns a CUDA EP with the VarlenCausalConvWithState kernel registered, or nullptr. Unlike the
-// dense op (also servable from WebGPU/CPU via TryGetEpWithCausalConvWithState), Varlen* ops are
+// dense op (also servable from WebGPU/CPU via GetEpsWithCausalConvWithState), Varlen* ops are
 // CUDA-only, so tests skip outright instead of falling back to another EP.
 std::unique_ptr<IExecutionProvider> TryGetCudaEpWithVarlenCausalConvWithState() {
   auto ep = DefaultCudaExecutionProvider();
@@ -1180,6 +1395,7 @@ struct VarlenCausalConvCase {
   std::vector<int> seq_lens;
   int channels = 4;
   int kernel_size = 3;
+  int dilation = 1;
   std::string activation = "silu";
   bool with_bias = true;
   bool with_initial_state = false;
@@ -1202,7 +1418,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   const int B = static_cast<int>(c.seq_lens.size());
   const int D = c.channels;
   const int K = c.kernel_size;
-  const int pad = K - 1;
+  const int pad = (K - 1) * c.dilation;
   const int W = c.max_checkpoints;
   const size_t slot_elems = static_cast<size_t>(D) * pad;
 
@@ -1251,7 +1467,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
 
     std::vector<float> output_i, final_state_i;
     CausalConvWithStateReference(input, weight, bias_ptr, past, output_i, final_state_i,
-                                 1, D, L, K, c.activation);
+                                 1, D, L, K, c.activation, c.dilation);
 
     std::vector<float> input_td = TransposeDL_to_LD(input, D, L);
     std::vector<float> output_td = TransposeDL_to_LD(output_i, D, L);
@@ -1274,7 +1490,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
           std::vector<float> input_prefix = SliceCausalConvPrefix(input, D, L, prefix);
           std::vector<float> slot_output;
           CausalConvWithStateReference(input_prefix, weight, bias_ptr, past, slot_output, slot_state,
-                                       1, D, prefix, K, c.activation);
+                                       1, D, prefix, K, c.activation, c.dilation);
         }
         std::copy(slot_state.begin(), slot_state.end(),
                   packed_checkpoints.begin() + (static_cast<size_t>(j) * B + i) * slot_elems);
@@ -1284,6 +1500,9 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
 
   OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<std::string>("activation", c.activation);
+  if (c.dilation != 1) {
+    tester.AddAttribute<int64_t>("dilation", static_cast<int64_t>(c.dilation));
+  }
   if (W > 0) {
     tester.AddAttribute<int64_t>("max_checkpoints", static_cast<int64_t>(W));
   }
@@ -1388,6 +1607,38 @@ TEST(ContribOpVarlenCausalConvWithStateTest, NoActivation) {
   VarlenCausalConvCase c;
   c.seq_lens = {3, 1, 2};
   c.activation = "none";
+  RunVarlenCausalConvCase(c);
+}
+
+// dilation widens the carry state to (kernel_size - 1) * dilation while keeping the packed
+// token-major layout, so the ragged path must stride its taps rather than read adjacent tokens.
+TEST(ContribOpVarlenCausalConvWithStateTest, DilatedRagged) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {5, 1, 3};
+  c.kernel_size = 3;
+  c.dilation = 2;
+  c.with_initial_state = true;
+  RunVarlenCausalConvCase(c);
+}
+
+// One token per request selects the decode fast path, which must apply the same tap stride.
+TEST(ContribOpVarlenCausalConvWithStateTest, DilatedDecode) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {1, 1, 1};
+  c.kernel_size = 4;
+  c.dilation = 3;
+  c.with_initial_state = true;
+  c.max_checkpoints = 1;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DilatedFp16) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {4, 2};
+  c.kernel_size = 3;
+  c.dilation = 2;
+  c.with_initial_state = true;
+  c.use_fp16 = true;
   RunVarlenCausalConvCase(c);
 }
 

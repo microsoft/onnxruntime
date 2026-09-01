@@ -938,6 +938,16 @@ This version of the operator has been available since version 1 of the 'com.micr
   past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
   (the default) is the undilated case and keeps the original state length, so models exported
   before the attribute existed are unaffected.
+  
+  The channels_last attribute selects a sequence-major layout for the activations and the carry
+  state, so a model that already produces channels-last activations does not have to transpose into
+  and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
+  (batch_size, sequence_length, d_1, ..., d_n) and the state tensors are
+  (batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. Any number of trailing
+  channel axes is accepted, so an activation that keeps hyper-connections and hidden size as separate
+  axes needs no reshape either. weight and bias keep their channels-first (channels, 1, k_1) and
+  (channels) shapes because they have no sequence axis. The computed values are identical to the
+  channels-first layout; only the memory layout differs.
 
 #### Version
 
@@ -948,6 +958,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>When 1, input, output, past_state and present_state use a sequence-major, channels-last layout: input and output are (batch_size, sequence_length, d_1, ..., d_n) and the state tensors are (batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. weight and bias keep their channels-first shapes. Requires ndim = 1. Default is 0 (channels-first).</dd>
 <dt><tt>dilation</tt> : int</dt>
 <dd>Spacing between kernel taps along the causal (last spatial) axis. The receptive field spans (k_1 - 1) * dilation positions before the current one, and past_state / present_state hold that many positions. Must be >= 1. Default is 1 (undilated).</dd>
 <dt><tt>ndim</tt> : int</dt>
@@ -960,13 +972,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>Input tensor with shape (batch_size, channels, ...). Channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W).</dd>
+<dd>Input tensor with shape (batch_size, channels, ...) in the default channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 the shape is (batch_size, sequence_length, d_1, ..., d_n) instead.</dd>
 <dt><tt>weight</tt> : T</dt>
 <dd>Depthwise convolution kernel with shape (channels, 1, k_1, ...). Spatial kernel sizes: (k_1, ..., k_ndim).</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional per-channel bias with shape (channels).</dd>
 <dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Carry state from previous step. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, in which case only slot W-1 is read, where state_length = (k_1 - 1) * dilation. If not provided, padding is zero.</dd>
+<dd>Carry state from previous step. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, in which case only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. If not provided, padding is zero.</dd>
 </dl>
 
 #### Outputs
@@ -975,7 +987,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Convolution output with same shape as input.</dd>
 <dt><tt>present_state</tt> : T</dt>
-<dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j).</dd>
+<dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, and (batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j).</dd>
 </dl>
 
 #### Type Constraints
@@ -7153,7 +7165,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
   (channels). The convolution never reads across a sequence boundary.
   
-  initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+  initial_state is required and has shape (batch_size, channels, state_length), where
+  state_length = (kernel_size - 1) * dilation. It contains
   the committed raw activation samples immediately preceding this call. final_state has the same
   shape and type and is fully written with the state after each sequence's final token. State
   uses the activation type because it stores raw samples, not accumulated convolution values.
@@ -7163,7 +7176,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   produced states instead.
   
   When requested, prefix_states has shape
-  (max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
+  (max_checkpoints, batch_size, channels, state_length). Slot j for request b is the state
   after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
   unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
   This output lets a transactional caller commit any produced prefix without rerunning the
@@ -7176,6 +7189,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   This device-side containment is not a synchronous validation or rejection mechanism.
   
   The optional activation attribute supports none, SiLU, and Swish.
+  
+  The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
+  reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
+  before the request's first token come from the carry state. The carry state therefore holds
+  state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
+  Dilation 1 (the default) is the undilated case and keeps the original state length, so models
+  exported before the attribute existed are unaffected. input and output are already token-major
+  (sequence-major, channels-last), so this op needs no separate layout attribute.
 
 #### Version
 
@@ -7186,6 +7207,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>dilation</tt> : int</dt>
+<dd>Spacing between kernel taps along the sequence axis. The receptive field spans (kernel_size - 1) * dilation positions before the current token, and initial_state / final_state / prefix_states hold that many positions per request. Must be >= 1. Default is 1 (undilated).</dd>
 <dt><tt>max_checkpoints</tt> : int</dt>
 <dd>Static number of per-request prefix states to expose. Checkpoint j is the state after local token j when that token exists. Unwritten slots are unspecified. Valid range is [0, 8].</dd>
 </dl>
@@ -7202,7 +7225,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
 <dt><tt>initial_state</tt> : T</dt>
-<dd>Required committed carry state with shape (batch_size, channels, kernel_size - 1).</dd>
+<dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 </dl>
 
 #### Outputs (2 - 3)
@@ -7211,9 +7234,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Token-major convolution output with the same shape as input.</dd>
 <dt><tt>final_state</tt> : T</dt>
-<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, kernel_size - 1).</dd>
+<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>prefix_states</tt> (optional) : T</dt>
-<dd>Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, kernel_size - 1). Unwritten slots are unspecified.</dd>
+<dd>Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, (kernel_size - 1) * dilation). Unwritten slots are unspecified.</dd>
 </dl>
 
 #### Type Constraints
