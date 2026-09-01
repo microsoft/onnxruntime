@@ -102,6 +102,20 @@ describe('API Tests - InferenceSession.run()', async () => {
     await localSession.release();
   });
 
+  it('rejects overlapping preallocated CPU outputs', async () => {
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const localSession = await InferenceSession.create(modelPath);
+    const secondSession = await InferenceSession.create(modelPath);
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const output = new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]);
+
+    const firstRun = localSession.run({ input }, { output });
+    await assert.rejects(secondSession.run({ input }, { output }), /Preallocated output buffer is already in use/);
+    await firstRun;
+    await localSession.release();
+    await secondSession.release();
+  });
+
   it('rejects a detached preallocated CPU output buffer', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
@@ -125,10 +139,21 @@ describe('API Tests - InferenceSession.run()', async () => {
       executionProviders: ['webgpu'],
       preferredOutputLocation: 'gpu-buffer',
     });
+    const secondSession = await InferenceSession.create(modelPath, {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
     const readbackSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
     const preallocatedOutput = (await localSession.run({ input: new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]) }))
       .output;
     const expectedOutput = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+
+    const firstRun = localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
+    await assert.rejects(
+      secondSession.run({ input: expectedOutput }, { output: preallocatedOutput }),
+      /Preallocated output buffer is already in use/,
+    );
+    await firstRun;
 
     const result = await localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
     assert.strictEqual(result.output, preallocatedOutput);
@@ -136,6 +161,7 @@ describe('API Tests - InferenceSession.run()', async () => {
 
     preallocatedOutput.dispose();
     await readbackSession.release();
+    await secondSession.release();
     await localSession.release();
   });
 

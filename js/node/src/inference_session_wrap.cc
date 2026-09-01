@@ -173,6 +173,8 @@ Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
 
 class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
  public:
+  using OutputBufferLease = OrtInstanceData::OutputBufferLease;
+
   RunAsyncWorker(InferenceSessionWrap& session, const Napi::Object& feed, const Napi::Object& fetch,
                  const Napi::Object& options, Napi::Promise::Deferred deferred)
       : Napi::AsyncWorker(session.Value().Env(), "InferenceSession.run", session.Value()),
@@ -205,6 +207,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           output_values_.emplace_back(nullptr);
           output_js_value_indices_.push_back(0);
           output_js_data_indices_.push_back(0);
+          output_buffer_key_indices_.push_back(0);
           copy_output_to_js_.push_back(false);
         } else {
           auto output_value = NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_,
@@ -213,14 +216,32 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
                                        OrtMemoryInfoDeviceType_CPU);
           output_values_.push_back(std::move(output_value));
           uint32_t data_index = 0;
-          output_js_value_indices_.push_back(KeepTensorAndDataAlive(keep_alive, value, &data_index));
+          uint32_t buffer_key_index = 0;
+          output_js_value_indices_.push_back(
+              KeepTensorAndDataAlive(keep_alive, value, &data_index, &buffer_key_index));
           output_js_data_indices_.push_back(data_index);
+          output_buffer_key_indices_.push_back(buffer_key_index);
         }
       }
     }
 
     preferred_output_locations_ = session.preferredOutputLocations_;
     ParseRunOptions(options, run_options_);
+  }
+
+  ~RunAsyncWorker() override {
+    ReleaseOutputBufferLeases();
+  }
+
+  void AcquireOutputBufferLeases() {
+    auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
+    for (size_t i = 0; i < output_names_.size(); ++i) {
+      if (reuse_output_[i]) {
+        output_buffer_leases_.push_back(
+            OrtInstanceData::AcquireOutputBufferLease(
+                keep_alive.Get(output_buffer_key_indices_[i]).As<Napi::Object>()));
+      }
+    }
   }
 
   void Execute() override {
@@ -308,11 +329,14 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
  private:
   uint32_t KeepTensorAndDataAlive(Napi::Array& keep_alive, const Napi::Value& value,
-                                  uint32_t* data_index = nullptr) {
+                                  uint32_t* data_index = nullptr, uint32_t* buffer_key_index = nullptr) {
     const auto tensor_index = keep_alive.Length();
     keep_alive.Set(tensor_index, value);
     if (data_index != nullptr) {
       *data_index = tensor_index;
+    }
+    if (buffer_key_index != nullptr) {
+      *buffer_key_index = tensor_index;
     }
     if (!value.IsObject()) {
       return tensor_index;
@@ -326,13 +350,24 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
     const auto location_string = location.As<Napi::String>().Utf8Value();
     if (location_string == "cpu" || location_string == "cpu-pinned") {
+      const auto data = tensor.Get("data");
       const auto index = keep_alive.Length();
-      keep_alive.Set(index, tensor.Get("data"));
+      keep_alive.Set(index, data);
       if (data_index != nullptr) {
         *data_index = index;
       }
+      if (buffer_key_index != nullptr) {
+        auto buffer = data.As<Napi::TypedArray>().ArrayBuffer();
+        const auto buffer_index = keep_alive.Length();
+        keep_alive.Set(buffer_index, buffer);
+        *buffer_key_index = buffer_index;
+      }
     } else if (location_string == "gpu-buffer") {
-      keep_alive.Set(keep_alive.Length(), tensor.Get("gpuBuffer"));
+      const auto index = keep_alive.Length();
+      keep_alive.Set(index, tensor.Get("gpuBuffer"));
+      if (buffer_key_index != nullptr) {
+        *buffer_key_index = index;
+      }
     }
     return tensor_index;
   }
@@ -343,7 +378,16 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     }
     completed_ = true;
 
+    ReleaseOutputBufferLeases();
+
     session_->active_runs_.fetch_sub(1, std::memory_order_release);
+  }
+
+  void ReleaseOutputBufferLeases() {
+    for (const auto& lease : output_buffer_leases_) {
+      OrtInstanceData::ReleaseOutputBufferLease(env_, lease);
+    }
+    output_buffer_leases_.clear();
   }
 
   Napi::Env env_;
@@ -362,7 +406,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   std::vector<bool> reuse_output_;
   std::vector<uint32_t> output_js_value_indices_;
   std::vector<uint32_t> output_js_data_indices_;
+  std::vector<uint32_t> output_buffer_key_indices_;
   std::vector<bool> copy_output_to_js_;
+  std::vector<OutputBufferLease> output_buffer_leases_;
   std::vector<int> preferred_output_locations_;
   std::unique_ptr<Ort::IoBinding> io_binding_;
   bool completed_{false};
@@ -392,6 +438,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   };
   try {
     worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
+    worker->AcquireOutputBufferLeases();
     active_runs_.fetch_add(1, std::memory_order_acquire);
     active_run_registered = true;
     worker->Queue();

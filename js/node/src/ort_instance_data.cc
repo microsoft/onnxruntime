@@ -51,3 +51,31 @@ bool OrtInstanceData::IsElectron(Napi::Env env) {
   auto data = env.GetInstanceData<OrtInstanceData>();
   return data != nullptr && data->isElectron_;
 }
+
+OrtInstanceData::OutputBufferLease OrtInstanceData::AcquireOutputBufferLease(Napi::Object resource) {
+  auto data = resource.Env().GetInstanceData<OrtInstanceData>();
+  ORT_NAPI_THROW_ERROR_IF(data == nullptr, resource.Env(), "OrtInstanceData not created.");
+
+  for (const auto& lease : data->outputBufferLeases) {
+    ORT_NAPI_THROW_ERROR_IF(lease->Value().StrictEquals(resource), resource.Env(),
+                            "Preallocated output buffer is already in use.");
+  }
+
+  auto lease = std::make_shared<Napi::ObjectReference>(Napi::Persistent(resource));
+  data->outputBufferLeases.push_back(lease);
+  return lease;
+}
+
+void OrtInstanceData::ReleaseOutputBufferLease(Napi::Env env, const OutputBufferLease& lease) {
+  auto data = env.GetInstanceData<OrtInstanceData>();
+  if (data == nullptr) {
+    return;
+  }
+
+  for (auto it = data->outputBufferLeases.begin(); it != data->outputBufferLeases.end(); ++it) {
+    if (*it == lease) {
+      data->outputBufferLeases.erase(it);
+      return;
+    }
+  }
+}

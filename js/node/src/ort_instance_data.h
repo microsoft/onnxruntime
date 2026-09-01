@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <memory>
 #include <napi.h>
+#include <vector>
 #include "onnxruntime_cxx_api.h"
 
 /**
@@ -25,6 +27,13 @@ struct OrtInstanceData {
   // Return whether this Napi::Env belongs to an Electron runtime.
   static bool IsElectron(Napi::Env env);
 
+  using OutputBufferLease = std::shared_ptr<Napi::ObjectReference>;
+
+  // Acquire a lease for a preallocated output resource in this Napi environment.
+  static OutputBufferLease AcquireOutputBufferLease(Napi::Object resource);
+  // Release a previously acquired preallocated output resource lease.
+  static void ReleaseOutputBufferLease(Napi::Env env, const OutputBufferLease& lease);
+
  private:
   OrtInstanceData();
 
@@ -32,4 +41,5 @@ struct OrtInstanceData {
   Napi::FunctionReference wrappedSessionConstructor;
   Napi::FunctionReference ortTensorConstructor;
   bool isElectron_{false};
+  std::vector<OutputBufferLease> outputBufferLeases;
 };
