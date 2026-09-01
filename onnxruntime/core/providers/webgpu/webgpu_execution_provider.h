@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
 #include <span>
 #include <string>
@@ -97,7 +96,14 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
-  bool IsRunActive() const { return run_active_.load(); }
+  // Run state lives on the WebGpuContext because it owns the command encoder whose dispatch batching
+  // depends on it, and because allocators not bound to an EP instance (the plugin EP's shared allocator,
+  // created by the factory before any EP exists) must observe the same state.
+  //
+  // This reports context-wide activity: it is true while any session sharing this context has a run in
+  // flight, not just this one. That is what the batching decision depends on, since the command encoder
+  // being batched into is shared.
+  bool IsRunActive() const;
 
   // WebGPU EP reuses the Device ID as the key to get the WebGpuContext instance.
   int GetDeviceId() const override { return context_id_; }
@@ -138,7 +144,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
-  std::atomic<bool> run_active_{false};
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
