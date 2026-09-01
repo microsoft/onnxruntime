@@ -1,13 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <cstdint>
-#include <memory>
+#include <algorithm>
 #include <type_traits>
 #include <vector>
 
+#include <memory>
+
 #include "gtest/gtest.h"
 #include "core/framework/execution_provider.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -15,6 +19,179 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+constexpr float kEpsilon = 1.0e-5f;
+
+float Sigmoid(float x) {
+  if (x > 0.0f) {
+    return 1.0f / (1.0f + std::exp(-x));
+  }
+  const float exp_x = std::exp(x);
+  return exp_x / (1.0f + exp_x);
+}
+
+template <typename T>
+std::vector<T> ToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(data);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(data);
+  } else {
+    return data;
+  }
+}
+
+// Returns false when the execution provider required by T is unavailable. This must be checked before
+// an OpTester is constructed: BaseTester's destructor traps when a tester is destroyed without running.
+template <typename T>
+bool IsTypeSupported() {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    return DefaultCudaExecutionProvider() != nullptr;
+  } else {
+    return true;
+  }
+}
+
+// Runs the tester on CUDA only for BFloat16, otherwise on the default set of execution providers.
+template <typename T>
+void RunOnSupportedProviders(OpTester& test) {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  } else {
+    test.Run();
+  }
+}
+
+// Deterministic ramp of `count` values starting at `start` and advancing by `step`. Deterministic
+// inputs keep the hand-computed expectations in the vectorized tests reproducible.
+std::vector<float> MakeRamp(size_t count, float start, float step) {
+  std::vector<float> values(count);
+  for (size_t i = 0; i < count; ++i) {
+    values[i] = start + step * static_cast<float>(i);
+  }
+  return values;
+}
+
+// Reference for the gate pre-activation, sign(dot) * sqrt(max(abs(dot), 1e-6)).
+// std::copysign is deliberately avoided: it maps a zero dot product to +sqrt(1e-6) instead of zero.
+float GateArg(float dot) {
+  if (dot == 0.0f) {
+    return 0.0f;
+  }
+  const float magnitude = std::sqrt(std::max(std::abs(dot), 1.0e-6f));
+  return dot < 0.0f ? -magnitude : magnitude;
+}
+
+// ---------------------------------------------------------------------------------------------
+// EngramGate
+// ---------------------------------------------------------------------------------------------
+
+// Reference EngramGate for a single (token, hyper-connection) row with unit norm scales.
+float EngramGateReference(const std::vector<float>& key, const std::vector<float>& query) {
+  const auto hidden_size = static_cast<float>(key.size());
+  float key_sum_sq = 0.0f;
+  float query_sum_sq = 0.0f;
+  for (size_t c = 0; c < key.size(); ++c) {
+    key_sum_sq += key[c] * key[c];
+    query_sum_sq += query[c] * query[c];
+  }
+  const float key_inv = 1.0f / std::sqrt(key_sum_sq / hidden_size + kEpsilon);
+  const float query_inv = 1.0f / std::sqrt(query_sum_sq / hidden_size + kEpsilon);
+  float dot = 0.0f;
+  for (size_t c = 0; c < key.size(); ++c) {
+    dot += key[c] * key_inv * query[c] * query_inv;
+  }
+  dot /= std::sqrt(hidden_size);
+  return Sigmoid(GateArg(dot));
+}
+
+template <typename T>
+void RunEngramGateTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  const std::vector<float> key{0.0f, 2.5f};
+  const std::vector<float> query{3.0f, 4.0f};
+  const std::vector<float> value{2.0f, -1.5f};
+  const std::vector<float> unit_scale{1.0f, 1.0f};
+
+  const float gate = EngramGateReference(key, query);
+  const std::vector<float> expected{gate * value[0], gate * value[1]};
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {1, 1, 1, 2}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {1, 1, 1, 2}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {1, 1, 2}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {1, 2}, ToTensorType<T>(unit_scale));
+  test.AddInput<T>("query_norm_scale", {1, 2}, ToTensorType<T>(unit_scale));
+  test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
+// Exercises hidden_size == 4 with hc_mult > 1 and non-unit norm scales. On WebGPU this is the only
+// case that selects the vec4 component path through the gate reduction and the broadcast pass, and
+// hc_mult > 1 makes a per-row rather than per-token scale lookup observable.
+template <typename T>
+void RunEngramGateVectorizedTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr int64_t kBatch = 1;
+  constexpr int64_t kSequence = 2;
+  constexpr int64_t kHcMult = 2;
+  constexpr int64_t kHidden = 4;
+  constexpr int64_t kRows = kBatch * kSequence * kHcMult;
+
+  const std::vector<float> key = MakeRamp(static_cast<size_t>(kRows * kHidden), -0.9f, 0.3f);
+  const std::vector<float> query = MakeRamp(static_cast<size_t>(kRows * kHidden), 1.2f, -0.25f);
+  const std::vector<float> value = MakeRamp(static_cast<size_t>(kBatch * kSequence * kHidden), 0.4f, 0.35f);
+  const std::vector<float> key_scale = MakeRamp(static_cast<size_t>(kHcMult * kHidden), 0.6f, 0.1f);
+  const std::vector<float> query_scale = MakeRamp(static_cast<size_t>(kHcMult * kHidden), 1.4f, -0.15f);
+
+  std::vector<float> expected(static_cast<size_t>(kRows * kHidden));
+  for (int64_t row = 0; row < kRows; ++row) {
+    const int64_t g = row % kHcMult;
+    const int64_t token = row / kHcMult;
+    float key_sum_sq = 0.0f;
+    float query_sum_sq = 0.0f;
+    for (int64_t c = 0; c < kHidden; ++c) {
+      const float k = key[static_cast<size_t>(row * kHidden + c)];
+      const float q = query[static_cast<size_t>(row * kHidden + c)];
+      key_sum_sq += k * k;
+      query_sum_sq += q * q;
+    }
+    const float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(kHidden) + kEpsilon);
+    const float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(kHidden) + kEpsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < kHidden; ++c) {
+      const auto scale_index = static_cast<size_t>(g * kHidden + c);
+      const float normed_key = key[static_cast<size_t>(row * kHidden + c)] * key_inv * key_scale[scale_index];
+      const float normed_query =
+          query[static_cast<size_t>(row * kHidden + c)] * query_inv * query_scale[scale_index];
+      dot += normed_key * normed_query;
+    }
+    dot /= std::sqrt(static_cast<float>(kHidden));
+    const float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < kHidden; ++c) {
+      expected[static_cast<size_t>(row * kHidden + c)] =
+          gate * value[static_cast<size_t>(token * kHidden + c)];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {kBatch, kSequence, kHcMult, kHidden}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {kBatch, kSequence, kHcMult, kHidden}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {kBatch, kSequence, kHidden}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {kHcMult, kHidden}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {kHcMult, kHidden}, ToTensorType<T>(query_scale));
+  test.AddOutput<T>("output", {kBatch, kSequence, kHcMult, kHidden}, ToTensorType<T>(expected), false, tolerance,
+                    tolerance);
+  RunOnSupportedProviders<T>(test);
+}
 
 // ---------------------------------------------------------------------------------------------
 // NGramHashMapping
@@ -497,7 +674,6 @@ void RunVarlenNGramHashMappingChunkedTest() {
              std::vector<T>(full_refs[1].begin() + 12, full_refs[1].end())},
             present_after_decode3);
 }
-
 }  // namespace
 
 TEST(EngramOpsTest, NGramHashMappingInt64) {
@@ -533,6 +709,46 @@ TEST(EngramOpsTest, NGramHashMappingRejectsNonPositiveVocabSizeInt64) {
 
 TEST(EngramOpsTest, NGramHashMappingRejectsNonPositiveVocabSizeInt32) {
   RunNGramHashMappingNonPositiveVocabTest<int32_t>();
+}
+
+TEST(EngramOpsTest, EngramGateFloat) {
+  RunEngramGateTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateFloat16) {
+  RunEngramGateTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateVectorizedFloat) {
+  RunEngramGateVectorizedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateVectorizedFloat16) {
+  RunEngramGateVectorizedTest<MLFloat16>(3e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateBFloat16) {
+  RunEngramGateTest<BFloat16>(2e-2f);
+}
+
+// A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make
+// the dot product vanish, which would silently become sigmoid(sqrt(1e-6)) if copysign were used.
+TEST(EngramOpsTest, EngramGateZeroDotProduct) {
+  const std::vector<float> key{1.0f, 0.0f};
+  const std::vector<float> query{0.0f, 1.0f};
+  const std::vector<float> value{1.0f, -1.0f};
+  const std::vector<float> unit_scale{1.0f, 1.0f};
+  const std::vector<float> expected{0.5f * value[0], 0.5f * value[1]};
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<float>("key", {1, 1, 1, 2}, key);
+  test.AddInput<float>("query", {1, 1, 1, 2}, query);
+  test.AddInput<float>("value", {1, 1, 2}, value);
+  test.AddInput<float>("key_norm_scale", {1, 2}, unit_scale);
+  test.AddInput<float>("query_norm_scale", {1, 2}, unit_scale);
+  test.AddOutput<float>("output", {1, 1, 1, 2}, expected, false, 1e-5f, 1e-5f);
+  test.Run();
 }
 
 TEST(EngramOpsTest, VarlenNGramHashMappingMatchesPerSequenceInt64) {
