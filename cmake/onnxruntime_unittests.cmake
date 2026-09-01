@@ -1695,13 +1695,15 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # coverage gap this feature exists to close.
   # ---------------------------------------------------------------------------
   if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
-    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
-    if(CMAKE_MATCH_1)
-      set(_onnx_pinned_version ${CMAKE_MATCH_1})
+    # Derive the onnx version from the exact dependency archive after FetchContent unpacks it.
+    # Commit-pinned archives do not encode a release version in DEP_URL_onnx.
+    file(READ "${onnx_SOURCE_DIR}/VERSION_NUMBER" _onnx_version_file)
+    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pinned_version "${_onnx_version_file}")
+    if(_onnx_pinned_version)
+      string(STRIP "${_onnx_pinned_version}" _onnx_pinned_version)
     else()
-      message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
-        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
+      message(FATAL_ERROR "Could not parse an X.Y.Z version from ${onnx_SOURCE_DIR}/VERSION_NUMBER. "
+        "Fix the ONNX dependency pin or this parser.")
     endif()
 
     # Python interpreter is not guaranteed for static test-only builds (the top-level
