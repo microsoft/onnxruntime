@@ -70,6 +70,34 @@ describe('API Tests - InferenceSession.run()', async () => {
     await localSession.release();
   });
 
+  it('rejects disposal re-entered from a Tensor property getter', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const inputData = input.data;
+    const releaseErrors: Error[] = [];
+
+    // The binding reads Tensor.data while preparing the run. Releasing the session from that read
+    // must not be able to tear the session down underneath the run being prepared.
+    Object.defineProperty(input, 'data', {
+      configurable: true,
+      get: () => {
+        void localSession.release().catch((e: Error) => releaseErrors.push(e));
+        return inputData;
+      },
+    });
+
+    try {
+      const run = localSession.run({ input });
+      assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+      assert.ok(releaseErrors.length > 0, 'expected the binding to read Tensor.data');
+      for (const error of releaseErrors) {
+        assert.match(error.message, /Cannot dispose session while inference is running/);
+      }
+    } finally {
+      await localSession.release();
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });

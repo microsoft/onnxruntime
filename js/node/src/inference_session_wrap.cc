@@ -430,17 +430,15 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   auto deferred = Napi::Promise::Deferred::New(env);
 
   std::unique_ptr<RunAsyncWorker> worker;
-  bool active_run_registered = false;
-  const auto unregister_active_run = [&]() {
-    if (active_run_registered) {
-      active_runs_.fetch_sub(1, std::memory_order_release);
-    }
-  };
+  const auto unregister_active_run = [this]() { active_runs_.fetch_sub(1, std::memory_order_release); };
+
+  // Register the run before reading 'feed' and 'fetch': those reads can re-enter JS through
+  // getters or Proxy traps, and a reentrant dispose() must not be allowed to tear the session
+  // down while this run is still being prepared.
+  active_runs_.fetch_add(1, std::memory_order_acquire);
   try {
     worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
     worker->AcquireOutputBufferLeases();
-    active_runs_.fetch_add(1, std::memory_order_acquire);
-    active_run_registered = true;
     worker->Queue();
   } catch (const Napi::Error&) {
     unregister_active_run();
