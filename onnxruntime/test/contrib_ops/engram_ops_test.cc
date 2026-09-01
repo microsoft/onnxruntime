@@ -64,6 +64,16 @@ void RunOnSupportedProviders(OpTester& test) {
   }
 }
 
+// Deterministic ramp of `count` values starting at `start` and advancing by `step`. Deterministic
+// inputs keep the hand-computed expectations in the vectorized tests reproducible.
+std::vector<float> MakeRamp(size_t count, float start, float step) {
+  std::vector<float> values(count);
+  for (size_t i = 0; i < count; ++i) {
+    values[i] = start + step * static_cast<float>(i);
+  }
+  return values;
+}
+
 // Reference for the gate pre-activation, sign(dot) * sqrt(max(abs(dot), 1e-6)).
 // std::copysign is deliberately avoided: it maps a zero dot product to +sqrt(1e-6) instead of zero.
 float GateArg(float dot) {
