@@ -409,6 +409,8 @@ Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
+  ORT_NAPI_THROW_ERROR_IF(this->active_runs_.load(std::memory_order_acquire) != 0, env,
+                          "Cannot end profiling while inference is running.");
 
   Napi::EscapableHandleScope scope(env);
 

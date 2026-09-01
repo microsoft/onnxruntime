@@ -76,7 +76,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    * [sync] end the profiling.
    * @param nothing
    * @returns nothing
-   * @throw nothing
+   * @throw error if inference is running
    */
   Napi::Value EndProfiling(const Napi::CallbackInfo& info);
 
