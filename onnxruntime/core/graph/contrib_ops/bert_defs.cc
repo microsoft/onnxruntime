@@ -2554,6 +2554,241 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
+Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
+
+For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
+sequence with pad_id, and computes
+mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
+For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
+The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
+heads for n=2 first, then n=3, and so on.
+
+An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
+across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
+those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
+(batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
+Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
+and running it over consecutive chunks while threading present_ids into past_ids produce identical
+hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    NGramHashMapping, 1,
+    OpSchema()
+        .SetDoc(NGramHashMapping_ver1_doc)
+        .Attr("max_ngram_size",
+              "Maximum n-gram order. Must be at least 2.",
+              AttributeProto::INT)
+        .Attr("n_head_per_ngram",
+              "Number of hash heads emitted for each n-gram order.",
+              AttributeProto::INT)
+        .Attr("pad_id",
+              "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.",
+              AttributeProto::INT)
+        .Input(0,
+               "input_ids",
+               "Compressed tokenizer ids with shape (batch_size, sequence_length).",
+               "M")
+        .Input(1,
+               "multipliers",
+               "Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any "
+               "value is accepted.",
+               "M")
+        .Input(2,
+               "vocab_sizes",
+               "Per-output-head vocabulary sizes, conventionally prime, with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. "
+               "The CPU implementation rejects a non-positive entry; GPU implementations guard the "
+               "modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.",
+               "M")
+        .Input(3,
+               "past_ids",
+               "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
+               "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
+               "slot is the most recent id. If omitted the history is pad_id.",
+               "M",
+               OpSchema::Optional)
+        .Output(0,
+                "hash_ids",
+                "Hash ids with shape (batch_size, sequence_length, "
+                "(max_ngram_size - 1) * n_head_per_ngram).",
+                "M")
+        .Output(1,
+                "present_ids",
+                "Trailing max_ngram_size - 1 ids of past_ids followed by input_ids, with shape "
+                "(batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.",
+                "M",
+                OpSchema::Optional)
+        .TypeConstraint("M",
+                        {"tensor(int32)", "tensor(int64)"},
+                        "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
+
+          const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
+          const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          if (max_ngram_size < 2) {
+            fail_shape_inference("NGramHashMapping: max_ngram_size must be at least 2");
+          }
+          if (n_head_per_ngram < 1) {
+            fail_shape_inference("NGramHashMapping: n_head_per_ngram must be positive");
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 2) {
+              fail_shape_inference("NGramHashMapping: input_ids must have rank 2");
+            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = input_shape.dim(0);
+            *output_shape.add_dim() = input_shape.dim(1);
+            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            updateOutputShape(ctx, 0, output_shape);
+
+            if (ctx.getNumOutputs() > 1) {
+              TensorShapeProto present_shape;
+              *present_shape.add_dim() = input_shape.dim(0);
+              present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+              updateOutputShape(ctx, 1, present_shape);
+            }
+          }
+        }));
+
+constexpr const char* VarlenNGramHashMapping_ver1_doc = R"DOC(
+Computes Engram n-gram hash ids from pre-compressed tokenizer ids over a packed, token-major batch
+of variable-length sequences.
+
+input_ids has shape (total_tokens) and hash_ids has shape (total_tokens, (max_ngram_size - 1) *
+n_head_per_ngram). cumulative_sequence_length is a device-resident int32 tensor of shape
+(batch_size + 1); request i occupies [cumulative_sequence_length[i], cumulative_sequence_length[i +
+1]) of the packed buffer. Every request contributes at least one token.
+
+For n in [2, max_ngram_size], the op creates causal shifts of each request's own tokens, padding
+positions before that request's start with pad_id (or its own past_ids history, see below), and
+computes mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1]. For every
+head of that n-gram order it emits mix modulo the corresponding head vocabulary size. The n-gram
+window never reads tokens belonging to a different packed request; it is clamped at each request's
+own boundary exactly like VarlenCausalConvWithState clamps its causal convolution.
+
+An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op
+causal across invocations (chunked prefill or autoregressive decode) for every concurrent request in
+the packed batch, the optional past_ids input carries those preceding ids per request and
+present_ids returns the ids to pass to the next call. Both have shape (batch_size, max_ngram_size -
+1) and are right-aligned, so the last slot is the most recent id, and are indexed by request
+(batch_size), not by position in the packed buffer. Positions before the start of a request's whole
+sequence use pad_id. Running NGramHashMapping once per sequence and running this op once over those
+sequences packed together (optionally split into packed chunks with present_ids threaded into
+past_ids) produce identical hash ids.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenNGramHashMapping, 1,
+    OpSchema()
+        .SetDoc(VarlenNGramHashMapping_ver1_doc)
+        .Attr("max_ngram_size",
+              "Maximum n-gram order. Must be at least 2.",
+              AttributeProto::INT)
+        .Attr("n_head_per_ngram",
+              "Number of hash heads emitted for each n-gram order.",
+              AttributeProto::INT)
+        .Attr("pad_id",
+              "Compressed tokenizer id used to pad causal shifts before the beginning of a request's "
+              "sequence.",
+              AttributeProto::INT)
+        .Input(0,
+               "input_ids",
+               "Token-major packed compressed tokenizer ids with shape (total_tokens).",
+               "M")
+        .Input(1,
+               "multipliers",
+               "Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any "
+               "value is accepted.",
+               "M")
+        .Input(2,
+               "vocab_sizes",
+               "Per-output-head vocabulary sizes, conventionally prime, with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. "
+               "The CPU implementation rejects a non-positive entry; GPU implementations guard the "
+               "modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.",
+               "M")
+        .Input(3,
+               "cumulative_sequence_length",
+               "Device tensor with shape (batch_size + 1) giving the half-open packed token range "
+               "of each request.",
+               "S")
+        .Input(4,
+               "past_ids",
+               "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
+               "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
+               "slot is the most recent id, and indexed by request rather than by packed position. "
+               "If omitted the history is pad_id.",
+               "M",
+               OpSchema::Optional)
+        .Output(0,
+                "hash_ids",
+                "Token-major packed hash ids with shape (total_tokens, "
+                "(max_ngram_size - 1) * n_head_per_ngram).",
+                "M")
+        .Output(1,
+                "present_ids",
+                "Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, "
+                "with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next "
+                "call.",
+                "M",
+                OpSchema::Optional)
+        .TypeConstraint("M",
+                        {"tensor(int32)", "tensor(int64)"},
+                        "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
+        .TypeConstraint("S",
+                        {"tensor(int32)"},
+                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
+
+          const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
+          const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          if (max_ngram_size < 2) {
+            fail_shape_inference("VarlenNGramHashMapping: max_ngram_size must be at least 2");
+          }
+          if (n_head_per_ngram < 1) {
+            fail_shape_inference("VarlenNGramHashMapping: n_head_per_ngram must be positive");
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenNGramHashMapping: input_ids must have rank 1");
+            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = input_shape.dim(0);
+            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            updateOutputShape(ctx, 0, output_shape);
+          }
+
+          if (ctx.getNumOutputs() > 1 && hasInputShape(ctx, 3)) {
+            const auto& cu_seqlen_shape = getInputShape(ctx, 3);
+            if (cu_seqlen_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenNGramHashMapping: cumulative_sequence_length must have rank 1");
+            }
+            TensorShapeProto present_shape;
+            const auto& cu_dim = cu_seqlen_shape.dim(0);
+            if (cu_dim.has_dim_value()) {
+              present_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
+            } else {
+              present_shape.add_dim();  // unknown batch size
+            }
+            present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+            updateOutputShape(ctx, 1, present_shape);
+          }
+        }));
+
 constexpr const char* CausalConvWithState_ver1_doc = R"DOC(
 Stateful causal depthwise convolution, generalized to N spatial dimensions.
 
