@@ -3,7 +3,6 @@
 
 #include "gtest/gtest.h"
 
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -69,32 +68,17 @@ TEST(NonZeroOpTest, ThreeDims) {
 }
 
 TEST(NonZeroOpTest, Scalar) {
-  // TODO: ONNX shape inference disagrees about the output shape.
-  // ONNX spec is ambiguous: https://github.com/onnx/onnx/issues/2428.
-  // Once spec clarified, remove strict_shape_type_inference override.
-  SessionOptions so;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   {
     OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {0});
-#ifdef USE_TENSORRT
-    // TensorRT follows ONNX spec where NonZero produces output shape (0, N) instead of (1, N) for scalar input
     test.AddOutput<int64_t>("Y", {0, 0}, {});
-#else
-    test.AddOutput<int64_t>("Y", {1, 0}, {});
-#endif
-    test.Run(so);
+    test.Run();
   }
   {
     OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {1});
-#ifdef USE_TENSORRT
-    // TensorRT follows ONNX spec where NonZero produces output shape (0, N) instead of (1, N) for scalar input
     test.AddOutput<int64_t>("Y", {0, 1}, {});
-#else
-    test.AddOutput<int64_t>("Y", {1, 1}, {0});
-#endif
-    test.Run(so);
+    test.Run();
   }
 }
 
