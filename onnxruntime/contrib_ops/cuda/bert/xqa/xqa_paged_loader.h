@@ -26,8 +26,9 @@ constexpr int kXqaTokensPerPage = 128;
 // Paged-KV XQA decode launcher. Unlike LaunchXQAKernel (contiguous per-request cache) this reads
 // K and V from a shared block pool addressed through a page table.
 //
-// Preconditions: one query token per sequence, head_size in {64, 128}, group_size in
-// {4, 8, 16, 32}, quantized (INT8/FP8) cache, block_size % kXqaTokensPerPage == 0.
+// Preconditions: one query token per sequence, head_size in {64, 128, 256}, group_size in
+// {4, 6, 8, 16, 32}, supported FP16/INT8/FP8 cache, block_size % kXqaTokensPerPage == 0.
+// PagedAttention currently routes native FP16 cache only for head_size=256 and group_size=6.
 Status LaunchXQAPagedKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
@@ -56,8 +57,9 @@ Status LaunchXQAPagedKernel(
 // and contiguous kernels share the CTA tile and the scratch layout, so this is GetXQAScratchSize
 // called with max_seq_len = max_pages_per_seq * kXqaTokensPerPage.
 
-// Dynamic shared memory the paged kernel requests, read from the loaded module. Returns 0 when it
-// cannot be determined. Callers must skip XQA when this exceeds device_prop.sharedMemPerBlockOptin.
+// Dynamic shared memory the paged kernel requests, read from the loaded module. Returns 0 when the
+// selected CUDA image has no compatible kernel or the size cannot be determined. Callers must skip
+// XQA when this returns 0 or exceeds device_prop.sharedMemPerBlockOptin.
 size_t GetXQAPagedRequiredSharedMemoryBytes(
     const cudaDeviceProp& device_prop,
     int head_size,

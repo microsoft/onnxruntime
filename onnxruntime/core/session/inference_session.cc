@@ -1839,17 +1839,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
     // Insert cast node/s.
     {
-      const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+      // The full list, custom registries included: the transformer decides whether a node has a usable CPU
+      // kernel, and a kernel from a custom registry counts. Keeping only the CPU EP's own registry (the last
+      // entry, per the design of GetKernelRegistriesByProviderType) would make a node covered by a custom
+      // fp16 kernel look kernel-less, so it would be rewritten to fp32 and the custom kernel never used.
+      InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
           kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
 
-      const KernelRegistry* cpu_regs = nullptr;
-      if (!kernel_regs.empty()) {
-        // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
-        //       of GetKernelRegistriesByProviderType function.
-        cpu_regs = kernel_regs[kernel_regs.size() - 1];
-      }
-
-      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs, on_partition_assignment_fn};
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", std::move(kernel_regs),
+                                                    on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
@@ -2026,6 +2024,11 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const bool is_supported = IsOrtModelVersionSupported(model_version);
 
   OrtFormatLoadOptions load_options{};
+  const auto& config_options = session_options_.config_options;
+  if (is_supported &&
+      config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "0") == "1") {
+    load_options.ignore_saved_runtime_optimizations = false;
+  }
 
 #if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
@@ -2074,7 +2077,6 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // provided an existing buffer of bytes when creating the InferenceSession, or because we memory-mapped the file,
   // ort_format_model_bytes_data_holder_ will be empty.
   // if that is the case we also allow creating initializers that directly use those bytes.
-  const auto& config_options = session_options_.config_options;
   using_ort_model_bytes_for_initializers_ =
       load_options.can_use_flatbuffer_for_initializers =
           ort_format_model_bytes_data_holder_.empty() &&
