@@ -193,6 +193,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     uint32_t lease_key_index{0};
     size_t lease_byte_offset{0};
     size_t lease_byte_length{0};
+    // Device outputs lease the whole External; they have no addressable sub-range.
+    bool lease_whole_resource{false};
   };
 
   RunAsyncWorker(InferenceSessionWrap& session, const Napi::Object& feed, const Napi::Object& fetch,
@@ -245,6 +247,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           output.declared = std::move(conversion.declared);
           output.lease_byte_offset = conversion.dataByteOffset;
           output.lease_byte_length = conversion.dataByteLength;
+          output.lease_whole_resource = conversion.dataArrayBuffer.IsEmpty();
         }
         outputs_.push_back(std::move(output));
       }
@@ -266,7 +269,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (output.reuse) {
         output_buffer_leases_.push_back(OrtInstanceData::AcquireOutputBufferLease(
             keep_alive.Get(output.lease_key_index).As<Napi::Object>(), output.lease_byte_offset,
-            output.lease_byte_length));
+            output.lease_byte_length, output.lease_whole_resource));
       }
     }
   }
@@ -345,6 +348,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         } else if (output.reuse) {
           // A device output is handed straight back to the caller, so nothing would otherwise
           // notice that the model produced a different type or shape than the tensor declares.
+          // This only bites on the IO-binding path, where output_values_ has been replaced by
+          // GetOutputValues(); on the plain Run() path it still holds the wrapper built from the
+          // caller's own declaration, so the comparison there is trivially satisfied.
           ValidateOrtValueMatchesDeclared(env_, output_values_[i], output.declared);
         }
       }
@@ -431,6 +437,15 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     completed_ = true;
 
     ReleaseOutputBufferLeases();
+
+    // Release everything derived from the session before EndRun(), which may tear the session down:
+    // Ort::IoBinding holds a reference to it, and device OrtValues come from its allocators. Waiting
+    // for these members to be destroyed with the worker would release them against a dead session.
+    io_binding_.reset();
+    output_values_.clear();
+    input_values_.clear();
+    gpu_value_owners_.clear();
+
     session_->EndRun();
   }
 
@@ -464,18 +479,33 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
-  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() < 2, env, "Expect argument: inputs(feed) and outputs(fetch).");
-  ORT_NAPI_THROW_TYPEERROR_IF(!info[0].IsObject() || !info[1].IsObject(), env,
-                              "Expect inputs(feed) and outputs(fetch) to be objects.");
-  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull()), env,
-                              "'runOptions' must be an object.");
+  auto deferred = Napi::Promise::Deferred::New(env);
+
+  // run() is declared as returning a Promise, so state and argument problems are reported by
+  // rejecting it rather than by raising synchronously.
+  const auto reject = [&deferred](Napi::Value error) {
+    deferred.Reject(error);
+    return deferred.Promise();
+  };
+  if (!this->initialized_) {
+    return reject(Napi::Error::New(env, "Session is not initialized.").Value());
+  }
+  if (this->disposed_) {
+    return reject(Napi::Error::New(env, "Session already disposed.").Value());
+  }
+  if (info.Length() < 2) {
+    return reject(Napi::TypeError::New(env, "Expect argument: inputs(feed) and outputs(fetch).").Value());
+  }
+  if (!info[0].IsObject() || !info[1].IsObject()) {
+    return reject(Napi::TypeError::New(env, "Expect inputs(feed) and outputs(fetch) to be objects.").Value());
+  }
+  if (info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull())) {
+    return reject(Napi::TypeError::New(env, "'runOptions' must be an object.").Value());
+  }
 
   auto feed = info[0].As<Napi::Object>();
   auto fetch = info[1].As<Napi::Object>();
   auto options = info.Length() > 2 ? info[2].As<Napi::Object>() : Napi::Object::New(env);
-  auto deferred = Napi::Promise::Deferred::New(env);
 
   std::unique_ptr<RunAsyncWorker> worker;
 
@@ -491,15 +521,15 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     // Reject rather than throw: the deferred already exists, and N-API frees it only once it has
     // been settled. Throwing would leak it and would also make a method that is typed as returning
     // a Promise raise synchronously.
-    EndRun();
+    AbandonRun(worker);
     deferred.Reject(e.Value());
     return deferred.Promise();
   } catch (const std::exception& e) {
-    EndRun();
+    AbandonRun(worker);
     deferred.Reject(Napi::Error::New(env, e.what()).Value());
     return deferred.Promise();
   } catch (...) {
-    EndRun();
+    AbandonRun(worker);
     deferred.Reject(Napi::Error::New(env, "Unknown error while preparing inference.").Value());
     return deferred.Promise();
   }
@@ -510,6 +540,15 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
 void InferenceSessionWrap::BeginRun() {
   ++active_runs_;
+}
+
+void InferenceSessionWrap::AbandonRun(const std::unique_ptr<RunAsyncWorker>& worker) {
+  // Once the worker exists it owns the run registration: its destructor runs Complete(), which ends
+  // the run exactly once when the unique_ptr goes out of scope. Only a throw out of the constructor
+  // leaves the registration unowned.
+  if (!worker) {
+    EndRun();
+  }
 }
 
 void InferenceSessionWrap::EndRun() {

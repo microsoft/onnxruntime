@@ -103,16 +103,20 @@ describe('API Tests - InferenceSession.run()', async () => {
 
   it('defers session teardown until in-flight runs finish', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
-    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-    const runs = [localSession.run({ input }), localSession.run({ input }), localSession.run({ input })];
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const runs = [localSession.run({ input }), localSession.run({ input }), localSession.run({ input })];
 
-    await localSession.release();
-    for (const result of await Promise.all(runs)) {
-      assertTensorEqual(result.output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+      await localSession.release();
+      for (const result of await Promise.all(runs)) {
+        assertTensorEqual(result.output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+      }
+
+      await assert.rejects(localSession.run({ input }), /Session already disposed/);
+      await assert.rejects(localSession.release(), /Session already disposed/);
+    } finally {
+      await localSession.release().catch(() => {});
     }
-
-    await assert.rejects(localSession.run({ input }), /Session already disposed/);
-    await assert.rejects(localSession.release(), /Session already disposed/);
   });
 
   it('rejects a preallocated CPU output whose type differs from the model output', async () => {
@@ -207,6 +211,29 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('keeps the run count balanced when preparation fails', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const buffer = new ArrayBuffer(64);
+      const running = localSession.run(
+        { input },
+        { output: new Tensor('float32', new Float32Array(buffer, 0, 5), [1, 5]) },
+      );
+      // This one fails after its worker was constructed, so the run must be counted down exactly
+      // once: the worker's destructor owns the registration from that point on.
+      await assert.rejects(
+        localSession.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 4, 5), [1, 5]) }),
+        /Preallocated output buffer is already in use/,
+      );
+      await running;
+      // Underflowing the counter would make this throw 'Cannot end profiling while inference is running'.
+      localSession.endProfiling();
+    } finally {
+      await localSession.release().catch(() => {});
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
@@ -230,39 +257,48 @@ describe('API Tests - InferenceSession.run()', async () => {
 
   it('reuses a preallocated CPU output', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
-    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-    const output = new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]);
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const output = new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]);
 
-    const result = await localSession.run({ input }, { output });
-    assert.strictEqual(result.output, output);
-    assertTensorEqual(output, input);
-    await localSession.release();
+      const result = await localSession.run({ input }, { output });
+      assert.strictEqual(result.output, output);
+      assertTensorEqual(output, input);
+    } finally {
+      await localSession.release().catch(() => {});
+    }
   });
 
   it('rejects overlapping preallocated CPU outputs', async () => {
     const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
     const localSession = await InferenceSession.create(modelPath);
     const secondSession = await InferenceSession.create(modelPath);
-    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-    const output = new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]);
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const output = new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]);
 
-    const firstRun = localSession.run({ input }, { output });
-    await assert.rejects(secondSession.run({ input }, { output }), /Preallocated output buffer is already in use/);
-    await firstRun;
-    await localSession.release();
-    await secondSession.release();
+      const firstRun = localSession.run({ input }, { output });
+      await assert.rejects(secondSession.run({ input }, { output }), /Preallocated output buffer is already in use/);
+      await firstRun;
+    } finally {
+      await localSession.release().catch(() => {});
+      await secondSession.release().catch(() => {});
+    }
   });
 
   it('rejects a detached preallocated CPU output buffer', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
-    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-    const outputData = new Float32Array(5);
-    const output = new Tensor('float32', outputData, [1, 5]);
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const outputData = new Float32Array(5);
+      const output = new Tensor('float32', outputData, [1, 5]);
 
-    const run = localSession.run({ input }, { output });
-    structuredClone(outputData.buffer, { transfer: [outputData.buffer] });
-    await assert.rejects(run, /Preallocated output tensor buffer was detached/);
-    await localSession.release();
+      const run = localSession.run({ input }, { output });
+      structuredClone(outputData.buffer, { transfer: [outputData.buffer] });
+      await assert.rejects(run, /Preallocated output tensor buffer was detached/);
+    } finally {
+      await localSession.release().catch(() => {});
+    }
   });
 
   it('reuses a preallocated GPU output', async function () {
@@ -281,25 +317,28 @@ describe('API Tests - InferenceSession.run()', async () => {
       preferredOutputLocation: 'gpu-buffer',
     });
     const readbackSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
-    const preallocatedOutput = (await localSession.run({ input: new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]) }))
-      .output;
-    const expectedOutput = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    try {
+      const preallocatedOutput = (await localSession.run({ input: new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]) }))
+        .output;
+      const expectedOutput = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
 
-    const firstRun = localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
-    await assert.rejects(
-      secondSession.run({ input: expectedOutput }, { output: preallocatedOutput }),
-      /Preallocated output buffer is already in use/,
-    );
-    await firstRun;
+      const firstRun = localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
+      await assert.rejects(
+        secondSession.run({ input: expectedOutput }, { output: preallocatedOutput }),
+        /Preallocated output buffer is already in use/,
+      );
+      await firstRun;
 
-    const result = await localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
-    assert.strictEqual(result.output, preallocatedOutput);
-    assertTensorEqual((await readbackSession.run({ input: preallocatedOutput })).output, expectedOutput);
+      const result = await localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
+      assert.strictEqual(result.output, preallocatedOutput);
+      assertTensorEqual((await readbackSession.run({ input: preallocatedOutput })).output, expectedOutput);
 
-    preallocatedOutput.dispose();
-    await readbackSession.release();
-    await secondSession.release();
-    await localSession.release();
+      preallocatedOutput.dispose();
+    } finally {
+      await localSession.release().catch(() => {});
+      await secondSession.release().catch(() => {});
+      await readbackSession.release().catch(() => {});
+    }
   });
 
   it('keeps a GPU buffer alive when Tensor disposal bypasses instance methods', async function () {

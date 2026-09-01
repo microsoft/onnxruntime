@@ -35,28 +35,32 @@ const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env)
 }
 
 namespace {
-bool RegionsOverlap(size_t offset, size_t length, size_t other_offset, size_t other_length) {
-  // A zero length means "the whole resource", so it conflicts with any other region.
-  if (length == 0 || other_length == 0) {
+bool RegionsOverlap(const OrtInstanceData::OutputBufferRegion& a, const OrtInstanceData::OutputBufferRegion& b) {
+  if (a.wholeResource || b.wholeResource) {
     return true;
   }
-  return offset < other_offset + other_length && other_offset < offset + length;
+  // A zero-length region writes nothing, so it cannot conflict with anything.
+  if (a.byteLength == 0 || b.byteLength == 0) {
+    return false;
+  }
+  return a.byteOffset < b.byteOffset + b.byteLength && b.byteOffset < a.byteOffset + a.byteLength;
 }
 }  // namespace
 
 OrtInstanceData::OutputBufferLease OrtInstanceData::AcquireOutputBufferLease(Napi::Object resource,
-                                                                            size_t byteOffset, size_t byteLength) {
+                                                                            size_t byteOffset, size_t byteLength,
+                                                                            bool wholeResource) {
   auto data = resource.Env().GetInstanceData<OrtInstanceData>();
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, resource.Env(), "OrtInstanceData not created.");
 
-  for (const auto& lease : data->outputBufferLeases) {
-    ORT_NAPI_THROW_ERROR_IF(lease->resource.Value().StrictEquals(resource) &&
-                                RegionsOverlap(byteOffset, byteLength, lease->byteOffset, lease->byteLength),
+  auto lease = std::make_shared<OutputBufferRegion>(
+      OutputBufferRegion{Napi::Persistent(resource), byteOffset, byteLength, wholeResource});
+
+  for (const auto& held : data->outputBufferLeases) {
+    ORT_NAPI_THROW_ERROR_IF(held->resource.Value().StrictEquals(resource) && RegionsOverlap(*lease, *held),
                             resource.Env(), "Preallocated output buffer is already in use.");
   }
 
-  auto lease = std::make_shared<OutputBufferRegion>(
-      OutputBufferRegion{Napi::Persistent(resource), byteOffset, byteLength});
   data->outputBufferLeases.push_back(lease);
   return lease;
 }

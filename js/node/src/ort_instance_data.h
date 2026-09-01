@@ -25,19 +25,21 @@ struct OrtInstanceData {
   // Get the Tensor constructor reference for the Napi::Env
   static const Napi::FunctionReference& TensorConstructor(Napi::Env env);
 
-  // A region of a preallocated output resource that a run is going to write. 'byteLength' of 0
-  // means the whole resource, which is how non-ArrayBuffer resources (a gpu-buffer External) are
-  // leased since they have no addressable sub-range.
+  // A region of a preallocated output resource that a run is going to write.
   struct OutputBufferRegion {
     Napi::ObjectReference resource;
     size_t byteOffset{0};
     size_t byteLength{0};
+    // The lease covers the whole resource. Used for a gpu-buffer External, which has no addressable
+    // sub-range; distinct from a zero-length region, which writes nothing and conflicts with nothing.
+    bool wholeResource{false};
   };
   using OutputBufferLease = std::shared_ptr<OutputBufferRegion>;
 
   // Acquire a lease for the region of a preallocated output resource that a run will write.
   // Overlapping regions of the same resource cannot be leased twice at once; disjoint regions can.
-  static OutputBufferLease AcquireOutputBufferLease(Napi::Object resource, size_t byteOffset, size_t byteLength);
+  static OutputBufferLease AcquireOutputBufferLease(Napi::Object resource, size_t byteOffset, size_t byteLength,
+                                                    bool wholeResource);
   // Release a previously acquired preallocated output resource lease.
   static void ReleaseOutputBufferLease(Napi::Env env, const OutputBufferLease& lease);
 
