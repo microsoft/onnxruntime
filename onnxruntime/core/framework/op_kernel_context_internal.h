@@ -20,6 +20,21 @@ namespace onnxruntime {
 class SessionState;
 class ExecutionFrame;
 
+// Holds per-run state for collecting MoE routing data without synchronizing after each kernel.
+//
+// A CUDA MoE kernel enqueues device-to-host copies of its routing outputs on the same stream
+// that produced them, followed by a completion event. Stream ordering guarantees that the copies
+// finish before the device scratch buffers can be reused by later work on that stream. The pinned
+// host buffers and their CUDA events are owned by deferred records stored here, so they remain
+// alive after the kernel returns.
+//
+// InferenceSession flushes the records after execution-provider OnRunEnd() performs the normal
+// end-of-run synchronization. Each record also checks its completion event and synchronizes that
+// event as a safety fallback before reading the host buffers and emitting the profiler event.
+//
+// CUDA pinned allocations are arena-backed, but they cannot be returned to the arena while their
+// copies are in flight. The routing record and element limits therefore bound the live pinned
+// memory retained until the run is flushed.
 class RunInstrumentationContext {
  public:
   static constexpr size_t kMaxMoeRoutingRecordsPerRun = 1024;
