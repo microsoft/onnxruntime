@@ -191,7 +191,7 @@ export const init = async (
   env: Env,
   gpuAdapter?: GPUAdapter,
   gpuDevice?: GPUDevice,
-): Promise<void> => {
+): Promise<WebGpuBackend | undefined> => {
   const jsepInit = module.jsepInit;
   if (!jsepInit) {
     throw new Error('Failed to initialize JSEP. The WebAssembly module is not built with JSEP support.');
@@ -273,6 +273,7 @@ export const init = async (
       // jsepReplay
       () => backend.replay(),
     ]);
+    return backend;
   } else {
     const backend = new WebNNBackend(env);
     jsepInit('webnn', [
@@ -300,5 +301,6 @@ export const init = async (
       // webnnEnableTraceEvent
       !!env.trace,
     ]);
+    return undefined;
   }
 };

@@ -207,6 +207,7 @@ export const createSession = async (
       proxyWorker!.postMessage(message, transferable);
     });
   } else {
+    await core.ensureWebGpuDevice(env);
     return core.createSession(model, options);
   }
 };

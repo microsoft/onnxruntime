@@ -26,6 +26,7 @@ import {
   tensorDataTypeStringToEnum,
   tensorTypeToTypedArrayConstructor,
 } from './wasm-common';
+import type { WebGpuBackend } from './jsep/backend-webgpu';
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError } from './wasm-utils';
 import { loadFile } from './wasm-utils-load-file';
@@ -101,6 +102,37 @@ export const initRuntime = async (env: Env): Promise<void> => {
  * @param env
  * @param epName
  */
+let webGpuBackend: WebGpuBackend | undefined;
+
+/**
+ * Rebind the WebGPU (JSEP) backend when `env.webgpu.device` names a different
+ * GPUDevice than the one the backend was initialized with, e.g. after the
+ * application recovered from a device loss with a new device. Sessions created
+ * on the previous device stay invalid and must be recreated by the caller.
+ */
+export const ensureWebGpuDevice = async (env: Env): Promise<void> => {
+  if (BUILD_DEFS.DISABLE_JSEP || !webGpuBackend) {
+    return;
+  }
+  const device = env.webgpu.device as unknown as GPUDevice | undefined;
+  if (!device || device === webGpuBackend.device) {
+    return;
+  }
+  const adapter = env.webgpu.adapter as GPUAdapter | undefined;
+  if (!adapter) {
+    throw new Error(
+      'Invalid WebGPU configuration: `env.webgpu.device` was replaced without ' +
+        '`env.webgpu.adapter`. Provide both objects when switching to a new GPUDevice.',
+    );
+  }
+  webGpuBackend.dispose();
+  webGpuBackend = undefined;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const initJsep = require('./jsep/init').init;
+  webGpuBackend = await initJsep('webgpu', getInstance(), env, adapter, device);
+  webGpuBackend!.rebound = true;
+};
+
 export const initEp = async (env: Env, epName: string): Promise<void> => {
   // initialize ASYNCIFY support
   getInstance().asyncInit?.();
@@ -159,7 +191,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
     const initJsep = require('./jsep/init').init;
 
     if (epName === 'webgpu') {
-      await initJsep('webgpu', getInstance(), env, webgpuAdapter, webgpuDevice);
+      webGpuBackend = await initJsep('webgpu', getInstance(), env, webgpuAdapter, webgpuDevice);
     }
     if (epName === 'webnn') {
       await initJsep('webnn', getInstance(), env);

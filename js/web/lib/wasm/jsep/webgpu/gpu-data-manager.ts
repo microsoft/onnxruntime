@@ -169,7 +169,17 @@ export const downloadGpuData = async (
     );
     backend.flush();
 
-    await gpuReadBuffer.mapAsync(GPUMapMode.READ);
+    try {
+      await gpuReadBuffer.mapAsync(GPUMapMode.READ);
+    } catch (e) {
+      // A rejected map (typically a lost GPUDevice) must still resolve: the
+      // download runs inside an asyncified OrtRun, and an unresolved suspension
+      // would leave the session marked as running forever. Hand back zeros.
+      LOG_DEBUG('warning', () => `[WebGPU] download failed, returning zeros: ${e}`);
+      const target = getTargetBuffer ? getTargetBuffer() : new Uint8Array(originalSize);
+      target.fill(0, 0, originalSize);
+      return target;
+    }
 
     const arrayBuffer = gpuReadBuffer.getMappedRange();
     if (getTargetBuffer) {
@@ -365,8 +375,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     const id = typeof idInput === 'bigint' ? Number(idInput) : idInput;
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
-      if (this.storageCache.size === 0) {
-        // cache was previously cleared, no need to release anything.
+      if (this.storageCache.size === 0 || this.backend.rebound) {
+        // cache was previously cleared, or the handle belongs to a session
+        // created on a previous GPUDevice; nothing to release here.
         return 0;
       } else {
         throw new Error('releasing data does not exist');

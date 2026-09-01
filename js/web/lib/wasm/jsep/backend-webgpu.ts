@@ -22,18 +22,6 @@ import {
   TimestampQuery,
 } from './webgpu/types';
 
-const setFrozenProperty = (obj: object, key: string, value: unknown): void => {
-  const desc = Object.getOwnPropertyDescriptor(obj, key);
-  if (desc && !desc.configurable) {
-    if (desc.value === value) return; // already frozen to same value
-    throw new Error(
-      `Conflicting WebGPU initialization: attempted to replace existing ` +
-        `env.webgpu.${key} with a different object after backend initialization.`,
-    );
-  }
-  Object.defineProperty(obj, key, { value, writable: false, enumerable: true, configurable: false });
-};
-
 interface CommandInfo {
   readonly kernelId: number;
   readonly computePipeline: GPUComputePipeline;
@@ -153,6 +141,11 @@ class AdapterInfoImpl implements AdapterInfo {
 export class WebGpuBackend {
   adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
+  /**
+   * True when this backend replaced one bound to a previous (lost) GPUDevice.
+   * Sessions created on that device may still release their handles here.
+   */
+  rebound = false;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
    */
@@ -304,8 +297,10 @@ export class WebGpuBackend {
       };
     }
 
-    setFrozenProperty(this.env.webgpu, 'device', this.device);
-    setFrozenProperty(this.env.webgpu, 'adapter', adapter);
+    // Left writable on purpose: assigning a different GPUDevice later (after a
+    // device loss) makes the next session creation rebind the backend to it.
+    this.env.webgpu.device = this.device;
+    this.env.webgpu.adapter = adapter;
 
     // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();
