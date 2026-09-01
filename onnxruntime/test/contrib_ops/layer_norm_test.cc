@@ -6,6 +6,23 @@
 namespace onnxruntime {
 namespace test {
 
+static void TestSimplifiedLayerNorm(const char* domain) {
+  OpTester test("SimplifiedLayerNormalization", 1, domain);
+  test.AddInput<float>("X", {1, 2}, {3.0f, 4.0f});
+  test.AddInput<float>("scale", {2}, {1.0f, 1.0f});
+  test.AddOutput<float>("Y", {1, 2}, {0.84852785f, 1.1313705f});
+  test.AddOutput<float>("inv_std_var", {1, 1}, {0.2828426f});
+  test.Run();
+}
+
+TEST(ContribOpLayerNormTest, SimplifiedLayerNormMsDomain) {
+  TestSimplifiedLayerNorm(kMSDomain);
+}
+
+TEST(ContribOpLayerNormTest, SimplifiedLayerNormOnnxDomainBackwardCompatibility) {
+  TestSimplifiedLayerNorm(kOnnxDomain);
+}
+
 #if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
@@ -32,7 +49,9 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
                           int64_t axis = -1,
                           int64_t keep_dims = 1,
                           bool no_bias = false,
-                          int opset = 9) {
+                          int opset = 9,
+                          const char* domain = kOnnxDomain,
+                          bool include_stats = false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -43,7 +62,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   // TODO keep_dims is not implemented, default behavior is to keep ones for reduced dimensions
   ASSERT_NE(keep_dims, 0);
 
-  CompareOpTester test(op.c_str(), opset);
+  CompareOpTester test(op.c_str(), opset, domain);
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {
@@ -76,6 +95,11 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
     test.AddOutput<float>("mean", stats_dims, mean_data);
   }
   test.AddOutput<float>("var", stats_dims, var_data);
+#elif defined(USE_WEBGPU)
+  if (include_stats) {
+    const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
+    test.AddOutput<float>("var", stats_dims, FillZeros<float>(stats_dims));
+  }
 #endif
 
 #ifdef USE_CUDA
@@ -151,6 +175,13 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
   std::vector<int64_t> X_dims{16, 512, 1024};
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
+
+#ifdef USE_WEBGPU
+TEST(WebGpuKernelTest, SimplifiedLayerNormMsDomainOptionalOutput) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default, -1, 1, false, 1, kMSDomain, true);
+}
+#endif
 
 // LayerNormalization is an ONNX operator in opset 17. It uses the same implementation so this is just a sanity check.
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_Opset17) {

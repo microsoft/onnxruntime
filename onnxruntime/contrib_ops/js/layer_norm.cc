@@ -31,15 +31,23 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("U", onnxruntime::js::JsepSupportedFloatTypes()),
     onnxruntime::js::LayerNorm<true>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    SimplifiedLayerNormalization,
-    kMSDomain,
-    1,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", onnxruntime::js::JsepSupportedFloatTypes())
-        .TypeConstraint("U", onnxruntime::js::JsepSupportedFloatTypes()),
-    onnxruntime::js::LayerNorm<true>);
+#define REGISTER_SIMPLIFIED_LAYER_NORM_KERNEL(T)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+      SimplifiedLayerNormalization,                                  \
+      kMSDomain,                                                     \
+      1,                                                             \
+      T,                                                             \
+      kJsExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),    \
+      onnxruntime::js::LayerNorm<true>);
+
+REGISTER_SIMPLIFIED_LAYER_NORM_KERNEL(float)
+REGISTER_SIMPLIFIED_LAYER_NORM_KERNEL(MLFloat16)
+
+#undef REGISTER_SIMPLIFIED_LAYER_NORM_KERNEL
 
 }  // namespace js
 }  // namespace contrib
