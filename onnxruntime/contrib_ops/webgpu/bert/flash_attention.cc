@@ -55,11 +55,11 @@ fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
 )";
 
 constexpr size_t DecodeWorkgroupStorageBytes(uint32_t m_tile,
-                                              uint32_t tile_size,
-                                              uint32_t head_size_vec,
-                                              size_t element_size,
-                                              uint32_t kv_cache_quantization_bits,
-                                              bool use_paged_kv_cache) {
+                                             uint32_t tile_size,
+                                             uint32_t head_size_vec,
+                                             size_t element_size,
+                                             uint32_t kv_cache_quantization_bits,
+                                             bool use_paged_kv_cache) {
   const uint32_t tile_size_k_vec = m_tile == 1u ? 32u : 8u;
   const uint32_t workgroup_size = m_tile == 1u ? 128u : 64u;
   const size_t value_size = 4 * element_size;
