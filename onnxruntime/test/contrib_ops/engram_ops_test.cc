@@ -430,7 +430,7 @@ std::vector<T> PresentIdsReference(const std::vector<T>& ids, const std::vector<
     const int64_t slot = state_length + source_t;
     present[static_cast<size_t>(j)] =
         (!history.empty() && slot >= 0 && slot < state_length) ? history[static_cast<size_t>(slot)]
-                                                                : static_cast<T>(pad_id);
+                                                               : static_cast<T>(pad_id);
   }
   return present;
 }

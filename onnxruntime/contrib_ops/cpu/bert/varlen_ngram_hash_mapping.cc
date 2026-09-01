@@ -15,15 +15,15 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_VARLEN_NGRAM_HASH_TYPED(T)                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      VarlenNGramHashMapping,                                     \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<T>())  \
+#define REGISTER_VARLEN_NGRAM_HASH_TYPED(T)                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      VarlenNGramHashMapping,                                           \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()), \
       VarlenNGramHashMapping<T>);
 

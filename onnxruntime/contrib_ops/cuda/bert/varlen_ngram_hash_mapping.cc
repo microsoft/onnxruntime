@@ -13,15 +13,15 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-#define REGISTER_KERNEL_TYPED(T)                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
-      VarlenNGramHashMapping,                                          \
-      kMSDomain,                                                       \
-      1,                                                               \
-      T,                                                               \
-      kCudaExecutionProvider,                                          \
-      (*KernelDefBuilder::Create())                                    \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<T>())       \
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      VarlenNGramHashMapping,                                           \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCudaExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()), \
       VarlenNGramHashMapping<T>);
 

@@ -128,8 +128,8 @@ Status LaunchVarlenNGramHashMappingKernel(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(T)                                                     \
-  template Status LaunchVarlenNGramHashMappingKernel<T>(                                             \
+#define INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(T)                                                      \
+  template Status LaunchVarlenNGramHashMappingKernel<T>(                                              \
       cudaStream_t, const T*, const T*, const T*, const int32_t*, const T*, T*, T*, int64_t, int64_t, \
       int64_t, int64_t, T, int);
 
