@@ -391,6 +391,11 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     builder.SetDomain(opKernel->domain)
             .SinceVersion(opKernel->minimumOperatorSetVersion)
             .Provider(providerType);
+    if (std::string_view(opKernel->name) == "BitShift" && opKernel->minimumOperatorSetVersion == 11)
+    {
+        // DirectML masks out-of-range shift counts, which does not satisfy the opset-28 semantics.
+        builder.SinceVersion(11, 27);
+    }
 
     std::string_view name(opKernel->name);
     if (name == "MemcpyToHost")
