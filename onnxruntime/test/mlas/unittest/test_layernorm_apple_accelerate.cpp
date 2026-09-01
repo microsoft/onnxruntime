@@ -224,20 +224,17 @@ TEST(LayerNormAppleAccelerate, LargeNormSizeHeapFallback) {
 }
 
 // End-to-end dispatch test: proves the public MlasLayerNormF32 entry point
-// -- the one every real caller (LayerNormalization, SkipLayerNormalization,
-// SimplifiedLayerNormalization ops in onnxruntime/core/providers/cpu/nn/
-// layer_norm_impl.cc) actually uses -- resolves to the Apple kernel rather
-// than silently keeping the scalar fallback, and that it returns true
-// (used the kernel) exactly when a kernel is registered. A compile-time
-// #if cannot be introspected at runtime, so this compares the public
-// dispatch's output to a direct call to MlasLayerNormKernelAppleAccelerate
-// for the same input: any divergence means the two have drifted apart.
-TEST(LayerNormAppleAccelerate, PublicDispatchMatchesDirectKernelCall) {
+// declines rows below the measured 64-element crossover so the caller uses
+// its scalar fallback, and resolves to the Apple kernel at and above the
+// threshold. A compile-time #if cannot be introspected at runtime, so
+// selected sizes are compared with a direct kernel call.
+TEST(LayerNormAppleAccelerate, PublicDispatchHonorsCrossoverAndMatchesDirectKernelCall) {
   ASSERT_NE(GetMlasPlatform().LayerNormF32Kernel, nullptr)
       << "This translation unit is only built when MLAS_USE_APPLE_ACCELERATE is enabled on macOS arm64; "
       << "the kernel must be registered in platform.cpp's MLAS_TARGET_ARM64 block whenever it is built.";
 
-  for (size_t norm_size : {size_t{1}, size_t{127}, size_t{768}, size_t{4096}}) {
+  constexpr size_t kMinimumDispatchSize = 64;
+  for (size_t norm_size : {size_t{1}, size_t{63}, size_t{64}, size_t{127}, size_t{768}, size_t{4096}}) {
     for (bool simplified : {true, false}) {
       std::vector<float> input(norm_size), scale, bias;
       FillDeterministic(input, scale, bias);
@@ -245,11 +242,21 @@ TEST(LayerNormAppleAccelerate, PublicDispatchMatchesDirectKernelCall) {
 
       std::vector<float> dispatch_output(norm_size, kPoisonValue);
       std::vector<float> direct_output(norm_size, kPoisonValue);
-      float dispatch_mean = 0.0f, direct_mean = 0.0f;
-      float dispatch_inv_std = 0.0f, direct_inv_std = 0.0f;
+      float dispatch_mean = kPoisonValue, direct_mean = 0.0f;
+      float dispatch_inv_std = kPoisonValue, direct_inv_std = 0.0f;
 
       bool used = MlasLayerNormF32(input.data(), scale.data(), bias_ptr, dispatch_output.data(), &dispatch_mean,
                                    &dispatch_inv_std, norm_size, 1e-5f, simplified);
+      if (norm_size < kMinimumDispatchSize) {
+        EXPECT_FALSE(used) << "vDSP should not be selected below its measured crossover";
+        EXPECT_EQ(dispatch_mean, kPoisonValue);
+        EXPECT_EQ(dispatch_inv_std, kPoisonValue);
+        for (float value : dispatch_output) {
+          EXPECT_EQ(value, kPoisonValue);
+        }
+        continue;
+      }
+
       ASSERT_TRUE(used) << "REACHABILITY FAILURE: MlasLayerNormF32 returned false even though a kernel is "
                         << "registered (norm_size=" << norm_size << ").";
 

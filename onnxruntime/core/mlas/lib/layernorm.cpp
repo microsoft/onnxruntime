@@ -65,6 +65,11 @@ void vDSP_vma(
 // allocation; still correct, just not zero-allocation for that rare case.
 constexpr size_t kApplePerRowStackScratch = 8192;
 
+// The vDSP call overhead outweighs its vectorization benefit for very short
+// rows. Apple Silicon benchmarks show the crossover at 64 elements, so let
+// the caller use its scalar fallback below that size.
+constexpr size_t kAppleAccelerateLayerNormMinimumElements = 64;
+
 void
 MLASCALL
 MlasLayerNormKernelAppleAccelerate(
@@ -255,6 +260,12 @@ bool
         bool Simplified
     )
 {
+#if defined(MLAS_USE_APPLE_ACCELERATE) && defined(__APPLE__) && defined(MLAS_TARGET_ARM64)
+    if (NormSize > 0 && NormSize < kAppleAccelerateLayerNormMinimumElements) {
+        return false;
+    }
+#endif
+
     auto kernel = GetMlasPlatform().LayerNormF32Kernel;
     if (kernel == nullptr) {
         return false;

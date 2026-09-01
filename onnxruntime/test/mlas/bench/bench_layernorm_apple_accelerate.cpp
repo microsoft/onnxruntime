@@ -27,14 +27,13 @@
 // cost profile than the on-stack path used at and below that threshold.
 //
 // The BM_*Dispatch benchmarks call the public MlasLayerNormF32 dispatch
-// entry point directly. On a build/platform where no LayerNormF32Kernel is
-// registered (i.e. anything other than this option on ARM64, or RVV),
-// MlasLayerNormF32 returns false and does nothing -- it does NOT fall back
-// to a scalar implementation itself (only real ORT call sites do that, one
-// layer up, in layer_norm_impl.cc). RunLayerNormBenchmark below detects this
-// via HasRegisteredKernel() and skips those two benchmarks with a clear
-// message rather than silently reporting a fake, near-zero-cost throughput
-// number for a no-op.
+// entry point directly. MlasLayerNormF32 returns false and does nothing when
+// no LayerNormF32Kernel is registered or when the Apple kernel declines a
+// row below its measured 64-element crossover -- it does NOT run the scalar
+// fallback itself (only real ORT call sites do that, one layer up, in
+// layer_norm_impl.cc). RunLayerNormBenchmark detects both cases and skips
+// the dispatch benchmark rather than reporting a fake, near-zero-cost
+// throughput number for a no-op.
 //
 // No Apple Silicon hardware was available in the environment that authored
 // this benchmark; see the PR description for the actual measured numbers
@@ -142,29 +141,27 @@ void RunLayerNormBenchmark(
   }
   const float* bias_ptr = (with_bias && !simplified) ? bias.data() : nullptr;
 
-  if (use_dispatch) {
-    state.SetLabel(DispatchPathLabel());
-  } else {
-    state.SetLabel("portable_scalar_baseline");
-  }
-
-  auto run_once = [&]() {
+  auto run_once = [&]() -> bool {
     if (use_dispatch) {
       // The public entry point every real caller (LayerNormalization,
-      // SkipLayerNormalization, SimplifiedLayerNormalization) actually
-      // uses. Guaranteed to have a registered kernel here (checked above),
-      // so this always exercises real work, never the "no kernel
-      // registered" early-return no-op path.
-      MlasLayerNormF32(input.data(), scale.data(), bias_ptr, output.data(), nullptr, nullptr, n, 1e-5f, simplified);
-    } else {
-      ScalarLayerNormBaseline(input.data(), scale.data(), bias_ptr, output.data(), n, 1e-5f, simplified);
+      // SkipLayerNormalization, SimplifiedLayerNormalization) uses.
+      return MlasLayerNormF32(input.data(), scale.data(), bias_ptr, output.data(), nullptr, nullptr, n, 1e-5f,
+                              simplified);
     }
+    ScalarLayerNormBaseline(input.data(), scale.data(), bias_ptr, output.data(), n, 1e-5f, simplified);
+    return true;
   };
 
-  run_once();
+  if (!run_once()) {
+    state.SkipWithMessage("LayerNormF32Kernel declined this size; caller uses scalar fallback");
+    return;
+  }
+
+  state.SetLabel(use_dispatch ? DispatchPathLabel() : "portable_scalar_baseline");
 
   for (auto _ : state) {
-    run_once();
+    bool used = run_once();
+    benchmark::DoNotOptimize(used);
     benchmark::DoNotOptimize(output.data());
     benchmark::ClobberMemory();
   }
