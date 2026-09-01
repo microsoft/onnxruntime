@@ -52,16 +52,29 @@ bool OrtInstanceData::IsElectron(Napi::Env env) {
   return data != nullptr && data->isElectron_;
 }
 
-OrtInstanceData::OutputBufferLease OrtInstanceData::AcquireOutputBufferLease(Napi::Object resource) {
+namespace {
+bool RegionsOverlap(size_t offset, size_t length, size_t other_offset, size_t other_length) {
+  // A zero length means "the whole resource", so it conflicts with any other region.
+  if (length == 0 || other_length == 0) {
+    return true;
+  }
+  return offset < other_offset + other_length && other_offset < offset + length;
+}
+}  // namespace
+
+OrtInstanceData::OutputBufferLease OrtInstanceData::AcquireOutputBufferLease(Napi::Object resource,
+                                                                            size_t byteOffset, size_t byteLength) {
   auto data = resource.Env().GetInstanceData<OrtInstanceData>();
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, resource.Env(), "OrtInstanceData not created.");
 
   for (const auto& lease : data->outputBufferLeases) {
-    ORT_NAPI_THROW_ERROR_IF(lease->Value().StrictEquals(resource), resource.Env(),
-                            "Preallocated output buffer is already in use.");
+    ORT_NAPI_THROW_ERROR_IF(lease->resource.Value().StrictEquals(resource) &&
+                                RegionsOverlap(byteOffset, byteLength, lease->byteOffset, lease->byteLength),
+                            resource.Env(), "Preallocated output buffer is already in use.");
   }
 
-  auto lease = std::make_shared<Napi::ObjectReference>(Napi::Persistent(resource));
+  auto lease = std::make_shared<OutputBufferRegion>(
+      OutputBufferRegion{Napi::Persistent(resource), byteOffset, byteLength});
   data->outputBufferLeases.push_back(lease);
   return lease;
 }

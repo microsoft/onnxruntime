@@ -168,6 +168,42 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('allows disjoint views of one ArrayBuffer as concurrent preallocated outputs', async () => {
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const first = await InferenceSession.create(modelPath);
+    const second = await InferenceSession.create(modelPath);
+    try {
+      const buffer = new ArrayBuffer(64);
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const results = await Promise.all([
+        first.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 0, 5), [1, 5]) }),
+        second.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 32, 5), [1, 5]) }),
+      ]);
+      for (const result of results) {
+        assertTensorEqual(result.output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+      }
+    } finally {
+      await first.release();
+      await second.release();
+    }
+  });
+
+  it('still rejects overlapping views of one ArrayBuffer', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    try {
+      const buffer = new ArrayBuffer(64);
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const running = localSession.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 0, 5), [1, 5]) });
+      await assert.rejects(
+        localSession.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 4, 5), [1, 5]) }),
+        /Preallocated output buffer is already in use/,
+      );
+      await running;
+    } finally {
+      await localSession.release();
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });

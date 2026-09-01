@@ -27,10 +27,19 @@ struct OrtInstanceData {
   // Return whether this Napi::Env belongs to an Electron runtime.
   static bool IsElectron(Napi::Env env);
 
-  using OutputBufferLease = std::shared_ptr<Napi::ObjectReference>;
+  // A region of a preallocated output resource that a run is going to write. 'byteLength' of 0
+  // means the whole resource, which is how non-ArrayBuffer resources (a gpu-buffer External) are
+  // leased since they have no addressable sub-range.
+  struct OutputBufferRegion {
+    Napi::ObjectReference resource;
+    size_t byteOffset{0};
+    size_t byteLength{0};
+  };
+  using OutputBufferLease = std::shared_ptr<OutputBufferRegion>;
 
-  // Acquire a lease for a preallocated output resource in this Napi environment.
-  static OutputBufferLease AcquireOutputBufferLease(Napi::Object resource);
+  // Acquire a lease for the region of a preallocated output resource that a run will write.
+  // Overlapping regions of the same resource cannot be leased twice at once; disjoint regions can.
+  static OutputBufferLease AcquireOutputBufferLease(Napi::Object resource, size_t byteOffset, size_t byteLength);
   // Release a previously acquired preallocated output resource lease.
   static void ReleaseOutputBufferLease(Napi::Env env, const OutputBufferLease& lease);
 

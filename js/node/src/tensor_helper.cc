@@ -232,6 +232,8 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       if (conversion != nullptr) {
         conversion->data = tensorDataValue;
         conversion->dataArrayBuffer = tensorDataArrayBuffer;
+        conversion->dataByteOffset = tensorDataTypedArray.ByteOffset();
+        conversion->dataByteLength = tensorDataTypedArray.ByteLength();
       }
 
       char* buffer = reinterpret_cast<char*>(tensorDataArrayBuffer.Data());

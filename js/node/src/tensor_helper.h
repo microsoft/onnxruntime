@@ -34,6 +34,9 @@ struct NapiTensorConversion {
   // for a string tensor, whose data is a plain array.
   Napi::Value data;
   Napi::Value dataArrayBuffer;
+  // Region of 'dataArrayBuffer' the tensor occupies, used to lease only what is actually written.
+  size_t dataByteOffset{0};
+  size_t dataByteLength{0};
   // Tensor.gpuBuffer, for a gpu-buffer tensor.
   Napi::Value gpuBuffer;
   // Only filled in when 'usage' is kPreallocatedOutput.

@@ -207,6 +207,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         if (value.IsNull()) {
           output_values_.emplace_back(nullptr);
           output_expected_.emplace_back();
+          output_buffer_offsets_.push_back(0);
+          output_buffer_lengths_.push_back(0);
           output_js_value_indices_.push_back(0);
           output_js_data_indices_.push_back(0);
           output_buffer_key_indices_.push_back(0);
@@ -229,6 +231,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           output_expected_.push_back(std::move(conversion.declared));
           output_js_data_indices_.push_back(data_index);
           output_buffer_key_indices_.push_back(buffer_key_index);
+          output_buffer_offsets_.push_back(conversion.dataByteOffset);
+          output_buffer_lengths_.push_back(conversion.dataByteLength);
         }
       }
     }
@@ -249,7 +253,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (reuse_output_[i]) {
         output_buffer_leases_.push_back(
             OrtInstanceData::AcquireOutputBufferLease(
-                keep_alive.Get(output_buffer_key_indices_[i]).As<Napi::Object>()));
+                keep_alive.Get(output_buffer_key_indices_[i]).As<Napi::Object>(),
+                output_buffer_offsets_[i], output_buffer_lengths_[i]));
       }
     }
   }
@@ -436,6 +441,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   std::vector<uint32_t> output_js_value_indices_;
   std::vector<uint32_t> output_js_data_indices_;
   std::vector<uint32_t> output_buffer_key_indices_;
+  std::vector<size_t> output_buffer_offsets_;
+  std::vector<size_t> output_buffer_lengths_;
   std::vector<bool> copy_output_to_js_;
   std::vector<OutputBufferLease> output_buffer_leases_;
   std::vector<int> preferred_output_locations_;
