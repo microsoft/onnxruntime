@@ -78,6 +78,10 @@ __global__ void VarlenCausalConvDecodeKernel(
     // state[k + 1] is read before state[k] is overwritten, so initial_state == final_state is
     // explicitly safe. Tap k reads the state element dilation positions apart; the newest tap
     // (k = kernel_size - 1) is the incoming token itself.
+    //
+    // The state stores every one of the last pad raw samples, not only the dilated tap positions,
+    // so the shift is always by one sample regardless of dilation: a slot that is between two taps
+    // now becomes a tap slot on a later token. Shifting by dilation would drop those samples.
     for (int k = 0; k < kernel_size - 1; ++k) {
       sum += to_float(weight[weight_offset + k]) *
              to_float(initial_state[state_offset + static_cast<int64_t>(k) * dilation]);
