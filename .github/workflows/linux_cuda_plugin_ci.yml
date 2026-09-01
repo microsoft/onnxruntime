@@ -32,16 +32,17 @@ jobs:
         --use_binskim_compliant_compile_flags
         --build_wheel
         --parallel
-        --nvcc_threads 4
-        --flash_nvcc_threads 4
+        --nvcc_threads 1
+        --flash_nvcc_threads 1
         --cuda_version=13.0
         --cuda_home=/usr/local/cuda-13.0
         --cudnn_home=/usr/local/cuda-13.0
         --enable_cuda_profiling
-        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=86-real;120-real'
         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
         --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
@@ -58,12 +59,13 @@ jobs:
       - "1ES.Pool=onnxruntime-github-linux-a10"
       - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 210
     permissions:
       contents: read
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
@@ -78,7 +80,7 @@ jobs:
 
       # --- Download Build Artifact to Runner Temp Directory ---
       - name: Download Build Artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: build-output-x64-Release
           path: ${{ runner.temp }}/Release
@@ -145,4 +147,3 @@ jobs:
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "
-

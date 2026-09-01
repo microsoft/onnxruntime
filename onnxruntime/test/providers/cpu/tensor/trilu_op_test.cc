@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -24,6 +27,28 @@ TEST(TriluOpTest, two_by_two_float_lower) {
   test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
   test.AddOutput<float>("Y", {2, 2}, {4.f, 0.f, 2.f, 6.f});
   test.Run();
+}
+
+static void TestExtremeDiagonal(bool upper, int64_t k, const std::vector<float>& expected) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddAttribute<int64_t>("upper", upper ? 1 : 0);
+  test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
+  test.AddInput<int64_t>("k", {}, {k});
+  test.AddOutput<float>("Y", {2, 2}, expected);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TriluOpTest, ExtremeNegativeDiagonal) {
+  TestExtremeDiagonal(true, std::numeric_limits<int64_t>::min(), {4.f, 7.f, 2.f, 6.f});
+  TestExtremeDiagonal(false, std::numeric_limits<int64_t>::min(), {0.f, 0.f, 0.f, 0.f});
+}
+
+TEST(TriluOpTest, ExtremePositiveDiagonal) {
+  TestExtremeDiagonal(true, std::numeric_limits<int64_t>::max(), {0.f, 0.f, 0.f, 0.f});
+  TestExtremeDiagonal(false, std::numeric_limits<int64_t>::max(), {4.f, 7.f, 2.f, 6.f});
 }
 
 TEST(TriluOpTest, two_by_two_double_upper) {
@@ -59,6 +84,23 @@ TEST(TriluOpTest, two_by_two_long_lower) {
   test.AddAttribute("upper", up);
   test.AddInput<int64_t>("X", {2, 2}, {4, 7, 2, 6});
   test.AddOutput<int64_t>("Y", {2, 2}, {4, 0, 2, 6});
+  test.Run();
+}
+
+TEST(TriluOpTest, two_by_two_int32_upper) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddInput<int32_t>("X", {2, 2}, {4, 7, 2, 6});
+  test.AddInput<int64_t>("k", {1}, {1});
+  test.AddOutput<int32_t>("Y", {2, 2}, {0, 7, 0, 0});
+  test.Run();
+}
+
+TEST(TriluOpTest, two_by_two_int32_lower) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  int64_t up = 0;
+  test.AddAttribute("upper", up);
+  test.AddInput<int32_t>("X", {2, 2}, {4, 7, 2, 6});
+  test.AddOutput<int32_t>("Y", {2, 2}, {4, 0, 2, 6});
   test.Run();
 }
 
@@ -266,6 +308,83 @@ TEST(TriluOpTest, zero_dim_2_lower) {
   test.AddOutput<float>("Y", {2, 0, 0}, {});
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+namespace {
+void RunWithWebGpu(OpTester& test) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  auto provider = DefaultWebGpuExecutionProvider();
+  test.ConfigEp(std::move(provider)).RunWithConfig();
+}
+}  // namespace
+
+TEST(TriluOpTest, webgpu_upper_default_k) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
+  test.AddOutput<float>("Y", {2, 2}, {4.f, 7.f, 0.f, 6.f});
+  RunWithWebGpu(test);
+}
+
+TEST(TriluOpTest, webgpu_lower_default_k) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddAttribute<int64_t>("upper", 0);
+  test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
+  test.AddOutput<float>("Y", {2, 2}, {4.f, 0.f, 2.f, 6.f});
+  RunWithWebGpu(test);
+}
+
+TEST(TriluOpTest, webgpu_upper_positive_k) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddInput<float>("X", {3, 4},
+                       {4.f, 1.f, 5.f, 8.f,
+                        4.f, 3.f, 2.f, 4.f,
+                        6.f, 1.f, 2.f, 3.f});
+  test.AddInput<int64_t>("k", {}, {1});
+  test.AddOutput<float>("Y", {3, 4},
+                        {0.f, 1.f, 5.f, 8.f,
+                         0.f, 0.f, 2.f, 4.f,
+                         0.f, 0.f, 0.f, 3.f});
+  RunWithWebGpu(test);
+}
+
+TEST(TriluOpTest, webgpu_lower_negative_k) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddAttribute<int64_t>("upper", 0);
+  test.AddInput<float>("X", {3, 4},
+                       {4.f, 1.f, 5.f, 8.f,
+                        4.f, 3.f, 2.f, 4.f,
+                        6.f, 1.f, 2.f, 3.f});
+  test.AddInput<int64_t>("k", {}, {-1});
+  test.AddOutput<float>("Y", {3, 4},
+                        {0.f, 0.f, 0.f, 0.f,
+                         4.f, 0.f, 0.f, 0.f,
+                         6.f, 1.f, 0.f, 0.f});
+  RunWithWebGpu(test);
+}
+
+TEST(TriluOpTest, webgpu_batched_upper) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddInput<float>("X", {2, 3, 4},
+                       {4.f, 1.f, 5.f, 8.f,
+                        4.f, 3.f, 2.f, 4.f,
+                        6.f, 1.f, 2.f, 3.f,
+                        1.f, 6.f, 2.f, 1.f,
+                        4.f, 1.f, 5.f, 8.f,
+                        4.f, 3.f, 2.f, 4.f});
+  test.AddInput<int64_t>("k", {}, {1});
+  test.AddOutput<float>("Y", {2, 3, 4},
+                        {0.f, 1.f, 5.f, 8.f,
+                         0.f, 0.f, 2.f, 4.f,
+                         0.f, 0.f, 0.f, 3.f,
+                         0.f, 6.f, 2.f, 1.f,
+                         0.f, 0.f, 5.f, 8.f,
+                         0.f, 0.f, 0.f, 4.f});
+  RunWithWebGpu(test);
+}
+#endif  // USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime

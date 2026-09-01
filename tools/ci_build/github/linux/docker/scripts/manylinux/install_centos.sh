@@ -8,9 +8,9 @@ PACKAGE_MANAGER="yum"
 if [ "$os_major_version" -gt 7 ]; then
     PACKAGE_MANAGER="dnf"
     if [ "$os_major_version" -ge 9 ]; then
-        "${PACKAGE_MANAGER}" install -y which expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-IPC-Cmd openssl-devel wget
+        "${PACKAGE_MANAGER}" install -y which expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl openssl-devel wget
     else
-        "${PACKAGE_MANAGER}" install -y which redhat-lsb-core expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-IPC-Cmd openssl-devel wget
+        "${PACKAGE_MANAGER}" install -y which redhat-lsb-core expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-core openssl-devel wget
     fi
 fi
 

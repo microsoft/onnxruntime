@@ -365,39 +365,6 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
-     *        A should be packed using QuantizeA_Packed_CompInt8.
-     *
-     * @param       BlkLen              Number of values in a block.
-     * @param       QuantA              Supplies the quantized A matrix.
-                                        Binary data containing block quantized int8 data and scale values.
-     * @param       PackedQuantBData    Supplies the packed quantized B matrix data.
-     * @param[out]  C                   Supplies the output C matrix.
-     * @param       RangeStartM         Start of M range.
-     * @param       RangeCountM         Number of rows of A and C.
-     * @param       RangeStartN         Start of N range.
-     * @param       RangeCountN         Number of columns of B and C.
-     * @param       CountK              Number of columns of A and rows of B.
-     * @param       ldc                 Number of elements between adjacent rows of C.
-     */
-    typedef void(SQ4BitGemmKernel_Packed_CompInt8_Fn)(
-        size_t BlkLen,
-        const std::byte* QuantA,
-        const std::byte* PackedQuantBData,
-        float* C,
-        const size_t RangeStartM,
-        const size_t RangeCountM,
-        const size_t RangeStartN,
-        const size_t RangeCountN,
-        size_t CountK,
-        size_t ldc,
-        const float* Bias
-    );
-
-    SQ4BitGemmKernel_Packed_CompInt8_Fn* SQ4BitGemmKernel_Packed_CompInt8 = nullptr;
-
-    /**
-     * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
-     *        A and B are block quantized and B is column major.
      *
      * @param       BlkLen              Number of values in a block.
      * @param       QuantA              Supplies the quantized A matrix.
@@ -571,87 +538,6 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
 
     /**
-     * @brief Whether to use SQ4BitGemmKernel_Packed_CompInt8 for this problem.
-     */
-    typedef bool(UsePacked_CompInt8_Fn)(
-        size_t K,
-        size_t BlkLen,
-        bool HasZp,
-        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-    );
-
-    UsePacked_CompInt8_Fn* UsePacked_CompInt8 = nullptr;
-
-    /**
-     * @brief Block quantize values from matrix A from floats to quantized 8-bit integers.
-     *        Used in conjunction with SQ4BitGemmKernel_Packed_CompInt8.
-     *
-     * @param       BlkLen  Number of values in a block.
-     * @param       A       Supplies the A matrix.
-     * @param       CountM  Number of rows of A.
-     * @param       CountK  Number of columns of A.
-     * @param[out]  QuantA  Supplies the output quantized A matrix.
-     *                      Binary data containing block quantized int8 data and scale values.
-     * @param       BackendKernelSelectorConfig  Optional configuration for selecting backend kernels.
-     */
-    typedef void(QuantizeA_Packed_CompInt8_Fn)(
-        size_t BlkLen,
-        const float* A,
-        size_t CountM,
-        size_t CountK,
-        std::byte* QuantA,
-        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-    );
-
-    QuantizeA_Packed_CompInt8_Fn* QuantizeA_Packed_CompInt8 = nullptr;
-
-    /**
-     * @brief Compute float-domain block sums of A for zero-point correction.
-     *        Used when KleidiAI handles asymmetric quantization.
-     *
-     * @param       A               Supplies the float A matrix.
-     * @param       CountM          Number of rows of A.
-     * @param       CountK          Number of columns of A.
-     * @param       BlkLen          Number of values in a block.
-     * @param       lda             Leading dimension of A.
-     * @param[out]  AFloatBlkSum    Output: M * BlockCountK float sums.
-     */
-    typedef void(ComputeAFloatBlkSum_Fn)(
-        const float* A,
-        size_t CountM,
-        size_t CountK,
-        size_t BlkLen,
-        size_t lda,
-        float* AFloatBlkSum
-    );
-
-    ComputeAFloatBlkSum_Fn* ComputeAFloatBlkSum = nullptr;
-
-    /**
-     * @brief Apply zero-point correction: C += ABlkSum * BCorr^T
-     *        Used after KleidiAI GEMM for asymmetric quantization.
-     *
-     * @param       ABlkSum         Float block sums of A, [RangeCountM, BlockCountK] row-major.
-     * @param       BCorr           BZpCorrection, [RangeCountN, BlockCountK] row-major (pre-offset).
-     * @param[out]  C               Output matrix tile (pre-offset), accumulated.
-     * @param       RangeCountM     Number of M rows in this tile.
-     * @param       RangeCountN     Number of N columns in this tile.
-     * @param       BlockCountK     Number of blocks along K.
-     * @param       ldc             Leading dimension of C.
-     */
-    typedef void(ApplyBZpCorrection_Fn)(
-        const float* ABlkSum,
-        const float* BCorr,
-        float* C,
-        size_t RangeCountM,
-        size_t RangeCountN,
-        size_t BlockCountK,
-        size_t ldc
-    );
-
-    ApplyBZpCorrection_Fn* ApplyBZpCorrection = nullptr;
-
-    /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
      *
      * @param       BlkLen  Number of values in a block.
@@ -685,6 +571,21 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     // When set, the W2 dispatch in InitializeWorkspace_CompInt8 uses this in
     // preference to the shared field; otherwise it falls back to the shared one.
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8_W2 = nullptr;
+
+    // Same output as QuantizeARowComputeBlkSum_CompInt8 (block quantized int8, per-block
+    // scale, and scale * sum(a_i)), but reads A as fp16 and converts each element to
+    // float before quantizing. Lets a fp16 activation input be quantized in one pass
+    // instead of a separate fp16 -> fp32 conversion followed by the float quantizer.
+    // Only set where the CompInt8 kernels are available (x64 AVX2 and up).
+    typedef void(QuantizeARowComputeBlkSum_CompInt8_Fp16_Fn)(
+        size_t BlkLen,
+        const MLAS_FP16* A,
+        size_t CountK,
+        std::byte* QuantA,
+        float* QuantAScale,
+        float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
+    );
+    QuantizeARowComputeBlkSum_CompInt8_Fp16_Fn* QuantizeARowComputeBlkSum_CompInt8_Fp16 = nullptr;
 
     /**
      * @brief Multiply fp16 matrix A rows with fp16 matrix B columns.

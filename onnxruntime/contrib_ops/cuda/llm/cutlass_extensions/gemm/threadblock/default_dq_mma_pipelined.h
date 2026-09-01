@@ -116,8 +116,9 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
   static_assert(platform::is_same<ElementA, half_t>::value || platform::is_same<ElementA, bfloat16_t>::value,
                 "Element A must be fp16 or bf16");
 
-  static_assert(platform::is_same<ElementB, uint8_t>::value || platform::is_same<ElementB, uint4b_t>::value,
-                "Element B must be uint8 or uint4");
+  static_assert(platform::is_same<ElementB, uint8_t>::value || platform::is_same<ElementB, uint4b_t>::value ||
+                    platform::is_same<ElementB, cutlass::float_e2m1_t>::value,
+                "Element B must be uint8, uint4 or float_e2m1");
 
   using OperatorInfo = arch::DetagOperator<Operator_>;
   using Operator = typename OperatorInfo::Operator;
@@ -201,8 +202,9 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
   static_assert(platform::is_same<ElementA, half_t>::value || platform::is_same<ElementA, bfloat16_t>::value,
                 "Element A must be fp16 or bf16");
 
-  static_assert(platform::is_same<ElementB, uint8_t>::value || platform::is_same<ElementB, uint4b_t>::value,
-                "Element B must be uint8 or uint4");
+  static_assert(platform::is_same<ElementB, uint8_t>::value || platform::is_same<ElementB, uint4b_t>::value ||
+                    platform::is_same<ElementB, cutlass::float_e2m1_t>::value,
+                "Element B must be uint8, uint4 or float_e2m1");
 
   using OperatorInfo = arch::DetagOperator<Operator_>;
   using Operator = typename OperatorInfo::Operator;

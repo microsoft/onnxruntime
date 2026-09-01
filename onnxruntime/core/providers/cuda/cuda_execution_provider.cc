@@ -41,6 +41,10 @@
 
 #include "core/providers/cuda/cuda_stream_handle.h"
 
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -549,6 +553,11 @@ bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 
 Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   return GetPerThreadContext().ReplayGraph(graph_annotation_id, sync);
+}
+
+void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const {
+  std::lock_guard<std::mutex> lock(captured_host_buffers_mutex_);
+  captured_host_buffers_.push_back(std::move(buffer));
 }
 
 namespace cuda {
@@ -1661,6 +1670,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDom
 // Opset 22.
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, LpNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, LpNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, BFloat16, LpNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, double, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, AveragePool);
@@ -2952,6 +2962,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       // Opset 22
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, LpNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, LpNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, BFloat16, LpNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, double, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, AveragePool)>,
@@ -3527,6 +3538,29 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     } else {
       auto* node = graph.GetNode(node_index);
       auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+      // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
+      // kernel-independent workspace estimate for MatMulNBits. For this pilot it is log-only and
+      // does NOT change the budget number used by the accept/reject decision below (see the issue's
+      // "Open decision" (a)); it proves the estimate is available and correct at this pipeline stage.
+      if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
+        const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
+        const auto& input_defs = node->InputDefs();
+        const TensorShape* input_a_shape =
+            inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
+                ? nullptr
+                : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
+        const auto ws = input_a_shape != nullptr
+                            ? contrib::cuda::EstimateMatMulNBitsWorkspace(
+                                  *node, input_a_shape->GetDims(), GetDeviceProp())
+                            : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
+        if (ws.has_value()) {
+          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name() << ": " << *ws << " bytes";
+        }
+      }
+#endif
+
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)

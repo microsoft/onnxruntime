@@ -16,16 +16,17 @@
  */
 #pragma once
 
-#include "contrib_ops/cuda/llm/gemm_profiler.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
-
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "contrib_ops/cuda/llm/gemm_profiler.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 
 using WeightOnlyGemmRunner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
@@ -43,11 +44,30 @@ constexpr int32_t INT4_BITS = 4;
 constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
 constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
 
+// Comma-separated list of M buckets to profile for MatMulNBits/fpA_intB. Overrides the default
+// reduced bucket set. Example: ORT_FPA_INTB_PROFILE_M="1,8,64,512".
+constexpr const char* kEnvProfileM = "ORT_FPA_INTB_PROFILE_M";
+
+// Default top M that bounds the initial profile sweep when no override is given. Larger runtime
+// M values are handled by lazy single-bucket profiling.
+constexpr int kDefaultProfileMaxM = 2048;
+
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
                                 GemmIdCore, GemmIdCoreHash> {
  public:
   using Config = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
+
+  // Parses a comma-separated list of M buckets (e.g. "1,8,64,512") into a sorted, de-duplicated,
+  // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
+  // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
+  static std::vector<int> ParseProfileMList(const std::string& value);
+
+  // Overrides the initial profile M-bucket set for this profiler instance (per session). An empty
+  // list keeps the built-in default bucket set. Resolved by the kernel from session config / env.
+  void setProfileMOverride(std::vector<int> ms) {
+    mProfileMOverride = std::move(ms);
+  }
 
   void setQuant(int bits, bool has_bias, bool has_zeros) {
     mQuantBits = bits;
@@ -74,6 +94,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   bool checkTactic(int m, int n, int k, Config const& tactic) const override;
 
+  std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
+
  private:
   bool mHasBiases;
   bool mHasZeros;
@@ -81,6 +103,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mGroupSize;
   KernelType mCudaKernelType;
   int mArch;
+  std::vector<int> mProfileMOverride;
 };
 
 }  // namespace onnxruntime::llm::kernels::weight_only

@@ -5,6 +5,10 @@
 
 #include "gtest/gtest.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -82,6 +86,44 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(TensorOpTest, Reshape_int64_webgpu) {
+  OpTester test("Reshape", 25);
+
+  test.AddInput<int64_t>("data", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("shape", {3}, {3, 1, 2});
+  test.AddOutput<int64_t>("reshaped", {3, 1, 2}, {1, 2, 3, 4, 5, 6});
+
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(TensorOpTest, Reshape_uint8_webgpu) {
+  OpTester test("Reshape", 25);
+
+  // Values span the full byte range.
+  test.AddInput<uint8_t>("data", {2, 3}, {1, 2, 10, 100, 200, 255});
+  test.AddInput<int64_t>("shape", {3}, {3, 1, 2});
+  test.AddOutput<uint8_t>("reshaped", {3, 1, 2}, {1, 2, 10, 100, 200, 255});
+
+  // Run on a WebGPU-only session and disable CPU-EP fallback. ORT implicitly adds a CPU EP for
+  // fallback, so without this the Reshape node would silently run on CPU (and the test would still
+  // pass) if WebGPU did not support uint8.
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(ConfigOptions{});
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  test.Config(options)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 TEST(TensorOpTest, Reshape_WithOutAllowZero) {
   OpTester test("Reshape", 14);
@@ -169,6 +211,59 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
 
   // TensorRT doesn't support dynamic shape tensor for now
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim and unknown dim (-1): infer unknown from non-zero product.
+// Input: {2, 0, 3} (0 elements), shape: {0, -1} → output: {0, 6}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 0, 3}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 6}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim and unknown dim: input {4, 0}, shape {0, 2, -1} → output {0, 2, 2}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {4, 0}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {0, 2, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 2, 2}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim, unknown dim, and multi-dim non-zero product.
+// Input: {3, 0, 5} (0 elements), shape: {0, -1} → non-zero product of input is 3*5=15, output: {0, 15}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDimMultiDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {3, 0, 5}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 15}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {

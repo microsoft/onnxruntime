@@ -41,9 +41,11 @@ Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
 
   // validate workgroup size
-  auto workgroup_size_x = program_.WorkgroupSizeX();
-  auto workgroup_size_y = program_.WorkgroupSizeY();
-  auto workgroup_size_z = program_.WorkgroupSizeZ();
+  // normalize 0 (meaning "use default") the same way GenerateSourceCode() does, so validation
+  // below reflects the effective workgroup size that will actually be used in the shader.
+  auto workgroup_size_x = program_.WorkgroupSizeX() == 0 ? uint32_t(WORKGROUP_SIZE) : program_.WorkgroupSizeX();
+  auto workgroup_size_y = program_.WorkgroupSizeY() == 0 ? uint32_t(1) : program_.WorkgroupSizeY();
+  auto workgroup_size_z = program_.WorkgroupSizeZ() == 0 ? uint32_t(1) : program_.WorkgroupSizeZ();
 
   ORT_RETURN_IF_NOT(workgroup_size_x <= limits_.maxComputeWorkgroupSizeX &&
                         workgroup_size_y <= limits_.maxComputeWorkgroupSizeY &&
@@ -56,12 +58,30 @@ Status ShaderHelper::Init() {
   ORT_RETURN_IF_NOT(workgroup_size_x * workgroup_size_y * workgroup_size_z <= limits_.maxComputeInvocationsPerWorkgroup,
                     "Workgroup size exceeds the maximum allowed invocations ", limits_.maxComputeInvocationsPerWorkgroup);
 
+  // validate the requested subgroup size (subgroup-size-control), if any
+  if (auto subgroup_size = program_.SubgroupSize(); subgroup_size != 0) {
+    const auto& adapter_info = webgpu_context_.AdapterInfo();
+    ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+                      "Program ", program_.Name(), " requires subgroup-size-control but the device does not support it.");
+    ORT_RETURN_IF_NOT((subgroup_size & (subgroup_size - 1)) == 0,
+                      "Requested subgroup size ", subgroup_size, " is not a power of two.");
+    ORT_RETURN_IF_NOT(subgroup_size >= adapter_info.subgroupMinSize && subgroup_size <= adapter_info.subgroupMaxSize,
+                      "Requested subgroup size ", subgroup_size, " is outside the adapter's supported range [",
+                      adapter_info.subgroupMinSize, ", ", adapter_info.subgroupMaxSize, "]");
+    ORT_RETURN_IF_NOT(workgroup_size_x % subgroup_size == 0,
+                      "Workgroup size x (", workgroup_size_x, ") must be a multiple of the requested subgroup size (", subgroup_size, ")");
+  }
+
   // init body string stream
   bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
   bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
 
   // append header for main function so it is ready for user to append main function body
-  body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)\n"
+  body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)";
+  if (program_.SubgroupSize() != 0) {
+    body_ss_ << " @subgroup_size(subgroup_size)";
+  }
+  body_ss_ << "\n"
               "fn main(@builtin(global_invocation_id) global_id : vec3<u32>,\n"
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
@@ -404,7 +424,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
-#if !defined(__wasm__)
+  if (program_.SubgroupSize() != 0) {
+    ss << "enable subgroup_size_control;\n";
+  }
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
@@ -412,7 +434,6 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     // Since we use `subgroup_id` as the subgroup matrix builtin argument, we have to turn off this restriction
     ss << "diagnostic (off, chromium.subgroup_matrix_uniformity);\n";
   }
-#endif
 
   //
   // Section constants
@@ -421,6 +442,10 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
      << ";\nconst workgroup_size_y: u32 = " << (program_.WorkgroupSizeY() == 0 ? uint32_t(1) : program_.WorkgroupSizeY())
      << ";\nconst workgroup_size_z: u32 = " << (program_.WorkgroupSizeZ() == 0 ? uint32_t(1) : program_.WorkgroupSizeZ())
      << ";\n";
+
+  if (auto subgroup_size = program_.SubgroupSize(); subgroup_size != 0) {
+    ss << "const subgroup_size: u32 = " << subgroup_size << ";\n";
+  }
 
   for (const auto& constant : program_metadata_.constants) {
     ss << "const " << constant.name << ": " << constant.type << " = ";

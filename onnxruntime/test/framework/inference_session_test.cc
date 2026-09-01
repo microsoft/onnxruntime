@@ -5,14 +5,16 @@
 #include "core/session/inference_session.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <filesystem>
 #include <functional>
 #include <future>
 #include <iterator>
-#include <thread>
 #include <fstream>
 #include <random>
+#include <set>
+#include <thread>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -45,6 +47,19 @@
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #include "core/session/allocator_adapters.h"
+#include "core/framework/config_options.h"
+#include "core/framework/ep_context_options.h"
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/session/abi_devices.h"
+#include "core/session/plugin_ep/ep_api.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_factory_webgpu.h"
+#include "core/providers/webgpu/allocator.h"
+#endif
+// Virtual-device metadata key: used by the built-in WebGPU factory tests and the plugin WebGPU end-to-end test.
+#if (defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)) || defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -329,6 +344,265 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
 }
 
+#if defined(USE_WEBGPU)
+// A compile-only session (kOrtSessionOptionCompileOnly) using the WebGPU EP stops before session-state
+// finalization. Validates: (1) Initialize() succeeds, and (2) Run() fails because the session was never
+// finalized.
+TEST(InferenceSessionTests, WebGpuCompileOnlySkipsFinalization) {
+  // Device-free WebGPU EP: kOrtSessionOptionCompileOnly makes the WebGPU context skip Dawn device
+  // creation. Skip the test if WebGPU is not built/available.
+  ConfigOptions ep_config_options;
+  ASSERT_STATUS_OK(ep_config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(ep_config_options);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.WebGpuCompileOnlySkipsFinalization";
+  // The Compile API sets this internally to mark a compile-only session; set it directly here.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(webgpu_ep)));
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+
+  // Initialize succeeds, but skips session-state finalization.
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // The session is not runnable: finalization was skipped, so Run() must fail (and not crash).
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  // Run() must fail on a compile-only session that skipped session-state finalization.
+  const auto run_status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_STATUS_NOT_OK(run_status);
+}
+#endif  // defined(USE_WEBGPU)
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+// The internal WebGPU EP factory registers a virtual GPU OrtEpDevice when the environment allows virtual
+// devices -- so the WebGPU EP stays selectable for a device-free compile-only session on hosts where OS
+// device enumeration finds no GPU (e.g. a Win32k-lockdown sandbox). The virtual device is offered in
+// addition to any real GPU, so the device-free path is still exercisable on a host that also has a GPU.
+// GetSupportedDevices is called directly with a controlled hardware-device list so all three cases are
+// deterministic, independent of whether the test machine actually has a GPU.
+TEST(InferenceSessionTests, WebGpuEpFactoryVirtualDevice) {
+  constexpr size_t kMaxEpDevices = 4;
+
+  // allow_virtual_devices = true, no hardware devices -> exactly one virtual GPU EP device.
+  {
+    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+    OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
+    size_t num_ep_devices = 0;
+    OrtStatus* status = factory.GetSupportedDevices(/*devices=*/nullptr, /*num_devices=*/0,
+                                                    ep_devices, kMaxEpDevices, &num_ep_devices);
+    ASSERT_EQ(status, nullptr);
+    ASSERT_EQ(num_ep_devices, 1u);
+
+    const OrtEpDevice* ep_device = ep_devices[0];
+    EXPECT_EQ(ep_device->ep_name, kWebGpuExecutionProvider);
+    ASSERT_NE(ep_device->device, nullptr);
+    EXPECT_EQ(ep_device->device->type, OrtHardwareDeviceType_GPU);
+    EXPECT_EQ(ep_device->device->vendor_id, 0u);
+
+    const auto& metadata = ep_device->device->metadata.Entries();
+    auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    ASSERT_NE(is_virtual, metadata.end());
+    EXPECT_EQ(is_virtual->second, "1");
+
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_devices[0]);
+  }
+
+  // allow_virtual_devices = false, no hardware devices -> no virtual device registered.
+  {
+    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/false));
+    OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
+    size_t num_ep_devices = 0;
+    OrtStatus* status = factory.GetSupportedDevices(/*devices=*/nullptr, /*num_devices=*/0,
+                                                    ep_devices, kMaxEpDevices, &num_ep_devices);
+    ASSERT_EQ(status, nullptr);
+    EXPECT_EQ(num_ep_devices, 0u);
+  }
+
+  // allow_virtual_devices = true, a real GPU is present -> the real device plus one virtual GPU device.
+  // This validates that the device-free path stays selectable/testable on a host that has a real GPU.
+  {
+    OrtHardwareDevice real_gpu{};
+    real_gpu.type = OrtHardwareDeviceType_GPU;
+    real_gpu.vendor_id = 0x8086;
+    real_gpu.device_id = 0x1234;
+    real_gpu.vendor = "TestVendor";
+    const OrtHardwareDevice* devices[] = {&real_gpu};
+
+    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+    OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
+    size_t num_ep_devices = 0;
+    OrtStatus* status = factory.GetSupportedDevices(devices, /*num_devices=*/1,
+                                                    ep_devices, kMaxEpDevices, &num_ep_devices);
+    ASSERT_EQ(status, nullptr);
+    ASSERT_EQ(num_ep_devices, 2u);
+
+    // The real device is enumerated first, then the virtual device is appended.
+    const OrtEpDevice* real_ep_device = ep_devices[0];
+    EXPECT_EQ(real_ep_device->ep_name, kWebGpuExecutionProvider);
+    ASSERT_NE(real_ep_device->device, nullptr);
+    EXPECT_EQ(real_ep_device->device->vendor_id, 0x8086u);
+    EXPECT_EQ(real_ep_device->device->metadata.Entries().count(kOrtHardwareDevice_MetadataKey_IsVirtual), 0u);
+
+    const OrtEpDevice* virtual_ep_device = ep_devices[1];
+    EXPECT_EQ(virtual_ep_device->ep_name, kWebGpuExecutionProvider);
+    ASSERT_NE(virtual_ep_device->device, nullptr);
+    EXPECT_EQ(virtual_ep_device->device->type, OrtHardwareDeviceType_GPU);
+    EXPECT_EQ(virtual_ep_device->device->vendor_id, 0u);
+    const auto& metadata = virtual_ep_device->device->metadata.Entries();
+    auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    ASSERT_NE(is_virtual, metadata.end());
+    EXPECT_EQ(is_virtual->second, "1");
+
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_devices[0]);
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_devices[1]);
+  }
+}
+
+// A virtual GPU device has no real GPU behind it, so it can only back a device-free compile-only session.
+// Selecting it for a normal (non-compile-only) session must be rejected up front by the factory's
+// CreateIExecutionProvider, rather than being allowed through to fail obscurely when Dawn later tries to
+// create a device. (The accepted path -- device-free compile-only -- is covered by
+// WebGpuCompileOnlySkipsFinalization.)
+TEST(InferenceSessionTests, WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly) {
+  OrtHardwareDevice virtual_gpu{};
+  virtual_gpu.type = OrtHardwareDeviceType_GPU;
+  virtual_gpu.vendor = "Microsoft";
+  virtual_gpu.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
+  const OrtHardwareDevice* devices[] = {&virtual_gpu};
+
+  EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+
+  Ort::SessionOptions session_options;  // no session.compile_only set -> a runnable (non-compile-only) session
+  const OrtSessionOptions* c_session_options = session_options;
+  std::unique_ptr<IExecutionProvider> ep;
+  // logger is unused on the rejection path (CreateIExecutionProvider returns before it is dereferenced).
+  OrtStatus* status = factory.CreateIExecutionProvider(devices, /*ep_metadata_pairs=*/nullptr, /*num_devices=*/1,
+                                                       c_session_options, /*logger=*/nullptr, &ep);
+  ASSERT_NE(status, nullptr);
+  Ort::Status ort_status{status};  // takes ownership; releases on scope exit
+  EXPECT_EQ(ort_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(ep, nullptr);
+}
+
+// A device-free (compile-only) WebGPU EP must hand out the no-op "dummy" allocator instead of a real
+// GpuBufferAllocator, which can't be constructed without a Dawn device. Asserts the allocator *type*, which
+// is what device-free-ness comes down to. Independent of the host GPU, since device-free is driven by
+// compile_only.
+TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
+  ConfigOptions ep_config_options;
+  ASSERT_STATUS_OK(ep_config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(ep_config_options);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  bool found_noop_allocator = false;
+  for (const auto& allocator : webgpu_ep->CreatePreferredAllocators()) {
+    if (dynamic_cast<const webgpu::WebGpuNoOpAllocator*>(allocator.get()) != nullptr) {
+      found_noop_allocator = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_noop_allocator)
+      << "A device-free (compile-only) WebGPU EP must hand out the no-op (dummy) device allocator.";
+}
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
+// End-to-end via the public V2 API in the *plugin* WebGPU build: select the virtual WebGPU OrtEpDevice and run a
+// compile-only session.
+//
+// Relies on test_main.cc registering the WebGPU plugin EP under a ".virtual" name, whose suffix auto-enables the env
+// config "allow_virtual_devices" so the factory surfaces a virtual GPU OrtEpDevice.
+//
+// It exercises the accepted (device-free) path even on a host that has a real GPU: device-free is driven by
+// session.compile_only, not by which device is selected, so no Dawn device is created.
+TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
+  // Pick the virtual WebGPU device (is_virtual=1). On a host with a real GPU the factory surfaces both a real and a
+  // virtual device; we deliberately select the virtual one.
+  std::vector<Ort::ConstEpDevice> selected;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string(ep_device.EpName()) != kWebGpuExecutionProvider) {
+      continue;
+    }
+    const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+    const auto it = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    if (it != metadata.end() && it->second == "1") {
+      selected.push_back(ep_device);
+      break;
+    }
+  }
+  // A virtual device must be present in this build (test_main.cc's ".virtual" registration enables it).
+  ASSERT_FALSE(selected.empty())
+      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+
+  Ort::SessionOptions session_options;
+  // session-level compile_only (NOT an EP option) -> drives the device-free context and stop-before-finalize.
+  session_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1");
+  Ort::KeyValuePairs ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, selected, ep_options);
+
+  // Constructing the session runs Initialize(): compile_only -> device-free WebGPU context (no Dawn device even if
+  // the host has a GPU) -> finalization skipped. Must succeed on a host with no real GPU behind the virtual device.
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+}
+
+// Plugin-build counterpart of WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly (which drives the built-in
+// internal factory): selecting the virtual WebGPU device for a normal (non-compile-only) session must be rejected
+// up front by the *adapter* factory's CreateEp with ORT_INVALID_ARGUMENT, rather than proceeding into Dawn to fail
+// obscurely with no real GPU behind the virtual device. Exercises the adapter factory's copy of the enforcement
+// through the public V2 API. Depends on the same test_main.cc ".virtual" registration as
+// WebGpuVirtualDeviceCompileOnlyEndToEnd above (that's what surfaces the virtual device to select).
+TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
+  std::vector<Ort::ConstEpDevice> selected;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string(ep_device.EpName()) != kWebGpuExecutionProvider) {
+      continue;
+    }
+    const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+    const auto it = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    if (it != metadata.end() && it->second == "1") {
+      selected.push_back(ep_device);
+      break;
+    }
+  }
+  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present from test_main.cc's .virtual
+  // registration in this build, so fail (not skip) if none was surfaced.
+  ASSERT_FALSE(selected.empty())
+      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+
+  // Deliberately NOT setting session.compile_only -> a runnable session on a virtual device, which must be rejected.
+  Ort::SessionOptions session_options;
+  Ort::KeyValuePairs ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, selected, ep_options);
+
+  try {
+    // EP creation (adapter factory CreateEp) runs during session Initialize(); the rejection surfaces here.
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    FAIL() << "Selecting a virtual GPU device without compile_only must fail EP creation.";
+  } catch (const Ort::Exception& ex) {
+    // The plugin provider-factory layer (ep_plugin_provider_interfaces.cc) re-wraps the factory's
+    // ORT_INVALID_ARGUMENT as ORT_FAIL, so assert on the distinctive message rather than the error code to confirm
+    // this is our virtual-device rejection and not some unrelated failure.
+    const std::string message = ex.what();
+    EXPECT_NE(message.find("virtual GPU device"), std::string::npos) << message;
+  }
+}
+#endif  // defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
+
 TEST(InferenceSessionTests, RequestLoadCancellation) {
   {
     // Explicit cancel during load, small model is fine
@@ -516,6 +790,53 @@ TEST(InferenceSessionTests, RunWithWrongOutputTypeReturnsError) {
   RunOptions run_options;
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
                                       "Unexpected output data type");
+}
+
+// Error-path coverage for InferenceSession model ingestion (audit T8/T9 continuation).
+TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.LoadModelTwiceReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  // A second Load on the same session must be rejected.
+  const auto status = session_object.Load(MODEL_URI);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(status.Code(), common::StatusCode::MODEL_LOADED);
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
+}
+
+TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {
+  // Build a model whose only node consumes an input that is never defined (not a graph
+  // input, initializer, or another node's output), so graph Resolve must reject it gracefully.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(7);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("invalid_graph");
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Identity");
+  node->set_domain("");
+  node->add_input("undefined_input");
+  node->add_output("Y");
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  std::string serialized;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized));
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.LoadInvalidGraphReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  auto status = session_object.Load(serialized.data(), static_cast<int>(serialized.size()));
+  if (status.IsOK()) {
+    status = session_object.Initialize();
+  }
+  ASSERT_FALSE(status.IsOK()) << "Invalid graph (undefined node input) should be rejected gracefully";
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("undefined_input"));
 }
 
 TEST(InferenceSessionTests, CheckRunLogger) {
@@ -3365,6 +3686,519 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithUserLoggingFunction) {
   ASSERT_TRUE(found_teardown_msg)
       << "Expected EP teardown log message not found via user_logging_function.";
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+// OrtWriteBufferFunc that appends the written bytes to a std::string held in stream_state.
+static OrtStatus* ORT_API_CALL AppendToStringWriteFunc(void* stream_state, const void* buffer,
+                                                       size_t buffer_num_bytes) {
+  auto* sink = reinterpret_cast<std::string*>(stream_state);
+  sink->append(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+  return nullptr;  // No error
+}
+
+struct CompileApiInitializerHandlerState {
+  bool externalize = false;
+  const ORTCHAR_T* external_file_path = nullptr;
+  std::ofstream* external_file = nullptr;
+  size_t callback_count = 0;
+};
+
+static OrtStatus* ORT_API_CALL HandleCompileApiInitializer(
+    void* state, const char* /*initializer_name*/, const OrtValue* initializer_value,
+    const OrtExternalInitializerInfo* /*existing_info*/, OrtExternalInitializerInfo** new_external_info) {
+  auto& handler_state = *reinterpret_cast<CompileApiInitializerHandlerState*>(state);
+  ++handler_state.callback_count;
+  *new_external_info = nullptr;
+
+  if (!handler_state.externalize) {
+    return nullptr;
+  }
+
+  Ort::Status status{nullptr};
+  ORT_TRY {
+    Ort::ConstValue value{initializer_value};
+    const size_t byte_size = value.GetTensorSizeInBytes();
+    const int64_t offset = handler_state.external_file->tellp();
+    handler_state.external_file->write(static_cast<const char*>(value.GetTensorRawData()), byte_size);
+    handler_state.external_file->flush();
+
+    Ort::ExternalInitializerInfo external_info{nullptr};
+    status = Ort::ExternalInitializerInfo::Create(handler_state.external_file_path, offset, byte_size, external_info);
+    if (status.IsOK()) {
+      *new_external_info = external_info.release();
+    }
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &status]() { status = Ort::Status{ex}; }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &status]() { status = Ort::Status{ex.what(), ORT_FAIL}; }));
+  }
+
+  return status.release();
+}
+
+static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(17);
+
+  GraphProto& graph = *model_proto.mutable_graph();
+  graph.set_name("compile_api_custom_initializer_graph");
+
+  auto add_value_info = [](ValueInfoProto& value_info, const char* name) {
+    value_info.set_name(name);
+    auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
+    tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(2);
+  };
+
+  add_value_info(*graph.add_input(), "X");
+  if (!use_initializer) {
+    add_value_info(*graph.add_input(), "Y");
+  } else {
+    TensorProto& initializer = *graph.add_initializer();
+    initializer.set_name("Y");
+    initializer.set_data_type(TensorProto_DataType_FLOAT);
+    initializer.add_dims(2);
+    initializer.add_float_data(3.0f);
+    initializer.add_float_data(4.0f);
+  }
+  add_value_info(*graph.add_output(), "Z");
+
+  NodeProto& node = *graph.add_node();
+  node.set_name("add_node");
+  node.set_op_type("Add");
+  node.add_input("X");
+  node.add_input("Y");
+  node.add_output("Z");
+
+  std::ofstream output(model_path, std::ios::binary);
+  ASSERT_TRUE(output.is_open());
+  ASSERT_TRUE(model_proto.SerializeToOstream(&output));
+}
+
+static void VerifyCompileApiAddModel(const ModelProto& model_proto, bool use_initializer, bool externalized) {
+  const GraphProto& graph = model_proto.graph();
+  ASSERT_EQ(graph.input_size(), use_initializer ? 1 : 2);
+  ASSERT_EQ(graph.output_size(), 1);
+  ASSERT_EQ(graph.node_size(), 1);
+  ASSERT_EQ(graph.initializer_size(), use_initializer ? 1 : 0);
+
+  std::set<std::string> names;
+  for (const ValueInfoProto& input : graph.input()) {
+    EXPECT_TRUE(names.insert(input.name()).second) << "Duplicate graph input: " << input.name();
+  }
+  names.clear();
+  for (const ValueInfoProto& output : graph.output()) {
+    EXPECT_TRUE(names.insert(output.name()).second) << "Duplicate graph output: " << output.name();
+  }
+
+  if (use_initializer) {
+    const TensorProto& initializer = graph.initializer(0);
+    EXPECT_EQ(initializer.name(), "Y");
+    EXPECT_EQ(initializer.data_location(),
+              externalized ? TensorProto_DataLocation_EXTERNAL : TensorProto_DataLocation_DEFAULT);
+  }
+}
+
+static void RunCompileApiAddModel(const std::string& model_data, const ORTCHAR_T* model_path,
+                                  bool use_initializer) {
+  Ort::SessionOptions session_options;
+  Ort::Session session = model_path == nullptr
+                             ? Ort::Session(*ort_env, model_data.data(), model_data.size(), session_options)
+                             : Ort::Session(*ort_env, model_path, session_options);
+
+  const std::array<int64_t, 1> shape{2};
+  std::array<float, 2> x{1.0f, 2.0f};
+  std::array<float, 2> y{3.0f, 4.0f};
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  std::vector<Ort::Value> inputs;
+  inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, x.data(), x.size(), shape.data(), shape.size()));
+  if (!use_initializer) {
+    inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, y.data(), y.size(), shape.data(), shape.size()));
+  }
+
+  const std::array<const char*, 2> input_names{"X", "Y"};
+  const std::array<const char*, 1> output_names{"Z"};
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                             output_names.data(), output_names.size());
+  ASSERT_EQ(outputs.size(), 1);
+  const float* output = outputs[0].GetTensorData<float>();
+  EXPECT_EQ(output[0], 4.0f);
+  EXPECT_EQ(output[1], 6.0f);
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// A compile-only session (Compile API path, marked by kOrtSessionOptionCompileOnly) whose EPs compile no
+// nodes emits a plain optimized output model. The serialization point is chosen by the requested level:
+// for level >= Level2 it is emitted *after* the Level2+ optimizer loop so the serialized graph reflects
+// those fusions; for level < Level2 it is emitted before the loop (a BASIC snapshot). This is EP-agnostic:
+// the CPU EP compiles nothing, so the kGenerateModel path serializes the optimized graph.
+// bias_gelu_fusion.onnx fuses to com.microsoft.BiasGelu only at Level2 (BiasGeluFusion is Level2-only), so
+// its presence in the emitted model proves the Level2 fusion reached the output; at ORT_ENABLE_BASIC
+// (Level1) it is absent because that fusion never runs. The two cases below therefore exercise both
+// serialization points (after-loop for ENABLE_ALL, before-loop for BASIC).
+TEST(InferenceSessionTests, CompileOnlyToFileSerializesFullyOptimizedGraph) {
+  const std::string input_model = "testdata/transform/fusion/bias_gelu_fusion.onnx";
+
+  auto compile_and_count =
+      [&](TransformerLevel level,
+          const std::basic_string<ORTCHAR_T>& output_path) -> std::map<std::string, int> {
+    std::filesystem::remove(output_path);
+
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.CompileOnlyToFileSerializesFullyOptimizedGraph";
+    so.graph_optimization_level = level;
+    // Mark a compile-only session (as the Compile API does internally).
+    EXPECT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+    // Configure EPContext model generation to a file, mirroring the explicit Compile API: generate a
+    // model even when no nodes are compiled (the CPU EP compiles nothing, so the plain optimized graph
+    // is copied into the output model).
+    epctx::ModelGenOptions gen_options;
+    gen_options.enable = true;
+    gen_options.error_if_output_file_exists = false;
+    gen_options.action_if_no_compiled_nodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+    gen_options.output_model_location = std::filesystem::path(output_path);
+    so.ep_context_gen_options = gen_options;
+    so.has_explicit_ep_context_gen_options = true;
+
+    InferenceSession session{so, GetEnvironment()};
+    EXPECT_STATUS_OK(session.Load(input_model));
+    EXPECT_STATUS_OK(session.Initialize());
+
+    // Load the emitted model in a plain (non-optimizing) session and count ops on the serialized graph.
+    SessionOptions verify_so;
+    verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+    InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+    EXPECT_STATUS_OK(verify.Load(output_path));
+    EXPECT_STATUS_OK(verify.Initialize());
+    return CountOpsInGraph(verify.GetGraph());
+  };
+
+  const std::basic_string<ORTCHAR_T> all_path = ORT_TSTR("compile_only_full_opt_all.onnx");
+  const std::basic_string<ORTCHAR_T> basic_path = ORT_TSTR("compile_only_full_opt_basic.onnx");
+  struct RemoveOnExit {
+    std::vector<std::basic_string<ORTCHAR_T>> paths;
+    ~RemoveOnExit() {
+      for (const auto& p : paths) std::filesystem::remove(p);
+    }
+  } remove_on_exit{{all_path, basic_path}};
+
+  // ORT_ENABLE_ALL: the Level2 BiasGelu fusion runs and must be captured in the emitted model.
+  const std::map<std::string, int> all_counts = compile_and_count(TransformerLevel::MaxLevel, all_path);
+  EXPECT_EQ(all_counts.count("com.microsoft.BiasGelu") ? all_counts.at("com.microsoft.BiasGelu") : 0, 1);
+
+  // ORT_ENABLE_BASIC (Level1): BiasGeluFusion is Level2-only, so it never runs and must be absent.
+  const std::map<std::string, int> basic_counts = compile_and_count(TransformerLevel::Level1, basic_path);
+  EXPECT_EQ(basic_counts.count("com.microsoft.BiasGelu") ? basic_counts.at("com.microsoft.BiasGelu") : 0, 0);
+}
+
+// Same as above, but emits the plain optimized model into an in-memory buffer (BufferHolder) instead of a
+// file. This mirrors the offline-compile flow, which serializes to a buffer rather than to disk, and
+// exercises the buffer branch of SaveModelProtoToLocation. The Level2 BiasGelu fusion must still be present
+// in the serialized bytes.
+TEST(InferenceSessionTests, CompileOnlyToBufferSerializesFullyOptimizedGraph) {
+  const std::string input_model = "testdata/transform/fusion/bias_gelu_fusion.onnx";
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.CompileOnlyToBufferSerializesFullyOptimizedGraph";
+  so.graph_optimization_level = TransformerLevel::MaxLevel;  // ORT_ENABLE_ALL
+  EXPECT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+  void* output_buffer = nullptr;
+  size_t output_buffer_size = 0;
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+
+  epctx::ModelGenOptions gen_options;
+  gen_options.enable = true;
+  gen_options.action_if_no_compiled_nodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+  epctx::BufferHolder buffer_holder;
+  buffer_holder.buffer_ptr = &output_buffer;
+  buffer_holder.buffer_size_ptr = &output_buffer_size;
+  buffer_holder.buffer_allocator = cpu_allocator;
+  gen_options.output_model_location = buffer_holder;
+  so.ep_context_gen_options = gen_options;
+  so.has_explicit_ep_context_gen_options = true;
+
+  {
+    InferenceSession session{so, GetEnvironment()};
+    EXPECT_STATUS_OK(session.Load(input_model));
+    EXPECT_STATUS_OK(session.Initialize());
+  }
+
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_GT(output_buffer_size, 0u);
+
+  // Load the emitted model from the buffer in a plain (non-optimizing) session and count ops.
+  SessionOptions verify_so;
+  verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+  InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+  EXPECT_STATUS_OK(verify.Load(output_buffer, static_cast<int>(output_buffer_size)));
+  EXPECT_STATUS_OK(verify.Initialize());
+  const std::map<std::string, int> counts = CountOpsInGraph(verify.GetGraph());
+  EXPECT_EQ(counts.count("com.microsoft.BiasGelu") ? counts.at("com.microsoft.BiasGelu") : 0, 1);
+
+  cpu_allocator->Free(output_buffer);
+}
+
+// Same as above, but emits the plain optimized model through a user write function (BufferWriteFuncHolder)
+// instead of a file, exercising the write-func branch of SaveModelProtoToLocation. The Level2 BiasGelu
+// fusion must still be present in the written bytes.
+TEST(InferenceSessionTests, CompileOnlyToWriteFuncSerializesFullyOptimizedGraph) {
+  const std::string input_model = "testdata/transform/fusion/bias_gelu_fusion.onnx";
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.CompileOnlyToWriteFuncSerializesFullyOptimizedGraph";
+  so.graph_optimization_level = TransformerLevel::MaxLevel;  // ORT_ENABLE_ALL
+  EXPECT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+  std::string sink;
+
+  epctx::ModelGenOptions gen_options;
+  gen_options.enable = true;
+  gen_options.action_if_no_compiled_nodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+  epctx::BufferWriteFuncHolder write_func_holder;
+  write_func_holder.write_func = AppendToStringWriteFunc;
+  write_func_holder.stream_state = &sink;
+  gen_options.output_model_location = write_func_holder;
+  so.ep_context_gen_options = gen_options;
+  so.has_explicit_ep_context_gen_options = true;
+
+  {
+    InferenceSession session{so, GetEnvironment()};
+    EXPECT_STATUS_OK(session.Load(input_model));
+    EXPECT_STATUS_OK(session.Initialize());
+  }
+
+  ASSERT_FALSE(sink.empty());
+
+  // Load the emitted model from the written bytes in a plain (non-optimizing) session and count ops.
+  SessionOptions verify_so;
+  verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+  InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+  EXPECT_STATUS_OK(verify.Load(sink.data(), static_cast<int>(sink.size())));
+  EXPECT_STATUS_OK(verify.Initialize());
+  const std::map<std::string, int> counts = CountOpsInGraph(verify.GetGraph());
+  EXPECT_EQ(counts.count("com.microsoft.BiasGelu") ? counts.at("com.microsoft.BiasGelu") : 0, 1);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
+// Unlike the tests above (which set the compile-only config directly on an InferenceSession), the tests below
+// exercise the public Compile API (Ort::ModelCompilationOptions + Ort::CompileModel) end-to-end and verify the
+// emitted output is a plain optimized ONNX model (no EPContext nodes). A CPU-only (non-compiling) EP is enough.
+
+// Loads a serialized model into a non-optimizing session and returns its node op-type counts, so a test can
+// inspect the emitted graph without re-optimizing it. Keys are domain-qualified (e.g. "com.microsoft.BiasGelu").
+static std::map<std::string, int> CountOpsInEmittedModel(const std::basic_string<ORTCHAR_T>& model_path) {
+  SessionOptions verify_so;
+  verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+  InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+  EXPECT_STATUS_OK(verify.Load(model_path));
+  EXPECT_STATUS_OK(verify.Initialize());
+  return CountOpsInGraph(verify.GetGraph());
+}
+
+static std::map<std::string, int> CountOpsInEmittedModel(const void* model_data, size_t model_data_len) {
+  SessionOptions verify_so;
+  verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+  InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+  EXPECT_STATUS_OK(verify.Load(model_data, static_cast<int>(model_data_len)));
+  EXPECT_STATUS_OK(verify.Initialize());
+  return CountOpsInGraph(verify.GetGraph());
+}
+
+// Public Compile API -> plain optimized ONNX written to a file: no EPContext nodes, and reloadable.
+TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToFile) {
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_plain_output.onnx");
+  std::filesystem::remove(output_path);
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{output_path};
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(MODEL_URI);
+  compile_options.SetOutputModelPath(output_path.c_str());
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_TRUE(std::filesystem::exists(output_path));
+
+  const std::map<std::string, int> counts = CountOpsInEmittedModel(output_path);
+  EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
+      << "Compile API plain output must not contain EPContext nodes.";
+  EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+}
+
+// Public Compile API -> plain optimized ONNX in an in-memory buffer (the offline/sandboxed-process path with
+// no filesystem): no EPContext nodes.
+TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToBuffer) {
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(MODEL_URI);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator, &output_buffer, &output_size);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_GT(output_size, 0u);
+
+  const std::map<std::string, int> counts = CountOpsInEmittedModel(output_buffer, output_size);
+  EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
+      << "Compile API plain output must not contain EPContext nodes.";
+  EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+
+  allocator.Free(output_buffer);
+}
+
+// Public Compile API -> plain optimized ONNX through a user write function: no EPContext nodes.
+TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToWriteFunc) {
+  std::string sink;
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(MODEL_URI);
+  compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_FALSE(sink.empty());
+
+  const std::map<std::string, int> counts = CountOpsInEmittedModel(sink.data(), sink.size());
+  EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
+      << "Compile API plain output must not contain EPContext nodes.";
+  EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+}
+
+TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerDoesNotDuplicateGraph) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_custom_initializer_no_init.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{input_path};
+  CreateCompileApiAddModel(input_path, false);
+
+  std::string sink;
+  CompileApiInitializerHandlerState handler_state;
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+  compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+  compile_options.SetOutputModelGetInitializerLocationFunc(HandleCompileApiInitializer, &handler_state);
+  compile_options.SetEpContextEmbedMode(true);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_FALSE(sink.empty());
+  EXPECT_EQ(handler_state.callback_count, 0u);
+
+  ModelProto model_proto;
+  ASSERT_TRUE(model_proto.ParseFromString(sink));
+  VerifyCompileApiAddModel(model_proto, false, false);
+  RunCompileApiAddModel(sink, nullptr, false);
+}
+
+TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerPreservesInitializerOnce) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_custom_initializer_input.onnx");
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_custom_initializer_output.onnx");
+  const std::basic_string<ORTCHAR_T> external_path = ORT_TSTR("compile_api_custom_initializer.bin");
+  struct RemoveOnExit {
+    std::array<std::basic_string<ORTCHAR_T>, 3> paths;
+    ~RemoveOnExit() {
+      for (const auto& path : paths) {
+        std::filesystem::remove(path);
+      }
+    }
+  } remove_on_exit{{input_path, output_path, external_path}};
+  CreateCompileApiAddModel(input_path, true);
+
+  for (bool externalize : {false, true}) {
+    std::string sink;
+    std::ofstream external_file;
+    if (externalize) {
+      external_file.open(external_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(external_file.is_open());
+    }
+
+    CompileApiInitializerHandlerState handler_state{
+        externalize, external_path.c_str(), externalize ? &external_file : nullptr, 0};
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_path.c_str());
+    compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+    compile_options.SetOutputModelGetInitializerLocationFunc(HandleCompileApiInitializer, &handler_state);
+    compile_options.SetEpContextEmbedMode(true);
+
+    const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    ASSERT_FALSE(sink.empty());
+    EXPECT_EQ(handler_state.callback_count, 1u);
+
+    ModelProto model_proto;
+    ASSERT_TRUE(model_proto.ParseFromString(sink));
+    VerifyCompileApiAddModel(model_proto, true, externalize);
+
+    if (externalize) {
+      external_file.close();
+      ASSERT_GT(std::filesystem::file_size(external_path), 0u);
+#if !defined(__EMSCRIPTEN__)
+      // WASM cannot load host filesystem external data without a Module.MountedFiles mapping.
+      std::ofstream output_model(output_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(output_model.is_open());
+      output_model.write(sink.data(), static_cast<std::streamsize>(sink.size()));
+      output_model.close();
+      RunCompileApiAddModel(sink, output_path.c_str(), true);
+#endif
+    } else {
+      RunCompileApiAddModel(sink, nullptr, true);
+    }
+  }
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// The public Compile API honors SetGraphOptimizationLevel for the plain output model. bias_gelu_fusion.onnx
+// fuses to com.microsoft.BiasGelu only at Level2+, so it is present when ORT_ENABLE_ALL is requested and
+// absent at the default level (the Compile API defaults to no graph optimizations).
+TEST(InferenceSessionTests, CompileApiOutputHonorsOptimizationLevel) {
+  const ORTCHAR_T* input_model_path = ORT_TSTR("testdata/transform/fusion/bias_gelu_fusion.onnx");
+
+  auto compile_to_buffer_counts = [&](bool enable_all) -> std::map<std::string, int> {
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_model_path);
+    if (enable_all) {
+      compile_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+    }
+    Ort::AllocatorWithDefaultOptions allocator;
+    void* output_buffer = nullptr;
+    size_t output_size = 0;
+    compile_options.SetOutputModelBuffer(allocator, &output_buffer, &output_size);
+
+    EXPECT_TRUE(Ort::CompileModel(*ort_env, compile_options).IsOK());
+    std::map<std::string, int> counts;
+    if (output_buffer != nullptr && output_size > 0) {
+      counts = CountOpsInEmittedModel(output_buffer, output_size);
+      allocator.Free(output_buffer);
+    }
+    return counts;
+  };
+
+  // ORT_ENABLE_ALL: the Level2 BiasGelu fusion runs and must be captured in the emitted model.
+  const std::map<std::string, int> all_counts = compile_to_buffer_counts(/*enable_all=*/true);
+  EXPECT_EQ(all_counts.count("com.microsoft.BiasGelu") ? all_counts.at("com.microsoft.BiasGelu") : 0, 1);
+
+  // Default level (no optimizations): the Level2-only fusion must be absent.
+  const std::map<std::string, int> default_counts = compile_to_buffer_counts(/*enable_all=*/false);
+  EXPECT_EQ(default_counts.count("com.microsoft.BiasGelu") ? default_counts.at("com.microsoft.BiasGelu") : 0, 0);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test
 }  // namespace onnxruntime
