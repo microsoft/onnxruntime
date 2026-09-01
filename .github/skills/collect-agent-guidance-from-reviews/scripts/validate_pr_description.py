@@ -29,8 +29,7 @@ def validate_pr_description(body: str, collection_output: dict[str, Any]) -> Non
     actual_since, actual_through = parse_marker(body)
     if (actual_since, actual_through) != (expected_since, expected_through):
         raise ValueError(
-            "PR description marker does not match the frozen collection window: "
-            f"expected {expected_marker}"
+            f"PR description marker does not match the frozen collection window: expected {expected_marker}"
         )
 
 

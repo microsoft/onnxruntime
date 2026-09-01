@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from collection_marker import generate_marker
 from validate_pr_description import validate_pr_description
 
-
 SINCE = datetime(2026, 8, 1, tzinfo=timezone.utc)
 THROUGH = datetime(2026, 8, 2, tzinfo=timezone.utc)
 MARKER = generate_marker(SINCE, THROUGH)

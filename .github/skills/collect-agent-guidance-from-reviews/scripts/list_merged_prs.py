@@ -17,6 +17,7 @@ from collection_marker import (
     parse_marker,
     parse_utc_timestamp,
 )
+
 SEARCH_QUERY = """
 query($searchQuery: String!, $endCursor: String) {
   search(query: $searchQuery, type: ISSUE, first: 100, after: $endCursor) {

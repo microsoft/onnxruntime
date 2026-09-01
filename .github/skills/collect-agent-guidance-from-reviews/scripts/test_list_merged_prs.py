@@ -7,7 +7,6 @@ from unittest import mock
 import list_merged_prs
 from collection_marker import MARKER_PATTERN, generate_marker
 
-
 UTC = timezone.utc
 
 
@@ -92,8 +91,7 @@ class ListMergedPullRequestsTest(unittest.TestCase):
         search.return_value = [
             pull_request(
                 1,
-                f"{generate_marker(timestamp(1), timestamp(2))}\n"
-                f"{generate_marker(timestamp(2), timestamp(3))}",
+                f"{generate_marker(timestamp(1), timestamp(2))}\n{generate_marker(timestamp(2), timestamp(3))}",
             )
         ]
 
@@ -128,8 +126,7 @@ class ListMergedPullRequestsTest(unittest.TestCase):
             list_merged_prs.discover_since("microsoft/onnxruntime", timestamp(5))
 
         self.assertIn(
-            "harvested-since (2026-08-04T00:00:00Z) must be earlier than "
-            "harvested-through (2026-08-03T00:00:00Z)",
+            "harvested-since (2026-08-04T00:00:00Z) must be earlier than harvested-through (2026-08-03T00:00:00Z)",
             stderr.getvalue(),
         )
 
@@ -153,6 +150,7 @@ class ListMergedPullRequestsTest(unittest.TestCase):
             "merged:2026-08-01T00:00:00Z..2026-08-02T00:00:00Z",
             search.call_args.args[1],
         )
+
 
 if __name__ == "__main__":
     unittest.main()

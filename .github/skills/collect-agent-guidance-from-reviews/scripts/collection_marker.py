@@ -3,7 +3,6 @@
 import re
 from datetime import datetime
 
-
 MARKER_PREFIX = "Agent-Guidance-Collection: version=1;"
 MARKER_PATTERN = re.compile(
     rf"^[ \t]*{re.escape(MARKER_PREFIX)} base=main; "
