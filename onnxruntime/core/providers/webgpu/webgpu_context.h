@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -305,6 +308,32 @@ class WebGpuContext final {
   void CollectProfilingData();
   void EndProfiling(TimePoint, profiling::Events& events);
 
+  // Whether a Session::Run is currently in flight on this context.
+  //
+  // Buffer zero-initialization consults this to decide whether the clear must be submitted before
+  // returning: during a run the clear is encoded into the current command encoder and rides along with
+  // the run's own submission, which preserves dispatch batching. Outside a run there is no upcoming
+  // submission to piggyback on, so the clear is submitted immediately.
+  //
+  // This lives on the context (rather than only on WebGpuExecutionProvider) because the context owns the
+  // command encoder that batching depends on, and because allocators that are not bound to an EP instance
+  // must be able to observe it.
+  //
+  // A context is shared by every session that uses the same device. WebGpuExecutionProvider reports
+  // ConcurrentRunSupported() == false, so InferenceSession serializes runs, but that lock is per-session
+  // and does not serialize sessions sharing a context. This is therefore a count rather than a flag:
+  // with a flag, one session ending its run would report the context as idle while another session's
+  // run is still in flight.
+  bool IsRunActive() const { return active_run_count_.load() > 0; }
+
+  // Must be called in pairs. WebGpuExecutionProvider::OnRunStart increments only on the path that
+  // returns success, because InferenceSession::Run arranges for OnRunEnd only when OnRunStart succeeded.
+  void IncrementActiveRunCount() { active_run_count_.fetch_add(1); }
+  void DecrementActiveRunCount() {
+    [[maybe_unused]] const auto previous_count = active_run_count_.fetch_sub(1);
+    assert(previous_count > 0);
+  }
+
   //
   // Push error scope.
   //
@@ -413,6 +442,11 @@ class WebGpuContext final {
 
   uint32_t num_pending_dispatches_ = 0;
   uint32_t max_num_pending_dispatches_ = 16;
+
+  // Number of Session::Run calls currently in flight on this context, across every session sharing it.
+  // Signed so that an unbalanced decrement fails toward "no run active" (an eager submit, which is
+  // always safe) instead of wrapping to a huge value that would look like a run is permanently active.
+  std::atomic<int32_t> active_run_count_{0};
 
   // Owns the active dispatch window and the unique pending builds referenced within that window.
   std::vector<webgpu::CapturedCommandInfo> deferred_dispatches_;

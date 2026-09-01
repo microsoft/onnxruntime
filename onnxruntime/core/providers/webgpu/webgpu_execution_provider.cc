@@ -854,12 +854,19 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
-  run_active_.store(true);
+  // Incremented last so that it is only incremented on the path that returns success: InferenceSession::Run
+  // calls OnRunEnd only for providers whose OnRunStart succeeded, so an early return above must not have
+  // incremented the count.
+  context_.IncrementActiveRunCount();
   return Status::OK();
 }
 
+bool WebGpuExecutionProvider::IsRunActive() const {
+  return context_.IsRunActive();
+}
+
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  run_active_.store(false);
+  context_.DecrementActiveRunCount();
 
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
