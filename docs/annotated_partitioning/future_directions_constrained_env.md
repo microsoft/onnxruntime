@@ -1002,14 +1002,13 @@ kernel retains its dynamic allocation fallback. Zero-sized requirements are also
 planner must define the semantics of an explicit, proven-zero slot before the interface gains a zero
 marker; this PR intentionally adds neither a marker nor new provenance state.
 
-**`alignment_bytes` (added in PR #29811):** reserved for a future shared-arena packer that co-locates
-multiple kernels' declared slots and needs per-slot alignment metadata. Unused by any kernel today — the
-CUDA allocator's default ≥256-byte alignment already satisfies every current kernel's needs (each gets
-its own `GetScratchBuffer` call, or — like GQA's unfused path — hand-rolls sub-offsets assuming the
-outer buffer is already ≥256-byte aligned). A plain `size_t` with a `0` sentinel is used rather than
-`std::optional<size_t>` because this struct is meant to be usable across a plugin-DLL boundary
-eventually, and `std::optional`'s layout is not guaranteed stable across compilers/STL versions the way
-a scalar with a sentinel value is.
+**`alignment_bytes` (added in PR #29811):** `0` requests the allocator's default alignment. Any
+nonzero value is a binding alignment requirement on the returned slot buffer (or operator-owned root)
+that a planner must honor. The stacked PA/PMHA declaration uses an explicit 256-byte root alignment;
+this ensures that its relatively aligned internal subregions are also absolutely aligned. A plain
+`size_t` with a `0` sentinel is used rather than `std::optional<size_t>` because this POD is meant to
+be usable across a plugin-DLL boundary eventually, and `std::optional`'s layout is not guaranteed
+stable across compilers/STL versions the way a scalar with a sentinel value is.
 
 **Shape source wiring:** framework callers resolve presence-aware entries from two shape sources:
 
@@ -1064,8 +1063,9 @@ activations after the warm-up run. It does not protect the first run from OOM, g
 per-run backing-buffer allocation succeeds, or provide initialize-time persistent allocation.
 
 **Current one-slot limitation:** `WorkspaceRequirement` and
-`DeclareWorkspaceRequirements()` retain generic multi-slot support, but #32071 Phase A opts in only
-kernels that declare exactly one slot. This is sufficient for the current MatMulNBits pilot and both
+`DeclareWorkspaceRequirements()` retain generic multi-slot support, but #32071 opts in only kernels
+that both explicitly override `SupportsPreallocatedWorkspace()` and declare exactly one slot. A
+declaration alone is not planner opt-in. This is sufficient for the current MatMulNBits pilot and both
 packed-attention operators. PackedAttention can expose one 256-byte-aligned, operator-owned root with
 two internal regions:
 
@@ -1074,10 +1074,10 @@ two internal regions:
 [aligned projection end, root end): selected Attention backend workspace
 ```
 
-PMHA, whose Q/K/V inputs are already projected, naturally exposes one attention root. The existing
-runtime may continue using separate dynamic `GetScratchBuffer()` allocations while Level 1 and Level 2
-agree on the single-root declaration. Retrieving that root at runtime and splitting it into the
-operator's internal regions remains follow-up work; it does not require multi-slot planner support.
+PMHA, whose Q/K/V inputs are already projected, naturally exposes one attention root. PA/PMHA root
+retrieval and slicing and the `SupportsPreallocatedWorkspace()` opt-in must land atomically. Until
+then, the current two dynamic `GetScratchBuffer()` allocations remain unchanged while Level 1 and
+Level 2 agree on the single-root declaration. This does not require multi-slot planner support.
 
 **Future stronger mode:** allocating and retaining the complete execution buffer during session
 initialization would be a separate feature. Such a mode would need trustworthy static or bounded

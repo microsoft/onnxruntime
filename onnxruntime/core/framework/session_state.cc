@@ -1861,7 +1861,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       // For now, log the declarations so we can verify the wiring works.
       for (const auto& req : requirements) {
         LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
-                               << " size=" << req.size_bytes << " bytes";
+                               << " size=" << req.size_bytes << " bytes"
+                               << " alignment=" << req.alignment_bytes << " bytes";
       }
     }
   }
