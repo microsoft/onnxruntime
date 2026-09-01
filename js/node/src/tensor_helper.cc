@@ -223,19 +223,18 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
       size_t bufferByteLength = tensorDataTypedArray.ByteLength();
+      auto sourceValue = Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
+                                                  dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
       if (copy_cpu_data) {
         Ort::AllocatorWithDefaultOptions allocator;
         auto copiedValue = Ort::Value::CreateTensor(allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
-        const size_t tensorByteLength = copiedValue.GetTensorSizeInBytes();
-        ORT_NAPI_THROW_RANGEERROR_IF(bufferByteLength < tensorByteLength, env,
-                                     "Tensor.data is smaller than the tensor dimensions require.");
+        const size_t tensorByteLength = sourceValue.GetTensorSizeInBytes();
         if (tensorByteLength > 0) {
-          memcpy(copiedValue.GetTensorMutableRawData(), buffer + bufferByteOffset, tensorByteLength);
+          memcpy(copiedValue.GetTensorMutableRawData(), sourceValue.GetTensorRawData(), tensorByteLength);
         }
         return copiedValue;
       }
-      return Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
-                                      dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+      return sourceValue;
     } else {
       ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_GPU_BUFFER, env, "Tensor.location must be 'gpu-buffer' for IO binding.");
 

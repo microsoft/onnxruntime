@@ -5,6 +5,7 @@ import assert from 'assert';
 import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
 
+import { listSupportedBackends } from '../../lib/backend';
 import { assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT } from '../test-utils';
 
 describe('API Tests - InferenceSession.run()', async () => {
@@ -65,6 +66,34 @@ describe('API Tests - InferenceSession.run()', async () => {
       for (const result of results) {
         assertTensorEqual(result.output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
       }
+    }
+    await localSession.release();
+  });
+
+  it('keeps a GPU buffer alive when Tensor disposal bypasses instance methods', async function () {
+    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'), {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
+    const disposeInput = [
+      (input: Tensor) => input.dispose.bind(input)(),
+      (input: Tensor) => (Object.getPrototypeOf(input) as { dispose: () => void }).dispose.call(input),
+    ];
+
+    for (const dispose of disposeInput) {
+      const gpuInput = (await localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) })).output;
+      assert.strictEqual(gpuInput.location, 'gpu-buffer');
+
+      const run = localSession.run({ input: gpuInput });
+      dispose(gpuInput);
+      const result = await run;
+      assert.strictEqual(result.output.location, 'gpu-buffer');
+      result.output.dispose();
     }
     await localSession.release();
   });

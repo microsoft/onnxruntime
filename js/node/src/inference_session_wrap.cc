@@ -364,16 +364,25 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
   std::unique_ptr<RunAsyncWorker> worker;
   bool active_run_registered = false;
+  const auto unregister_active_run = [&]() {
+    if (active_run_registered) {
+      active_runs_.fetch_sub(1, std::memory_order_release);
+    }
+  };
   try {
     worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
     active_runs_.fetch_add(1, std::memory_order_acquire);
     active_run_registered = true;
     worker->Queue();
-  } catch (...) {
-    if (active_run_registered) {
-      active_runs_.fetch_sub(1, std::memory_order_release);
-    }
+  } catch (const Napi::Error&) {
+    unregister_active_run();
     throw;
+  } catch (const std::exception& e) {
+    unregister_active_run();
+    ORT_NAPI_THROW_ERROR(env, e.what());
+  } catch (...) {
+    unregister_active_run();
+    ORT_NAPI_THROW_ERROR(env, "Unknown error while preparing inference.");
   }
 
   worker.release();
