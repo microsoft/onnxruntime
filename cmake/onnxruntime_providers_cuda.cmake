@@ -85,6 +85,7 @@
   onnxruntime_extract_llm_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     LLM_SOURCES onnxruntime_cuda_llm_srcs
     LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
+    LLM_FP4_SOURCES onnxruntime_cuda_llm_fp4_srcs
   )
 
   # disable contrib ops conditionally
@@ -472,7 +473,8 @@
       endif()
     endif()
 
-    if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND NOT MSVC)
+    if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND
+       (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
       target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
     endif()
 
@@ -585,9 +587,10 @@
         endif()
       endif()
 
-      # CUDA 13 generates host stubs with 128-byte aligned by-value CUTLASS parameters for these
-      # native SM120 TMA kernels. MSVC rejects those stubs with C2719, so retain the portable path.
-      if(onnxruntime_cuda_sm120_tma_srcs AND (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0))
+      # CUDA 13 gives CUtensorMap 128-byte host alignment when MSVC reports an accurate
+      # __cplusplus value. The target-specific host flag below avoids C2719 for FP4 QMoE.
+      if(onnxruntime_cuda_sm120_tma_srcs AND
+         (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0 OR onnxruntime_USE_FP4_QMOE))
         onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
         if(_ort_sm120_cuda_architectures)
           onnxruntime_add_cuda_object_library(
@@ -596,6 +599,13 @@
             CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
+          if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+            # Keep CUDA's CUtensorMap payload unchanged while avoiding an
+            # alignas(128) by-value parameter that MSVC cannot represent in
+            # NVCC-generated host stubs (C2719).
+            target_compile_options(onnxruntime_providers_cuda_sm120_tma PRIVATE
+              "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus->")
+          endif()
           target_compile_definitions(onnxruntime_providers_cuda PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
           if(TARGET onnxruntime_providers_cuda_obj)
             target_compile_definitions(onnxruntime_providers_cuda_obj PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
@@ -616,16 +626,13 @@
       # "no kernel image is available" (CUDA 209) failure when the arch list is real-only
       # (e.g. 86-real;120-real) and therefore carries no virtual compute_120 PTX fallback.
       #
-      # The one toolchain where native sm_120a does NOT compile is MSVC/Windows: targeting it
-      # pulls in CCCL tcgen05 PTX headers that fail with the MSVC host compiler. There we fall
-      # back to excluding SM120 real and rely on virtual compute_120 PTX + JIT instead. The NVFP4
-      # QMoE native FP4xFP4 path is an exception even on MSVC in principle: it emits `cvt.e2m1x2`
-      # in expandInputRowsKernel (moe_kernels.cu), which is valid only for real sm_120a and cannot
-      # be expressed in virtual PTX -- so when that feature is enabled we keep SM120 real archs
-      # regardless of compiler (NVFP4 QMoE is currently a non-MSVC configuration in practice).
+      # Native sm_120a pulls CCCL tcgen05 PTX headers that fail with the MSVC host compiler, so
+      # the broad LLM target uses virtual compute_120 PTX on Windows. FP4 QMoE is isolated below:
+      # its activation conversion requires real sm_120a for `cvt.e2m1x2` and its smaller source
+      # set does not pull in the problematic tcgen05 path.
       if(onnxruntime_cuda_llm_srcs)
-        if(MSVC AND NOT onnxruntime_USE_FP4_QMOE)
-          onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+        if(MSVC)
+          onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL)
         else()
           onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75)
         endif()
@@ -636,6 +643,18 @@
             CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${onnxruntime_cuda_llm_srcs})
+        endif()
+      endif()
+
+      if(onnxruntime_cuda_llm_fp4_srcs)
+        onnxruntime_filter_cuda_archs(_ort_llm_fp4_cuda_architectures MIN_SM 75)
+        if(_ort_llm_fp4_cuda_architectures)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_llm_fp4
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "${_ort_llm_fp4_cuda_architectures}"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${onnxruntime_cuda_llm_fp4_srcs})
         endif()
       endif()
     endif()

@@ -241,4 +241,19 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   return count;
 });
 
+TEST(MlasBlockwiseQdqTest, RejectsShapesOutsideInt32IndexDomain) {
+  float value = 0.0f;
+  uint8_t packed_value = 0;
+
+  EXPECT_FALSE(MlasQDQBlockwiseShapeIsValid(2147483648LL, 1, 16, 4, false, false));
+  EXPECT_FALSE(MlasQDQBlockwiseShapeIsValid(2147483632LL, 1, 16, 4, true, false));
+  EXPECT_THROW((MlasQDQQuantizeBlockwise<float, 4>(
+                   &value, &value, nullptr, &packed_value, true, 46341, 46341, 16, nullptr)),
+               onnxruntime::OnnxRuntimeException);
+  EXPECT_THROW((MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
+                   &packed_value, &value, nullptr, &packed_value, &value, nullptr,
+                   true, 1, 16777216, 256, nullptr)),
+               onnxruntime::OnnxRuntimeException);
+}
+
 #endif  // ORT_MINIMAL_BUILD

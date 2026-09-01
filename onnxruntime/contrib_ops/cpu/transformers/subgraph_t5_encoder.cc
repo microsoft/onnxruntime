@@ -102,6 +102,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
     // Deduce num_heads, head_size and vocab_size from shape of graph outputs
     const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
     const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+    ORT_RETURN_IF(logits_shape == nullptr, "encoder subgraph logits output shape cannot be nullptr");
     ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
 
     num_layers = (num_subgraph_outputs - first_present_output_index_) / 4;

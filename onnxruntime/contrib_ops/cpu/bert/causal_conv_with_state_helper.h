@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -49,7 +51,8 @@ Status CheckInputs(int state_window,
                    int channels,
                    int state_length,
                    const T* past_state,
-                   TensorShape& state_shape) {
+                   TensorShape& state_shape,
+                   std::string_view op_name) {
   state_shape = state_window > 0
                     ? TensorShape({state_window, batch_size, channels, state_length})
                     : TensorShape({batch_size, channels, state_length});
@@ -58,7 +61,8 @@ Status CheckInputs(int state_window,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_state' is expected to have shape ", state_shape.ToString(),
                            ", got ", past_state->Shape().ToString(),
-                           ". CausalConvWithState uses (batch_size, channels, kernel_size - 1) when "
+                           ". ", op_name,
+                           " uses (batch_size, channels, kernel_size - 1) when "
                            "the state_window attribute is absent or 0, and "
                            "(state_window, batch_size, channels, kernel_size - 1) otherwise.");
   }

@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
 
@@ -69,12 +69,12 @@ jobs:
           git checkout -- .gitattributes
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20.x"
 
       - name: Download WebAssembly artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts_wasm
@@ -102,7 +102,7 @@ jobs:
         run: npm ci
         working-directory: ${{ github.workspace }}/js/web
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
@@ -180,7 +180,7 @@ jobs:
       # this step is added to help investigate the shader validation failure which is hard to reproduce
       - name: Upload WebGPU shader validation log on failure
         if: ${{ failure() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: webgpu-shader-validation-logs
           path: ${{ runner.temp }}\web\test\07\chrome_debug.log
@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload NPM packages
         if: ${{ inputs.build_config == 'Release' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ inputs.package_name }}
           path: ${{ github.workspace }}\artifacts_npm

@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if !defined(__wasm__)
-
 #include <memory>
 
 #include "core/providers/webgpu/math/matmul.h"
@@ -25,5 +23,3 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixTilingSelector(
 }  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)
