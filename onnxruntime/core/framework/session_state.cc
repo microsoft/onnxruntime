@@ -6,7 +6,7 @@
 #include <sstream>
 
 #include <mutex>
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include <atomic>
 #endif
 #include "core/common/logging/logging.h"
@@ -481,7 +481,7 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Guards the bookkeeping that mutates state shared across nodes (the constant-initializer/
   // use-count maps, the per-graph PrepackedWeightsForGraph container, and the prepack counter)
   // when the per-node work below runs concurrently across the intra-op thread pool. It is only
@@ -500,7 +500,7 @@ Status SessionState::PrepackConstantInitializedTensors(
   InlinedVector<std::pair<SessionState*, int>> pending_erasures;
 #endif
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   auto process_node = [this, &constant_initializers_use_count, &initializers_to_share_map, &commit_mutex,
                        &pending_erasures](
                           const Node& node, bool should_cache_prepacked_weights_for_shared_initializers,
@@ -524,7 +524,7 @@ Status SessionState::PrepackConstantInitializedTensors(
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
             OrtValue const_initialized_value;
             bool has_const_initializer = false;
             {
@@ -563,7 +563,7 @@ Status SessionState::PrepackConstantInitializedTensors(
               const bool enroll_tagged_initializer =
                   (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
               // Deferred lock covering the bookkeeping below. Only actually acquired when
               // guard_bookkeeping is set (parallel path, no cross-session sharing); left unowned
               // (no-op) on the sequential/cross-session-sharing paths.
@@ -708,7 +708,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                     is_packed,
                                                     &weights_to_be_filled_in));
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                 if (guard_bookkeeping) {
                   bookkeeping_lock.lock();
                 }
@@ -742,7 +742,7 @@ Status SessionState::PrepackConstantInitializedTensors(
               }
 
               if (is_packed) {
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                 if (guard_bookkeeping && !bookkeeping_lock.owns_lock()) {
                   bookkeeping_lock.lock();
                 }
@@ -752,7 +752,7 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                 if (constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                   // release the constant initialized tensor
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                   if (guard_bookkeeping) {
                     // Defer the erase() calls to after the parallel tasks have joined; see the comment on
                     // pending_erasures above.
@@ -783,7 +783,7 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   };
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Initializers may already have been removed from Graph after being materialized as OrtValues, so
   // Graph::GetConstantInitializer() cannot reliably find them here. Use the materialized constants map, which
   // includes outer-scope constants re-indexed for subgraphs.
@@ -863,7 +863,7 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   }
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Parallel path: fan out the per-node CPU work (dominated by kernel->PrePack(), which reads and
   // repacks each node's constant initializer) across the intra-op thread pool. EPs that do not
   // advertise concurrent kernel execution are left on the sequential path.
