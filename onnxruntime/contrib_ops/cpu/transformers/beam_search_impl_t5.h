@@ -182,8 +182,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                              this->context_.Logger(),
                                              this->ort_stream_,
                                              /*sync_subgraph_fetches*/ false,
-                                             this->context_.GetRunProfiler(),
-                                             this->context_.GetRunInstrumentationContext()));
+                                             this->context_.GetRunProfiler()));
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -362,8 +361,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                     this->context_.Logger(),
                                     this->ort_stream_,
                                     /*sync_subgraph_fetches*/ false,
-                                    this->context_.GetRunProfiler(),
-                                    this->context_.GetRunInstrumentationContext());
+                                    this->context_.GetRunProfiler());
 
     ORT_RETURN_IF_ERROR(status);
 

@@ -5,7 +5,9 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "contrib_ops/cuda/moe/moe_profiler.h"
+#endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
@@ -222,6 +224,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   int* expert_indices = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes);
   int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes + indices_bytes);
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
   const auto* instrumentation = context->GetRunInstrumentationContext();
   CudaMoeRoutingRecord* routing_record = nullptr;
   if (instrumentation != nullptr &&
@@ -245,6 +248,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     routing_record = record.get();
     instrumentation->AddDeferredRecord(std::move(record));
   }
+#endif
 
   // Perform Softmax + TopK
   bool is_fp16 = input->IsDataType<MLFloat16>();
@@ -383,10 +387,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
       stream);
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
   if (routing_record != nullptr) {
     ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
         expert_indices, expert_scales, 0, expanded_rows, true, stream));
   }
+#endif
 
   return Status::OK();
 }

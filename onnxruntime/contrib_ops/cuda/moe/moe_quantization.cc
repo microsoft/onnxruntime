@@ -8,7 +8,9 @@
 #endif
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "contrib_ops/cuda/moe/moe_profiler.h"
+#endif
 #include <charconv>
 #include <type_traits>
 #include "core/common/float8.h"
@@ -1481,6 +1483,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
   const auto* instrumentation = context->GetRunInstrumentationContext();
   CudaMoeRoutingRecord* routing_record = nullptr;
   const size_t routing_element_count =
@@ -1506,6 +1509,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     routing_record = record.get();
     instrumentation->AddDeferredRecord(std::move(record));
   }
+#endif
 
   if (use_fp4_gemv) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
@@ -1721,11 +1725,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                expanded, expanded,
                                workspace_size, total_scratch_bytes);
     }
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
     if (routing_record != nullptr) {
       ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
           expert_indices, expert_scales, 0,
           SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), true, stream));
     }
+#endif
     return Status::OK();
   }
 
@@ -1934,6 +1940,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         fused_routing,
         stream);
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
     if (routing_record != nullptr) {
       const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
       const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
@@ -1941,6 +1948,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           expert_indices, expert_scales, destination_offset, tile_element_count,
           tile_index + 1 == row_tile_plan.TileCount(), stream));
     }
+#endif
   }
 
   if (enable_kernel_debug_info_) {

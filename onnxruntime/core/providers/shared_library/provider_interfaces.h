@@ -45,7 +45,7 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
-struct RunInstrumentationContext;
+class RunInstrumentationContext;
 
 struct ModelSavingOptions;
 

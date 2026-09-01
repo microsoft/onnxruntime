@@ -1297,7 +1297,8 @@ class Initializer {
   Initializer* this_ptr_;
 };
 
-struct RunInstrumentationContext final {
+class RunInstrumentationContext final {
+ public:
   uint64_t IterationIndex() const { return g_host->RunInstrumentationContext__IterationIndex(this); }
   const std::string& RequestId() const { return g_host->RunInstrumentationContext__RequestId(this); }
   TimePoint StartProfiling() const { return g_host->RunInstrumentationContext__StartProfiling(this); }
