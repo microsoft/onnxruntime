@@ -22,6 +22,7 @@ class VarlenCausalConvWithState final : public onnxruntime::cuda::CudaKernel {
  private:
   std::string activation_;
   int max_checkpoints_;
+  int dilation_;
 };
 
 // Launches the packed varlen causal-conv recurrence.
@@ -37,16 +38,17 @@ Status LaunchVarlenCausalConvWithStateKernel(
     const T* input,             // [total_tokens, channels]
     const T* weight,            // [channels, 1, kernel_size]
     const T* bias,              // [channels] or nullptr
-    const T* initial_state,     // [batch_size, channels, kernel_size - 1], required
+    const T* initial_state,     // [batch_size, channels, (kernel_size - 1) * dilation], required
     T* output,                  // [total_tokens, channels]
-    T* final_state,             // [batch_size, channels, kernel_size - 1]
-    T* prefix_states,           // [max_checkpoints, batch_size, channels, kernel_size - 1] or nullptr
+    T* final_state,             // [batch_size, channels, (kernel_size - 1) * dilation]
+    T* prefix_states,           // [max_checkpoints, batch_size, channels, (K - 1) * dilation] or nullptr
     const int32_t* cu_seqlens,  // [batch_size + 1], device-resident
     int batch_size,
     int total_tokens,
     bool all_ones,
     int channels,
     int kernel_size,
+    int dilation,
     bool apply_silu,
     int max_threads_per_block,
     int max_checkpoints);

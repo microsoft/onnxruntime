@@ -41,6 +41,8 @@ VarlenCausalConvWithState<T>::VarlenCausalConvWithState(const OpKernelInfo& info
   ORT_ENFORCE(max_checkpoints >= 0 && max_checkpoints <= kMaxStateWindow,
               "max_checkpoints must be in [0, ", kMaxStateWindow, "]");
   max_checkpoints_ = static_cast<int>(max_checkpoints);
+
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
 }
 
 template <typename T>
@@ -96,7 +98,10 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   ORT_RETURN_IF_NOT(kernel_size_64 >= 1 && kernel_size_64 <= std::numeric_limits<int>::max(),
                     "weight last dim (kernel_size) must be positive, got ", kernel_size_64);
   const int kernel_size = static_cast<int>(kernel_size_64);
-  const int pad = kernel_size - 1;
+  const int64_t pad_64 = (kernel_size_64 - 1) * dilation_;
+  ORT_RETURN_IF_NOT(pad_64 <= std::numeric_limits<int>::max(),
+                    "(kernel_size - 1) * dilation is too large for the CUDA kernel");
+  const int pad = static_cast<int>(pad_64);
 
   if (bias_tensor != nullptr) {
     const auto& bias_shape = bias_tensor->Shape();
@@ -137,6 +142,7 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
       all_ones,
       channels,
       kernel_size,
+      dilation_,
       apply_silu,
       GetDeviceProp().maxThreadsPerBlock,
       max_checkpoints_);
