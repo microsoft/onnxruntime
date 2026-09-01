@@ -21,6 +21,7 @@ using namespace onnxruntime::cuda;
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
+          .MayInplace(3, 1)                                       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<T>()), \
       NGramHashMapping<T>);
 

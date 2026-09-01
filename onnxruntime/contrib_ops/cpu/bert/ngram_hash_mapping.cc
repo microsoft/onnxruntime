@@ -23,6 +23,7 @@ namespace contrib {
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
+          .MayInplace(3, 1)                                       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<T>()), \
       NGramHashMapping<T>);
 

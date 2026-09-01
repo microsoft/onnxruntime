@@ -73,7 +73,10 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
 
   const int64_t rows = batch_size * sequence_length * hc_mult;
   ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows), static_cast<double>(hidden_size),
+      // Each row makes one fused reduction pass and one output pass over hidden_size, plus a
+      // handful of scalar transcendentals. Costing it as a single pass would over-partition.
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows),
+      static_cast<double>(2 * hidden_size + 32),
       [&](ptrdiff_t begin, ptrdiff_t end) {
         for (int64_t row = begin; row < end; ++row) {
           const int64_t g = row % hc_mult;
@@ -82,26 +85,27 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
           const T* query_row = query_data + row * hidden_size;
           const T* value_row = value_data + token * hidden_size;
 
+          // Both inverse RMS factors are scalars, so they can be pulled out of the dot product and
+          // applied afterwards. That folds the two reductions into one pass over key_row and
+          // query_row, which is what the CUDA and WGSL kernels already do.
+          const T* key_scale_row = key_scale_data + g * hidden_size;
+          const T* query_scale_row = query_scale_data + g * hidden_size;
           float key_sum_sq = 0.0f;
           float query_sum_sq = 0.0f;
+          float dot_numerator = 0.0f;
           for (int64_t c = 0; c < hidden_size; ++c) {
             const float key_value = static_cast<float>(key_row[c]);
             const float query_value = static_cast<float>(query_row[c]);
             key_sum_sq += key_value * key_value;
             query_sum_sq += query_value * query_value;
+            dot_numerator += key_value * static_cast<float>(key_scale_row[c]) *
+                             query_value * static_cast<float>(query_scale_row[c]);
           }
 
           const float key_inv_rms = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden_size) + epsilon_);
           const float query_inv_rms = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(hidden_size) + epsilon_);
-          float dot = 0.0f;
-          for (int64_t c = 0; c < hidden_size; ++c) {
-            const float normed_key = static_cast<float>(key_row[c]) * key_inv_rms *
-                                     static_cast<float>(key_scale_data[g * hidden_size + c]);
-            const float normed_query = static_cast<float>(query_row[c]) * query_inv_rms *
-                                       static_cast<float>(query_scale_data[g * hidden_size + c]);
-            dot += normed_key * normed_query;
-          }
-          dot /= std::sqrt(static_cast<float>(hidden_size));
+          const float dot =
+              dot_numerator * key_inv_rms * query_inv_rms / std::sqrt(static_cast<float>(hidden_size));
           const float gate = engram_helper::SigmoidFloat(engram_helper::EngramGateArg(dot));
 
           T* output_row = output_data + row * hidden_size;

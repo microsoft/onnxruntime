@@ -88,26 +88,41 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& present_ids = shader.AddOutput("present_ids", ShaderUsage::UseUniform);
 
+  // past_ids and present_ids may be the same buffer, which is what threading present_ids straight
+  // back into past_ids produces. Slot `slot` writes index `slot` and reads index
+  // `slot + sequence_length`, so the read and write ranges overlap and must be separated. One
+  // workgroup owns one batch row and walks it in ascending workgroup-sized chunks: a barrier
+  // separates the chunk's reads from its writes, and a chunk only writes indices strictly below the
+  // read indices of every later chunk.
   shader.MainFunctionBody()
-      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
-      << "  let slot = global_idx % uniforms.state_length;\n"
-      << "  let b = global_idx / uniforms.state_length;\n"
-      << "  var token = uniforms.pad_id;\n";
+      << "  let b = workgroup_idx;\n"
+      << "  let row_base = b * uniforms.state_length;\n"
+      << "  for (var chunk = 0u; chunk < uniforms.state_length; chunk += workgroup_size_x) {\n"
+      << "    let slot = chunk + local_idx;\n"
+      << "    var token = uniforms.pad_id;\n"
+      << "    if (slot < uniforms.state_length) {\n";
   if (has_input_ids_) {
     shader.MainFunctionBody()
-        << "  if (slot + uniforms.sequence_length >= uniforms.state_length) {\n"
-        << "    let source_t = slot + uniforms.sequence_length - uniforms.state_length;\n"
-        << "    token = " << input_ids->GetByOffset("b * uniforms.sequence_length + source_t") << ";\n"
-        << "  }\n";
+        << "      if (slot + uniforms.sequence_length >= uniforms.state_length) {\n"
+        << "        let source_t = slot + uniforms.sequence_length - uniforms.state_length;\n"
+        << "        token = " << input_ids->GetByOffset("b * uniforms.sequence_length + source_t") << ";\n"
+        << "      }\n";
   }
   if (has_past_ids_) {
     shader.MainFunctionBody()
-        << "  if (slot + uniforms.sequence_length < uniforms.state_length) {\n"
-        << "    token = " << past_ids->GetByOffset("b * uniforms.state_length + slot + uniforms.sequence_length")
+        << "      if (slot + uniforms.sequence_length < uniforms.state_length) {\n"
+        << "        token = " << past_ids->GetByOffset("b * uniforms.state_length + slot + uniforms.sequence_length")
         << ";\n"
-        << "  }\n";
+        << "      }\n";
   }
-  shader.MainFunctionBody() << "  " << present_ids.SetByOffset("global_idx", "token") << "\n";
+  shader.MainFunctionBody()
+      << "    }\n"
+      << "    workgroupBarrier();\n"
+      << "    if (slot < uniforms.state_length) {\n"
+      << "      " << present_ids.SetByOffset("row_base + slot", "token") << "\n"
+      << "    }\n"
+      << "    workgroupBarrier();\n"
+      << "  }\n";
   return Status::OK();
 }
 
@@ -148,8 +163,29 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   auto* output = context.Output(0, TensorShape({batch_size, sequence_length, num_heads}));
   auto* present_ids = context.Output(1, TensorShape({batch_size, state_length}));
 
+  // The hash program reads past_ids and the present program writes present_ids, so when the caller
+  // aliases the two the hash program must be queued first.
+  const int64_t total = input_shape.Size();
+  if (total > 0) {
+    NGramHashMappingProgram program{has_past_ids};
+    program.CacheHint(has_past_ids)
+        .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
+                    {multipliers, ProgramTensorMetadataDependency::None},
+                    {vocab_sizes, ProgramTensorMetadataDependency::None}});
+    if (has_past_ids) {
+      program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
+    }
+    program.AddOutput({output, ProgramTensorMetadataDependency::None})
+        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total)},
+                              {onnxruntime::narrow<uint32_t>(sequence_length)},
+                              {onnxruntime::narrow<uint32_t>(max_ngram_size_)},
+                              {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
+                              {onnxruntime::narrow<int32_t>(pad_id_)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  }
+
   if (present_ids != nullptr && batch_size * state_length > 0) {
-    const int64_t present_total = batch_size * state_length;
     // WebGPU rejects zero-sized storage buffer bindings, so an empty input_ids tensor must not be
     // bound. When sequence_length == 0 every present slot comes from history (or pad_id), so the
     // input_ids branch of the shader is dead anyway.
@@ -162,36 +198,17 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
     if (has_past_ids) {
       present_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
+    // One workgroup per batch row, so the shader can use a workgroup barrier to order its reads
+    // against its writes.
     present_program.AddOutput({present_ids, ProgramTensorMetadataDependency::None})
-        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(present_total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(present_total)},
-                              {onnxruntime::narrow<uint32_t>(sequence_length)},
+        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(sequence_length)},
                               {onnxruntime::narrow<uint32_t>(state_length)},
                               {onnxruntime::narrow<int32_t>(pad_id_)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(present_program));
   }
 
-  const int64_t total = input_shape.Size();
-  if (total == 0) {
-    return Status::OK();
-  }
-
-  NGramHashMappingProgram program{has_past_ids};
-  program.CacheHint(has_past_ids)
-      .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
-                  {multipliers, ProgramTensorMetadataDependency::None},
-                  {vocab_sizes, ProgramTensorMetadataDependency::None}});
-  if (has_past_ids) {
-    program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
-  }
-  program.AddOutput({output, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total)},
-                            {onnxruntime::narrow<uint32_t>(sequence_length)},
-                            {onnxruntime::narrow<uint32_t>(max_ngram_size_)},
-                            {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
-                            {onnxruntime::narrow<int32_t>(pad_id_)}});
-  return context.RunProgram(program);
+  return Status::OK();
 }
 
 }  // namespace webgpu

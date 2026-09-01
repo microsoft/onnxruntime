@@ -25,10 +25,20 @@ $MAIN {
   let dilation = uniforms.dilation;
   let state_length = uniforms.state_length;  // = (kernel_size - 1) * dilation
 
+  // Decompose global_idx so that adjacent invocations touch adjacent memory in the active layout.
+  // The full (batch, channel, position) index space is covered either way; only the order changes.
+#if channels_last
+  // Channels are the fastest-moving axis, so they must also be the fastest-moving invocation axis.
+  let channel_idx = global_idx % channels;
+  let bp_idx = global_idx / channels;
+  let pos = bp_idx % input_length;
+  let batch_idx = bp_idx / input_length;
+#else
   let pos = global_idx % input_length;
   let bc_idx = global_idx / input_length;
   let batch_idx = bc_idx / channels;
   let channel_idx = bc_idx % channels;
+#endif
 
   // Both layouts are dense, so a strided (batch, position, channel) view covers them: the base is
   // the (batch, channel) origin and successive positions are pos_stride elements apart.

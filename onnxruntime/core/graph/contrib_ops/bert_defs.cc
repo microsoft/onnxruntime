@@ -2607,6 +2607,9 @@ those preceding ids and present_ids returns the ids to pass to the next call. Bo
 Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
 and running it over consecutive chunks while threading present_ids into past_ids produce identical
 hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
+past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
+only when the whole operator call is unconditionally committed; a caller that may select a prefix or
+roll back must preserve past_ids.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
