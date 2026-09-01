@@ -8,6 +8,8 @@ Following that, ORT must be manually built, providing the configuration file in 
 
 See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
 
+When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid.
+
 The build process will generate updated ORT kernel registration and type reduction source files to exclude unused kernel implementations.
 The generated files will be under the build directory and the original source files that they are based on are not directly modified.
 When building, the generated files will be used instead of the original files.
