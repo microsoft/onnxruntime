@@ -784,26 +784,21 @@ Status SessionState::PrepackConstantInitializedTensors(
   };
 
 #if !defined(__ANDROID__)
+  // Initializers may already have been removed from Graph after being materialized as OrtValues, so
+  // Graph::GetConstantInitializer() cannot reliably find them here. Use the materialized constants map, which
+  // includes outer-scope constants re-indexed for subgraphs.
   auto has_constant_initializer_input = [this](const Node& node) {
+    const auto& constant_initialized_tensors = GetConstantInitializedTensorsForKernelCreation();
     for (const auto* input_def : node.InputDefs()) {
       if (!input_def->Exists()) {
         continue;
       }
 
-      const std::string& input_name = input_def->Name();
-      SessionState* st = this;
-      do {
-        int ort_value_idx;
-        if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK() &&
-            st->constant_initialized_tensors_.count(ort_value_idx) != 0) {
-          return true;
-        }
-
-        if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
-          break;
-        }
-        st = st->Parent();
-      } while (st);
+      int ort_value_idx;
+      if (GetOrtValueNameIdxMap().GetIdx(input_def->Name(), ort_value_idx).IsOK() &&
+          constant_initialized_tensors.count(ort_value_idx) != 0) {
+        return true;
+      }
     }
 
     return false;
