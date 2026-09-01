@@ -76,6 +76,9 @@ struct BuildOptions {
   // Wire both Value operands through value-layout Transposes to BNHS graph boundaries, i.e. a model
   // that already carries the conversion, as one saved via session.optimized_model_filepath would.
   bool already_transformed = false;
+  // Declare the past_value graph input with a rank-3 shape. GQA shape inference checks past_key's
+  // rank but does not independently reject past_value's, so this reaches the transformer.
+  bool past_value_rank3 = false;
 
   bool TransposedPastValue() const { return partially_transformed || already_transformed; }
 
@@ -112,6 +115,11 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
     } else {
       past_key = builder.MakeInput<MLFloat16>(cache_shape, MLFloat16(0.0f), MLFloat16(0.0f));
       past_value = builder.MakeInput<MLFloat16>(cache_shape, MLFloat16(0.0f), MLFloat16(0.0f));
+    }
+
+    if (opts.past_value_rank3) {
+      past_value = builder.MakeInput<MLFloat16>(std::vector<int64_t>{kBatch, kMaxSeq, kHeadSize},
+                                                MLFloat16(0.0f), MLFloat16(0.0f));
     }
 
     if (opts.past_value_behind_identity) {
@@ -831,6 +839,22 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCache) {
       TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
                            TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
       "4-bit quantized Value cache");
+}
+
+// Only a rank-4 declared shape can be reinterpreted between BNSH and BNHS. GQA shape inference
+// validates past_key's rank but not past_value's, so a rank-3 past_value reaches the transformer and
+// has to be rejected there. Shape inference is relaxed for this fixture so the malformed model
+// survives Graph::Resolve and the transformer is the thing under test.
+TEST_F(GqaValueLayoutTransformerTest, RejectsNonRank4PastValue) {
+  BuildOptions opts;
+  opts.past_value_rank3 = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr,
+                           ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}),
+      "must be rank 4");
 }
 
 // The same rejection must apply to a model that already carries the Transposes. Classifying it as

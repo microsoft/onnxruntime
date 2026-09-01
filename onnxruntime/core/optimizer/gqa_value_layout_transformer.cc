@@ -444,8 +444,9 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
     const std::string& ep = transpose->GetExecutionProviderType();
     LOGS(logger, WARNING) << "The Value-layout Transpose for the " << operand << " boundary '" << boundary_name
                           << "' was not fused by EP '" << (ep.empty() ? "<unassigned>" : ep) << "'. The BNHS Value "
-                          << "cache will be transposed at runtime: expect a full copy of the cache per step and no "
-                          << "past/present buffer sharing. Either select the '" << kGqaValueLayoutBNSH
+                          << "cache will be transposed at runtime: expect a full copy of the cache per step, and no "
+                          << "in-place update of the bound buffer because the operator now reads and writes BNSH "
+                          << "intermediates. Either select the '" << kGqaValueLayoutBNSH
                           << "' layout for '" << kOrtSessionOptionsGqaValueLayout << "', or use an EP that reports '"
                           << kGqaValueLayoutBNHS << "' for '" << kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout
                           << "'.";
