@@ -49,6 +49,8 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : OpKernel
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
 
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
+
   ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
               "CPU CausalConvWithState does not support state_window > 0 (CUDA EP only)");
   state_window_ = 0;
@@ -98,29 +100,31 @@ inline void ProcessChannelDecodeFixedK(
 }
 
 // Decode fast-path: L=1, no padded buffer needed.
-// The "visible window" for position 0 is [past_state(K-1 values), input(1 value)] = K values.
-// Compute dot(weight, window), shift state left by 1, append new input.
+// The "visible window" is [past_state(pad values), input(1 value)] with pad = (K-1)*dilation.
+// Tap k reads window position k*dilation, so the last tap is the current input. The state is then
+// shifted left by one position and the new input appended.
 void ProcessChannelDecode(
-    const float* past_row,   // past_state for this (b,c): [K-1] or nullptr
+    const float* past_row,   // past_state for this (b,c): [pad] or nullptr
     const float* input_val,  // &input[b,c,0] — single value
     const float* w,          // weight for this channel: [K]
     float bias_val,
     bool apply_silu,
     float* out_val,      // &output[b,c,0] — single value
-    float* present_row,  // present_state for this (b,c): [K-1]
-    int64_t K) {
-  int64_t pad = K - 1;
+    float* present_row,  // present_state for this (b,c): [pad]
+    int64_t K,
+    int64_t dilation) {
+  const int64_t pad = (K - 1) * dilation;
 
   // Dot product over the window: [past_state..., input]
   float sum = bias_val;
-  // First K-1 elements come from past_state
+  // The first K-1 taps land in past_state, spaced `dilation` apart.
   if (past_row != nullptr) {
-    for (int64_t k = 0; k < pad; ++k) {
-      sum += w[k] * past_row[k];
+    for (int64_t k = 0; k < K - 1; ++k) {
+      sum += w[k] * past_row[k * dilation];
     }
   }
-  // Last element is the current input
-  sum += w[pad] * input_val[0];
+  // Last tap is the current input
+  sum += w[K - 1] * input_val[0];
 
   if (apply_silu) {
     sum = ApplySilu(sum);
@@ -140,18 +144,19 @@ void ProcessChannelDecode(
 
 // Prefill path: L>1, uses padded buffer for the convolution window.
 void ProcessChannelPrefill(
-    const float* past_row,  // past_state for this (b,c): [K-1] or nullptr
+    const float* past_row,  // past_state for this (b,c): [pad] or nullptr
     const float* in_row,    // input for this (b,c): [L]
     const float* w,         // weight for this channel: [K]
     float bias_val,
     bool apply_silu,
     float* out_row,      // output for this (b,c): [L]
-    float* present_row,  // present_state for this (b,c): [K-1]
-    float* padded_row,   // scratch buffer: [K-1 + L]
+    float* present_row,  // present_state for this (b,c): [pad]
+    float* padded_row,   // scratch buffer: [pad + L]
     int64_t L,
-    int64_t K) {
-  int64_t pad = K - 1;
-  int64_t padded_len = pad + L;
+    int64_t K,
+    int64_t dilation) {
+  const int64_t pad = (K - 1) * dilation;
+  const int64_t padded_len = pad + L;
 
   // Build padded window: [past_state | input]
   if (past_row != nullptr) {
@@ -161,11 +166,12 @@ void ProcessChannelPrefill(
   }
   std::memcpy(padded_row + pad, in_row, static_cast<size_t>(L) * sizeof(float));
 
-  // Depthwise 1D convolution
+  // Depthwise 1D convolution. Tap k of output position l reads padded_row[l + k*dilation]; at
+  // k = K-1 that is padded_row[l + pad], i.e. the current input position.
   for (int64_t l = 0; l < L; ++l) {
     float sum = bias_val;
     for (int64_t k = 0; k < K; ++k) {
-      sum += w[k] * padded_row[l + k];
+      sum += w[k] * padded_row[l + k * dilation];
     }
     if (apply_silu) {
       sum = ApplySilu(sum);
@@ -173,7 +179,7 @@ void ProcessChannelPrefill(
     out_row[l] = sum;
   }
 
-  // Save present_state: last K-1 elements of (past_state | input)
+  // Save present_state: last pad elements of (past_state | input)
   std::memcpy(present_row, padded_row + padded_len - pad, static_cast<size_t>(pad) * sizeof(float));
 }
 
@@ -213,7 +219,8 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
   if (ndim_ == 1) {
     const int64_t L = input_shape[2];
     const int64_t K = weight_shape[2];
-    const int64_t pad = K - 1;
+    const int64_t dilation = dilation_;
+    const int64_t pad = (K - 1) * dilation;
 
     if (past_state_tensor != nullptr) {
       const auto& ps_shape = past_state_tensor->Shape();
@@ -221,14 +228,14 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
                             ps_shape[0] == batch_size &&
                             ps_shape[1] == channels &&
                             ps_shape[2] == pad,
-                        "past_state must be (B, C, K-1)");
+                        "past_state must be (B, C, (K-1)*dilation)");
     }
 
     // ==== Allocate outputs ====
     Tensor* output_tensor = context->Output(0, input_shape);
     float* output_data = output_tensor->MutableData<float>();
 
-    // state_window_ is always 0 on CPU, so this is the legacy (B, C, K-1) shape.
+    // state_window_ is always 0 on CPU, so this is the legacy (B, C, (K-1)*dilation) shape.
     TensorShape state_shape;
     ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
         state_window_, static_cast<int>(batch_size), static_cast<int>(channels),
@@ -268,7 +275,9 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
               float bias_val = bias_data ? bias_data[c] : 0.0f;
               float* out_val = output_data + (b * channels + c) * L;
               float* present_row = present_data + (b * channels + c) * pad;
-              switch (K) {
+              // ProcessChannelDecodeFixedK assumes pad == K - 1, so it only applies undilated.
+              const int64_t fixed_k = (dilation == 1) ? K : 0;
+              switch (fixed_k) {
                 case 2:
                   ProcessChannelDecodeFixedK<2>(past_row, input_val, w, bias_val, apply_silu,
                                                 out_val, present_row);
@@ -287,7 +296,7 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
                   break;
                 default:
                   ProcessChannelDecode(past_row, input_val, w, bias_val, apply_silu,
-                                       out_val, present_row, K);
+                                       out_val, present_row, K, dilation);
                   break;
               }
             }
@@ -316,7 +325,7 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
               float* present_row = present_data + (b * channels + c) * pad;
 
               ProcessChannelPrefill(past_row, in_row, w, bias_val, apply_silu,
-                                    out_row, present_row, padded_buf.data(), L, K);
+                                    out_row, present_row, padded_buf.data(), L, K, dilation);
             }
           });
     }

@@ -30,8 +30,22 @@ Status ParseStateWindow(const TKernelInfo& info, int& state_window) {
   return Status::OK();
 }
 
+// Reads and validates the optional `dilation` attribute.
+//
+// 1 (the default, i.e. attribute absent) is the undilated case, which is what every model exported
+// before the attribute existed uses, so this must stay the default.
+template <typename TKernelInfo>
+Status ParseDilation(const TKernelInfo& info, int& dilation) {
+  const int64_t value = info.template GetAttrOrDefault<int64_t>("dilation", 1);
+  if (value < 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "dilation must be >= 1, got ", value);
+  }
+  dilation = static_cast<int>(value);
+  return Status::OK();
+}
+
 // Derives the expected past_state / present_state shape and validates past_state against it.
-// `state_length` is the carry length along the causal axis, i.e. kernel_size - 1.
+// `state_length` is the carry length along the causal axis, i.e. (kernel_size - 1) * dilation.
 //
 // state_window == 0 -> (batch_size, channels, state_length). A single state with no window axis:
 // the backward-compatible layout that models exported before the attribute existed use.
@@ -62,9 +76,10 @@ Status CheckInputs(int state_window,
                            "Input 'past_state' is expected to have shape ", state_shape.ToString(),
                            ", got ", past_state->Shape().ToString(),
                            ". ", op_name,
-                           " uses (batch_size, channels, kernel_size - 1) when "
+                           " uses (batch_size, channels, (kernel_size - 1) * dilation) when "
                            "the state_window attribute is absent or 0, and "
-                           "(state_window, batch_size, channels, kernel_size - 1) otherwise.");
+                           "(state_window, batch_size, channels, (kernel_size - 1) * dilation) "
+                           "otherwise.");
   }
 
   return Status::OK();

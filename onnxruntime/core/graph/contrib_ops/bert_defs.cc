@@ -2561,6 +2561,13 @@ The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causa
 enforced on the last spatial dimension only.
 
 The optional activation attribute supports fused SiLU/Swish activation.
+
+The dilation attribute spaces the kernel taps along the causal axis: output position t reads
+input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field therefore spans
+(k_1 - 1) * dilation positions before the current one, and the carry state grows to match:
+past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
+(the default) is the undilated case and keeps the original state length, so models exported
+before the attribute existed are unaffected.
 )DOC";
 
 constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
@@ -2759,15 +2766,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Spatial dimensionality: 1, 2, or 3. Default is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("dilation",
+              "Spacing between kernel taps along the causal (last spatial) axis. The receptive "
+              "field spans (k_1 - 1) * dilation positions before the current one, and past_state / "
+              "present_state hold that many positions. Must be >= 1. Default is 1 (undilated).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("state_window",
               "Number of trailing per-position carry states held by past_state and present_state. "
               "When 0 (default) the state tensors have no window axis and hold only the state after "
-              "the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). "
+              "the last position, i.e. the backward-compatible (batch_size, channels, state_length) "
+              "where state_length = (k_1 - 1) * dilation. "
               "When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state "
               "after position (seq_len - W + j), so slot W-1 is always the state after the last "
               "position (identical to the W = 0 tensor) and is the slot past_state is read from. "
               "The window axis leads the batch axis so that each slot is one contiguous "
-              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) hold no "
+              "(batch_size, channels, state_length) block. Slots below max(0, W - seq_len) hold no "
               "position from this call and are filled with zeros. A window lets a speculative "
               "decoder roll the state back to an accepted prefix without replaying the forward. "
               "Valid range is [0, 8].",
@@ -2790,9 +2804,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "past_state",
-               "Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1), or "
-               "(W, batch_size, channels, k_1 - 1) when state_window = W > 0, in which case only "
-               "slot W-1 is read. If not provided, padding is zero.",
+               "Carry state from previous step. For ndim=1: (batch_size, channels, state_length), "
+               "or (W, batch_size, channels, state_length) when state_window = W > 0, in which case "
+               "only slot W-1 is read, where state_length = (k_1 - 1) * dilation. If not provided, "
+               "padding is zero.",
                "T",
                OpSchema::Optional)
         .Output(0,
@@ -2801,10 +2816,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_state",
-                "Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1), or "
-                "(W, batch_size, channels, k_1 - 1) when state_window = W > 0. Slot W-1 contains "
-                "the last (k-1) values from the virtual input along the causal axis; slot j contains "
-                "the same for the prefix ending at position (seq_len - W + j).",
+                "Updated carry state. For ndim=1: (batch_size, channels, state_length), or "
+                "(W, batch_size, channels, state_length) when state_window = W > 0. Slot W-1 "
+                "contains the last state_length values from the virtual input along the causal "
+                "axis; slot j contains the same for the prefix ending at position "
+                "(seq_len - W + j).",
                 "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -2817,6 +2833,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (state_window < 0 || state_window > kMaxStateWindow) {
             fail_shape_inference("CausalConvWithState: state_window must be in [0, ", kMaxStateWindow,
                                  "], got ", state_window);
+          }
+
+          const int64_t dilation = getAttribute(ctx, "dilation", 1);
+          if (dilation < 1) {
+            fail_shape_inference("CausalConvWithState: dilation must be >= 1, got ", dilation);
           }
 
           // Output 0: same shape as input (batch_size, channels, ...)
@@ -2850,10 +2871,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             for (int64_t i = 0; i < ndim - 1; ++i) {
               *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
             }
-            // Causal (last) spatial dim: kernel_size - 1
+            // Causal (last) spatial dim: (kernel_size - 1) * dilation
             int last_kernel_dim = weight_shape.dim_size() - 1;
             if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
-              state_shape.add_dim()->set_dim_value(weight_shape.dim(last_kernel_dim).dim_value() - 1);
+              state_shape.add_dim()->set_dim_value(
+                  (weight_shape.dim(last_kernel_dim).dim_value() - 1) * dilation);
             } else {
               state_shape.add_dim();  // unknown
             }
