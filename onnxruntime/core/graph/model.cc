@@ -136,6 +136,7 @@ Model::Model(const std::string& graph_name,
                                             func_ptr);
   }
 
+  ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
   ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
@@ -270,6 +271,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
   }
 
+  ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
   ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
