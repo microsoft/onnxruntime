@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor_shape.h"
@@ -19,9 +20,9 @@ namespace linear_attention_helper {
 template <typename TKernelInfo>
 Status ParseStateWindow(const TKernelInfo& info, int& state_window) {
   const int64_t value = info.template GetAttrOrDefault<int64_t>("state_window", 0);
-  if (value < 0) {
+  if (value < 0 || value > kMaxStateWindow) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "state_window must be >= 0, got ", value);
+                           "state_window must be in [0, ", kMaxStateWindow, "], got ", value);
   }
   state_window = static_cast<int>(value);
   return Status::OK();

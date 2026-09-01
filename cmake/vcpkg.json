@@ -48,12 +48,12 @@
     "onnx",
     {
       "name": "protobuf",
-      "version>=": "3.21.12"
+      "version>=": "6.33.6"
     },
     {
       "name": "protobuf",
       "host": true,
-      "version>=": "3.21.12"
+      "version>=": "6.33.6"
     },
     "pybind11",
     "re2",
@@ -97,11 +97,26 @@
       "dependencies": []
     },
     "telemetry": {
-      "description": "Build with 1DS telemetry support (cpp-client-telemetry) on non-Windows platforms",
+      "description": "Build with static 1DS telemetry support on non-Windows platforms",
       "dependencies": [
         {
           "name": "cpp-client-telemetry",
           "platform": "!windows & !android & !emscripten & !uwp"
+        },
+        {
+          "name": "curl",
+          "default-features": false,
+          "features": [
+            "mbedtls"
+          ],
+          "platform": "linux"
+        },
+        {
+          "name": "mbedtls",
+          "features": [
+            "pthreads"
+          ],
+          "platform": "linux"
         },
         {
           "name": "sqlite3",
@@ -122,7 +137,7 @@
     },
     {
       "name": "protobuf",
-      "version": "3.21.12#4"
+      "version": "6.33.6#0"
     },
     {
       "name": "flatbuffers",

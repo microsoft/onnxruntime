@@ -26,6 +26,7 @@ using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCuda
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKernel(info) {
@@ -67,6 +68,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int K = static_cast<int>(weight_shape[2]);
   const int pad = K - 1;
 
+  ORT_RETURN_IF_NOT(L > 0, "input length must be positive, got ", L);
+
   // Validate weight shape compatibility
   ORT_RETURN_IF_NOT(weight_shape[0] == channels,
                     "weight[0] (", weight_shape[0], ") must match input channels (", channels, ")");
@@ -86,22 +89,24 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int state_slots = state_window_ > 0 ? state_window_ : 1;
   TensorShape state_shape;
   ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
-      state_window_, batch_size, channels, pad, past_state_tensor, state_shape));
+      state_window_, batch_size, channels, pad, past_state_tensor, state_shape, "CausalConvWithState"));
 
   // Allocate outputs
   Tensor* output_tensor = context->Output(0, input_shape);
   Tensor* present_state_tensor = context->Output(1, state_shape);
 
-  // The kernel writes every slot it is responsible for, so present_state normally needs no
-  // zero-initialization. The exception is a window wider than the sequence: slots below W - L
-  // belong to positions before this call and are deliberately left alone (that is what bounds the
-  // per-step work). Zero them when there is no past_state so the output is still fully defined;
-  // with a past_state the caller owns those slots and is expected to carry them itself.
-  if (state_window_ > 0 && past_state_tensor == nullptr && state_slots > L) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-        present_state_tensor->MutableDataRaw(), 0,
-        present_state_tensor->SizeInBytes(),
-        Stream(context)));
+  // The kernel writes slot t + W - L for every position t, i.e. slots max(0, W - L) .. W-1. When
+  // the window is wider than the sequence, the leading W - L slots belong to positions before this
+  // call and are deliberately left alone (that is what bounds the per-step work). present_state is
+  // a freshly allocated output that never aliases past_state, so zero those slots to keep the
+  // output fully defined instead of exposing uninitialized device memory.
+  if (state_window_ > 0 && state_slots > L) {
+    const size_t leading_bytes = static_cast<size_t>(state_slots - L) *
+                                 (present_state_tensor->SizeInBytes() / static_cast<size_t>(state_slots));
+    if (leading_bytes > 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+          present_state_tensor->MutableDataRaw(), 0, leading_bytes, Stream(context)));
+    }
   }
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");

@@ -193,7 +193,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   } else if (value_cache_dims[1] != block_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'value_cache' dimension 1 should be block_size, got ",
-                           value_cache_dims[0]);
+                           value_cache_dims[1]);
   }
 
   if (key_cache_dims[2] != value_cache_dims[2]) {
@@ -214,7 +214,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   }
   if (value_cache_dims[3] != head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'value_cache' dimension 3 should be same as head_size, got ",
                            value_cache_dims[3]);
   }
   return Status::OK();
@@ -230,7 +230,7 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
   batch_size = static_cast<int>(cumulative_seqlen_dim[0]) - 1;
 
   const auto& seqlens_dim = seqlens->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  if (seqlens_dim.size() != 1 || seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens must be shape (batch_size).");
   }
@@ -568,15 +568,15 @@ Status CheckInputs(const T* query,
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(k_cache_dtype, cache_storage_dtype, "k_cache_dtype"));
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(v_cache_dtype, cache_storage_dtype, "v_cache_dtype"));
 
-  // Optional host-side [max_query_len_bound, max_kv_len_bound]. Only the shape is checked here.
-  // The entries are *trusted upper bounds* and cannot be cross-checked against the device tensors
-  // they bound without the readback this input exists to remove; see the trust boundary in
-  // docs/contrib_ops/cuda/paged_attention.md section 4.7.
+  // Optional host-side [max_query_len_bound, max_kv_len_bound, max_kv_len_lower_bound].
+  // The first two entries are trusted upper bounds and cannot be cross-checked against the device
+  // tensors they bound without the readback this input exists to remove. The optional third entry
+  // is a performance-only lower bound. See docs/contrib_ops/cuda/paged_attention.md section 4.7.
   if (attention_metadata != nullptr) {
     const auto& metadata_dims = attention_metadata->Shape().GetDims();
-    if (metadata_dims.size() != 1 || metadata_dims[0] != 2) {
+    if (metadata_dims.size() != 1 || (metadata_dims[0] != 2 && metadata_dims[0] != 3)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'attention_metadata' must have shape (2), got ",
+                             "Input 'attention_metadata' must have shape (2) or (3), got ",
                              attention_metadata->Shape().ToString());
     }
   }

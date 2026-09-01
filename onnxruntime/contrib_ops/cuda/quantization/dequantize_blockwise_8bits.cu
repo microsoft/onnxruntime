@@ -115,10 +115,10 @@ __global__ void Dequantize8BitsKernelReOrder(
   const int32_t* g_idx = reorder_idx + kb_idx * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
 
   for (int i = 0; i < element_per_thread; i++) {
-    // Typical value of g_idx is in the range of [0, groups_per_K) for reordering groups.
-    // No range check here so it might have out-of-bound access if the reorder_idx is not valid.
     int32_t rid = g_idx[i];
-    ptrdiff_t scale_zp_offset = n_idx * groups_per_K + rid;
+    CUDA_KERNEL_ASSERT(rid >= 0 && rid < groups_per_K);
+    rid = max(0, min(rid, groups_per_K - 1));  // Clamp for release safety
+    ptrdiff_t scale_zp_offset = static_cast<ptrdiff_t>(n_idx) * groups_per_K + rid;
     T scale = *(scale_data + scale_zp_offset);
 
     uint8_t zp = 128;  // Default zero point
