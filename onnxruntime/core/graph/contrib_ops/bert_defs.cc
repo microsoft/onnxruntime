@@ -2568,6 +2568,16 @@ input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field ther
 past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
 (the default) is the undilated case and keeps the original state length, so models exported
 before the attribute existed are unaffected.
+
+The channels_last attribute selects a sequence-major layout for the activations and the carry
+state, so a model that already produces channels-last activations does not have to transpose into
+and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
+(batch_size, sequence_length, d_1, ..., d_n) and the state tensors are
+(batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. Any number of trailing
+channel axes is accepted, so an activation that keeps hyper-connections and hidden size as separate
+axes needs no reshape either. weight and bias keep their channels-first (channels, 1, k_1) and
+(channels) shapes because they have no sequence axis. The computed values are identical to the
+channels-first layout; only the memory layout differs.
 )DOC";
 
 constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
@@ -2772,6 +2782,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "present_state hold that many positions. Must be >= 1. Default is 1 (undilated).",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("channels_last",
+              "When 1, input, output, past_state and present_state use a sequence-major, "
+              "channels-last layout: input and output are "
+              "(batch_size, sequence_length, d_1, ..., d_n) and the state tensors are "
+              "(batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. "
+              "weight and bias keep their channels-first shapes. Requires ndim = 1. "
+              "Default is 0 (channels-first).",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("state_window",
               "Number of trailing per-position carry states held by past_state and present_state. "
               "When 0 (default) the state tensors have no window axis and hold only the state after "
@@ -2789,8 +2808,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(0))
         .Input(0,
                "input",
-               "Input tensor with shape (batch_size, channels, ...). Channels-first layout. "
-               "Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W).",
+               "Input tensor with shape (batch_size, channels, ...) in the default channels-first "
+               "layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 "
+               "the shape is (batch_size, sequence_length, d_1, ..., d_n) instead.",
                "T")
         .Input(1,
                "weight",
@@ -2806,8 +2826,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_state",
                "Carry state from previous step. For ndim=1: (batch_size, channels, state_length), "
                "or (W, batch_size, channels, state_length) when state_window = W > 0, in which case "
-               "only slot W-1 is read, where state_length = (k_1 - 1) * dilation. If not provided, "
-               "padding is zero.",
+               "only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When "
+               "channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. "
+               "If not provided, padding is zero.",
                "T",
                OpSchema::Optional)
         .Output(0,
@@ -2817,8 +2838,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "present_state",
                 "Updated carry state. For ndim=1: (batch_size, channels, state_length), or "
-                "(W, batch_size, channels, state_length) when state_window = W > 0. Slot W-1 "
-                "contains the last state_length values from the virtual input along the causal "
+                "(W, batch_size, channels, state_length) when state_window = W > 0, and "
+                "(batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot "
+                "W-1 contains the last state_length values from the virtual input along the causal "
                 "axis; slot j contains the same for the prefix ending at position "
                 "(seq_len - W + j).",
                 "T")
@@ -2840,6 +2862,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             fail_shape_inference("CausalConvWithState: dilation must be >= 1, got ", dilation);
           }
 
+          const int64_t channels_last = getAttribute(ctx, "channels_last", 0);
+          if (channels_last != 0 && channels_last != 1) {
+            fail_shape_inference("CausalConvWithState: channels_last must be 0 or 1, got ",
+                                 channels_last);
+          }
+          if (channels_last == 1 && getAttribute(ctx, "ndim", 1) != 1) {
+            fail_shape_inference("CausalConvWithState: channels_last requires ndim = 1");
+          }
+
           // Output 0: same shape as input (batch_size, channels, ...)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
@@ -2857,6 +2888,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("CausalConvWithState: weight must have rank >= 2");
             }
             int64_t ndim = getAttribute(ctx, "ndim", 1);
+            // (kernel_size - 1) * dilation, or an unset dim when kernel_size is symbolic.
+            const int last_kernel_dim = weight_shape.dim_size() - 1;
+            TensorShapeProto::Dimension state_length;
+            if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
+              state_length.set_dim_value((weight_shape.dim(last_kernel_dim).dim_value() - 1) *
+                                         dilation);
+            }
+
+            if (channels_last == 1) {
+              // (batch_size, state_length, d_1, ..., d_n), optionally led by the window axis.
+              // The trailing channel axes are copied verbatim from the input, so a caller that
+              // keeps hyper-connections and hidden size separate gets the same split back.
+              TensorShapeProto cl_state_shape;
+              if (state_window > 0) {
+                cl_state_shape.add_dim()->set_dim_value(state_window);
+              }
+              *cl_state_shape.add_dim() = input_shape.dim(0);
+              *cl_state_shape.add_dim() = state_length;
+              for (int i = 2; i < input_shape.dim_size(); ++i) {
+                *cl_state_shape.add_dim() = input_shape.dim(i);
+              }
+              updateOutputShape(ctx, 1, cl_state_shape);
+              return;
+            }
+
             // state_window = W > 0 prepends a window axis, holding the carry state after each of
             // the last W positions (slot W-1 == the W = 0 tensor). The window axis leads the batch
             // axis so a slot is one contiguous (batch_size, channels, ...) block. W = 0 keeps the
@@ -2872,13 +2928,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
             }
             // Causal (last) spatial dim: (kernel_size - 1) * dilation
-            int last_kernel_dim = weight_shape.dim_size() - 1;
-            if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
-              state_shape.add_dim()->set_dim_value(
-                  (weight_shape.dim(last_kernel_dim).dim_value() - 1) * dilation);
-            } else {
-              state_shape.add_dim();  // unknown
-            }
+            *state_shape.add_dim() = state_length;
             updateOutputShape(ctx, 1, state_shape);
           }
         }));
@@ -2893,7 +2943,8 @@ device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
 at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
 (channels). The convolution never reads across a sequence boundary.
 
-initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+initial_state is required and has shape (batch_size, channels, state_length), where
+state_length = (kernel_size - 1) * dilation. It contains
 the committed raw activation samples immediately preceding this call. final_state has the same
 shape and type and is fully written with the state after each sequence's final token. State
 uses the activation type because it stores raw samples, not accumulated convolution values.
@@ -2903,7 +2954,7 @@ may select a prefix or roll back must preserve initial_state and commit one of t
 produced states instead.
 
 When requested, prefix_states has shape
-(max_checkpoints, batch_size, channels, kernel_size - 1). Slot j for request b is the state
+(max_checkpoints, batch_size, channels, state_length). Slot j for request b is the state
 after local token j when j < min(max_checkpoints, sequence_length[b]). Other slots are
 unspecified and must not be read. max_checkpoints is static, defaults to zero, and is at most 8.
 This output lets a transactional caller commit any produced prefix without rerunning the
@@ -2916,6 +2967,14 @@ Malformed offsets cause affected work to return without those accesses; outputs 
 This device-side containment is not a synchronous validation or rejection mechanism.
 
 The optional activation attribute supports none, SiLU, and Swish.
+
+The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
+reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
+before the request's first token come from the carry state. The carry state therefore holds
+state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
+Dilation 1 (the default) is the undilated case and keeps the original state length, so models
+exported before the attribute existed are unaffected. input and output are already token-major
+(sequence-major, channels-last), so this op needs no separate layout attribute.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2927,6 +2986,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default is 'none'.",
               AttributeProto::STRING,
               std::string("none"))
+        .Attr("dilation",
+              "Spacing between kernel taps along the sequence axis. The receptive field spans "
+              "(kernel_size - 1) * dilation positions before the current token, and "
+              "initial_state / final_state / prefix_states hold that many positions per request. "
+              "Must be >= 1. Default is 1 (undilated).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("max_checkpoints",
               "Static number of per-request prefix states to expose. Checkpoint j is the state "
               "after local token j when that token exists. Unwritten slots are unspecified. "
@@ -2956,7 +3022,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(4,
                "initial_state",
                "Required committed carry state with shape "
-               "(batch_size, channels, kernel_size - 1).",
+               "(batch_size, channels, (kernel_size - 1) * dilation).",
                "T")
         .Output(0,
                 "output",
@@ -2965,12 +3031,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "final_state",
                 "Fully written state after each sequence's final token, with shape "
-                "(batch_size, channels, kernel_size - 1).",
+                "(batch_size, channels, (kernel_size - 1) * dilation).",
                 "T")
         .Output(2,
                 "prefix_states",
                 "Optional prefix checkpoints with shape (max_checkpoints, batch_size, channels, "
-                "kernel_size - 1). Unwritten slots are unspecified.",
+                "(kernel_size - 1) * dilation). Unwritten slots are unspecified.",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -2990,6 +3056,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (max_checkpoints < 0 || max_checkpoints > kMaxStateWindow) {
             fail_shape_inference("VarlenCausalConvWithState: max_checkpoints must be in [0, ",
                                  kMaxStateWindow, "], got ", max_checkpoints);
+          }
+
+          const int64_t dilation = getAttribute(ctx, "dilation", 1);
+          if (dilation < 1) {
+            fail_shape_inference("VarlenCausalConvWithState: dilation must be >= 1, got ", dilation);
           }
 
           // Output 0: same shape as input (total_tokens, channels)
@@ -3035,9 +3106,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
             *state_shape.add_dim() = input_shape.dim(1);  // channels
             if (weight_shape.dim(2).has_dim_value()) {
-              state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);
+              state_shape.add_dim()->set_dim_value((weight_shape.dim(2).dim_value() - 1) * dilation);
             } else {
-              state_shape.add_dim();  // unknown kernel_size - 1
+              state_shape.add_dim();  // unknown (kernel_size - 1) * dilation
             }
             updateOutputShape(ctx, 1, state_shape);
 
