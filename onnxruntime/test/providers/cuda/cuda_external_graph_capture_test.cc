@@ -28,8 +28,11 @@
 #include <gtest/gtest.h>
 
 #include "core/graph/model.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -209,8 +212,7 @@ onnxruntime::NodeArg& FloatArg(onnxruntime::Graph& graph, const std::string& nam
 }
 
 // Concat of two inputs with UNEQUAL extents along the concat axis. That is the branch of the CUDA
-// Concat kernel that stages pointer metadata through a pinned host buffer and hands it to
-// AddDeferredReleaseCPUPtr - the buffers whose ownership this test is about. Equal extents take a
+// Concat kernel that stages pointer metadata through a pinned host buffer. Equal extents take a
 // fast path that stages nothing.
 std::string BuildUnequalConcatModel() {
   Model model("unequal_concat", false, onnxruntime::logging::LoggingManager::DefaultLogger());
@@ -260,6 +262,25 @@ Ort::Session CreateSessionForModel(const std::string& model_path, cudaStream_t s
   cuda_options.Update(options_map);
   session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
   return Ort::Session(*ort_env, model_path.c_str(), session_options);
+}
+
+std::string SaveCpuFallbackModelAsOrt(const std::string& model_path, cudaStream_t stream) {
+  constexpr const char* kOrtModelPath = "cuda_extcap_cpu_fallback.ort";
+
+  Ort::SessionOptions session_options;
+  session_options.SetOptimizedModelFilePath(ORT_TSTR("cuda_extcap_cpu_fallback.ort"));
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
+
+  Ort::CUDAProviderOptions cuda_options;
+  std::unordered_map<std::string, std::string> options_map = {
+      {"enable_cuda_graph", "0"},
+      {"has_user_compute_stream", "1"},
+      {"user_compute_stream", std::to_string(reinterpret_cast<uintptr_t>(stream))},
+  };
+  cuda_options.Update(options_map);
+  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+  Ort::Session save_session(*ort_env, model_path.c_str(), session_options);
+  return kOrtModelPath;
 }
 
 }  // namespace
@@ -659,6 +680,48 @@ TEST(CudaExternalGraphCaptureTest, StagingBuffersOutliveOrdinaryRunsWhileCallerG
   ASSERT_EQ(cudaGraphDestroy(graph), cudaSuccess);
 }
 
+TEST(CudaExternalGraphCaptureTest, DeferredStreamBufferOutlivesCallerGraphReplay) {
+  CUDAExecutionProviderInfo ep_info;
+  CUDAExecutionProvider ep(ep_info);
+  const auto allocators = ep.CreatePreferredAllocators();
+  ASSERT_GE(allocators.size(), 2);
+
+  cudaStream_t raw_stream = nullptr;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&raw_stream, cudaStreamNonBlocking), cudaSuccess);
+  CudaStream stream(raw_stream, allocators[0]->Info().device, allocators[1],
+                    /*release_cpu_buffer_on_cuda_stream=*/false, /*own_flag=*/true,
+                    nullptr, nullptr, ep_info);
+  DeviceBuffer output(1);
+
+  auto pinned_buffer = IAllocator::MakeUniquePtr<float>(allocators[1], 1);
+  *pinned_buffer = 42.0f;
+
+  ASSERT_EQ(cudaStreamBeginCapture(raw_stream, cudaStreamCaptureModeThreadLocal), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(output.data(), pinned_buffer.get(), sizeof(float), cudaMemcpyHostToDevice,
+                            raw_stream),
+            cudaSuccess);
+  stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
+
+  auto cleanup_status = stream.CleanUpOnRunEnd();
+  ASSERT_TRUE(cleanup_status.IsOK()) << cleanup_status.ErrorMessage();
+
+  cudaGraph_t graph = nullptr;
+  ASSERT_EQ(cudaStreamEndCapture(raw_stream, &graph), cudaSuccess);
+  ASSERT_NE(graph, nullptr);
+  cudaGraphExec_t graph_exec = nullptr;
+  ASSERT_EQ(cudaGraphInstantiateWithFlags(&graph_exec, graph, 0), cudaSuccess);
+
+  // A later ordinary cleanup must not reclaim the host source retained by the captured memcpy.
+  cleanup_status = stream.CleanUpOnRunEnd();
+  ASSERT_TRUE(cleanup_status.IsOK()) << cleanup_status.ErrorMessage();
+  ASSERT_EQ(cudaGraphLaunch(graph_exec, raw_stream), cudaSuccess);
+  ASSERT_EQ(cudaStreamSynchronize(raw_stream), cudaSuccess);
+  EXPECT_FLOAT_EQ(output.Read().at(0), 42.0f);
+
+  ASSERT_EQ(cudaGraphExecDestroy(graph_exec), cudaSuccess);
+  ASSERT_EQ(cudaGraphDestroy(graph), cudaSuccess);
+}
+
 // Thread 2 of the review: with enable_cuda_graph=0 the session-initialization capturability check
 // never ran, so record-only mode must not be entered for a graph that has compute outside the
 // capturing provider. Det has no CUDA kernel, so ORT places it on CPU and inserts Memcpy nodes;
@@ -671,6 +734,34 @@ TEST(CudaExternalGraphCaptureTest, ExternalCaptureRejectsGraphWithCpuFallbackCom
 
   // enable_cuda_graph=0: ORT-managed capture is off, so nothing rejected this session at load.
   Ort::Session session = CreateSessionForModel(model_path, stream.get(), /*enable_ort_cuda_graph=*/false);
+  Ort::MemoryInfo mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  const std::array<int64_t, 2> x_shape = {4, 4};
+  Ort::IoBinding binding(session);
+  binding.BindInput("x", Ort::Value::CreateTensor(mem, x.data(), 16, x_shape.data(), x_shape.size()));
+  binding.BindOutput("y", Ort::MemoryInfo("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault));
+
+  Ort::RunOptions plain;
+  ASSERT_NO_THROW(session.Run(plain, binding));
+  ASSERT_EQ(cudaStreamSynchronize(stream.get()), cudaSuccess);
+
+  ASSERT_EQ(cudaStreamBeginCapture(stream.get(), cudaStreamCaptureModeRelaxed), cudaSuccess);
+  Ort::RunOptions record;
+  ExpectThrowsContaining([&] { session.Run(record, binding); }, "cannot be captured");
+
+  cudaGraph_t graph = nullptr;
+  cudaStreamEndCapture(stream.get(), &graph);
+  if (graph != nullptr) cudaGraphDestroy(graph);
+  cudaGetLastError();
+}
+
+TEST(CudaExternalGraphCaptureTest, ExternalCaptureRejectsOrtFormatGraphWithCpuFallbackCompute) {
+  const std::string model_path = BuildCpuFallbackModel();
+  OwnedStream stream;
+  const std::string ort_model_path = SaveCpuFallbackModelAsOrt(model_path, stream.get());
+  DeviceBuffer x(16), y(1);
+  x.Write(std::vector<float>(16, 1.5f));
+
+  Ort::Session session = CreateSessionForModel(ort_model_path, stream.get(), /*enable_ort_cuda_graph=*/false);
   Ort::MemoryInfo mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
   const std::array<int64_t, 2> x_shape = {4, 4};
   Ort::IoBinding binding(session);

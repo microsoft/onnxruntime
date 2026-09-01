@@ -187,12 +187,11 @@ Status CudaStream::CleanUpOnRunEnd() {
 
   // Ownership contract for staging buffers recorded into a caller-initiated capture.
   //
-  // A kernel that stages host data (CudaAsyncBuffer, and anything else using
-  // AddDeferredReleaseCPUPtr) issues cudaMemcpyAsync from a pinned host buffer. When the caller is
-  // capturing, that copy becomes a graph node that keeps the *host address* for the lifetime of the
-  // caller's executable graph: every replay reads it again. Reclaiming such a buffer at any later
-  // run end - even a non-capturing one - would leave the caller's graph reading freed or reused
-  // pinned memory on its next replay.
+  // A kernel that calls AddDeferredReleaseCPUPtr issues cudaMemcpyAsync from a pinned host buffer.
+  // When the caller is capturing, that copy becomes a graph node that keeps the *host address* for
+  // the lifetime of the caller's executable graph: every replay reads it again. Reclaiming such a
+  // buffer at any later run end - even a non-capturing one - would leave the caller's graph
+  // reading freed or reused pinned memory on its next replay.
   //
   // These buffers are therefore transferred to capture_retained_cpu_buffers_ and owned until this
   // stream (and so the session that owns it) is destroyed. The caller must destroy its captured

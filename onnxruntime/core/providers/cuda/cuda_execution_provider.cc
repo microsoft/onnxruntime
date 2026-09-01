@@ -576,12 +576,16 @@ bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 bool CUDAExecutionProvider::IsExternalDeviceGraphCaptureActive() const {
+#if defined(ORT_MINIMAL_BUILD)
+  return false;
+#else
   // Only the EP-level unified stream can be the one the caller captures on; when the EP hands out
   // per-run streams there is no single stream for a caller to own.
   if (!use_ep_level_unified_stream_ || stream_ == nullptr) {
     return false;
   }
   return GetPerThreadContext().IsExternalDeviceGraphCaptureActive();
+#endif
 }
 
 Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {

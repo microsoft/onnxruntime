@@ -71,6 +71,7 @@ static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "gpu_graph_id
 //                   mistake of forgetting to bind the session to the capturing stream.
 //
 // Requirements when recording (CUDA EP):
+//   - this feature is unavailable in minimal builds and when CUDA is loaded as a plugin EP;
 //   - the session must be created with the capturing stream as "user_compute_stream";
 //   - every buffer bound for the run must stay at a stable device address for the lifetime of
 //     the caller's graph, and the caller must destroy its captured graphs before the session;

@@ -2850,6 +2850,19 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
+    // Capture compatibility must be available regardless of how the model was partitioned. In
+    // particular, ORT-format models bypass the non-ORT partitioning path above, but a caller can
+    // still capture a CUDA session with enable_cuda_graph=0. Fill entries not already recorded by
+    // the ORT-managed capture validation, including providers after the first managed-capture EP.
+    for (const auto& ep : execution_providers_) {
+      if (graph_capture_validation_.find(ep.get()) == graph_capture_validation_.end()) {
+        graph_capture_validation_[ep.get()] =
+            ValidateGraphCaptureCompatibility(graph, *ep, *session_logger_, /*emit_warnings=*/false);
+      }
+    }
+#endif
+
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
     // PrePack, initializer upload, memory planning) and early return here.
     //
@@ -3418,7 +3431,15 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     // from every replay, silently producing stale results. This is reachable with
     // enable_cuda_graph=0, where the initialization-time check never ran for this provider.
     auto validation = graph_capture_validation_.find(recording_provider);
-    if (validation != graph_capture_validation_.end() && !validation->second.IsOK()) {
+    if (validation == graph_capture_validation_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "A caller-initiated device graph capture is active on the ",
+                             recording_provider->Type(),
+                             " compute stream, but this session's graph capture compatibility "
+                             "could not be verified. End the capture and recreate the session.");
+    }
+
+    if (!validation->second.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "A caller-initiated device graph capture is active on the ",
                              recording_provider->Type(),
@@ -3434,7 +3455,20 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  << recording_provider->Type() << " compute stream.";
   }
 #else
-  // Device graph capture is a full-build feature; keep minimal builds free of the check entirely.
+  const std::string& external_capture_str =
+      run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigExternalDeviceGraphCapture, "0");
+  if (external_capture_str != "0" && external_capture_str != "1") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid value for run option '", kOrtRunOptionsConfigExternalDeviceGraphCapture,
+                           "': expected \"0\" or \"1\" but got \"", external_capture_str, "\".");
+  }
+  if (external_capture_str == "1") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Caller-initiated device graph capture is not supported in minimal builds.");
+  }
+
+  // Device graph capture is a full-build feature. CUDA EP does not enter record-only mode in
+  // minimal builds, so an incompatible graph cannot be captured without compatibility validation.
   constexpr bool recording_into_external_device_graph = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -3587,7 +3621,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       if (device_stream_collection) {
         bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0" &&
                                        !recording_into_external_device_graph;
-        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
+        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(
+            sync_execution_provider, recording_into_external_device_graph));
       }
 #endif
     }
