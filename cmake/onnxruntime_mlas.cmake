@@ -1169,27 +1169,17 @@ else()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
 
-# Apple Accelerate framework linkage (Accelerate includes vecLib/BLAS, BNNS, and vDSP).
-# Scoped to macOS arm64 (Apple Silicon) only. Actual kernel sources are added in follow-up PRs;
-# this only links the system framework.
-# NOTE for follow-up PRs: Apple frameworks (Accelerate, BNNS) may internally use GCD for
-# parallelism. ORT already manages its own threadpool, so future kernel implementations must
-# use single-threaded dispatch or explicitly size requests to avoid oversubscription.
-# The compile definition is expressed through mlas_private_compile_definitions (like
-# MLAS_USE_SVE / MLAS_USE_ARM_NEON_NCHWC above) and applied by the target-definition foreach
-# below, so onnxruntime_mlas_test and onnxruntime_mlas_benchmark — which read the same shared
-# variable in cmake/onnxruntime_unittests.cmake — see the define too, not just onnxruntime_mlas.
+# Apple Accelerate framework linkage for the gated macOS arm64 MLAS kernels.
+# Express the compile definition through mlas_private_compile_definitions so
+# onnxruntime_mlas_test and onnxruntime_mlas_benchmark compile the matching
+# gated tests and benchmarks as well.
 if(onnxruntime_USE_APPLE_ACCELERATE)
-  # Accelerate is a system umbrella framework available on macOS arm64 (Apple Silicon).
-  # It provides vecLib (cblas SGEMM), BNNS, and vDSP — all targets of follow-up PRs.
+  # Accelerate provides the vDSP routines used by the LayerNorm/RMSNorm kernel.
   find_library(APPLE_ACCELERATE_LIB Accelerate)
   if(NOT APPLE_ACCELERATE_LIB)
     message(FATAL_ERROR "Apple Accelerate framework not found. Ensure you are building on macOS arm64 with an Apple SDK.")
   endif()
   target_link_libraries(onnxruntime_mlas PRIVATE ${APPLE_ACCELERATE_LIB})
-  # N2: Observable contract — follow-up kernel PRs gate on this define. Appended to the shared
-  # list (not a direct target_compile_definitions call) so every MLAS-consuming target that
-  # applies mlas_private_compile_definitions picks it up, including the test/benchmark binaries.
   list(APPEND mlas_private_compile_definitions MLAS_USE_APPLE_ACCELERATE=1)
   message(STATUS "MLAS: Apple Accelerate framework linked; MLAS_USE_APPLE_ACCELERATE=1 defined")
 endif()

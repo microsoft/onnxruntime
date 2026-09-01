@@ -91,27 +91,14 @@ Routine Description:
     Apple's Accelerate vDSP library, available on macOS arm64 when
     onnxruntime_USE_APPLE_ACCELERATE is enabled.
 
-    ARM64 has no SIMD-vectorized MlasLayerNormF32 kernel today (only
-    RVV/RISC-V registers one; see GetMlasPlatform().LayerNormF32Kernel in
-    mlasi.h) -- the fallback used everywhere else on ARM64 is a scalar,
-    single-element-at-a-time Welford or sum-of-squares C++ loop in
-    onnxruntime/core/providers/cpu/nn/layer_norm_impl.cc. Unlike an earlier,
-    unrelated Apple Accelerate kernel (which substituted vForce's vvtanhf
-    for an *already NEON-vectorized* 4-wide polynomial and measured
-    consistently slower on real hardware -- see the closed, unmerged PR
-    #32036), this kernel's baseline on ARM64 has no existing vector
-    competitor, so the comparison here is vDSP-tuned-reduction-and-
-    elementwise-ops versus a plain scalar loop, not vDSP-versus-an-
-    equivalent-NEON-polynomial.
+    ARM64 has no other SIMD-vectorized MlasLayerNormF32 kernel. Without this
+    kernel, layer_norm_impl.cc uses scalar Welford or sum-of-squares loops.
 
     Algorithm: centered two-pass, rather than a single-pass "E[x^2] -
     mean^2" formula. The uncentered formula suffers catastrophic
     cancellation in fp32 for large-base/small-spread inputs; this kernel
-    deliberately avoids that failure mode, at the cost of a second pass over
-    each row (see test/mlas/unittest/test_layernorm.cpp's ScalarLayerNorm,
-    which uses the uncentered formula as its oracle -- its ASSERT_NEAR
-    tolerance was widened in this same PR to a relative comparison so it
-    still accepts either mathematically-valid evaluation order):
+    deliberately avoids that failure mode at the cost of a second pass over
+    each row:
 
       RMSNorm (Simplified):   meanSq = vDSP_measqv(x)              -- E[x^2]
                               denom  = sqrt(meanSq + eps)

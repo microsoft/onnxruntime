@@ -633,17 +633,9 @@ if(onnxruntime_USE_KLEIDIAI)
 endif()
 
 if(onnxruntime_USE_APPLE_ACCELERATE)
-  # N1: Gate on macOS (Darwin) specifically, not APPLE (which includes iOS/tvOS/visionOS).
-  # NOTE: Mac Catalyst (macabi) also reports CMAKE_SYSTEM_NAME=Darwin and arch=arm64.
-  # The Python build script (build_args.py) rejects --macos Catalyst explicitly, but a direct
-  # CMake configure targeting Catalyst (e.g. via -target arm64-apple-ios-macabi or a toolchain
-  # setting PLATFORM_NAME=macabi) is NOT detected here. PLATFORM_NAME is set by external
-  # toolchain files and is unavailable in plain cmake invocations, so a reliable CMake-level
-  # Catalyst gate is not feasible without introducing fragile flag-parsing heuristics.
-  # This is a known, documented limitation.
-  # B1: Detect arm64 robustly — CMAKE_OSX_ARCHITECTURES can be defined-but-empty on a
-  #     plain `cmake` configure, which leaves onnxruntime_target_platform unset.
-  #     Check CMAKE_OSX_ARCHITECTURES first; fall back to CMAKE_SYSTEM_PROCESSOR.
+  # Gate on native macOS, not APPLE (which includes iOS/tvOS/visionOS) or Mac Catalyst.
+  # Detect arm64 robustly: CMAKE_OSX_ARCHITECTURES can be defined but empty on a plain
+  # CMake configure, so fall back to CMAKE_SYSTEM_PROCESSOR.
   set(_ort_apple_accel_arch "")
   if(DEFINED CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
     list(LENGTH CMAKE_OSX_ARCHITECTURES _osx_arch_len)
@@ -656,6 +648,9 @@ if(onnxruntime_USE_APPLE_ACCELERATE)
 
   if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires macOS (Darwin). It will be disabled on ${CMAKE_SYSTEM_NAME}.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  elseif(PLATFORM_NAME STREQUAL "macabi")
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE is not supported for Mac Catalyst. It will be disabled.")
     set(onnxruntime_USE_APPLE_ACCELERATE OFF)
   elseif(NOT (_ort_apple_accel_arch STREQUAL "arm64" OR _ort_apple_accel_arch STREQUAL "arm64e"))
     message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires arm64 (Apple Silicon). Detected arch: '${_ort_apple_accel_arch}'. It will be disabled.")
