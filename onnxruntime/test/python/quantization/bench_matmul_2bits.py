@@ -8,7 +8,7 @@
 Benchmark for MatMulNBits 2-bit dequantization performance on CPU.
 
 This benchmark measures the performance of the multi-threaded
-DequantizeBlockwise2Bits kernel (PR #28589 / issue #28552).
+2-bit dequantization path (PR #28589 / issue #28552).
 It exercises the MatMulNBits operator with 2-bit quantization
 and float zero points on the CPU execution provider.
 To compare against a baseline, run this script on two different builds

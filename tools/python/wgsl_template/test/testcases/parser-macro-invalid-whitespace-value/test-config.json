@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser error handling for macro definition with whitespace-only value",
+  "expectsError": "Invalid macro definition in file whitespace.wgsl.template at line 1: macro \"SPACES_ONLY\" has no value"
+}

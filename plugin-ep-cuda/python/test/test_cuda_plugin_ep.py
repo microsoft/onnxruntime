@@ -89,11 +89,11 @@ def test_import_and_library_path():
     print(f"OK: Library path: {lib_path}")
 
     ep_name = cuda_ep.get_ep_name()
-    assert ep_name == "CudaPluginExecutionProvider", f"Unexpected EP name: {ep_name}"
+    assert ep_name == "CUDAExecutionProvider", f"Unexpected EP name: {ep_name}"
     print(f"OK: EP name: {ep_name}")
 
     ep_names = cuda_ep.get_ep_names()
-    assert ep_names == ["CudaPluginExecutionProvider"], f"Unexpected EP names: {ep_names}"
+    assert ep_names == ["CUDAExecutionProvider"], f"Unexpected EP names: {ep_names}"
     print(f"OK: EP names: {ep_names}")
 
 

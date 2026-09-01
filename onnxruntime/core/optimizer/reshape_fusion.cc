@@ -15,7 +15,10 @@ namespace onnxruntime {
 bool GetAxesFromUnsqueezeNode(const Graph& graph, const Node& unsqueeze, InlinedVector<int64_t>& axes) {
   if (graph_utils::MatchesOpSinceVersion(unsqueeze, {1, 11})) {
     return graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes);
-  } else if (graph_utils::MatchesOpSinceVersion(unsqueeze, {13})) {
+  }
+
+  // Opset 13+ moved axes from attribute to input[1].
+  if (unsqueeze.InputDefs().size() > 1) {
     const NodeArg* axes_node_arg = unsqueeze.InputDefs()[1];
     return optimizer_utils::AppendTensorFromInitializer(graph, *axes_node_arg, axes, true);
   }
@@ -129,17 +132,78 @@ static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node
   return true;
 }
 
-static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, const NodeArg& root_input, const logging::Logger& logger) {
+static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, const NodeArg& root_input,
+                        int64_t expected_gather_index, const logging::Logger& logger) {
   const NodeArg& shape_input = *(shape.InputDefs()[0]);
   if (shape_input.Name() == root_input.Name()) {
+    return true;
+  }
+
+  // Allow a narrow passthrough pattern: input -> GlobalAveragePool -> Reshape, where shape is taken from
+  // the pre-pool input and only batch dim (index 0) is gathered.
+  const Node* root_input_producer = graph.GetProducerNode(root_input.Name());
+  if (root_input_producer != nullptr && root_input_producer->OpType() == "GlobalAveragePool" &&
+      root_input_producer->InputDefs().size() > 0 && root_input_producer->InputDefs()[0] != nullptr &&
+      root_input_producer->InputDefs()[0]->Name() == shape_input.Name() && expected_gather_index == 0) {
     return true;
   }
 
   const ONNX_NAMESPACE::TensorShapeProto* shape_input_shape = shape_input.Shape();
   const ONNX_NAMESPACE::TensorShapeProto* root_input_shape = root_input.Shape();
 
-  if (shape_input_shape != nullptr && root_input_shape != nullptr)
-    return optimizer_utils::CompareShape(*shape_input_shape, *root_input_shape);
+  if (shape_input_shape != nullptr && root_input_shape != nullptr) {
+    // First try the existing static-value comparison.
+    if (optimizer_utils::CompareShape(*shape_input_shape, *root_input_shape)) {
+      return true;
+    }
+    // Also allow matching when both shapes have the same rank and each dimension
+    // is either equal by static value or by matching symbolic dim_param.
+    // This covers cases like position_ids [batch_size, sequence_length] taking
+    // shape from input_ids [batch_size, sequence_length] — same symbolic dims
+    // but no static values.
+    if (shape_input_shape->dim_size() == root_input_shape->dim_size() &&
+        shape_input_shape->dim_size() > 0) {
+      bool all_dims_match = true;
+      for (int i = 0; i < shape_input_shape->dim_size(); ++i) {
+        const auto& dim_a = shape_input_shape->dim(i);
+        const auto& dim_b = root_input_shape->dim(i);
+        if (utils::HasDimValue(dim_a) && utils::HasDimValue(dim_b)) {
+          if (dim_a.dim_value() != dim_b.dim_value()) {
+            all_dims_match = false;
+            break;
+          }
+        } else if (utils::HasDimParam(dim_a) && utils::HasDimParam(dim_b)) {
+          if (dim_a.dim_param() != dim_b.dim_param()) {
+            all_dims_match = false;
+            break;
+          }
+        } else {
+          // One has value, the other has param, or neither has anything — no match.
+          all_dims_match = false;
+          break;
+        }
+      }
+      if (all_dims_match) {
+        return true;
+      }
+    }
+  }
+
+  // Allow match when only the gathered dimension needs to agree.
+  // E.g., Shape extracts batch dim from a pre-projection tensor; that dim is
+  // identical to the batch dim of the post-projection tensor being reshaped.
+  if (shape_input_shape != nullptr && root_input_shape != nullptr &&
+      expected_gather_index < shape_input_shape->dim_size() &&
+      expected_gather_index < root_input_shape->dim_size()) {
+    const auto& dim_a = shape_input_shape->dim(static_cast<int>(expected_gather_index));
+    const auto& dim_b = root_input_shape->dim(static_cast<int>(expected_gather_index));
+    if ((utils::HasDimValue(dim_a) && utils::HasDimValue(dim_b) &&
+         dim_a.dim_value() == dim_b.dim_value()) ||
+        (utils::HasDimParam(dim_a) && utils::HasDimParam(dim_b) &&
+         dim_a.dim_param() == dim_b.dim_param())) {
+      return true;
+    }
+  }
 
   const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
   if (p_node_before_shape == nullptr) {
@@ -169,12 +233,11 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    if (graph_utils::MatchesOpSinceVersion(shape, {15})) {
-      const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
-      const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
-      if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
-        return false;
-      }
+    // The fusion assumes Shape returns the full tensor shape so that Gather indices correspond
+    // directly to tensor dimensions. A partial shape (opset 15+ start/end attributes) would shift
+    // the index mapping and produce incorrect results.
+    if (!graph_utils::IsFullShapeNode(shape)) {
+      return false;
     }
 
     InlinedVector<int64_t> axes;
@@ -186,11 +249,12 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
       return true;
     }
 
-    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), int64_t(shape_value.size()), false)) {
+    const int64_t expected_gather_index = static_cast<int64_t>(shape_value.size());
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), expected_gather_index, false)) {
       return false;
     }
 
-    if (!Match_Shape(graph, concat, shape, root_input, logger)) {
+    if (!Match_Shape(graph, concat, shape, root_input, expected_gather_index, logger)) {
       return false;
     }
     return true;
@@ -338,19 +402,23 @@ index corresponding to the index of the argument, or a custom subgraph in which 
 have only one output edge. Note the resulting shape value should contain no more than one
 value of -1.
 
+The Shape node may feed from Sub-graph Root itself, or from a different tensor upstream
+as long as the gathered dimension matches (same static value or same symbolic dim_param)
+between the Shape source and Sub-graph Root.
+
 Before fusion:
-   [Sub-graph    Root]
-    |        /                  \
-    |    Shape                   Shape
-    |       |                      |
-    |    Gather(indices=0)  a[]   Gather(indices=2)  b[] or subgraph
-    |       \              /             /             /
-    |   Unsqueeze         /        Unsqueeze          /
-    |         \          /  ___________/             /
-    |          \        /  / _______________________/
-    |           \      /  / /
-     \            Concat
-      \          /
+   [Sub-graph Root]  [Ancestor of Root or Root itself]
+    |                       /                  \
+    |                   Shape                   Shape
+    |                      |                      |
+    |                   Gather(indices=0)  a[]   Gather(indices=2)  b[] or subgraph
+    |                      \              /             /             /
+    |                  Unsqueeze         /        Unsqueeze          /
+    |                        \          /  ___________/             /
+    |                         \        /  / _______________________/
+    |                          \      /  / /
+     \                           Concat
+      \                         /
          Reshape
 
 After fusion:

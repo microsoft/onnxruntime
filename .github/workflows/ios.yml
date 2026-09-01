@@ -17,13 +17,13 @@ concurrency:
 
 jobs:
   iOS_CI_on_Mac:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
@@ -38,7 +38,7 @@ jobs:
           XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer"
           sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
-      - name: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+      - name: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS and run tests using simulator
         shell: bash
         run: |
           python3 ${{ github.workspace }}/tools/ci_build/build.py \
@@ -49,7 +49,7 @@ jobs:
             --use_xnnpack \
             --ios \
             --apple_sysroot iphonesimulator \
-            --osx_arch x86_64 \
+            --osx_arch arm64 \
             --apple_deploy_target=15.1 \
             --use_xcode \
             --config RelWithDebInfo \
@@ -61,5 +61,5 @@ jobs:
 
     timeout-minutes: 150
     env:
-      XCODE_VERSION: 15.3.0
-      IOS_SIMULATOR_RUNTIME_VERSION: 17.4
+      XCODE_VERSION: 26.3
+      IOS_SIMULATOR_RUNTIME_VERSION: 26.2

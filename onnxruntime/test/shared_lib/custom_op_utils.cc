@@ -54,8 +54,11 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
   allocator.Free(allocated);
 
+  OrtSyncStream* sync_stream = ctx.GetSyncStream();
+
   // Do computation
 #ifdef USE_CUDA
+  EXPECT_NE(sync_stream, nullptr) << "KernelContext_GetSyncStream() returns the kernel compute stream";
   // Launch on stream 0 or user provided stream
   void* stream;
   Ort::ThrowOnError(ort_.KernelContext_GetGPUComputeStream(context, &stream));
@@ -70,6 +73,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
+  EXPECT_EQ(sync_stream, nullptr) << "CPU custom ops do not have a compute stream";
   ORT_UNUSED_PARAMETER(ort_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
@@ -98,7 +102,12 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   const int64_t y_size = input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
   float* Y_cuda{};
   cudaMalloc(&Y_cuda, y_size * sizeof(float));
-  cudaMemcpy(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice);
+  // Use the same stream that the add kernel is launched on so the copy is properly
+  // sequenced before the add. The stream used here may be non-blocking, so an
+  // asynchronous copy on the compute stream guarantees the data is ready before the
+  // add kernel reads it.
+  cudaStream_t compute_stream = compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_);
+  cudaMemcpyAsync(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice, compute_stream);
 
   // Setup output
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
@@ -111,7 +120,7 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   // Do computation
 
   // Launch on stream 0 or user provided stream
-  cuda_add(size, out, X, Y_cuda, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  cuda_add(size, out, X, Y_cuda, compute_stream);
   // cudaStreamSynchronize(nullptr);
   // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
   // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:

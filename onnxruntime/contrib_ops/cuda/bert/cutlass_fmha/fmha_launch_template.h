@@ -75,6 +75,8 @@ struct RightPaddingBatchHook {
     }
 
     if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+      // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
       p.causal_diagonal_offset = p.num_keys - p.num_queries;
     }
     if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
@@ -218,11 +220,15 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
 
     if (params.attn_bias != nullptr) {
-      p.bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : p.num_queries * p.num_keys;
+      p.bias_strideH = params.broadcast_attn_bias_dim_1
+                           ? 0
+                           : static_cast<int64_t>(p.num_queries) * p.num_keys;
       p.bias_strideM = p.num_keys;
       p.bias_strideB = params.broadcast_attn_bias_dim_0
                            ? 0
-                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * p.num_queries * p.num_keys);
+                           : static_cast<int64_t>(
+                                 params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) *
+                                 p.num_queries * p.num_keys;
     } else {
       p.bias_strideH = 0;
       p.bias_strideM = 0;
@@ -233,23 +239,36 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.window_size = params.local_window_size;
   }
 
-  auto kernel_fn = attention_kernel_batched_impl<Attention>;
-
-  if (params.has_custom_right_padding) {
-    kernel_fn = attention_kernel_batched_impl_right_padding<Attention, queries_per_block>;
-  }
-
   int smem_bytes = sizeof(typename Attention::SharedStorage);
   if (smem_bytes > 0xc000) {
     ORT_ENFORCE(params.sm >= 70, "This kernel requires too much shared memory on this machine!");
-    static bool once = [&]() {
-      cudaFuncSetAttribute(kernel_fn, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
-      return true;
-    }();
+    if (params.has_custom_right_padding) {
+      static bool right_padding_once = [&]() {
+        CUDA_CALL_THROW(cudaFuncSetAttribute(
+            attention_kernel_batched_impl_right_padding<Attention, queries_per_block>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+        return true;
+      }();
+      ORT_UNUSED_PARAMETER(right_padding_once);
+    } else {
+      static bool default_once = [&]() {
+        CUDA_CALL_THROW(cudaFuncSetAttribute(
+            attention_kernel_batched_impl<Attention>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+        return true;
+      }();
+      ORT_UNUSED_PARAMETER(default_once);
+    }
   }
 
   ORT_ENFORCE(Attention::check_supported(p));
-  kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
+  if (params.has_custom_right_padding) {
+    attention_kernel_batched_impl_right_padding<Attention, queries_per_block>
+        <<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
+  } else {
+    attention_kernel_batched_impl<Attention>
+        <<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
+  }
 }
 
 template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, int max_head_size>
@@ -282,10 +301,14 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
     int num_queries = params.sequence_length;
     int bias_strideM = num_keys;
     // Broadcast dimensions use stride=0, which satisfies any alignment (0 % N == 0).
-    int bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : num_queries * num_keys;
-    int bias_strideB = params.broadcast_attn_bias_dim_0
-                           ? 0
-                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * num_queries * num_keys);
+    int64_t bias_strideH = params.broadcast_attn_bias_dim_1
+                               ? 0
+                               : static_cast<int64_t>(num_queries) * num_keys;
+    int64_t bias_strideB = params.broadcast_attn_bias_dim_0
+                               ? 0
+                               : static_cast<int64_t>(
+                                     params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) *
+                                     num_queries * num_keys;
     is_aligned = is_aligned &&
                  bias_strideM % AlignedAK::kAlignmentQ == 0 &&
                  (params.num_heads <= 1 || bias_strideH % AlignedAK::kAlignmentQ == 0) &&

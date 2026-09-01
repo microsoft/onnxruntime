@@ -53,6 +53,26 @@ struct MLAS_KV_QUANT_GEMM_DISPATCH {
     QKGemm_Fn* QKGemm = nullptr;
 
     /**
+     * FP16-query QK^T GEMM kernel. The query is consumed directly while the
+     * quantized K cache is dequantized and accumulated in FP32.
+     */
+    typedef void(QKGemmFp16_Fn)(
+        size_t M,
+        size_t N,
+        size_t K,
+        float Alpha,
+        const MLAS_FP16* A,
+        size_t lda,
+        const void* B,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        float* C,
+        size_t ldc
+    );
+
+    QKGemmFp16_Fn* QKGemmFp16 = nullptr;
+
+    /**
      * S*V GEMM kernel:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
      *
      * B is quantized (INT8 or INT4), logically [K, N] in packed row-major.
@@ -72,6 +92,26 @@ struct MLAS_KV_QUANT_GEMM_DISPATCH {
     );
 
     SVGemm_Fn* SVGemm = nullptr;
+
+    /**
+     * FP16-output S*V GEMM kernel. Accumulation stays in FP32 registers and
+     * the final result is converted directly to FP16.
+     */
+    typedef void(SVGemmFp16_Fn)(
+        size_t M,
+        size_t N,
+        size_t K,
+        const float* A,
+        size_t lda,
+        const void* B,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        MLAS_FP16* C,
+        size_t ldc,
+        float Beta
+    );
+
+    SVGemmFp16_Fn* SVGemmFp16 = nullptr;
 };
 
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2;

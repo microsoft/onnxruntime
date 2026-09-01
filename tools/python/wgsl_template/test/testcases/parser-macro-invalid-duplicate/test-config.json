@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser error handling for duplicate macro definitions",
+  "expectsError": "Duplicate macro definition in file duplicate.wgsl.template at line 3: \"PI\" is already defined"
+}

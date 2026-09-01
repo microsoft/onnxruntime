@@ -133,14 +133,6 @@ HQ8BitBlkDequantBForHgemm_CompFp16(
 
 // SQNBIT_CompInt8 declarations
 
-bool
-UsePacked_CompInt8(
-    size_t K,
-    size_t BlkLen,
-    bool HasZp,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-);
-
 void
 QuantizeARow_CompInt8(
     size_t BlkLen,
@@ -195,56 +187,27 @@ SQ4BitGemmKernel_CompInt8(
     const float* Bias
 );
 
-#ifdef USE_KLEIDIAI
-void
-QuantizeA_Packed_CompInt8(
-    size_t BlkLen,
-    const float* A,
-    size_t CountM,
-    size_t CountK,
-    std::byte* QuantA,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-);
-
-void
-SQ4BitGemmKernel_Packed_CompInt8(
+// W2 CompInt8 kernel entry point (DotProd backend). Implemented in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp. Signature matches the
+// SQ4BitGemmKernel_BlkSum_CompInt8_Fn typedef in qnbitgemm.h.
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
     size_t BlkLen,
     const std::byte* QuantA,
-    const std::byte* PackedQuantBData,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
     float* C,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN,
-    size_t CountK,
-    size_t ldc,
-    const float *Bias
-);
-
-void
-ComputeAFloatBlkSum(
-    const float* A,
     size_t CountM,
+    size_t CountN,
     size_t CountK,
-    size_t BlkLen,
-    size_t lda,
-    float* AFloatBlkSum
-);
-
-void
-ApplyBZpCorrection(
-    const float* ABlkSum,
-    const float* BCorr,
-    float* C,
-    size_t RangeCountM,
-    size_t RangeCountN,
     size_t BlockCountK,
-    size_t ldc
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
 );
-#endif
-
-bool
-UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // General helpers.

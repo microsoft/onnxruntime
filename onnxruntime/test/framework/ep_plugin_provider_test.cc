@@ -7,12 +7,14 @@
 #include <atomic>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
 #include "core/common/logging/sinks/file_sink.h"
+#include "core/common/path_string.h"
 #include "core/framework/config_options.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"

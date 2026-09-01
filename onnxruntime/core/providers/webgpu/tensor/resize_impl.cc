@@ -113,16 +113,30 @@ std::string GetCoordinateCaller(ResizeCoordinateTransformationMode transform_coo
 void CalcNearestPixel(OStringStream& os, ResizeNearestMode mode) {
   std::string params = "x_original: f32";
   std::string body;
+  const std::string half_tie_check =
+      std::string("abs((x_original - floor(x_original)) - 0.5) <= ") + std::to_string(kNearestModeEps);
   switch (mode) {
     case ResizeNearestMode::SIMPLE:
       params += ", is_down_sampling: bool";
       body = "select(i32(x_original), i32(ceil(x_original)), is_down_sampling)";
       break;
     case ResizeNearestMode::ROUND_PREFER_FLOOR:
-      body = "select(i32(round(x_original)), i32(floor(x_original)), x_original == f32(i32(x_original)) + 0.5)";
+      // WGSL round() uses tie-away-from-zero. ONNX ROUND_PREFER_FLOOR instead
+      // requires choosing floor() at halfway ties.
+      //
+      // We detect ties via fractional part: fraction = x_original - floor(x_original).
+      // This works for both positive and negative ties:
+      //   x =  2.5 -> floor =  2, fraction = 0.5 (tie)
+      //   x = -0.5 -> floor = -1, fraction = 0.5 (tie)
+      // A small epsilon (kNearestModeEps) avoids missing ties due to GPU float precision.
+      body = std::string("select(i32(round(x_original)), i32(floor(x_original)), ") + half_tie_check + ")";
       break;
     case ResizeNearestMode::ROUND_PREFER_CEIL:
-      body = "select(i32(round(x_original)), i32(ceil(x_original)), x_original == f32(i32(x_original)) + 0.5)";
+      // Same tie detector as ROUND_PREFER_FLOOR, but choose ceil() on ties.
+      // This is required for negative halfway coordinates, e.g.:
+      //   round(-0.5) = -1 (away from zero) but ceil(-0.5) = 0.
+      // Using epsilon tie detection keeps behavior stable across GPU devices.
+      body = std::string("select(i32(round(x_original)), i32(ceil(x_original)), ") + half_tie_check + ")";
       break;
     case ResizeNearestMode::FLOOR:
       body = "i32(floor(x_original))";

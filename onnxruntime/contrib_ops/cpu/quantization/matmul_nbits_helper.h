@@ -11,6 +11,29 @@ namespace onnxruntime {
 namespace contrib {
 namespace matmul_nbits_helper {
 
+// Layout math for a MatMulNBits packed weight tensor, derived purely from the four
+// attributes (N, K, bits, block_size). Kept in one place so that the PrePack-time
+// shape guard in matmul_nbits.cc and the Compute-time validator (CheckInputs) below
+// cannot silently drift if the canonical packing layout ever changes.
+//
+// Layouts:
+//   quantized_weight (B) : (N, k_blocks, blob_size)
+//   scales               : (N, k_blocks)   -- or 1D (N * k_blocks) for backward compat
+//   zero_points (uint8)  : (N, uint8_zp_blob_size)  -- or 1D
+//   zero_points (other)  : (N, k_blocks)            -- or 1D
+constexpr int64_t GetKBlocks(int64_t k, int64_t block_size) {
+  return (k + block_size - 1) / block_size;
+}
+
+constexpr int64_t GetBlobSize(int64_t block_size, int64_t bits) {
+  return block_size * bits / 8;
+}
+
+// Blob size (bytes) of the uint8-packed zero_points row: one bit-packed row per output channel.
+constexpr int64_t GetUint8ZeroPointBlobSize(int64_t k_blocks, int64_t bits) {
+  return (k_blocks * bits + 7) / 8;
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* /*activation*/,
                    const T* quantized_weight,
@@ -40,8 +63,8 @@ Status CheckInputs(const T* /*activation*/,
                            "block_size must be a power of 2, and >= 16. Got ", block_size);
   }
 
-  int64_t k_blocks = (k + block_size - 1) / block_size;
-  int64_t blob_size = block_size * bits / 8;
+  const int64_t k_blocks = GetKBlocks(k, block_size);
+  const int64_t blob_size = GetBlobSize(block_size, bits);
 
   ASSERT_TENSOR_SHAPE(quantized_weight, make_shape(n, k_blocks, blob_size));
 
@@ -50,7 +73,7 @@ Status CheckInputs(const T* /*activation*/,
 
   if (zero_points != nullptr) {
     if (zero_points->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-      const int64_t zero_point_blob_size = (k_blocks * bits + 7) / 8;
+      const int64_t zero_point_blob_size = GetUint8ZeroPointBlobSize(k_blocks, bits);
 
       ASSERT_TENSOR_SHAPE_2(zero_points, make_shape(n * zero_point_blob_size), make_shape(n, zero_point_blob_size));
     } else {

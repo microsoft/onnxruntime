@@ -264,20 +264,6 @@ inline const OrtEpApi& GetEpApi() {
   return *api;
 }
 
-/// <summary>
-/// This returns a reference to the ORT C Model Package API. Used for loading models from model packages.
-/// </summary>
-/// <returns>ORT C Model Package API reference</returns>
-inline const OrtModelPackageApi& GetModelPackageApi() {
-  auto* api = GetApi().GetModelPackageApi();
-  if (api == nullptr) {
-    // minimal build
-    ORT_CXX_API_THROW("Model Package API is not available in this build", ORT_FAIL);
-  }
-
-  return *api;
-}
-
 /** \brief IEEE 754 half-precision floating point data type
  *
  * \details This struct is used for converting float to float16 and back
@@ -678,9 +664,6 @@ ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(OpSchema, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ProfilingEvent, GetEpApi);
-ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageOptions, GetModelPackageApi);
-ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageContext, GetModelPackageApi);
-ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelPackageComponentContext, GetModelPackageApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -807,9 +790,6 @@ struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
 struct Model;
-struct ModelPackageOptions;
-struct ModelPackageContext;
-struct ModelPackageComponentContext;
 struct Node;
 struct ModelMetadata;
 struct TypeInfo;
@@ -1497,8 +1477,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   ///
   /// The function attempts to load the adapter from the specified file
   /// \param adapter_path The path to the Lora adapter
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                        OrtAllocator* allocator);
 
@@ -1507,8 +1488,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// The function attempts to load the adapter from the specified byte array.
   /// \param bytes The byte array containing file LoraAdapter format
   /// \param num_bytes The number of bytes in the byte array
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };
@@ -1795,7 +1777,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 
-  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);       ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -1805,70 +1788,6 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
  * \return A Status indicating success or failure.
  */
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
-
-/** \brief Options for selecting a component from a model package.
- *
- * Wraps ::OrtModelPackageOptions. Created from an Env and SessionOptions, which captures the
- * EP configuration used for variant selection.
- */
-struct ModelPackageOptions : detail::Base<OrtModelPackageOptions> {
-  using Base = detail::Base<OrtModelPackageOptions>;
-  using Base::Base;
-
-  explicit ModelPackageOptions(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
-
-  ModelPackageOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions
-  ModelPackageOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions
-};
-
-/** \brief Context for inspecting and selecting components from a model package.
- *
- * Wraps ::OrtModelPackageContext. Provides traversal APIs to enumerate components, variants,
- * and EP compatibility, as well as component selection.
- */
-struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
-  using Base = detail::Base<OrtModelPackageContext>;
-  using Base::Base;
-
-  explicit ModelPackageContext(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
-
-  explicit ModelPackageContext(const ORTCHAR_T* package_root);  ///< Wraps OrtModelPackageApi::CreateModelPackageContext
-
-  size_t GetComponentCount() const;                                            ///< Wraps OrtModelPackageApi::ModelPackage_GetComponentCount
-  std::vector<std::string> GetComponentNames() const;                          ///< Wraps OrtModelPackageApi::ModelPackage_GetComponentNames
-  size_t GetVariantCount(const char* component_name) const;                    ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantCount
-  std::vector<std::string> GetVariantNames(const char* component_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantNames
-
-  /// Get the EP name for a variant. Returns nullptr if not declared.
-  /// Returned string is owned by this context and valid until it is released.
-  const char* GetVariantEpName(const char* component_name,
-                               const char* variant_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantEpName
-
-  int64_t GetSchemaVersion() const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetSchemaVersion
-
-  ModelPackageComponentContext SelectComponent(const char* component_name,
-                                               const ModelPackageOptions& options) const;  ///< Wraps OrtModelPackageApi::SelectComponent
-};
-
-/** \brief Context for a selected component within a model package.
- *
- * Wraps ::OrtModelPackageComponentContext. Provides accessors for the selected variant's
- * folder path and variant name.
- */
-struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentContext> {
-  using Base = detail::Base<OrtModelPackageComponentContext>;
-  using Base::Base;
-
-  explicit ModelPackageComponentContext(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
-
-  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFolderPath
-
-  std::string GetSelectedVariantName() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantName
-
-  Session CreateSession(const Env& env);                                         ///< Wraps OrtModelPackageApi::CreateSession (default path, NULL session_options)
-  Session CreateSession(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtModelPackageApi::CreateSession (advanced path)
-  Session CreateSession(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtModelPackageApi::CreateSession (advanced path)
-};
 
 /** \brief Wrapper around ::OrtModelMetadata
  *
@@ -2148,7 +2067,12 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   using B::B;
 
   ONNXTensorElementDataType GetElementType() const;  ///< Wraps OrtApi::GetTensorElementType
-  size_t GetElementCount() const;                    ///< Wraps OrtApi::GetTensorShapeElementCount
+
+  /// Wraps OrtApi::GetTensorShapeElementCount.
+  /// Returns the number of logical elements in the tensor (the product of its shape dimensions).
+  /// Use Ort::Value::GetTensorSizeInBytes() when sizing or bounds-checking the raw buffer returned
+  /// by GetTensorRawData()/GetTensorData\<T\>().
+  size_t GetElementCount() const;
 
   size_t GetDimensionsCount() const;  ///< Wraps OrtApi::GetDimensionsCount
 
@@ -2429,7 +2353,11 @@ struct ConstValueImpl : Base<T> {
   /// <summary>
   /// Returns the total size of the tensor data in bytes. Throws an exception if the OrtValue
   /// does not contain a tensor or if it contains a tensor that contains strings.
-  /// For numeric tensors, this is sizeof(element_type) * total_element_count.
+  /// For numeric tensors of a type that occupies at least one byte per element, this is
+  /// sizeof(element_type) * total_element_count. For packed sub-byte types (e.g. int4/uint4)
+  /// it is the actual packed storage size, which is smaller than the element count returned by
+  /// GetTensorTypeAndShapeInfo().GetElementCount(). Use this value (not the element count) when
+  /// copying or bounds-checking the raw buffer from GetTensorRawData()/GetTensorData\<T\>().
   /// </summary>
   /// <returns>The total size of the tensor data in bytes</returns>
   size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
@@ -3104,6 +3032,7 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
+  OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;
   Ort::Allocator GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }

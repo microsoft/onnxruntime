@@ -31,7 +31,7 @@ For details on the upcoming release, including release dates, announcements, fea
 
 ## Data/Telemetry
 
-Windows distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
 
 ## Contributions and Feedback
 

@@ -1,0 +1,10 @@
+$MAIN {
+    let index = global_id.x;
+    output[index] = input[index] * 2.0;
+}
+
+$MAIN {
+    // Second MAIN block - should cause an error
+    let other_index = global_id.y;
+    result[other_index] = data[other_index];
+}

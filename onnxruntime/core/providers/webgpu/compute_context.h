@@ -76,11 +76,9 @@ class ComputeContextBase {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
-#if !defined(__wasm__)
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
     return webgpu_context_.SubgroupMatrixConfigs();
   }
-#endif
 
   //
   // Get Split-K configuration.
@@ -101,6 +99,20 @@ class ComputeContextBase {
   //
   inline uint32_t MultiRotaryCacheConcatOffset() const {
     return ep_.MultiRotaryCacheConcatOffset();
+  }
+
+  //
+  // Get the KV cache quantization bits (0 = disabled, 4 = 4-bit).
+  //
+  inline uint32_t KvCacheQuantizationBits() const {
+    return ep_.KvCacheQuantizationBits();
+  }
+
+  //
+  // Get whether KV cache quantization is enabled.
+  //
+  inline bool KvCacheQuantizationEnabled() const {
+    return ep_.KvCacheQuantizationEnabled();
   }
 
   //
@@ -216,6 +228,7 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
+    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
     webgpu_context_.EndComputePass();
     auto& command_encoder = webgpu_context_.GetCommandEncoder();
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());

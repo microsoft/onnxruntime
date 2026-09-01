@@ -5,6 +5,7 @@
 #include "bench_util.h"
 #include "core/util/thread_utils.h"
 
+#include <map>
 #include <stdexcept>
 #include <numeric>
 
@@ -39,80 +40,158 @@ static const std::vector<std::string>& ArgNamesForConv(size_t rank) {
   return rank_to_args_name[rank];
 }
 
-// dummy for some strange build error when using Bench capture
-void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
-  const int64_t rank = state.range(0);                       // Rank
-  const int64_t batch_size = state.range(1);                 // N
-  const int64_t groups = state.range(2);                     // G
-  const int64_t input_channels_per_group = state.range(3);   // Cpg
-  const int64_t output_channels_per_group = state.range(4);  // Fpg
+struct ConvBenchmarkArgs {
+  int64_t rank;
+  int64_t batch_size;
+  int64_t groups;
+  int64_t input_channels_per_group;
+  int64_t output_channels_per_group;
+  int64_t total_input_channels;
+  int64_t total_output_channels;
+  std::vector<int64_t> input_shape;
+  std::vector<int64_t> kernel_shape;
+  std::vector<int64_t> paddings;
+  std::vector<int64_t> strides;
+  std::vector<int64_t> dilations;
+  std::vector<int64_t> output_shape;
+};
 
-  if (rank <= 0) throw std::invalid_argument("Kernel rank must greater than 0!");
-  if (batch_size <= 0) throw std::invalid_argument("Batch size must greater than 0!");
-  if (groups <= 0) throw std::invalid_argument("Group count must greater than 0!");
-  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must greater than 0!");
-  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must greater than 0!");
+static ConvBenchmarkArgs ParseConvBenchmarkArgs(benchmark::State& state) {
+  ConvBenchmarkArgs args{
+      state.range(0),  // rank
+      state.range(1),  // batch_size
+      state.range(2),  // groups
+      state.range(3),  // input_channels_per_group
+      state.range(4),  // output_channels_per_group
+      0,
+      0,
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}};
+
+  if (args.rank <= 0) throw std::invalid_argument("Kernel rank must be greater than 0");
+  if (args.batch_size <= 0) throw std::invalid_argument("Batch size must be greater than 0");
+  if (args.groups <= 0) throw std::invalid_argument("Group count must be greater than 0");
+  if (args.input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must be greater than 0");
+  if (args.output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must be greater than 0");
 
   size_t arg_position = 5;
-  const auto input_shape = BenchArgsVector(state, arg_position, rank);
-  const auto kernel_shape = BenchArgsVector(state, arg_position, rank);
-  const auto paddings = BenchArgsVector(state, arg_position, rank * 2);
-  const auto strides = BenchArgsVector(state, arg_position, rank);
-  const auto dilations = BenchArgsVector(state, arg_position, rank);
+  args.input_shape = BenchArgsVector(state, arg_position, args.rank);
+  args.kernel_shape = BenchArgsVector(state, arg_position, args.rank);
+  args.paddings = BenchArgsVector(state, arg_position, args.rank * 2);
+  args.strides = BenchArgsVector(state, arg_position, args.rank);
+  args.dilations = BenchArgsVector(state, arg_position, args.rank);
 
-  // do not check the size of each vector as they are forced from args.
-  if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
+  if (std::any_of(args.input_shape.begin(), args.input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
     throw std::invalid_argument("all input image dim must > 0");
   }
 
-  if (std::any_of(kernel_shape.begin(), kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
+  if (std::any_of(args.kernel_shape.begin(), args.kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
     throw std::invalid_argument("all kernel dim must > 0");
   }
 
-  if (std::any_of(strides.begin(), strides.end(), [](const int64_t& dim) { return dim <= 0; })) {
+  if (std::any_of(args.strides.begin(), args.strides.end(), [](const int64_t& dim) { return dim <= 0; })) {
     throw std::invalid_argument("all strides dim must > 0");
   }
 
-  if (std::any_of(dilations.begin(), dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
+  if (std::any_of(args.dilations.begin(), args.dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
     throw std::invalid_argument("all dilations dim must > 0");
   }
 
-  const int64_t GC = groups * input_channels_per_group;
-  const int64_t GF = groups * output_channels_per_group;
-  std::vector<int64_t> x_shape = {batch_size, GC};
-  x_shape.insert(x_shape.end(), input_shape.begin(), input_shape.end());
-  std::vector<int64_t> f_shape = {GF, input_channels_per_group};
-  f_shape.insert(f_shape.end(), kernel_shape.begin(), kernel_shape.end());
-
-  std::vector<int64_t> output_shape((size_t)rank);
-  for (int64_t i = 0; i < rank; ++i) {
-    auto km = 1 + dilations[i] * (kernel_shape[i] - 1);
-    output_shape[i] = (paddings[i] + paddings[i + rank] + input_shape[i] - km) / strides[i] + 1;
+  args.total_input_channels = args.groups * args.input_channels_per_group;
+  args.total_output_channels = args.groups * args.output_channels_per_group;
+  args.output_shape.resize(static_cast<size_t>(args.rank));
+  for (int64_t i = 0; i < args.rank; ++i) {
+    const auto index = static_cast<size_t>(i);
+    const auto km = 1 + args.dilations[index] * (args.kernel_shape[index] - 1);
+    args.output_shape[index] =
+        (args.paddings[index] + args.paddings[index + static_cast<size_t>(args.rank)] + args.input_shape[index] - km) /
+            args.strides[index] +
+        1;
   }
-  std::vector<int64_t> y_shape = {batch_size, GF};
-  y_shape.insert(y_shape.end(), output_shape.begin(), output_shape.end());
 
+  return args;
+}
+
+static std::vector<int64_t> MakeInputShape(const ConvBenchmarkArgs& args, bool channels_last) {
+  std::vector<int64_t> shape = {args.batch_size};
+  if (channels_last) {
+    shape.insert(shape.end(), args.input_shape.begin(), args.input_shape.end());
+    shape.push_back(args.total_input_channels);
+  } else {
+    shape.push_back(args.total_input_channels);
+    shape.insert(shape.end(), args.input_shape.begin(), args.input_shape.end());
+  }
+
+  return shape;
+}
+
+static std::vector<int64_t> MakeFilterShape(const ConvBenchmarkArgs& args) {
+  std::vector<int64_t> shape = {args.total_output_channels, args.input_channels_per_group};
+  shape.insert(shape.end(), args.kernel_shape.begin(), args.kernel_shape.end());
+  return shape;
+}
+
+static std::vector<int64_t> MakeOutputShape(const ConvBenchmarkArgs& args, bool channels_last) {
+  std::vector<int64_t> shape = {args.batch_size};
+  if (channels_last) {
+    shape.insert(shape.end(), args.output_shape.begin(), args.output_shape.end());
+    shape.push_back(args.total_output_channels);
+  } else {
+    shape.push_back(args.total_output_channels);
+    shape.insert(shape.end(), args.output_shape.begin(), args.output_shape.end());
+  }
+
+  return shape;
+}
+
+static std::vector<size_t> ToSizeT(const std::vector<int64_t>& values) {
+  std::vector<size_t> result(values.size());
+  std::transform(values.begin(), values.end(), result.begin(), [](int64_t value) {
+    return static_cast<size_t>(value);
+  });
+  return result;
+}
+
+static void PrepareConvParameters(const ConvBenchmarkArgs& args,
+                                  bool channels_last,
+                                  MLAS_THREADPOOL* thread_pool,
+                                  MLAS_CONV_PARAMETERS* parameters,
+                                  size_t* working_buffer_size) {
   MLAS_ACTIVATION activation;
   activation.ActivationKind = MlasIdentityActivation;
+  MlasConvPrepare(parameters,
+                  static_cast<size_t>(args.rank),
+                  static_cast<size_t>(args.batch_size),
+                  static_cast<size_t>(args.groups),
+                  static_cast<size_t>(args.input_channels_per_group),
+                  args.input_shape.data(),
+                  args.kernel_shape.data(),
+                  args.dilations.data(),
+                  args.paddings.data(),
+                  args.strides.data(),
+                  args.output_shape.data(),
+                  static_cast<size_t>(args.output_channels_per_group),
+                  &activation,
+                  working_buffer_size,
+                  channels_last,
+                  0.0f,
+                  thread_pool);
+}
+
+// dummy for some strange build error when using Bench capture
+void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
+  const auto args = ParseConvBenchmarkArgs(state);
+  const auto x_shape = MakeInputShape(args, false);
+  const auto f_shape = MakeFilterShape(args);
+  const auto y_shape = MakeOutputShape(args, false);
+
   MLAS_CONV_PARAMETERS Parameters;
   size_t WorkingBufferSize = 0;
-  MlasConvPrepare(&Parameters,
-                  static_cast<size_t>(rank),
-                  static_cast<size_t>(batch_size),
-                  static_cast<size_t>(groups),
-                  static_cast<size_t>(input_channels_per_group),
-                  input_shape.data(),
-                  kernel_shape.data(),
-                  dilations.data(),
-                  paddings.data(),
-                  strides.data(),
-                  output_shape.data(),
-                  static_cast<size_t>(output_channels_per_group),
-                  &activation,
-                  &WorkingBufferSize,
-                  false,
-                  0.0f,
-                  nullptr);
+  PrepareConvParameters(args, false, nullptr, &Parameters, &WorkingBufferSize);
 
   auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
   auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
@@ -146,81 +225,89 @@ static MLAS_THREADPOOL* GetMlasThreadPoolForConvBenchmark(void) {
   return threadpool.get();
 }
 
-void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
-  MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
-
-  const int64_t rank = state.range(0);                       // Rank
-  const int64_t batch_size = state.range(1);                 // N
-  const int64_t groups = state.range(2);                     // G
-  const int64_t input_channels_per_group = state.range(3);   // Cpg
-  const int64_t output_channels_per_group = state.range(4);  // Fpg
-
-  if (rank <= 0) throw std::invalid_argument("Kernel rank must greater than 0!");
-  if (batch_size <= 0) throw std::invalid_argument("Batch size must greater than 0!");
-  if (groups <= 0) throw std::invalid_argument("Group count must greater than 0!");
-  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must greater than 0!");
-  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must greater than 0!");
-
-  size_t arg_position = 5;
-  const auto input_shape = BenchArgsVector(state, arg_position, rank);
-  const auto kernel_shape = BenchArgsVector(state, arg_position, rank);
-  const auto paddings = BenchArgsVector(state, arg_position, rank * 2);
-  const auto strides = BenchArgsVector(state, arg_position, rank);
-  const auto dilations = BenchArgsVector(state, arg_position, rank);
-
-  // do not check the size of each vector as they are forced from args.
-  if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all input image dim must > 0");
+void SCONV_NHWC_KLEIDIAI(benchmark::State& state, const char* /*dummy*/) {
+  const auto args = ParseConvBenchmarkArgs(state);
+  if (args.rank != 2 || args.batch_size != 1) {
+    state.SkipWithError("KleidiAI NHWC benchmark requires 2D convolution with batch size 1.");
+    return;
   }
 
-  if (std::any_of(kernel_shape.begin(), kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all kernel dim must > 0");
+  const auto input_shape_size_t = ToSizeT(args.input_shape);
+  const auto kernel_shape_size_t = ToSizeT(args.kernel_shape);
+  const auto paddings_size_t = ToSizeT(args.paddings);
+  const auto strides_size_t = ToSizeT(args.strides);
+  const auto dilations_size_t = ToSizeT(args.dilations);
+
+  if (!(MlasConvSupportsDenseChannelsLast2DFloatKernel(
+            static_cast<size_t>(args.rank),
+            static_cast<size_t>(args.batch_size),
+            static_cast<size_t>(args.groups),
+            input_shape_size_t.data(),
+            kernel_shape_size_t.data(),
+            dilations_size_t.data(),
+            paddings_size_t.data(),
+            strides_size_t.data(),
+            static_cast<size_t>(args.output_channels_per_group),
+            0.0f) ||
+        MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+            static_cast<size_t>(args.rank),
+            static_cast<size_t>(args.batch_size),
+            static_cast<size_t>(args.groups),
+            static_cast<size_t>(args.input_channels_per_group),
+            input_shape_size_t.data(),
+            kernel_shape_size_t.data(),
+            dilations_size_t.data(),
+            paddings_size_t.data(),
+            strides_size_t.data(),
+            static_cast<size_t>(args.output_channels_per_group),
+            0.0f))) {
+    state.SkipWithError("KleidiAI NHWC kernel is not supported for this benchmark shape on the current platform.");
+    return;
   }
 
-  if (std::any_of(strides.begin(), strides.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all strides dim must > 0");
-  }
+  const auto x_shape = MakeInputShape(args, true);
+  const auto f_shape = MakeFilterShape(args);
+  const auto y_shape = MakeOutputShape(args, true);
 
-  if (std::any_of(dilations.begin(), dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all dilations dim must > 0");
-  }
-
-  const int64_t GC = groups * input_channels_per_group;
-  const int64_t GF = groups * output_channels_per_group;
-  std::vector<int64_t> x_shape = {batch_size, GC};
-  x_shape.insert(x_shape.end(), input_shape.begin(), input_shape.end());
-  std::vector<int64_t> f_shape = {GF, input_channels_per_group};
-  f_shape.insert(f_shape.end(), kernel_shape.begin(), kernel_shape.end());
-
-  std::vector<int64_t> output_shape((size_t)rank);
-  for (int64_t i = 0; i < rank; ++i) {
-    auto km = 1 + dilations[i] * (kernel_shape[i] - 1);
-    output_shape[i] = (paddings[i] + paddings[i + rank] + input_shape[i] - km) / strides[i] + 1;
-  }
-  std::vector<int64_t> y_shape = {batch_size, GF};
-  y_shape.insert(y_shape.end(), output_shape.begin(), output_shape.end());
-
-  MLAS_ACTIVATION activation;
-  activation.ActivationKind = MlasIdentityActivation;
   MLAS_CONV_PARAMETERS Parameters;
   size_t WorkingBufferSize = 0;
-  MlasConvPrepare(&Parameters,
-                  static_cast<size_t>(rank),
-                  static_cast<size_t>(batch_size),
-                  static_cast<size_t>(groups),
-                  static_cast<size_t>(input_channels_per_group),
-                  input_shape.data(),
-                  kernel_shape.data(),
-                  dilations.data(),
-                  paddings.data(),
-                  strides.data(),
-                  output_shape.data(),
-                  static_cast<size_t>(output_channels_per_group),
-                  &activation,
-                  &WorkingBufferSize,
-                  false,
-                  0.0f,
-                  tp);
+  PrepareConvParameters(args, true, nullptr, &Parameters, &WorkingBufferSize);
+
+  auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
+  auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
+  int64_t y_size = std::accumulate(y_shape.begin(), y_shape.end(), 1LL, std::multiplies<int64_t>());
+  std::vector<float> Y(static_cast<size_t>(y_size));
+  std::vector<float> working_buffer(WorkingBufferSize);
+
+  MlasConv(&Parameters,
+           X.data(),
+           F.data(),
+           nullptr,
+           working_buffer.data(),
+           Y.data(),
+           nullptr);
+
+  for (auto _ : state) {
+    MlasConv(&Parameters,
+             X.data(),
+             F.data(),
+             nullptr,
+             working_buffer.data(),
+             Y.data(),
+             nullptr);
+  }
+}
+
+void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
+  MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
+  const auto args = ParseConvBenchmarkArgs(state);
+  const auto x_shape = MakeInputShape(args, false);
+  const auto f_shape = MakeFilterShape(args);
+  const auto y_shape = MakeOutputShape(args, false);
+
+  MLAS_CONV_PARAMETERS Parameters;
+  size_t WorkingBufferSize = 0;
+  PrepareConvParameters(args, false, tp, &Parameters, &WorkingBufferSize);
 
   auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
   auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
@@ -353,6 +440,21 @@ static void MobileClip(benchmark::internal::Benchmark* b) {
 
 BENCHMARK_CAPTURE(SCONV_NCHW, MobileClip, "")->Apply(MobileClip)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClip, "")->Apply(MobileClip)->UseRealTime();
+
+static void KleidiAiNhwcComparison(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // Dense 3x3 conv shapes that fit the Arm SME / KleidiAI NHWC fast-path envelope.
+  b->Args({2, 1, 1, 64, 64, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 128, 128, 28, 28, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+
+  // Classic depthwise shapes now supported by the NHWC helper gate.
+  b->Args({2, 1, 64, 1, 1, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 72, 1, 1, 48, 80, 3, 3, 1, 1, 1, 1, 2, 2, 1, 1});
+}
+
+BENCHMARK_CAPTURE(SCONV_NCHW, KleidiAiNhwcComparison_NchwBaseline, "")->Apply(KleidiAiNhwcComparison)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NHWC_KLEIDIAI, KleidiAiNhwcComparison_NhwcFastPath, "")->Apply(KleidiAiNhwcComparison)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));

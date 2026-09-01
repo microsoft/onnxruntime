@@ -337,6 +337,12 @@ class TestLinearAttentionCausalConvPyTorchParity(unittest.TestCase):
             "gated_delta", q_num_heads=4, kv_num_heads=2, d_k=128, d_v=128, batch=2, seq_lens=(1, 5)
         )
 
+    def test_linear_attention_decode_v1_fallback(self):
+        """d_v not divisible by 32 — exercises the warp-per-column decode fallback."""
+        self._run_linear_attention_test(
+            "gated_delta", q_num_heads=4, kv_num_heads=2, d_k=64, d_v=40, batch=2, seq_lens=(1, 5)
+        )
+
     def test_linear_attention_per_key_dim_decay(self):
         """Per-key-dim decay: decay shape [B, T, H_kv * d_k] — exercises per-row expf path."""
         self._run_linear_attention_test(

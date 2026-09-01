@@ -23,7 +23,7 @@
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -71,6 +71,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+
+  ORT_RETURN_IF_NOT(B == nullptr || (B->Shape().NumDimensions() == 1 && B->Shape().Size() == M),
+                    "Conv : bias must be a 1D tensor of size output_channels (", M, ")");
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
@@ -191,7 +194,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 Status Conv<float>::EnsurePackedChannelsLastFilter(concurrency::ThreadPool* thread_pool,
                                                    size_t filter_count_per_group,
                                                    size_t input_channels_per_group,
@@ -255,6 +258,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const int64_t C = channels_last_ ? X->Shape().GetDims().back() : X->Shape()[1];
   const int64_t M = W->Shape()[0];
 
+  ORT_RETURN_IF_NOT(B == nullptr || (B->Shape().NumDimensions() == 1 && B->Shape().Size() == M),
+                    "Conv : bias must be a 1D tensor of size output_channels (", M, ")");
+
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
   const size_t kernel_rank = kernel_shape.size();
@@ -315,25 +321,40 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
       pads_size_t[i + 2] = narrow<size_t>(pads[i + 2]);
     }
   }
+  const size_t group_count = narrow<size_t>(conv_attrs_.group);
+  const size_t input_channels_per_group = narrow<size_t>(C / conv_attrs_.group);
+  const size_t filter_count_per_group = narrow<size_t>(M / conv_attrs_.group);
   const bool nhwc_fastpath =
       wants_channels_last && !sum_present &&
-      MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
-          kernel_rank,
-          narrow<size_t>(N),
-          narrow<size_t>(conv_attrs_.group),
-          input_shape_size_t.data(),
-          kernel_shape_size_t.data(),
-          dilations_size_t.data(),
-          pads_size_t.data(),
-          strides_size_t.data(),
-          narrow<size_t>(M / conv_attrs_.group),
-          /*Beta*/ 0.0f);
+      (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+           kernel_rank,
+           narrow<size_t>(N),
+           group_count,
+           input_shape_size_t.data(),
+           kernel_shape_size_t.data(),
+           dilations_size_t.data(),
+           pads_size_t.data(),
+           strides_size_t.data(),
+           filter_count_per_group,
+           /*Beta*/ 0.0f) ||
+       MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+           kernel_rank,
+           narrow<size_t>(N),
+           group_count,
+           input_channels_per_group,
+           input_shape_size_t.data(),
+           kernel_shape_size_t.data(),
+           dilations_size_t.data(),
+           pads_size_t.data(),
+           strides_size_t.data(),
+           filter_count_per_group,
+           /*Beta*/ 0.0f));
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
   if (nhwc_fastpath && can_cache_packed_filter_) {
     ORT_RETURN_IF_ERROR(EnsurePackedChannelsLastFilter(thread_pool,
-                                                       narrow<size_t>(M / conv_attrs_.group),
-                                                       narrow<size_t>(C / conv_attrs_.group),
+                                                       filter_count_per_group,
+                                                       input_channels_per_group,
                                                        kernel_shape,
                                                        dilations));
   }
@@ -385,7 +406,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     nhwc_fastpath ? 0.0f : Beta,
                     thread_pool);
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
     if (nhwc_fastpath && packed_filter_ != nullptr) {
       Parameters.FilterIsPacked = true;
       Parameters.PackedFilter = packed_filter_.get();

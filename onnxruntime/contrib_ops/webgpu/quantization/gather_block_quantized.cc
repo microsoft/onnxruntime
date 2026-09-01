@@ -42,7 +42,12 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
 
   shader.MainFunctionBody()
       << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "if (index < 0) { index += indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");}\n"
+      << "let gather_axis_dim = indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");\n"
+      << "if (index < 0) { index += gather_axis_dim;}\n"
+      << "if (index < 0 || index >= gather_axis_dim) {\n"
+      << "  " << output.SetByOffset("global_idx", "output_value_t(0)") << ";\n"
+      << "  return;\n"
+      << "}\n"
       << "var data_indices = input_shape_indices_t(0);\n";
 
   for (int i = 0, j = 0; i < x_shape.Rank(); i++) {
@@ -69,6 +74,10 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "  let byte_in_word_2b = byte_idx_2b % 4;\n"
         << "  let unpacked_bytes_2b = " << unpack << "(u32(packed_word_2b));\n"
         << "  var quantized_data = (unpacked_bytes_2b[byte_in_word_2b] >> bit_shift_2b) & 0x3;\n";
+    if (is_signed_) {
+      shader.MainFunctionBody()
+          << "  if((quantized_data & 0x2) != 0) { quantized_data = quantized_data - 4 ;};\n";
+    }
   } else if (is_4bit) {
     shader.MainFunctionBody()
         << "  let data_index = data_offset % 8;\n"
@@ -144,8 +153,13 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
           << "  var zero_point = zero_point_vec[zero_point_index];\n";
     }
     if (is_signed_) {
-      shader.MainFunctionBody()
-          << "  if((zero_point & 0x8) != 0) { zero_point = zero_point - 16 ;};\n";
+      if (is_2bit) {
+        shader.MainFunctionBody()
+            << "  if((zero_point & 0x2) != 0) { zero_point = zero_point - 4 ;};\n";
+      } else if (is_4bit) {
+        shader.MainFunctionBody()
+            << "  if((zero_point & 0x8) != 0) { zero_point = zero_point - 16 ;};\n";
+      }
     }
   }
   shader.MainFunctionBody()
@@ -254,6 +268,10 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   TensorShape output_shape = splice(x_shape.AsShapeVector(), gather_axis, 1, indices->Shape().AsShapeVector());
   int64_t output_size = output_shape.Size();
   auto* output_tensor = context.Output(0, output_shape);
+
+  if (output_size == 0) {
+    return Status::OK();
+  }
 
   // For the 2-bit zero-point path we need to address the packed byte using the scale row index
   // and the within-row quantize-axis index (not the flat scales offset, which crosses row

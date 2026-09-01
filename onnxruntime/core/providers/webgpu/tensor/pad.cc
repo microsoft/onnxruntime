@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -66,8 +67,12 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
   for (size_t i = 0; i < dimension_count; i++) {
     int64_t lower_pad = (*p_pads)[i] + (*p_slices)[i];
     int64_t upper_pad = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
+    ORT_RETURN_IF_NOT(lower_pad >= std::numeric_limits<int32_t>::min() &&
+                          lower_pad <= std::numeric_limits<int32_t>::max(),
+                      "WebGPU Pad only supports lower pads in the int32 range. Got ", lower_pad,
+                      " for axis ", i);
     lower_pads[i] = static_cast<int32_t>(lower_pad);
-    output_dims[i] += lower_pad + upper_pad;
+    output_dims[i] += SafeInt<int64_t>(lower_pad) + upper_pad;
   }
   TensorShape output_shape(output_dims);
 

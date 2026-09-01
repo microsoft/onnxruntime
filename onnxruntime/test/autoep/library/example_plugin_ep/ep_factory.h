@@ -110,6 +110,14 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const char* compatibility_info,
       OrtCompiledModelCompatibility* model_compatibility) noexcept;
 
+  static OrtStatus* ORT_API_CALL SelectBestModelCandidateImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* device,
+      const OrtKeyValuePairs* const* candidates,
+      size_t num_candidates,
+      const OrtSessionOptions* session_options,
+      size_t* selected_index) noexcept;
+
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID

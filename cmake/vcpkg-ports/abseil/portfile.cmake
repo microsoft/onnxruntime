@@ -10,6 +10,8 @@ vcpkg_from_github(
     HEAD_REF master
     PATCHES absl_windows.patch
             absl_cuda_warnings.patch
+            absl_cuda13_member_template.patch
+            absl_msvc_unreachable_code.patch
 )
 
 
@@ -23,7 +25,7 @@ vcpkg_cmake_configure(
     DISABLE_PARALLEL_CONFIGURE
     OPTIONS
         -DABSL_PROPAGATE_CXX_STD=ON
-        ${ABSL_USE_CXX17_OPTION}
+        -DCMAKE_CXX_STANDARD=17
         ${ABSL_STATIC_RUNTIME_OPTION}
 )
 

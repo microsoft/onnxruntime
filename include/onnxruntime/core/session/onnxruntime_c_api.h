@@ -34,11 +34,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "onnxruntime_error_code.h"
+
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 28
+#define ORT_API_VERSION 30
 
 #ifdef __cplusplus
 extern "C" {
@@ -263,24 +265,6 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
 
-typedef enum OrtErrorCode {
-  ORT_OK,
-  ORT_FAIL,
-  ORT_INVALID_ARGUMENT,
-  ORT_NO_SUCHFILE,
-  ORT_NO_MODEL,
-  ORT_ENGINE_ERROR,
-  ORT_RUNTIME_EXCEPTION,
-  ORT_INVALID_PROTOBUF,
-  ORT_MODEL_LOADED,
-  ORT_NOT_IMPLEMENTED,
-  ORT_INVALID_GRAPH,
-  ORT_EP_FAIL,
-  ORT_MODEL_LOAD_CANCELED,
-  ORT_MODEL_REQUIRES_COMPILATION,
-  ORT_NOT_FOUND,
-} OrtErrorCode;
-
 typedef enum OrtOpAttrType {
   ORT_OP_ATTR_UNDEFINED = 0,
   ORT_OP_ATTR_INT,
@@ -348,15 +332,22 @@ ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared exte
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 ORT_RUNTIME_CLASS(EpAssignedSubgraph);
 ORT_RUNTIME_CLASS(EpAssignedNode);
-ORT_RUNTIME_CLASS(ModelPackageOptions);
-ORT_RUNTIME_CLASS(ModelPackageContext);
-ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
 typedef OrtStatus* OrtStatusPtr;
 #endif
+
+/** \brief Generic function pointer type for experimental API lookup.
+ *
+ * Returned by OrtApi::GetExperimentalFunction. Cast to the correct function pointer type before calling.
+ * The experimental API function pointer types are defined in onnxruntime_experimental_c_api.h.
+ *
+ * This is a function pointer rather than \c void* because casting between function pointers and object
+ * pointers is undefined behavior in C and C++. Using a function pointer type keeps all casts well-defined.
+ */
+typedef void(ORT_API_CALL* OrtExperimentalFnPtr)(void);
 
 /** \brief Memory allocation interface
  *
@@ -928,9 +919,6 @@ typedef struct OrtCompileApi OrtCompileApi;
 struct OrtInteropApi;
 typedef struct OrtInteropApi OrtInteropApi;
 
-struct OrtModelPackageApi;
-typedef struct OrtModelPackageApi OrtModelPackageApi;
-
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
 
@@ -1064,18 +1052,31 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \brief External memory handle type for importing GPU resources.
+/** \brief External memory handle type for importing GPU/NPU resources.
  *
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,   /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,       /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR or
+                                                             clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_WIN32_KHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR or
+                                                             clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_FD_KHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION = 4,  /**< Host-allocated CPU virtual address (pointer). Must be page-aligned.
+                                                             Equivalent to VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT
+                                                             or CL_MEM_USE_HOST_PTR, @since 1.30 */
 } OrtExternalMemoryHandleType;
+
+// Previous enum values added for backwards compatibility
+#ifndef ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32
+#endif
+#ifndef ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD
+#endif
 
 /** \brief Descriptor for importing external memory.
  *
@@ -3013,6 +3014,7 @@ struct OrtApi {
    * For example, given a tensor with shape of [3,224,224], a pointer to the element at location [2,150,128] can be retrieved
    *
    * This function only works for numeric type tensors (No strings, etc).
+   * This function does not support sub-byte packed types (e.g., int4).
    * This is a no-copy method whose returned pointer is valid until the passed in ::OrtValue is free'd.
    *
    * \param[in] value
@@ -5326,9 +5328,9 @@ struct OrtApi {
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *
    * \param[in] adapter_file_path adapter file path.
-   * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
-   *            The data would still be copied to device if required by the model at inference time.
+   * \param[in] allocator optional pointer to a non-CPU device allocator. If specified and a data transfer implementation
+   *            is available during adapter creation, the data is copied to the device before Run() is invoked.
+   *            Otherwise, the data stays on CPU and is copied to the device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    *
@@ -5346,9 +5348,9 @@ struct OrtApi {
    *
    * \param[in] bytes pointer to a valid Lora Adapter format buffer.
    * \param[in] num_bytes length of bytes buffer.
-   * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
-   *            The data would still be copied to device if required by the model at inference time.
+   * \param[in] allocator optional pointer to a non-CPU device allocator. If specified and a data transfer implementation
+   *            is available during adapter creation, the data is copied to the device before Run() is invoked.
+   *            Otherwise, the data stays on CPU and is copied to the device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    *
@@ -5415,13 +5417,11 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Node);
 
   /** \brief Release an OrtGraph.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Graph);
 
   /** \brief Release an OrtModel.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Model);
@@ -5780,9 +5780,13 @@ struct OrtApi {
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
-   * that are tensors that contain strings will cause an error to be returned.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors of a
+   * type that occupies at least one byte per element, this is sizeof(element_type) *
+   * total_element_count. For packed sub-byte types (e.g. int4/uint4, which store multiple
+   * elements per byte) it is the actual packed storage size, which is smaller than
+   * sizeof(element_type) * total_element_count. Use this value (not the element count) when
+   * copying or bounds-checking the raw tensor buffer. OrtValues that are not tensors or that are
+   * tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes
@@ -7493,25 +7497,69 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
 
-  /** \brief Get the model package API table.
+  /** \brief Retrieve an experimental function pointer by name.
    *
-   * Returns a pointer to the ::OrtModelPackageApi function table, which provides APIs to:
-   * - create and release model package options and contexts,
-   * - inspect model package metadata (components/variants),
-   * - select a component/variant and query selected files/options,
-   * - create a session from model package selection results.
+   * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
+   * Use the companion header onnxruntime_experimental_c_api.h for typedefs, name constants, and (for C++) typed
+   * accessors.
    *
-   * The returned pointer is owned by ONNX Runtime and is valid for the process lifetime.
-   * Do not free it.
+   * \param[in] name The null-terminated name of the experimental function to look up.
+   *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
+   *                 Name constants are defined in onnxruntime_experimental_c_api.h.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
+   *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
+   *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
    *
-   * \note May return NULL if model package support is not available in the current build
-   *       (for example, minimal builds).
-   *
-   * \return Pointer to ::OrtModelPackageApi, or NULL if unsupported.
-   *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
-  const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
+  ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
+
+  /** \brief Get the framework synchronization stream associated with a kernel context.
+   *
+   * This returns the framework stream wrapper for the execution provider stream used by this kernel invocation.
+   * It is intended for APIs that need a stable framework stream object for stream-aware allocation and
+   * synchronization bookkeeping. Use KernelContext_GetGPUComputeStream when launching native GPU work.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[out] out Returns the framework synchronization stream, or nullptr if the kernel has no stream.
+   *                 Do not free or mutate the returned pointer. It is owned by the underlying session.
+   *                 The pointer may be stored and used for stream-aware allocation and synchronization
+   *                 bookkeeping beyond the Compute call (e.g. an allocator may persist it in arena
+   *                 chunks); it remains valid until the owning Session::Run() completes its teardown.
+   *                 Do not retain or dereference it after the run that produced this kernel context ends.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                  _Outptr_result_maybenull_ OrtSyncStream** out);
+
+  /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
+   *
+   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
+   * initializer data. This function provides the source model as an in-memory byte buffer, for scenarios
+   * where the source model is not available as a file on disk (e.g., loaded from a package or downloaded).
+   *
+   * The caller retains ownership of the buffer and must ensure it remains valid for the lifetime of the session.
+   *
+   * \note If the source model is available as a file on disk, use the session config entry
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) instead.
+   *
+   * \note If both a buffer (via this function) and a file path (via "ep.context_source_model_path") are
+   *       provided, the EP should prefer the buffer. The recommended EP precedence is:
+   *       buffer > file path > "onnx_model_filename" EPContext node attribute.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] source_model_data Pointer to the source model byte buffer.
+   * \param[in] source_model_data_length Size of the byte buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
+                  _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 };
 
 /*
@@ -7540,7 +7588,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  * the implementor of the custom op.
  */
 struct OrtCustomOp {
-  uint32_t version;  // Must be initialized to ORT_API_VERSION
+  uint32_t version;  // Initialize to ORT_API_VERSION. ORT will cap the API version used to select the OrtApi passed
+                     // to CreateKernel/CreateKernelV2 callbacks, so custom ops compiled against a newer ORT can load
+                     // on an older runtime if they only use APIs available at the runtime version. Newer OrtCustomOp
+                     // function pointers are gated by per-function version checks within ORT.
 
   // This callback creates the kernel, which is a user defined
   // parameter that is passed to the Kernel* callbacks below. It is
@@ -8354,6 +8405,31 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+
+  /** \brief Enable or disable weightless mode for model compilation.
+   *
+   * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
+   * compiled binary. Instead, the initializer data must be provided when creating a session from the
+   * compiled model, either from the source model (via the "onnx_model_filename" EPContext node attribute
+   * or the "ep.context_source_model_path" session option) or from externalized weights.
+   *
+   * This enables smaller compiled models and allows sharing initializer data across multiple compiled
+   * model variants (e.g., multi-platform caches for different hardware generations).
+   *
+   * ORT verifies that the target EP supports weightless mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support weightless mode, CompileModel()
+   * returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] use_weightless If true, enable weightless mode. If false, disable (default behavior).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ bool use_weightless);
 };
 
 /**
@@ -8618,250 +8694,6 @@ struct OrtInteropApi {
   ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
-};
-
-/** \brief API table for model package workflows.
- *
- * A model package is a directory containing one or more *components* (logical models).
- * Each component has one or more *variants*, where each variant targets a single
- * execution provider (EP). The package manifest declares the EP name, device type,
- * and an optional compatibility string for every variant so that the runtime can
- * automatically select the best variant for the hardware and EPs available in the
- * caller's session options.
- *
- * Obtain this table from OrtApi::GetModelPackageApi(). The APIs support:
- * - creating model package options that capture EP configuration from OrtSessionOptions,
- * - loading a package context (manifest + metadata) from a package root path,
- * - querying component/variant metadata including per-variant EP information,
- * - selecting a component (which also resolves the best-matching variant),
- * - querying the selected variant's name and folder path,
- * - creating an OrtSession from the selected component context.
- *
- * Typical flow:
- * 1) Create model package options:
- *    - CreateModelPackageOptionsFromSessionOptions()
- * 2) Load package metadata:
- *    - CreateModelPackageContext()
- * 3) Query metadata (optional):
- *    - ModelPackage_GetSchemaVersion()
- *    - ModelPackage_GetComponentCount()
- *    - ModelPackage_GetComponentNames()
- *    - ModelPackage_GetVariantCount()
- *    - ModelPackage_GetVariantNames()
- *    - ModelPackage_GetVariantEpName()
- * 4) Select a component and resolve variant:
- *    - SelectComponent()
- * 5) Query selected variant info (optional):
- *    - ModelPackageComponent_GetSelectedVariantName()
- *    - ModelPackageComponent_GetSelectedVariantFolderPath()
- * 6) Create session:
- *    - CreateSession()
- *
- * Ownership:
- * - Release objects created by this API with the corresponding release methods:
- *   ReleaseModelPackageOptions(), ReleaseModelPackageContext(),
- *   ReleaseModelPackageComponentContext().
- *
- * \since Version 1.27.
- */
-struct OrtModelPackageApi {
-  /// \name OrtModelPackageOptions
-  /// @{
-
-  /** \brief Create model package options from an existing OrtSessionOptions.
-   *
-   * Captures EP configuration (registered execution providers and their devices) from
-   * the session options for use during variant selection. The resulting OrtModelPackageOptions
-   * is passed to SelectComponent() to resolve the best variant for the available EPs.
-   *
-   * \param[in] env The ORT environment.
-   * \param[in] session_options Session options containing registered EPs.
-   * \param[out] out Receives the newly created OrtModelPackageOptions. Must be released
-   *             with ReleaseModelPackageOptions().
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
-                  _In_ const OrtEnv* env,
-                  _In_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtModelPackageOptions** out);
-
-  ORT_CLASS_RELEASE(ModelPackageOptions);
-  /// @}
-  /// \name OrtModelPackageContext
-  /// @{
-
-  /** \brief Create a model package context by parsing the package at the given root path.
-   *
-   * Parses the manifest.json and component metadata from the specified directory.
-   * The returned context provides read-only access to the package structure (components,
-   * variants, EP declarations).
-   *
-   * \param[in] package_root Path to the model package root directory (containing manifest.json).
-   * \param[out] out Receives the newly created OrtModelPackageContext. Must be released
-   *             with ReleaseModelPackageContext().
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateModelPackageContext,
-                  _In_ const ORTCHAR_T* package_root,
-                  _Outptr_ OrtModelPackageContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageContext);
-
-  /** \brief Get the schema version declared in the model package manifest.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_version Receives the schema version number.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetSchemaVersion,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Out_ int64_t* out_version);
-
-  /** \brief Get the number of components in the model package.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_count Receives the component count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetComponentCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the names of all components in the model package.
-   *
-   * Returns a pointer to an array of UTF-8 component name strings. The array and its
-   * strings are owned by `ctx` and remain valid until the context is released.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_names Receives a pointer to an array of component name strings.
-   * \param[out] out_count Receives the number of elements in the array.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetComponentNames,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the number of variants for a given component.
-   *
-   * \param[in] ctx The model package context.
-   * \param[in] component_name Name of the component to query.
-   * \param[out] out_count Receives the variant count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the names of all variants for a given component.
-   *
-   * Returns a pointer to an array of UTF-8 variant name strings. The array and its
-   * strings are owned by `ctx` and remain valid until the context is released.
-   *
-   * \param[in] ctx The model package context.
-   * \param[in] component_name Name of the component to query.
-   * \param[out] out_variant_names Receives a pointer to an array of variant name strings.
-   * \param[out] out_count Receives the number of elements in the array.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantNames,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the EP name declared for a (component, variant) pair.
-   *
-   * Each variant targets a single EP. `out_ep` receives the EP name string.
-   * When the variant does not declare an EP, the returned pointer is NULL.
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Outptr_result_maybenull_ const char** out_ep);
-
-  /** \brief Select a component model and return an opaque component instance.
-   *
-   * The variant selection is also performed during this call based on the component metadata and the provided options.
-   * The returned `OrtModelPackgeComponentContext*` is independent of `context` lifetime and must be released via
-   * `ReleaseComponentInstance`.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(SelectComponent,
-                  _In_ const OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_ const OrtModelPackageOptions* options,
-                  _Outptr_ OrtModelPackageComponentContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageComponentContext);
-
-  /** \brief Get the name of the selected variant after SelectComponent has been called.
-   *
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] out_name Receives the selected variant's name string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantName,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const char** out_name);
-
-  /** \brief Get the folder path of the selected variant.
-   *
-   * Returns the resolved absolute path to the variant's directory on disk.
-   * The string is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] folder_path Receives the variant folder path string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const ORTCHAR_T** folder_path);
-
-  /// @}
-  /** \brief Create an OrtSession for a selected file within a component model variant.
-   *
-   * The chosen variant (and thus its EP selection) is determined by `context`, which
-   * was built from an OrtSessionOptions via CreateModelPackageOptionsFromSessionOptions.
-   *
-   * Session options precedence:
-   *   1. session_options == NULL (default path):
-   *      ORT uses the OrtSessionOptions that was captured when `context` was created.
-   *      Any variant-specific session and provider options declared in the package
-   *      metadata are merged on top.
-   *
-   *   2. session_options != NULL (advanced path):
-   *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
-   *      session and provider options from the package metadata are NOT applied.
-   *      Use this when custom EP setup is required (e.g., shared CUDA streams,
-   *      shared QNN EP contexts, custom allocators).
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateSession,
-                  _In_ const OrtEnv* env,
-                  _In_ OrtModelPackageComponentContext* context,
-                  _In_opt_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtSession** session);
-
-  // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
 
 /*

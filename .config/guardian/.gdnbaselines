@@ -1,7 +1,5 @@
 {
-  "properties": {
-    "helpUri": "https://eng.ms/docs/microsoft-security/security/azure-security/cloudai-security-fundamentals-engineering/security-integration/guardian-wiki/microsoft-guardian/general/baselines"
-  },
+  "properties": {},
   "version": "1.0.0",
   "baselines": {
     "default": {
