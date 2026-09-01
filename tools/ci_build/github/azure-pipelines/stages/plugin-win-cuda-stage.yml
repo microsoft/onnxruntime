@@ -168,11 +168,15 @@ stages:
           displayName: 'Add CUDA to PATH'
 
       - ${{ else }}:
-        # The win-arm64 agents do not have the Azure CLI installed, so use the
-        # AzCopy executable installed above.
-        - powershell: |
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/win-arm64/v${{ parameters.arm64_cuda_version }} "$(Agent.TempDirectory)"
+        - task: AzureCLI@2
           displayName: 'Download CUDA SDK win-arm64 v${{ parameters.arm64_cuda_version }}'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/win-arm64/v${{ parameters.arm64_cuda_version }} "$(Agent.TempDirectory)"
 
         - powershell: |
             Write-Host "Adding CUDA to PATH"
@@ -194,12 +198,16 @@ stages:
               azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$(cuda13_cudnn_folder) "$(Agent.TempDirectory)"
 
       # Download cuDNN for win-arm64 (hosted under cudnn_sdk/win-arm64/<folder>).
-      # Uses the AzCopy executable installed above because the win-arm64 agents do not
-      # have the Azure CLI installed.
       - ${{ if eq(parameters.arch, 'arm64') }}:
-        - powershell: |
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/win-arm64/${{ parameters.arm64_cudnn_folder }} "$(Agent.TempDirectory)"
+        - task: AzureCLI@2
           displayName: 'Download cuDNN for win-arm64 (${{ parameters.arm64_cudnn_folder }})'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/win-arm64/${{ parameters.arm64_cudnn_folder }} "$(Agent.TempDirectory)"
 
       # CUDA 12.x build (no separate cuDNN). win-x64 only — win-arm64 always uses CUDA 13.x.
       - ${{ if and(ne(parameters.arch, 'arm64'), ne(parameters.cuda_version, '13.0')) }}:
