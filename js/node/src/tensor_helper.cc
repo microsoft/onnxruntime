@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "tensor_helper.h"
 #include "inference_session_wrap.h"
 
@@ -121,7 +122,9 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 };
 
 // currently only support tensor
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info, OrtMemoryInfo* webgpu_memory_info) {
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
+                               OrtMemoryInfo* webgpu_memory_info, bool copy_cpu_data,
+                               std::vector<OrtValueOwner>* value_owners) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -220,17 +223,33 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
       size_t bufferByteLength = tensorDataTypedArray.ByteLength();
+      if (copy_cpu_data) {
+        Ort::AllocatorWithDefaultOptions allocator;
+        auto copiedValue = Ort::Value::CreateTensor(allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+        const size_t tensorByteLength = copiedValue.GetTensorSizeInBytes();
+        ORT_NAPI_THROW_RANGEERROR_IF(bufferByteLength < tensorByteLength, env,
+                                     "Tensor.data is smaller than the tensor dimensions require.");
+        if (tensorByteLength > 0) {
+          memcpy(copiedValue.GetTensorMutableRawData(), buffer + bufferByteOffset, tensorByteLength);
+        }
+        return copiedValue;
+      }
       return Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
                                       dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
     } else {
       ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_GPU_BUFFER, env, "Tensor.location must be 'gpu-buffer' for IO binding.");
 
       auto gpuBufferValue = tensorObject.Get("gpuBuffer");
-      // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. we assume it is an external object (bind the OrtValue pointer).
+      // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. It is an External holding the OrtValue owner.
       ORT_NAPI_THROW_TYPEERROR_IF(!gpuBufferValue.IsExternal(), env, "Tensor.gpuBuffer must be an external object.");
-      Ort::Value dataValue(gpuBufferValue.As<Napi::External<OrtValue>>().Data());
+      auto* valueOwner = gpuBufferValue.As<Napi::External<OrtValueOwner>>().Data();
+      ORT_NAPI_THROW_ERROR_IF(valueOwner == nullptr || !*valueOwner, env, "Tensor.gpuBuffer has been disposed.");
+      Ort::Value dataValue(valueOwner->get());
       void* gpuBuffer = dataValue.GetTensorMutableRawData();
       dataValue.release();
+      if (value_owners != nullptr) {
+        value_owners->push_back(*valueOwner);
+      }
 
       size_t dataByteLength = DATA_TYPE_ELEMENT_SIZE_MAP[elemType] * elementSize;
       return Ort::Value::CreateTensor(webgpu_memory_info, gpuBuffer, dataByteLength, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
@@ -306,28 +325,57 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                                .Get("fromGpuBuffer")
                                                .As<Napi::Function>();
       OrtValue* underlyingOrtValue = value.release();
+      auto valueOwner = std::make_unique<OrtValueOwner>(underlyingOrtValue, [](OrtValue* value) {
+        if (OrtSingletonData::GetOrtObjects()) {
+          Ort::GetApi().ReleaseValue(value);
+        }
+      });
 
       auto options = Napi::Object::New(env);
       options.Set("dataType", type);
       options.Set("dims", dims);
-      options.Set("dispose", Napi::Function::New(
-                                 env, [](const Napi::CallbackInfo& info) {
-                                   Ort::GetApi().ReleaseValue(reinterpret_cast<OrtValue*>(info.Data()));
-                                   return info.Env().Undefined();
-                                 },
-                                 "dispose", underlyingOrtValue));
+      options.Set("dispose", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+                    auto tensor = info.This().As<Napi::Object>();
+                    auto gpuBuffer = tensor.Get("gpuBuffer");
+                    if (gpuBuffer.IsExternal()) {
+                      auto* valueOwner = gpuBuffer.As<Napi::External<OrtValueOwner>>().Data();
+                      if (valueOwner != nullptr) {
+                        valueOwner->reset();
+                      }
+                    }
+                  }));
       options.Set("download", Napi::Function::New(
                                   env, [](const Napi::CallbackInfo& info) {
                                     NAPI_THROW("not implemented");
                                   },
-                                  "download", underlyingOrtValue));
+                                  "download"));
 
-      return scope.Escape(tensorFromGpuBuffer.Call({Napi::External<OrtValue>::New(env, underlyingOrtValue), options}));
+      auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.get(),
+                                                         [](Napi::Env, OrtValueOwner* value) { delete value; });
+      valueOwner.release();
+      return scope.Escape(tensorFromGpuBuffer.Call({external, options}));
     } else {
-      // TODO: optimize memory
-      auto arrayBuffer = Napi::ArrayBuffer::New(env, size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
-      if (size > 0) {
-        memcpy(arrayBuffer.Data(), value.GetTensorRawData(), size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
+      const size_t byteLength = value.GetTensorSizeInBytes();
+      Napi::ArrayBuffer arrayBuffer;
+      if (byteLength > 0 && !OrtInstanceData::IsElectron(env)) {
+        // Let the JS ArrayBuffer own the OrtValue so the output buffer is not copied.
+        OrtValue* underlyingValue = value;
+        arrayBuffer = Napi::ArrayBuffer::New(
+            env, value.GetTensorMutableRawData(), byteLength,
+            [](Napi::Env, void*, OrtValue* value) {
+              // The environment cleanup hook may run before N-API finalizers during process shutdown.
+              if (OrtSingletonData::GetOrtObjects()) {
+                Ort::GetApi().ReleaseValue(value);
+              }
+            },
+            underlyingValue);
+        value.release();
+      } else {
+        // Electron's V8 Memory Cage rejects external ArrayBuffers. Copy into V8-owned memory there.
+        arrayBuffer = Napi::ArrayBuffer::New(env, byteLength);
+        if (byteLength > 0) {
+          memcpy(arrayBuffer.Data(), value.GetTensorRawData(), byteLength);
+        }
       }
       napi_value typedArrayData;
       napi_status status =

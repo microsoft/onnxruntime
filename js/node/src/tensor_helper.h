@@ -3,13 +3,18 @@
 
 #pragma once
 
+#include <memory>
 #include <napi.h>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
 
+using OrtValueOwner = std::shared_ptr<OrtValue>;
+
 // convert a Javascript OnnxValue object to an OrtValue object
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info, OrtMemoryInfo* webgpu_memory_info);
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
+                               OrtMemoryInfo* webgpu_memory_info, bool copy_cpu_data = false,
+                               std::vector<OrtValueOwner>* value_owners = nullptr);
 
 // convert an OrtValue object to a Javascript OnnxValue object
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value);

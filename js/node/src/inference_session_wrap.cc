@@ -188,9 +188,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     for (const auto& name : session.inputNames_) {
       if (feed.Has(name)) {
         auto value = feed.Get(name);
-        PinTensorAndKeepDataAlive(keep_alive, value);
         input_names_.push_back(name);
-        input_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_));
+        input_values_.push_back(
+            NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_, true, &gpu_value_owners_));
+        KeepTensorAndDataAlive(keep_alive, value);
       }
     }
 
@@ -198,25 +199,20 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (fetch.Has(name)) {
         auto value = fetch.Get(name);
         output_names_.push_back(name);
+        reuse_output_.push_back(!value.IsNull());
         if (value.IsNull()) {
           output_values_.emplace_back(nullptr);
+          output_js_value_indices_.push_back(0);
         } else {
-          PinTensorAndKeepDataAlive(keep_alive, value);
-          output_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_));
+          output_values_.push_back(
+              NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_, false, &gpu_value_owners_));
+          output_js_value_indices_.push_back(KeepTensorAndDataAlive(keep_alive, value));
         }
       }
     }
 
     preferred_output_locations_ = session.preferredOutputLocations_;
     ParseRunOptions(options, run_options_);
-  }
-
-  ~RunAsyncWorker() override {
-    try {
-      UnpinTensors();
-    } catch (...) {
-      // Do not let a user-mutated Tensor object abort worker cleanup.
-    }
   }
 
   void Execute() override {
@@ -250,7 +246,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       }
 
       for (size_t i = 0; i < output_names_.size(); ++i) {
-        if (preferred_output_locations_[i] == DATA_LOCATION_GPU_BUFFER) {
+        if (reuse_output_[i]) {
+          io_binding_->BindOutput(output_names_cstr[i], output_values_[i]);
+        } else if (preferred_output_locations_[i] == DATA_LOCATION_GPU_BUFFER) {
           io_binding_->BindOutput(output_names_cstr[i], gpu_buffer_memory_info_);
         } else {
           io_binding_->BindOutput(output_names_cstr[i], cpu_memory_info_);
@@ -273,8 +271,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     Napi::HandleScope scope(env_);
     try {
       auto result = Napi::Object::New(env_);
+      auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
       for (size_t i = 0; i < output_values_.size(); ++i) {
-        result.Set(output_names_[i], OrtValueToNapiValue(env_, std::move(output_values_[i])));
+        result.Set(output_names_[i], reuse_output_[i] ? keep_alive.Get(output_js_value_indices_[i])
+                                                      : OrtValueToNapiValue(env_, std::move(output_values_[i])));
       }
       Complete();
       deferred_.Resolve(result);
@@ -296,66 +296,17 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   }
 
  private:
-  void PinTensorAndKeepDataAlive(Napi::Array& keep_alive, const Napi::Value& value) {
-    // Keep both the Tensor and its backing resource alive, and prevent JS from disposing or accessing it
-    // while ORT may still be using the underlying buffer.
-    keep_alive.Set(keep_alive.Length(), value);
-
+  uint32_t KeepTensorAndDataAlive(Napi::Array& keep_alive, const Napi::Value& value) {
+    const auto tensor_index = keep_alive.Length();
+    keep_alive.Set(tensor_index, value);
     if (!value.IsObject()) {
-      return;
+      return tensor_index;
     }
 
     auto tensor = value.As<Napi::Object>();
-    const auto lease_symbol = Napi::Symbol::For(env_, "onnxruntime.node.async-inference-lease");
-    const auto existing_lease = tensor.Get(lease_symbol);
-    const auto dispose = tensor.Get("dispose");
-    if (!existing_lease.IsObject() && !dispose.IsFunction()) {
-      return;
-    }
-
-    Napi::Object lease;
-    if (existing_lease.IsObject()) {
-      lease = existing_lease.As<Napi::Object>();
-      const auto count = lease.Get("count").As<Napi::Number>().Uint32Value();
-      lease.Set("count", count + 1);
-    } else {
-      const auto get_data = tensor.Get("getData");
-      const auto disposer = tensor.Get("disposer");
-      const auto downloader = tensor.Get("downloader");
-      lease = Napi::Object::New(env_);
-      lease.Set("dispose", dispose);
-      lease.Set("disposeOwn", tensor.HasOwnProperty("dispose"));
-      lease.Set("getData", get_data);
-      lease.Set("getDataOwn", tensor.HasOwnProperty("getData"));
-      lease.Set("disposer", disposer);
-      lease.Set("disposerOwn", tensor.HasOwnProperty("disposer"));
-      lease.Set("downloader", downloader);
-      lease.Set("downloaderOwn", tensor.HasOwnProperty("downloader"));
-      lease.Set("count", uint32_t(1));
-      tensor.Set(lease_symbol, lease);
-
-      const auto guard = CreateTensorUseGuard(env_);
-      tensor.Set("dispose", guard);
-      if (get_data.IsFunction()) {
-        tensor.Set("getData", guard);
-      }
-      // Tensor.prototype.dispose() and Tensor.prototype.getData() access these implementation fields directly.
-      tensor.Set("disposer", guard);
-      if (downloader.IsFunction()) {
-        tensor.Set("downloader", guard);
-      }
-    }
-
-    const auto record_index = keep_alive.Length();
-    auto record = Napi::Array::New(env_, 2);
-    record.Set(uint32_t(0), tensor);
-    record.Set(uint32_t(1), lease);
-    keep_alive.Set(record_index, record);
-    pinned_tensor_indices_.push_back(record_index);
-
     const auto location = tensor.Get("location");
     if (!location.IsString()) {
-      return;
+      return tensor_index;
     }
 
     const auto location_string = location.As<Napi::String>().Utf8Value();
@@ -364,57 +315,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     } else if (location_string == "gpu-buffer") {
       keep_alive.Set(keep_alive.Length(), tensor.Get("gpuBuffer"));
     }
-  }
-
-  void UnpinTensors() {
-    if (pinned_tensor_indices_.empty()) {
-      return;
-    }
-
-    auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
-    const auto lease_symbol = Napi::Symbol::For(env_, "onnxruntime.node.async-inference-lease");
-    for (const auto record_index : pinned_tensor_indices_) {
-      const auto record = keep_alive.Get(record_index).As<Napi::Array>();
-      auto tensor = record.Get(uint32_t(0)).As<Napi::Object>();
-      auto lease = record.Get(uint32_t(1)).As<Napi::Object>();
-      const auto count = lease.Get("count").As<Napi::Number>().Uint32Value();
-      if (count > 1) {
-        lease.Set("count", count - 1);
-        continue;
-      }
-
-      if (lease.Get("disposeOwn").As<Napi::Boolean>().Value()) {
-        tensor.Set("dispose", lease.Get("dispose"));
-      } else {
-        tensor.Delete("dispose");
-      }
-
-      if (lease.Get("getDataOwn").As<Napi::Boolean>().Value()) {
-        tensor.Set("getData", lease.Get("getData"));
-      } else if (lease.Get("getData").IsFunction()) {
-        tensor.Delete("getData");
-      }
-
-      if (lease.Get("disposerOwn").As<Napi::Boolean>().Value()) {
-        tensor.Set("disposer", lease.Get("disposer"));
-      } else {
-        tensor.Delete("disposer");
-      }
-
-      if (lease.Get("downloaderOwn").As<Napi::Boolean>().Value()) {
-        tensor.Set("downloader", lease.Get("downloader"));
-      } else if (lease.Get("downloader").IsFunction()) {
-        tensor.Delete("downloader");
-      }
-      tensor.Delete(lease_symbol);
-    }
-    pinned_tensor_indices_.clear();
-  }
-
-  static Napi::Function CreateTensorUseGuard(Napi::Env env) {
-    return Napi::Function::New(env, [](const Napi::CallbackInfo& info) -> Napi::Value {
-      ORT_NAPI_THROW_ERROR(info.Env(), "Tensor is being used by an asynchronous inference.");
-    });
+    return tensor_index;
   }
 
   void Complete() {
@@ -423,11 +324,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     }
     completed_ = true;
 
-    try {
-      UnpinTensors();
-    } catch (...) {
-      // The run must still release the session even if Tensor restoration fails.
-    }
     session_->active_runs_.fetch_sub(1, std::memory_order_release);
   }
 
@@ -439,12 +335,14 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   Ort::MemoryInfo cpu_memory_info_;
   Ort::MemoryInfo gpu_buffer_memory_info_;
   Ort::RunOptions run_options_;
+  std::vector<OrtValueOwner> gpu_value_owners_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> input_values_;
   std::vector<std::string> output_names_;
   std::vector<Ort::Value> output_values_;
+  std::vector<bool> reuse_output_;
+  std::vector<uint32_t> output_js_value_indices_;
   std::vector<int> preferred_output_locations_;
-  std::vector<uint32_t> pinned_tensor_indices_;
   std::unique_ptr<Ort::IoBinding> io_binding_;
   bool completed_{false};
 };

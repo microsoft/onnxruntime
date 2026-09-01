@@ -177,8 +177,7 @@ describe('UnitTests - InferenceSession.run()', () => {
     const result = await session!.run({ data_0: input0 }, { softmaxout_1: null });
     assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
-  // TODO: enable after buffer reuse is implemented
-  it.skip('run() - fetches object (pre-allocated)', async () => {
+  it('run() - fetches object (pre-allocated)', async () => {
     const preAllocatedOutputBuffer = new Float32Array(expectedOutput0.size);
     const result = await session!.run(
       { data_0: input0 },
@@ -485,6 +484,7 @@ describe('UnitTests - InferenceSession.RunOptions', () => {
         },
         { name: 'TypeError', message: /runOptions.terminate/ },
       );
+      assert.deepStrictEqual(Array.from(input0.data), [1, 2, 3, 4, 5]);
     });
 
     it('terminate = false', async () => {
@@ -493,12 +493,9 @@ describe('UnitTests - InferenceSession.RunOptions', () => {
     });
 
     it('terminate = true', async () => {
-      await assert.rejects(
-        async () => {
-          await sessionAny.run({ input: input0 }, { terminate: true });
-        },
-        /terminate flag/,
-      );
+      await assert.rejects(async () => {
+        await sessionAny.run({ input: input0 }, { terminate: true });
+      }, /terminate flag/);
     });
   });
 });
