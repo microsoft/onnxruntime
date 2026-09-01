@@ -166,6 +166,7 @@ class MlasLayerNormTest : public MlasTestBase {
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
     return simplified ? 16 : 8;
 #else
+    (void)simplified;
     return 1;
 #endif
   }
