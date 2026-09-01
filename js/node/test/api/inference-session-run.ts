@@ -26,14 +26,32 @@ describe('API Tests - InferenceSession.run()', async () => {
   it('does not release the session or input tensor while a run is pending', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const boundDispose = input.dispose.bind(input);
+    const prototypeDispose = (Object.getPrototypeOf(input) as { dispose: () => void }).dispose;
     const run = localSession.run({ input });
 
     assert.throws(() => input.dispose(), /asynchronous inference/);
+    assert.throws(boundDispose, /asynchronous inference/);
+    assert.throws(() => prototypeDispose.call(input), /asynchronous inference/);
     assert.throws(() => input.getData(), /asynchronous inference/);
     await assert.rejects(localSession.release(), /Cannot dispose session while inference is running/);
 
     await run;
     input.dispose();
+    await localSession.release();
+  });
+
+  it('keeps a Tensor protected until overlapping runs complete', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    for (let i = 0; i < 10; ++i) {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const firstRun = localSession.run({ input });
+      const secondRun = localSession.run({ input });
+
+      assert.throws(() => input.dispose(), /asynchronous inference/);
+      await Promise.all([firstRun, secondRun]);
+      input.dispose();
+    }
     await localSession.release();
   });
 });

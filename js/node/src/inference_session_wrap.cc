@@ -306,33 +306,52 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     }
 
     auto tensor = value.As<Napi::Object>();
+    const auto lease_symbol = Napi::Symbol::For(env_, "onnxruntime.node.async-inference-lease");
+    const auto existing_lease = tensor.Get(lease_symbol);
     const auto dispose = tensor.Get("dispose");
-    if (dispose.IsFunction()) {
-      for (const auto record_index : pinned_tensor_indices_) {
-        const auto record = keep_alive.Get(record_index).As<Napi::Array>();
-        if (record.Get(uint32_t(0)).StrictEquals(tensor)) {
-          return;
-        }
-      }
+    if (!existing_lease.IsObject() && !dispose.IsFunction()) {
+      return;
+    }
 
-      const auto record_index = keep_alive.Length();
+    Napi::Object lease;
+    if (existing_lease.IsObject()) {
+      lease = existing_lease.As<Napi::Object>();
+      const auto count = lease.Get("count").As<Napi::Number>().Uint32Value();
+      lease.Set("count", count + 1);
+    } else {
       const auto get_data = tensor.Get("getData");
-      auto record = Napi::Array::New(env_, 5);
-      record.Set(uint32_t(0), tensor);
-      record.Set(uint32_t(1), dispose);
-      record.Set(uint32_t(2), tensor.HasOwnProperty("dispose"));
-      record.Set(uint32_t(3), get_data);
-      record.Set(uint32_t(4), tensor.HasOwnProperty("getData"));
-
-      keep_alive.Set(record_index, record);
-      pinned_tensor_indices_.push_back(record_index);
+      const auto disposer = tensor.Get("disposer");
+      const auto downloader = tensor.Get("downloader");
+      lease = Napi::Object::New(env_);
+      lease.Set("dispose", dispose);
+      lease.Set("disposeOwn", tensor.HasOwnProperty("dispose"));
+      lease.Set("getData", get_data);
+      lease.Set("getDataOwn", tensor.HasOwnProperty("getData"));
+      lease.Set("disposer", disposer);
+      lease.Set("disposerOwn", tensor.HasOwnProperty("disposer"));
+      lease.Set("downloader", downloader);
+      lease.Set("downloaderOwn", tensor.HasOwnProperty("downloader"));
+      lease.Set("count", uint32_t(1));
+      tensor.Set(lease_symbol, lease);
 
       const auto guard = CreateTensorUseGuard(env_);
       tensor.Set("dispose", guard);
       if (get_data.IsFunction()) {
         tensor.Set("getData", guard);
       }
+      // Tensor.prototype.dispose() and Tensor.prototype.getData() access these implementation fields directly.
+      tensor.Set("disposer", guard);
+      if (downloader.IsFunction()) {
+        tensor.Set("downloader", guard);
+      }
     }
+
+    const auto record_index = keep_alive.Length();
+    auto record = Napi::Array::New(env_, 2);
+    record.Set(uint32_t(0), tensor);
+    record.Set(uint32_t(1), lease);
+    keep_alive.Set(record_index, record);
+    pinned_tensor_indices_.push_back(record_index);
 
     const auto location = tensor.Get("location");
     if (!location.IsString()) {
@@ -353,21 +372,41 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     }
 
     auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
+    const auto lease_symbol = Napi::Symbol::For(env_, "onnxruntime.node.async-inference-lease");
     for (const auto record_index : pinned_tensor_indices_) {
       const auto record = keep_alive.Get(record_index).As<Napi::Array>();
       auto tensor = record.Get(uint32_t(0)).As<Napi::Object>();
+      auto lease = record.Get(uint32_t(1)).As<Napi::Object>();
+      const auto count = lease.Get("count").As<Napi::Number>().Uint32Value();
+      if (count > 1) {
+        lease.Set("count", count - 1);
+        continue;
+      }
 
-      if (record.Get(uint32_t(2)).As<Napi::Boolean>().Value()) {
-        tensor.Set("dispose", record.Get(uint32_t(1)));
+      if (lease.Get("disposeOwn").As<Napi::Boolean>().Value()) {
+        tensor.Set("dispose", lease.Get("dispose"));
       } else {
         tensor.Delete("dispose");
       }
 
-      if (record.Get(uint32_t(4)).As<Napi::Boolean>().Value()) {
-        tensor.Set("getData", record.Get(uint32_t(3)));
-      } else if (record.Get(uint32_t(3)).IsFunction()) {
+      if (lease.Get("getDataOwn").As<Napi::Boolean>().Value()) {
+        tensor.Set("getData", lease.Get("getData"));
+      } else if (lease.Get("getData").IsFunction()) {
         tensor.Delete("getData");
       }
+
+      if (lease.Get("disposerOwn").As<Napi::Boolean>().Value()) {
+        tensor.Set("disposer", lease.Get("disposer"));
+      } else {
+        tensor.Delete("disposer");
+      }
+
+      if (lease.Get("downloaderOwn").As<Napi::Boolean>().Value()) {
+        tensor.Set("downloader", lease.Get("downloader"));
+      } else if (lease.Get("downloader").IsFunction()) {
+        tensor.Delete("downloader");
+      }
+      tensor.Delete(lease_symbol);
     }
     pinned_tensor_indices_.clear();
   }
