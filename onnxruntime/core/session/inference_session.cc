@@ -1645,6 +1645,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // A minimal build reaches PartitionOrtFormatModel() instead, which rejects the option there.
   const std::string gqa_value_layout =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGqaValueLayout, kGqaValueLayoutBNSH);
+  GqaValueLayoutBoundaries converted_gqa_value_boundaries;
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     // An unrecognized value is the caller passing a bad argument, so report INVALID_ARGUMENT. A
     // recognized value that this particular model cannot satisfy is reported as FAIL by the
@@ -1657,7 +1658,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                           gqa_value_layout, "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS, "'."));
     }
 
-    GqaValueLayoutTransformer gqa_value_layout_transformer{};
+    GqaValueLayoutTransformer gqa_value_layout_transformer{&converted_gqa_value_boundaries};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout_transformer, *session_logger_, graph));
   }
 
@@ -1751,8 +1752,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // an EP that prefers BNHS is expected to fuse the Transpose nodes inserted above into its GQA
   // implementation. Report the ones that survived so the resulting cost is diagnosable.
-  if (gqa_value_layout != kGqaValueLayoutBNSH) {
-    LogUnfusedGqaValueLayoutTransposes(graph, *session_logger_);
+  //
+  // Skipped when saving an ORT format model: that runs the partitioner in kAssignOnly mode, which
+  // deliberately leaves the original nodes in place instead of compiling or fusing them, so every
+  // boundary would be reported as unfused even though the EP will fuse the pattern when the saved
+  // model is loaded.
+  if (!saving_model_in_ort_format && !converted_gqa_value_boundaries.Empty()) {
+    ReportUnfusedGqaValueLayoutTransposes(graph, converted_gqa_value_boundaries, *session_logger_);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -109,15 +109,20 @@ New files `onnxruntime/core/optimizer/gqa_value_layout_transformer.{h,cc}`. Both
 ```cpp
 class GqaValueLayoutTransformer : public GraphTransformer {
  public:
-  GqaValueLayoutTransformer() noexcept
-      : GraphTransformer("GqaValueLayoutTransformer") {}
+  // converted_boundaries collects the graph inputs / outputs this run converted, for the
+  // post-partition diagnostic in 4.2.
+  explicit GqaValueLayoutTransformer(GqaValueLayoutBoundaries* converted_boundaries = nullptr) noexcept
+      : GraphTransformer("GqaValueLayoutTransformer"), converted_boundaries_(converted_boundaries) {}
 
  private:
   Status ApplyImpl(Graph&, bool& modified, int graph_level, const logging::Logger&) const override;
+
+  GqaValueLayoutBoundaries* const converted_boundaries_;
 };
 ```
 
-It is constructed only when the layout is BNHS, so it needs no configuration.
+It is constructed only when the layout is BNHS, so it needs no configuration beyond the boundary
+collector.
 
 `ShouldOnlyApplyOnce()` is deliberately **not** overridden. Re-running has to be safe regardless,
 because a model saved with `session.optimized_model_filepath` already carries the transform and may
@@ -139,7 +144,7 @@ ApplyImpl(graph, modified, graph_level, logger):
 
   // pass 2: rewire. TransformNode() has no failure modes.
   for (node_index, plan) in nodes_to_transform:
-    TransformNode(graph, *graph.GetNode(node_index), plan)
+    TransformNode(graph, *graph.GetNode(node_index), plan, converted_boundaries_)
     modified = true
 
 
@@ -339,23 +344,38 @@ This placement is deliberate and buys two properties:
 Nothing is registered in `graph_transformer_utils.cc`, and no `GenerateTransformersForMinimalBuild`
 counterpart is needed.
 
-**4.2 Fusion diagnostic.** After `partitioner.Partition`, when the key is BNHS, walk the GQA nodes
-and compare each node's `GetExecutionProviderType()` against that of its flanking Transposes. If
-they differ, log at **WARNING**:
+**4.2 Fusion diagnostic.** After `partitioner.Partition`,
+`ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, logger)` logs a WARNING for each converted
+boundary whose Transpose survived, naming the boundary tensor and the EP that left it behind. This is
+the difference between a diagnosable perf cliff and an invisible one.
 
-> GQA node '\<name\>': Value-layout Transpose nodes were not claimed by EP '\<ep\>'. The BNHS cache
-> will be transposed at runtime — expect significant per-token cost and loss of past/present buffer
-> sharing.
+The check is anchored on the **boundaries**, not on the GQA nodes. `GqaValueLayoutTransformer` records
+the graph input and output names it converted into a `GqaValueLayoutBoundaries`, which the caller then
+passes here; the check asks whether the graph input's consumer, or the graph output's producer, is
+still a value-layout Transpose. Graph input and output names are stable across partitioning, which is
+what makes them a usable anchor.
 
-This is the difference between a diagnosable perf cliff and an invisible one.
+Searching from the GQA node instead would miss the case that matters most. A compiling EP may claim
+only the GQA node, so `GraphPartitioner` replaces it with a fused node while leaving both Transposes
+in place — both full-cache copies still execute, but there is no GQA node left to search from and the
+old implementation reported nothing. Conversely, when the EP fuses the whole sequence, the boundary
+connects straight to the fused node and nothing is reported, which is correct.
+
+**Skipped when saving an ORT format model.** That path runs the partitioner in
+`GraphPartitioner::Mode::kAssignOnly`, which deliberately leaves the original nodes in place rather
+than compiling or fusing them, so every boundary would be reported as unfused even though the EP will
+fuse the pattern when the saved model is loaded.
 
 ### 4.3 Minimal builds
 
 `gqa_value_layout_transformer.cc` is not in the minimal or extended-minimal source lists in
 `cmake/onnxruntime_optimizer.cmake`, so it is not compiled there. That is safe because every
-reference to `GqaValueLayoutTransformer` and `LogUnfusedGqaValueLayoutTransposes` sits inside
+reference to `GqaValueLayoutTransformer` and `ReportUnfusedGqaValueLayoutTransposes` sits inside
 `TransformGraph`, which is itself inside a `#if !defined(ORT_MINIMAL_BUILD)` block, and
 `adjust_global_compile_flags.cmake` defines `ORT_MINIMAL_BUILD` for extended minimal builds as well.
+That guard opens well above `TransformGraph` and closes well below it, with no intervening `#else`, so
+the whole function -- including both GQA blocks -- is excluded. The declaration in
+`inference_session.h` is inside the same guard, which it has to be for the two to agree at all.
 A minimal build reaches the ORT format path instead, which is handled in section 5.
 
 The value constants `kGqaValueLayoutBNSH` / `kGqaValueLayoutBNHS` live in the transformer header and
@@ -413,6 +433,9 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - An already-converted model is left alone, and an already-converted **4-bit** model is
   still rejected. The second case is what pins down the check order in 3.5; verified to fail when
   `ValidateCacheFormat` runs after the layout-state switch.
+- The post-partition diagnostic (4.2) reports both boundaries when the Transposes survive with no GQA
+  node present -- the compiling-EP case -- and reports nothing when they were fused away. The fixture
+  asserts it contains no GQA node, so it cannot silently stop covering the regression.
 - The graph is left untouched when validation fails (section 3.6). Two independent GQA nodes, one
   convertible and one not, asserted for both build orders — `GetNodesInTopologicalOrder()` does not
   follow insertion order for independent nodes, and only the order that presents the convertible node

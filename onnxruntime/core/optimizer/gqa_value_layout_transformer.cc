@@ -130,8 +130,10 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
   // Graph::Resolve on the initializer/NodeArg mismatch or, when the feed is omitted, hand the
   // default BNSH buffer to a Transpose that reads it as BNHS.
   ORT_RETURN_IF(IsOverridableInitializer(graph, arg),
-                "GroupQueryAttention node '", DescribeNode(node), "' reads past_value from an overridable "
-                "initializer ('", arg->Name(), "'), which the '", kOrtSessionOptionsGqaValueLayout,
+                "GroupQueryAttention node '", DescribeNode(node),
+                "' reads past_value from an overridable "
+                "initializer ('",
+                arg->Name(), "'), which the '", kOrtSessionOptionsGqaValueLayout,
                 "' option cannot convert: the initializer data would stay BNSH. Remove the initializer so the "
                 "input is supplied by the application, or transpose it to BNHS when producing the model.");
 
@@ -319,7 +321,8 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
 // Rewires one validated node according to its plan. Has no failure modes: ClassifyNode() has already
 // established every precondition, which is what lets the caller validate the whole graph before
 // mutating any of it.
-void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan) {
+void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan,
+                   GqaValueLayoutBoundaries* converted_boundaries) {
   if (plan.convert_past_value) {
     // The graph input keeps its name and identity but now declares BNHS. A new NodeArg carries the
     // BNSH result of the Transpose into the GQA node, inheriting the original (BNSH) type/shape.
@@ -335,6 +338,10 @@ void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan) {
 
     graph_utils::ReplaceNodeInput(node, static_cast<int>(kPastValueInputIndex), bnsh_arg);
     SwapLastTwoDims(*boundary_arg);
+
+    if (converted_boundaries != nullptr) {
+      converted_boundaries->past_value_inputs.push_back(boundary_arg->Name());
+    }
   }
 
   if (plan.convert_present_value) {
@@ -355,6 +362,10 @@ void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan) {
                             *boundary_arg);
 
     SwapLastTwoDims(*boundary_arg);
+
+    if (converted_boundaries != nullptr) {
+      converted_boundaries->present_value_outputs.push_back(boundary_arg->Name());
+    }
   }
 }
 
@@ -406,7 +417,7 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
     ORT_RETURN_IF(node_ptr == nullptr, "GroupQueryAttention node ", node_index,
                   " disappeared between validation and transformation.");
 
-    TransformNode(graph, *node_ptr, plan);
+    TransformNode(graph, *node_ptr, plan, converted_boundaries_);
     modified = true;
 
     LOGS(logger, INFO) << "Applied the BNHS Value layout to GroupQueryAttention node '"
@@ -416,40 +427,43 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
   return Status::OK();
 }
 
-void LogUnfusedGqaValueLayoutTransposes(const Graph& graph, const logging::Logger& logger) {
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() != "GroupQueryAttention" || node.Domain() != kMSDomain) {
-      continue;
+InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& graph,
+                                                                 const GqaValueLayoutBoundaries& boundaries,
+                                                                 const logging::Logger& logger) {
+  InlinedVector<std::string> unfused;
+
+  // Anchored on the boundary rather than on the GQA node: a compiling EP may fuse the whole
+  // Transpose -> GQA -> Transpose sequence (in which case the boundary now connects straight to the
+  // fused node and there is nothing to report), or claim only the GQA node and leave the Transposes
+  // behind (in which case both full-cache copies still run and there is no GQA node to search from).
+  const auto report = [&](const std::string& boundary_name, const Node* transpose, const char* operand) {
+    if (transpose == nullptr || !IsValueLayoutTranspose(*transpose)) {
+      return;  // absorbed by the provider, or never a Transpose to begin with
     }
 
-    // A provider that fused the sequence has already replaced these nodes, so anything still here
-    // will run as a real transpose of the whole Value cache.
-    bool past_value_transpose_remains = false;
-    if (HasInput(node, kPastValueInputIndex)) {
-      const Node* producer = graph.GetProducerNode(node.InputDefs()[kPastValueInputIndex]->Name());
-      past_value_transpose_remains = producer != nullptr && IsValueLayoutTranspose(*producer);
-    }
+    const std::string& ep = transpose->GetExecutionProviderType();
+    LOGS(logger, WARNING) << "The Value-layout Transpose for the " << operand << " boundary '" << boundary_name
+                          << "' was not fused by EP '" << (ep.empty() ? "<unassigned>" : ep) << "'. The BNHS Value "
+                          << "cache will be transposed at runtime: expect a full copy of the cache per step and no "
+                          << "past/present buffer sharing. Either select the '" << kGqaValueLayoutBNSH
+                          << "' layout for '" << kOrtSessionOptionsGqaValueLayout << "', or use an EP that reports '"
+                          << kGqaValueLayoutBNHS << "' for '" << kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout
+                          << "'.";
+    unfused.push_back(boundary_name);
+  };
 
-    bool present_value_transpose_remains = false;
-    if (HasOutput(node, kPresentValueOutputIndex)) {
-      const auto consumers = graph.GetConsumerNodes(node.OutputDefs()[kPresentValueOutputIndex]->Name());
-      present_value_transpose_remains = consumers.size() == 1 && consumers[0] != nullptr &&
-                                        IsValueLayoutTranspose(*consumers[0]);
-    }
-
-    if (!past_value_transpose_remains && !present_value_transpose_remains) {
-      continue;
-    }
-
-    const std::string& ep = node.GetExecutionProviderType();
-    LOGS(logger, WARNING) << "GroupQueryAttention node '" << DescribeNode(node) << "' was assigned to EP '"
-                          << (ep.empty() ? "<unassigned>" : ep) << "', which did not fuse the Value-layout Transpose "
-                          << "nodes. The BNHS Value cache will be transposed at runtime: expect a full copy of the "
-                          << "cache per step and no past/present buffer sharing. Either select the '"
-                          << kGqaValueLayoutBNSH << "' layout for '" << kOrtSessionOptionsGqaValueLayout
-                          << "', or use an EP that reports '" << kGqaValueLayoutBNHS << "' for '"
-                          << kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout << "'.";
+  for (const auto& boundary_name : boundaries.past_value_inputs) {
+    // The graph input feeds the Transpose, so look at what consumes it.
+    const auto consumers = graph.GetConsumerNodes(boundary_name);
+    report(boundary_name, consumers.size() == 1 ? consumers[0] : nullptr, "past_value");
   }
+
+  for (const auto& boundary_name : boundaries.present_value_outputs) {
+    // The Transpose produces the graph output.
+    report(boundary_name, graph.GetProducerNode(boundary_name), "present_value");
+  }
+
+  return unfused;
 }
 
 }  // namespace onnxruntime

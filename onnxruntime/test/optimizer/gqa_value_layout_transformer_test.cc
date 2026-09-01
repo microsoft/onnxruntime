@@ -902,6 +902,80 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValue) {
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid value for session option"));
 }
 
+namespace {
+
+// Builds boundary -> Transpose -> Identity -> Transpose -> boundary, i.e. the shape the graph is left
+// in when a compiling EP claims the GroupQueryAttention node and leaves the flanking Transposes
+// behind. Identity stands in for the EP's fused node. With keep_transposes=false the boundaries
+// connect straight to Identity, which is what fusing the whole sequence looks like.
+Status BuildPostPartitionGraph(Graph& graph, bool keep_transposes, GqaValueLayoutBoundaries& boundaries) {
+  const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+  const std::vector<int64_t> bnsh{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+
+  // Both boundaries are BNHS either way; only what sits between them changes.
+  ModelTestBuilder builder(graph);
+  NodeArg* boundary_in = builder.MakeInput<MLFloat16>(bnhs, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* boundary_out = builder.MakeOutput<MLFloat16>(bnhs);
+
+  if (keep_transposes) {
+    NodeArg* fused_in = builder.MakeIntermediate<MLFloat16>(bnsh);
+    NodeArg* fused_out = builder.MakeIntermediate<MLFloat16>(bnsh);
+
+    Node& in_transpose = builder.AddNode("Transpose", {boundary_in}, {fused_in});
+    in_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+
+    builder.AddNode("Identity", {fused_in}, {fused_out});
+
+    Node& out_transpose = builder.AddNode("Transpose", {fused_out}, {boundary_out});
+    out_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  } else {
+    builder.AddNode("Identity", {boundary_in}, {boundary_out});
+  }
+
+  builder.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  boundaries.past_value_inputs.push_back(boundary_in->Name());
+  boundaries.present_value_outputs.push_back(boundary_out->Name());
+  return Status::OK();
+}
+
+Model MakePostPartitionModel(const logging::Logger& logger) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+  return Model("GqaValueLayoutPostPartition", false, ModelMetaData(), PathString(),
+               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+}
+
+}  // namespace
+
+// A compiling EP may claim the GQA node and replace it with a fused node while leaving the flanking
+// Transposes in the graph. Both full-cache copies still execute, so the diagnostic must not depend on
+// finding a GroupQueryAttention node to search from.
+TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposesWhenTheGqaNodeWasReplaced) {
+  Model model = MakePostPartitionModel(*logger_);
+  GqaValueLayoutBoundaries boundaries;
+  ASSERT_STATUS_OK(BuildPostPartitionGraph(model.MainGraph(), /*keep_transposes=*/true, boundaries));
+
+  ASSERT_EQ(FindGqa(model.MainGraph()), nullptr)
+      << "the fixture must not contain a GQA node, otherwise it cannot catch the regression";
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(model.MainGraph(), boundaries, *logger_);
+  EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundaries.past_value_inputs[0],
+                                                       boundaries.present_value_outputs[0]));
+}
+
+// The other half of the contract: when the provider did absorb the Transposes, nothing is reported.
+TEST_F(GqaValueLayoutTransformerTest, ReportsNothingWhenTheTransposesWereFused) {
+  Model model = MakePostPartitionModel(*logger_);
+  GqaValueLayoutBoundaries boundaries;
+  ASSERT_STATUS_OK(BuildPostPartitionGraph(model.MainGraph(), /*keep_transposes=*/false, boundaries));
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(model.MainGraph(), boundaries, *logger_);
+  EXPECT_TRUE(unfused.empty());
+}
+
 // The design accepts that a non-fusing EP executes the inserted transposes. That fallback is only
 // acceptable if it is numerically correct, so verify it on the CPU EP rather than only checking
 // graph structure: the BNHS session fed a transposed cache must match the BNSH session exactly.
