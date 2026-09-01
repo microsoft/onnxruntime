@@ -79,6 +79,43 @@ describe('API Tests - InferenceSession.run()', async () => {
     await localSession.release();
   });
 
+  it('rejects preallocated string outputs', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_string.onnx'));
+    const input = new Tensor('string', ['a', 'b', 'c', 'd', 'e'], [1, 5]);
+    const output = new Tensor('string', ['', '', '', '', ''], [1, 5]);
+
+    await assert.rejects(
+      localSession.run({ input }, { output }),
+      /Preallocated string output tensors are not supported/,
+    );
+    await localSession.release();
+  });
+
+  it('reuses a preallocated GPU output', async function () {
+    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const localSession = await InferenceSession.create(modelPath, {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
+    const readbackSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
+    const preallocatedOutput = (await localSession.run({ input: new Tensor('float32', [0, 0, 0, 0, 0], [1, 5]) }))
+      .output;
+    const expectedOutput = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+
+    const result = await localSession.run({ input: expectedOutput }, { output: preallocatedOutput });
+    assert.strictEqual(result.output, preallocatedOutput);
+    assertTensorEqual((await readbackSession.run({ input: preallocatedOutput })).output, expectedOutput);
+
+    preallocatedOutput.dispose();
+    await readbackSession.release();
+    await localSession.release();
+  });
+
   it('keeps a GPU buffer alive when Tensor disposal bypasses instance methods', async function () {
     if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
       // eslint-disable-next-line no-invalid-this

@@ -164,6 +164,8 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
   auto tensorTypeString = tensorTypeValue.As<Napi::String>().Utf8Value();
 
   if (tensorTypeString == "string") {
+    ORT_NAPI_THROW_TYPEERROR_IF(!copy_cpu_data, env, "Preallocated string output tensors are not supported.");
+
     auto tensorDataValue = tensorObject.Get("data");
 
     ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_CPU, env, "Tensor.location must be 'cpu' for string tensors.");
