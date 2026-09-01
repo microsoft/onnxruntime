@@ -425,8 +425,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
-    // When KV quantization is active, ApplyFlashAttention handles fused split+rotary+quantize.
-    if (will_use_flash_attention && parameters.past_present_share_buffer_) {
+    // Quantized fused rotary shaders currently implement only split-half RoPE; use the generic
+    // split/rotate path for interleaved RoPE.
+    if (will_use_flash_attention && parameters.past_present_share_buffer_ &&
+        (!kv_cache_quant || !parameters.rotary_interleaved_)) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
