@@ -650,6 +650,23 @@ Return Value:
 
 #endif // MLAS_TARGET_AMD64
 
+#if defined(MLAS_TARGET_IX86)
+            //
+            // The LayerNorm kernel is the only AVX2/FMA3 kernel compiled for
+            // 32-bit x86, so keep its feature dispatch separate from AMD64.
+            //
+            unsigned Cpuid7[4];
+#if defined(_WIN32)
+            __cpuidex((int*)Cpuid7, 7, 0);
+#else
+            __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
+#endif
+
+            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
+            }
+#endif  // MLAS_TARGET_IX86
+
         }
     }
 

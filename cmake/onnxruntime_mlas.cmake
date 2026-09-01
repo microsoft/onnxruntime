@@ -343,9 +343,11 @@ function(setup_mlas_source_for_windows)
       )
     endif()
   else()
+    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+      ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
@@ -800,9 +802,15 @@ else()
         )
         set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
+        set(mlas_platform_srcs_avx2
+          ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
+          ${mlas_platform_srcs_avx2}
         )
 
         # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
