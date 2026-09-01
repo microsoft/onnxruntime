@@ -484,7 +484,7 @@ export declare namespace InferenceSession {
     /**
      * Terminate all incomplete OrtRun calls as soon as possible if true
      *
-     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     * This setting is available in the Node.js binding, react-native, and WebAssembly backends.
      */
     terminate?: boolean;
 
