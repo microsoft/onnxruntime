@@ -19,6 +19,22 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+TEST(GRUTest, RuntimeScalarInputRejected) {
+  OpTester test("GRU", 14);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("hidden_size", int64_t{1});
+  test.AddInput<float>("X", {}, {1.0f});
+  test.AddInput<float>("W", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("R", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input X must have 3 dimensions only", {}, nullptr,
+           &execution_providers);
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
   EXPECT_THROW((void)onnxruntime::rnn::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),

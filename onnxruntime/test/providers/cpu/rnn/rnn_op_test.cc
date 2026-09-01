@@ -11,6 +11,22 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+TEST(RNNTest, RuntimeScalarInputRejected) {
+  OpTester test("RNN", 14);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("hidden_size", int64_t{1});
+  test.AddInput<float>("X", {}, {1.0f});
+  test.AddInput<float>("W", {1, 1, 1}, {1.0f});
+  test.AddInput<float>("R", {1, 1, 1}, {1.0f});
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input X must have 3 dimensions only", {}, nullptr,
+           &execution_providers);
+}
+
 // test input data is generated from CNTK with shape of [batch_size, seq_length, input_size]
 // onnxruntime takes input of shape [seq_length, batch_size, input_size)
 template <typename T>
