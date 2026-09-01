@@ -9,6 +9,10 @@ image: 'https://iili.io/2yV40bV.png'
 imageSquare: 'https://iili.io/2yV40bV.png'
 url: 'https://onnxruntime.ai/blogs/deepseek-r1-on-device'
 ---
+<script>
+	import YouTubeFacade from '../../components/youtube-facade.svelte';
+</script>
+
 Are you a developer looking to harness the power of your users' local compute for AI inferencing on PCs with NPUs, GPUs, and CPUs? Look no further!  
 
 With the new release you can now run these models on CPU and GPU. You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX). Additionally, you can also these models on NPU: [Windows Developer Blog](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/). 
@@ -19,16 +23,13 @@ With the new release you can now run these models on CPU and GPU. You can now do
 The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achieving performance speeds 1.3 to 6.3 times faster than native PyTorch. To easily get started with the model, you can use our ONNX Runtime `Generate()` API. 
 <!-- Video Embed -->
 <div>
-				<iframe
-					class="pb-2 w-full"
-                    height="600px"
-					src="https://www.youtube.com/embed/s63vSd8ZI5g"
-					title="YouTube video player"
-					frameborder="0"
-					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-					allowfullscreen
-				/>
-			</div>			
+	<YouTubeFacade
+		className="mb-2 h-[600px] w-full"
+		src="https://www.youtube.com/embed/s63vSd8ZI5g"
+		title="Run DeepSeek R1 distilled models with ONNX Runtime"
+	/>
+	<a href="https://www.youtube.com/watch?v=s63vSd8ZI5g">Watch on YouTube</a>
+</div>
 
 ### Quickstart on CPU
 
