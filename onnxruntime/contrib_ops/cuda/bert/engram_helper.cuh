@@ -13,7 +13,10 @@ namespace cuda {
 namespace engram_helper {
 
 constexpr int kThreads = 256;
-constexpr int64_t kMaxGridDimX = 65535;
+// grid.x is limited to 2^31 - 1 since compute capability 3.0 (the 65535 limit applies to grid.y and
+// grid.z only). All kernels launched through GridSize() use a grid-stride loop, so the clamp only
+// bounds the launch; correctness does not depend on it.
+constexpr int64_t kMaxGridDimX = 2147483647;
 
 // Number of blocks for a grid-stride loop over `count` elements, clamped to the maximum grid size.
 inline int GridSize(int64_t count) {

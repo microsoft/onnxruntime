@@ -5,10 +5,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <vector>
 
 #include "contrib_ops/cpu/bert/engram_helper.h"
 #include "core/common/narrow.h"
+#include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
 
 using onnxruntime::concurrency::ThreadPool;
@@ -133,11 +133,29 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
     return static_cast<float>(past_data[(((b * state_length + p) * hc_mult + g) * hidden_size) + c]);
   };
 
+  // Base of the contiguous hidden_size run for a virtual position, or nullptr when that position is
+  // missing history (which contributes zeros). Hoisting this out of a per-channel loop turns the loop
+  // into a flat contiguous scan instead of re-deriving the 4-D index and re-testing the history branch
+  // for every channel.
+  auto raw_row = [&](int64_t b, int64_t p, int64_t g) -> const T* {
+    if (p >= state_length) {
+      const int64_t t = p - state_length;
+      return input_data + (((b * sequence_length + t) * hc_mult + g) * hidden_size);
+    }
+    if (past_data == nullptr) {
+      return nullptr;
+    }
+    return past_data + (((b * state_length + p) * hc_mult + g) * hidden_size);
+  };
+
   // The RMS reduction only depends on the (batch, virtual position, hc_mult) row, so compute it once per
   // row instead of repeating it for every output channel and convolution tap. Recomputing it from the raw
   // history (rather than storing normalized history) makes a chunked run bit-exact against a full-sequence
   // run for every element type.
-  std::vector<float> inv_rms(static_cast<size_t>(virtual_rows));
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  auto inv_rms_buffer = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(virtual_rows));
+  float* inv_rms = inv_rms_buffer.get();
   ThreadPool::TryParallelFor(
       context->GetOperatorThreadPool(), narrow<ptrdiff_t>(virtual_rows), static_cast<double>(hidden_size),
       [&](ptrdiff_t begin, ptrdiff_t end) {
@@ -145,12 +163,15 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
           const int64_t g = row % hc_mult;
           const int64_t p = (row / hc_mult) % virtual_length;
           const int64_t b = row / (virtual_length * hc_mult);
+          const T* row_ptr = raw_row(b, p, g);
           float sum_sq = 0.0f;
-          for (int64_t i = 0; i < hidden_size; ++i) {
-            const float value = raw_at(b, p, g, i);
-            sum_sq += value * value;
+          if (row_ptr != nullptr) {
+            for (int64_t i = 0; i < hidden_size; ++i) {
+              const float value = static_cast<float>(row_ptr[i]);
+              sum_sq += value * value;
+            }
           }
-          inv_rms[static_cast<size_t>(row)] = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon_);
+          inv_rms[row] = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + epsilon_);
         }
       });
 
@@ -170,7 +191,7 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
             // Tap k is (kernel_size - 1 - k) * dilation positions back, so p is always in [0, virtual_length).
             const int64_t p = t + state_length - (kernel_size - 1 - k) * dilation_;
             const int64_t virtual_row = (b * virtual_length + p) * hc_mult + g;
-            const float normed = raw_at(b, p, g, c) * inv_rms[static_cast<size_t>(virtual_row)] * scale;
+            const float normed = raw_at(b, p, g, c) * inv_rms[virtual_row] * scale;
             sum += normed * static_cast<float>(weight_data[flat_channel * kernel_size + k]);
           }
           output_data[linear] = static_cast<T>(apply_silu ? engram_helper::SiluFloat(sum) : sum);
@@ -189,9 +210,12 @@ Status ShortConv<T>::Compute(OpKernelContext* context) const {
             const int64_t b = slot_row / (state_length * hc_mult);
             // present_state holds the trailing state_length virtual positions, still un-normalized.
             const int64_t p = virtual_length - state_length + slot;
+            const T* row_ptr = raw_row(b, p, g);
             T* present_row = present_data + slot_row * hidden_size;
-            for (int64_t i = 0; i < hidden_size; ++i) {
-              present_row[i] = static_cast<T>(raw_at(b, p, g, i));
+            if (row_ptr != nullptr) {
+              std::copy(row_ptr, row_ptr + hidden_size, present_row);
+            } else {
+              std::fill(present_row, present_row + hidden_size, T{});
             }
           }
         });

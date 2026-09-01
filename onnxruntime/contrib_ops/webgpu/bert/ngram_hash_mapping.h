@@ -32,8 +32,8 @@ class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
 // the n-gram windows across invocations.
 class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
  public:
-  explicit NGramPresentIdsProgram(bool has_past_ids)
-      : Program{"NGramPresentIds"}, has_past_ids_(has_past_ids) {}
+  NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids)
+      : Program{"NGramPresentIds"}, has_input_ids_(has_input_ids), has_past_ids_(has_past_ids) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -41,6 +41,9 @@ class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:
+  // False when sequence_length == 0. WebGPU cannot bind a zero-sized buffer, and in that case every
+  // present slot is history or pad_id, so the input_ids branch is omitted entirely.
+  bool has_input_ids_;
   bool has_past_ids_;
 };
 

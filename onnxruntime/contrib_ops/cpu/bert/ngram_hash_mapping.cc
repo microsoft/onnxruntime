@@ -90,6 +90,15 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const T* vocab_data = vocab_sizes->Data<T>();
   const T* past_data = past_ids == nullptr ? nullptr : past_ids->Data<T>();
 
+  // A non-positive head vocabulary size has no meaningful modulo. Every EP guards the division to
+  // avoid a device-side divide-by-zero, which turns the mistake into a constant hash id of 0 for that
+  // head rather than a crash. That is a silent wrong answer, so validate it here where vocab_sizes is
+  // already resident on the host and the check costs one pass over a tiny tensor.
+  for (int64_t h = 0; h < num_heads; ++h) {
+    ORT_RETURN_IF_NOT(vocab_data[h] > 0,
+                      "vocab_sizes must be positive; entry ", h, " is ", static_cast<int64_t>(vocab_data[h]));
+  }
+
   // present_ids is the right-aligned trailing window of (past_ids ++ input_ids), so it is well defined
   // even when this call is shorter than the window.
   if (present_ids != nullptr) {
@@ -133,8 +142,8 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
             const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
             for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
               const int64_t out_h = ngram_offset + h;
-              const T mod = vocab_data[out_h];
-              output_data[output_base + out_h] = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
+              // vocab_sizes was validated to be positive above, so the modulo is always well defined.
+              output_data[output_base + out_h] = engram_helper::PositiveMod(mix, vocab_data[out_h]);
             }
           }
         }

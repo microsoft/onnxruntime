@@ -29,18 +29,39 @@ __device__ __forceinline__ T HistoryId(const T* past_ids, int64_t b, int64_t slo
 
 template <typename T>
 __global__ void NGramHashMappingKernel(
-    const T* input_ids,
-    const T* multipliers,
-    const T* vocab_sizes,
-    const T* past_ids,
+    const T* __restrict__ input_ids,
+    const T* __restrict__ multipliers,
+    const T* __restrict__ vocab_sizes,
+    const T* __restrict__ past_ids,
     T* output,
     int64_t total,
     int64_t sequence_length,
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
-    T pad_id) {
+    T pad_id,
+    bool stage_tables) {
   const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
   const int64_t state_length = max_ngram_size - 1;
+
+  // multipliers and vocab_sizes are uniform across the whole grid and tiny, but they are read in the
+  // two innermost loops. Stage them into shared memory once per block so those reads never leave the
+  // SM. The launch clears stage_tables if the tables would not fit, in which case the __restrict__
+  // pointers let the compiler serve them from the read-only cache instead.
+  extern __shared__ char ngram_shared_bytes[];
+  T* shared_multipliers = reinterpret_cast<T*>(ngram_shared_bytes);
+  T* shared_vocab_sizes = shared_multipliers + max_ngram_size;
+  if (stage_tables) {
+    for (int64_t i = threadIdx.x; i < max_ngram_size; i += blockDim.x) {
+      shared_multipliers[i] = multipliers[i];
+    }
+    for (int64_t i = threadIdx.x; i < num_heads; i += blockDim.x) {
+      shared_vocab_sizes[i] = vocab_sizes[i];
+    }
+    __syncthreads();
+  }
+  const T* multiplier_table = stage_tables ? shared_multipliers : multipliers;
+  const T* vocab_table = stage_tables ? shared_vocab_sizes : vocab_sizes;
+
   for (int64_t linear = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        linear < total;
        linear += static_cast<int64_t>(gridDim.x) * blockDim.x) {
@@ -56,14 +77,14 @@ __global__ void NGramHashMappingKernel(
         const T token = source_t >= 0
                             ? input_ids[input_base + source_t]
                             : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
-        const T product = engram_helper::WrappedMultiply<T>(token, multipliers[k]);
+        const T product = engram_helper::WrappedMultiply<T>(token, multiplier_table[k]);
         mix = k == 0 ? product : static_cast<T>(mix ^ product);
       }
 
       const int64_t ngram_offset = (n - 2) * n_head_per_ngram;
       for (int64_t h = 0; h < n_head_per_ngram; ++h) {
         const int64_t out_h = ngram_offset + h;
-        const T mod = vocab_sizes[out_h];
+        const T mod = vocab_table[out_h];
         output[output_base + out_h] = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
       }
     }
@@ -121,9 +142,16 @@ Status LaunchNGramHashMappingKernel(
   if (total == 0) {
     return Status::OK();
   }
-  NGramHashMappingKernel<T><<<engram_helper::GridSize(total), engram_helper::kThreads, 0, stream>>>(
+  // Shared-memory staging for the two lookup tables. 16 KB keeps occupancy unaffected on every
+  // architecture ORT targets; realistic Engram configurations need only a few hundred bytes.
+  constexpr size_t kMaxStagedTableBytes = 16 * 1024;
+  const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
+  const size_t table_bytes = static_cast<size_t>(max_ngram_size + num_heads) * sizeof(T);
+  const bool stage_tables = table_bytes <= kMaxStagedTableBytes;
+  const size_t shared_bytes = stage_tables ? table_bytes : 0;
+  NGramHashMappingKernel<T><<<engram_helper::GridSize(total), engram_helper::kThreads, shared_bytes, stream>>>(
       input_ids, multipliers, vocab_sizes, past_ids, output, total, sequence_length, max_ngram_size,
-      n_head_per_ngram, pad_id);
+      n_head_per_ngram, pad_id, stage_tables);
   return CUDA_CALL(cudaGetLastError());
 }
 

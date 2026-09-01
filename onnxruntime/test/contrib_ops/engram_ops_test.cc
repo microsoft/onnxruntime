@@ -390,7 +390,8 @@ template <typename T>
 std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
                                          const std::vector<T>& history,
                                          const std::vector<T>& multipliers,
-                                         const std::vector<T>& vocab_sizes) {
+                                         const std::vector<T>& vocab_sizes,
+                                         int64_t pad_id = kPadId) {
   const int64_t sequence_length = static_cast<int64_t>(ids.size());
   const int64_t state_length = kMaxNGramSize - 1;
   const int64_t num_heads = state_length * kHeadsPerNGram;
@@ -402,7 +403,7 @@ std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
     }
     const int64_t slot = state_length + t;
     if (history.empty() || slot < 0) {
-      return static_cast<T>(kPadId);
+      return static_cast<T>(pad_id);
     }
     return history[static_cast<size_t>(slot)];
   };
@@ -429,6 +430,68 @@ std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
     }
   }
   return output;
+}
+
+// Negative ids and a negative pad_id are the only way to reach two branches that the positive-id
+// tests leave dead on every EP: the `result < 0 -> result + mod` correction in PositiveMod, and the
+// sign handling in WrappedMultiply. WGSL's `%` in particular follows C truncation for negative
+// operands, which is worth pinning rather than assuming.
+template <typename T>
+void RunNGramHashMappingNegativeIdsTest() {
+  constexpr int64_t kNegativePadId = -4;
+  const std::vector<T> ids{-5, 7, -3, 2};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> expected =
+      NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes, kNegativePadId);
+  // Pins the reference, and the values themselves: every entry is a positive residue even though
+  // most of the underlying mixes are negative, which is exactly the PositiveMod correction.
+  ASSERT_EQ(expected, (std::vector<T>{5, 5, 36, 38,
+                                      87, 89, 78, 78,
+                                      78, 82, 47, 47,
+                                      52, 54, 35, 37}));
+  for (const T value : expected) {
+    ASSERT_GE(value, 0);
+  }
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kNegativePadId);
+  test.AddInput<T>("input_ids", {1, 4}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {1, 4, 4}, expected);
+  test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  test.Run();
+}
+
+// A non-positive head vocabulary size has no meaningful modulo. The CPU kernel rejects it rather
+// than silently emitting a constant hash id of 0 for that head.
+template <typename T>
+void RunNGramHashMappingNonPositiveVocabTest() {
+  const std::vector<T> ids{3, 4, 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  // Head 2 is invalid; the other three are the usual primes.
+  const std::vector<T> vocab_sizes{101, 103, 0, 109};
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 4}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {1, 4, 4}, std::vector<T>(16, T{0}));
+  test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  // The validation is CPU-only by design: on GPU EPs vocab_sizes lives on the device and checking it
+  // would force a synchronization on every Compute call.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "vocab_sizes must be positive", {}, nullptr,
+           &execution_providers);
 }
 
 template <typename T>
@@ -516,6 +579,22 @@ TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt64) {
 // past_ids/present_ids shaders any execution coverage at all.
 TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt32) {
   RunNGramHashMappingChunkedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingNegativeIdsInt64) {
+  RunNGramHashMappingNegativeIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingNegativeIdsInt32) {
+  RunNGramHashMappingNegativeIdsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingRejectsNonPositiveVocabSizeInt64) {
+  RunNGramHashMappingNonPositiveVocabTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingRejectsNonPositiveVocabSizeInt32) {
+  RunNGramHashMappingNonPositiveVocabTest<int32_t>();
 }
 
 TEST(EngramOpsTest, ShortConvFloat) {

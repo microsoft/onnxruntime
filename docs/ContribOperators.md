@@ -4142,7 +4142,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>multipliers</tt> : M</dt>
 <dd>Per-shift odd multipliers with shape (max_ngram_size).</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
-<dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
 <dt><tt>past_ids</tt> (optional) : M</dt>
 <dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id.</dd>
 </dl>
@@ -6503,6 +6503,16 @@ This version of the operator has been available since version 1 of the 'com.micr
   full-sequence run would use, so running the op once over a full sequence and running it over consecutive
   chunks while threading present_state into past_state produce identical outputs for every element type.
   When past_state is omitted the missing history is treated as zeros, which matches a fresh sequence.
+  
+  ShortConv is deliberately kept separate from CausalConvWithState rather than being expressed as an
+  extra attribute on it. The RMS normalization is not a hoistable pre-op: past_state must carry the raw
+  un-normalized inputs, because the RMS reduction of a position is over that position's own hidden
+  vector and has to be recomputed identically on the call that consumes it as a convolution tap. A
+  graph-level Normalize-then-CausalConvWithState would instead have to store normalized history, which
+  makes a chunked run disagree with a full-sequence run at chunk boundaries. Fusing the normalization
+  into the op is what makes the chunked and full-sequence results bit-exact. The (batch_size,
+  sequence_length, hc_mult, hidden_size) layout follows from the same requirement, since the reduction
+  axis must stay contiguous and innermost.
 
 #### Version
 

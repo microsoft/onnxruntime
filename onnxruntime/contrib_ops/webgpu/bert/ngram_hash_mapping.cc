@@ -78,7 +78,10 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* input_ids = nullptr;
+  if (has_input_ids_) {
+    input_ids = &shader.AddInput("input_ids", ShaderUsage::UseUniform);
+  }
   const ShaderVariableHelper* past_ids = nullptr;
   if (has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
@@ -89,11 +92,14 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
       << "  let slot = global_idx % uniforms.state_length;\n"
       << "  let b = global_idx / uniforms.state_length;\n"
-      << "  var token = uniforms.pad_id;\n"
-      << "  if (slot + uniforms.sequence_length >= uniforms.state_length) {\n"
-      << "    let source_t = slot + uniforms.sequence_length - uniforms.state_length;\n"
-      << "    token = " << input_ids.GetByOffset("b * uniforms.sequence_length + source_t") << ";\n"
-      << "  }\n";
+      << "  var token = uniforms.pad_id;\n";
+  if (has_input_ids_) {
+    shader.MainFunctionBody()
+        << "  if (slot + uniforms.sequence_length >= uniforms.state_length) {\n"
+        << "    let source_t = slot + uniforms.sequence_length - uniforms.state_length;\n"
+        << "    token = " << input_ids->GetByOffset("b * uniforms.sequence_length + source_t") << ";\n"
+        << "  }\n";
+  }
   if (has_past_ids_) {
     shader.MainFunctionBody()
         << "  if (slot + uniforms.sequence_length < uniforms.state_length) {\n"
@@ -144,8 +150,15 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
 
   if (present_ids != nullptr && batch_size * state_length > 0) {
     const int64_t present_total = batch_size * state_length;
-    NGramPresentIdsProgram present_program{has_past_ids};
-    present_program.CacheHint(has_past_ids).AddInput({input_ids, ProgramTensorMetadataDependency::None});
+    // WebGPU rejects zero-sized storage buffer bindings, so an empty input_ids tensor must not be
+    // bound. When sequence_length == 0 every present slot comes from history (or pad_id), so the
+    // input_ids branch of the shader is dead anyway.
+    const bool has_input_ids = sequence_length > 0;
+    NGramPresentIdsProgram present_program{has_input_ids, has_past_ids};
+    present_program.CacheHint(has_input_ids, has_past_ids);
+    if (has_input_ids) {
+      present_program.AddInput({input_ids, ProgramTensorMetadataDependency::None});
+    }
     if (has_past_ids) {
       present_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
