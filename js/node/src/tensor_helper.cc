@@ -126,7 +126,7 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
                                OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
                                std::vector<OrtValueOwner>* value_owners,
-                               PreallocatedOutputInfo* preallocated_info) {
+                               NapiTensorConversion* conversion) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -170,6 +170,9 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
                                 "Preallocated string output tensors are not supported.");
 
     auto tensorDataValue = tensorObject.Get("data");
+    if (conversion != nullptr) {
+      conversion->data = tensorDataValue;
+    }
 
     ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_CPU, env, "Tensor.location must be 'cpu' for string tensors.");
     ORT_NAPI_THROW_TYPEERROR_IF(!tensorDataValue.IsArray(), env, "Tensor.data must be an array for string tensors.");
@@ -225,7 +228,13 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
                                   elemType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? " or Float16Array" : "",
                                   ") for ", tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
 
-      char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
+      auto tensorDataArrayBuffer = tensorDataTypedArray.ArrayBuffer();
+      if (conversion != nullptr) {
+        conversion->data = tensorDataValue;
+        conversion->dataArrayBuffer = tensorDataArrayBuffer;
+      }
+
+      char* buffer = reinterpret_cast<char*>(tensorDataArrayBuffer.Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
       size_t bufferByteLength = tensorDataTypedArray.ByteLength();
       // Wrapping the JS buffer validates that it is large enough for 'dims'. The wrapper itself is
@@ -240,9 +249,9 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
         // preallocated fetch (InferenceSession::ValidateInputsOutputs and
         // IExecutionFrame::GetOrCreateNodeOutputMLValue) but skips them entirely for an
         // unallocated one, so they have to happen here instead.
-        if (preallocated_info != nullptr) {
-          preallocated_info->elementType = elemType;
-          preallocated_info->dims = dims;
+        if (conversion != nullptr) {
+          conversion->declared.elementType = elemType;
+          conversion->declared.dims = dims;
         }
 
         // Return an empty OrtValue so that ORT allocates the output itself. Handing ORT a
@@ -267,6 +276,9 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       auto gpuBufferValue = tensorObject.Get("gpuBuffer");
       // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. It is an External holding the OrtValue owner.
       ORT_NAPI_THROW_TYPEERROR_IF(!gpuBufferValue.IsExternal(), env, "Tensor.gpuBuffer must be an external object.");
+      if (conversion != nullptr) {
+        conversion->gpuBuffer = gpuBufferValue;
+      }
       auto* valueOwner = gpuBufferValue.As<Napi::External<OrtValueOwner>>().Data();
       ORT_NAPI_THROW_ERROR_IF(valueOwner == nullptr || !*valueOwner, env, "Tensor.gpuBuffer has been disposed.");
       Ort::Value dataValue(valueOwner->get());

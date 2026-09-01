@@ -23,16 +23,33 @@ struct PreallocatedOutputInfo {
   std::vector<int64_t> dims;
 };
 
+// what a tensor conversion read out of a Javascript OnnxValue
+//
+// Tensor.location, Tensor.data and Tensor.gpuBuffer are ordinary Javascript properties, so they may
+// be accessors that return a different object on each read. The values that were actually
+// validated and used are handed back here; callers must pin, lease and copy back into exactly
+// these objects rather than reading the tensor a second time.
+struct NapiTensorConversion {
+  // Tensor.data, and its backing ArrayBuffer for a numeric tensor. 'dataArrayBuffer' stays empty
+  // for a string tensor, whose data is a plain array.
+  Napi::Value data;
+  Napi::Value dataArrayBuffer;
+  // Tensor.gpuBuffer, for a gpu-buffer tensor.
+  Napi::Value gpuBuffer;
+  // Only filled in when 'usage' is kPreallocatedOutput.
+  PreallocatedOutputInfo declared;
+};
+
 // convert a Javascript OnnxValue object to an OrtValue object
 //
 // Returns an empty Ort::Value for a preallocated CPU output: the caller's buffer is never handed
 // to ORT, so ORT must allocate the output and the result copied back with
-// CopyOrtValueToNapiTypedArray(). 'preallocated_info' receives the declared type and shape in that
-// case, and must be supplied whenever 'usage' is kPreallocatedOutput.
+// CopyOrtValueToNapiTypedArray(). 'conversion' receives the JS values that were read, and must be
+// supplied whenever 'usage' is kPreallocatedOutput so that the declared type and shape survive.
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
                                OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
                                std::vector<OrtValueOwner>* value_owners = nullptr,
-                               PreallocatedOutputInfo* preallocated_info = nullptr);
+                               NapiTensorConversion* conversion = nullptr);
 
 // copy an OrtValue tensor into an existing Javascript TypedArray, after checking that it matches
 // the type and shape the caller declared for the preallocated output

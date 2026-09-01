@@ -126,6 +126,31 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('reads Tensor.data once when preparing a preallocated output', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const output = new Tensor('float32', new Float32Array(5), [1, 5]);
+      const firstRead = new Float32Array(5);
+      const laterReads = new Float32Array(5);
+      let reads = 0;
+
+      // An accessor may hand back a different object on every read, so the buffer that gets
+      // validated has to be the same one that gets leased and written into.
+      Object.defineProperty(output, 'data', {
+        configurable: true,
+        get: () => (reads++ === 0 ? firstRead : laterReads),
+      });
+
+      await localSession.run({ input }, { output });
+      assert.strictEqual(reads, 1);
+      assert.deepStrictEqual(Array.from(firstRead), [1, 2, 3, 4, 5]);
+      assert.deepStrictEqual(Array.from(laterReads), [0, 0, 0, 0, 0]);
+    } finally {
+      await localSession.release();
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
