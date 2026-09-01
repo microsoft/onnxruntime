@@ -293,12 +293,21 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
     }
     // It's complicated to check all the decomposed ops' input rank support.
     // Ensure at least the first input rank is supported by the decomposed ops (pow and div accept the first input).
-    return IsInputRankSupported(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
-           IsInputRankSupported(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
+    return IsRankSupportedByWebNNOp(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
   } else {
     bool is_data_type_supported = IsDataTypeSupportedByOp(op_type, input_types[0], wnn_limits, "input", "X", logger);
     if (op_type == "InstanceNormalization") {
-      // Skip input rank check for InstanceNormalization, as we will reshape the input to 4D if necessary.
+      // WebNN instanceNormalization only accepts 4D input. When the input is not 4D, we reshape it to
+      // 4D (see AddToModelBuilderImpl), so the ONNX input rank no longer matches the WebNN operand rank
+      // and the rank check must be skipped. Only validate the rank for the 4D direct path.
+      std::vector<int64_t> input_shape;
+      if (!GetShape(*input_defs[0], input_shape, logger)) {
+        return false;
+      }
+      if (input_shape.size() == 4) {
+        return is_data_type_supported && IsInputRankSupportedByOp(node, wnn_limits, logger);
+      }
       return is_data_type_supported;
     }
 
@@ -328,7 +337,22 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
     }
     return true;
   } else {
-    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
+    if (!IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger)) {
+      return false;
+    }
+    if (op_type == "InstanceNormalization") {
+      // WebNN instanceNormalization only produces 4D output. When the input is not 4D, we reshape the
+      // output back to the original rank (see AddToModelBuilderImpl), so the ONNX output rank no longer
+      // matches the WebNN operand rank and the rank check must be skipped. Only validate the 4D path.
+      std::vector<int64_t> output_shape;
+      if (!GetShape(*output_defs[0], output_shape, logger)) {
+        return false;
+      }
+      if (output_shape.size() != 4) {
+        return true;
+      }
+    }
+    return IsOutputRankSupportedByOp(node, wnn_limits, logger);
   }
 }
 

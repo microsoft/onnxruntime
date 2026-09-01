@@ -539,6 +539,13 @@ struct CudaKernelAdapterRuntimeConfig {
   bool do_copy_in_default_stream = true;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
+  std::mutex captured_host_buffers_mutex;
+  std::vector<std::shared_ptr<void>> captured_host_buffers;
+
+  void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) {
+    std::lock_guard<std::mutex> lock(captured_host_buffers_mutex);
+    captured_host_buffers.push_back(std::move(buffer));
+  }
 };
 template <typename T>
 struct SizeOf {
@@ -1258,6 +1265,14 @@ class CudaKernel : public OpKernel {
   }
 
   template <typename T>
+  inline void RetainBufferForGraphCapture(IAllocatorUniquePtr<T> buffer) const {
+    auto deleter = buffer.get_deleter();
+    runtime_config_->RetainBufferForGraphCapture(
+        std::shared_ptr<void>(buffer.release(),
+                              [deleter](void* p) { deleter(static_cast<T*>(p)); }));
+  }
+
+  template <typename T>
   class CudaAsyncBuffer {
    public:
     CudaAsyncBuffer(const CudaKernel* ok) : gpu_(nullptr, [](T*) {}), count_(0), op_kernel_(ok) {}
@@ -1286,7 +1301,15 @@ class CudaKernel : public OpKernel {
           ORT_THROW("CUDA async buffer copy size overflow for ", count_, " elements");
         }
         if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+        if (s != nullptr) {
+          CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(static_cast<cudaStream_t>(s), &capture_status));
+        }
+        if (capture_status != cudaStreamCaptureStatusNone) {
+          op_kernel_->RetainBufferForGraphCapture(std::move(cpu_));
+        } else {
+          op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        }
       }
       return Status::OK();
     }
