@@ -30,8 +30,109 @@ from __future__ import annotations
 from onnxscript.rewriter._basics import MatchResult
 from onnxscript.rewriter._rewrite_rule import RewriteRuleClassBase, RewriteRuleSet
 
+from ._common import FLOAT_OR_FLOAT16_OR_BFLOAT16, static_shape
 
-class AddLayerNormToSkipLayerNorm(RewriteRuleClassBase):
+
+def _get_skip_layer_norm_inputs(add_node):
+    """Return input/skip operands in the order accepted by the fused kernel."""
+    first, second = add_node.inputs
+    first_shape = static_shape(first)
+    second_shape = static_shape(second)
+    if _is_valid_input_skip_pair(first_shape, second_shape):
+        return first, second
+    if _is_valid_input_skip_pair(second_shape, first_shape):
+        return second, first
+    return None
+
+
+def _is_valid_input_skip_pair(input_shape: tuple[int, ...] | None, skip_shape: tuple[int, ...] | None) -> bool:
+    """Check the rank-2/3 skip layouts accepted by SkipLayerNormalization."""
+    if input_shape is None or skip_shape is None:
+        return False
+    if len(input_shape) not in (2, 3) or len(skip_shape) not in (2, 3):
+        return False
+    if input_shape == skip_shape:
+        return True
+    if len(input_shape) != 3:
+        return False
+    if len(skip_shape) == 2:
+        return skip_shape == input_shape[1:]
+    return skip_shape[0] == 1 and skip_shape[1:] == input_shape[1:]
+
+
+def _check_affine_parameter(value, name: str, hidden_size: int) -> str | None:
+    """Return an error if an affine parameter does not match the fused kernel contract."""
+    shape = static_shape(value)
+    if shape != (hidden_size,):
+        return f"{name} must have static shape [{hidden_size}]"
+    return None
+
+
+class _AddLayerNormToSkipLayerNormBase(RewriteRuleClassBase):
+    def _check_common(self, add_out, weight, bias, norm_out) -> MatchResult:
+        result = MatchResult()
+
+        producer = add_out.producer()
+        if producer is None or producer.op_type != "Add":
+            return result.fail("Input to LayerNorm is not from an Add node")
+
+        target_inputs = _get_skip_layer_norm_inputs(producer)
+        if target_inputs is None:
+            return result.fail("Add inputs do not match the SkipLayerNormalization rank/skip-shape contract")
+        if target_inputs[0].dtype not in FLOAT_OR_FLOAT16_OR_BFLOAT16:
+            return result.fail("SkipLayerNormalization input must have float, float16, or bfloat16 element type")
+        input_shape = static_shape(target_inputs[0])
+
+        # Don't fuse if add_out is itself a graph output — that indicates we're inside
+        # an ONNX function body where replace_all_uses_with would fail or produce
+        # nested fusion.
+        graph = producer.graph
+        if graph is not None and add_out in graph.outputs:
+            return result.fail("Add output is a graph output — skip to avoid nested fusion")
+
+        ln = norm_out.producer()
+        if ln.attributes.get_float("epsilon", None) is None:
+            return result.fail("Missing epsilon attribute on LayerNormalization")
+
+        # SkipLayerNormalization always normalizes over the last axis.
+        axis = ln.attributes.get_int("axis", -1)
+        if axis != -1:
+            return result.fail(f"LayerNorm axis={axis}, expected -1 for SkipLayerNormalization compatibility")
+
+        err = _check_affine_parameter(weight, "gamma", input_shape[-1])
+        if err:
+            return result.fail(err)
+        if bias is not None:
+            err = _check_affine_parameter(bias, "beta", input_shape[-1])
+            if err:
+                return result.fail(err)
+
+        return result
+
+    def _rewrite_common(self, op, add_out, weight, bias, norm_out):
+        ln = norm_out.producer()
+        epsilon = ln.attributes.get_float("epsilon")
+
+        add_node = add_out.producer()
+        input_value, skip_value = _get_skip_layer_norm_inputs(add_node)
+        inputs = [input_value, skip_value, weight]
+        if bias is not None:
+            inputs.append(bias)
+        outputs = op.op(
+            "SkipLayerNormalization",
+            *inputs,
+            _domain="com.microsoft",
+            epsilon=epsilon,
+            _outputs=4,
+        )
+        new_norm_out = outputs[0]
+        skip_out = outputs[3]
+
+        add_out.replace_all_uses_with(skip_out)
+        return new_norm_out
+
+
+class AddLayerNormToSkipLayerNorm(_AddLayerNormToSkipLayerNormBase):
     """Replace Add + LayerNormalization with SkipLayerNormalization.
 
     **Matched pattern:**
@@ -64,72 +165,14 @@ class AddLayerNormToSkipLayerNorm(RewriteRuleClassBase):
             _outputs=["norm_out"],
         )
 
-    def check(self, context, add_out, norm_out, **_):
-        result = MatchResult()
-
-        # add_out must come from an Add node
-        producer = add_out.producer()
-        if producer is None or producer.op_type != "Add":
-            return result.fail("Input to LayerNorm is not from an Add node")
-
-        # Both Add inputs must have at least 2 dimensions.  This prevents
-        # fusing a bias-Add (e.g. MatMul + 1D bias → LayerNorm) which
-        # would produce a SkipLayerNormalization with a 1D skip input
-        # that ORT rejects.  Unknown shapes are allowed through since
-        # most intermediate values lack static shape info.
-        for i, inp in enumerate(producer.inputs):
-            if inp is not None and inp.shape is not None:
-                rank = len(inp.shape)
-                if rank < 2:
-                    return result.fail(f"Add input[{i}] has rank {rank}, need ≥ 2 for skip connection")
-
-        # Don't fuse if add_out is itself a graph output — that indicates we're inside
-        # an ONNX function body where replace_all_uses_with would fail or produce
-        # nested fusion.
-        graph = producer.graph
-        if graph is not None and add_out in graph.outputs:
-            return result.fail("Add output is a graph output — skip to avoid nested fusion")
-
-        # Verify LayerNormalization has epsilon attribute and correct axis
-        ln = norm_out.producer()
-        if ln.attributes.get_float("epsilon", None) is None:
-            return result.fail("Missing epsilon attribute on LayerNormalization")
-
-        # SkipLayerNormalization always normalizes over the last axis
-        axis = ln.attributes.get_int("axis", -1)
-        if axis != -1:
-            return result.fail(f"LayerNorm axis={axis}, expected -1 for SkipLayerNormalization compatibility")
-
-        return result
+    def check(self, context, add_out, weight, bias, norm_out, **_):
+        return self._check_common(add_out, weight, bias, norm_out)
 
     def rewrite(self, op, add_out, weight, bias, norm_out, **_):
-        ln = norm_out.producer()
-        epsilon = ln.attributes.get_float("epsilon")
-
-        # Get the two inputs of the Add node
-        add_node = add_out.producer()
-        input_a = add_node.inputs[0]
-        input_b = add_node.inputs[1]
-
-        outputs = op.SkipLayerNormalization(
-            input_a,
-            input_b,
-            weight,
-            bias,
-            _domain="com.microsoft",
-            epsilon=epsilon,
-            _outputs=4,
-        )
-        new_norm_out = outputs[0]
-        skip_out = outputs[3]
-
-        # Replace add_out with skip_out in all other consumers
-        add_out.replace_all_uses_with(skip_out)
-
-        return new_norm_out
+        return self._rewrite_common(op, add_out, weight, bias, norm_out)
 
 
-class AddLayerNormNoBiasToSkipLayerNorm(RewriteRuleClassBase):
+class AddLayerNormNoBiasToSkipLayerNorm(_AddLayerNormToSkipLayerNormBase):
     """Replace Add + bias-free LayerNormalization with SkipLayerNormalization.
 
     Same as :class:`AddLayerNormToSkipLayerNorm` but matches
@@ -148,38 +191,12 @@ class AddLayerNormNoBiasToSkipLayerNorm(RewriteRuleClassBase):
             _outputs=["norm_out"],
         )
 
-    def check(self, context, add_out, norm_out, **_):
-        result = MatchResult()
-
-        producer = add_out.producer()
-        if producer is None or producer.op_type != "Add":
-            return result.fail("Input to LayerNorm is not from an Add node")
-
-        # Both Add inputs must have at least 2 dimensions — reject
-        # bias-Add patterns (e.g. MatMul + 1D bias → LayerNorm).
-        # Unknown shapes are allowed through since most intermediate
-        # values lack static shape info.
-        for i, inp in enumerate(producer.inputs):
-            if inp is not None and inp.shape is not None:
-                rank = len(inp.shape)
-                if rank < 2:
-                    return result.fail(f"Add input[{i}] has rank {rank}, need ≥ 2 for skip connection")
-
-        # Don't fuse if add_out is itself a graph output — that indicates we're inside
-        # an ONNX function body where replace_all_uses_with would fail or produce
-        # nested fusion.
-        graph = producer.graph
-        if graph is not None and add_out in graph.outputs:
-            return result.fail("Add output is a graph output — skip to avoid nested fusion")
+    def check(self, context, add_out, weight, norm_out, **_):
+        result = self._check_common(add_out, weight, None, norm_out)
+        if not result:
+            return result
 
         ln = norm_out.producer()
-        if ln.attributes.get_float("epsilon", None) is None:
-            return result.fail("Missing epsilon attribute on LayerNormalization")
-
-        axis = ln.attributes.get_int("axis", -1)
-        if axis != -1:
-            return result.fail(f"LayerNorm axis={axis}, expected -1 for SkipLayerNormalization compatibility")
-
         # Ensure this is truly bias-free (2 inputs, not 3)
         if len(ln.inputs) > 2:
             return result.fail("LayerNorm has bias — use the 3-input rule")
@@ -187,28 +204,7 @@ class AddLayerNormNoBiasToSkipLayerNorm(RewriteRuleClassBase):
         return result
 
     def rewrite(self, op, add_out, weight, norm_out, **_):
-        ln = norm_out.producer()
-        epsilon = ln.attributes.get_float("epsilon")
-
-        add_node = add_out.producer()
-        input_a = add_node.inputs[0]
-        input_b = add_node.inputs[1]
-
-        # SkipLayerNormalization with gamma only (no beta)
-        outputs = op.SkipLayerNormalization(
-            input_a,
-            input_b,
-            weight,
-            _domain="com.microsoft",
-            epsilon=epsilon,
-            _outputs=4,
-        )
-        new_norm_out = outputs[0]
-        skip_out = outputs[3]
-
-        add_out.replace_all_uses_with(skip_out)
-
-        return new_norm_out
+        return self._rewrite_common(op, add_out, weight, None, norm_out)
 
 
 def skip_layer_norm_rules() -> RewriteRuleSet:

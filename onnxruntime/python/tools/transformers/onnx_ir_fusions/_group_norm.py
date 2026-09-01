@@ -27,18 +27,31 @@ import onnx_ir as ir
 from onnxscript.rewriter._basics import MatchResult
 from onnxscript.rewriter._rewrite_rule import RewriteRuleClassBase, RewriteRuleSet
 
-from ._common import constant_array
+from ._common import FLOAT_OR_FLOAT16, constant_array
 
 
 class _GroupNormBase(RewriteRuleClassBase):
     def _check_common(self, root, shape_3d, in_scale, in_bias, shape_4d, weight, bias) -> MatchResult:
         result = MatchResult()
 
+        root_shape = root.shape
+        if root_shape is None or len(root_shape) != 4:
+            return result.fail("GroupNorm root must have rank 4 in NCHW layout")
+        if not root_shape.is_static(1):
+            return result.fail("GroupNorm root channel dimension must be static")
+        num_channels = root_shape[1]
+        if root.dtype not in FLOAT_OR_FLOAT16:
+            return result.fail("GroupNorm root must have float or float16 element type")
+
         scale = constant_array(in_scale)
         inorm_bias = constant_array(in_bias)
-        if scale is None or inorm_bias is None or scale.ndim != 1:
+        if scale is None or inorm_bias is None or scale.ndim != 1 or inorm_bias.ndim != 1:
             return result.fail("InstanceNormalization scale/bias must be 1-D constants")
         num_groups = int(scale.shape[0])
+        if num_groups <= 0:
+            return result.fail("InstanceNormalization scale must specify at least one group")
+        if inorm_bias.shape[0] != num_groups:
+            return result.fail("InstanceNormalization scale/bias lengths must match")
         if not np.allclose(scale, 1.0) or not np.allclose(inorm_bias, 0.0):
             return result.fail("InstanceNormalization must have scale=ones and bias=zeros")
 
@@ -59,8 +72,10 @@ class _GroupNormBase(RewriteRuleClassBase):
         for name, array in (("weight", weight_array), ("bias", bias_array)):
             if not (array.ndim == 3 and array.shape[1] == 1 and array.shape[2] == 1):
                 return result.fail(f"{name} must have shape [C, 1, 1]")
-        if weight_array.shape[0] != bias_array.shape[0]:
-            return result.fail("weight/bias channel counts differ")
+            if array.shape[0] != num_channels:
+                return result.fail(f"{name} channel count must equal root channel count")
+        if num_channels % num_groups != 0:
+            return result.fail("root channel count must be divisible by the group count")
 
         return result
 

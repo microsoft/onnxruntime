@@ -27,6 +27,8 @@ from __future__ import annotations
 from onnxscript.rewriter._basics import MatchResult
 from onnxscript.rewriter._rewrite_rule import RewriteRuleClassBase, RewriteRuleSet
 
+from ._common import FLOAT_OR_FLOAT16_OR_BFLOAT16, static_shape
+
 
 class AddRMSNormToSkipNorm(RewriteRuleClassBase):
     """Replace Add + RMSNormalization with SkipSimplifiedLayerNormalization.
@@ -55,7 +57,7 @@ class AddRMSNormToSkipNorm(RewriteRuleClassBase):
     def pattern(self, op, add_out, weight):
         return op.RMSNormalization(add_out, weight, _allow_other_attributes=True, _outputs=["norm_out"])
 
-    def check(self, context, add_out, norm_out, **_):
+    def check(self, context, add_out, weight, norm_out, **_):
         result = MatchResult()
 
         # The Add output must come from an Add node
@@ -63,19 +65,17 @@ class AddRMSNormToSkipNorm(RewriteRuleClassBase):
         if producer is None or producer.op_type != "Add":
             return result.fail("Input to RMSNorm is not from an Add node")
 
-        # Both Add inputs must have the same rank (SkipSimplifiedLayerNormalization
-        # requires input and skip to have the same shape). A rank mismatch
-        # indicates broadcasting (e.g. Add(MatMul, bias) where bias is 1D).
         input_a = producer.inputs[0]
         input_b = producer.inputs[1]
-        shape_a = input_a.shape
-        shape_b = input_b.shape
-        rank_a = len(shape_a) if shape_a is not None else None
-        rank_b = len(shape_b) if shape_b is not None else None
-        if rank_a is not None and rank_b is not None and rank_a != rank_b:
+        shape_a = static_shape(input_a)
+        shape_b = static_shape(input_b)
+        if shape_a is None or len(shape_a) not in (2, 3):
+            return result.fail("SkipSimplifiedLayerNormalization input must have a static rank-2 or rank-3 shape")
+        if shape_b != shape_a:
+            return result.fail("SkipSimplifiedLayerNormalization skip must have the exact same shape as input")
+        if input_a.dtype not in FLOAT_OR_FLOAT16_OR_BFLOAT16:
             return result.fail(
-                f"Add inputs have different ranks ({rank_a} vs {rank_b}); "
-                "SkipSimplifiedLayerNormalization requires same-shape inputs"
+                "SkipSimplifiedLayerNormalization input must have float, float16, or bfloat16 element type"
             )
 
         # Don't fuse if add_out is itself a graph output — that indicates we're inside
@@ -85,10 +85,17 @@ class AddRMSNormToSkipNorm(RewriteRuleClassBase):
         if graph is not None and add_out in graph.outputs:
             return result.fail("Add output is a graph output — skip to avoid nested fusion")
 
-        # Verify RMSNormalization has epsilon attribute
+        # Verify RMSNormalization has epsilon attribute and a compatible axis.
         rmsnorm = norm_out.producer()
         if rmsnorm.attributes.get_float("epsilon", None) is None:
             return result.fail("Missing epsilon attribute on RMSNormalization")
+        axis = rmsnorm.attributes.get_int("axis", -1)
+        if axis != -1:
+            return result.fail(f"RMSNormalization axis={axis}, expected -1")
+
+        weight_shape = static_shape(weight)
+        if weight_shape != (shape_a[-1],):
+            return result.fail(f"RMSNormalization gamma must have static shape [{shape_a[-1]}]")
 
         return result
 

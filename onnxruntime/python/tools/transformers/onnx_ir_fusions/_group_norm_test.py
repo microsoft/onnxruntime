@@ -11,7 +11,6 @@ import unittest
 import numpy as np
 import onnx
 import onnx.helper as helper
-from onnx import TensorProto
 from onnx_ir_fusions import group_norm_rules
 from onnx_ir_fusions._testing import op_counts, to_ir
 from onnxscript.rewriter import rewrite
@@ -24,19 +23,27 @@ def _build_group_norm_model(
     height: int = 2,
     width: int = 2,
     instance_scale: float = 1.0,
+    root_shape: list[int] | None = None,
+    affine_channels: int | None = None,
+    data_type: int = onnx.TensorProto.FLOAT,
 ) -> onnx.ModelProto:
+    root_shape = [1, channels, height, width] if root_shape is None else root_shape
+    affine_channels = channels if affine_channels is None else affine_channels
     initializers = [
-        helper.make_tensor("shape3d", TensorProto.INT64, [3], [0, groups, -1]),
-        helper.make_tensor("in_scale", TensorProto.FLOAT, [groups], np.full(groups, instance_scale, np.float32)),
-        helper.make_tensor("in_bias", TensorProto.FLOAT, [groups], np.zeros(groups, np.float32)),
+        helper.make_tensor("shape3d", onnx.TensorProto.INT64, [3], [0, groups, -1]),
+        helper.make_tensor("in_scale", data_type, [groups], np.full(groups, instance_scale, np.float32)),
+        helper.make_tensor("in_bias", data_type, [groups], np.zeros(groups, np.float32)),
         helper.make_tensor(
-            "weight", TensorProto.FLOAT, [channels, 1, 1], np.arange(channels, dtype=np.float32).reshape(channels, 1, 1)
+            "weight",
+            data_type,
+            [affine_channels, 1, 1],
+            np.arange(affine_channels, dtype=np.float32).reshape(affine_channels, 1, 1),
         ),
         helper.make_tensor(
             "bias",
-            TensorProto.FLOAT,
-            [channels, 1, 1],
-            (np.arange(channels, dtype=np.float32) + 0.5).reshape(channels, 1, 1),
+            data_type,
+            [affine_channels, 1, 1],
+            (np.arange(affine_channels, dtype=np.float32) + 0.5).reshape(affine_channels, 1, 1),
         ),
     ]
     nodes = [
@@ -58,8 +65,8 @@ def _build_group_norm_model(
     graph = helper.make_graph(
         nodes,
         "groupnorm",
-        [helper.make_tensor_value_info("root", TensorProto.FLOAT, [1, channels, height, width])],
-        [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, channels, height, width])],
+        [helper.make_tensor_value_info("root", data_type, root_shape)],
+        [helper.make_tensor_value_info("y", data_type, root_shape)],
         initializer=initializers,
     )
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
@@ -97,6 +104,30 @@ class TestGroupNormFusion(unittest.TestCase):
         counts = op_counts(model)
         self.assertEqual(counts.get("GroupNorm", 0), 0)
         self.assertEqual(counts.get("InstanceNormalization", 0), 1)
+
+    def test_does_not_fuse_rank_3_root(self):
+        model = to_ir(_build_group_norm_model(root_shape=[1, 8, 4]))
+        rewrite(model, pattern_rewrite_rules=group_norm_rules())
+
+        self.assertEqual(op_counts(model).get("GroupNorm", 0), 0)
+
+    def test_does_not_fuse_mismatched_affine_channels(self):
+        model = to_ir(_build_group_norm_model(affine_channels=4))
+        rewrite(model, pattern_rewrite_rules=group_norm_rules())
+
+        self.assertEqual(op_counts(model).get("GroupNorm", 0), 0)
+
+    def test_does_not_fuse_indivisible_channel_count(self):
+        model = to_ir(_build_group_norm_model(channels=6, groups=4))
+        rewrite(model, pattern_rewrite_rules=group_norm_rules())
+
+        self.assertEqual(op_counts(model).get("GroupNorm", 0), 0)
+
+    def test_does_not_fuse_double_input(self):
+        model = to_ir(_build_group_norm_model(data_type=onnx.TensorProto.DOUBLE))
+        rewrite(model, pattern_rewrite_rules=group_norm_rules())
+
+        self.assertEqual(op_counts(model).get("GroupNorm", 0), 0)
 
 
 if __name__ == "__main__":

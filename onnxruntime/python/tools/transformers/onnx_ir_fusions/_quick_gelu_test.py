@@ -11,14 +11,13 @@ import unittest
 import numpy as np
 import onnx
 import onnx.helper as helper
-from onnx import TensorProto
 from onnx_ir_fusions import quick_gelu_rules
 from onnx_ir_fusions._testing import op_counts, to_ir
 from onnxscript.rewriter import rewrite
 
 
 def _build_quickgelu_model(alpha: float = 1.7021484375) -> onnx.ModelProto:
-    alpha_init = helper.make_tensor("alpha", TensorProto.FLOAT, [], [alpha])
+    alpha_init = helper.make_tensor("alpha", onnx.TensorProto.FLOAT, [], [alpha])
     nodes = [
         helper.make_node("Mul", ["x", "alpha"], ["scaled"]),
         helper.make_node("Sigmoid", ["scaled"], ["sig"]),
@@ -27,8 +26,8 @@ def _build_quickgelu_model(alpha: float = 1.7021484375) -> onnx.ModelProto:
     graph = helper.make_graph(
         nodes,
         "quickgelu",
-        [helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 4])],
-        [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 4])],
+        [helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [2, 4])],
+        [helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [2, 4])],
         initializer=[alpha_init],
     )
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])

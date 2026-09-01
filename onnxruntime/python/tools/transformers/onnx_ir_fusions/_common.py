@@ -9,6 +9,9 @@ from __future__ import annotations
 import numpy as np
 import onnx_ir as ir
 
+FLOAT_OR_FLOAT16 = frozenset((ir.DataType.FLOAT, ir.DataType.FLOAT16))
+FLOAT_OR_FLOAT16_OR_BFLOAT16 = FLOAT_OR_FLOAT16 | {ir.DataType.BFLOAT16}
+
 
 def constant_array(value: ir.Value) -> np.ndarray | None:
     """Return the constant tensor backing ``value`` as a numpy array, or None.
@@ -35,3 +38,11 @@ def is_constant_with_rank(value: ir.Value, rank: int) -> bool:
     """True if ``value`` is a constant tensor with the given number of dims."""
     array = constant_array(value)
     return array is not None and array.ndim == rank
+
+
+def static_shape(value: ir.Value) -> tuple[int, ...] | None:
+    """Return the fully static shape of ``value``, or ``None`` if it is unavailable."""
+    shape = value.shape
+    if shape is None or not shape.is_static():
+        return None
+    return shape.numpy()

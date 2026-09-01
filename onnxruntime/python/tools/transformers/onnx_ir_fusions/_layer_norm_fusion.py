@@ -44,7 +44,10 @@ def _check_constant_scalar(value, expected: float, name: str, *, rel_tol: float 
     """Return an error message if *value* is not a constant ≈ *expected*."""
     if value.const_value is None:
         return f"{name} is not a constant"
-    actual = float(value.const_value.numpy().flat[0])
+    constant = value.const_value.numpy()
+    if constant.size != 1:
+        return f"{name} must contain exactly one element"
+    actual = float(constant.flat[0])
     if not math.isclose(actual, expected, rel_tol=rel_tol):
         return f"{name} is {actual}, expected {expected}"
     return None
@@ -57,6 +60,27 @@ def _check_axes_minus_one(value, name: str) -> str | None:
     axes = list(value.const_value.numpy().flat)
     if axes != [-1]:
         return f"ReduceMean {name} axes={axes}, expected [-1]"
+    return None
+
+
+def _check_epsilon(value) -> str | None:
+    """Return an error message if *value* is not a supported epsilon scalar."""
+    if value.const_value is None:
+        return "Epsilon is not a constant"
+    constant = value.const_value.numpy()
+    if constant.size != 1:
+        return "Epsilon must contain exactly one element"
+    eps_val = float(constant.flat[0])
+    if eps_val <= 0 or eps_val > 1.0:
+        return f"Epsilon {eps_val} out of expected range (0, 1]"
+    return None
+
+
+def _check_keepdims(value, name: str) -> str | None:
+    """Return an error message if the ReduceMean producing *value* drops dimensions."""
+    node = value.producer()
+    if node is None or node.attributes.get_int("keepdims", 1) != 1:
+        return f"{name} ReduceMean must have keepdims=1"
     return None
 
 
@@ -85,31 +109,34 @@ class LayerNormFusion(RewriteRuleClassBase):
     """
 
     def pattern(self, op, x, axes1, exponent, axes2, epsilon, weight, bias):
-        mean = op.ReduceMean(x, axes1, _allow_other_attributes=True)
+        mean = op.ReduceMean(x, axes1, _allow_other_attributes=True, _outputs=["mean"])
         diff = op.Sub(x, mean)
         sq = op.Pow(diff, exponent)
-        var = op.ReduceMean(sq, axes2, _allow_other_attributes=True)
+        var = op.ReduceMean(sq, axes2, _allow_other_attributes=True, _outputs=["var"])
         var_eps = op.Add(var, epsilon)
         std = op.Sqrt(var_eps)
         normalized = op.Div(diff, std)
         scaled = op.Mul(normalized, weight)
         return op.Add(scaled, bias)
 
-    def check(self, context, exponent, epsilon, axes1, axes2, **_):
+    def check(self, context, exponent, epsilon, axes1, axes2, mean, var, **_):
         result = MatchResult()
 
         err = _check_constant_scalar(exponent, 2.0, "Pow exponent")
         if err:
             return result.fail(err)
 
-        if epsilon.const_value is None:
-            return result.fail("Epsilon is not a constant")
-        eps_val = float(epsilon.const_value.numpy().flat[0])
-        if eps_val <= 0 or eps_val > 1.0:
-            return result.fail(f"Epsilon {eps_val} out of expected range (0, 1]")
+        err = _check_epsilon(epsilon)
+        if err:
+            return result.fail(err)
 
         for tag, axes in [("first", axes1), ("second", axes2)]:
             err = _check_axes_minus_one(axes, tag)
+            if err:
+                return result.fail(err)
+
+        for tag, value in [("first", mean), ("second", var)]:
+            err = _check_keepdims(value, tag)
             if err:
                 return result.fail(err)
 
@@ -134,30 +161,33 @@ class LayerNormFusionNoBias(RewriteRuleClassBase):
     """
 
     def pattern(self, op, x, axes1, exponent, axes2, epsilon, weight):
-        mean = op.ReduceMean(x, axes1, _allow_other_attributes=True)
+        mean = op.ReduceMean(x, axes1, _allow_other_attributes=True, _outputs=["mean"])
         diff = op.Sub(x, mean)
         sq = op.Pow(diff, exponent)
-        var = op.ReduceMean(sq, axes2, _allow_other_attributes=True)
+        var = op.ReduceMean(sq, axes2, _allow_other_attributes=True, _outputs=["var"])
         var_eps = op.Add(var, epsilon)
         std = op.Sqrt(var_eps)
         normalized = op.Div(diff, std)
         return op.Mul(normalized, weight)
 
-    def check(self, context, exponent, epsilon, axes1, axes2, **_):
+    def check(self, context, exponent, epsilon, axes1, axes2, mean, var, **_):
         result = MatchResult()
 
         err = _check_constant_scalar(exponent, 2.0, "Pow exponent")
         if err:
             return result.fail(err)
 
-        if epsilon.const_value is None:
-            return result.fail("Epsilon is not a constant")
-        eps_val = float(epsilon.const_value.numpy().flat[0])
-        if eps_val <= 0 or eps_val > 1.0:
-            return result.fail(f"Epsilon {eps_val} out of expected range (0, 1]")
+        err = _check_epsilon(epsilon)
+        if err:
+            return result.fail(err)
 
         for tag, axes in [("first", axes1), ("second", axes2)]:
             err = _check_axes_minus_one(axes, tag)
+            if err:
+                return result.fail(err)
+
+        for tag, value in [("first", mean), ("second", var)]:
+            err = _check_keepdims(value, tag)
             if err:
                 return result.fail(err)
 

@@ -58,9 +58,20 @@ def _check_const(value, expected: float, name: str) -> str | None:
     """Return error string if *value* is not a constant ≈ *expected*."""
     if value.const_value is None:
         return f"{name} is not a constant"
-    actual = float(value.const_value.numpy().flat[0])
+    constant = value.const_value.numpy()
+    if constant.size != 1:
+        return f"{name} must contain exactly one element"
+    actual = float(constant.flat[0])
     if not math.isclose(actual, expected, rel_tol=1e-3):
         return f"{name} is {actual}, expected ~{expected}"
+    return None
+
+
+def _check_gelu_opset(context) -> str | None:
+    """Return an error if the model cannot represent the standard Gelu op."""
+    default_opset = context.model.opset_imports.get("")
+    if default_opset is None or default_opset < 20:
+        return f"default-domain opset {default_opset} does not support Gelu (requires >= 20)"
     return None
 
 
@@ -97,6 +108,9 @@ class ExactGeluFusion(RewriteRuleClassBase):
     def check(self, context, sqrt2, one_val, half_val, **_):
         result = MatchResult()
 
+        err = _check_gelu_opset(context)
+        if err:
+            return result.fail(err)
         err = _check_const(sqrt2, _SQRT2, "sqrt(2) divisor")
         if err:
             return result.fail(err)
@@ -130,6 +144,9 @@ class ExactGeluFusionHalfFirst(RewriteRuleClassBase):
     def check(self, context, sqrt2, one_val, half_val, **_):
         result = MatchResult()
 
+        err = _check_gelu_opset(context)
+        if err:
+            return result.fail(err)
         err = _check_const(sqrt2, _SQRT2, "sqrt(2) divisor")
         if err:
             return result.fail(err)
@@ -185,6 +202,9 @@ class ApproxGeluFusion(RewriteRuleClassBase):
     def check(self, context, three, coeff, sqrt_2pi, one_val, half_val, **_):
         result = MatchResult()
 
+        err = _check_gelu_opset(context)
+        if err:
+            return result.fail(err)
         err = _check_const(three, 3.0, "Pow exponent")
         if err:
             return result.fail(err)
@@ -223,6 +243,9 @@ class ApproxGeluFusionHalfFirst(RewriteRuleClassBase):
     def check(self, context, three, coeff, sqrt_2pi, one_val, half_val, **_):
         result = MatchResult()
 
+        err = _check_gelu_opset(context)
+        if err:
+            return result.fail(err)
         err = _check_const(three, 3.0, "Pow exponent")
         if err:
             return result.fail(err)

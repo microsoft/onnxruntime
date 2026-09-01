@@ -41,8 +41,8 @@ Ported directly from existing onnx-ir rewrite rules:
 
 | Fusion | Replaces | Target op |
 |---|---|---|
-| `bias_gelu_rules()` | `fusion_biasgelu.py` | `com.microsoft.BiasGelu` |
-| `gelu_fusion_rules()` | `fusion_gelu.py` / `fusion_fastgelu.py` | `Gelu` (exact + tanh) |
+| `bias_gelu_rules()` | `fusion_biasgelu.py` | `com.microsoft.BiasGelu` (exact) / `FastGelu` (tanh) |
+| `gelu_fusion_rules()` | `fusion_gelu.py` / `fusion_fastgelu.py` | `Gelu` (exact + tanh; opset ≥ 20) |
 | `layer_norm_fusion_rules()` | `fusion_layernorm.py` | `LayerNormalization` |
 | `skip_layer_norm_rules()` | `fusion_skiplayernorm.py` | `com.microsoft.SkipLayerNormalization` |
 | `skip_norm_rules()` | `fusion_simplified_layernorm.py` | `com.microsoft.SkipSimplifiedLayerNormalization` |
