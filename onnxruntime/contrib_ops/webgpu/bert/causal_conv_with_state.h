@@ -42,6 +42,7 @@ class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgr
       {"channels", ProgramUniformVariableDataType::Uint32},
       {"input_length", ProgramUniformVariableDataType::Uint32},
       {"kernel_size", ProgramUniformVariableDataType::Uint32},
+      {"dilation", ProgramUniformVariableDataType::Uint32},
       {"state_length", ProgramUniformVariableDataType::Uint32},
       {"output_size", ProgramUniformVariableDataType::Uint32});
 
@@ -73,6 +74,7 @@ class CausalConvWithState final : public WebGpuKernel {
  private:
   CausalConvActivation activation_;
   int64_t ndim_;
+  int dilation_;
 };
 
 }  // namespace webgpu

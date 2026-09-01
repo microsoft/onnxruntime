@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "contrib_ops/cpu/bert/causal_conv_with_state_helper.h"
 
 using namespace onnxruntime::webgpu;
 
@@ -40,6 +41,7 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
   activation_ = ParseCausalConvActivation(activation_str);
   ORT_ENFORCE(info.GetAttr<int64_t>("ndim", &ndim_).IsOK(), "Attribute 'ndim' is required");
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
   ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
               "WebGPU CausalConvWithState does not support state_window > 0 (CUDA EP only)");
 }
@@ -98,7 +100,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   const Tensor* input = context.Input(0);       // (B, D, L)
   const Tensor* weight = context.Input(1);      // (D, 1, K)
   const Tensor* bias = context.Input(2);        // optional (D,)
-  const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1) — past_state
+  const Tensor* conv_state = context.Input(3);  // optional (B, D, (K-1)*dilation) — past_state
 
   ORT_RETURN_IF(activation_ == CausalConvActivation::Invalid, "Invalid activation type");
   ORT_RETURN_IF(ndim_ != 1, "Only 1D convolution is supported");
@@ -114,7 +116,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   const int64_t channels = input_shape[1];
   const int64_t input_length = input_shape[2];
   const int64_t kernel_size = weight_shape[2];
-  const int64_t state_length = kernel_size - 1;
+  const int64_t state_length = (kernel_size - 1) * dilation_;
 
   ORT_RETURN_IF(weight_shape[0] != channels, "Weight first dim must match input channels");
   ORT_RETURN_IF(weight_shape[1] != 1, "Weight second dim must be 1 for depthwise convolution");
@@ -126,13 +128,13 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
 
   if (conv_state != nullptr) {
     ORT_RETURN_IF(conv_state->Shape().NumDimensions() != 3,
-                  "conv_state must be 3D (batch_size, channels, kernel_size - 1)");
+                  "conv_state must be 3D (batch_size, channels, (kernel_size - 1) * dilation)");
     ORT_RETURN_IF(conv_state->Shape()[0] != batch_size,
                   "conv_state batch_size must match input");
     ORT_RETURN_IF(conv_state->Shape()[1] != channels,
                   "conv_state channels must match input");
     ORT_RETURN_IF(conv_state->Shape()[2] != state_length,
-                  "conv_state last dim must be kernel_size - 1");
+                  "conv_state last dim must be (kernel_size - 1) * dilation");
   }
 
   const bool has_bias = (bias != nullptr);
@@ -142,7 +144,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   // Output 0: (B, D, L)
   Tensor* output = context.Output(0, input_shape);
 
-  // Output 1: present_state (B, D, K-1)
+  // Output 1: present_state (B, D, (K-1)*dilation)
   std::vector<int64_t> state_dims{batch_size, channels, state_length};
   Tensor* present_state = context.Output(1, TensorShape(state_dims));
   const bool conv_state_in_present_state = has_conv_state && conv_state->DataRaw() == present_state->DataRaw();
@@ -164,7 +166,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 
   program.CacheHint(has_bias, has_conv_state, !conv_state_in_present_state,
-                    kernel_size, static_cast<int>(activation_));
+                    kernel_size, dilation_, static_cast<int>(activation_));
 
   program.AddInput({input, ProgramTensorMetadataDependency::Type})
       .AddInput({weight, ProgramTensorMetadataDependency::None});
@@ -186,6 +188,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariable({static_cast<uint32_t>(channels)})
       .AddUniformVariable({static_cast<uint32_t>(input_length)})
       .AddUniformVariable({static_cast<uint32_t>(kernel_size)})
+      .AddUniformVariable({static_cast<uint32_t>(dilation_)})
       .AddUniformVariable({static_cast<uint32_t>(state_length)})
       .AddUniformVariable({output_size});
 

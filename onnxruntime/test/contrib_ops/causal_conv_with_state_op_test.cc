@@ -38,10 +38,10 @@ enum class TensorType {
 // Input: (B, D, L) channels-first
 // Weight: (D, 1, K) depthwise
 // Bias: (D,) optional
-// past_state: (B, D, K-1) optional carry state
+// past_state: (B, D, (K-1)*dilation) optional carry state
 //
 // Output: (B, D, L) convolution output (with optional activation)
-// present_state: (B, D, K-1) updated carry state
+// present_state: (B, D, (K-1)*dilation) updated carry state
 void CausalConvWithStateReference(
     const std::vector<float>& input,
     const std::vector<float>& weight,
@@ -53,8 +53,9 @@ void CausalConvWithStateReference(
     int channels,
     int input_length,
     int kernel_size,
-    const std::string& activation) {
-  int state_length = kernel_size - 1;
+    const std::string& activation,
+    int dilation = 1) {
+  int state_length = (kernel_size - 1) * dilation;
   int total_virtual_length = state_length + input_length;
 
   output.resize(batch_size * channels * input_length);
@@ -79,7 +80,7 @@ void CausalConvWithStateReference(
       for (int pos = 0; pos < input_length; ++pos) {
         float acc = 0.0f;
         for (int j = 0; j < kernel_size; ++j) {
-          float val = virtual_input[pos + j];
+          float val = virtual_input[pos + j * dilation];
           float w = weight[d * kernel_size + j];
           acc += val * w;
         }
@@ -137,14 +138,15 @@ static void RunCausalConvWithStateTest(
     int input_length,
     int kernel_size,
     const std::string& activation,
-    TensorType tensor_type) {
+    TensorType tensor_type,
+    int dilation = 1) {
   auto ep = TryGetEpWithCausalConvWithState();
   if (!ep) {
     GTEST_SKIP() << "CausalConvWithState kernel not registered";
     return;
   }
 
-  int state_length = kernel_size - 1;
+  int state_length = (kernel_size - 1) * dilation;
 
   std::vector<int64_t> input_shape = {batch_size, channels, input_length};
   std::vector<int64_t> weight_shape = {channels, 1, kernel_size};
@@ -155,6 +157,9 @@ static void RunCausalConvWithStateTest(
   {
     OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
     test.AddAttribute<std::string>("activation", activation);
+    if (dilation != 1) {
+      test.AddAttribute<int64_t>("dilation", static_cast<int64_t>(dilation));
+    }
 
     if (tensor_type == TensorType::kFloat) {
       test.AddInput<float>("input", input_shape, input_data);
@@ -212,28 +217,29 @@ static void RunCausalConvWithStateTests(
     int channels,
     int input_length,
     int kernel_size,
-    const std::string& activation = "silu") {
+    const std::string& activation = "silu",
+    int dilation = 1) {
   // Compute expected output using reference implementation
   std::vector<float> expected_output;
   std::vector<float> expected_state;
   CausalConvWithStateReference(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
-      batch_size, channels, input_length, kernel_size, activation);
+      batch_size, channels, input_length, kernel_size, activation, dilation);
 
   // FP32 test
   RunCausalConvWithStateTest(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation,
-      TensorType::kFloat);
+      TensorType::kFloat, dilation);
 
   // FP16 test
   RunCausalConvWithStateTest(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation,
-      TensorType::kFloat16);
+      TensorType::kFloat16, dilation);
 }
 
 // =============================================================================
@@ -662,6 +668,189 @@ TEST(CausalConvWithStateTest, LargerDimensions) {
   RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
+}
+
+// =============================================================================
+// Dilation tests
+//
+// dilation spaces the kernel taps along the causal axis: output position t reads input positions
+// t - (K - 1 - j) * dilation for tap j, so the carry state grows to (K - 1) * dilation.
+// =============================================================================
+
+TEST(CausalConvWithStateTest, DilatedNoState) {
+  // B=1, D=2, L=6, K=3, dilation=2 -> receptive field spans 4 positions back
+  int batch_size = 1, channels = 2, input_length = 6, kernel_size = 3, dilation = 2;
+
+  std::vector<float> input_data = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+      0.5f, 1.5f, 2.5f, 3.5f, 4.5f, 5.5f};
+  std::vector<float> weight_data = {
+      0.1f, 0.2f, 0.3f,
+      0.4f, 0.5f, 0.6f};
+
+  RunCausalConvWithStateTests(
+      input_data, weight_data, nullptr, nullptr,
+      batch_size, channels, input_length, kernel_size, "none", dilation);
+}
+
+TEST(CausalConvWithStateTest, DilatedWithStateAndBias) {
+  // K=3, dilation=2 -> state length is (3 - 1) * 2 = 4
+  int batch_size = 2, channels = 2, input_length = 5, kernel_size = 3, dilation = 2;
+
+  std::vector<float> input_data(batch_size * channels * input_length);
+  for (int i = 0; i < static_cast<int>(input_data.size()); ++i) {
+    input_data[i] = std::sin(static_cast<float>(i) * 0.4f);
+  }
+  std::vector<float> weight_data = {
+      0.1f, 0.2f, 0.3f,
+      0.4f, 0.5f, 0.6f};
+  std::vector<float> bias_data = {0.05f, -0.05f};
+
+  const int state_length = (kernel_size - 1) * dilation;
+  std::vector<float> conv_state_data(batch_size * channels * state_length);
+  for (int i = 0; i < static_cast<int>(conv_state_data.size()); ++i) {
+    conv_state_data[i] = std::cos(static_cast<float>(i) * 0.25f) * 0.5f;
+  }
+
+  RunCausalConvWithStateTests(
+      input_data, weight_data, &bias_data, &conv_state_data,
+      batch_size, channels, input_length, kernel_size, "silu", dilation);
+}
+
+TEST(CausalConvWithStateTest, DilatedSingleTokenDecode) {
+  // L=1 exercises the decode path; dilation != 1 must fall back off the fixed-K specializations.
+  int batch_size = 1, channels = 2, input_length = 1, kernel_size = 3, dilation = 3;
+
+  std::vector<float> input_data = {1.0f, -2.0f};
+  std::vector<float> weight_data = {
+      0.1f, 0.2f, 0.3f,
+      0.4f, 0.5f, 0.6f};
+  // state length is (3 - 1) * 3 = 6
+  std::vector<float> conv_state_data = {
+      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f,
+      -0.1f, -0.2f, -0.3f, -0.4f, -0.5f, -0.6f};
+
+  RunCausalConvWithStateTests(
+      input_data, weight_data, nullptr, &conv_state_data,
+      batch_size, channels, input_length, kernel_size, "none", dilation);
+}
+
+TEST(CausalConvWithStateTest, DilatedLargerDimensions) {
+  int batch_size = 2, channels = 8, input_length = 16, kernel_size = 4, dilation = 2;
+
+  std::vector<float> input_data(batch_size * channels * input_length);
+  for (int i = 0; i < static_cast<int>(input_data.size()); ++i) {
+    input_data[i] = std::sin(static_cast<float>(i) * 0.1f);
+  }
+  std::vector<float> weight_data(channels * kernel_size);
+  for (int i = 0; i < static_cast<int>(weight_data.size()); ++i) {
+    weight_data[i] = std::cos(static_cast<float>(i) * 0.2f) * 0.5f;
+  }
+  std::vector<float> bias_data(channels);
+  for (int i = 0; i < channels; ++i) {
+    bias_data[i] = 0.01f * static_cast<float>(i);
+  }
+
+  const int state_length = (kernel_size - 1) * dilation;
+  std::vector<float> conv_state_data(batch_size * channels * state_length);
+  for (int i = 0; i < static_cast<int>(conv_state_data.size()); ++i) {
+    conv_state_data[i] = std::sin(static_cast<float>(i) * 0.3f) * 0.5f;
+  }
+
+  RunCausalConvWithStateTests(
+      input_data, weight_data, &bias_data, &conv_state_data,
+      batch_size, channels, input_length, kernel_size, "silu", dilation);
+}
+
+// dilation=1 must stay byte-for-byte the undilated behavior so pre-existing models are unaffected.
+TEST(CausalConvWithStateTest, DilationOneMatchesDefault) {
+  int batch_size = 1, channels = 2, input_length = 4, kernel_size = 3;
+
+  std::vector<float> input_data = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      0.5f, 1.5f, 2.5f, 3.5f};
+  std::vector<float> weight_data = {
+      0.1f, 0.2f, 0.3f,
+      0.4f, 0.5f, 0.6f};
+  std::vector<float> conv_state_data = {-1.0f, 0.5f, 0.3f, -0.7f};
+
+  std::vector<float> expected_output;
+  std::vector<float> expected_state;
+  CausalConvWithStateReference(input_data, weight_data, nullptr, &conv_state_data,
+                               expected_output, expected_state,
+                               batch_size, channels, input_length, kernel_size, "none");
+
+  // Explicit dilation=1 against the reference computed without any dilation.
+  RunCausalConvWithStateTest(
+      input_data, weight_data, nullptr, &conv_state_data,
+      expected_output, expected_state,
+      batch_size, channels, input_length, kernel_size, "none",
+      TensorType::kFloat, /*dilation=*/1);
+}
+
+// A dilated prefill must produce the same result as feeding the same tokens one at a time.
+TEST(CausalConvWithStateTest, DilatedSequenceVsTokenByToken) {
+  int batch_size = 1, channels = 2, kernel_size = 3, dilation = 2;
+  const int seq_len = 5;
+  const int state_length = (kernel_size - 1) * dilation;
+
+  std::vector<float> weight_data = {
+      0.1f, 0.2f, 0.3f,
+      0.4f, 0.5f, 0.6f};
+  std::vector<float> bias_data = {0.05f, -0.05f};
+  std::vector<float> conv_state(batch_size * channels * state_length, 0.0f);
+
+  std::vector<float> full_input = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+      0.5f, 1.5f, 2.5f, 3.5f, 4.5f};
+
+  std::vector<float> full_output;
+  std::vector<float> full_final_state;
+  CausalConvWithStateReference(full_input, weight_data, &bias_data, &conv_state,
+                               full_output, full_final_state,
+                               batch_size, channels, seq_len, kernel_size, "none", dilation);
+
+  std::vector<float> current_state = conv_state;
+  std::vector<float> token_outputs;
+  for (int t = 0; t < seq_len; ++t) {
+    std::vector<float> token_input = {full_input[0 * seq_len + t], full_input[1 * seq_len + t]};
+    std::vector<float> token_output;
+    std::vector<float> next_state;
+    CausalConvWithStateReference(token_input, weight_data, &bias_data, &current_state,
+                                 token_output, next_state,
+                                 batch_size, channels, 1, kernel_size, "none", dilation);
+    for (int d = 0; d < channels; ++d) {
+      token_outputs.push_back(token_output[d]);
+    }
+    current_state = next_state;
+  }
+
+  for (int t = 0; t < seq_len; ++t) {
+    for (int d = 0; d < channels; ++d) {
+      EXPECT_NEAR(full_output[d * seq_len + t], token_outputs[t * channels + d], 1e-5f)
+          << "Mismatch at token " << t << " channel " << d;
+    }
+  }
+  for (int i = 0; i < channels * state_length; ++i) {
+    EXPECT_NEAR(full_final_state[i], current_state[i], 1e-5f) << "State mismatch at index " << i;
+  }
+
+  // The reference chain above is what the kernels are checked against, so verify the kernel too.
+  RunCausalConvWithStateTests(full_input, weight_data, &bias_data, &conv_state,
+                              batch_size, channels, seq_len, kernel_size, "none", dilation);
+}
+
+TEST(CausalConvWithStateTest, DilationBelowOneIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("dilation", 0);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {0.5f, 1.25f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {2.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "dilation must be >= 1");
 }
 
 // The state tensors grow linearly with state_window, so the schema caps it at 8.

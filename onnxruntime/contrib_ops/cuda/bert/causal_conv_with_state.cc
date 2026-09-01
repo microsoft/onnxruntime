@@ -38,6 +38,8 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKern
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
 
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
+
   // See LinearAttention: only the trailing per-position states are ever consumed, so a window
   // caps the allocation and the write traffic for long prompts. 0 keeps the plain single state.
   ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseStateWindow(info, state_window_));
@@ -66,7 +68,7 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int channels = static_cast<int>(input_shape[1]);
   const int L = static_cast<int>(input_shape[2]);
   const int K = static_cast<int>(weight_shape[2]);
-  const int pad = K - 1;
+  const int pad = (K - 1) * dilation_;
 
   ORT_RETURN_IF_NOT(L > 0, "input length must be positive, got ", L);
 
@@ -83,7 +85,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
                       "bias must have shape (", channels, "), got ", bias_shape.ToString());
   }
 
-  // past_state / present_state are [B, C, K-1], or [W, B, C, K-1] when state_window_ = W > 0.
+  // past_state / present_state are [B, C, pad], or [W, B, C, pad] when state_window_ = W > 0,
+  // where pad = (K-1)*dilation.
   // Right-aligned: token t lands in slot t + W - L, so slot W-1 always holds the state after the
   // last token (and is the slot past_state is read from).
   const int state_slots = state_window_ > 0 ? state_window_ : 1;
@@ -125,6 +128,7 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
       channels,
       L,
       K,
+      dilation_,
       apply_silu,
       GetDeviceProp().maxThreadsPerBlock,
       state_slots);
