@@ -325,10 +325,10 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
 
       return scope.Escape(tensorFromGpuBuffer.Call({Napi::External<OrtValue>::New(env, underlyingOrtValue), options}));
     } else {
-      // Let the JS ArrayBuffer own the OrtValue so the output buffer is not copied.
       const size_t byteLength = value.GetTensorSizeInBytes();
       Napi::ArrayBuffer arrayBuffer;
-      if (byteLength > 0) {
+      if (byteLength > 0 && !OrtInstanceData::IsElectron(env)) {
+        // Let the JS ArrayBuffer own the OrtValue so the output buffer is not copied.
         OrtValue* underlyingValue = value;
         arrayBuffer = Napi::ArrayBuffer::New(
             env, value.GetTensorMutableRawData(), byteLength,
@@ -341,7 +341,11 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
             underlyingValue);
         value.release();
       } else {
-        arrayBuffer = Napi::ArrayBuffer::New(env, 0);
+        // Electron's V8 Memory Cage rejects external ArrayBuffers. Copy into V8-owned memory there.
+        arrayBuffer = Napi::ArrayBuffer::New(env, byteLength);
+        if (byteLength > 0) {
+          memcpy(arrayBuffer.Data(), value.GetTensorRawData(), byteLength);
+        }
       }
       napi_value typedArrayData;
       napi_status status =
