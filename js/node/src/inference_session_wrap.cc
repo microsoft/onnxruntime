@@ -195,6 +195,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   std::vector<const char*> outputNames_cstr;
   std::vector<Ort::Value> outputValues;
   std::vector<bool> reuseOutput;
+  std::vector<Napi::Value> outputJsValues;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
@@ -215,6 +216,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
         reuseOutput.push_back(!value.IsNull());
+        outputJsValues.push_back(value);
         outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
       }
     }
@@ -233,7 +235,8 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
+        result.Set(outputNames_cstr[i], reuseOutput[i] ? outputJsValues[i]
+                                                       : OrtValueToNapiValue(env, std::move(outputValues[i])));
       }
       return scope.Escape(result);
     } else {
@@ -245,9 +248,9 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         ioBinding_->BindInput(inputNames_cstr[i], inputValues[i]);
       }
       for (size_t i = 0; i < outputIndex; i++) {
-        // TODO: support preallocated output tensor (outputValues[i])
-
-        if (preferredOutputLocations_[i] == DATA_LOCATION_GPU_BUFFER) {
+        if (reuseOutput[i]) {
+          ioBinding_->BindOutput(outputNames_cstr[i], outputValues[i]);
+        } else if (preferredOutputLocations_[i] == DATA_LOCATION_GPU_BUFFER) {
           ioBinding_->BindOutput(outputNames_cstr[i], gpuBufferMemoryInfo);
         } else {
           ioBinding_->BindOutput(outputNames_cstr[i], cpuMemoryInfo);
@@ -261,7 +264,8 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
+        result.Set(outputNames_cstr[i], reuseOutput[i] ? outputJsValues[i]
+                                                       : OrtValueToNapiValue(env, std::move(outputs[i])));
       }
       return scope.Escape(result);
     }

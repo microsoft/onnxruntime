@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "tensor_helper.h"
 #include "inference_session_wrap.h"
 
@@ -324,10 +325,23 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
 
       return scope.Escape(tensorFromGpuBuffer.Call({Napi::External<OrtValue>::New(env, underlyingOrtValue), options}));
     } else {
-      // TODO: optimize memory
-      auto arrayBuffer = Napi::ArrayBuffer::New(env, size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
-      if (size > 0) {
-        memcpy(arrayBuffer.Data(), value.GetTensorRawData(), size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
+      // Let the JS ArrayBuffer own the OrtValue so the output buffer is not copied.
+      const size_t byteLength = value.GetTensorSizeInBytes();
+      Napi::ArrayBuffer arrayBuffer;
+      if (byteLength > 0) {
+        OrtValue* underlyingValue = value;
+        arrayBuffer = Napi::ArrayBuffer::New(
+            env, value.GetTensorMutableRawData(), byteLength,
+            [](Napi::Env, void*, OrtValue* value) {
+              // The environment cleanup hook may run before N-API finalizers during process shutdown.
+              if (OrtSingletonData::GetOrtObjects()) {
+                Ort::GetApi().ReleaseValue(value);
+              }
+            },
+            underlyingValue);
+        value.release();
+      } else {
+        arrayBuffer = Napi::ArrayBuffer::New(env, 0);
       }
       napi_value typedArrayData;
       napi_status status =

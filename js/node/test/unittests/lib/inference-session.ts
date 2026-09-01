@@ -177,8 +177,7 @@ describe('UnitTests - InferenceSession.run()', () => {
     const result = await session!.run({ data_0: input0 }, { softmaxout_1: null });
     assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
-  // TODO: enable after buffer reuse is implemented
-  it.skip('run() - fetches object (pre-allocated)', async () => {
+  it('run() - fetches object (pre-allocated)', async () => {
     const preAllocatedOutputBuffer = new Float32Array(expectedOutput0.size);
     const result = await session!.run(
       { data_0: input0 },
