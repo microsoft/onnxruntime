@@ -25,7 +25,6 @@ describe('API Tests - InferenceSession.run()', async () => {
   }).timeout(process.arch === 'x64' ? '120s' : 0);
 
   it('keeps native input resources alive when Tensor disposal bypasses instance methods', async () => {
-    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const disposeInput = [
       (input: Tensor) => input.dispose(),
       (input: Tensor) => input.dispose.bind(input)(),
@@ -33,13 +32,19 @@ describe('API Tests - InferenceSession.run()', async () => {
     ];
 
     for (const dispose of disposeInput) {
-      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-      const run = localSession.run({ input });
-      dispose(input);
-      await assert.rejects(localSession.release(), /Cannot dispose session while inference is running/);
-      assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+      const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+      try {
+        const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+        const run = localSession.run({ input });
+        dispose(input);
+        // Releasing while the run is in flight defers the native teardown; it must neither throw
+        // nor disturb the queued work.
+        await localSession.release();
+        assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+      } finally {
+        await localSession.release().catch(() => {});
+      }
     }
-    await localSession.release();
   });
 
   it('copies CPU input data before starting an asynchronous run', async () => {
@@ -70,32 +75,44 @@ describe('API Tests - InferenceSession.run()', async () => {
     await localSession.release();
   });
 
-  it('rejects disposal re-entered from a Tensor property getter', async () => {
+  it('survives disposal re-entered from a Tensor property getter', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
     const inputData = input.data;
-    const releaseErrors: Error[] = [];
+    let reads = 0;
 
     // The binding reads Tensor.data while preparing the run. Releasing the session from that read
-    // must not be able to tear the session down underneath the run being prepared.
+    // must leave the run being prepared with a live session; teardown waits for it to finish.
     Object.defineProperty(input, 'data', {
       configurable: true,
       get: () => {
-        void localSession.release().catch((e: Error) => releaseErrors.push(e));
+        reads++;
+        void localSession.release().catch(() => {});
         return inputData;
       },
     });
 
     try {
       const run = localSession.run({ input });
+      assert.ok(reads > 0, 'expected the binding to read Tensor.data');
       assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
-      assert.ok(releaseErrors.length > 0, 'expected the binding to read Tensor.data');
-      for (const error of releaseErrors) {
-        assert.match(error.message, /Cannot dispose session while inference is running/);
-      }
     } finally {
-      await localSession.release();
+      await localSession.release().catch(() => {});
     }
+  });
+
+  it('defers session teardown until in-flight runs finish', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const runs = [localSession.run({ input }), localSession.run({ input }), localSession.run({ input })];
+
+    await localSession.release();
+    for (const result of await Promise.all(runs)) {
+      assertTensorEqual(result.output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+    }
+
+    await assert.rejects(localSession.run({ input }), /Session already disposed/);
+    await assert.rejects(localSession.release(), /Session already disposed/);
   });
 
   it('rejects a preallocated CPU output whose type differs from the model output', async () => {

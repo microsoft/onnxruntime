@@ -5,7 +5,6 @@
 
 #include "onnxruntime_cxx_api.h"
 
-#include <atomic>
 #include <memory>
 #include <napi.h>
 
@@ -80,12 +79,22 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    */
   Napi::Value EndProfiling(const Napi::CallbackInfo& info);
 
+  // Run bookkeeping. Every access happens on the JS thread: Run(), Dispose() and EndProfiling() are
+  // called from Javascript, and RunAsyncWorker::Complete() runs from the AsyncWorker completion
+  // callback, which node-addon-api also invokes there. Execute() never touches these.
+  void BeginRun();
+  void EndRun();
+  // Release the ORT objects. Deferred until the last in-flight run finishes if one is outstanding.
+  void TeardownSession();
+
   // private members
 
   // session objects
   bool initialized_;
   bool disposed_;
-  std::atomic<size_t> active_runs_{0};
+  // Set when dispose() is called while runs are still in flight; EndRun() completes the teardown.
+  bool teardown_pending_{false};
+  size_t active_runs_{0};
   std::unique_ptr<Ort::Session> session_;
 
   // input/output metadata

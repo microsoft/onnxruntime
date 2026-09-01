@@ -238,7 +238,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   }
 
   ~RunAsyncWorker() override {
-    ReleaseOutputBufferLeases();
+    // AsyncWorker::OnWorkComplete() skips OnOK()/OnError() entirely when the work was cancelled and
+    // still destroys the worker, so the run has to be drained here too. Complete() is idempotent.
+    Complete();
   }
 
   void AcquireOutputBufferLeases() {
@@ -325,17 +327,22 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         }
       }
 
+      // Build the result before writing anything: OrtValueToNapiValue() can throw, and every write
+      // to a caller-owned buffer has to happen after the last operation that can reject.
+      auto result = Napi::Object::New(env_);
+      for (size_t i = 0; i < output_values_.size(); ++i) {
+        if (reuse_output_[i]) {
+          result.Set(output_names_[i], keep_alive.Get(output_js_value_indices_[i]));
+        } else {
+          result.Set(output_names_[i], OrtValueToNapiValue(env_, std::move(output_values_[i])));
+        }
+      }
+
       for (size_t i = 0; i < output_values_.size(); ++i) {
         if (copy_output_to_js_[i]) {
           CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
                                        output_expected_[i]);
         }
-      }
-
-      auto result = Napi::Object::New(env_);
-      for (size_t i = 0; i < output_values_.size(); ++i) {
-        result.Set(output_names_[i], reuse_output_[i] ? keep_alive.Get(output_js_value_indices_[i])
-                                                      : OrtValueToNapiValue(env_, std::move(output_values_[i])));
       }
       Complete();
       deferred_.Resolve(result);
@@ -401,8 +408,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     completed_ = true;
 
     ReleaseOutputBufferLeases();
-
-    session_->active_runs_.fetch_sub(1, std::memory_order_release);
+    session_->EndRun();
   }
 
   void ReleaseOutputBufferLeases() {
@@ -453,44 +459,68 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   auto deferred = Napi::Promise::Deferred::New(env);
 
   std::unique_ptr<RunAsyncWorker> worker;
-  const auto unregister_active_run = [this]() { active_runs_.fetch_sub(1, std::memory_order_release); };
 
   // Register the run before reading 'feed' and 'fetch': those reads can re-enter JS through
   // getters or Proxy traps, and a reentrant dispose() must not be allowed to tear the session
   // down while this run is still being prepared.
-  active_runs_.fetch_add(1, std::memory_order_acquire);
+  BeginRun();
   try {
     worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
     worker->AcquireOutputBufferLeases();
     worker->Queue();
-  } catch (const Napi::Error&) {
-    unregister_active_run();
-    throw;
+  } catch (const Napi::Error& e) {
+    // Reject rather than throw: the deferred already exists, and N-API frees it only once it has
+    // been settled. Throwing would leak it and would also make a method that is typed as returning
+    // a Promise raise synchronously.
+    EndRun();
+    deferred.Reject(e.Value());
+    return deferred.Promise();
   } catch (const std::exception& e) {
-    unregister_active_run();
-    ORT_NAPI_THROW_ERROR(env, e.what());
+    EndRun();
+    deferred.Reject(Napi::Error::New(env, e.what()).Value());
+    return deferred.Promise();
   } catch (...) {
-    unregister_active_run();
-    ORT_NAPI_THROW_ERROR(env, "Unknown error while preparing inference.");
+    EndRun();
+    deferred.Reject(Napi::Error::New(env, "Unknown error while preparing inference.").Value());
+    return deferred.Promise();
   }
 
   worker.release();
   return deferred.Promise();
 }
 
+void InferenceSessionWrap::BeginRun() {
+  ++active_runs_;
+}
+
+void InferenceSessionWrap::EndRun() {
+  if (--active_runs_ == 0 && teardown_pending_) {
+    teardown_pending_ = false;
+    TeardownSession();
+  }
+}
+
+void InferenceSessionWrap::TeardownSession() {
+  inputTypes_.clear();
+  outputTypes_.clear();
+  session_.reset(nullptr);
+}
+
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  ORT_NAPI_THROW_ERROR_IF(this->active_runs_.load(std::memory_order_acquire) != 0, env,
-                          "Cannot dispose session while inference is running.");
 
-  this->inputTypes_.clear();
-  this->outputTypes_.clear();
-
-  this->session_.reset(nullptr);
-
+  // Refuse further calls straight away, but keep the ORT objects alive for runs already in flight:
+  // they hold a raw pointer to this session and execute on the libuv threadpool. EndRun() performs
+  // the teardown once the last one completes.
   this->disposed_ = true;
+  if (this->active_runs_ != 0) {
+    this->teardown_pending_ = true;
+    return env.Undefined();
+  }
+
+  this->TeardownSession();
   return env.Undefined();
 }
 
@@ -498,8 +528,9 @@ Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  ORT_NAPI_THROW_ERROR_IF(this->active_runs_.load(std::memory_order_acquire) != 0, env,
-                          "Cannot end profiling while inference is running.");
+  // Unlike dispose(), this cannot be deferred: it has to return the profile filename synchronously,
+  // and reading it while a run executes on the threadpool is not safe.
+  ORT_NAPI_THROW_ERROR_IF(this->active_runs_ != 0, env, "Cannot end profiling while inference is running.");
 
   Napi::EscapableHandleScope scope(env);
 
