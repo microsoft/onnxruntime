@@ -2391,12 +2391,12 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
 class TestPagedAttentionXqaSpeculative(unittest.TestCase):
     """Coverage for the multi-token (speculative decoding) paged XQA specialization.
 
-    Head size 256 / group size 6 / quantized cache / 2..8 new tokens per sequence routes a
-    speculative verification step onto XQA with a packed lower-triangular mask instead of the
-    ragged fallback. The mask is the whole point of these tests: a kernel that ignores it lets a
-    draft token attend to its own future, which stays inside a loose tolerance when K and V barely
-    vary with position. `parity_check_paged_attention` uses random K/V and a torch reference, so a
-    dropped mask shows up as a large error on every row except the last."""
+    Head size 256 / group size 6 / 2..8 new tokens per sequence routes a speculative verification
+    step onto XQA with a packed lower-triangular mask instead of the ragged fallback. The mask is
+    the whole point of these tests: a kernel that ignores it lets a draft token attend to its own
+    future, which stays inside a loose tolerance when K and V barely vary with position.
+    `parity_check_paged_attention` uses random K/V and a torch reference, so a dropped mask shows
+    up as a large error on every row except the last."""
 
     def setUp(self):
         torch.manual_seed(0)
@@ -2436,12 +2436,14 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
     def test_spec_dec_query_length(self, _, query_length):
         self._check(sequence_length=query_length, new_seqlens=[query_length] * 4)
 
-    def test_spec_dec_dispatches_to_xqa(self):
+    @parameterized.expand([("int8", "int8"), ("native_fp16", "float16")])
+    def test_spec_dec_dispatches_to_xqa(self, _, kv_cache_type):
+        quant = "NONE" if kv_cache_type == "float16" else "PER_TENSOR"
         config = Config(4, 8, 1024, 6, 1, 256, 256, False, False, False, False, 0.0)
         for key, value in {
-            "kv_cache_type": "int8",
-            "k_quant_type": "PER_TENSOR",
-            "v_quant_type": "PER_TENSOR",
+            "kv_cache_type": kv_cache_type,
+            "k_quant_type": quant,
+            "v_quant_type": quant,
             "use_attention_metadata": True,
         }.items():
             setattr(config, key, value)
@@ -2453,7 +2455,16 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
             )
         self.assertIn("SdpaKernel=XQA", debug_output)
 
-    @parameterized.expand([("ragged", [1, 8, 3, 8]), ("inactive", [0, 0, 0, 7]), ("uniform2", [2, 2, 2, 2])])
+    @parameterized.expand(
+        [
+            ("ragged", [1, 8, 3, 8]),
+            ("inactive", [0, 0, 0, 7]),
+            ("uniform2", [2, 2, 2, 2]),
+            # token_count (2) <= batch_size (4): the gate is the metadata query bound, not the
+            # aggregate token count, so this still routes to the speculative kernel.
+            ("fewer_tokens_than_sequences", [0, 0, 0, 2]),
+        ]
+    )
     def test_spec_dec_ragged_batch(self, _, new_seqlens):
         # A continuous-batching step mixes acceptance lengths, and a scheduled sequence may
         # contribute no token at all.
@@ -2474,6 +2485,9 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
 
     def test_spec_dec_batch_one(self):
         self._check(batch_size=1, new_seqlens=[8])
+
+    def test_spec_dec_native_fp16_cache(self):
+        self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE")
 
     def test_bound_above_specialization_falls_back(self):
         # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend
