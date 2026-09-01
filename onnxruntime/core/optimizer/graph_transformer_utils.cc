@@ -345,6 +345,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const InlinedHashSet<std::string_view> cpu_cuda_dml_eps = {onnxruntime::kCpuExecutionProvider,
                                                                  onnxruntime::kCudaExecutionProvider,
                                                                  onnxruntime::kDmlExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_dml_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                        onnxruntime::kCudaExecutionProvider,
+                                                                        onnxruntime::kDmlExecutionProvider,
+                                                                        onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_eps = {onnxruntime::kCpuExecutionProvider,
                                                                      onnxruntime::kAclExecutionProvider,
                                                                      onnxruntime::kCudaExecutionProvider,
@@ -421,7 +425,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
-      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_eps));
+      // Expose pre-opset-20 tanh GELU to ConvActivationFusion on WebGPU.
+      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_webgpu_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
