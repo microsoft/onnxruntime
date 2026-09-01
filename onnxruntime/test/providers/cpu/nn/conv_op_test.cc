@@ -1671,5 +1671,30 @@ TEST(ConvTest, Conv2D_ZeroDilation_Dml) {
       .RunWithConfig();
 }
 
+TEST(ConvTest, Conv2D_InvalidBiasSize) {
+  OpTester test("Conv", 22);
+  test.AddInput<float>("X", {1, 1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {4, 1, 1, 1}, std::vector<float>(4, 0.0f));
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, std::vector<float>(4, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias must be a 1D tensor of size output_channels")
+      .RunWithConfig();
+}
+
+TEST(ConvTest, Conv2D_InvalidBiasRank) {
+  OpTester test("Conv", 22);
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {1, 1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {4, 1, 1, 1}, std::vector<float>(4, 0.0f));
+  test.AddInput<float>("B", {1, 4}, std::vector<float>(4, 0.0f));
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, std::vector<float>(4, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias must be a 1D tensor of size output_channels")
+      .RunWithConfig();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

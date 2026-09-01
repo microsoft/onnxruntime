@@ -630,6 +630,14 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 
 #ifdef USE_WEBGPU
 
+WGPUInstance OrtCreateWebGpuInstance() {
+  const WGPUInstanceFeatureName required_features[] = {WGPUInstanceFeatureName_TimedWaitAny};
+  WGPUInstanceDescriptor instance_descriptor{};
+  instance_descriptor.requiredFeatureCount = 1;
+  instance_descriptor.requiredFeatures = required_features;
+  return wgpuCreateInstance(&instance_descriptor);
+}
+
 WGPUDevice OrtGetWebGpuDevice(int device_id) {
   return onnxruntime::webgpu::GetDevice(device_id);
 }
