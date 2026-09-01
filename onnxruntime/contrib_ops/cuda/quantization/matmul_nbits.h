@@ -48,6 +48,7 @@ constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
 constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
+constexpr int kFpAIntBMinPrefillM = 16;
 
 // Session-option config keys. These are readable by BOTH the built-in CUDA EP and the CUDA plugin
 // EP: every kernel is created via KernelRegistryManager::CreateKernel, which injects the
@@ -86,6 +87,40 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
 // formula, including compact runners targeting SM75 or SM89.
 inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) {
   return (device_sm == 90 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) ? 90 : 80;
+}
+
+// Returns the initially-profiled prefill buckets that must have a CUTLASS tactic before runtime
+// prepacking commits the node to the fpA_intB weight layout. profile_m is the sorted, de-duplicated
+// override parsed by WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList. An empty
+// override uses the profiler's default power-of-two buckets plus max_m.
+inline std::vector<int> GetFpAIntBPrefillBucketsToValidate(const std::vector<int>& profile_m, int max_m) {
+  std::vector<int> buckets;
+  if (profile_m.empty()) {
+    for (int m = kFpAIntBMinPrefillM; m < max_m; m *= 2) {
+      buckets.push_back(m);
+    }
+  } else {
+    for (int m : profile_m) {
+      if (m >= kFpAIntBMinPrefillM && m <= max_m) {
+        buckets.push_back(m);
+      }
+    }
+  }
+
+  if (max_m >= kFpAIntBMinPrefillM && (buckets.empty() || buckets.back() != max_m)) {
+    buckets.push_back(max_m);
+  }
+  return buckets;
+}
+
+template <typename HasTactic>
+inline bool HasFpAIntBPrefillTactics(const std::vector<int>& buckets, const HasTactic& has_tactic) {
+  for (int m : buckets) {
+    if (!has_tactic(m)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. Reads
@@ -212,28 +247,33 @@ class MatMulNBits final : public CudaKernel {
 
         int max_m = profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
                                       : profile_m.back();
+        // Always profile at least the first prefill bucket. Without it, a decode-only override
+        // could commit the node to fpA_intB weights without proving that CUTLASS can serve prefill.
+        if (max_m < kFpAIntBMinPrefillM) {
+          max_m = kFpAIntBMinPrefillM;
+        }
+        if (max_m > gemmProfiler_->getMaxProfileM()) {
+          max_m = gemmProfiler_->getMaxProfileM();
+        }
+        int profiled_max_m = 1;
+        while (profiled_max_m < max_m) {
+          profiled_max_m *= 2;
+        }
+        const auto prefill_buckets = GetFpAIntBPrefillBucketsToValidate(profile_m, profiled_max_m);
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
 
-        // The fpA_intB fast path serves large m (prefill, m >= 16) exclusively through the
-        // CUTLASS weight-only GEMM: the fused CUDA GEMV kernel only supports small m and throws
-        // "unsupported m" otherwise. For narrow-N models the CUTLASS heuristic can fail to find a
-        // valid GEMM tile for one or more m buckets, so no tactic can serve that prefill shape
-        // (getBestConfig returns nullopt, or only the small-m CUDA GEMV kernel), which fails the
-        // node at runtime. When the model did not ship pre-prepacked weights there is a viable
-        // fallback (the default MatMulNBits kernel), so verify here that every profiled m >= 16
-        // bucket has a usable CUTLASS GEMM tactic; if any cannot be served, disable the fast path
-        // (skipping PrePack, which keeps the quantized weights) so the default kernel runs instead
-        // of failing at prefill. Tactics are profiled per rounded power-of-two m bucket, so
-        // probing powers of two covers the whole range.
-        if (has_fpA_intB_gemm_ && weight_prepacked_ == kMatMulNBitsWeightNotPrepacked) {
-          for (int probe_m = 16; probe_m <= max_m; probe_m *= 2) {
-            auto probe = gemmProfiler_->getBestConfig(probe_m, gemmId_);
-            if (!probe.has_value() || probe->enableCudaKernel) {
-              has_fpA_intB_gemm_ = false;
-              has_fpA_intB_gemv_ = false;
-              break;
-            }
+        // Prefill (M >= 16) is served exclusively by CUTLASS because checkTactic excludes the
+        // small-M CUDA GEMV there. A narrow-N model may have no valid CUTLASS tile, leaving a
+        // profiled bucket with no tactic. Runtime-prepacked nodes can still use the standard
+        // MatMulNBits layout, so disable fpA_intB before PrePack discards that fallback. Offline
+        // prepacked weights cannot fall back because they no longer contain the standard layout.
+        if (weight_prepacked_ == kMatMulNBitsWeightNotPrepacked) {
+          has_fpA_intB_gemm_ = HasFpAIntBPrefillTactics(prefill_buckets, [this](int m) {
+            return gemmProfiler_->getBestConfig(m, gemmId_).has_value();
+          });
+          if (!has_fpA_intB_gemm_) {
+            has_fpA_intB_gemv_ = false;
           }
         }
       }

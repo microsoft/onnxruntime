@@ -266,6 +266,13 @@ GEMV kernel (`bestTactic->enableCudaKernel`), otherwise a CUTLASS grouped GEMM.
 The compact fpA_intB GEMV does not support zero-points or bias. This path takes
 precedence over everything in §3 when active.
 
+Before runtime-prepacking standard weights, ORT verifies that every initially
+profiled prefill bucket (`M >= 16`) has a CUTLASS tactic. If a narrow-`N` shape
+has no valid tactic, ORT keeps the standard weight layout and uses the fallback
+in §5. At least `M=16` is profiled even when a profile-bucket override contains
+decode-only values. Offline-prepacked weights remain strict because the standard
+layout is no longer available.
+
 For `weight_prepacked=0`, the CUDA EP preprocesses the standard MatMulNBits
 weight initializer into the fpA_intB layout during ORT prepacking. For
 `weight_prepacked=1`, the initializer is treated as already preprocessed and is
