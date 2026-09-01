@@ -6,18 +6,6 @@
 #include "ort_singleton_data.h"
 #include "onnxruntime_cxx_api.h"
 
-namespace {
-bool IsElectronRuntime(Napi::Env env) {
-  const auto process = env.Global().Get("process");
-  if (!process.IsObject()) {
-    return false;
-  }
-
-  const auto versions = process.As<Napi::Object>().Get("versions");
-  return versions.IsObject() && versions.As<Napi::Object>().Get("electron").IsString();
-}
-}  // namespace
-
 OrtInstanceData::OrtInstanceData() {
 }
 
@@ -25,7 +13,6 @@ void OrtInstanceData::Create(Napi::Env env, Napi::Function inferenceSessionWrapp
   ORT_NAPI_THROW_ERROR_IF(env.GetInstanceData<void>() != nullptr, env, "OrtInstanceData already created.");
   auto data = new OrtInstanceData{};
   data->wrappedSessionConstructor = Napi::Persistent(inferenceSessionWrapperFunction);
-  data->isElectron_ = IsElectronRuntime(env);
   env.SetInstanceData(data);
 }
 
@@ -45,11 +32,6 @@ const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env)
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "OrtInstanceData not created.");
 
   return data->ortTensorConstructor;
-}
-
-bool OrtInstanceData::IsElectron(Napi::Env env) {
-  auto data = env.GetInstanceData<OrtInstanceData>();
-  return data != nullptr && data->isElectron_;
 }
 
 namespace {

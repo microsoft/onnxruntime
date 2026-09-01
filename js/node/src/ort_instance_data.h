@@ -24,8 +24,6 @@ struct OrtInstanceData {
   static void InitOrt(Napi::Env env, int log_level, Napi::Function tensorConstructor, bool is_main_thread);
   // Get the Tensor constructor reference for the Napi::Env
   static const Napi::FunctionReference& TensorConstructor(Napi::Env env);
-  // Return whether this Napi::Env belongs to an Electron runtime.
-  static bool IsElectron(Napi::Env env);
 
   // A region of a preallocated output resource that a run is going to write. 'byteLength' of 0
   // means the whole resource, which is how non-ArrayBuffer resources (a gpu-buffer External) are
@@ -49,6 +47,5 @@ struct OrtInstanceData {
   // per env persistent constructors
   Napi::FunctionReference wrappedSessionConstructor;
   Napi::FunctionReference ortTensorConstructor;
-  bool isElectron_{false};
   std::vector<OutputBufferLease> outputBufferLeases;
 };

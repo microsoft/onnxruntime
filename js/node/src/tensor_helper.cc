@@ -483,21 +483,24 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
     } else {
       const size_t byteLength = value.GetTensorSizeInBytes();
       Napi::ArrayBuffer arrayBuffer;
-      if (byteLength > 0 && !OrtInstanceData::IsElectron(env)) {
-        // Let the JS ArrayBuffer own the OrtValue so the output buffer is not copied.
-        OrtValue* underlyingValue = value;
-        arrayBuffer = Napi::ArrayBuffer::New(
-            env, value.GetTensorMutableRawData(), byteLength,
-            [](Napi::Env, void*, OrtValue* value) {
-              // The environment cleanup hook may run before N-API finalizers during process shutdown.
-              if (OrtSingletonData::GetOrtObjects()) {
-                Ort::GetApi().ReleaseValue(value);
-              }
-            },
-            underlyingValue);
+      napi_value externalArrayBuffer = nullptr;
+      // Hand the OrtValue's memory straight to Javascript so the output is not copied. Electron's
+      // V8 Memory Cage rejects external ArrayBuffers, as does any build with the V8 sandbox
+      // enabled, so attempt the allocation and fall back to a copy rather than testing for a
+      // particular runtime by name.
+      if (byteLength > 0 &&
+          napi_create_external_arraybuffer(
+              env, value.GetTensorMutableRawData(), byteLength,
+              [](napi_env, void*, void* hint) {
+                // The environment cleanup hook may run before N-API finalizers during shutdown.
+                if (OrtSingletonData::GetOrtObjects()) {
+                  Ort::GetApi().ReleaseValue(static_cast<OrtValue*>(hint));
+                }
+              },
+              static_cast<OrtValue*>(value), &externalArrayBuffer) == napi_ok) {
         value.release();
+        arrayBuffer = Napi::ArrayBuffer(env, externalArrayBuffer);
       } else {
-        // Electron's V8 Memory Cage rejects external ArrayBuffers. Copy into V8-owned memory there.
         arrayBuffer = Napi::ArrayBuffer::New(env, byteLength);
         if (byteLength > 0) {
           memcpy(arrayBuffer.Data(), value.GetTensorRawData(), byteLength);
