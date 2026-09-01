@@ -192,7 +192,7 @@ Status PackedAttention<T>::DeclareWorkspaceRequirements(
   const auto estimate = EstimatePackedAttentionWorkspace(
       config, input_shapes, this->GetDeviceProp(), *this->kernel_options_);
   if (estimate.has_value()) {
-    SetPackedAttentionWorkspaceRequirements(config.op, *estimate, requirements);
+    SetPackedAttentionWorkspaceRequirements(*estimate, requirements);
   }
   return Status::OK();
 }

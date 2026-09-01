@@ -307,8 +307,10 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 
 **Buffers:** Dense Attention uses the `GetAttentionWorkspaceSize()` helper. MultiHeadAttention can additionally
 allocate lean-attention synchronization, Flash split/LSE/output-accumulator, and sequence-length buffers.
-PackedAttention has separate projection and Attention allocations; PackedMultiHeadAttention has no projection
-allocation. See the roadmap for the packed recipe and layout contract.
+PackedAttention currently makes separate dynamic projection and Attention allocations; PackedMultiHeadAttention has
+no projection allocation. Their planning declaration is one 256-byte-aligned operator-owned root. PA places the
+projection region first and the Attention region at the next 256-byte boundary; PMHA's root is only its Attention
+region. See the roadmap for the packed recipe and layout contract.
 
 **Size model:** Depends on operator inputs and the selected Attention algorithm:
 
@@ -331,11 +333,12 @@ cache state, and device properties including SM version and `multiProcessorCount
 **Static determinability:** 🔀 — Runtime-exact when sizing receives the backend selected by the CUDA kernel. For AOT,
 use the maximum workspace across feasible backend recipes when exact selection is not provable, or report estimation
 as unavailable when a required contract is missing. See the linked roadmap for the exact/safe-bound/unavailable model.
-PA and PMHA have Level-1 CUDA EP estimates (currently log-only) and Level-2 declarations. PA declares projection
-slot 0 plus Attention slot 1 when nonzero; PMHA declares Attention slot 0. Planner budget consumption and PA
-multi-slot placement remain follow-up work. The current Level-2 boundary represents both unavailable and explicit-zero
-results with no requirements; because `WorkspaceInputShape` has no shape provenance, the PA/PMHA adapter treats
-zero-shaped hints as unavailable.
+PA and PMHA have Level-1 CUDA EP estimates (currently log-only) and Level-2 declarations. Each nonzero estimate emits
+exactly one slot-0 root with explicit 256-byte alignment; PA's root includes projection-to-Attention alignment padding.
+This design has no multi-slot planner dependency. Runtime still uses the existing dynamic allocation topology. Future
+#32071 integration must atomically opt in to root retrieval and slice PA's projection and Attention regions. The
+current Level-2 boundary represents both unavailable and explicit-zero results with no requirements; because
+`WorkspaceInputShape` has no shape provenance, the PA/PMHA adapter treats zero-shaped hints as unavailable.
 
 ---
 

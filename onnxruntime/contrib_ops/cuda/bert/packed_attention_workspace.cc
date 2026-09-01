@@ -1394,8 +1394,16 @@ PackedAttentionWorkspaceAggregate AggregatePackedAttentionWorkspace(
     return result;
   }
 
+  result.status = CheckedPackedAttentionAlign(
+      result.projection_bytes, kPackedAttentionWorkspaceAlignment,
+      result.attention_workspace_offset_bytes);
+  if (!result.status.IsOK()) {
+    return result;
+  }
+
   result.status = CheckedPackedAttentionAdd(
-      result.projection_bytes, result.attention_workspace_bytes, result.total_workspace_bytes);
+      result.attention_workspace_offset_bytes, result.attention_workspace_bytes,
+      result.total_workspace_bytes);
   return result;
 }
 

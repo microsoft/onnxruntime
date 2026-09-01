@@ -233,12 +233,20 @@ struct PackedAttentionWorkspaceResult {
   PackedAttentionWorkspaceRecipe recipe;
 };
 
-// AOT routes are mutually exclusive. The attention component is therefore the
-// maximum single-route recipe, while PA's projection is simultaneously live
-// with that component.
+// AOT routes are mutually exclusive, so the attention component is the maximum
+// single-route recipe. A successful nonempty aggregate describes one
+// operator-owned, 256-byte-aligned root with this graph-free layout:
+//   projection: [0, projection_bytes)
+//   attention:  [attention_workspace_offset_bytes,
+//                attention_workspace_offset_bytes + attention_workspace_bytes)
+// The attention offset is projection_bytes rounded up to
+// kPackedAttentionWorkspaceAlignment, and total_workspace_bytes is the end of
+// the attention region. PMHA has no projection or padding, so its attention
+// offset is zero. A valid empty aggregate has all size and offset fields zero.
 struct PackedAttentionWorkspaceAggregate {
   PackedAttentionWorkspaceStatus status;
   size_t projection_bytes = 0;
+  size_t attention_workspace_offset_bytes = 0;
   size_t attention_workspace_bytes = 0;
   size_t total_workspace_bytes = 0;
 };

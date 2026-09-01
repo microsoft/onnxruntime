@@ -453,31 +453,16 @@ std::optional<PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspac
 }
 
 void SetPackedAttentionWorkspaceRequirements(
-    PackedAttentionWorkspaceOperator op,
     const PackedAttentionWorkspaceAggregate& estimate,
     InlinedVector<WorkspaceRequirement>& requirements) {
   requirements.clear();
-  if (!estimate.status.IsOK()) {
+  if (!estimate.status.IsOK() || estimate.total_workspace_bytes == 0) {
     return;
   }
 
-  if (op == PackedAttentionWorkspaceOperator::PackedAttention) {
-    if (estimate.projection_bytes != 0) {
-      requirements.push_back(
-          WorkspaceRequirement{estimate.projection_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
-    }
-    if (estimate.attention_workspace_bytes != 0) {
-      requirements.push_back(
-          WorkspaceRequirement{estimate.attention_workspace_bytes, /*slot_id=*/1, /*alignment_bytes=*/0});
-    }
-    return;
-  }
-
-  if (op == PackedAttentionWorkspaceOperator::PackedMultiHeadAttention &&
-      estimate.attention_workspace_bytes != 0) {
-    requirements.push_back(
-        WorkspaceRequirement{estimate.attention_workspace_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
-  }
+  requirements.push_back(
+      WorkspaceRequirement{estimate.total_workspace_bytes, /*slot_id=*/0,
+                           /*alignment_bytes=*/kPackedAttentionWorkspaceAlignment});
 }
 
 }  // namespace cuda

@@ -201,14 +201,22 @@ such as Flash and FP32 MEA thresholds or attention-bias alignment are non-monoto
 Every backend that can be reached for some valid shape up to the supplied geometry is sized at that maximum geometry.
 Unfused is always retained as a possible fallback for a nonempty problem, including alongside Flash, MEA, and
 TensorRT candidates. If any included route cannot be safely bounded, estimation is unavailable. Mutually exclusive
-route workspaces are combined with `max`, never `sum`. PA then adds its simultaneously-live projection allocation:
+route workspaces are combined with `max`, never `sum`. The Level-1 aggregate describes one 256-byte-aligned,
+operator-owned root. PA places its simultaneously-live projection and Attention regions in that root; PMHA naturally
+has only the Attention region:
 
 ```text
-PA   = projection + max(feasible attention routes)
-PMHA = max(feasible attention routes)
+PA attention offset = align_up(projection bytes, 256)
+PA root bytes        = attention offset + max(feasible attention routes)
+PMHA attention offset = 0
+PMHA root bytes        = max(feasible attention routes)
 ```
 
-Level-2 slot IDs are stable: PA uses slot 0 for projection and slot 1 for Attention; PMHA uses slot 0 for Attention.
-All slots use `alignment_bytes=0`, meaning allocator-default alignment. No planner consumes these declarations yet;
-future planner work must preserve PA's multiple simultaneously-live slots. Runtime continues to allocate both buffers
-dynamically with `GetScratchBuffer`; this work adds no preallocated-workspace API.
+The PA alignment gap is intentional, so its root can be up to 255 bytes larger than the unaligned sum. Level 2 emits
+exactly one slot-0 requirement for either operator, with explicit `alignment_bytes=256`. This does not depend on the
+framework's generic multi-slot capability.
+
+Runtime allocation topology is unchanged: PA continues to make separate dynamic projection and Attention
+`GetScratchBuffer()` allocations, and PMHA continues to dynamically allocate its Attention workspace. Future #32071
+integration must atomically opt in to planned-root retrieval and slice the root at the declared Attention offset;
+declaring the root does not itself change runtime allocation behavior.

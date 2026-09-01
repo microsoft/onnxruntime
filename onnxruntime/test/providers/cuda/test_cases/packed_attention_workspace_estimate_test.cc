@@ -38,6 +38,7 @@ using contrib::cuda::GetPackedAttentionWorkspaceRecipe;
 using contrib::cuda::GetPackedMultiHeadAttentionFeasibleBackends;
 using contrib::cuda::GetPackedMultiHeadAttentionWorkspaceAggregate;
 using contrib::cuda::GetPackedMultiHeadAttentionWorkspaceRecipe;
+using contrib::cuda::kPackedAttentionWorkspaceAlignment;
 using contrib::cuda::PackedAttentionBackend;
 using contrib::cuda::PackedAttentionBackendMask;
 using contrib::cuda::PackedAttentionInputShapes;
@@ -252,11 +253,20 @@ void ExpectPmhaAggregateUsesMaximum(
   }
 
   EXPECT_EQ(aggregate.projection_bytes, 0U);
+  EXPECT_EQ(aggregate.attention_workspace_offset_bytes, 0U);
   EXPECT_EQ(aggregate.attention_workspace_bytes, maximum);
   EXPECT_EQ(aggregate.total_workspace_bytes, maximum);
   if (nonzero_route_count > 1) {
     EXPECT_LT(aggregate.attention_workspace_bytes, sum);
   }
+}
+
+void ExpectEmptyAggregate(const PackedAttentionWorkspaceAggregate& aggregate) {
+  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
+  EXPECT_EQ(aggregate.projection_bytes, 0U);
+  EXPECT_EQ(aggregate.attention_workspace_offset_bytes, 0U);
+  EXPECT_EQ(aggregate.attention_workspace_bytes, 0U);
+  EXPECT_EQ(aggregate.total_workspace_bytes, 0U);
 }
 
 std::optional<PackedAttentionWorkspaceAggregate> EstimateFromNode(
@@ -429,14 +439,30 @@ TEST(PackedAttentionWorkspaceEstimateTest, AggregateUsesMaxOfMutuallyExclusiveRo
   EXPECT_EQ(aggregate.attention_workspace_bytes,
             std::max(mea.recipe.attention_workspace_bytes,
                      unfused.recipe.attention_workspace_bytes));
+  size_t expected_attention_offset = 0;
+  ASSERT_TRUE(contrib::cuda::CheckedPackedAttentionAlign(
+                  aggregate.projection_bytes, kPackedAttentionWorkspaceAlignment,
+                  expected_attention_offset)
+                  .IsOK());
+  EXPECT_EQ(aggregate.attention_workspace_offset_bytes,
+            expected_attention_offset);
+  EXPECT_EQ(aggregate.attention_workspace_offset_bytes %
+                kPackedAttentionWorkspaceAlignment,
+            0U);
+  EXPECT_GT(aggregate.attention_workspace_offset_bytes,
+            aggregate.projection_bytes);
+  EXPECT_LT(aggregate.attention_workspace_offset_bytes -
+                aggregate.projection_bytes,
+            kPackedAttentionWorkspaceAlignment);
   EXPECT_EQ(aggregate.total_workspace_bytes,
-            aggregate.projection_bytes + aggregate.attention_workspace_bytes);
+            aggregate.attention_workspace_offset_bytes +
+                aggregate.attention_workspace_bytes);
   EXPECT_NE(aggregate.attention_workspace_bytes,
             mea.recipe.attention_workspace_bytes +
                 unfused.recipe.attention_workspace_bytes);
 }
 
-TEST(PackedAttentionWorkspaceEstimateTest, StableLevel2SlotLayoutsSumToLevel1Total) {
+TEST(PackedAttentionWorkspaceEstimateTest, Level2AdaptersDeclareOneAlignedRoot) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   const auto shapes = PaShapes();
@@ -445,17 +471,23 @@ TEST(PackedAttentionWorkspaceEstimateTest, StableLevel2SlotLayoutsSumToLevel1Tot
   ASSERT_TRUE(estimate.has_value());
 
   InlinedVector<WorkspaceRequirement> requirements;
-  SetPackedAttentionWorkspaceRequirements(
-      PackedAttentionWorkspaceOperator::PackedAttention, *estimate, requirements);
-  ASSERT_EQ(requirements.size(), 2U);
+  SetPackedAttentionWorkspaceRequirements(*estimate, requirements);
+  ASSERT_EQ(requirements.size(), 1U);
   EXPECT_EQ(requirements[0].slot_id, 0);
-  EXPECT_EQ(requirements[0].size_bytes, estimate->projection_bytes);
-  EXPECT_EQ(requirements[0].alignment_bytes, 0U);
-  EXPECT_EQ(requirements[1].slot_id, 1);
-  EXPECT_EQ(requirements[1].size_bytes, estimate->attention_workspace_bytes);
-  EXPECT_EQ(requirements[1].alignment_bytes, 0U);
-  EXPECT_EQ(requirements[0].size_bytes + requirements[1].size_bytes,
-            estimate->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].size_bytes, estimate->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].alignment_bytes,
+            kPackedAttentionWorkspaceAlignment);
+  EXPECT_EQ(estimate->attention_workspace_offset_bytes %
+                kPackedAttentionWorkspaceAlignment,
+            0U);
+  EXPECT_EQ(estimate->total_workspace_bytes,
+            estimate->attention_workspace_offset_bytes +
+                estimate->attention_workspace_bytes);
+  EXPECT_GT(estimate->attention_workspace_offset_bytes,
+            estimate->projection_bytes);
+  EXPECT_LT(estimate->attention_workspace_offset_bytes -
+                estimate->projection_bytes,
+            kPackedAttentionWorkspaceAlignment);
 
   auto graph_problem_inputs = PackedAttentionInputShapes{};
   graph_problem_inputs.input = Shape({6, 6});
@@ -485,16 +517,16 @@ TEST(PackedAttentionWorkspaceEstimateTest, StableLevel2SlotLayoutsSumToLevel1Tot
       PmhaConfig(), gsl::make_span(PackedPmhaShapes()), Sm80Device(), options);
   ASSERT_TRUE(pmha_estimate.has_value());
   EXPECT_EQ(pmha_estimate->projection_bytes, 0U);
-  SetPackedAttentionWorkspaceRequirements(
-      PackedAttentionWorkspaceOperator::PackedMultiHeadAttention,
-      *pmha_estimate, requirements);
+  EXPECT_EQ(pmha_estimate->attention_workspace_offset_bytes, 0U);
+  SetPackedAttentionWorkspaceRequirements(*pmha_estimate, requirements);
   ASSERT_EQ(requirements.size(), 1U);
   EXPECT_EQ(requirements[0].slot_id, 0);
   EXPECT_EQ(requirements[0].size_bytes, pmha_estimate->total_workspace_bytes);
-  EXPECT_EQ(requirements[0].alignment_bytes, 0U);
+  EXPECT_EQ(requirements[0].alignment_bytes,
+            kPackedAttentionWorkspaceAlignment);
 }
 
-TEST(PackedAttentionWorkspaceEstimateTest, PackedAttentionKernelDeclaresLevel2Slots) {
+TEST(PackedAttentionWorkspaceEstimateTest, PackedAttentionKernelDeclaresOneAlignedRoot) {
   if (!HasCudaDevice()) {
     GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
   }
@@ -531,12 +563,11 @@ TEST(PackedAttentionWorkspaceEstimateTest, PackedAttentionKernelDeclaresLevel2Sl
   InlinedVector<WorkspaceRequirement> requirements;
   ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
       gsl::make_span(shapes), requirements));
-  ASSERT_EQ(requirements.size(), 2U);
+  ASSERT_EQ(requirements.size(), 1U);
   EXPECT_EQ(requirements[0].slot_id, 0);
-  EXPECT_EQ(requirements[0].size_bytes, expected->projection_bytes);
-  EXPECT_EQ(requirements[1].slot_id, 1);
-  EXPECT_EQ(requirements[1].size_bytes,
-            expected->attention_workspace_bytes);
+  EXPECT_EQ(requirements[0].size_bytes, expected->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].alignment_bytes,
+            kPackedAttentionWorkspaceAlignment);
 
   auto zero_shapes = shapes;
   zero_shapes[0] = KnownShape({0, 6});
@@ -545,7 +576,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, PackedAttentionKernelDeclaresLevel2Sl
   EXPECT_TRUE(requirements.empty());
 }
 
-TEST(PackedAttentionWorkspaceEstimateTest, PackedMultiHeadAttentionKernelDeclaresLevel2Slot) {
+TEST(PackedAttentionWorkspaceEstimateTest, PackedMultiHeadAttentionKernelDeclaresOneAlignedRoot) {
   if (!HasCudaDevice()) {
     GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
   }
@@ -584,8 +615,9 @@ TEST(PackedAttentionWorkspaceEstimateTest, PackedMultiHeadAttentionKernelDeclare
       gsl::make_span(shapes), requirements));
   ASSERT_EQ(requirements.size(), 1U);
   EXPECT_EQ(requirements[0].slot_id, 0);
-  EXPECT_EQ(requirements[0].size_bytes,
-            expected->attention_workspace_bytes);
+  EXPECT_EQ(requirements[0].size_bytes, expected->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].alignment_bytes,
+            kPackedAttentionWorkspaceAlignment);
 
   auto zero_shapes = shapes;
   zero_shapes[0] = KnownShape({0, 2, 3, 4});
@@ -673,9 +705,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   ASSERT_TRUE(pa_problem.status.IsOK()) << pa_problem.status.message;
   auto zero_aggregate = GetPackedAttentionWorkspaceAggregate(
       pa_problem.problem, PackedAttentionBackendMask::Unfused);
-  ASSERT_TRUE(zero_aggregate.status.IsOK())
-      << zero_aggregate.status.message;
-  EXPECT_EQ(zero_aggregate.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(zero_aggregate);
 
   auto zero_v_config = PaConfig();
   zero_v_config.qkv_hidden_sizes = {8, 8, 0};
@@ -693,9 +723,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   ASSERT_TRUE(pa_problem.status.IsOK()) << pa_problem.status.message;
   zero_aggregate = GetPackedAttentionWorkspaceAggregate(
       pa_problem.problem, PackedAttentionBackendMask::Unfused);
-  ASSERT_TRUE(zero_aggregate.status.IsOK())
-      << zero_aggregate.status.message;
-  EXPECT_EQ(zero_aggregate.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(zero_aggregate);
 
   auto pmha_shapes = PackedPmhaShapes();
   pmha_shapes[0] = KnownShape({0, 2, 3, 4});
@@ -712,9 +740,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   ASSERT_TRUE(pmha_problem.status.IsOK()) << pmha_problem.status.message;
   zero_aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
       pmha_problem.problem, PackedAttentionBackendMask::Unfused);
-  ASSERT_TRUE(zero_aggregate.status.IsOK())
-      << zero_aggregate.status.message;
-  EXPECT_EQ(zero_aggregate.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(zero_aggregate);
 
   pmha_shapes = SeparatePmhaShapes();
   pmha_shapes[0] = KnownShape({0, 8});
@@ -732,9 +758,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   ASSERT_TRUE(pmha_problem.status.IsOK()) << pmha_problem.status.message;
   zero_aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
       pmha_problem.problem, PackedAttentionBackendMask::Unfused);
-  ASSERT_TRUE(zero_aggregate.status.IsOK())
-      << zero_aggregate.status.message;
-  EXPECT_EQ(zero_aggregate.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(zero_aggregate);
 }
 
 TEST(PackedAttentionWorkspaceEstimateTest, RouteSetConservativelyIncludesFallbacks) {
@@ -998,8 +1022,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, InvalidAndEmptyRouteMasksAreDistingui
   nonempty.token_count = 0;
   const auto empty = GetPackedAttentionWorkspaceAggregate(
       nonempty, PackedAttentionBackendMask::None);
-  EXPECT_TRUE(empty.status.IsOK());
-  EXPECT_EQ(empty.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(empty);
 
   const auto invalid_mask = static_cast<PackedAttentionBackendMask>(1U << 31);
   EXPECT_EQ(GetPackedAttentionWorkspaceAggregate(nonempty, invalid_mask).status.error,
@@ -1017,8 +1040,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, EmptyAggregatesStillValidateProblemGe
   valid_pa.token_count = 0;
   auto aggregate =
       GetPackedAttentionWorkspaceAggregate(valid_pa, PackedAttentionBackendMask::None);
-  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
-  EXPECT_EQ(aggregate.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(aggregate);
 
   auto malformed_pa = valid_pa;
   malformed_pa.input_hidden_size = -1;
@@ -1038,8 +1060,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, EmptyAggregatesStillValidateProblemGe
   valid_pmha.token_count = 0;
   aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
       valid_pmha, PackedAttentionBackendMask::None);
-  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
-  EXPECT_EQ(aggregate.total_workspace_bytes, 0U);
+  ExpectEmptyAggregate(aggregate);
 
   auto malformed_pmha = valid_pmha;
   malformed_pmha.batch_size = -1;
@@ -1088,20 +1109,19 @@ TEST(PackedAttentionWorkspaceEstimateTest, FailedAggregateEmitsNoRequirements) {
   failed.status.error = PackedAttentionWorkspaceError::InvalidArgument;
   failed.status.message = "deliberately failed estimate";
   failed.projection_bytes = 1024;
+  failed.attention_workspace_offset_bytes = 1280;
   failed.attention_workspace_bytes = 2048;
-  failed.total_workspace_bytes = 3072;
+  failed.total_workspace_bytes = 3328;
 
   InlinedVector<WorkspaceRequirement> requirements{
       WorkspaceRequirement{4096, /*slot_id=*/7, /*alignment_bytes=*/0}};
-  SetPackedAttentionWorkspaceRequirements(
-      PackedAttentionWorkspaceOperator::PackedAttention, failed, requirements);
+  SetPackedAttentionWorkspaceRequirements(failed, requirements);
   EXPECT_TRUE(requirements.empty());
 
+  PackedAttentionWorkspaceAggregate empty;
   requirements.push_back(
       WorkspaceRequirement{4096, /*slot_id=*/7, /*alignment_bytes=*/0});
-  SetPackedAttentionWorkspaceRequirements(
-      PackedAttentionWorkspaceOperator::PackedMultiHeadAttention,
-      failed, requirements);
+  SetPackedAttentionWorkspaceRequirements(empty, requirements);
   EXPECT_TRUE(requirements.empty());
 }
 

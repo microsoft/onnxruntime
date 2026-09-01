@@ -70,10 +70,9 @@ std::optional<PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspac
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options);
 
-// Converts an available aggregate to the stable Level-2 slot layout. Zero-byte
-// slots are omitted.
+// Converts a successful nonzero aggregate to one explicitly aligned Level-2
+// root requirement. Failed and zero-byte aggregates emit no requirement.
 void SetPackedAttentionWorkspaceRequirements(
-    PackedAttentionWorkspaceOperator op,
     const PackedAttentionWorkspaceAggregate& estimate,
     InlinedVector<WorkspaceRequirement>& requirements);
 
