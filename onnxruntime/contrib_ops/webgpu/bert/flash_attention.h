@@ -106,7 +106,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
-        is_fp16_(is_fp16),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
@@ -153,7 +152,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  private:
   bool has_attention_bias_;
   bool is_qualcomm_;
-  bool is_fp16_;
   int qkv_head_size_;
   int qkv_num_heads_;
   bool is_unidirectional_;
