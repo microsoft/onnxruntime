@@ -68,7 +68,6 @@ InferenceSessionWrap::~InferenceSessionWrap() {
     for (auto& type_info : outputTypes_) {
       (void)type_info.release();
     }
-    (void)ioBinding_.release();
     (void)session_.release();
   }
 }
@@ -135,9 +134,6 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
 
     // cache preferred output locations
     ParsePreferredOutputLocations(info[argsLength - 1].As<Napi::Object>(), outputNames_, preferredOutputLocations_);
-    if (preferredOutputLocations_.size() > 0) {
-      ioBinding_ = std::make_unique<Ort::IoBinding>(*session_);
-    }
   } catch (Napi::Error const& e) {
     throw e;
   } catch (std::exception const& e) {
@@ -175,6 +171,245 @@ Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   return scope.Escape(array);
 }
 
+class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
+ public:
+  RunAsyncWorker(InferenceSessionWrap& session, const Napi::Object& feed, const Napi::Object& fetch,
+                 const Napi::Object& options, Napi::Promise::Deferred deferred)
+      : Napi::AsyncWorker(session.Value().Env(), "InferenceSession.run", session.Value()),
+        env_(session.Value().Env()),
+        session_(&session),
+        deferred_(deferred),
+        session_reference_(Napi::Persistent(session.Value())),
+        keep_alive_reference_(Napi::Persistent(Napi::Array::New(env_))),
+        cpu_memory_info_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)),
+        gpu_buffer_memory_info_("WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault) {
+    auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
+
+    for (const auto& name : session.inputNames_) {
+      if (feed.Has(name)) {
+        auto value = feed.Get(name);
+        PinTensorAndKeepDataAlive(keep_alive, value);
+        input_names_.push_back(name);
+        input_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_));
+      }
+    }
+
+    for (const auto& name : session.outputNames_) {
+      if (fetch.Has(name)) {
+        auto value = fetch.Get(name);
+        output_names_.push_back(name);
+        if (value.IsNull()) {
+          output_values_.emplace_back(nullptr);
+        } else {
+          PinTensorAndKeepDataAlive(keep_alive, value);
+          output_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_));
+        }
+      }
+    }
+
+    preferred_output_locations_ = session.preferredOutputLocations_;
+    ParseRunOptions(options, run_options_);
+  }
+
+  ~RunAsyncWorker() override {
+    try {
+      UnpinTensors();
+    } catch (...) {
+      // Do not let a user-mutated Tensor object abort worker cleanup.
+    }
+  }
+
+  void Execute() override {
+    try {
+      std::vector<const char*> input_names_cstr;
+      input_names_cstr.reserve(input_names_.size());
+      for (const auto& name : input_names_) {
+        input_names_cstr.push_back(name.c_str());
+      }
+
+      std::vector<const char*> output_names_cstr;
+      output_names_cstr.reserve(output_names_.size());
+      for (const auto& name : output_names_) {
+        output_names_cstr.push_back(name.c_str());
+      }
+
+      if (preferred_output_locations_.empty()) {
+        session_->session_->Run(run_options_, input_names_cstr.data(), input_values_.data(), input_values_.size(),
+                                output_names_cstr.data(), output_values_.data(), output_values_.size());
+        return;
+      }
+
+      if (preferred_output_locations_.size() != session_->outputNames_.size()) {
+        SetError("Preferred output locations must have the same size as output names.");
+        return;
+      }
+
+      io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
+      for (size_t i = 0; i < input_names_.size(); ++i) {
+        io_binding_->BindInput(input_names_cstr[i], input_values_[i]);
+      }
+
+      for (size_t i = 0; i < output_names_.size(); ++i) {
+        if (preferred_output_locations_[i] == DATA_LOCATION_GPU_BUFFER) {
+          io_binding_->BindOutput(output_names_cstr[i], gpu_buffer_memory_info_);
+        } else {
+          io_binding_->BindOutput(output_names_cstr[i], cpu_memory_info_);
+        }
+      }
+
+      session_->session_->Run(run_options_, *io_binding_);
+      output_values_ = io_binding_->GetOutputValues();
+      if (output_values_.size() != output_names_.size()) {
+        SetError("Output count mismatch.");
+      }
+    } catch (const std::exception& e) {
+      SetError(e.what());
+    } catch (...) {
+      SetError("Unknown error while running the model.");
+    }
+  }
+
+  void OnOK() override {
+    Napi::HandleScope scope(env_);
+    try {
+      auto result = Napi::Object::New(env_);
+      for (size_t i = 0; i < output_values_.size(); ++i) {
+        result.Set(output_names_[i], OrtValueToNapiValue(env_, std::move(output_values_[i])));
+      }
+      Complete();
+      deferred_.Resolve(result);
+    } catch (const Napi::Error& e) {
+      Complete();
+      deferred_.Reject(e.Value());
+    } catch (const std::exception& e) {
+      Complete();
+      deferred_.Reject(Napi::Error::New(env_, e.what()).Value());
+    } catch (...) {
+      Complete();
+      deferred_.Reject(Napi::Error::New(env_, "Unknown error while converting model outputs.").Value());
+    }
+  }
+
+  void OnError(const Napi::Error& error) override {
+    Complete();
+    deferred_.Reject(error.Value());
+  }
+
+ private:
+  void PinTensorAndKeepDataAlive(Napi::Array& keep_alive, const Napi::Value& value) {
+    // Keep both the Tensor and its backing resource alive, and prevent JS from disposing or accessing it
+    // while ORT may still be using the underlying buffer.
+    keep_alive.Set(keep_alive.Length(), value);
+
+    if (!value.IsObject()) {
+      return;
+    }
+
+    auto tensor = value.As<Napi::Object>();
+    const auto dispose = tensor.Get("dispose");
+    if (dispose.IsFunction()) {
+      for (const auto record_index : pinned_tensor_indices_) {
+        const auto record = keep_alive.Get(record_index).As<Napi::Array>();
+        if (record.Get(uint32_t(0)).StrictEquals(tensor)) {
+          return;
+        }
+      }
+
+      const auto record_index = keep_alive.Length();
+      const auto get_data = tensor.Get("getData");
+      auto record = Napi::Array::New(env_, 5);
+      record.Set(uint32_t(0), tensor);
+      record.Set(uint32_t(1), dispose);
+      record.Set(uint32_t(2), tensor.HasOwnProperty("dispose"));
+      record.Set(uint32_t(3), get_data);
+      record.Set(uint32_t(4), tensor.HasOwnProperty("getData"));
+
+      keep_alive.Set(record_index, record);
+      pinned_tensor_indices_.push_back(record_index);
+
+      const auto guard = CreateTensorUseGuard(env_);
+      tensor.Set("dispose", guard);
+      if (get_data.IsFunction()) {
+        tensor.Set("getData", guard);
+      }
+    }
+
+    const auto location = tensor.Get("location");
+    if (!location.IsString()) {
+      return;
+    }
+
+    const auto location_string = location.As<Napi::String>().Utf8Value();
+    if (location_string == "cpu" || location_string == "cpu-pinned") {
+      keep_alive.Set(keep_alive.Length(), tensor.Get("data"));
+    } else if (location_string == "gpu-buffer") {
+      keep_alive.Set(keep_alive.Length(), tensor.Get("gpuBuffer"));
+    }
+  }
+
+  void UnpinTensors() {
+    if (pinned_tensor_indices_.empty()) {
+      return;
+    }
+
+    auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
+    for (const auto record_index : pinned_tensor_indices_) {
+      const auto record = keep_alive.Get(record_index).As<Napi::Array>();
+      auto tensor = record.Get(uint32_t(0)).As<Napi::Object>();
+
+      if (record.Get(uint32_t(2)).As<Napi::Boolean>().Value()) {
+        tensor.Set("dispose", record.Get(uint32_t(1)));
+      } else {
+        tensor.Delete("dispose");
+      }
+
+      if (record.Get(uint32_t(4)).As<Napi::Boolean>().Value()) {
+        tensor.Set("getData", record.Get(uint32_t(3)));
+      } else if (record.Get(uint32_t(3)).IsFunction()) {
+        tensor.Delete("getData");
+      }
+    }
+    pinned_tensor_indices_.clear();
+  }
+
+  static Napi::Function CreateTensorUseGuard(Napi::Env env) {
+    return Napi::Function::New(env, [](const Napi::CallbackInfo& info) -> Napi::Value {
+      ORT_NAPI_THROW_ERROR(info.Env(), "Tensor is being used by an asynchronous inference.");
+    });
+  }
+
+  void Complete() {
+    if (completed_) {
+      return;
+    }
+    completed_ = true;
+
+    try {
+      UnpinTensors();
+    } catch (...) {
+      // The run must still release the session even if Tensor restoration fails.
+    }
+    session_->active_runs_.fetch_sub(1, std::memory_order_release);
+  }
+
+  Napi::Env env_;
+  InferenceSessionWrap* session_;
+  Napi::Promise::Deferred deferred_;
+  Napi::ObjectReference session_reference_;
+  Napi::Reference<Napi::Array> keep_alive_reference_;
+  Ort::MemoryInfo cpu_memory_info_;
+  Ort::MemoryInfo gpu_buffer_memory_info_;
+  Ort::RunOptions run_options_;
+  std::vector<std::string> input_names_;
+  std::vector<Ort::Value> input_values_;
+  std::vector<std::string> output_names_;
+  std::vector<Ort::Value> output_values_;
+  std::vector<int> preferred_output_locations_;
+  std::vector<uint32_t> pinned_tensor_indices_;
+  std::unique_ptr<Ort::IoBinding> io_binding_;
+  bool completed_{false};
+};
+
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
@@ -185,102 +420,39 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull()), env,
                               "'runOptions' must be an object.");
 
-  Napi::EscapableHandleScope scope(env);
-
   auto feed = info[0].As<Napi::Object>();
   auto fetch = info[1].As<Napi::Object>();
+  auto options = info.Length() > 2 ? info[2].As<Napi::Object>() : Napi::Object::New(env);
+  auto deferred = Napi::Promise::Deferred::New(env);
 
-  std::vector<const char*> inputNames_cstr;
-  std::vector<Ort::Value> inputValues;
-  std::vector<const char*> outputNames_cstr;
-  std::vector<Ort::Value> outputValues;
-  std::vector<bool> reuseOutput;
-  size_t inputIndex = 0;
-  size_t outputIndex = 0;
-  Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
-
+  std::unique_ptr<RunAsyncWorker> worker;
+  bool active_run_registered = false;
   try {
-    for (auto& name : inputNames_) {
-      if (feed.Has(name)) {
-        inputIndex++;
-        inputNames_cstr.push_back(name.c_str());
-        auto value = feed.Get(name);
-        inputValues.push_back(NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
-      }
+    worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
+    active_runs_.fetch_add(1, std::memory_order_acquire);
+    active_run_registered = true;
+    worker->Queue();
+  } catch (...) {
+    if (active_run_registered) {
+      active_runs_.fetch_sub(1, std::memory_order_release);
     }
-    for (auto& name : outputNames_) {
-      if (fetch.Has(name)) {
-        outputIndex++;
-        outputNames_cstr.push_back(name.c_str());
-        auto value = fetch.Get(name);
-        reuseOutput.push_back(!value.IsNull());
-        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
-      }
-    }
-
-    Ort::RunOptions runOptions{nullptr};
-    if (info.Length() > 2) {
-      runOptions = Ort::RunOptions{};
-      ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
-    }
-    if (preferredOutputLocations_.size() == 0) {
-      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions,
-                    inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
-                    inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
-                    outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
-
-      Napi::Object result = Napi::Object::New(env);
-
-      for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
-      }
-      return scope.Escape(result);
-    } else {
-      // IO binding
-      ORT_NAPI_THROW_ERROR_IF(preferredOutputLocations_.size() != outputNames_.size(), env,
-                              "Preferred output locations must have the same size as output names.");
-
-      for (size_t i = 0; i < inputIndex; i++) {
-        ioBinding_->BindInput(inputNames_cstr[i], inputValues[i]);
-      }
-      for (size_t i = 0; i < outputIndex; i++) {
-        // TODO: support preallocated output tensor (outputValues[i])
-
-        if (preferredOutputLocations_[i] == DATA_LOCATION_GPU_BUFFER) {
-          ioBinding_->BindOutput(outputNames_cstr[i], gpuBufferMemoryInfo);
-        } else {
-          ioBinding_->BindOutput(outputNames_cstr[i], cpuMemoryInfo);
-        }
-      }
-
-      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions, *ioBinding_);
-
-      auto outputs = ioBinding_->GetOutputValues();
-      ORT_NAPI_THROW_ERROR_IF(outputs.size() != outputIndex, env, "Output count mismatch.");
-
-      Napi::Object result = Napi::Object::New(env);
-      for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
-      }
-      return scope.Escape(result);
-    }
-  } catch (Napi::Error const& e) {
-    throw e;
-  } catch (std::exception const& e) {
-    ORT_NAPI_THROW_ERROR(env, e.what());
+    throw;
   }
+
+  worker.release();
+  return deferred.Promise();
 }
 
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
+  ORT_NAPI_THROW_ERROR_IF(this->active_runs_.load(std::memory_order_acquire) != 0, env,
+                          "Cannot dispose session while inference is running.");
 
   this->inputTypes_.clear();
   this->outputTypes_.clear();
 
-  this->ioBinding_.reset(nullptr);
   this->session_.reset(nullptr);
 
   this->disposed_ = true;

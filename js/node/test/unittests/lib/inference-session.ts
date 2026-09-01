@@ -476,4 +476,29 @@ describe('UnitTests - InferenceSession.RunOptions', () => {
       assertTensorEqual(result.output, expectedOutput0);
     });
   });
+
+  describe('terminate', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(
+        async () => {
+          await sessionAny.run({ input: input0 }, { terminate: 'true' });
+        },
+        { name: 'TypeError', message: /runOptions.terminate/ },
+      );
+    });
+
+    it('terminate = false', async () => {
+      const result = await sessionAny.run({ input: input0 }, { terminate: false });
+      assertTensorEqual(result.output, expectedOutput0);
+    });
+
+    it('terminate = true', async () => {
+      await assert.rejects(
+        async () => {
+          await sessionAny.run({ input: input0 }, { terminate: true });
+        },
+        /terminate flag/,
+      );
+    });
+  });
 });
