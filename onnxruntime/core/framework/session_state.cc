@@ -811,15 +811,18 @@ Status SessionState::PrepackConstantInitializedTensors(
 
   bool should_cache_prepacked_weights_for_shared_initializers = (prepacked_weights_container_ != nullptr);
 
-  InlinedVector<const Node*> parallel_prepack_nodes;
-  InlinedHashSet<NodeIndex> parallel_prepack_node_indices;
+  auto is_parallel_prepack_candidate = [&has_constant_initializer_input](const Node& node) {
+    return node.GetExecutionProviderType() == kCpuExecutionProvider && has_constant_initializer_input(node);
+  };
+
+  std::vector<const Node*> parallel_prepack_nodes;
   if (!should_cache_prepacked_weights_for_shared_initializers &&
       GetThreadPool() != nullptr &&
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1") {
+    parallel_prepack_nodes.reserve(GetGraphViewer().NumberOfNodes());
     for (auto& node : GetGraphViewer().Nodes()) {
-      if (node.GetExecutionProviderType() == kCpuExecutionProvider && has_constant_initializer_input(node)) {
+      if (is_parallel_prepack_candidate(node)) {
         parallel_prepack_nodes.push_back(&node);
-        parallel_prepack_node_indices.insert(node.Index());
       }
     }
   }
@@ -870,7 +873,7 @@ Status SessionState::PrepackConstantInitializedTensors(
   // advertise concurrent kernel execution are left on the sequential path.
   LOGS(logger_, INFO) << "Pre-packing constant initializers using the intra-op thread pool.";
   for (auto& node : GetGraphViewer().Nodes()) {
-    if (parallel_prepack_node_indices.count(node.Index()) != 0) {
+    if (is_parallel_prepack_candidate(node)) {
       continue;
     }
 
@@ -892,28 +895,25 @@ Status SessionState::PrepackConstantInitializedTensors(
         }
 
         Status& status = statuses[static_cast<size_t>(i)];
+        const Node* node = parallel_prepack_nodes[static_cast<size_t>(i)];
         ORT_TRY {
-          status = process_node(*parallel_prepack_nodes[static_cast<size_t>(i)],
-                                /*should_cache*/ false, /*guard_bookkeeping*/ true);
+          status = process_node(*node, /*should_cache*/ false, /*guard_bookkeeping*/ true);
         }
         ORT_CATCH(const OnnxRuntimeException& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
             status = Status(ex.Category(), ex.Code(),
-                            MakeString("Exception while pre-packing node '",
-                                       parallel_prepack_nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what()));
+                            MakeString("Exception while pre-packing node '", node->Name(), "': ", ex.what()));
           });
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
             status = ORT_MAKE_STATUS(
-                ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception while pre-packing node '",
-                parallel_prepack_nodes[static_cast<size_t>(i)]->Name(), "': ", ex.what());
+                ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception while pre-packing node '", node->Name(), "': ", ex.what());
           });
         }
         ORT_CATCH(...) {
           status = ORT_MAKE_STATUS(
-              ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception while pre-packing node '",
-              parallel_prepack_nodes[static_cast<size_t>(i)]->Name(), "'.");
+              ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception while pre-packing node '", node->Name(), "'.");
         }
       });
 
