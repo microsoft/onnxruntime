@@ -38,8 +38,9 @@ __global__ void VarlenCausalConvDecodeKernel(
     const T* initial_state,
     T* __restrict__ output,
     T* final_state,
-    T* prefix_states,
+    T* state_update,
     const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ capture_count,
     int batch_channels,
     int batch_size,
     int total_tokens,
@@ -47,7 +48,7 @@ __global__ void VarlenCausalConvDecodeKernel(
     int kernel_size,
     int dilation,
     bool apply_silu,
-    int max_checkpoints) {
+    int state_update_capacity) {
   const int bc = blockIdx.x * blockDim.x + threadIdx.x;
   if (bc >= batch_channels) {
     return;
@@ -67,6 +68,9 @@ __global__ void VarlenCausalConvDecodeKernel(
   const int64_t state_offset = static_cast<int64_t>(bc) * pad;
   const int64_t weight_offset = static_cast<int64_t>(c) * kernel_size;
   const T input_value = input[static_cast<int64_t>(b) * channels + c];
+  if (state_update != nullptr && capture_count[b] > 0) {
+    state_update[static_cast<int64_t>(b) * state_update_capacity * channels + c] = input_value;
+  }
 
   float sum = bias != nullptr ? to_float(bias[c]) : 0.0f;
   if (pad == 0) {
@@ -91,13 +95,6 @@ __global__ void VarlenCausalConvDecodeKernel(
       final_state[state_offset + k] = initial_state[state_offset + k + 1];
     }
     final_state[state_offset + pad - 1] = input_value;
-    if (prefix_states != nullptr && max_checkpoints > 0) {
-      // Read the already-computed result, not initial_state, which may alias
-      // final_state and has intentionally been shifted in place.
-      for (int k = 0; k < pad; ++k) {
-        prefix_states[state_offset + k] = final_state[state_offset + k];
-      }
-    }
   }
 
   if (apply_silu) {
@@ -127,7 +124,7 @@ __device__ __forceinline__ T ReadStateOrInput(
 //
 // Dynamic shared memory contains the complete old K-1 state for every channel
 // in the tile. All active threads finish staging and the complete block
-// synchronizes before any output, final-state, or checkpoint write. A channel
+// synchronizes before any output or final-state write. A channel
 // belongs to exactly one tile, so this also makes initial_state == final_state
 // safe without synchronization between blocks.
 template <typename T>
@@ -138,15 +135,16 @@ __global__ void VarlenCausalConvKernel(
     const T* initial_state,
     T* __restrict__ output,
     T* final_state,
-    T* prefix_states,
+    T* state_update,
     const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ capture_count,
     int batch_size,
     int total_tokens,
     int channels,
     int kernel_size,
     int dilation,
     bool apply_silu,
-    int max_checkpoints) {
+    int state_update_capacity) {
   const int tid = threadIdx.x;
   const int channel_tiles = static_cast<int>(
       (static_cast<int64_t>(channels) + blockDim.x - 1) / blockDim.x);
@@ -160,7 +158,7 @@ __global__ void VarlenCausalConvKernel(
   const int pad = (kernel_size - 1) * dilation;
 
   // These values are block-uniform. A malformed interval returns the complete
-  // block before any input, state, output, or checkpoint access.
+  // block before any input, state, or output access.
   const int32_t first = cu_seqlens[0];
   const int32_t last = cu_seqlens[batch_size];
   const int32_t start = cu_seqlens[b];
@@ -170,6 +168,9 @@ __global__ void VarlenCausalConvKernel(
     return;
   }
   const int local_length = end - start;
+  const int captured = state_update == nullptr
+                           ? 0
+                           : max(0, min(min(capture_count[b], state_update_capacity), local_length));
 
   extern __shared__ __align__(16) unsigned char shared_bytes[];
   T* staged_state = reinterpret_cast<T*>(shared_bytes);
@@ -210,24 +211,14 @@ __global__ void VarlenCausalConvKernel(
       sum = VarlenSilu(sum);
     }
     output[(static_cast<int64_t>(start) + t) * channels + c] = from_float<T>(sum);
+    if (t < captured) {
+      state_update[(static_cast<int64_t>(b) * state_update_capacity + t) * channels + c] =
+          input[(static_cast<int64_t>(start) + t) * channels + c];
+    }
   }
 
   if (pad == 0) {
     return;
-  }
-
-  // Checkpoint j is the state immediately after local token j. No writes are
-  // issued for j >= local_length, leaving those optional slots unspecified.
-  if (prefix_states != nullptr) {
-    const int checkpoint_count = min(max_checkpoints, local_length);
-    const int64_t checkpoint_stride = static_cast<int64_t>(batch_size) * channels * pad;
-    for (int j = 0; j < checkpoint_count; ++j) {
-      T* checkpoint = prefix_states + static_cast<int64_t>(j) * checkpoint_stride + state_offset;
-      for (int k = 0; k < pad; ++k) {
-        checkpoint[k] =
-            ReadStateOrInput(input, channel_state, start, channels, c, pad, j - pad + 1 + k);
-      }
-    }
   }
 
   // final_state is always fully written, including when local_length < pad.
@@ -250,8 +241,9 @@ Status LaunchVarlenCausalConvWithStateKernel(
     const T* initial_state,
     T* output,
     T* final_state,
-    T* prefix_states,
+    T* state_update,
     const int32_t* cu_seqlens,
+    const int32_t* capture_count,
     int batch_size,
     int total_tokens,
     bool all_ones,
@@ -260,7 +252,7 @@ Status LaunchVarlenCausalConvWithStateKernel(
     int dilation,
     bool apply_silu,
     int max_threads_per_block,
-    int max_checkpoints) {
+    int state_update_capacity) {
   if (all_ones) {
     const int64_t batch_channels = static_cast<int64_t>(batch_size) * channels;
     ORT_RETURN_IF_NOT(batch_channels <= std::numeric_limits<int>::max(),
@@ -268,9 +260,9 @@ Status LaunchVarlenCausalConvWithStateKernel(
     const int threads = std::min(256, max_threads_per_block);
     const int blocks = static_cast<int>((batch_channels + threads - 1) / threads);
     VarlenCausalConvDecodeKernel<T><<<blocks, threads, 0, stream>>>(
-        input, weight, bias, initial_state, output, final_state, prefix_states,
-        cu_seqlens, static_cast<int>(batch_channels), batch_size, total_tokens,
-        channels, kernel_size, dilation, apply_silu, max_checkpoints);
+        input, weight, bias, initial_state, output, final_state, state_update,
+        cu_seqlens, capture_count, static_cast<int>(batch_channels), batch_size, total_tokens,
+        channels, kernel_size, dilation, apply_silu, state_update_capacity);
     return CUDA_CALL(cudaGetLastError());
   }
 
@@ -308,24 +300,26 @@ Status LaunchVarlenCausalConvWithStateKernel(
   const size_t shared_memory_bytes = static_cast<size_t>(threads) * state_bytes_per_channel;
   VarlenCausalConvKernel<T><<<static_cast<unsigned int>(general_blocks), threads,
                               shared_memory_bytes, stream>>>(
-      input, weight, bias, initial_state, output, final_state, prefix_states,
-      cu_seqlens, batch_size, total_tokens, channels, kernel_size, dilation,
-      apply_silu, max_checkpoints);
+      input, weight, bias, initial_state, output, final_state, state_update,
+      cu_seqlens, capture_count, batch_size, total_tokens, channels, kernel_size, dilation,
+      apply_silu, state_update_capacity);
   return CUDA_CALL(cudaGetLastError());
 }
 
 template Status LaunchVarlenCausalConvWithStateKernel<float>(
     cudaStream_t, const float*, const float*, const float*, const float*,
-    float*, float*, float*, const int32_t*, int, int, bool, int, int, int, bool, int, int);
+    float*, float*, float*, const int32_t*, const int32_t*,
+    int, int, bool, int, int, int, bool, int, int);
 
 template Status LaunchVarlenCausalConvWithStateKernel<half>(
     cudaStream_t, const half*, const half*, const half*, const half*,
-    half*, half*, half*, const int32_t*, int, int, bool, int, int, int, bool, int, int);
+    half*, half*, half*, const int32_t*, const int32_t*,
+    int, int, bool, int, int, int, bool, int, int);
 
 template Status LaunchVarlenCausalConvWithStateKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
-    const int32_t*, int, int, bool, int, int, int, bool, int, int);
+    const int32_t*, const int32_t*, int, int, bool, int, int, int, bool, int, int);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -396,5 +396,19 @@ TEST(GatherNDOpTest, GatherND_zero_dim_error) {
            &cpu_only_ep);
 }
 
+TEST(GatherNDOpTest, GatherND_runtime_scalar_indices_error) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("data", {2}, {1.f, 2.f});
+  test.AddInput<int64_t>("indices", {}, {0LL});
+  test.AddOutput<float>("output", {}, {0.f});
+
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "indices tensor must has rank larger than 0",
+           {}, nullptr, &cpu_only_ep);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

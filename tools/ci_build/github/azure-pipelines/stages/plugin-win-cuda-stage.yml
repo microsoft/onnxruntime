@@ -65,11 +65,9 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
@@ -127,6 +125,27 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
+      - ${{ if eq(parameters.arch, 'arm64') }}:
+        - powershell: |
+            $azCopyArchive = "$(Agent.TempDirectory)\azcopy.zip"
+            $azCopyDirectory = "$(Agent.TempDirectory)\azcopy"
+            Invoke-WebRequest `
+              -Uri "https://aka.ms/downloadazcopy-v10-windows-arm64" `
+              -OutFile $azCopyArchive `
+              -UseBasicParsing
+            Expand-Archive -Path $azCopyArchive -DestinationPath $azCopyDirectory -Force
+
+            $azCopyExecutable = Get-ChildItem -Path $azCopyDirectory -Recurse -Filter azcopy.exe |
+              Select-Object -First 1
+            if (-not $azCopyExecutable) {
+              throw "AzCopy executable was not found after extracting $azCopyArchive."
+            }
+
+            $azCopyPath = $azCopyExecutable.FullName
+            Write-Host "##vso[task.prependpath]$($azCopyExecutable.DirectoryName)"
+            & $azCopyPath --version
+          displayName: 'Install AzCopy for win-arm64'
+
       # CUDA SDK download. win-x64 toolkits live at cuda_sdk/v<ver>; win-arm64 toolkits
       # live at cuda_sdk/win-arm64/v<ver> (NVIDIA Windows-on-ARM CUDA is 13.x only).
       - ${{ if ne(parameters.arch, 'arm64') }}:
@@ -149,14 +168,15 @@ stages:
           displayName: 'Add CUDA to PATH'
 
       - ${{ else }}:
-        # The win-arm64 agents (onnxruntime-qnn-windows-vs-2022-arm64) do not have the Azure
-        # CLI installed, so the AzureCLI@2 task cannot be used here (it fails with "Azure CLI
-        # 2.x is not installed on this machine"). azcopy is on PATH and can read this storage
-        # account directly, matching the QNN SDK download in
-        # templates/jobs/download_win_qnn_sdk.yml.
-        - powershell: |
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/win-arm64/v${{ parameters.arm64_cuda_version }} "$(Agent.TempDirectory)"
+        - task: AzureCLI@2
           displayName: 'Download CUDA SDK win-arm64 v${{ parameters.arm64_cuda_version }}'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/win-arm64/v${{ parameters.arm64_cuda_version }} "$(Agent.TempDirectory)"
 
         - powershell: |
             Write-Host "Adding CUDA to PATH"
@@ -178,12 +198,16 @@ stages:
               azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$(cuda13_cudnn_folder) "$(Agent.TempDirectory)"
 
       # Download cuDNN for win-arm64 (hosted under cudnn_sdk/win-arm64/<folder>).
-      # Uses azcopy directly because the win-arm64 agents do not have the Azure CLI installed
-      # (see the CUDA SDK download step above).
       - ${{ if eq(parameters.arch, 'arm64') }}:
-        - powershell: |
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/win-arm64/${{ parameters.arm64_cudnn_folder }} "$(Agent.TempDirectory)"
+        - task: AzureCLI@2
           displayName: 'Download cuDNN for win-arm64 (${{ parameters.arm64_cudnn_folder }})'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/win-arm64/${{ parameters.arm64_cudnn_folder }} "$(Agent.TempDirectory)"
 
       # CUDA 12.x build (no separate cuDNN). win-x64 only — win-arm64 always uses CUDA 13.x.
       - ${{ if and(ne(parameters.arch, 'arm64'), ne(parameters.cuda_version, '13.0')) }}:
@@ -338,11 +362,9 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows

@@ -1325,17 +1325,18 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
 TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenCausalConvWithState", 1, kMSDomain);
   ASSERT_NE(schema, nullptr);
-  EXPECT_EQ(schema->inputs().size(), 5u);
+  EXPECT_EQ(schema->inputs().size(), 6u);
   EXPECT_EQ(schema->outputs().size(), 3u);
   EXPECT_GT(schema->attributes().count("activation"), 0u);
   EXPECT_EQ(schema->attributes().count("ndim"), 0u);
   EXPECT_EQ(schema->attributes().count("state_window"), 0u);
-  EXPECT_GT(schema->attributes().count("max_checkpoints"), 0u);
+  EXPECT_GT(schema->attributes().count("state_update_capacity"), 0u);
 
   const auto bfloat16_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)");
   EXPECT_EQ(schema->inputs()[0].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->inputs()[4].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->outputs()[1].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->outputs()[2].GetTypes().count(bfloat16_type), 1u);
 }
 
 #ifdef USE_CUDA
@@ -1399,7 +1400,10 @@ struct VarlenCausalConvCase {
   std::string activation = "silu";
   bool with_bias = true;
   bool with_initial_state = false;
-  int max_checkpoints = 0;
+  int state_update_capacity = 0;
+  bool request_state_update = false;
+  std::vector<int32_t> capture_count;
+  bool verify_compact_replay = false;
   bool use_fp16 = false;
   bool use_bf16 = false;
   // When true, every request is filled with one large constant value of alternating sign instead
@@ -1419,8 +1423,10 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   const int D = c.channels;
   const int K = c.kernel_size;
   const int pad = (K - 1) * c.dilation;
-  const int W = c.max_checkpoints;
+  const int C = c.state_update_capacity;
   const size_t slot_elems = static_cast<size_t>(D) * pad;
+
+  ORT_ENFORCE(C == 0 || c.capture_count.size() == static_cast<size_t>(B));
 
   std::vector<int32_t> cu_seqlens(static_cast<size_t>(B) + 1, 0);
   for (int i = 0; i < B; i++) {
@@ -1441,7 +1447,9 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   std::vector<float> packed_input, packed_output;
   std::vector<float> packed_initial_state(static_cast<size_t>(B) * slot_elems, 0.0f);
   std::vector<float> packed_final_state(static_cast<size_t>(B) * slot_elems, 0.0f);
-  std::vector<float> packed_checkpoints(static_cast<size_t>(W) * B * slot_elems, 0.0f);
+  std::vector<float> packed_state_updates(static_cast<size_t>(B) * C * D, 0.0f);
+  std::vector<float> sequential_states(static_cast<size_t>(B) * C * slot_elems, 0.0f);
+  std::vector<int> clamped_capture_count(B, 0);
 
   int seed = 0;
   for (int i = 0; i < B; i++) {
@@ -1474,28 +1482,27 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     packed_input.insert(packed_input.end(), input_td.begin(), input_td.end());
     packed_output.insert(packed_output.end(), output_td.begin(), output_td.end());
 
+    if (C > 0) {
+      clamped_capture_count[i] = std::max(0, std::min({static_cast<int>(c.capture_count[i]), C, L}));
+      for (int t = 0; t < clamped_capture_count[i]; ++t) {
+        std::copy_n(input_td.begin() + static_cast<size_t>(t) * D, D,
+                    packed_state_updates.begin() + (static_cast<size_t>(i) * C + t) * D);
+        if (c.verify_compact_replay) {
+          std::vector<float> prefix_output, prefix_state;
+          const std::vector<float> input_prefix = SliceCausalConvPrefix(input, D, L, t + 1);
+          CausalConvWithStateReference(input_prefix, weight, bias_ptr, past, prefix_output, prefix_state,
+                                       1, D, t + 1, K, c.activation, c.dilation);
+          std::copy(prefix_state.begin(), prefix_state.end(),
+                    sequential_states.begin() +
+                        (static_cast<size_t>(i) * C + t) * slot_elems);
+        }
+      }
+    }
+
     std::copy(initial_state.begin(), initial_state.end(),
               packed_initial_state.begin() + static_cast<size_t>(i) * slot_elems);
     std::copy(final_state_i.begin(), final_state_i.end(),
               packed_final_state.begin() + static_cast<size_t>(i) * slot_elems);
-
-    if (W > 0) {
-      ORT_ENFORCE(W <= L, "generic checkpoint comparison requires every slot to be written");
-      for (int j = 0; j < W; ++j) {
-        const int prefix = j + 1;
-        std::vector<float> slot_state;
-        if (prefix == L) {
-          slot_state = final_state_i;
-        } else {
-          std::vector<float> input_prefix = SliceCausalConvPrefix(input, D, L, prefix);
-          std::vector<float> slot_output;
-          CausalConvWithStateReference(input_prefix, weight, bias_ptr, past, slot_output, slot_state,
-                                       1, D, prefix, K, c.activation, c.dilation);
-        }
-        std::copy(slot_state.begin(), slot_state.end(),
-                  packed_checkpoints.begin() + (static_cast<size_t>(j) * B + i) * slot_elems);
-      }
-    }
   }
 
   OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
@@ -1503,8 +1510,8 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   if (c.dilation != 1) {
     tester.AddAttribute<int64_t>("dilation", static_cast<int64_t>(c.dilation));
   }
-  if (W > 0) {
-    tester.AddAttribute<int64_t>("max_checkpoints", static_cast<int64_t>(W));
+  if (C > 0) {
+    tester.AddAttribute<int64_t>("state_update_capacity", static_cast<int64_t>(C));
   }
 
   const std::vector<int64_t> cu_seqlens_dims = {B + 1};
@@ -1512,7 +1519,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   const std::vector<int64_t> weight_dims = {D, 1, K};
   const std::vector<int64_t> bias_dims = {D};
   const std::vector<int64_t> state_dims = {B, D, pad};
-  const std::vector<int64_t> checkpoint_dims = {W, B, D, pad};
+  const std::vector<int64_t> state_update_dims = {B, C, D};
 
   // OpTester::AddOutput takes (sort_output, rel_error, abs_error); a single shared tolerance
   // plays both roles here since ragged packing/unpacking is exact and float error is small.
@@ -1528,10 +1535,13 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
       tester.AddOptionalInputEdge<float>();
     }
     tester.AddInput<float>("initial_state", state_dims, packed_initial_state);
+    if (C > 0) {
+      tester.AddInput<int32_t>("capture_count", {B}, c.capture_count);
+    }
     tester.AddOutput<float>("output", input_dims, packed_output, false, tol, tol);
     tester.AddOutput<float>("final_state", state_dims, packed_final_state, false, tol, tol);
-    if (W > 0) {
-      tester.AddOutput<float>("prefix_states", checkpoint_dims, packed_checkpoints, false, tol, tol);
+    if (C > 0 || c.request_state_update) {
+      tester.AddOutput<float>("state_update", state_update_dims, packed_state_updates, false, tol, tol);
     } else {
       tester.AddOptionalOutputEdge<float>();
     }
@@ -1545,10 +1555,14 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
       tester.AddOptionalInputEdge<MLFloat16>();
     }
     tester.AddInput<MLFloat16>("initial_state", state_dims, ToFloat16(packed_initial_state));
+    if (C > 0) {
+      tester.AddInput<int32_t>("capture_count", {B}, c.capture_count);
+    }
     tester.AddOutput<MLFloat16>("output", input_dims, ToFloat16(packed_output), false, tol, tol);
     tester.AddOutput<MLFloat16>("final_state", state_dims, ToFloat16(packed_final_state), false, tol, tol);
-    if (W > 0) {
-      tester.AddOutput<MLFloat16>("prefix_states", checkpoint_dims, ToFloat16(packed_checkpoints), false, tol, tol);
+    if (C > 0 || c.request_state_update) {
+      tester.AddOutput<MLFloat16>("state_update", state_update_dims,
+                                  ToFloat16(packed_state_updates), false, tol, tol);
     } else {
       tester.AddOptionalOutputEdge<MLFloat16>();
     }
@@ -1562,9 +1576,71 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
       tester.AddOptionalInputEdge<BFloat16>();
     }
     tester.AddInput<BFloat16>("initial_state", state_dims, ToBFloat16(packed_initial_state));
+    if (C > 0) {
+      tester.AddInput<int32_t>("capture_count", {B}, c.capture_count);
+    }
     tester.AddOutput<BFloat16>("output", input_dims, ToBFloat16(packed_output), false, 0.02f, 0.02f);
     tester.AddOutput<BFloat16>("final_state", state_dims, ToBFloat16(packed_final_state), false, 0.02f, 0.02f);
-    tester.AddOptionalOutputEdge<BFloat16>();
+    if (C > 0 || c.request_state_update) {
+      tester.AddOutput<BFloat16>("state_update", state_update_dims,
+                                 ToBFloat16(packed_state_updates), false, 0.02f, 0.02f);
+    } else {
+      tester.AddOptionalOutputEdge<BFloat16>();
+    }
+  }
+
+  if (c.verify_compact_replay) {
+    ORT_ENFORCE(!c.use_fp16 && !c.use_bf16 && C > 0);
+    tester.SetCustomOutputVerifier(
+        [=](const std::vector<OrtValue>& fetches, const std::string&) {
+          ASSERT_EQ(fetches.size(), 3u);
+          const Tensor& output_tensor = fetches[0].Get<Tensor>();
+          const Tensor& final_state_tensor = fetches[1].Get<Tensor>();
+          const Tensor& state_update_tensor = fetches[2].Get<Tensor>();
+          EXPECT_EQ(state_update_tensor.Shape(), TensorShape({B, C, D}));
+
+          auto expect_near = [tol](const float* actual, const std::vector<float>& expected,
+                                   const char* name) {
+            for (size_t i = 0; i < expected.size(); ++i) {
+              ASSERT_NEAR(actual[i], expected[i], tol) << name << " element " << i;
+            }
+          };
+          expect_near(output_tensor.Data<float>(), packed_output, "output");
+          expect_near(final_state_tensor.Data<float>(), packed_final_state, "final_state");
+          expect_near(state_update_tensor.Data<float>(), packed_state_updates, "state_update");
+
+          const float* updates = state_update_tensor.Data<float>();
+          for (int b = 0; b < B; ++b) {
+            for (int t = clamped_capture_count[b]; t < C; ++t) {
+              for (int d = 0; d < D; ++d) {
+                EXPECT_EQ(updates[(static_cast<size_t>(b) * C + t) * D + d], 0.0f)
+                    << "inactive slot b=" << b << " t=" << t << " channel=" << d;
+              }
+            }
+
+            std::vector<float> replay(
+                packed_initial_state.begin() + static_cast<size_t>(b) * slot_elems,
+                packed_initial_state.begin() + static_cast<size_t>(b + 1) * slot_elems);
+            for (int t = 0; t < clamped_capture_count[b]; ++t) {
+              for (int d = 0; d < D; ++d) {
+                float* channel_state = replay.data() + static_cast<size_t>(d) * pad;
+                for (int k = 0; k + 1 < pad; ++k) {
+                  channel_state[k] = channel_state[k + 1];
+                }
+                if (pad > 0) {
+                  channel_state[pad - 1] = updates[(static_cast<size_t>(b) * C + t) * D + d];
+                }
+              }
+
+              const float* expected = sequential_states.data() +
+                                      (static_cast<size_t>(b) * C + t) * slot_elems;
+              for (size_t i = 0; i < slot_elems; ++i) {
+                ASSERT_EQ(replay[i], expected[i])
+                    << "captured prefix " << t + 1 << " batch " << b << " state element " << i;
+              }
+            }
+          }
+        });
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -1586,7 +1662,6 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AllOnesDecode) {
   VarlenCausalConvCase c;
   c.seq_lens = {1, 1, 1, 1};
   c.with_initial_state = true;
-  c.max_checkpoints = 1;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1628,7 +1703,8 @@ TEST(ContribOpVarlenCausalConvWithStateTest, DilatedDecode) {
   c.kernel_size = 4;
   c.dilation = 3;
   c.with_initial_state = true;
-  c.max_checkpoints = 1;
+  c.state_update_capacity = 1;
+  c.capture_count = {1, 1, 1};
   RunVarlenCausalConvCase(c);
 }
 
@@ -1694,7 +1770,6 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SharedStateShrinksToPartialWarpAlig
   c.channels = 225;
   c.kernel_size = 50;
   c.with_initial_state = true;
-  c.max_checkpoints = 1;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1705,29 +1780,41 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SharedStateShrinksBelowOneWarp) {
   c.channels = 33;
   c.kernel_size = 386;
   c.with_initial_state = true;
-  c.max_checkpoints = 1;
   RunVarlenCausalConvCase(c);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, RaggedPrefixCheckpoints) {
+TEST(ContribOpVarlenCausalConvWithStateTest, CompactCaptureMatchesSequentialPrefixes) {
   VarlenCausalConvCase c;
-  c.seq_lens = {3, 1, 2};
-  c.max_checkpoints = 1;
-  RunVarlenCausalConvCase(c);
-}
-
-TEST(ContribOpVarlenCausalConvWithStateTest, EveryCheckpointMatchesRepeatedPrefixes) {
-  VarlenCausalConvCase c;
-  c.seq_lens = {4, 3, 5};
-  c.max_checkpoints = 3;
+  c.seq_lens = {10, 5, 1, 8};
+  c.channels = 5;
+  c.kernel_size = 4;
   c.with_initial_state = true;
+  c.state_update_capacity = 8;
+  c.capture_count = {-1, 0, 3, 9};
+  c.verify_compact_replay = true;
   RunVarlenCausalConvCase(c);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, CheckpointOutputOmitted) {
+TEST(ContribOpVarlenCausalConvWithStateTest, AllOnesDecodeCompactCapture) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {1, 1, 1, 1};
+  c.with_initial_state = true;
+  c.state_update_capacity = 2;
+  c.capture_count = {-1, 0, 1, 2};
+  c.verify_compact_replay = true;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CompactOutputOmittedWhenCapacityIsZero) {
   VarlenCausalConvCase c;
   c.seq_lens = {2, 1, 2};
-  c.max_checkpoints = 0;
+  RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CompactOutputAllocatedWhenCapacityIsZero) {
+  VarlenCausalConvCase c;
+  c.seq_lens = {2, 1, 2};
+  c.request_state_update = true;
   RunVarlenCausalConvCase(c);
 }
 
@@ -1769,16 +1856,17 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AdjacentDistinctRequestsNoState) {
   RunVarlenCausalConvCase(c);
 }
 
-// Same adversarial values, with prefix checkpoints so convolution, final-state, and checkpoint
-// writes are all checked for request-boundary leaks.
-TEST(ContribOpVarlenCausalConvWithStateTest, AdjacentDistinctRequestsWithCheckpoints) {
+// The compact update path must also preserve request boundaries.
+TEST(ContribOpVarlenCausalConvWithStateTest, AdjacentDistinctRequestsWithCompactCapture) {
   VarlenCausalConvCase c;
   c.seq_lens = {4, 4, 4};
   c.kernel_size = 3;
   c.with_bias = false;
   c.with_initial_state = false;
   c.adversarial_constants = true;
-  c.max_checkpoints = 3;
+  c.state_update_capacity = 3;
+  c.capture_count = {3, 2, 1};
+  c.verify_compact_replay = true;
   RunVarlenCausalConvCase(c);
 }
 
@@ -2126,18 +2214,71 @@ TEST(ContribOpVarlenCausalConvWithStateTest, InitialStateIsRequired) {
   tester.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, MaxCheckpointsIsBounded) {
+TEST(ContribOpVarlenCausalConvWithStateTest, RequiresCaptureCountExactlyWhenCapacityIsPositive) {
+  auto run_case = [](int64_t capacity, bool add_capture_count) {
+    auto ep = DefaultCudaExecutionProvider();
+    if (!ep) {
+      GTEST_SKIP() << "CUDA execution provider not available";
+    }
+    OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("state_update_capacity", capacity);
+    tester.AddInput<float>("input", {3, 2}, std::vector<float>(6, 1.0f));
+    tester.AddInput<float>("weight", {2, 1, 2}, std::vector<float>(4, 1.0f));
+    tester.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 1, 3});
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("initial_state", {2, 2, 1}, std::vector<float>(4, 0.0f));
+    if (add_capture_count) {
+      tester.AddInput<int32_t>("capture_count", {2}, {1, 1});
+    }
+    tester.AddOutput<float>("output", {3, 2}, std::vector<float>(6, 0.0f));
+    tester.AddOutput<float>("final_state", {2, 2, 1}, std::vector<float>(4, 0.0f));
+    tester.AddOptionalOutputEdge<float>();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure,
+               "capture_count must be present exactly when state_update_capacity is positive",
+               {}, nullptr, &execution_providers);
+  };
+
+  run_case(/*capacity=*/2, /*add_capture_count=*/false);
+  run_case(/*capacity=*/0, /*add_capture_count=*/true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, RejectsMalformedCaptureCountShape) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
   OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("max_checkpoints", 9);
+  tester.AddAttribute<int64_t>("state_update_capacity", 2);
+  tester.AddInput<float>("input", {3, 2}, std::vector<float>(6, 1.0f));
+  tester.AddInput<float>("weight", {2, 1, 2}, std::vector<float>(4, 1.0f));
+  tester.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 1, 3});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("initial_state", {2, 2, 1}, std::vector<float>(4, 0.0f));
+  tester.AddInput<int32_t>("capture_count", {1}, {1});
+  tester.AddOutput<float>("output", {3, 2}, std::vector<float>(6, 0.0f));
+  tester.AddOutput<float>("final_state", {2, 2, 1}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("state_update", {2, 2, 2}, std::vector<float>(8, 0.0f));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "capture_count must have shape",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateCapacityIsBounded) {
+  OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("state_update_capacity", 9);
   tester.AddInput<float>("input", {1, 1}, {1.0f});
   tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
   tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
   tester.AddOptionalInputEdge<float>();
   tester.AddInput<float>("initial_state", {1, 1, 1}, {0.0f});
+  tester.AddInput<int32_t>("capture_count", {1}, {1});
   tester.AddOutput<float>("output", {1, 1}, {1.0f});
   tester.AddOutput<float>("final_state", {1, 1, 1}, {1.0f});
-  tester.AddOptionalOutputEdge<float>();
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "max_checkpoints must be in [0, 8]");
+  tester.AddOutput<float>("state_update", {1, 9, 1}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "state_update_capacity must be in [0, 8]");
 }
 #endif  // USE_CUDA
 
