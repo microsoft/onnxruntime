@@ -146,7 +146,7 @@ The first step is to export your PyTorch model to ONNX format using the PyTorch 
 example = ... 
 
 # Export model to ONNX format
-onnx_program = torch.onnx.export(model, example)
+onnx_program = torch.onnx.export(model, (example,), dynamo=True)
 onnx_program.save("model.onnx")
 ```
 

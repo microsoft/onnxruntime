@@ -17,7 +17,7 @@ The actively maintained Rust bindings for ONNX Runtime are provided by the commu
 
 ```toml
 [dependencies]
-ort = "2"
+ort = "2.0.0-rc.13"
 ```
 
-See the [ort documentation](https://ort.pyke.io/) for usage examples and a full API reference.
+The 2.x API is currently available as a release candidate, so Cargo requires an explicit pre-release version. See the [ort documentation](https://ort.pyke.io/) for current installation guidance, usage examples, and a full API reference.

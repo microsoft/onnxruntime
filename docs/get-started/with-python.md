@@ -28,21 +28,17 @@ Use the CPU package if you are running on Arm®-based CPUs and/or macOS.
 pip install onnxruntime
 ```
 
-### Install ONNX Runtime GPU (CUDA 12.x)
+### Install ONNX Runtime GPU (CUDA 13.x)
 
-The default CUDA version for ORT is 12.x.
+Starting with ONNX Runtime 1.27, the default `onnxruntime-gpu` package uses CUDA 13.x. See the [CUDA Execution Provider requirements](../execution-providers/CUDA-ExecutionProvider.md#requirements) for compatible CUDA, cuDNN, and PyTorch versions.
 
 ```bash
 pip install onnxruntime-gpu
 ```
 
-### Install ONNX Runtime GPU (CUDA 11.x)
+### Install ONNX Runtime GPU for earlier CUDA versions
 
-For CUDA 11.x, install from the [ORT Azure DevOps Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview):
-
-```bash
-pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
-```
+For CUDA 12.x and legacy CUDA 11.x packages, see the [Python install options](../install/#python-installs).
 
 ## Install ONNX for model export
 
@@ -259,13 +255,10 @@ If using pip, run `pip install --upgrade pip` prior to downloading.
 | Artifact      | Description | Supported Platforms |
 |-----------    |-------------|---------------------|
 |[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64) |
-|[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU - CUDA 12.x (Release)| Windows (x64), Linux (x64, ARM64) |
+|[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU - CUDA 13.x (Release)| Windows (x64), Linux (x64, ARM64) |
 
 
-For nightly GPU builds:
-```
-python -m pip install onnxruntime-gpu --pre --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
-```
+For nightly GPU builds and packages for earlier CUDA versions, see the [Python install options](../install/#python-installs).
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
 

@@ -2,25 +2,14 @@
 title: Windows
 parent: Get Started
 toc: true
-description: Get Started with Onnx Runtime with Windows. Windows OS Integration and requirements to install and build ORT for Windows are given.  
+description: Get started with ONNX Runtime and Windows ML on Windows.
 nav_order: 9
 ---
 
-
-# Get started with ONNX Runtime for Windows 
+# Get started with ONNX Runtime for Windows
 {: .no_toc }
 
-**WinML is the recommended Windows development path for ONNX Runtime.** The ONNX Runtime NuGet package provides the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
-This allows scenarios such as passing a [Windows.Media.VideoFrame](https://docs.microsoft.com/en-us/uwp/api/Windows.Media.VideoFrame) from your connected camera directly into the runtime for realtime inference.
-
-WinML offers several advantages for Windows developers:
-- **Same ONNX Runtime APIs**: WinML uses the same ONNX Runtime APIs you're already familiar with
-- **Dynamic execution provider selection**: WinML automatically selects the best execution provider (EP) based on your customer's hardware, with mechanisms that you can override for manual fine-grained control
-- **Simplified deployment**: Reduces complexity for Windows developers by deploying all needed dependencies for AI inference on the client
-
-The WinML API is a WinRT API that shipped inside the Windows OS starting with build 1809 (RS5) in the Windows.AI.MachineLearning namespace. It embedded a version of the ONNX Runtime.
-
-In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package. For legacy scenarios or specific DirectML requirements, see the [DirectML Execution Provider](../execution-providers/DirectML-ExecutionProvider) documentation (note: DirectML is in sustained engineering).
+**Windows ML is the recommended Windows development path for ONNX Runtime.** It combines ONNX Runtime APIs with Windows APIs that discover, install, and register execution providers for the device.
 
 ## Contents
 {: .no_toc }
@@ -28,75 +17,30 @@ In addition to using the in-box version of WinML, WinML can also be installed as
 * TOC placeholder
 {:toc}
 
+## Requirements
 
-## Windows OS integration
+Windows ML apps can target any Windows version supported by the Windows App SDK on x64 and Arm64. Installing hardware-optimized execution providers through the Windows ML execution provider catalog requires Windows 11, version 24H2 (build 26100) or later.
 
-ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Microsoft.Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support (note: DirectML is in sustained engineering - WinML is the preferred approach).
+Language-specific requirements are listed in the [Windows ML getting-started guide](https://learn.microsoft.com/windows/ai/new-windows-ml/get-started).
 
-**Version Support:**
-- **Windows 10 (1809+) & Windows 11 (before 24H2)**: ONNX Runtime works, but you need to manually select and manage models and execution providers yourself
-- **Windows 11 (24H2+)**: WinML provides additional automation to help with execution provider selection and hardware optimization across Windows' broad and open ecosystem
+## Install Windows ML
 
-For full support across all silicon vendors, WinML on Windows 11 24H2+ is recommended as it handles much of the complexity automatically.
+Windows ML supports framework-dependent and self-contained deployment. For a framework-dependent C# or C++/WinRT app, reference the Windows App SDK:
 
-The high level design looks like this:
+```bash
+dotnet add package Microsoft.WindowsAppSDK
+```
 
-![ONNX + WinML layered architecture](../../images/layered-architecture.png)
+For self-contained deployment, C/C++, or Python, follow the [Windows ML installation and deployment guide](https://learn.microsoft.com/windows/ai/new-windows-ml/distributing-your-app). It lists the required `Microsoft.WindowsAppSDK.ML`, `Microsoft.Windows.AI.MachineLearning`, runtime, and Python packages for each deployment mode.
 
-### API choice
-{: .no_toc }
+## Use ONNX Runtime APIs
 
-You can choose to use either the WinRT API or the C API.
+- C# applications use the `Microsoft.ML.OnnxRuntime` namespace supplied by Windows ML.
+- C++ applications use the ONNX Runtime C API after Windows ML registers the selected execution providers.
+- Python applications use the `onnxruntime-windowsml` wheel.
 
-||WinRT|C API|
-|--|--|--|
-|Type system| Integration with Windows RT types| Platform neutral types|
-|Language support| Language support via WinRT Projections| Language support via per language projections|
-|Tensorization| Accepts VideoFrames and converts to tensors (support for CPU and GPU)| Accepts tensors|
+See the [Windows ML API reference](https://learn.microsoft.com/windows/ai/new-windows-ml/api-reference) and [run an ONNX model](https://learn.microsoft.com/windows/ai/new-windows-ml/run-onnx-models) guide for current examples.
 
-### Using the NuGet WinRT API with other C-API distributions
-{: .no_toc }
+## Other ONNX Runtime options on Windows
 
-The WinRT API NuGet package is distributed with a specific version of ONNX Runtime, but apps can include their own version of ONNX Runtime (either a [released version](../install/#cccwinml-installs) or [a custom build](../build/)). You may wish to do this to use non-default execution providers.
-To use your own version of ONNX Runtime, replace onnxruntime.dll with your desired version.
-
-<p><a href="#">Back to top</a></p>
-
-## Supported Versions
-Windows 8.1+
-
-
-
-<p><a href="#">Back to top</a></p>
-
-## Builds
-
-|Artifact|Description|Supported Platforms|
-|---|---|---|
-|[Microsoft.AI.MachineLearning](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)|WinRT - CPU, GPU (DirectML)|Windows 8.1+|
-
-
-## API Reference
-[Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)
-
-## Samples
-
-Any code already written for the Windows.AI.MachineLearning API can be easily modified to run against the Microsoft.ML.OnnxRuntime package. All types originally referenced by inbox customers via the Windows namespace will need to be updated to now use the Microsoft namespace.
-
-* [Samples in Github](https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/SqueezeNetObjectDetection/Desktop/cpp)
-
-## Should I use the in-box vs NuGet WinML version?
-
-For a comparison, see [Windows Machine Learning: In-box vs NuGet WinML solutions](https://docs.microsoft.com/en-us/windows/ai/windows-ml/#in-box-vs-nuget-winml-solutions).
-
-To detect if a particular OS version of Windows has the WinML APIs, use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method.  This can be called from either UWP or native apps.
-
-If the OS does not have the runtime you need you can switch to use the redist binaries instead.
-
-See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.
-
-## Additional Resources
-
-For more information about Windows Machine Learning (WinML), see the [Windows ML Overview](https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/overview).
-
-<p><a href="#">Back to top</a></p>
+Use the standalone [ONNX Runtime packages](../install/#cccwinml-installs) when you need a cross-platform API or want to manage execution providers directly. [DirectML](../execution-providers/DirectML-ExecutionProvider.md) remains supported in sustained engineering mode, but Windows ML is recommended for new Windows applications.

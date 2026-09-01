@@ -11,27 +11,22 @@ nav_order: 12
 
 Using the ORTModule class wrapper, ONNX Runtime runs the forward and backward pass of the training script using an optimized automatically-exported ONNX computation graph.
 
-> **Note**: The `torch-ort` package is no longer the recommended installation path. Use `onnxruntime-training` directly as described below.
-
-## Install ONNX Runtime Training
-
-```sh
-pip install onnxruntime-training
-```
-
-For GPU support:
-
-```sh
-pip install onnxruntime-training-gpu
-```
-
 ## ORT Training Example
 In this example we will go over how to use ORT for Training a model with PyTorch.
+
+```sh
+# Installs the torch_ort and onnxruntime-training Python packages
+pip install torch-ort
+# Configures onnxruntime-training to work with user's PyTorch installation
+python -m torch_ort.configure
+```
+
+**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
 
  - Add ORTModule in the `train.py`
 
 ```diff
-+  from onnxruntime.training.ortmodule import ORTModule
++  from torch_ort import ORTModule
    .
    .
    .
