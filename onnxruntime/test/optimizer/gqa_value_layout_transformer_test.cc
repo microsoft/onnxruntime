@@ -497,6 +497,27 @@ Status ExpectTensorsClose(const OrtValue& expected, const OrtValue& actual, floa
   return Status::OK();
 }
 
+// Do two tensors hold the same elements in the same memory order, ignoring shape? Used to assert
+// that a transpose actually rearranges data. Comparing with shapes included would be useless here:
+// the two tensors are deliberately BNSH [1,1,8,16] against BNHS [1,1,16,8], so a shape-aware
+// comparison always reports a difference and establishes nothing about the data.
+bool FlatDataIsIdentical(const OrtValue& a, const OrtValue& b) {
+  const Tensor& ta = a.Get<Tensor>();
+  const Tensor& tb = b.Get<Tensor>();
+  if (ta.Shape().Size() != tb.Shape().Size()) {
+    return false;
+  }
+
+  const MLFloat16* a_data = ta.Data<MLFloat16>();
+  const MLFloat16* b_data = tb.Data<MLFloat16>();
+  for (int64_t i = 0; i < ta.Shape().Size(); ++i) {
+    if (a_data[i].val != b_data[i].val) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Guards against a parity test that would pass on degenerate data: if a tensor were all zeros, or
 // identical under a transpose, comparing it would prove nothing about the layout conversion.
 Status ExpectNonDegenerate(const OrtValue& value, const std::string& what) {
@@ -594,21 +615,56 @@ TEST_F(GqaValueLayoutTransformerTest, InputSideOnlyWhenPresentValueIsAbsent) {
       }));
 }
 
-TEST_F(GqaValueLayoutTransformerTest, SkipsWhenPastValueIsNotAGraphInput) {
+// The two operands are in scope independently. past_value arrives from an Identity, so it is not
+// application bound and keeps BNSH; present_value is still a graph output, so it must be converted.
+// Skipping the whole node would leave an application-visible output in BNSH after the session
+// accepted BNHS.
+TEST_F(GqaValueLayoutTransformerTest, ConvertsPresentValueWhenOnlyPastValueIsInternal) {
   BuildOptions opts;
   opts.past_value_behind_identity = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
 
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeTransformer(),
-      TransformerLevel::Level1, /*steps=*/1,
+      TransformerLevel::Level1, /*steps=*/2,  // twice: the mixed case must stay idempotent
       [](Graph& graph) { return ExpectNoTransposes(graph); },
-      [](Graph& graph) { return ExpectNoTransposes(graph); }));
+      [](Graph& graph) {
+        ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 1));
+        const Node* gqa = FindGqa(graph);
+        ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+        // The internal past_value operand is untouched and still BNSH.
+        ORT_RETURN_IF_ERROR(ExpectShape(gqa->InputDefs()[4], kBnsh, "GQA past_value operand"));
+        return ExpectBnhsPresentValue(graph, *gqa);
+      }));
 }
 
-TEST_F(GqaValueLayoutTransformerTest, SkipsWhenPresentValueIsNotAGraphOutput) {
+// Mirror image: present_value is consumed by an Identity so it is not application read, while
+// past_value is still a graph input and must be converted.
+TEST_F(GqaValueLayoutTransformerTest, ConvertsPastValueWhenOnlyPresentValueIsInternal) {
   BuildOptions opts;
   opts.present_value_behind_identity = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/2,  // twice: the mixed case must stay idempotent
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) {
+        ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 1));
+        const Node* gqa = FindGqa(graph);
+        ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+        // The internal present_value operand is untouched and still BNSH.
+        ORT_RETURN_IF_ERROR(ExpectShape(gqa->OutputDefs()[2], kBnsh, "GQA present_value operand"));
+        return ExpectBnhsPastValue(graph, *gqa);
+      }));
+}
+
+// A past_value that is neither a graph input nor bindable at all: nothing to convert on that side,
+// and present_value is absent, so the node is left alone.
+TEST_F(GqaValueLayoutTransformerTest, SkipsWhenNeitherOperandIsApplicationVisible) {
+  BuildOptions opts;
+  opts.past_value_behind_identity = true;
+  opts.no_present_value = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
 
   ASSERT_STATUS_OK(TestGraphTransformer(
@@ -644,6 +700,53 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsPresentValueAlsoConsumedInternally)
       TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
                            TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
       "requires it to have no internal consumers");
+}
+
+// An initializer that is also a graph input can be overridden by a feed, so the application may bind
+// it, but its baked-in data stays BNSH no matter what happens to the declared shape. Swapping the
+// shape alone would either fail Graph::Resolve on the mismatch or, when the feed is omitted, hand the
+// default BNSH buffer to a Transpose that reads it as BNHS.
+TEST_F(GqaValueLayoutTransformerTest, RejectsOverridableInitializerPastValue) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutOverridableInitializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, BuildOptions{});
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const std::string past_value_name = gqa->InputDefs()[4]->Name();
+
+  // Back past_value with an initializer while keeping it in the declared input list. That
+  // combination is what ORT reports as an overridable initializer.
+  const std::vector<const NodeArg*> declared_inputs = graph.GetInputsIncludingInitializers();
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  initializer.set_name(past_value_name);
+  initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (const int64_t dim : {kBatch, kKvNumHeads, kMaxSeq, kHeadSize}) {
+    initializer.add_dims(dim);
+  }
+  // FLOAT16 initializer data lives in int32_data, two bytes per element.
+  initializer.mutable_int32_data()->Resize(static_cast<int>(kBatch * kKvNumHeads * kMaxSeq * kHeadSize), 0);
+  graph.AddInitializedTensor(initializer);
+
+  graph.SetInputs(declared_inputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_FALSE(graph.GetOverridableInitializers().empty()) << "test setup did not produce an overridable initializer";
+
+  GqaValueLayoutTransformer transformer;
+  bool modified = false;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(transformer.Apply(graph, modified, *logger_),
+                                      "overridable initializer");
+  EXPECT_FALSE(modified);
 }
 
 // A rejection must leave the graph exactly as it was loaded. Each model here holds two independent
@@ -842,11 +945,11 @@ TEST_F(GqaValueLayoutTransformerTest, BnhsMatchesBnshOnCpu) {
   ASSERT_STATUS_OK(ExpectNonDegenerate(bnsh_fetches[attention_output_index], "attention output"));
   ASSERT_STATUS_OK(ExpectNonDegenerate(bnsh_fetches[present_value_index], "present_value"));
   ASSERT_STATUS_OK(ExpectNonDegenerate(bnhs_fetches[present_value_index], "BNHS present_value"));
-  // A transpose-invariant present_value would hide a broken conversion.
-  ASSERT_FALSE(ExpectTensorsEqual(bnsh_fetches[present_value_index], bnhs_fetches[present_value_index],
-                                  "present_value")
-                   .IsOK())
-      << "BNSH and BNHS present_value are byte-identical, so this test cannot detect a layout bug.";
+  // A transpose-invariant present_value would hide a broken conversion. Compare the raw element
+  // sequences, ignoring the (deliberately different) shapes.
+  ASSERT_FALSE(FlatDataIsIdentical(bnsh_fetches[present_value_index], bnhs_fetches[present_value_index]))
+      << "BNSH and BNHS present_value hold the same elements in the same order, so the transpose moved "
+         "nothing and this test cannot detect a layout bug.";
 
   // The attention output is layout independent and must match directly.
   ASSERT_STATUS_OK(ExpectTensorsEqual(bnsh_fetches[attention_output_index],
