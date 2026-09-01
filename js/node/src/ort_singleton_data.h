@@ -13,9 +13,6 @@
  *   This is a global singleton that is shared across all InferenceSessionWrap instances. It is created when the first
  *   time `InferenceSession.initOrtOnce()` is called.
  *
- * - The Ort::RunOptions singleton instance.
- *   This is an empty default RunOptions instance. It is created once to allow reuse across all session inference runs.
- *
  * The OrtSingletonData class uses a ref-counted, heap-allocated singleton with best-effort cleanup.
  *
  * Each napi_env (one per thread) that initializes ORT increments a ref count and registers a cleanup hook via
@@ -36,7 +33,6 @@
 struct OrtSingletonData {
   struct OrtObjects {
     Ort::Env env;
-    Ort::RunOptions default_run_options;
 
    private:
     // The following pattern ensures that OrtObjects can only be created by OrtSingletonData
