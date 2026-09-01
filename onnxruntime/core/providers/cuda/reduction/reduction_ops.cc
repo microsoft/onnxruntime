@@ -484,17 +484,24 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
       if (axis == rank - 1) {
         const int64_t m = input_shape.SizeToDimension(axis);
         const int64_t n = input_shape[axis];
-        if (n > 0 && m <= std::numeric_limits<int>::max() && n <= std::numeric_limits<int>::max()) {
+        if (n > 0 && m <= std::numeric_limits<int>::max() && n <= std::numeric_limits<int>::max() &&
+            (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN)) {
+          const int rows = gsl::narrow_cast<int>(m);
+          const int cols = gsl::narrow_cast<int>(n);
+          // Wide rows are reduced by several cooperating blocks, which needs a small
+          // buffer for the per block partial results.
+          const auto buffer_size_bytes = compute_arg_min_max_last_axis_buffer_size<CudaT>(rows, cols);
+          auto buffer = buffer_size_bytes == 0
+                            ? nullptr
+                            : AllocateScratchBuffer<void>(gpu_allocator, kernel, buffer_size_bytes, compute_stream);
           if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {
             return arg_min_max_last_axis<CudaT, true>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
-                                                      output.MutableData<int64_t>(), gsl::narrow_cast<int>(m),
-                                                      gsl::narrow_cast<int>(n));
+                                                      output.MutableData<int64_t>(), rows, cols,
+                                                      buffer.get(), buffer_size_bytes);
           }
-          if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
-            return arg_min_max_last_axis<CudaT, false>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
-                                                       output.MutableData<int64_t>(), gsl::narrow_cast<int>(m),
-                                                       gsl::narrow_cast<int>(n));
-          }
+          return arg_min_max_last_axis<CudaT, false>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                                     output.MutableData<int64_t>(), rows, cols,
+                                                     buffer.get(), buffer_size_bytes);
         }
       }
     }

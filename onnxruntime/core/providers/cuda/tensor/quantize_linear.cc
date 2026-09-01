@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "quantize_linear.h"
+#include "quantize_linear_common.h"
 #include "quantize_linear.cuh"
 
 namespace onnxruntime {
@@ -190,10 +191,11 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   auto& y_scale = *ctx->Input<Tensor>(1);
   auto* y_zero_point = ctx->Input<Tensor>(2);
 
-  auto& y = *ctx->Output(0, x.Shape());
-
   const auto& x_shape = x.Shape();
   const auto num_of_elements = x_shape.Size();
+  ORT_RETURN_IF_NOT(IsQDQElementCountSupported(num_of_elements), QDQElementCountErrorMessage());
+
+  auto& y = *ctx->Output(0, x_shape);
 
   const CudaU* input = reinterpret_cast<const CudaU*>(x.Data<U>());
   T* output = y.MutableData<T>();
@@ -407,6 +409,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x.Shape();
   const auto num_of_elements = x_shape.Size();
+  ORT_RETURN_IF_NOT(IsQDQElementCountSupported(num_of_elements), QDQElementCountErrorMessage());
 
   auto& y = *ctx->Output(0, x_shape);
 

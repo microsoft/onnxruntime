@@ -518,7 +518,9 @@ void AddBiasTransposePacked(
     AttentionQkvFormat source_format, AttentionQkvFormat target_format,
     const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
-  if (0 == (qk_head_size & 3) && 0 == (v_head_size & 3)) {
+  const auto index_width =
+      GetPackedAttentionQkvMaterializationIndexWidth(qk_head_size, v_head_size);
+  if (index_width == PackedAttentionQkvMaterializationIndexWidth::Vector4) {
     using T4Type = typename T4<T>::Type;
     const int H = qk_head_size / 4;
     const int H_v = v_head_size / 4;
@@ -533,7 +535,7 @@ void AddBiasTransposePacked(
         num_heads, H, H_v,
         source_format, target_format,
         token_offset, token_count, stream);
-  } else if (0 == (qk_head_size & 1) && 0 == (v_head_size & 1)) {
+  } else if (index_width == PackedAttentionQkvMaterializationIndexWidth::Vector2) {
     using T2Type = typename T2<T>::Type;
     const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
@@ -571,6 +573,13 @@ Status FusedAttentionTrt(
   const int v_head_size = parameters.v_head_size;
   void* fused_runner = data.fused_runner;
   ORT_RETURN_IF_NOT(nullptr != fused_runner, "fused_runner cannot be NULL");
+  ORT_RETURN_IF_NOT(
+      (data.no_qkv_workspace &&
+       data.workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::None) ||
+          (!data.no_qkv_workspace &&
+           data.workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::InterleavedTn3h &&
+           data.workspace_recipe.interleaved_qkv_offset_bytes == 0),
+      "PackedMultiHeadAttention TRT requires direct or root [T, N, 3, H] QKV.");
 
   // When packed QKV is used, we can directly pass it to fused runner. Otherwise, we need transpose to BSN3H format.
   const T* qkv = data.query;
@@ -603,11 +612,13 @@ Status FlashAttention(
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
-  // Q, K and V pointers
-  const int model_dimension_qk = num_heads * qk_head_size;
-  const int model_dimension_v = num_heads * v_head_size;
-  const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
-  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
+  const auto& workspace_recipe = data.workspace_recipe;
+  ORT_RETURN_IF_NOT(
+      (data.no_qkv_workspace &&
+       workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::None) ||
+          (!data.no_qkv_workspace &&
+           workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::Planar),
+      "PackedMultiHeadAttention Flash requires direct or planar Q/K/V views.");
 
   // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
   if (!data.no_qkv_workspace) {
@@ -622,12 +633,19 @@ Status FlashAttention(
                                          : parameters.scale;
   int32_t* cu_seqlens_q = const_cast<int32_t*>(data.cumulative_sequence_length);
   int32_t* cu_seqlens_k = const_cast<int32_t*>(data.cumulative_sequence_length);
-  const void* query = data.no_qkv_workspace ? data.query : data.workspace;
-  const void* key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
-  const void* value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
+  const void* query = data.no_qkv_workspace
+                          ? data.query
+                          : PackedAttentionWorkspaceAt(data.workspace, workspace_recipe.q_offset_bytes);
+  const void* key = data.no_qkv_workspace
+                        ? data.key
+                        : PackedAttentionWorkspaceAt(data.workspace, workspace_recipe.k_offset_bytes);
+  const void* value = data.no_qkv_workspace
+                          ? data.value
+                          : PackedAttentionWorkspaceAt(data.workspace, workspace_recipe.v_offset_bytes);
   void* softmax_lse_buffer = data.no_qkv_workspace
                                  ? data.workspace
-                                 : (data.workspace + elements_qk + elements_qk + elements_v);
+                                 : PackedAttentionWorkspaceAt(
+                                       data.workspace, workspace_recipe.backend_workspace_offset_bytes);
 
   ORT_RETURN_IF_ERROR(
       onnxruntime::flash::mha_varlen_fwd(
@@ -679,11 +697,13 @@ Status FusedAttentionCutlass(
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
-  // Q, K and V pointers
-  const int model_dimension_qk = num_heads * qk_head_size;
-  const int model_dimension_v = num_heads * v_head_size;
-  const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
-  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
+  const auto& workspace_recipe = data.workspace_recipe;
+  ORT_RETURN_IF_NOT(
+      (data.no_qkv_workspace &&
+       workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::None) ||
+          (!data.no_qkv_workspace &&
+           workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::Planar),
+      "PackedMultiHeadAttention MEA requires direct or planar Q/K/V views.");
 
   // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
   if (!data.no_qkv_workspace) {
@@ -712,9 +732,15 @@ Status FusedAttentionCutlass(
   p.seqlen_k_ptr = nullptr;
   p.seqstart_q_ptr = data.cumulative_sequence_length;
   p.seqstart_k_ptr = data.cumulative_sequence_length;
-  p.query = data.no_qkv_workspace ? data.query : data.workspace;
-  p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
-  p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
+  p.query = data.no_qkv_workspace
+                ? data.query
+                : PackedAttentionWorkspaceAt(data.workspace, workspace_recipe.q_offset_bytes);
+  p.key = data.no_qkv_workspace
+              ? data.key
+              : PackedAttentionWorkspaceAt(data.workspace, workspace_recipe.k_offset_bytes);
+  p.value = data.no_qkv_workspace
+                ? data.value
+                : PackedAttentionWorkspaceAt(data.workspace, workspace_recipe.v_offset_bytes);
 
   p.attn_bias = data.attention_bias;
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
@@ -723,7 +749,8 @@ Status FusedAttentionCutlass(
   p.output = data.output;
   p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
-                    ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
+                    ? PackedAttentionWorkspaceAt(
+                          data.workspace, workspace_recipe.backend_workspace_offset_bytes)
                     : nullptr;
   p.stream = stream;
   p.has_custom_right_padding = false;
@@ -747,7 +774,6 @@ Status UnfusedAttention(
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<T>& data) {
-  constexpr size_t element_size = sizeof(T);
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
@@ -755,12 +781,9 @@ Status UnfusedAttention(
   const int v_head_size = parameters.v_head_size;
 
   const int batches = batch_size * num_heads;
-  const int size_per_batch_q = sequence_length * qk_head_size;
-  const int size_per_batch_k = sequence_length * qk_head_size;
-  const int size_per_batch_v = sequence_length * v_head_size;
-  const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
-  const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
-  const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
+  const auto& workspace_recipe = data.workspace_recipe;
+  ORT_RETURN_IF_NOT(workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::Planar,
+                    "PackedMultiHeadAttention unfused attention requires planar Q/K/V workspace views.");
 
   // Q, K and V pointers when fused attention is not used
   AddBiasTransposePacked(data.query, data.key, data.value, data.bias, data.workspace,
@@ -770,10 +793,10 @@ Status UnfusedAttention(
                          data.token_offset, parameters.token_count, stream);
 
   T* qkv = data.workspace;
-  T* q = qkv;
-  T* k = q + elements_q;
-  T* v = k + elements_k;
-  T* scaled_qk = qkv + elements_q + elements_k + elements_v;
+  T* q = PackedAttentionWorkspaceAt(qkv, workspace_recipe.q_offset_bytes);
+  T* k = PackedAttentionWorkspaceAt(qkv, workspace_recipe.k_offset_bytes);
+  T* v = PackedAttentionWorkspaceAt(qkv, workspace_recipe.v_offset_bytes);
+  T* scaled_qk = PackedAttentionWorkspaceAt(qkv, workspace_recipe.backend_workspace_offset_bytes);
 
   // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scaled_qk: BxNxSxT
   // Q: BxNxSxH, K: BxNxSxH, Q*K': BxNxSxS
@@ -801,9 +824,7 @@ Status UnfusedAttention(
   DUMP_TENSOR_D("v (BNSH)", v, batch_size, num_heads, sequence_length, v_head_size);
   DUMP_TENSOR_D("QK", scaled_qk, batch_size, num_heads, sequence_length, sequence_length);
 
-  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                               sequence_length);
-  T* attention_score = scaled_qk + (bytes / element_size);
+  T* attention_score = PackedAttentionWorkspaceAt(qkv, workspace_recipe.second_scratch_offset_bytes);
 
   // Apply softmax and store result R to attention_score: BxNxSxS
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(

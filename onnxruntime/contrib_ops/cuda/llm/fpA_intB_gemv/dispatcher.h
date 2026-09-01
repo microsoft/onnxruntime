@@ -433,6 +433,11 @@ void check_pointer(Params& params, cudaStream_t s) {
   assert(!params.act_scale);               // act_scale is not supported for now.
   assert(!params.apply_alpha_in_advance);  // apply_alpha_in_advance is not supported for now.
 
+#if USE_COMPACT_FPA_INTB_GEMM
+  ORT_ENFORCE(!params.zeros && !params.bias,
+              "Compact fpA_intB GEMV does not support zero points or bias");
+  dispatcher<Details, GroupSize, false, false, false, false>(params, s);
+#else
   if (params.zeros && params.bias) {
     dispatcher<Details, GroupSize, false, true, true, false>(params, s);
   } else if (!params.zeros && params.bias) {
@@ -442,6 +447,7 @@ void check_pointer(Params& params, cudaStream_t s) {
   } else {
     dispatcher<Details, GroupSize, false, false, false, false>(params, s);
   }
+#endif
 }
 
 template <bool isGroupwise, typename Details>
@@ -450,12 +456,14 @@ void select_gs(Params& params, cudaStream_t s) {
     if (params.groupsize == 32) {
       check_pointer<Details, 32>(params, s);
       return;
+#if !USE_COMPACT_FPA_INTB_GEMM
     } else if (params.groupsize == 64) {
       check_pointer<Details, 64>(params, s);
       return;
     } else if (params.groupsize == 128) {
       check_pointer<Details, 128>(params, s);
       return;
+#endif
     }
   }
 
