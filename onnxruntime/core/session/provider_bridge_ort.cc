@@ -1008,6 +1008,8 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   MLDataType DataTypeImpl__GetType_Float4E2M1x2() override { return DataTypeImpl::GetType<Float4E2M1x2>(); }
 #endif
+  MLDataType DataTypeImpl__GetType_Float6E2M3() override { return DataTypeImpl::GetType<Float6E2M3>(); }
+  MLDataType DataTypeImpl__GetType_Float6E3M2() override { return DataTypeImpl::GetType<Float6E3M2>(); }
 
   MLDataType DataTypeImpl__GetType_Int4x2() override { return DataTypeImpl::GetType<Int4x2>(); }
   MLDataType DataTypeImpl__GetType_UInt4x2() override { return DataTypeImpl::GetType<UInt4x2>(); }
@@ -1039,6 +1041,8 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   MLDataType DataTypeImpl__GetTensorType_Float4E2M1x2() override { return DataTypeImpl::GetTensorType<Float4E2M1x2>(); }
 #endif
+  MLDataType DataTypeImpl__GetTensorType_Float6E2M3() override { return DataTypeImpl::GetTensorType<Float6E2M3>(); }
+  MLDataType DataTypeImpl__GetTensorType_Float6E3M2() override { return DataTypeImpl::GetTensorType<Float6E3M2>(); }
 
   MLDataType DataTypeImpl__GetTensorType_Int4x2() override { return DataTypeImpl::GetTensorType<Int4x2>(); }
   MLDataType DataTypeImpl__GetTensorType_UInt4x2() override { return DataTypeImpl::GetTensorType<UInt4x2>(); }
@@ -1695,6 +1699,8 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   Float4E2M1x2* Tensor__MutableData_Float4E2M1x2(Tensor* p) override { return p->MutableData<Float4E2M1x2>(); }
 #endif
+  Float6E2M3* Tensor__MutableData_Float6E2M3(Tensor* p) override { return p->MutableData<Float6E2M3>(); }
+  Float6E3M2* Tensor__MutableData_Float6E3M2(Tensor* p) override { return p->MutableData<Float6E3M2>(); }
 
   Int4x2* Tensor__MutableData_Int4x2(Tensor* p) override { return p->MutableData<Int4x2>(); }
   UInt4x2* Tensor__MutableData_UInt4x2(Tensor* p) override { return p->MutableData<UInt4x2>(); }
@@ -1725,6 +1731,8 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   const Float4E2M1x2* Tensor__Data_Float4E2M1x2(const Tensor* p) override { return p->Data<Float4E2M1x2>(); }
 #endif
+  const Float6E2M3* Tensor__Data_Float6E2M3(const Tensor* p) override { return p->Data<Float6E2M3>(); }
+  const Float6E3M2* Tensor__Data_Float6E3M2(const Tensor* p) override { return p->Data<Float6E3M2>(); }
 
   const Int4x2* Tensor__Data_Int4x2(const Tensor* p) override { return p->Data<Int4x2>(); }
   const UInt4x2* Tensor__Data_UInt4x2(const Tensor* p) override { return p->Data<UInt4x2>(); }
@@ -1764,6 +1772,8 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   bool Tensor__IsDataType_Float4E2M1x2(const Tensor* p) noexcept override { return p->IsDataType<Float4E2M1x2>(); }
 #endif
+  bool Tensor__IsDataType_Float6E2M3(const Tensor* p) noexcept override { return p->IsDataType<Float6E2M3>(); }
+  bool Tensor__IsDataType_Float6E3M2(const Tensor* p) noexcept override { return p->IsDataType<Float6E3M2>(); }
 
   bool Tensor__IsDataType_Int4x2(const Tensor* p) noexcept override { return p->IsDataType<Int4x2>(); }
   bool Tensor__IsDataType_UInt4x2(const Tensor* p) noexcept override { return p->IsDataType<UInt4x2>(); }

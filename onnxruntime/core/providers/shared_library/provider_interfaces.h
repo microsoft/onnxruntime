@@ -773,6 +773,8 @@ struct ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual MLDataType DataTypeImpl__GetType_Float4E2M1x2() = 0;
 #endif
+  virtual MLDataType DataTypeImpl__GetType_Float6E2M3() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float6E3M2() = 0;
   virtual MLDataType DataTypeImpl__GetType_Int4x2() = 0;
   virtual MLDataType DataTypeImpl__GetType_UInt4x2() = 0;
   virtual MLDataType DataTypeImpl__GetType_Int2x4() = 0;
@@ -801,6 +803,8 @@ struct ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual MLDataType DataTypeImpl__GetTensorType_Float4E2M1x2() = 0;
 #endif
+  virtual MLDataType DataTypeImpl__GetTensorType_Float6E2M3() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float6E3M2() = 0;
 
   virtual MLDataType DataTypeImpl__GetTensorType_Int4x2() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_UInt4x2() = 0;
@@ -1264,6 +1268,8 @@ struct ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual Float4E2M1x2* Tensor__MutableData_Float4E2M1x2(Tensor* p) = 0;
 #endif
+  virtual Float6E2M3* Tensor__MutableData_Float6E2M3(Tensor* p) = 0;
+  virtual Float6E3M2* Tensor__MutableData_Float6E3M2(Tensor* p) = 0;
   virtual Int4x2* Tensor__MutableData_Int4x2(Tensor* p) = 0;
   virtual UInt4x2* Tensor__MutableData_UInt4x2(Tensor* p) = 0;
   virtual Int2x4* Tensor__MutableData_Int2x4(Tensor* p) = 0;
@@ -1292,6 +1298,8 @@ struct ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual const Float4E2M1x2* Tensor__Data_Float4E2M1x2(const Tensor* p) = 0;
 #endif
+  virtual const Float6E2M3* Tensor__Data_Float6E2M3(const Tensor* p) = 0;
+  virtual const Float6E3M2* Tensor__Data_Float6E3M2(const Tensor* p) = 0;
   virtual const Int4x2* Tensor__Data_Int4x2(const Tensor* p) = 0;
   virtual const UInt4x2* Tensor__Data_UInt4x2(const Tensor* p) = 0;
   virtual const Int2x4* Tensor__Data_Int2x4(const Tensor* p) = 0;
@@ -1331,6 +1339,8 @@ struct ProviderHost {
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual bool Tensor__IsDataType_Float4E2M1x2(const Tensor* p) noexcept = 0;
 #endif
+  virtual bool Tensor__IsDataType_Float6E2M3(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float6E3M2(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Int4x2(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_UInt4x2(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Int2x4(const Tensor* p) noexcept = 0;
