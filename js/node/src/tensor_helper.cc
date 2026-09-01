@@ -348,12 +348,15 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                                .Value()
                                                .Get("fromGpuBuffer")
                                                .As<Napi::Function>();
-      OrtValue* underlyingOrtValue = value.release();
-      auto valueOwner = std::make_unique<OrtValueOwner>(underlyingOrtValue, [](OrtValue* value) {
+      auto releaseOrtValue = [](OrtValue* value) {
         if (OrtSingletonData::GetOrtObjects()) {
           Ort::GetApi().ReleaseValue(value);
         }
-      });
+      };
+      // Keep ownership while allocating the shared owner so allocation failures cannot leak the OrtValue.
+      auto underlyingOrtValue = std::unique_ptr<OrtValue, decltype(releaseOrtValue)>(value.release(), releaseOrtValue);
+      auto valueOwner = std::make_unique<OrtValueOwner>(underlyingOrtValue.get(), releaseOrtValue);
+      underlyingOrtValue.release();
 
       auto options = Napi::Object::New(env);
       options.Set("dataType", type);
