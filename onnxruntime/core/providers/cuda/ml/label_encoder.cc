@@ -210,7 +210,7 @@ static void CopyToGpu(const OpKernelInfo& info,
   auto alloc = info.GetAllocator(OrtMemTypeDefault);
   if (!keys.empty()) {
     // Issue the host->device copies on the per-thread default stream rather than the
-    // NULL/legacy default stream (implicitly synchronizes with every other blocking stream
+    // NULL/legacy default stream, which implicitly synchronizes with every other blocking stream
     // in the process.
     // The cudaStreamSynchronize is required for correctness:
     // - the host source vectors are freed when this function returns;
