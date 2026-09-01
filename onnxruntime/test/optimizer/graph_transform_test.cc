@@ -5449,6 +5449,110 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput2) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
+TEST_F(GraphTransformationTests, GemmTransposeFusionOnlyFusesMatrixTranspose) {
+  enum class TransposeLocation {
+    InputA,
+    InputB,
+    Output,
+  };
+
+  auto run_case = [&](TransposeLocation location, bool has_perm, const std::vector<int64_t>& perm,
+                      bool expect_fusion) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_a = builder.MakeInput<float>({{3, 3}});
+      auto* input_b = builder.MakeInput<float>({{3, 3}});
+      auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 3});
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 3});
+
+      NodeArg* gemm_input_a = input_a;
+      NodeArg* gemm_input_b = input_b;
+      if (location == TransposeLocation::InputA || location == TransposeLocation::InputB) {
+        NodeArg* transpose_input = location == TransposeLocation::InputA ? input_a : input_b;
+        auto* transpose_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 3});
+        auto& transpose = builder.AddNode("Transpose", {transpose_input}, {transpose_output});
+        if (has_perm) {
+          transpose.AddAttribute("perm", perm);
+        }
+
+        if (location == TransposeLocation::InputA) {
+          gemm_input_a = transpose_output;
+        } else {
+          gemm_input_b = transpose_output;
+        }
+      }
+
+      auto& gemm = builder.AddNode("Gemm", {gemm_input_a, gemm_input_b}, {gemm_output});
+      gemm.AddAttribute("transA", static_cast<int64_t>(0));
+      gemm.AddAttribute("transB", static_cast<int64_t>(0));
+      gemm.AddAttribute("alpha", 1.0f);
+      gemm.AddAttribute("beta", 1.0f);
+
+      if (location == TransposeLocation::Output) {
+        auto& transpose = builder.AddNode("Transpose", {gemm_output}, {output});
+        if (has_perm) {
+          transpose.AddAttribute("perm", perm);
+        }
+      } else {
+        builder.AddNode("Identity", {gemm_output}, {output});
+      }
+    };
+
+    auto post_graph_checker = [expect_fusion](Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+      TEST_RETURN_IF_NOT(op_to_count["Transpose"] == (expect_fusion ? 0 : 1));
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  };
+
+  // An explicit identity permutation must not toggle transA or transB.
+  run_case(TransposeLocation::InputA, true, {0, 1}, false);
+  run_case(TransposeLocation::InputB, true, {0, 1}, false);
+  run_case(TransposeLocation::Output, true, {0, 1}, false);
+  // An explicit matrix transpose is still fused.
+  run_case(TransposeLocation::InputA, true, {1, 0}, true);
+  run_case(TransposeLocation::InputB, true, {1, 0}, true);
+  run_case(TransposeLocation::Output, true, {1, 0}, true);
+  // For rank-2 input, an omitted perm defaults to the matrix transpose.
+  run_case(TransposeLocation::InputA, false, {}, true);
+  run_case(TransposeLocation::InputB, false, {}, true);
+  run_case(TransposeLocation::Output, false, {}, true);
+
+  // A higher-rank transpose cannot be represented by Gemm's matrix-only transA/transB attributes,
+  // even when it swaps the last two dimensions.
+  auto build_higher_rank_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>(std::nullopt);
+    auto* input_b = builder.MakeInput<float>(std::nullopt);
+    auto* transpose_output = builder.MakeIntermediate();
+    auto* gemm_output = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    auto& transpose = builder.AddNode("Transpose", {input_a}, {transpose_output});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    auto& gemm = builder.AddNode("Gemm", {transpose_output, input_b}, {gemm_output});
+    gemm.AddAttribute("transA", static_cast<int64_t>(0));
+    gemm.AddAttribute("transB", static_cast<int64_t>(0));
+    gemm.AddAttribute("alpha", 1.0f);
+    gemm.AddAttribute("beta", 1.0f);
+    builder.AddNode("Identity", {gemm_output}, {output});
+  };
+  auto post_higher_rank_graph_checker = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 1);
+    return Status::OK();
+  };
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerHigherRank");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_higher_rank_test_case, 21, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, nullptr, post_higher_rank_graph_checker));
+}
+
 // Sum(Gemm(A, B, _), C) -> Gemm(A, B, C)
 TEST_F(GraphTransformationTests, GemmSumFusionBasic) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gemm_sum_basic.onnx";
