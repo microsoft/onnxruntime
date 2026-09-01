@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <iostream>
+#include "core/framework/allocator.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 
