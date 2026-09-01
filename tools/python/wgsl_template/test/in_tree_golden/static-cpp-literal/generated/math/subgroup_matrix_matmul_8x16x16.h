@@ -19,7 +19,7 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(Shader
 
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
-//   3 | 
+//   3 | //
 //   4 | // Subgroup-matrix MatMul kernel (F16) for the 8x16x16 (sg_mat_m x sg_mat_n x
 //   5 | // sg_mat_k) subgroup-matrix shape. The sg_mat_m/n/k values are still supplied as
 //   6 | // params, but this kernel is currently only validated for 8/16/16; other
@@ -54,16 +54,16 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(Shader
 //  35 | // [batch, M, K] / [batch, M, N]; B is either a shared [K, N] weight (batch 1)
 //  36 | // or batched as [batch, K, N]. Per-slice flat offsets are derived from M, N, K.
 //  37 | // Each slice is an independent tile grid.
-//  38 | 
+//  38 | //
 //  39 | #param sg_mat_k
 //  40 | #param sg_mat_m
 //  41 | #param sg_mat_n
 //  42 | #param sg_mat_count_m
 //  43 | #param sg_mat_count_n
 //  44 | #param split_k
-//  45 | 
+//  45 | //
 //  46 | #use .setByOffset
-//  47 | 
+//  47 | //
 //  48 | const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
 ss << "const kSgMatM: u32 = u32(";
 ss << __param_sg_mat_m;
@@ -94,7 +94,7 @@ ss << __param_split_k;
 ss << ");\n";
 //  56 | const kSubgroupSize: u32 = 32;                   // Lanes per subgroup
 ss << "const kSubgroupSize: u32 = 32;\n";
-//  57 | 
+//  57 | //
 ss << "\n";
 //  58 | // Scratch space for kSplitK partial [kTileM, kTileN] tiles, row-major. Each
 //  59 | // split-K subgroup accumulates its slice of K into its own slot; the slots are
@@ -102,7 +102,7 @@ ss << "\n";
 //  61 | // with M/N bounds checks for dimensions that are not multiples of the tile size.
 //  62 | var<workgroup> scratch: array<f16, kTileM * kTileN * kSplitK>;
 ss << "var<workgroup> scratch: array<f16, kTileM * kTileN * kSplitK>;\n";
-//  63 | 
+//  63 | //
 ss << "\n";
 //  64 | $MAIN {
 MainFunctionStart();
@@ -147,7 +147,7 @@ ss << "    let sg_index = local_idx / kSubgroupSize;\n";
 ss << "    let sg_lane = local_idx % kSubgroupSize;\n";
 //  87 |     let sg_scratch_base = sg_index * kTileM * kTileN;  // this subgroup's scratch slot
 ss << "    let sg_scratch_base = sg_index * kTileM * kTileN;\n";
-//  88 | 
+//  88 | //
 ss << "\n";
 //  89 |     // Accumulators: kSgMatCountM M blocks x kSgMatCountN N blocks (sg_mat_c<mi>_<ni>).
 //  90 |     var sg_mat_c0_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
@@ -466,7 +466,7 @@ ss << ">;\n";
 }
 // 183 | #endif
 }
-// 184 | 
+// 184 | //
 // 185 |     for (var kb: u32 = sg_index; kb < k_blocks; kb = kb + kSplitK) {
 ss << "    for (var kb: u32 = sg_index; kb < k_blocks; kb = kb + kSplitK) {\n";
 // 186 |         // Load the B right tiles for this K block (KxN_b row-major, stride N_b).
@@ -541,7 +541,7 @@ ss << ">, row_major>(\n";
 ss << "                &input_b, b_base + 3 * kSgMatN, uniforms.N_b);\n";
 // 205 | #endif
 }
-// 206 | 
+// 206 | //
 // 207 |         // Load the A left tiles (one per M block), row-major with stride K.
 // 208 |         // a_batch_offset folds this z-slice's flat offset into the column term so
 // 209 |         // every A load below reads from the correct batch slice.
@@ -687,7 +687,7 @@ ss << ">, row_major>(\n";
 ss << "                &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);\n";
 // 248 | #endif
 }
-// 249 | 
+// 249 | //
 // 250 |         // Accumulate every (M block, N block) pair.
 // 251 |         sg_mat_c0_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b0, sg_mat_c0_0);
 ss << "        sg_mat_c0_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b0, sg_mat_c0_0);\n";
@@ -879,7 +879,7 @@ ss << "        sg_mat_c7_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a7, sg_mat_
 }
 // 345 |     }
 ss << "    }\n";
-// 346 | 
+// 346 | //
 ss << "\n";
 // 347 |     // Store this subgroup's partial results into its split-K slot of scratch,
 // 348 |     // laid out as kSplitK x [kTileM, kTileN] row-major. Offset of block (mi, ni)
@@ -1072,13 +1072,13 @@ ss << "    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMat
 }
 // 443 | #endif
 }
-// 444 | 
+// 444 | //
 // 445 | #if split_k >= 2
 if (__param_split_k >= 2) {
 // 446 |     // Make all subgroups' partial tiles visible before the reduction.
 // 447 |     workgroupBarrier();
 ss << "    workgroupBarrier();\n";
-// 448 | 
+// 448 | //
 ss << "\n";
 // 449 |     // Sum pass: a single subgroup reduces the kSplitK partial [kTileM, kTileN]
 // 450 |     // tiles into slot 0 of scratch. Each lane owns a strided set of element
@@ -1109,7 +1109,7 @@ ss << "\n";
 ss << "    workgroupBarrier();\n";
 // 465 | #endif
 }
-// 466 | 
+// 466 | //
 // 467 |     // Write-out pass: every subgroup writes out whole M-rows from the summed tile
 // 468 |     // in slot 0, striding by kSplitK subgroups (subgroup sg_index handles rows
 // 469 |     // sg_index, sg_index + kSplitK, ...). The subgroup's lanes cooperate on a

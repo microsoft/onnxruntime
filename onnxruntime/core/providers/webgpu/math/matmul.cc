@@ -261,8 +261,31 @@ Status ComputeMatMul(ComputeContext* context,
     return context->RunProgram(program);
   }
 
+  // The generic and Intel programs operate on matrices. MatMulComputeHelper accepts
+  // rank-1 operands using ONNX's implicit row/column promotion, so mirror that
+  // promotion in the program metadata before indexing the last two dimensions.
+  TensorShape intel_a_shape = logical_a_shape;
+  TensorShape intel_b_shape = logical_b_shape;
+  const bool has_vector_operand = logical_a_shape.NumDimensions() == 1 ||
+                                  logical_b_shape.NumDimensions() == 1;
+  if (logical_a_shape.NumDimensions() == 1) {
+    intel_a_shape = TensorShape({1, logical_a_shape[0]});
+    a_shape = intel_a_shape;
+  }
+  if (logical_b_shape.NumDimensions() == 1) {
+    intel_b_shape = TensorShape({logical_b_shape[0], 1});
+    if (b_shape.NumDimensions() == 1) {
+      b_shape = intel_b_shape;
+    }
+  }
+  if (has_vector_operand) {
+    MatMulComputeHelper program_helper;
+    ORT_THROW_IF_ERROR(program_helper.Compute(a_shape, b_shape));
+    output_shape = program_helper.OutputShape();
+  }
+
   if (intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
-    return intel::ApplyMatMulIntel(*context, activation, inputs, logical_a_shape, logical_b_shape,
+    return intel::ApplyMatMulIntel(*context, activation, inputs, intel_a_shape, intel_b_shape,
                                    output_tensor, is_channels_last);
   }
 
