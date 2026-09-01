@@ -3,11 +3,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -1608,6 +1611,65 @@ static void RunLinearAttentionStateWindowTest(int B, int q_H, int kv_H, int n_k,
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(ContribOpLinearAttentionTest, RejectsQNumHeadsOverflow) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered";
+    return;
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<float>("scale", 1.0f);
+  tester.AddAttribute<int64_t>("q_num_heads", 4294967296LL);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+
+  tester.AddInput<float>("query", {1, 1, 0}, {});
+  tester.AddInput<float>("key", {1, 1, 0}, {});
+  tester.AddInput<float>("value", {1, 1, 0}, {});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 0}, {});
+  tester.AddOutput<float>("present_state", {1, 1, 0, 0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "q_num_heads must be an integer in [1, INT_MAX]",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpLinearAttentionTest, RejectsKvNumHeadsOverflow) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered";
+    return;
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<float>("scale", 1.0f);
+  tester.AddAttribute<int64_t>("q_num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 4294967296LL);
+
+  tester.AddInput<float>("query", {1, 1, 0}, {});
+  tester.AddInput<float>("key", {1, 1, 0}, {});
+  tester.AddInput<float>("value", {1, 1, 0}, {});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 0}, {});
+  // present_state carries H_kv as its second dimension, so it must be declared with the
+  // oversized attribute value for shape inference to agree. The tensor is still empty
+  // because d_k and d_v are both 0, and the kernel rejects the attribute before any use.
+  tester.AddOutput<float>("present_state", {1, 4294967296LL, 0, 0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "kv_num_heads must be an integer in [1, INT_MAX]",
+             {}, nullptr, &execution_providers);
+}
+
 // d_k = 4 is not a decode fast-path shape, so this lands on the generic recurrent kernel.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow) {
   RunLinearAttentionStateWindowTest(/*B=*/1, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/2, /*T=*/5,
@@ -1665,6 +1727,86 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequence)
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequenceWithPastState) {
   RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/2,
                                     /*dk=*/128, /*dv=*/128, /*W=*/5, /*with_past_state=*/true);
+}
+
+// BFloat16 is CUDA-only for this op (CPU/WebGPU only register float/float16).
+TEST(ContribOpLinearAttentionTest, BFloat16_Cuda) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+    return;
+  }
+
+  const std::string update_rule = "gated_delta";
+  const int batch_size = 2;
+  const int num_heads = 2;
+  const int seq_length = 4;
+  const int head_dim_k = 8;
+  const int head_dim_v = 8;
+  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_k));
+
+  auto make_data = [](size_t count, float lo, float hi, uint32_t seed) {
+    std::vector<float> out(count);
+    std::mt19937 gen(seed);
+    std::uniform_real_distribution<float> dist(lo, hi);
+    for (auto& v : out) v = dist(gen);
+    return out;
+  };
+
+  const size_t qk_count = static_cast<size_t>(batch_size) * num_heads * seq_length * head_dim_k;
+  const size_t v_count = static_cast<size_t>(batch_size) * num_heads * seq_length * head_dim_v;
+  const size_t state_count = static_cast<size_t>(batch_size) * num_heads * head_dim_k * head_dim_v;
+  const size_t decay_count = static_cast<size_t>(batch_size) * num_heads * seq_length;
+  const size_t beta_count = decay_count;
+
+  auto query = make_data(qk_count, -0.5f, 0.5f, 1);
+  auto key = make_data(qk_count, -0.5f, 0.5f, 2);
+  auto value = make_data(v_count, -0.5f, 0.5f, 3);
+  auto initial_state = make_data(state_count, -0.1f, 0.1f, 4);
+  auto decay = make_data(decay_count, -1.0f, 0.0f, 5);
+  auto beta = make_data(beta_count, 0.1f, 0.9f, 6);
+
+  std::vector<float> expected_output_4d, expected_state;
+  LinearAttentionReference(update_rule, batch_size, num_heads, seq_length, head_dim_k, head_dim_v,
+                           scale, query, key, value, &initial_state, &decay, &beta,
+                           expected_output_4d, expected_state);
+
+  auto query_3d = PackBHTD_to_BTHD(query, batch_size, num_heads, seq_length, head_dim_k);
+  auto key_3d = PackBHTD_to_BTHD(key, batch_size, num_heads, seq_length, head_dim_k);
+  auto value_3d = PackBHTD_to_BTHD(value, batch_size, num_heads, seq_length, head_dim_v);
+  auto output_3d = PackBHTD_to_BTHD(expected_output_4d, batch_size, num_heads, seq_length, head_dim_v);
+  auto decay_3d = TransposeBHT_to_BTH(decay, batch_size, num_heads, seq_length);
+  auto beta_3d = TransposeBHT_to_BTH(beta, batch_size, num_heads, seq_length);
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", update_rule);
+  tester.AddAttribute<float>("scale", scale);
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(num_heads));
+
+  std::vector<int64_t> qk_dims = {batch_size, seq_length, num_heads * head_dim_k};
+  std::vector<int64_t> v_dims = {batch_size, seq_length, num_heads * head_dim_v};
+  std::vector<int64_t> state_dims = {batch_size, num_heads, head_dim_k, head_dim_v};
+  std::vector<int64_t> decay_dims = {batch_size, seq_length, num_heads};
+  std::vector<int64_t> beta_dims = {batch_size, seq_length, num_heads};
+  std::vector<int64_t> out_dims = {batch_size, seq_length, num_heads * head_dim_v};
+
+  tester.AddInput<BFloat16>("query", qk_dims, ToBFloat16(query_3d));
+  tester.AddInput<BFloat16>("key", qk_dims, ToBFloat16(key_3d));
+  tester.AddInput<BFloat16>("value", v_dims, ToBFloat16(value_3d));
+  tester.AddInput<BFloat16>("past_state", state_dims, ToBFloat16(initial_state));
+  tester.AddInput<BFloat16>("decay", decay_dims, ToBFloat16(decay_3d));
+  tester.AddInput<BFloat16>("beta", beta_dims, ToBFloat16(beta_3d));
+  tester.AddOutput<BFloat16>("output", out_dims, ToBFloat16(output_3d), false, 0.02f, 0.0f);
+  tester.AddOutput<BFloat16>("present_state", state_dims, ToBFloat16(expected_state), false, 0.02f, 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif  // USE_CUDA
 }  // namespace test

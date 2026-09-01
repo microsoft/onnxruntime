@@ -28,6 +28,7 @@ Source files:
 3. [Dispatch Chain](#3-dispatch-chain)
 4. [Decode Path - Fused GEMV](#4-decode-path---fused-gemv)
 5. [Default Path - Dequantize + cuBLAS](#5-default-path---dequantize--cublas)
+   - [5.1 Vectorized dequantization](#51-vectorized-dequantization)
 6. [Native SM120 FP4 x FP4 Path](#6-native-sm120-fp4-x-fp4-path)
 7. [PrePack](#7-prepack)
 8. [Environment Variables](#8-environment-variables)
@@ -181,9 +182,19 @@ product needs at most 6, inside FP16's 11 and BF16's 8; the range is safe too
 `KSplit` warps per block take a strided share of the K windows and reduce through
 shared memory. Without it, 16 columns per warp yields 16x fewer warps than the
 scalar path and the small MLP shapes lose more to idle SMs than they gain. The
-launcher picks `ColTiles = 4, KSplit = 2` when the column grid alone still covers
-a wave of SMs, and otherwise `ColTiles = 1` with as many `KSplit` warps as there
-are K windows.
+launcher targets four waves of SMs before using one-column blocks, and uses eight
+waves for four-column blocks when the reduction is long (`K / 128 >= 64`):
+
+| Grid condition | Reduction | Configuration |
+|---|---|---|
+| four-column grid covers four waves | ordinary or wide enough long reduction | `ColTiles = 4, KSplit = min(2, K / 128)` |
+| four-column grid does not cover four waves, but one-column grid does | `K / 128 < 64` | `ColTiles = 1, KSplit = min(2, K / 128)` |
+| four-column grid does not cover eight waves, but one-column grid covers four waves | `K / 128 >= 64` | `ColTiles = 1, KSplit = 8` |
+| one-column grid does not cover four waves | any | `ColTiles = 1`, up to 16 K-split warps |
+
+The extra grid-wave requirement avoids collapsing a medium-wide GEMV into too
+few blocks. On H200, this keeps the Qwen3.8 MTP `N=17408,K=5120` shape at
+`KSplit=2,ColTiles=1`, while the long `K=8192` sibling uses `KSplit=8`.
 
 Measured on H200 (132 SMs, `M = 4`, FP16), scalar -> tensor core:
 
@@ -219,6 +230,31 @@ portable weight-only fallback:
 This path keeps full-precision activations and runs on CUDA devices with NVFP4
 conversion intrinsic support in the configured CUDA toolkit. It is the default
 prefill path when the SM120 native environment variable is not enabled.
+
+### 5.1 Vectorized dequantization
+
+When `K % 8 == 0` and `block_size` is even - the layout every real NVFP4 model
+uses - `LaunchDequantizeNvFp4` picks `DequantizeNvFp4Vec8Kernel` instead of the
+scalar kernel. Each thread owns exactly one 8-element K chunk of one row, so a
+warp issues one contiguous 128-byte packed load and one contiguous 512-byte
+store. Widening the per-thread chunk beyond one `uint4` store was measured to be
+about 2x slower because each store instruction then strides across lanes
+(1.9 vs 3.9 TB/s on H200). The row index comes from `blockIdx.y`, which removes
+the 64-bit division of the scalar kernel, `weight_scale_2` is hoisted into a
+register, and codes are decoded with the same branch-free `Fp4Cvt` `prmt`
+lookup the decode GEMV uses rather than the software-emulated
+`__nv_cvt_fp4x2_to_halfraw2()`.
+
+The output is bitwise identical to the scalar kernel. Measured on H200 for
+`M = 1024`, BF16, `block_size = 16` (median dequant kernel time):
+
+| N | K | scalar | vectorized | speedup |
+|---:|---:|---:|---:|---:|
+| 4096 | 4096 | 60.7 us | 15.5 us | 3.93x |
+| 6144 | 2048 | 46.1 us | 12.1 us | 3.81x |
+| 2048 | 6144 | 46.2 us | 11.9 us | 3.88x |
+
+The scalar kernel remains for odd `block_size` or `K % 8 != 0`.
 
 ---
 
@@ -280,6 +316,9 @@ GEMM and the original scale tensor for the other paths.
 | `ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120` | `0` | Enables the opt-in native SM120 NVFP4 x NVFP4 GEMM path when the shape and device guards pass. |
 | `ORT_FP4_GEMV_MMA` | `1` | Set to `0` to disable the decode GEMV tensor-core sub-path (`mma.m16n8k16`, SM80+, `K % 128 == 0`) and use the scalar warp-reduction path. |
 | `ORT_FP4_GEMV_ROW_TILING` | `1` | Set to `0` to force `RowsPerBlock == 1` in the scalar decode GEMV. |
+| `ORT_FP4_GEMV_KSPLIT` | `0` | Benchmark override for the tensor-core GEMV K-split value (`1, 2, 4, 8, or 16`). |
+| `ORT_FP4_GEMV_COL_TILES` | `0` | Benchmark override for tensor-core GEMV column tiles (`1` or `4`). |
+| `ORT_FP4_GEMV_MATCH_N` / `ORT_FP4_GEMV_MATCH_K` | `0` | Restrict the two benchmark overrides to one `N`/`K` shape; zero means any shape. |
 
 The default remains the existing weight-only semantics: decode GEMV for small
 `M`, otherwise dequantize `B` and call cuBLAS.
@@ -303,6 +342,11 @@ Focused C++ tests:
 CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
   --gtest_filter='MatMulBlockQuantizedFp4WeightOpTest.*'
 ```
+
+The `Gemv*` cases cover the decode path and the `PrefillDequant*` cases cover the
+dequantize + cuBLAS path, with `M > 8` so the GEMV is skipped: `*Vectorized*` for
+`DequantizeNvFp4Vec8Kernel` and `OddBlockSize` / `KNotMultipleOf8` for the scalar
+fallback, each in both FP16 and BF16.
 
 Python harness examples:
 

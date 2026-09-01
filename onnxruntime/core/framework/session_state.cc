@@ -580,9 +580,8 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                       // Write references to what is stored in the shared container
                       // and release memory mapped entries this container may have loaded from disk
-                      std::ignore = prepacked_for_graph->ReplaceWithReferenceIfSaving(input_name,
-                                                                                      prepacked_weights_container_key,
-                                                                                      prepacked_shared);
+                      prepacked_for_graph->DiscardAndReplaceWithReferenceIfSaving(
+                          input_name, prepacked_weights_container_key, prepacked_shared);
 
                     } else {
                       // container doesn't contain the pre-packed weight - so write into it for sharing across

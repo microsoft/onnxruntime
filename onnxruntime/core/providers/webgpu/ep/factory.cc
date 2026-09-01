@@ -7,7 +7,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 
-#include <cstring>
+#include <algorithm>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
@@ -15,7 +15,6 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/allocator.h"
-#include "core/session/onnxruntime_env_config_keys.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -26,19 +25,21 @@ namespace ep {
 using onnxruntime::ep::Api;
 
 // Constructor
-Factory::Factory() : OrtEpFactory{},
-                     default_memory_info_{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
-                                          0,  // vendor id
-                                          0,  // device id
-                                          OrtDeviceMemoryType_DEFAULT,
-                                          0,  // alignment
-                                          OrtDeviceAllocator},
-                     readonly_memory_info_{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
-                                           0,  // vendor id
-                                           0,  // device id
-                                           OrtDeviceMemoryType_DEFAULT,
-                                           0,  // alignment
-                                           OrtReadOnlyAllocator} {
+Factory::Factory(Config config)
+    : OrtEpFactory{},
+      config_{config},
+      default_memory_info_{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
+                           0,  // vendor id
+                           0,  // device id
+                           OrtDeviceMemoryType_DEFAULT,
+                           0,  // alignment
+                           OrtDeviceAllocator},
+      readonly_memory_info_{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
+                            0,  // vendor id
+                            0,  // device id
+                            OrtDeviceMemoryType_DEFAULT,
+                            0,  // alignment
+                            OrtReadOnlyAllocator} {
   ort_version_supported = ORT_API_VERSION;
 
   GetName = GetNameImpl;
@@ -55,9 +56,19 @@ Factory::Factory() : OrtEpFactory{},
   CreateDataTransfer = CreateDataTransferImpl;
 
   IsStreamAware = IsStreamAwareImpl;
+
+  if (config_.allow_virtual_devices) {
+    Ort::KeyValuePairs hw_metadata;
+    hw_metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
+    OrtStatus* status = Api().ep.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
+                                                      /*vendor_id=*/0, /*device_id=*/0,
+                                                      GetVendorImpl(this), hw_metadata,
+                                                      &virtual_hw_device_);
+    Ort::ThrowOnError(status);
+  }
 }
 
-// Destructor: release the virtual hardware device if one was created in GetSupportedDevices.
+// Destructor: release the virtual hardware device if one was created.
 Factory::~Factory() {
   if (virtual_hw_device_ != nullptr) {
     Api().ep.ReleaseHardwareDevice(virtual_hw_device_);
@@ -110,37 +121,35 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
     }
   }
 
+  // Fall back to advertising WebGPU against the CPU device when no GPU-backed WebGPU EP device was added.
+  if (factory->config_.allow_software_adapter &&
+      num_ep_devices == 0 && num_devices > 0 && max_ep_devices > 0) {
+    const auto* devices_end = devices + num_devices;
+    const auto* cpu_device_it = std::find_if(devices, devices_end, [](const OrtHardwareDevice* device) {
+      return Api().ort.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU;
+    });
+    if (cpu_device_it != devices_end) {
+      OrtEpDevice* ep_device = nullptr;
+      ORT_API_RETURN_IF_ERROR(Api().ep.CreateEpDevice(this_ptr, *cpu_device_it, nullptr, nullptr, &ep_device));
+      ORT_API_RETURN_IF_ERROR(Api().ep.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
+      ORT_API_RETURN_IF_ERROR(Api().ep.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
+      ep_devices[num_ep_devices++] = ep_device;
+    }
+  }
+
   // If the environment allows virtual devices, register a virtual GPU EP device (vendor/device id 0) so
   // the WebGPU EP stays selectable for a device-free compile-only session on hosts where OS device
   // enumeration finds no GPU (e.g. a Win32k-lockdown sandbox). It is offered *in addition* to any real
   // GPU device, so the device-free path remains exercisable on a host that also has a real GPU. Since
   // allow_virtual_devices is opt-in, normal (real GPU) usage is unaffected.
-  if (num_ep_devices < max_ep_devices) {
-    OrtKeyValuePairs* env_config = nullptr;
-    ORT_API_RETURN_IF_ERROR(Api().ep.GetEnvConfigEntries(&env_config));
-    Ort::KeyValuePairs env_config_holder(env_config);  // allow automatic release
-    const char* allow_virtual = env_config_holder.GetValue(kOrtEnvAllowVirtualDevices);
-    const bool allow_virtual_devices = allow_virtual != nullptr && std::strcmp(allow_virtual, "1") == 0;
-
-    if (allow_virtual_devices) {
-      OrtKeyValuePairs* hw_metadata = nullptr;
-      Api().ort.CreateKeyValuePairs(&hw_metadata);
-      Api().ort.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
-      OrtStatus* status = Api().ep.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
-                                                        /*vendor_id=*/0, /*device_id=*/0,
-                                                        GetVendorImpl(this_ptr), hw_metadata,
-                                                        &factory->virtual_hw_device_);
-      Api().ort.ReleaseKeyValuePairs(hw_metadata);  // ORT makes a copy
-      ORT_API_RETURN_IF_ERROR(status);
-
-      OrtEpDevice* ep_device = nullptr;
-      ORT_API_RETURN_IF_ERROR(Api().ep.CreateEpDevice(this_ptr, factory->virtual_hw_device_,
-                                                      nullptr, nullptr, &ep_device));
-      // No allocator info: a virtual device only backs a device-free compile-only session, which stops
-      // before session-state finalization and never allocates. Leaving the memory info unset also avoids
-      // ORT trying to create a shared WebGPU allocator (environment.cc) with no underlying device.
-      ep_devices[num_ep_devices++] = ep_device;
-    }
+  if (factory->config_.allow_virtual_devices && num_ep_devices < max_ep_devices) {
+    OrtEpDevice* ep_device = nullptr;
+    ORT_API_RETURN_IF_ERROR(Api().ep.CreateEpDevice(this_ptr, factory->virtual_hw_device_,
+                                                    nullptr, nullptr, &ep_device));
+    // No allocator info: a virtual device only backs a device-free compile-only session, which stops
+    // before session-state finalization and never allocates. Leaving the memory info unset also avoids
+    // ORT trying to create a shared WebGPU allocator (environment.cc) with no underlying device.
+    ep_devices[num_ep_devices++] = ep_device;
   }
 
   return nullptr;
@@ -203,7 +212,8 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       device_free,
-      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false);
+      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false,
+      [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
@@ -245,7 +255,8 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                                                return WebGpuContextFactory::DefaultContext()
                                                                    .BufferManager();
                                                              },
-                                                             false);
+                                                             false,
+                                                             []() { return true; });
                                                        });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

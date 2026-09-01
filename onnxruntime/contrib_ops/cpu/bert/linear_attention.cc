@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <vector>
 #include <cstring>
 
 using onnxruntime::concurrency::ThreadPool;
@@ -46,13 +48,17 @@ REGISTER_KERNEL_TYPED(float)
 template <typename T>
 LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : OpKernel(info) {
   int64_t q_num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("q_num_heads", &q_num_heads).IsOK() && q_num_heads > 0,
-              "q_num_heads must be a positive integer");
+  ORT_ENFORCE(info.GetAttr("q_num_heads", &q_num_heads).IsOK() &&
+                  q_num_heads > 0 &&
+                  q_num_heads <= std::numeric_limits<int>::max(),
+              "q_num_heads must be an integer in [1, INT_MAX]");
   q_num_heads_ = static_cast<int>(q_num_heads);
 
   int64_t kv_num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0,
-              "kv_num_heads must be a positive integer");
+  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() &&
+                  kv_num_heads > 0 &&
+                  kv_num_heads <= std::numeric_limits<int>::max(),
+              "kv_num_heads must be an integer in [1, INT_MAX]");
   kv_num_heads_ = static_cast<int>(kv_num_heads);
 
   update_rule_ = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
