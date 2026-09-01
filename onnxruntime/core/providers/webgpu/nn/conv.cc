@@ -4,6 +4,9 @@
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/nn/conv3d_naive.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
+#if !defined(__wasm__)
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
+#endif
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -29,6 +32,25 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
 
 template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
+#if !defined(__wasm__)
+  // Preferred fast path on devices with the subgroup-matrix config: implicit-GEMM
+  // Conv (fused im2col) via subgroupMatrixMultiplyAccumulate. Created once (device
+  // query) -- std::call_once makes the one-time init safe against concurrent Compute
+  // calls on this shared kernel -- then it decides inside Compute whether the
+  // kernel/attrs qualify. It declines (handled=false, allocating nothing) otherwise
+  // and we fall through to the normal path order below.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixConvImpl(*this, context);
+  });
+  if (impl_ != nullptr) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+#endif
+
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const Tensor* kernel = nullptr;
@@ -345,6 +367,16 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
                                   tensor.DataType())) {
     return Status::OK();
   }
+
+#if !defined(__wasm__)
+  // The subgroup-matrix Conv path applies its own OIHW -> OHWI transpose to build
+  // the GEMM right operand, so it needs the weight in its original OIHW layout.
+  // Skip prepacking when that path will be used at runtime.
+  if (CanApplySubgroupMatrixConv(context, is_channels_last, kernel_shape,
+                                 onnxruntime::narrow<uint32_t>(conv_attrs_.group), tensor.DataType())) {
+    return Status::OK();
+  }
+#endif
 
   // Analyze execution paths in ComputeInternal to determine if kernel transpose is needed:
   //
