@@ -15,6 +15,7 @@
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
+#include "core/optimizer/transpose_optimizer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
@@ -2279,6 +2280,37 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthNoO
                     /*opset_version*/ {15, 18, 23});
 }
 
+TEST(TransposeOptimizerTests, TestSliceDefaultAxesStartsLengthExceedsRankNoOpt) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {2, 4}, 0.0f, 1.0f);
+    auto* input1_arg = MakeInput<int64_t>(builder, {{3}}, {3}, {0, 0, 0});
+    auto* input2_arg = MakeInput<int64_t>(builder, {{3}}, {3}, {1, 1, 1});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* slice_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 0});
+    builder.AddNode("Slice", {transpose_1_out_0, input1_arg, input2_arg}, {slice_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 0});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count.at("Transpose") == 2,
+                      "Slice with starts length exceeding rank should not be optimized");
+    return Status::OK();
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TransposeOptimizer>(std::move(cpu_allocator));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsInt32) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
@@ -2552,6 +2584,46 @@ TEST(TransposeOptimizerTests, TestTileNonconstReps) {
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18, 23});
+}
+
+// A constant 'repeats' initializer shorter than the preceding Transpose's rank is invalid per the
+// Tile spec (repeats must have one entry per input dimension), but the handler must not index into
+// it past its own length. It should bail out and leave both transposes untouched. The Transpose's
+// input is left without a static shape/rank so that ONNX's own Tile shape inference (which requires
+// the data input's shape to validate repeats.size() against the rank) cannot catch the mismatch
+// ahead of time, matching how the handler can be reached with an unvalidated 'repeats' length.
+TEST(TransposeOptimizerTests, TestTileRepeatsRankMismatchNoOpt) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Tile"] == 1);
+    return Status::OK();
+  };
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Tile"] == 1);
+    return Status::OK();
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {2, 4, 6, 3}, 0.0f, 1.0f);
+    // Only 2 entries although the Transpose's perm below implies rank 4.
+    auto* const_1 = builder.MakeInitializer<int64_t>({2}, {1, 2});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* tile_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Tile", {transpose_1_out_0, const_1}, {tile_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {tile_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TransposeOptimizer>(std::move(cpu_allocator));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 TEST(TransposeOptimizerTests, TestArgMinNoAxisKeepdimsTrue) {
@@ -6038,5 +6110,84 @@ TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
+
+// Pushing a Transpose through an activation is what lets Conv+activation fusion run after layout
+// transformation: the layout transform leaves Conv(NHWC) -> Transpose -> activation, and only once
+// the Transpose moves past the activation does the Conv's sole consumer become the activation.
+// Without a handler the Transpose stays wedged in between and the fusion silently does not happen.
+static void RunActivationTransposeTestCase(const std::string& op_type, const std::string& domain,
+                                           const std::function<void(Node&)>& decorate = nullptr,
+                                           bool add_bias = false, bool expect_pushed = true) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, 4, 6, 3}}, {2, 4, 6, 3}, -1.0f, 1.0f);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* activation_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+
+    std::vector<NodeArg*> activation_inputs{transpose_1_out_0};
+    if (add_bias) {
+      // The transposed value is {2, 3, 4, 6}; FastGelu's bias runs along its last dimension.
+      activation_inputs.push_back(MakeInput<float>(builder, {{6}}, {6}, -1.0f, 1.0f));
+    }
+
+    auto& activation = builder.AddNode(op_type, activation_inputs, {activation_out_0}, domain);
+    if (decorate) {
+      decorate(activation);
+    }
+
+    auto& transpose_2 = builder.AddNode("Transpose", {activation_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph = [expect_pushed](InferenceSessionWrapper& session) {
+    const int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    if (expect_pushed) {
+      EXPECT_EQ(transpose_cost, 0);
+    } else {
+      EXPECT_GT(transpose_cost, 0);
+    }
+  };
+
+  // TransformerTester also runs the model and compares against the un-optimized baseline, so a
+  // handler that moved the Transpose but changed the maths would fail here too.
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18, 22});
+}
+
+TEST(TransposeOptimizerTests, TestElu) {
+  RunActivationTransposeTestCase("Elu", kOnnxDomain);
+  RunActivationTransposeTestCase("Elu", kOnnxDomain,
+                                 [](Node& node) { node.AddAttribute("alpha", 0.5f); });
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(TransposeOptimizerTests, TestContribQuickGelu) {
+  RunActivationTransposeTestCase("QuickGelu", kMSDomain);
+  RunActivationTransposeTestCase("QuickGelu", kMSDomain,
+                                 [](Node& node) { node.AddAttribute("alpha", 1.702f); });
+}
+
+TEST(TransposeOptimizerTests, TestContribGelu) {
+  RunActivationTransposeTestCase("Gelu", kMSDomain);
+}
+
+TEST(TransposeOptimizerTests, TestContribFastGeluWithoutBias) {
+  RunActivationTransposeTestCase("FastGelu", kMSDomain);
+}
+
+// FastGelu's optional bias is pinned to the last dimension of its input (bias_gelu_helper::CheckInputs
+// requires a rank-1 bias whose length matches it), so a layout change would misapply it. The Transpose
+// must stay put.
+TEST(TransposeOptimizerTests, TestContribFastGeluWithBiasIsNotPushed) {
+  RunActivationTransposeTestCase("FastGelu", kMSDomain, /*decorate*/ nullptr, /*add_bias*/ true,
+                                 /*expect_pushed*/ false);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }  // namespace test
 }  // namespace onnxruntime

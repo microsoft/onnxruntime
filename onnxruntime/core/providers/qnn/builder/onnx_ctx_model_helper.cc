@@ -91,7 +91,8 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
-    const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
+    static const std::string empty_context_binary;
+    const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, empty_context_binary);
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
                                                                "",

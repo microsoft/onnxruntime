@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 #include <cstdint>
@@ -24,7 +22,6 @@ namespace {
 
 // Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
 // split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-// TODO: use subgroup-size-control to enforce the subgroup size is 32.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
 // Subgroup-matrix Gemm implementation. Loads A and B directly from global memory
@@ -137,6 +134,7 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
 
     SubgroupMatrixGemmProgram program{has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
+    program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
     program.CacheHint(has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
@@ -204,10 +202,13 @@ Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const
 std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
     const Gemm& parent, const ComputeContextBase& context) {
   // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
+  // this kernel is implemented for. That config's adapters expose a 16-32 subgroup
+  // size range, so the kernel's fixed 32 lanes per subgroup must be pinned with
+  // subgroup-size control.
   int32_t config_index = 0;
   if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
+      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16) ||
+      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
@@ -223,5 +224,3 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
 
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)
