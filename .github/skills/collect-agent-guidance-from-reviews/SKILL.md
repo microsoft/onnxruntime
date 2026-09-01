@@ -22,9 +22,9 @@ The user may specify the start and optional end of the collection interval in th
 /collect-agent-guidance-from-reviews since 2026-08-01
 ```
 
-Treat the first date as `since` and the second, when present, as `through`. Normalize them to UTC ISO 8601 timestamps
-before passing them to `scripts/list_merged_prs.py`. Interpret a date without a time as midnight UTC. Explicit user
-values override marker discovery and the current-time default.
+Treat the first date as `since` and the second, when present, as `through`, and pass them to
+`scripts/list_merged_prs.py`. The script interprets a date without a time as midnight UTC and normalizes
+timezone-aware ISO 8601 timestamps to UTC. Explicit user values override marker discovery and the current-time default.
 
 ## Safety and Trust Boundary
 
@@ -48,49 +48,26 @@ ready.
 
 Determine an immutable half-open window: `since < merged_at <= through`.
 
-1. Run `scripts/list_merged_prs.py` before retrieving review details. It resolves `since` in this order:
-   1. explicit `--since`;
-   2. the greatest valid `harvested-through` value across PRs merged into `main` whose descriptions contain the
-      `Agent-Guidance-Collection: version=1;` marker;
-   3. otherwise it stops and requires an explicit initial cutoff. It never silently scans the repository's full history.
-2. The script freezes `through`, searches by merge time, verifies `baseRefName == "main"`, excludes collection and audit
-   PRs by marker, and emits the exact marker plus candidate PR metadata as JSON.
-3. Preserve the script output for the run. Use its PR list rather than constructing a separate query.
-4. Include the frozen cutoff in the PR even if newer PRs merge while the skill is running. Those PRs belong to the
-   next collection round.
-
-Collection PRs must carry this machine-readable marker in their description:
-
-```text
-Agent-Guidance-Collection: version=1; base=main; harvested-since=2026-08-21T19:00:00Z; harvested-through=2026-08-28T19:00:00Z
-```
-
-Generate the collection window, marker, and initial PR list together:
+Run the `scripts/list_merged_prs.py` script to get the list of PRs to consider:
 
 ```bash
 python .github/skills/collect-agent-guidance-from-reviews/scripts/list_merged_prs.py \
-  --repo microsoft/onnxruntime \
-  --output <session-output-path>
+  --output <collection-output-json-path>
 ```
 
-For the first collection, add `--since <UTC timestamp>`. Omit `--through` to freeze the current UTC time, or pass it
-explicitly when resuming a run that already established a cutoff. An explicit `--since` overrides marker discovery and
-may also be used for a deliberate backfill or rescan. Write output to an operating-system temp directory, such as
-`$RUNNER_TEMP` in CI, that is outside the repository working tree. Do not write it to any path inside the working tree.
+If the script requires an initial cutoff, rerun it with `--since <date-or-timestamp>`. An explicit `--since` may also
+start a deliberate backfill or rescan. Pass `--through` only when resuming a run that already established its upper
+cutoff.
 
-`scripts/generate_marker.py` remains available for reconstructing a marker from an already established interval. Do not
-use it to choose a new cutoff after PR analysis has started.
+Preserve the emitted JSON for the run:
 
-Keep the emitted marker visible under a `Collection metadata` heading so reviewers can verify the target branch and
-collection window.
+- use `pull_requests` as the authoritative initial PR set rather than constructing a separate query;
+- report the half-open window from `since` and `through`;
+- report `collection_start_source_pr`, or `explicit --since` when that field is null;
+- place `marker` verbatim as a plain line in the PR's fenced `Collection metadata` block.
 
-Discover previous collection PRs by searching descriptions of PRs merged into `main` for the exact versioned marker
-prefix. Parse every matching marker, reject malformed timestamps, and use the maximum `harvested-through` timestamp
-rather than the PR with the latest merge time. This prevents overlapping collection runs from moving the cursor
-backward. If no valid marker is found, stop with an error requiring an explicit `--since` value. Do not fall back to
-collecting all historical merged PRs.
-
-Read the marker only from a merged PR. An abandoned or unmerged collection must not advance the cutoff.
+Keep `through` unchanged even if newer PRs merge while the skill is running; those PRs belong to the next collection
+round. Store the JSON in an operating-system or session temporary directory when practical, and do not stage it.
 
 ## Subagent Delegation
 
@@ -276,10 +253,12 @@ Record it under follow-up enforcement work instead.
 
 Open a PR ready for human review with a description using this structure:
 
-```markdown
+````markdown
 ## Collection window
 
 `<since> < merged_at <= <through>`
+
+Collection start source: <merged collection PR number, or `explicit --since`>
 
 ## Proposed guidance changes
 
@@ -303,11 +282,25 @@ Open a PR ready for human review with a description using this structure:
 
 ## Collection metadata
 
+```text
 <marker field from .github/skills/collect-agent-guidance-from-reviews/scripts/list_merged_prs.py output>
 ```
+````
 
 The PR description and commits provide provenance. Avoid adding source-history narration to the guidance itself unless
 the source is necessary to understand the invariant.
+
+Write the complete PR description to a temporary file, validate it against the preserved collection output using
+`scripts/validate_pr_description.py`, and pass that same body file to `gh pr create`:
+
+```bash
+python .github/skills/collect-agent-guidance-from-reviews/scripts/validate_pr_description.py \
+  --body-file <pr-description-path> \
+  --collection-output <collection-output-json-path>
+gh pr create --body-file <pr-description-path> ...
+```
+
+Do not open or update the PR if validation fails.
 
 ## Review Updates
 
@@ -323,6 +316,8 @@ While the PR is open:
   duplication, conflict, or superseding changes;
 - update the PR description so every candidate whose change remains in the PR maps to one proposed-change row, and
   every reverted candidate maps to one withdrawn-candidate row;
+- validate the updated description against the preserved collection output before passing the same body file to
+  `gh pr edit --body-file`;
 - keep the original `harvested-through` marker unchanged.
 
 Do not rescan the source PR interval during review. PRs merged after the frozen `harvested-through` cutoff belong to the

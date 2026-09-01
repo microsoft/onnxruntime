@@ -36,17 +36,6 @@ Inventory all agent guidance:
 Record the full commit ID of the default-branch state being audited before making changes. Audit only the committed
 guidance and repository state at that snapshot; do not account for changes proposed in open PRs.
 
-Generate the marker instead of constructing it manually:
-
-```bash
-python .github/skills/audit-agent-guidance/scripts/generate_marker.py
-```
-
-Run the generator from the default-branch snapshot before creating the audit branch, and preserve its exact output
-for the final PR. It defaults `audited-commit` to the current `HEAD`; pass `--commit` when resuming an audit with an
-already established snapshot. Keep its output visible under an `Audit metadata` heading so reviewers can verify the
-audited repository state.
-
 ## Audit Dimensions
 
 Evaluate each guidance unit against all applicable dimensions.
@@ -204,9 +193,6 @@ Audited commit: `<full commit ID>`.
 | Guidance unit | Recommended test/tooling change |
 |---|---|
 
-## Audit metadata
-
-`<output of .github/skills/audit-agent-guidance/scripts/generate_marker.py>`
 ```
 
 Ready-for-review status means the audit proposal is complete enough for maintainers to evaluate. It does not mean the

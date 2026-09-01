@@ -4,18 +4,18 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from generate_marker import MARKER_PREFIX, format_utc_timestamp, generate_marker, parse_utc_timestamp
-
-
-AUDIT_MARKER_PREFIX = "Agent-Guidance-Audit: version=1;"
-MARKER_PATTERN = re.compile(
-    rf"^{re.escape(MARKER_PREFIX)} base=main; "
-    r"harvested-since=(?P<since>\S+); harvested-through=(?P<through>\S+)\s*$",
-    re.MULTILINE,
+from collection_marker import (
+    MARKER_PATTERN,
+    MARKER_PREFIX,
+    format_utc_timestamp,
+    generate_marker,
+    parse_marker,
+    parse_utc_timestamp,
 )
 SEARCH_QUERY = """
 query($searchQuery: String!, $endCursor: String) {
@@ -46,10 +46,12 @@ query($searchQuery: String!, $endCursor: String) {
 """
 
 
-def run_gh(arguments: list[str]) -> str:
+def run_gh(arguments: list[str], cwd: Path | None = None) -> str:
+    """Runs an authenticated GitHub CLI command and returns its standard output."""
     try:
         result = subprocess.run(
             ["gh", *arguments],
+            cwd=cwd,
             check=True,
             capture_output=True,
             text=True,
@@ -65,18 +67,41 @@ def run_gh(arguments: list[str]) -> str:
 
 
 def verify_gh() -> None:
+    """Verifies that the GitHub CLI is installed and authenticated."""
     run_gh(["--version"])
     run_gh(["auth", "status"])
 
 
-def resolve_repository(explicit_repository: str | None) -> str:
-    if explicit_repository:
-        return explicit_repository
+def resolve_repository() -> str:
+    """Resolves the repository containing this script, independent of the caller's directory."""
+    script_directory = Path(__file__).resolve().parent
+    return run_gh(
+        ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+        cwd=script_directory,
+    ).strip()
 
-    return run_gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]).strip()
+
+def parse_timestamp_argument(value: str) -> datetime:
+    """Parses a date or timezone-aware ISO 8601 timestamp and normalizes it to UTC."""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        try:
+            return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        except ValueError as error:
+            raise ValueError(f"invalid ISO 8601 date: {value}") from error
+
+    try:
+        normalized_value = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+        timestamp = datetime.fromisoformat(normalized_value)
+    except ValueError as error:
+        raise ValueError(f"invalid ISO 8601 timestamp: {value}") from error
+    if timestamp.tzinfo is None:
+        raise ValueError("timestamp must include a UTC offset or end with 'Z'")
+
+    return timestamp.astimezone(timezone.utc)
 
 
 def search_pull_requests(repository: str, query: str) -> list[dict[str, Any]]:
+    """Returns all PRs matching a GitHub search query, up to GitHub's 1,000-result limit."""
     nodes: list[dict[str, Any]] = []
     end_cursor: str | None = None
 
@@ -105,29 +130,46 @@ def search_pull_requests(repository: str, query: str) -> list[dict[str, Any]]:
         end_cursor = page_info["endCursor"]
 
 
-def discover_since(repository: str) -> datetime:
+def warn_invalid_marker(pull_request: dict[str, Any], reason: str) -> None:
+    """Reports rejected cursor metadata without contaminating JSON output."""
+    print(
+        f"warning: ignoring collection marker in PR #{pull_request['number']}: {reason}",
+        file=sys.stderr,
+    )
+
+
+def discover_since(repository: str, through: datetime) -> tuple[datetime, int]:
+    """Finds the latest valid collection cutoff and the merged PR that recorded it."""
     marker_prs = search_pull_requests(
         repository,
         'is:pr is:merged base:main in:body "Agent-Guidance-Collection"',
     )
-    through_values: list[datetime] = []
+    cursors: list[tuple[datetime, int]] = []
 
     for pull_request in marker_prs:
-        for match in MARKER_PATTERN.finditer(pull_request.get("body") or ""):
-            since = parse_utc_timestamp(match.group("since"))
-            through = parse_utc_timestamp(match.group("through"))
-            if since >= through:
-                continue
-            through_values.append(through)
+        matches = list(MARKER_PATTERN.finditer(pull_request.get("body") or ""))
+        if not matches:
+            continue
 
-    if not through_values:
+        try:
+            _, harvested_through = parse_marker(pull_request.get("body") or "")
+        except ValueError as error:
+            warn_invalid_marker(pull_request, str(error))
+            continue
+        if harvested_through > through:
+            continue
+
+        cursors.append((harvested_through, pull_request["number"]))
+
+    if not cursors:
         raise SystemExit("no valid merged collection marker found; pass --since for the initial collection")
 
-    return max(through_values)
+    return max(cursors, key=lambda cursor: (cursor[0], cursor[1]))
 
 
 def list_candidates(repository: str, since: datetime, through: datetime) -> list[dict[str, Any]]:
-    date_range = f"{since.date().isoformat()}..{through.date().isoformat()}"
+    """Lists merged main-targeting PRs in the half-open collection window."""
+    date_range = f"{format_utc_timestamp(since)}..{format_utc_timestamp(through)}"
     pull_requests = search_pull_requests(repository, f"is:pr is:merged base:main merged:{date_range}")
     candidates: list[dict[str, Any]] = []
 
@@ -141,7 +183,7 @@ def list_candidates(repository: str, since: datetime, through: datetime) -> list
             continue
 
         body = pull_request.get("body") or ""
-        if MARKER_PREFIX in body or AUDIT_MARKER_PREFIX in body:
+        if MARKER_PREFIX in body:
             continue
 
         candidates.append(
@@ -160,16 +202,19 @@ def list_candidates(repository: str, since: datetime, through: datetime) -> list
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="List merged main-targeting PRs for agent-guidance collection.")
-    parser.add_argument("--repo", help="GitHub repository in OWNER/REPO form. Defaults to the current repository.")
-    parser.add_argument("--since", type=parse_utc_timestamp, help="UTC lower bound. Defaults to the latest marker.")
-    parser.add_argument("--through", type=parse_utc_timestamp, help="UTC upper bound. Defaults to the current time.")
+    parser.add_argument("--since", type=parse_timestamp_argument, help="Lower bound. Defaults to the latest marker.")
+    parser.add_argument("--through", type=parse_timestamp_argument, help="Upper bound. Defaults to the current time.")
     parser.add_argument("--output", type=Path, help="Write JSON to this path instead of stdout.")
     args = parser.parse_args()
 
     verify_gh()
-    repository = resolve_repository(args.repo)
+    repository = resolve_repository()
     through = args.through or datetime.now(timezone.utc).replace(microsecond=0)
-    since = args.since or discover_since(repository)
+    collection_start_source_pr: int | None = None
+    if args.since:
+        since = args.since
+    else:
+        since, collection_start_source_pr = discover_since(repository, through)
     if since >= through:
         parser.error("--since must be earlier than --through")
 
@@ -177,6 +222,7 @@ def main() -> None:
         "repository": repository,
         "base": "main",
         "since": format_utc_timestamp(since),
+        "collection_start_source_pr": collection_start_source_pr,
         "through": format_utc_timestamp(through),
         "marker": generate_marker(since, through),
         "pull_requests": list_candidates(repository, since, through),
