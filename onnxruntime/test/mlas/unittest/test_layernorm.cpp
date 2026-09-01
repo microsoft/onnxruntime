@@ -60,7 +60,7 @@ static bool HasLayerNormKernel() {
 // hold for other kernels (e.g. RISC-V RVV uncentered single-pass).
 //
 // Keep in sync: core/mlas/lib/layernorm.cpp (production #if gate),
-//               kKernelDispatchThreshold (same #if).
+//               GetKernelDispatchThreshold() (same #if).
 static bool HasCenteredTwoPassKernel() {
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
   return HasLayerNormKernel();
@@ -81,12 +81,10 @@ static bool HasCenteredTwoPassKernel() {
 // computes Var = E[x²] - mean² in a single pass.  The choice is intentional
 // and safe for two independent reasons:
 //
-//   1. fp64 precision.  The uncentered formula "E[x²] - mean²" is dangerous
-//      in fp32 — catastrophic cancellation produces NaN and 100% relative
-//      error for large-base/small-spread inputs (e.g. base 1e5, spread 1e-2).
-//      At fp64 precision the subtracted terms differ by at most ~2^53 ULPs,
-//      well inside the dynamic range.  The result is accurate to single-
-//      precision even for the adversarial near-max scenarios exercised below.
+//   1. fp64 precision. The uncentered formula "E[x²] - mean²" is dangerous
+//      in fp32 due to catastrophic cancellation. In fp64 it is sufficiently
+//      accurate for the functional test cases here. The adversarial precision
+//      tests below use an fp64 Welford reference instead, avoiding cancellation.
 //
 //   2. Independent oracle.  A reference that uses a different algorithm from
 //      the kernel cross-checks the kernel's result rather than merely
@@ -155,21 +153,22 @@ class MlasLayerNormTest : public MlasTestBase {
   // in layernorm.cpp so the test encodes the real contract rather than
   // accepting both outcomes.
   //
-  // x86 (32-bit and 64-bit):  The AVX2 kernel declines NormSize < 8 because the
-  //   256-bit loop body performs zero iterations below that width and
-  //   falls entirely into the scalar tail with vector setup overhead.
+  // x86 (32-bit and 64-bit): The AVX2 kernel declines NormSize < 8 for
+  // LayerNorm and NormSize < 16 for RMSNorm, where SIMD setup costs exceed
+  // the benefit.
   //
   // Other platforms (RISC-V RVV, future ARM SVE, etc.): variable-length
   //   vectors handle short rows natively, so the kernel dispatches for
   //   any NormSize ≥ 1.
   //
   // Keep in sync: core/mlas/lib/layernorm.cpp (production dispatch threshold).
-  static constexpr size_t kKernelDispatchThreshold =
+  static constexpr size_t GetKernelDispatchThreshold(bool simplified) {
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
-      8;
+    return simplified ? 16 : 8;
 #else
-      1;
+    return 1;
 #endif
+  }
 
   // Core test: numeric parity with conditional dispatch assertion.
   void Test(size_t norm_size, bool simplified, bool with_bias) {
@@ -202,24 +201,25 @@ class MlasLayerNormTest : public MlasTestBase {
     //   No kernel registered → MlasLayerNormF32 returns false for all N.
     //   Kernel present + NormSize >= threshold → the kernel MUST run.
     //   Kernel present + NormSize <  threshold → the kernel MUST decline.
-    //   (threshold is architecture-specific: 8 on x86, 1 elsewhere)
+    //   (threshold is mode/architecture-specific: 8/16 on x86, 1 elsewhere)
+    const size_t dispatch_threshold = GetKernelDispatchThreshold(simplified);
     if (!HasLayerNormKernel()) {
       ASSERT_FALSE(used)
           << "MlasLayerNormF32 returned true but no kernel is registered";
       ScalarFp32Baseline(input.data(), scale.data(), bias_ptr,
                          output_mlas.data(), &mean_mlas, &inv_std_mlas,
                          norm_size, 1e-5f, simplified);
-    } else if (norm_size >= kKernelDispatchThreshold) {
+    } else if (norm_size >= dispatch_threshold) {
       ASSERT_TRUE(used)
           << "REACHABILITY FAILURE: MlasLayerNormF32 returned false for "
              "norm_size="
-          << norm_size << " (>= threshold " << kKernelDispatchThreshold
+          << norm_size << " (>= threshold " << dispatch_threshold
           << "). The SIMD kernel must dispatch.";
     } else {
       ASSERT_FALSE(used)
           << "DISPATCH CONTRACT VIOLATION: MlasLayerNormF32 returned true for "
              "norm_size="
-          << norm_size << " (< threshold " << kKernelDispatchThreshold
+          << norm_size << " (< threshold " << dispatch_threshold
           << "). The kernel must decline for small N where scalar is faster.";
       ScalarFp32Baseline(input.data(), scale.data(), bias_ptr,
                          output_mlas.data(), &mean_mlas, &inv_std_mlas,
@@ -279,7 +279,7 @@ class MlasLayerNormTest : public MlasTestBase {
       ScalarFp32Baseline(input.data(), scale.data(), nullptr,
                          output_mlas.data(), &mean_mlas, &inv_std_mlas,
                          norm_size, 1e-5f, simplified);
-    } else if (norm_size >= kKernelDispatchThreshold) {
+    } else if (norm_size >= GetKernelDispatchThreshold(simplified)) {
       ASSERT_TRUE(used) << "Kernel must dispatch for norm_size=" << norm_size;
     } else {
       ASSERT_FALSE(used) << "Kernel must decline for norm_size=" << norm_size;
@@ -1316,14 +1316,14 @@ class MlasLayerNormBenchTest : public MlasTestFixture<MlasLayerNormTest> {};
 
 TEST_F(MlasLayerNormBenchTest, DISABLED_Benchmark) {
   // Representative shapes: threshold-aware + LLM-realistic hidden dims.
-  // Sizes below kKernelDispatchThreshold are excluded because the kernel
+  // Sizes below the dispatch threshold are excluded because the kernel
   // declines them, and timing the scalar fallback is misleading.
   printf("\n=== LayerNorm (full) ===\n");
   for (size_t n : {15, 128, 256, 768, 1024, 2048, 4096}) {
     mlas_tester->Benchmark(n, /*warmup=*/100, /*iters=*/1000, /*simplified=*/false);
   }
   printf("\n=== RMSNorm (simplified) ===\n");
-  for (size_t n : {15, 128, 256, 768, 1024, 2048, 4096}) {
+  for (size_t n : {16, 128, 256, 768, 1024, 2048, 4096}) {
     mlas_tester->Benchmark(n, /*warmup=*/100, /*iters=*/1000, /*simplified=*/true);
   }
 }

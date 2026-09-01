@@ -38,11 +38,10 @@ bool
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
     //
-    // Skip the AVX2 kernel for very short rows where it cannot win.
+    // Skip the AVX2 kernel for short rows where it cannot win.
     //
-    // For NormSize < 8 the AVX2 kernel performs zero 256-bit iterations
-    // and falls entirely into its scalar tail, yet still pays vector
-    // register setup and horizontal reduction overhead.
+    // LayerNorm performs vector work from 8 elements onward. RMSNorm needs
+    // at least 16 elements to recover its additional setup costs.
     //
     // This threshold is x86-specific. Other platforms (e.g. RISC-V RVV)
     // use variable-length vectors and handle short rows natively, so they
@@ -51,7 +50,8 @@ bool
     // Keep in sync: test/mlas/unittest/test_layernorm.cpp kKernelDispatchThreshold.
     //
     //
-    if (NormSize < 8) {
+    const size_t dispatch_threshold = Simplified ? 16 : 8;
+    if (NormSize < dispatch_threshold) {
         return false;
     }
 #endif
