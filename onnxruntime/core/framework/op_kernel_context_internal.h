@@ -4,11 +4,13 @@
 #pragma once
 
 #include <functional>
+#if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
 #include <mutex>
 #include <string>
 
 #include "core/framework/run_instrumentation.h"
+#endif
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -20,6 +22,7 @@ namespace onnxruntime {
 class SessionState;
 class ExecutionFrame;
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Holds per-run state for collecting MoE routing data without synchronizing after each kernel.
 //
 // A CUDA MoE kernel enqueues device-to-host copies of its routing outputs on the same stream
@@ -138,6 +141,7 @@ class RunInstrumentationContext {
   mutable size_t dropped_moe_routing_record_count_{0};
   mutable size_t dropped_moe_routing_element_count_{0};
 };
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 class OpKernelContextInternal : public OpKernelContext {
  public:
@@ -147,10 +151,20 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const logging::Logger& logger,
                                    const bool& terminate_flag,
                                    Stream* stream,
-                                   profiling::Profiler* run_profiler = nullptr,
+                                   profiling::Profiler* run_profiler = nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                                   ,
                                    const RunInstrumentationContext* run_instrumentation_context = nullptr)
-      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger,
+#else
+                                   )
+#endif
+      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger
+#if !defined(ORT_MINIMAL_BUILD)
+                        ,
                         run_instrumentation_context),
+#else
+                        ),
+#endif
         session_state_(session_state),
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {

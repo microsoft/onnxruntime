@@ -3,6 +3,7 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
 #include <chrono>
 #include <cmath>
 #include <iomanip>
@@ -65,3 +66,4 @@ inline void RecordMoeRoutingEvent(const RunInstrumentationContext& instrumentati
 
 }  // namespace contrib
 }  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD)

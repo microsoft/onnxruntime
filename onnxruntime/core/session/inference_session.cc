@@ -16,7 +16,9 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/json_utils.h"
+#endif
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
 #include "core/common/string_utils.h"
@@ -109,6 +111,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace {
 
+#if !defined(ORT_MINIMAL_BUILD)
 constexpr uint64_t kFnv1aOffsetBasis = 14695981039346656037ULL;
 constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
 
@@ -227,6 +230,7 @@ Status CreateMoeRunMetadata(gsl::span<const std::string> feed_names,
   input_token_hash_status = using_fallback_tensor ? "fallback_tensor" : "ok";
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Parse a spin duration config value (in microseconds) from a string.
 // Returns kSpinDurationDefault (-1) if the config is not explicitly set.
@@ -2537,6 +2541,7 @@ common::Status InferenceSession::Initialize() {
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
 
+#if !defined(ORT_MINIMAL_BUILD)
     const std::string& enable_moe_statistics =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
     if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
@@ -2559,6 +2564,7 @@ common::Status InferenceSession::Initialize() {
         }
       }
     }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     bool have_cpu_ep = false;
 
@@ -3441,6 +3447,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     run_profiler->StartProfiling(profile_file);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" &&
@@ -3469,6 +3476,9 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
     }
   }
+#else
+  InlinedVector<AllocatorPtr> arenas_to_shrink;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
@@ -3529,16 +3539,25 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
+#if !defined(ORT_MINIMAL_BUILD)
       if (!collect_moe_statistics) {
         ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
         ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
       }
+#else
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+#endif
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
           run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
 
+#if !defined(ORT_MINIMAL_BUILD)
       if (!collect_moe_statistics && !shrink_memory_arenas.empty()) {
+#else
+      if (!shrink_memory_arenas.empty()) {
+#endif
         ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
       }
 
@@ -3584,6 +3603,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
 
+#if !defined(ORT_MINIMAL_BUILD)
       if (retval.IsOK() && collect_moe_statistics) {
         run_instrumentation_context.emplace(run_options.run_tag, session_profiler_);
         model_run_args["request_id"] = profiling::MakeStringEventArg(run_options.run_tag);
@@ -3591,6 +3611,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         model_run_args["input_token_hash"] = std::move(input_token_hash);
         model_run_args["input_token_hash_status"] = std::move(input_token_hash_status);
       }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
@@ -3627,8 +3648,12 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                      device_stream_collection_holder,
 #endif
                                      run_logger,
-                                     run_profiler ? &*run_profiler : nullptr,
-                                     run_instrumentation_context ? &*run_instrumentation_context : nullptr);
+                                     run_profiler ? &*run_profiler : nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                                     ,
+                                     run_instrumentation_context ? &*run_instrumentation_context : nullptr
+#endif
+        );
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3638,6 +3663,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(status);
       }
 
+#if !defined(ORT_MINIMAL_BUILD)
       if (run_instrumentation_context) {
         const Status instrumentation_status = run_instrumentation_context->FlushDeferredRecords();
         run_instrumentation_context->AddMoeStatisticsTruncationArgs(model_run_args);
@@ -3645,6 +3671,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
           retval = instrumentation_status;
         }
       }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
       if (run_profiler) {
         run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
@@ -3742,8 +3769,12 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
+#if !defined(ORT_MINIMAL_BUILD)
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp,
                                             std::move(model_run_args));
+#else
+    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+#endif
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
