@@ -699,6 +699,16 @@ noise, as the table above shows.
 This bug predates the ORT Web migration and affects any consumer of the WebGPU plugin EP, not just the web build;
 it is a candidate to land separately from the static-plugin work.
 
+It was present in the pre-merge measurements too, which reported only +4% for this model. The reason is that the
+cost is state-dependent rather than constant: `BufferManager::Create` only clears — and therefore only flushes —
+a buffer it recycles from its cache, so the penalty depends on cache occupancy and appears as a wide, roughly
+bimodal distribution rather than a fixed offset. Sequential sampling of the *same* defective binary produced
+per-run P50s spanning 7.70 ms to 10.20 ms, a range that brackets the pre-merge figure. The merge itself did not
+introduce or amplify the defect: of the three merged commits touching this path, #32272 only adds an early return
+when an allocator is already registered (not reached with a single device), and #32269's subgroup-matrix MatMul is
+gated on the F16 8x16x16 config, so the f32 compute-bound model never takes it. The lesson is about sample count
+and interleaving on a high-variance metric, not about the merge.
+
 
 
 > Should static factories be registered before environment creation or through environment construction options?
