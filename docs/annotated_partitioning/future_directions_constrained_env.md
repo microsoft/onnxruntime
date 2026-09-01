@@ -1063,21 +1063,21 @@ This reduces allocator traffic and lets workspace reuse memory occupied by non-o
 activations after the warm-up run. It does not protect the first run from OOM, guarantee that the
 per-run backing-buffer allocation succeeds, or provide initialize-time persistent allocation.
 
-**Current one-slot limitation:** although `DeclareWorkspaceRequirements()` can return multiple slots,
-#32071 currently preplans only kernels that opt in with `SupportsPreallocatedWorkspace()` and declare
-exactly one slot. This is sufficient for the current MatMulNBits pilot and for PMHA's single attention
-workspace allocation. PackedAttention preserves two simultaneously live allocations in #32283:
+**Current one-slot limitation:** `WorkspaceRequirement` and
+`DeclareWorkspaceRequirements()` retain generic multi-slot support, but #32071 Phase A opts in only
+kernels that declare exactly one slot. This is sufficient for the current MatMulNBits pilot and both
+packed-attention operators. PackedAttention can expose one 256-byte-aligned, operator-owned root with
+two internal regions:
 
 ```text
-slot 0: projection output/workspace
-slot 1: selected Attention backend workspace
+[0, aligned projection end): projection region and alignment padding
+[aligned projection end, root end): selected Attention backend workspace
 ```
 
-Its Level-1 reservation is `projection_bytes + max(feasible Attention route bytes)`, and its Level-2
-declaration must preserve the two slots. Combining them into one declaration would change the runtime
-allocation topology. Before PackedAttention can use #32071 preallocation, the planner must accept and
-trace multiple slots for one kernel instance; until then, PackedAttention remains on its existing
-`GetScratchBuffer()` fallback. PMHA can be integrated first with the current one-slot pilot.
+PMHA, whose Q/K/V inputs are already projected, naturally exposes one attention root. The existing
+runtime may continue using separate dynamic `GetScratchBuffer()` allocations while Level 1 and Level 2
+agree on the single-root declaration. Retrieving that root at runtime and splitting it into the
+operator's internal regions remains follow-up work; it does not require multi-slot planner support.
 
 **Future stronger mode:** allocating and retaining the complete execution buffer during session
 initialization would be a separate feature. Such a mode would need trustworthy static or bounded
