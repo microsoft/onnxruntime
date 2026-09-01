@@ -1110,7 +1110,7 @@ def parse_arguments() -> argparse.Namespace:
     # Apple Accelerate is scoped to macOS arm64 only.
     if args.use_apple_accelerate:
         if not is_macOS():
-            parser.error("--use_apple_accelerate is only supported on macOS (requires Apple Silicon host).")
+            parser.error("--use_apple_accelerate is only supported on macOS.")
         # Platform check passed — safe to read Apple-only attributes.
         if getattr(args, "ios", False):
             parser.error("--use_apple_accelerate is not supported for iOS builds.")

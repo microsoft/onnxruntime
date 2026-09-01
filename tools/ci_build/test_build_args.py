@@ -78,6 +78,19 @@ class AppleAccelerateBuildArgsTest(unittest.TestCase):
         args = self._parse("--use_apple_accelerate", "--osx_arch", "arm64e", platform_name="macos", machine="arm64")
         self.assertTrue(args.use_apple_accelerate)
 
+    def test_accelerate_accepted_macos_framework_cross_compile(self):
+        args = self._parse(
+            "--use_apple_accelerate",
+            "--osx_arch",
+            "arm64",
+            "--macos",
+            "MacOSX",
+            "--build_apple_framework",
+            platform_name="macos",
+            machine="x86_64",
+        )
+        self.assertTrue(args.use_apple_accelerate)
+
     def _assert_parser_error(self, args, expected_msg_fragment, **kwargs):
         """Assert parse_arguments calls parser.error with a message containing expected_msg_fragment."""
         with self.assertRaises(SystemExit) as cm:
