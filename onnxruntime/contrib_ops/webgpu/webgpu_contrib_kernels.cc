@@ -5,7 +5,6 @@
 #include "contrib_ops/webgpu/bert/causal_conv_with_state.h"
 #include "contrib_ops/webgpu/bert/engram_gate.h"
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
-#include "contrib_ops/webgpu/bert/short_conv.h"
 #include "contrib_ops/webgpu/bert/gated_add.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
 #include "contrib_ops/webgpu/bert/linear_attention.h"
@@ -38,7 +37,6 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GatedRMSNorm)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, EngramGate)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, NGramHashMapping)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, ShortConv)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, Gelu)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, LinearAttention)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, LinearAttentionGate)>,

@@ -24,23 +24,6 @@ inline int GridSize(int64_t count) {
   return static_cast<int>(std::min(blocks, kMaxGridDimX));
 }
 
-// Sums `value` across all threads of the block and returns the total to every thread.
-// `shared` must point to at least blockDim.x floats of shared memory, and blockDim.x must be a
-// power of two. All threads of the block must call this.
-__device__ __forceinline__ float BlockSum(float value, float* shared) {
-  shared[threadIdx.x] = value;
-  __syncthreads();
-  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      shared[threadIdx.x] += shared[threadIdx.x + stride];
-    }
-    __syncthreads();
-  }
-  const float total = shared[0];
-  __syncthreads();
-  return total;
-}
-
 // Sums three independent per-thread partials across the block in a single tree reduction, so a row
 // that needs three reductions pays one set of barriers instead of three. `shared` must point to at
 // least 3 * blockDim.x floats, and blockDim.x must be a power of two. All threads must call this.
@@ -69,10 +52,6 @@ __device__ __forceinline__ void BlockSum3(float* a, float* b, float* c, float* s
 // Numerically stable logistic function.
 __device__ __forceinline__ float SigmoidFloat(float x) {
   return x > 0.0f ? 1.0f / (1.0f + expf(-x)) : expf(x) / (1.0f + expf(x));
-}
-
-__device__ __forceinline__ float SiluFloat(float x) {
-  return x * SigmoidFloat(x);
 }
 
 // Engram gate pre-activation: sign(dot) * sqrt(max(abs(dot), 1e-6)).

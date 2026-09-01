@@ -20,12 +20,6 @@ constexpr std::string_view kStableSigmoidWgsl =
     "  return e / (1.0 + e);\n"
     "}\n";
 
-// Requires kStableSigmoidWgsl to be emitted as well.
-constexpr std::string_view kSiluWgsl =
-    "fn silu(x: f32) -> f32 {\n"
-    "  return x * stable_sigmoid(x);\n"
-    "}\n";
-
 // Engram gate pre-activation: sign(dot) * sqrt(max(abs(dot), 1e-6)). WGSL sign() already maps zero
 // to zero, so a zero dot product yields a zero argument (and therefore a gate of exactly 0.5).
 constexpr std::string_view kEngramGateArgWgsl =

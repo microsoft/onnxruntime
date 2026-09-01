@@ -112,7 +112,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
-  * <a href="#com.microsoft.ShortConv">com.microsoft.ShortConv</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -1790,8 +1789,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
   
-  The output is gate * value, broadcast across the hyper-connections. A following ShortConv plus Add
-  represents the final Engram residual value + short_conv(value).
+  The output is gate * value, broadcast across the hyper-connections. The final Engram residual
+  value + short_conv(value) is then expressed with RMSNorm, CausalConvWithState and Add.
 
 #### Version
 
@@ -6478,86 +6477,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
-</dl>
-
-
-### <a name="com.microsoft.ShortConv"></a><a name="com.microsoft.shortconv">**com.microsoft.ShortConv**</a>
-
-  Fuses the Engram ShortConv block over input shape (batch_size, sequence_length, hc_mult, hidden_size).
-  
-  For each (batch, token, hyper-connection) row, the op first applies RMS normalization over hidden_size:
-  normed = input * norm_scale * rsqrt(mean(input * input) + epsilon).
-  
-  It then flattens hc_mult and hidden_size into depthwise convolution channels and applies a causal
-  1D convolution with optional dilation along the sequence axis. The output is cropped to sequence_length,
-  optionally passed through SiLU/Swish, and returned in (batch_size, sequence_length, hc_mult, hidden_size)
-  layout. The convolution weight layout is (hc_mult * hidden_size, 1, kernel_size).
-  
-  The convolution receptive field spans state_length = (kernel_size - 1) * dilation positions before the
-  current token. To keep the op causal across invocations (chunked prefill or autoregressive decode), the
-  optional past_state input carries the raw (un-normalized) input values of those positions from the
-  preceding call and present_state returns them for the next call. Both have shape
-  (batch_size, state_length, hc_mult, hidden_size) and are right-aligned: slot state_length - 1 holds the
-  most recent position. Slots that correspond to positions before the start of the whole sequence are
-  zero. Because the state is un-normalized, the RMS reduction is recomputed from the same values a
-  full-sequence run would use, so running the op once over a full sequence and running it over consecutive
-  chunks while threading present_state into past_state produce identical outputs for every element type.
-  When past_state is omitted the missing history is treated as zeros, which matches a fresh sequence.
-  
-  ShortConv is deliberately kept separate from CausalConvWithState rather than being expressed as an
-  extra attribute on it. The RMS normalization is not a hoistable pre-op: past_state must carry the raw
-  un-normalized inputs, because the RMS reduction of a position is over that position's own hidden
-  vector and has to be recomputed identically on the call that consumes it as a convolution tap. A
-  graph-level Normalize-then-CausalConvWithState would instead have to store normalized history, which
-  makes a chunked run disagree with a full-sequence run at chunk boundaries. Fusing the normalization
-  into the op is what makes the chunked and full-sequence results bit-exact. The (batch_size,
-  sequence_length, hc_mult, hidden_size) layout follows from the same requirement, since the reduction
-  axis must stay contiguous and innermost.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>activation</tt> : string</dt>
-<dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'silu'.</dd>
-<dt><tt>dilation</tt> : int</dt>
-<dd>Causal convolution dilation along the sequence axis. Default is 1.</dd>
-<dt><tt>epsilon</tt> : float</dt>
-<dd>Epsilon used by the per-hyper-connection RMS normalization. Default is 1e-5.</dd>
-</dl>
-
-#### Inputs (3 - 5)
-
-<dl>
-<dt><tt>input</tt> : T</dt>
-<dd>Input tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
-<dt><tt>weight</tt> : T</dt>
-<dd>Depthwise convolution kernel with shape (hc_mult * hidden_size, 1, kernel_size).</dd>
-<dt><tt>norm_scale</tt> : T</dt>
-<dd>RMSNorm scale with shape (hc_mult, hidden_size).</dd>
-<dt><tt>bias</tt> (optional) : T</dt>
-<dd>Optional convolution bias with shape (hc_mult * hidden_size).</dd>
-<dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Optional raw (un-normalized) input for the (kernel_size - 1) * dilation positions that precede this call, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Right-aligned, so the last slot is the most recent position. If omitted the history is treated as zeros.</dd>
-</dl>
-
-#### Outputs (1 - 2)
-
-<dl>
-<dt><tt>output</tt> : T</dt>
-<dd>Output tensor with the same shape as input.</dd>
-<dt><tt>present_state</tt> (optional) : T</dt>
-<dd>Raw (un-normalized) input for the trailing (kernel_size - 1) * dilation positions of past_state followed by input, with shape (batch_size, (kernel_size - 1) * dilation, hc_mult, hidden_size). Feed this back as past_state on the next call.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
 
