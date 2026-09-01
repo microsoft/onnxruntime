@@ -106,45 +106,6 @@ struct AttentionData {
   }
 };
 
-template <typename T>
-struct PackedAttentionData {
-  T* gemm_buffer;
-  const T* bias;
-  const T* attention_bias;
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_memory_efficient_attention;
-};
-
-template <typename T>
-struct PackedMultiHeadAttentionData {
-  const T* query;
-  const T* key;
-  const T* value;
-  const T* bias;
-  const T* attention_bias;
-
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  AttentionQkvFormat source_qkv_format;
-
-  bool no_qkv_workspace;
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_flash_attention;
-  bool use_memory_efficient_attention;
-};
-
 template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
@@ -284,10 +245,11 @@ struct PagedAttentionData {
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
 
-  // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T; with
-  // params.num_splits <= 1 (which mha_varlen_fwd never overrides) the varlen layout is
-  // [num_heads, token_count].
+  // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T.
   float* softmax_lse = nullptr;
+  float* flash_softmax_lse_accum = nullptr;
+  float* flash_out_accum = nullptr;
+  int flash_num_splits = 0;
   int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
 
   // Fused op buffers
@@ -324,14 +286,13 @@ struct PagedAttentionData {
 
   // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
   // (quantized cache, one new token per sequence -- see use_xqa_decode).
-  //   xqa_workspace   : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
-  //   xqa_page_table  : block_table expanded from PagedAttention blocks to XQA's fixed 128-token
-  //                     pages, shape [batch_size, max_num_blocks_per_seq * pages_per_block].
-  //   xqa_query       : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
-  //   xqa_head_sink   : head_sink converted to fp32, which is what XQA consumes.
+  //   xqa_workspace          : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
+  //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
+  //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
+  //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
   void* xqa_workspace = nullptr;
   size_t xqa_workspace_size = 0;
-  int* xqa_page_table = nullptr;
+  int* xqa_page_table_scratch = nullptr;
   T* xqa_query = nullptr;
   float* xqa_head_sink = nullptr;
 

@@ -26,6 +26,7 @@ using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCuda
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKernel(info) {
@@ -88,7 +89,7 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int state_slots = state_window_ > 0 ? state_window_ : 1;
   TensorShape state_shape;
   ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
-      state_window_, batch_size, channels, pad, past_state_tensor, state_shape));
+      state_window_, batch_size, channels, pad, past_state_tensor, state_shape, "CausalConvWithState"));
 
   // Allocate outputs
   Tensor* output_tensor = context->Output(0, input_shape);

@@ -32,6 +32,21 @@ class ExternalResourceImporterTest : public ::testing::Test {
     return Ort::GetInteropApi();
   }
 
+  OrtStatus* ImportMemory(OrtExternalResourceImporter* importer,
+                          OrtExternalMemoryHandleType type,
+                          size_t buffer_size,
+                          void* dummy_handle,
+                          OrtExternalMemoryHandle** mem_handle) {
+    OrtExternalMemoryDescriptor mem_desc = {};
+    mem_desc.version = ORT_API_VERSION;
+    mem_desc.handle_type = type;
+    mem_desc.native_handle = dummy_handle;
+    mem_desc.size_bytes = buffer_size;
+    mem_desc.offset_bytes = 0;
+
+    return GetInteropApi().ImportMemory(importer, &mem_desc, mem_handle);
+  }
+
   RegisteredEpDeviceUniquePtr registered_ep_;
   const OrtEpDevice* ep_device_ = nullptr;
 };
@@ -76,6 +91,13 @@ TEST_F(ExternalResourceImporterTest, CanImportMemory) {
   ASSERT_EQ(status, nullptr) << "CanImportMemory for D3D12_HEAP should succeed";
   EXPECT_TRUE(can_import_heap) << "Example EP should support D3D12 Heap import";
 
+  // Check host allocation support
+  bool can_import_host_allocation = false;
+  status = GetInteropApi().CanImportMemory(
+      importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION, &can_import_host_allocation);
+  ASSERT_EQ(status, nullptr) << "CanImportMemory for HOST_ALLOCATION should succeed";
+  EXPECT_TRUE(can_import_host_allocation) << "Example EP should support host allocation import";
+
   GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
@@ -107,30 +129,41 @@ TEST_F(ExternalResourceImporterTest, ImportMemory) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
-  // Import memory (using a dummy handle for testing)
-  const size_t buffer_size = 1024 * sizeof(float);
-  void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));  // Simulated handle
+  // Import D3D12 Resource
+  {
+    // Create a dummy handle for testing
+    const size_t buffer_size = 1024 * sizeof(float);
+    void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));  // Simulated handle
 
-  OrtExternalMemoryDescriptor mem_desc = {};
-  mem_desc.version = ORT_API_VERSION;
-  mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
-  mem_desc.native_handle = dummy_handle;
-  mem_desc.size_bytes = buffer_size;
-  mem_desc.offset_bytes = 0;
+    OrtExternalMemoryHandle* mem_handle = nullptr;
+    status = ImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE, buffer_size, dummy_handle, &mem_handle);
+    ASSERT_EQ(status, nullptr) << "ImportMemory should succeed";
+    ASSERT_NE(mem_handle, nullptr) << "Memory handle should not be null";
 
-  OrtExternalMemoryHandle* mem_handle = nullptr;
-  status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
-  ASSERT_EQ(status, nullptr) << "ImportMemory should succeed";
-  ASSERT_NE(mem_handle, nullptr) << "Memory handle should not be null";
+    // Release memory handle
+    GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
+  }
 
-  // Release memory handle
-  GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
+  // Import host allocation
+  {
+    // Create a dummy host pointer for testing
+    const size_t buffer_size = 10 * 4096;                                                      // Ten pages
+    void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x123456789ABCD000));  // Simulated page-aligned address
+
+    OrtExternalMemoryHandle* mem_handle = nullptr;
+    status = ImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION, buffer_size, dummy_handle, &mem_handle);
+    ASSERT_EQ(status, nullptr) << "ImportMemory should succeed";
+    ASSERT_NE(mem_handle, nullptr) << "Memory handle should not be null";
+
+    // Release memory handle
+    GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
+  }
 
   GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
-// Test: Create Tensor from Imported Memory
-TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
+// Test: Create Tensor from D3D12 Resource Imported Memory
+TEST_F(ExternalResourceImporterTest, CreateTensorFromMemoryD3D12Resource) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
@@ -147,16 +180,78 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   // Import memory
   void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));
 
-  OrtExternalMemoryDescriptor mem_desc = {};
-  mem_desc.version = ORT_API_VERSION;
-  mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
-  mem_desc.native_handle = dummy_handle;
-  mem_desc.size_bytes = buffer_size;
-  mem_desc.offset_bytes = 0;
+  OrtExternalMemoryHandle* mem_handle = nullptr;
+  status = ImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE, buffer_size, dummy_handle, &mem_handle);
+  ASSERT_EQ(status, nullptr);
+  ASSERT_NE(mem_handle, nullptr) << "ImportMemory should return a non-null memory handle";
+
+  // Create tensor from imported memory
+  OrtExternalTensorDescriptor tensor_desc = {};
+  tensor_desc.version = ORT_API_VERSION;
+  tensor_desc.element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  tensor_desc.shape = shape;
+  tensor_desc.rank = 4;
+  tensor_desc.offset_bytes = 0;
+
+  OrtValue* tensor = nullptr;
+  status = GetInteropApi().CreateTensorFromMemory(
+      importer, mem_handle, &tensor_desc, &tensor);
+  ASSERT_EQ(status, nullptr) << "CreateTensorFromMemory should succeed";
+  ASSERT_NE(tensor, nullptr) << "Tensor should not be null";
+
+  // Verify tensor properties
+  OrtTensorTypeAndShapeInfo* type_info = nullptr;
+  status = Ort::GetApi().GetTensorTypeAndShape(tensor, &type_info);
+  ASSERT_EQ(status, nullptr);
+
+  size_t rank = 0;
+  status = Ort::GetApi().GetDimensionsCount(type_info, &rank);
+  ASSERT_EQ(status, nullptr);
+  EXPECT_EQ(rank, 4u);
+
+  std::vector<int64_t> actual_shape(rank);
+  status = Ort::GetApi().GetDimensions(type_info, actual_shape.data(), rank);
+  ASSERT_EQ(status, nullptr);
+  EXPECT_EQ(actual_shape[0], batch);
+  EXPECT_EQ(actual_shape[1], channels);
+  EXPECT_EQ(actual_shape[2], height);
+  EXPECT_EQ(actual_shape[3], width);
+
+  ONNXTensorElementDataType elem_type;
+  status = Ort::GetApi().GetTensorElementType(type_info, &elem_type);
+  ASSERT_EQ(status, nullptr);
+  EXPECT_EQ(elem_type, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+  Ort::GetApi().ReleaseTensorTypeAndShapeInfo(type_info);
+
+  // Cleanup
+  Ort::GetApi().ReleaseValue(tensor);
+  GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
+}
+
+// Test: Create Tensor from Host Allocation Imported Memory
+TEST_F(ExternalResourceImporterTest, CreateTensorFromMemoryHostAlloc) {
+  OrtExternalResourceImporter* importer = nullptr;
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
+    GTEST_SKIP() << "External resource interop not supported";
+  }
+
+  // Create tensor shape: [1, 3, 32, 32]
+  const int64_t batch = 1, channels = 3, height = 32, width = 32;
+  const int64_t shape[] = {batch, channels, height, width};
+  const size_t num_elements = batch * channels * height * width;
+  const size_t buffer_size = num_elements * sizeof(float);
+
+  // Import memory
+  void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x123456789ABCD000));  // Simulated page-aligned address
 
   OrtExternalMemoryHandle* mem_handle = nullptr;
-  status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
+  status = ImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION, buffer_size, dummy_handle, &mem_handle);
   ASSERT_EQ(status, nullptr);
+  ASSERT_NE(mem_handle, nullptr) << "ImportMemory should return a non-null memory handle";
 
   // Create tensor from imported memory
   OrtExternalTensorDescriptor tensor_desc = {};
