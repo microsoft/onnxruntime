@@ -36,7 +36,9 @@ using AllIRv10WithInt2Base =
     boost::mp11::mp_push_back<
         element_type_lists::AllIRv10,
         UInt2x4,
-        Int2x4>;
+        Int2x4,
+        Float6E2M3,
+        Float6E3M2>;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 // Float8E8M0 was added in opset 24 (IR v12), so include it in the full type list
@@ -94,6 +96,9 @@ using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, 
 template <typename T>
 struct IsOrtFloat8Type : std::false_type {};
 #endif
+
+template <typename T>
+using IsOrtFloat6Type = boost::mp11::mp_contains<TypeList<Float6E2M3, Float6E3M2>, T>;
 
 template <typename T>
 using IsOrtInt4Type = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>;
@@ -202,7 +207,9 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
-typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value, void>::type
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value ||
+                            IsOrtFloat6Type<SrcType>::value,
+                        void>::type
 CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
@@ -232,7 +239,9 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
-typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
+typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value ||
+                            IsOrtFloat6Type<DstType>::value,
+                        void>::type
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
