@@ -51,6 +51,14 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
                                std::vector<OrtValueOwner>* value_owners = nullptr,
                                NapiTensorConversion* conversion = nullptr);
 
+// check that an OrtValue tensor matches the type and shape the caller declared for a preallocated
+// output and fits in its Javascript TypedArray, without writing anything
+//
+// Callers holding several preallocated outputs should validate all of them before copying any, so
+// that a rejection cannot leave some of the caller's buffers already overwritten.
+void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
+                                       const PreallocatedOutputInfo& expected);
+
 // copy an OrtValue tensor into an existing Javascript TypedArray, after checking that it matches
 // the type and shape the caller declared for the preallocated output
 void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,

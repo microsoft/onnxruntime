@@ -313,13 +313,27 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   void OnOK() override {
     Napi::HandleScope scope(env_);
     try {
-      auto result = Napi::Object::New(env_);
       auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
+
+      // Validate every preallocated output before writing to any of them. Rejecting partway through
+      // would otherwise hand back a failed promise with some of the caller's buffers already
+      // holding this run's results.
+      for (size_t i = 0; i < output_values_.size(); ++i) {
+        if (copy_output_to_js_[i]) {
+          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
+                                            output_expected_[i]);
+        }
+      }
+
       for (size_t i = 0; i < output_values_.size(); ++i) {
         if (copy_output_to_js_[i]) {
           CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(output_js_data_indices_[i]),
                                        output_expected_[i]);
         }
+      }
+
+      auto result = Napi::Object::New(env_);
+      for (size_t i = 0; i < output_values_.size(); ++i) {
         result.Set(output_names_[i], reuse_output_[i] ? keep_alive.Get(output_js_value_indices_[i])
                                                       : OrtValueToNapiValue(env_, std::move(output_values_[i])));
       }

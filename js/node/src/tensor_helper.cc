@@ -315,8 +315,8 @@ std::string DescribeShape(const std::vector<int64_t>& dims) {
 }
 }  // namespace
 
-void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
-                                  const PreallocatedOutputInfo& expected) {
+void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
+                                       const PreallocatedOutputInfo& expected) {
   // ORT allocated this output itself and so never saw the type and shape the caller declared.
   // Reject a mismatch rather than reinterpreting the model's bytes as the declared type or
   // leaving part of the caller's buffer holding data from a previous run.
@@ -349,7 +349,20 @@ void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::
                           env, "Preallocated output tensor buffer was detached or is too small.");
   auto* data = static_cast<char*>(arrayBuffer.Data());
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "Preallocated output tensor buffer was detached.");
-  memcpy(data + byteOffset, value.GetTensorRawData(), sourceByteLength);
+}
+
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
+                                  const PreallocatedOutputInfo& expected) {
+  ValidateOrtValueForNapiTypedArray(env, value, destination, expected);
+
+  const size_t sourceByteLength = value.GetTensorSizeInBytes();
+  if (sourceByteLength == 0) {
+    return;
+  }
+
+  auto typedArray = destination.As<Napi::TypedArray>();
+  auto* data = static_cast<char*>(typedArray.ArrayBuffer().Data());
+  memcpy(data + typedArray.ByteOffset(), value.GetTensorRawData(), sourceByteLength);
 }
 
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
