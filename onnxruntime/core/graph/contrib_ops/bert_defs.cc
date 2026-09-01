@@ -2601,11 +2601,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(1,
                "multipliers",
-               "Per-shift odd multipliers with shape (max_ngram_size).",
+               "Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any "
+               "value is accepted.",
                "M")
         .Input(2,
                "vocab_sizes",
-               "Per-output-head prime vocabulary sizes with shape "
+               "Per-output-head vocabulary sizes, conventionally prime, with shape "
                "((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. "
                "The CPU implementation rejects a non-positive entry; GPU implementations guard the "
                "modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.",

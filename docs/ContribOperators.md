@@ -4139,9 +4139,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input_ids</tt> : M</dt>
 <dd>Compressed tokenizer ids with shape (batch_size, sequence_length).</dd>
 <dt><tt>multipliers</tt> : M</dt>
-<dd>Per-shift odd multipliers with shape (max_ngram_size).</dd>
+<dd>Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
-<dd>Per-output-head prime vocabulary sizes with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
+<dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
 <dt><tt>past_ids</tt> (optional) : M</dt>
 <dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id.</dd>
 </dl>
