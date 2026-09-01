@@ -26,46 +26,58 @@ Abstract:
 #include <cstring>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 class MlasCastFp16Test : public MlasTestBase {
  public:
-  void TestF16ToF32(size_t count) {
-    std::vector<_mlas_fp16_> input(count);
+  void TestF16ToF32(size_t count, size_t source_alignment_offset = 0) {
+    std::vector<_mlas_fp16_> input(count + 3);
     std::vector<float> output_ref(count);
     std::vector<float> output_dispatch(count);
+    const size_t input_offset =
+        (source_alignment_offset + 4 - (reinterpret_cast<uintptr_t>(input.data()) / sizeof(input[0])) % 4) % 4;
+    auto* input_data = input.data() + input_offset;
 
     for (size_t i = 0; i < count; i++) {
       float val = (static_cast<float>(i % 2048) / 1024.0f) - 1.0f;
-      input[i] = MLAS_Float2Half(val);
-      output_ref[i] = MLAS_Half2Float(input[i]);
+      input_data[i] = MLAS_Float2Half(val);
+      output_ref[i] = MLAS_Half2Float(input_data[i]);
     }
 
     MlasConvertHalfToFloatBuffer(
-        reinterpret_cast<const MLAS_FP16*>(input.data()),
+        reinterpret_cast<const MLAS_FP16*>(input_data),
         output_dispatch.data(), count);
 
     for (size_t i = 0; i < count; i++) {
       ASSERT_EQ(output_dispatch[i], output_ref[i])
-          << "F16->F32 mismatch at [" << i << "], count=" << count;
+          << "F16->F32 mismatch at [" << i << "], count=" << count
+          << ", source_alignment_offset=" << source_alignment_offset;
     }
   }
 
-  void TestF32ToF16(size_t count) {
-    std::vector<float> input(count);
+  void TestF32ToF16(size_t count, size_t source_alignment_offset = 0) {
+    std::vector<float> input(count + 3);
     std::vector<_mlas_fp16_> output_ref(count);
     std::vector<_mlas_fp16_> output_dispatch(count);
+    const size_t input_offset =
+        (source_alignment_offset + 4 - (reinterpret_cast<uintptr_t>(input.data()) / sizeof(input[0])) % 4) % 4;
+    auto* input_data = input.data() + input_offset;
 
     for (size_t i = 0; i < count; i++) {
-      input[i] = (static_cast<float>(i % 2048) / 1024.0f) - 1.0f;
-      output_ref[i] = MLAS_Float2Half(input[i]);
+      input_data[i] = (static_cast<float>(i % 2048) / 1024.0f) - 1.0f;
+      output_ref[i] = MLAS_Float2Half(input_data[i]);
     }
 
     MlasConvertFloatToHalfBuffer(
-        input.data(),
+        input_data,
         reinterpret_cast<MLAS_FP16*>(output_dispatch.data()), count);
 
     for (size_t i = 0; i < count; i++) {
       ASSERT_EQ(output_dispatch[i], output_ref[i])
-          << "F32->F16 mismatch at [" << i << "], count=" << count;
+          << "F32->F16 mismatch at [" << i << "], count=" << count
+          << ", source_alignment_offset=" << source_alignment_offset;
     }
   }
 
@@ -86,15 +98,17 @@ class MlasCastFp16Test : public MlasTestBase {
     const uint16_t kNegZero = 0x8000;
     const uint16_t kPosInf = 0x7C00;
     const uint16_t kNegInf = 0xFC00;
-    const uint16_t kQNaN = 0x7E00;       // quiet NaN
-    const uint16_t kSNaN = 0x7C01;       // signalling NaN (payload 0x001)
-    const uint16_t kDenormMin = 0x0001;  // smallest positive denormal
-    const uint16_t kDenormMid = 0x0200;  // mid-range positive denormal
-    const uint16_t kNegDenorm = 0x8001;  // smallest negative denormal
+    const uint16_t kQNaN = 0x7E00;
+    const uint16_t kNegQNaN = 0xFE00;
+    const uint16_t kSNaN = 0x7C01;
+    const uint16_t kNegSNaN = 0xFC01;
+    const uint16_t kDenormMin = 0x0001;
+    const uint16_t kDenormMid = 0x0200;
+    const uint16_t kNegDenorm = 0x8001;
 
     std::vector<uint16_t> special_bits = {
-        kPosZero, kNegZero, kPosInf, kNegInf, kQNaN, kSNaN,
-        kDenormMin, kDenormMid, kNegDenorm};
+        kPosZero, kNegZero, kPosInf, kNegInf, kQNaN, kNegQNaN,
+        kSNaN, kNegSNaN, kDenormMin, kDenormMid, kNegDenorm};
     const size_t n = special_bits.size();
 
     // F16 -> F32: convert via dispatch and via scalar reference
@@ -133,17 +147,27 @@ class MlasCastFp16Test : public MlasTestBase {
       }
     }
 
-    // F32 -> F16: test with the f32 equivalents plus a round-to-even case.
-    // 1.00048828125f = 1.0 + 2^-11 (0x3F801000) is exactly halfway between
-    // fp16 1.0 (0x3C00) and 1.0+ULP (0x3C01).  RNE must pick the even
-    // significand, i.e. 0x3C00.
-    std::vector<float> f32_input = {
-        0.0f, -0.0f,
-        std::numeric_limits<float>::infinity(),
-        -std::numeric_limits<float>::infinity(),
-        std::numeric_limits<float>::quiet_NaN(),
-        std::numeric_limits<float>::signaling_NaN(),
-        1.00048828125f};
+    // F32 -> F16 includes signed NaNs, exact half subnormals, a subnormal
+    // underflow tie, and a normal round-to-nearest-even tie.
+    const std::vector<uint32_t> f32_input_bits = {
+        0x00000000u,  // +0
+        0x80000000u,  // -0
+        0x7F800000u,  // +Inf
+        0xFF800000u,  // -Inf
+        0x7FC00000u,  // +qNaN
+        0xFFC00000u,  // -qNaN
+        0x7F800001u,  // +sNaN
+        0xFF800001u,  // -sNaN
+        0x33800000u,  // 2^-24: smallest positive half subnormal
+        0xB3800000u,  // -2^-24
+        0x387FC000u,  // largest positive half subnormal
+        0xB87FC000u,  // largest negative half subnormal
+        0x33000000u,  // 2^-25: tie rounds to +0
+        0xB3000000u,  // -2^-25: tie rounds to -0
+        0x3F801000u,  // 1 + 2^-11: tie rounds to half 1.0
+    };
+    std::vector<float> f32_input(f32_input_bits.size());
+    std::memcpy(f32_input.data(), f32_input_bits.data(), f32_input_bits.size() * sizeof(uint32_t));
     const size_t m = f32_input.size();
 
     std::vector<_mlas_fp16_> f16_out_dispatch(m);
@@ -185,14 +209,24 @@ class MlasCastFp16Test : public MlasTestBase {
     }
   }
 
+  void TestUnalignedSources() {
+    constexpr size_t kCount = 17;
+    for (size_t source_alignment_offset = 1; source_alignment_offset <= 3; ++source_alignment_offset) {
+      TestF16ToF32(kCount, source_alignment_offset);
+      TestF32ToF16(kCount, source_alignment_offset);
+    }
+  }
+
   // Verify the vectorised kernel is dispatched (non-null function pointer)
-  // on macOS arm64 (MLAS_CAST_F16_NEON_SUPPORTED) or other platforms with
-  // MLAS_F16VEC_INTRINSICS_SUPPORTED.  The dispatch table pointers are what
-  // cast.cpp checks at runtime to decide between the NEON kernel and the
-  // scalar fallback, so asserting non-null here genuinely proves dispatch.
+  // on macOS arm64 or other platforms with MLAS_F16VEC_INTRINSICS_SUPPORTED.
+  // The macOS condition deliberately does not depend on
+  // MLAS_CAST_F16_NEON_SUPPORTED, so a missing feature definition cannot turn
+  // this test into a false-green no-op.  The dispatch table pointers are what
+  // cast.cpp checks at runtime to select the NEON kernel.
   // This test compiles to nothing on platforms without a vectorised kernel.
   void TestKernelIsDispatched() {
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(MLAS_CAST_F16_NEON_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || \
+    (defined(__APPLE__) && defined(MLAS_TARGET_ARM64) && TARGET_OS_OSX)
     // On macOS arm64 (or other platforms with vectorised cast support),
     // the dispatch pointers must be non-null — proving the NEON kernel
     // is selected rather than the scalar fallback.
@@ -251,6 +285,27 @@ class CastFp16ShortExecuteTest : public MlasTestFixture<MlasCastFp16Test> {
   bool f16_to_f32_;
 };
 
+class CastFp16UnalignedSourcesTest : public MlasTestFixture<MlasCastFp16Test> {
+ public:
+  void TestBody() override {
+    MlasTestFixture<MlasCastFp16Test>::mlas_tester->TestUnalignedSources();
+  }
+
+  static size_t RegisterTests() {
+    testing::RegisterTest(
+        "CastFp16",
+        "/UnalignedSources",
+        nullptr,
+        "/UnalignedSources",
+        __FILE__,
+        __LINE__,
+        []() -> MlasTestFixture<MlasCastFp16Test>* {
+          return new CastFp16UnalignedSourcesTest();
+        });
+    return 1;
+  }
+};
+
 class CastFp16SpecialValuesTest : public MlasTestFixture<MlasCastFp16Test> {
  public:
   void TestBody() override {
@@ -297,6 +352,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
     [](bool is_short_execute) -> size_t {
       if (is_short_execute) {
         return CastFp16ShortExecuteTest::RegisterShortExecuteTests() +
+               CastFp16UnalignedSourcesTest::RegisterTests() +
                CastFp16SpecialValuesTest::RegisterTests() +
                CastFp16KernelDispatchTest::RegisterTests();
       }
