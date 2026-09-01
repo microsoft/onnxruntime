@@ -36,9 +36,11 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     const auto* x_shape = x_arg.Shape();
 
     // 'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW) can be supported.
-    // we only support 4-d tensor for now, and the channel must be known.
+    // we only support 4-d tensors for now. The channel and spatial dimensions must be known
+    // because the kernel caches the output H and W during construction.
     // we assume the input in NCHW for this test.
-    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
+    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0 ||
+        x_shape->dim(2).dim_value() <= 0 || x_shape->dim(3).dim_value() <= 0) {
       break;
     }
 
@@ -96,15 +98,15 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     if (size_tensor) {
       const Initializer size_val(graph_viewer.GetGraph(), *size_tensor, node_unit.ModelPath());
       const auto sizes = size_val.DataAsSpan<int64_t>();
-      if (!sizes.empty()) {
-        if (sizes.size() != 4) {
-          break;
-        }
+      // ORT treats an empty scales tensor as unused when sizes supplies the geometry, but it
+      // does not treat an empty sizes tensor as unused when scales is present.
+      if (sizes.size() != 4) {
+        break;
+      }
 
-        has_sizes_data = true;
-        if (sizes[1] != x_shape->dim(1).dim_value()) {
-          break;
-        }
+      has_sizes_data = true;
+      if (sizes[1] != x_shape->dim(1).dim_value()) {
+        break;
       }
     }
 
