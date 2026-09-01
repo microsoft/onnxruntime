@@ -636,7 +636,9 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // the node and the present_value graph output. An EP that prefers BNHS is expected to fuse that
 // Transpose -> GroupQueryAttention -> Transpose sequence into a single operation; an EP that does
 // not will execute the transposes, which is correct but costs a full copy of the Value cache in
-// each direction per step and prevents past/present buffer sharing.
+// each direction per step. The application may still bind one buffer to both past_value and
+// present_value; what it loses is the GQA kernel's in-place update of that buffer, because the
+// kernel now reads and writes ORT-allocated BNSH intermediates instead.
 //
 // Query an EP's preference via the "gqa_preferred_value_layout" OrtEpDevice metadata key
 // (kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout in onnxruntime_ep_device_ep_metadata_keys.h).

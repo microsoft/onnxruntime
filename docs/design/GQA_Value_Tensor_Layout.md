@@ -67,7 +67,11 @@ single-value reader.
 `CreateEpDevice`. EPs without GQA support omit it.
 
 **1.3** Add the key to `onnxruntime/test/autoep/library/example_plugin_ep/ep_factory.cc`, next to
-the existing `"supported_devices"` entry, so there is a test fixture.
+the existing `"supported_devices"` entry, so there is a test fixture. It reports `"BNSH"`: that EP
+claims only `Mul`, `Custom_Mul` and `EPContext` nodes in `GetCapabilityImpl`, so it cannot fuse the
+`Transpose -> GQA -> Transpose` sequence. Reporting `"BNHS"` without implementing the fusion would
+make the example contradict the contract it exists to demonstrate — an EP earns `"BNHS"` by fusing,
+not by preferring.
 
 **1.4** Language bindings need no change. Python `get_ep_devices()` and C# `OrtEpDevice.EpMetadata`
 already surface arbitrary metadata.
@@ -387,10 +391,20 @@ include on the build flavour would leave those constants undefined in a pure min
 ### Fallback cost
 
 When the transposes are not fused, each generated token costs two full transposing copies of the
-Value cache per layer, and past/present buffer sharing is lost (the GQA kernel can no longer append
-in place into the application's `max_sequence_length` buffer), roughly doubling KV-cache memory. For
-a 32-layer model at 4k context this dwarfs the attention math itself. It is correct, but it is not a
-configuration anyone should ship; hence the warning in 4.2.
+Value cache per layer. For a 32-layer model at 4k context this dwarfs the attention math itself. It
+is correct, but it is not a configuration anyone should ship; hence the warning in 4.2.
+
+Application-level buffer sharing is **not** lost. The application can still bind one buffer to both
+`past_value` and `present_value`, and
+`BnhsWithAliasedCacheBufferMatchesSeparateBuffersOnCpu` (6.2) exercises exactly that on the unfused
+CPU path. The transposes decouple the aliased boundary from the operator, and the data dependency
+`Transpose -> GQA -> Transpose` keeps the ordering well defined.
+
+What is lost is the GQA kernel's *in-place* update of that buffer. Its operands are now
+ORT-allocated BNSH intermediates rather than the caller's tensor, so the kernel does not take its
+shared past/present path — it reads a full BNSH cache and writes a fresh one. The extra memory is
+those intermediates, roughly two cache-sized tensors live at a time per converted node, not a
+doubling of the application's own KV-cache.
 
 ## 5. ORT-format path
 
@@ -429,7 +443,9 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - An overridable-initializer `past_value` is rejected (section 3.5).
 - Errors, per section 3.5: a `past_value` graph input shared by two GQA nodes; a `present_value` graph
   output also consumed inside the graph; a node with the layout applied to only one operand; a 4-bit
-  quantized Value cache.
+  quantized Value cache; a `past_value` whose declared shape is not rank 4. The rank case needs
+  `strict_shape_type_inference = false` to build, because GQA shape inference validates `past_key`'s
+  rank but not `past_value`'s — which is also why the transformer has to check it.
 - An already-converted model is left alone, and an already-converted **4-bit** model is
   still rejected. The second case is what pins down the check order in 3.5; verified to fail when
   `ValidateCacheFormat` runs after the layout-state switch.
