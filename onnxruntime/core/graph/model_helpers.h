@@ -15,7 +15,7 @@
 namespace ONNX_NAMESPACE {
 class FunctionProto;
 class ModelProto;
-}
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 
