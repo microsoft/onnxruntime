@@ -36,9 +36,7 @@ using AllIRv10WithInt2Base =
     boost::mp11::mp_push_back<
         element_type_lists::AllIRv10,
         UInt2x4,
-        Int2x4,
-        Float6E2M3,
-        Float6E3M2>;
+        Int2x4>;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 // Float8E8M0 was added in opset 24 (IR v12), so include it in the full type list
@@ -48,13 +46,16 @@ using AllIRv10WithInt2 =
 #else
 using AllIRv10WithInt2 = AllIRv10WithInt2Base;
 #endif
+
+using AllIRv10WithInt2AndFloat6 =
+    boost::mp11::mp_push_back<AllIRv10WithInt2, Float6E2M3, Float6E3M2>;
 }  // namespace
 
 namespace op_kernel_type_control {
-// Type list for all opsets of Cast (includes Float8E8M0 for runtime dispatch).
+// Type list for all opsets of Cast (includes Float8E8M0 and Float6 types for runtime dispatch).
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    AllIRv10WithInt2);
+    AllIRv10WithInt2AndFloat6);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
@@ -62,7 +63,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    AllIRv10WithInt2);
+    AllIRv10WithInt2AndFloat6);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -75,16 +76,23 @@ using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                        Cast, Output, 0);
 
-// Pre-opset-24 type lists (without Float8E8M0) for kernel registration TypeConstraints.
-// Float8E8M0 was introduced in opset 24.
+// Pre-opset-24 type lists exclude types introduced after opset 23.
 #if !defined(DISABLE_FLOAT8_TYPES)
-using EnabledSrcTypesPreOpset24 = boost::mp11::mp_remove<EnabledSrcTypes, Float8E8M0>;
-using EnabledDstTypesPreOpset24 = boost::mp11::mp_remove<EnabledDstTypes, Float8E8M0>;
+using EnabledSrcTypesPreOpset24 =
+    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledSrcTypes, Float8E8M0>, Float6E2M3, Float6E3M2>;
+using EnabledDstTypesPreOpset24 =
+    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledDstTypes, Float8E8M0>, Float6E2M3, Float6E3M2>;
 #else
-// When float8 types are disabled, Float8E8M0 is not in the type lists, so no removal needed.
-using EnabledSrcTypesPreOpset24 = EnabledSrcTypes;
-using EnabledDstTypesPreOpset24 = EnabledDstTypes;
+using EnabledSrcTypesPreOpset24 =
+    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledSrcTypes, Float6E2M3>, Float6E3M2>;
+using EnabledDstTypesPreOpset24 =
+    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledDstTypes, Float6E2M3>, Float6E3M2>;
 #endif
+
+using EnabledSrcTypesPreOpset28 =
+    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledSrcTypes, Float6E2M3>, Float6E3M2>;
+using EnabledDstTypesPreOpset28 =
+    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledDstTypes, Float6E2M3>, Float6E3M2>;
 
 template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
@@ -1216,14 +1224,23 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     24,
     24,
     KernelDefBuilder()
-        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
-        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypesPreOpset28>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypesPreOpset28>())
+        .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
+    Cast);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Cast,
+    25, 27,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypesPreOpset28>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypesPreOpset28>())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Cast,
-    25,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
         .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())

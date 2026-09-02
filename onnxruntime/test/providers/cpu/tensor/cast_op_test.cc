@@ -12,6 +12,7 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/data_types_internal.h"
+#include "core/framework/float6.h"
 #include "core/framework/int2.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -2372,6 +2373,35 @@ TEST(CastOpTest, Int32ToInt2x4EmptyTensor) {
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(empty_input), gsl::make_span(expected_empty_output), empty_shape);
+}
+
+template <typename F6>
+void CastOpTestFloat6() {
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<float> float_input = {-8.0f, -1.0f, -0.125f, 0.0f, 0.125f, 1.0f, 3.5f, 8.0f};
+  std::vector<F6> float6_output;
+  std::vector<float> expected_float_output;
+  float6_output.reserve(float_input.size());
+  expected_float_output.reserve(float_input.size());
+
+  for (float value : float_input) {
+    const F6 quantized(value);
+    float6_output.push_back(quantized);
+    expected_float_output.push_back(static_cast<float>(quantized));
+  }
+
+  TestCastOp<float, F6>(gsl::make_span(float_input), gsl::make_span(float6_output), shape,
+                        OpTester::ExpectResult::kExpectSuccess, "", 28);
+  TestCastOp<F6, float>(gsl::make_span(float6_output), gsl::make_span(expected_float_output), shape,
+                        OpTester::ExpectResult::kExpectSuccess, "", 28);
+}
+
+TEST(CastOpTest, Float6E2M3) {
+  CastOpTestFloat6<Float6E2M3>();
+}
+
+TEST(CastOpTest, Float6E3M2) {
+  CastOpTestFloat6<Float6E3M2>();
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
