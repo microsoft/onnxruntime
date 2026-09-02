@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -211,8 +212,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               row_tile_size_source, " must be 0 (disabled) or an integer in [1, ",
               std::numeric_limits<int>::max(), "], got ", row_tile_size_, ".");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
-              "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 2,
+              "expert_weight_bits must be 2, 4, or 8, but got ", expert_weight_bits_);
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
@@ -255,6 +256,22 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
               "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
   weights_prepacked_ = (weights_prepacked_mode != 0);
+  // 2-bit int weights have no offline CUTLASS-prepack tool (cuda_quantizer emits raw [E, N, K/4]
+  // storage), so the fused int2 path always runs PrePackIntExpertWeights to lay them out. Force the
+  // prepack (weights_prepacked=false) regardless of the attribute; the raw layout is the only int2
+  // input format we accept.
+  if (quant_type_ == "int" && expert_weight_bits_ == 2) {
+    weights_prepacked_ = false;
+  }
+
+  // Optional fractional zero-point center (unset -> NaN -> symmetric center 2^(bits-1)).
+  zero_point_offset_ = op_kernel_info.GetAttrOrDefault<float>(
+      "zero_point_offset", std::numeric_limits<float>::quiet_NaN());
+  if (!std::isnan(zero_point_offset_)) {
+    ORT_ENFORCE(quant_type_ == "int" && block_size_ > 0,
+                "zero_point_offset is only supported for integer block-wise quantization "
+                "(quant_type='int' with block_size > 0).");
+  }
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "nvfp4", "QMoE quant_type='nvfp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
@@ -511,9 +528,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
     }
   } else {
-    // Integer quantization (INT4/INT8)
+    // Integer quantization (INT2/INT4/INT8): a fused mixed-input grouped GEMM per weight width.
+    // uint2b_t / uint4b_t / uint8_t select the packed weight operand; the SM80 DqMma pipeline
+    // dequantizes in-register via FastInterleavedAndBiasedNumericArrayConverter.
     if (is_fp16) {
-      if (expert_weight_bits_ == 4) {
+      if (expert_weight_bits_ == 2) {
+        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint2b_t, half>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
@@ -523,7 +545,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     }
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
     else {  // BFloat16
-      if (expert_weight_bits_ == 4) {
+      if (expert_weight_bits_ == 2) {
+        m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint2b_t, __nv_bfloat16>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
@@ -608,9 +633,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
   // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
   // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  // GeGLU is gated exactly like SwiGLU (interleaved gate|up fc1, doubled fc1 output); it differs only
+  // in the gate nonlinearity, which is handled downstream by the activation kernel. All the gated
+  // layout/shape/fusion machinery below is shared between the two.
+  const bool is_gated_activation =
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu;
+
   int swiglu_fusion = swiglu_fusion_;
-  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
-      swiglu_fusion == 0) {
+  if (is_gated_activation && swiglu_fusion == 0) {
     swiglu_fusion = 1;
     LogQMoESwigluFusionRemapOnce();
   }
@@ -652,6 +683,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool has_any_zero_point = (fc1_zeros != nullptr || fc2_zeros != nullptr ||
                                    packed_fc1_bias_ != nullptr || packed_fc2_bias_ != nullptr);
 
+  // Packed per-group int2 zero_points are not supported (see PrePackComputeBias). The conversion
+  // kernels only understand the 8-bit and packed-int4 zero-point layouts, so an int2 zeros tensor
+  // (four 2-bit values per byte) would be misinterpreted here, yielding an undersized bias buffer
+  // and corrupt output. The int2 path only supports the fractional ``zero_point_offset`` attribute.
+  // Test the raw zeros inputs (not packed_fc*_bias_, which the legitimate int2 zero_point_offset
+  // path populates via PrePackConstantBiasFromScales). This guards the disable_prepacking path
+  // where PrePackComputeBias -- which also rejects int2 zeros -- never ran.
+  if (expert_weight_bits_ == 2 && (fc1_zeros != nullptr || fc2_zeros != nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "QMoE with expert_weight_bits=2 does not support fc*_zero_points inputs. "
+                           "Use the 'zero_point_offset' attribute for fractional/asymmetric int2 "
+                           "zero-points instead.");
+  }
+
   // Row-wise quantization path does not support asymmetric zero-points in QMoE.
   // QuantParams::Int only carries scales (no zero/bias tensor).
   if (block_size_ <= 0 && has_any_zero_point) {
@@ -665,8 +710,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
-  int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
-  bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
+  int64_t pack_size = 8 / expert_weight_bits_;
+  bool is_fused_swiglu = is_gated_activation;
   MoEParameters moe_params;
   // Prefer the cached shapes when PrePack consumed the source initializer.
   const TensorShape& fc1_shape = weights_consumed_by_prepack ? fc1_weights_shape_ : fc1_experts_weights->Shape();
@@ -975,8 +1020,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       } else if (is_fp8) {
         wtype = use_fp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP8;
       } else {
-        wtype = (expert_weight_bits_ == 4) ? onnxruntime::llm::nvinfer::DataType::kINT4
-                                           : onnxruntime::llm::nvinfer::DataType::kINT8;
+        // INT2 and INT4 both run the SM80 interleaved mixed-input grouped GEMM; there is no kINT2
+        // profiler tag, so 2-bit reuses kINT4 (same layout/workspace class). INT8 uses kINT8.
+        wtype = (expert_weight_bits_ == 8) ? onnxruntime::llm::nvinfer::DataType::kINT8
+                                           : onnxruntime::llm::nvinfer::DataType::kINT4;
       }
 
       using onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId;
@@ -1327,6 +1374,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         } else {
           eff_zp = zeros->DataRaw();
         }
+      }
+    } else if (!std::isnan(zero_point_offset_) && block_size_ > 0 && scales && eff_scale) {
+      // Fractional zero-point center, no uint8 zero-point tensor, and PrePack did NOT consume the
+      // scales (e.g. session.disable_prepacking) -- the packed_bias slot above was not populated, so
+      // build the constant bias here from the live scales. The normal path builds it at PrePack time
+      // (PrePackConstantBiasFromScales) and takes the ``packed_bias`` branch above. The weight
+      // converter already subtracts the symmetric center 2^(bits-1); this bias corrects it so the
+      // effective dequant is (code - zero_point_offset_) * scale. bias = (center - offset) * scale.
+      const float delta = static_cast<float>(1 << (expert_weight_bits_ - 1)) - zero_point_offset_;
+      size_t num_elements = scales->Shape().Size();
+      bool is_fp16 = scales->IsDataType<MLFloat16>();
+      bool is_bf16 = scales->IsDataType<BFloat16>();
+      size_t bytes = num_elements * (is_fp16 || is_bf16 ? 2 : 4);
+      transient_bias = GetScratchBuffer<void>(bytes, GetComputeStream(context));
+      eff_zp = transient_bias.get();
+      if (is_fp16) {
+        LaunchQMoEConstantBias(static_cast<const half*>(eff_scale),
+                               static_cast<half*>(transient_bias.get()),
+                               static_cast<int>(num_elements), delta, stream);
+      } else if (is_bf16) {
+        LaunchQMoEConstantBias(static_cast<const __nv_bfloat16*>(eff_scale),
+                               static_cast<__nv_bfloat16*>(transient_bias.get()),
+                               static_cast<int>(num_elements), delta, stream);
+      } else {
+        LaunchQMoEConstantBias(static_cast<const float*>(eff_scale),
+                               static_cast<float*>(transient_bias.get()),
+                               static_cast<int>(num_elements), delta, stream);
       }
     }
   };
@@ -2089,6 +2163,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     } else if (quant_type_ == "int") {
       PrePackTransposeAndPack(tensor, stream, alloc, packed_fc1_scales_, is_packed);
       DUMP_PACK_TENSOR("packed_fc1_scales", packed_fc1_scales_, tensor);
+      PrePackConstantBiasFromScales(tensor, stream, alloc, packed_fc1_scales_, packed_fc1_bias_);
     }
     if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "wfp4afp8") {
       is_packed = false;
@@ -2132,6 +2207,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     } else if (quant_type_ == "int") {
       PrePackTransposeAndPack(tensor, stream, alloc, packed_fc2_scales_, is_packed);
       DUMP_PACK_TENSOR("packed_fc2_scales", packed_fc2_scales_, tensor);
+      PrePackConstantBiasFromScales(tensor, stream, alloc, packed_fc2_scales_, packed_fc2_bias_);
     }
     if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "wfp4afp8") {
       is_packed = false;
@@ -2238,8 +2314,8 @@ void QMoE::PrePackCopyToGpu(const Tensor& tensor, cudaStream_t stream, Allocator
 // kernel-expected ``[E, K, N/(8/bits)]`` layout.
 void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                    IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
-  ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
-              "PrePackIntExpertWeights: only 4 and 8 bits are supported, got ", expert_weight_bits_);
+  ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+              "PrePackIntExpertWeights: only 2, 4 and 8 bits are supported, got ", expert_weight_bits_);
   ORT_ENFORCE(sm_ >= 75,
               "PrePackIntExpertWeights: quant_type='int' with weights_prepacked=0 requires SM75+ CUDA hardware, got SM",
               sm_);
@@ -2290,19 +2366,26 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
     src_base_gpu = reinterpret_cast<const uint8_t*>(tensor.DataRaw());
   }
 
-  IAllocatorUniquePtr<int32_t> permutation_map = this->GetTransientScratchBuffer<int32_t>(32);
+  // The LDSM row-permutation map has get_weight_quant_bits-dependent length: 16 (W8), 32 (W4),
+  // 64 (W2). preprocess_weights_for_mixed_gemm_cuda memcpy's the full map into this buffer, so it
+  // must hold the largest (W2 = 64) to avoid an out-of-bounds copy + OOB read in permute_rows_kernel.
+  IAllocatorUniquePtr<int32_t> permutation_map = this->GetTransientScratchBuffer<int32_t>(64);
 
   using onnxruntime::llm::kernels::weight_only::QuantType;
-  const QuantType quant_type = (bits == 4) ? QuantType::W4_A16 : QuantType::W8_A16;
+  const QuantType quant_type =
+      (bits == 2) ? QuantType::W2_A16 : ((bits == 4) ? QuantType::W4_A16 : QuantType::W8_A16);
 
   for (int64_t e = 0; e < num_experts; ++e) {
     const uint8_t* src_e = src_base_gpu + static_cast<size_t>(e) * per_expert_bytes;
     int8_t* dst_e = dst_all + static_cast<size_t>(e) * per_expert_bytes;
 
-    // Step 1: transpose + (for int4) unpack/zero-point bias into the
-    // transposed-int8 scratch buffer. Mirrors MatMulNBits's PrePack_B.
+    // Step 1: transpose + (for int4/int2) unpack/zero-point bias into the
+    // transposed sub-byte scratch buffer. Mirrors MatMulNBits's PrePack_B.
     if (bits == 4) {
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
+          stream, transposed_scratch_ptr, src_e, static_cast<int>(n), static_cast<int>(k));
+    } else if (bits == 2) {
+      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint2_transposed_to_int2_direct_cuda(
           stream, transposed_scratch_ptr, src_e, static_cast<int>(n), static_cast<int>(k));
     } else {
       onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
@@ -2609,6 +2692,14 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
 void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                               const IAllocatorUniquePtr<void>& packed_scale,
                               IAllocatorUniquePtr<void>& packed_bias, bool& is_packed) {
+  // Packed per-group int2 zero_points are not supported. The int2 fused path only supports the
+  // fractional ``zero_point_offset`` attribute, not packed uint8 fc*_zero_points (whose int2 layout
+  // packs four 2-bit values per byte). The conversion kernels below only understand the 8-bit and
+  // packed-int4 (LaunchQMoEScaledZP4BitBatched) layouts, so an int2 zeros tensor would be
+  // misinterpreted, producing an undersized/mis-strided bias buffer and corrupt output. Reject it.
+  ORT_ENFORCE(expert_weight_bits_ != 2,
+              "QMoE with expert_weight_bits=2 does not support fc*_zero_points inputs. Use the "
+              "'zero_point_offset' attribute for fractional/asymmetric int2 zero-points instead.");
   if ((expert_weight_bits_ == 4) && !packed_scale) {
     return;
   }
@@ -2721,6 +2812,39 @@ void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, Allocat
   }
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   is_packed = true;
+}
+
+void QMoE::PrePackConstantBiasFromScales(const Tensor& scales, cudaStream_t stream, AllocatorPtr alloc,
+                                         const IAllocatorUniquePtr<void>& packed_scale,
+                                         IAllocatorUniquePtr<void>& packed_bias) {
+  // Only when a fractional zero-point center was requested (finite) and block-wise integer quant is
+  // in use. The packed scale is already on GPU in the runner's expected layout; the bias has the
+  // same element count/dtype and is bias = (2^(bits-1) - zero_point_offset_) * scale, so the fused
+  // dequant (code - 2^(bits-1)) * scale + bias == (code - zero_point_offset_) * scale.
+  if (std::isnan(zero_point_offset_) || block_size_ <= 0 || !packed_scale) {
+    return;
+  }
+  const float delta = static_cast<float>(1 << (expert_weight_bits_ - 1)) - zero_point_offset_;
+  size_t num_elements = scales.Shape().Size();
+  // QMoE inputs are FP16/BF16 (is_fp16_ set in ctor); scales may also arrive as float32.
+  bool is_fp16 = scales.IsDataType<MLFloat16>();
+  bool is_bf16 = scales.IsDataType<BFloat16>();
+  size_t bytes = num_elements * (is_fp16 || is_bf16 ? 2 : 4);
+  packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+  if (is_fp16) {
+    LaunchQMoEConstantBias(static_cast<const half*>(packed_scale.get()),
+                           static_cast<half*>(packed_bias.get()),
+                           static_cast<int>(num_elements), delta, stream);
+  } else if (is_bf16) {
+    LaunchQMoEConstantBias(static_cast<const __nv_bfloat16*>(packed_scale.get()),
+                           static_cast<__nv_bfloat16*>(packed_bias.get()),
+                           static_cast<int>(num_elements), delta, stream);
+  } else {
+    LaunchQMoEConstantBias(static_cast<const float*>(packed_scale.get()),
+                           static_cast<float*>(packed_bias.get()),
+                           static_cast<int>(num_elements), delta, stream);
+  }
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
 }
 
 }  // namespace cuda

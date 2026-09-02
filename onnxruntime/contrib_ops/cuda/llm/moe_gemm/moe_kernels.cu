@@ -144,6 +144,8 @@ template <typename WeightType>
 constexpr int MoeGemvWeightBits() {
   if constexpr (std::is_same_v<WeightType, cutlass::uint4b_t>) {
     return 4;
+  } else if constexpr (std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    return 2;
   } else if constexpr (std::is_same_v<WeightType, uint8_t>) {
     return 8;
   } else {
@@ -162,7 +164,7 @@ bool tryLaunchMoeGemvIntSymmetric(const T* input, const WeightType* weights, con
                                   const int* permuted_row_to_expert, int64_t expanded_num_rows,
                                   int64_t n, int64_t k, int sm, int group_size,
                                   bool disabled, cudaStream_t stream) {
-  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
+  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, cutlass::uint2b_t> || std::is_same_v<WeightType, uint8_t>) &&
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     const bool env_disabled = MoeGemvDisabledByEnv();
     const bool has_block_zeros = group_size > 0 && weight_zeros != nullptr;
@@ -210,7 +212,7 @@ bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
     const int* permuted_row_to_expert, const float* unpermuted_final_scales, int num_experts_per_node,
     int64_t num_rows, int64_t experts_per_token, int64_t expanded_num_rows, int64_t n, int64_t k, int sm,
     int group_size, bool disabled, cudaStream_t stream) {
-  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
+  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, cutlass::uint2b_t> || std::is_same_v<WeightType, uint8_t>) &&
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T> &&
                 std::is_same_v<OutputType, T>) {
     const bool has_block_zeros = group_size > 0 && weight_zeros != nullptr;
@@ -265,7 +267,7 @@ template <typename T, typename WeightType, typename ScaleBiasType>
 bool moeGemvInterleavedSwiGLUWillRun(const ScaleBiasType* weight_zeros, int64_t expanded_num_rows,
                                      int64_t inter_size, int64_t k, int sm, int group_size, bool disabled,
                                      cutlass_kernels::ActivationParams activation_params) {
-  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
+  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, cutlass::uint2b_t> || std::is_same_v<WeightType, uint8_t>) &&
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     const bool has_block_zeros = group_size > 0 && weight_zeros != nullptr;
     if (disabled || MoeGemvDisabledByEnv() || has_block_zeros) {
@@ -302,7 +304,7 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int sm, int group_size,
     bool disabled, cutlass_kernels::ActivationParams activation_params, const int* permuted_row_to_source_row,
     int64_t num_rows, float* splitk_partials, cudaStream_t stream) {
-  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
+  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, cutlass::uint2b_t> || std::is_same_v<WeightType, uint8_t>) &&
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     if (!moeGemvInterleavedSwiGLUWillRun<T, WeightType, ScaleBiasType>(
             weight_zeros, expanded_num_rows, inter_size, k, sm, group_size, disabled, activation_params)) {
@@ -2719,7 +2721,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
     ActivationParameters activation_params, FusedRoutingParams fused_routing,
     cudaStream_t stream) {
-  static constexpr bool int_scales_required = std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
+  static constexpr bool int_scales_required = std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value || std::is_same<WeightType, cutlass::uint2b_t>::value;
   static constexpr bool fp8_scales_required = std::is_same<WeightType, __nv_fp8_e4m3>::value || std::is_same<WeightType, __nv_fp8_e5m2>::value;
 
   const auto* input_activations = static_cast<const InputType*>(input_activations_void);
@@ -3690,11 +3692,13 @@ template class CutlassMoeFCRunner<float, float>;
 template class CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16>;
 template class CutlassMoeFCRunner<__nv_bfloat16, uint8_t>;
 template class CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t>;
+template class CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint2b_t>;
 #endif
 
 template class CutlassMoeFCRunner<half, half>;
 template class CutlassMoeFCRunner<half, uint8_t>;
 template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
+template class CutlassMoeFCRunner<half, cutlass::uint2b_t>;
 
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 template class CutlassMoeFCRunner<half, __nv_fp4_e2m1>;

@@ -446,6 +446,11 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
     int smem_write_stage_idx = Base::kStages - 1;
     int smem_read_stage_idx = 0;
 
+    // Persistent parity for the warp_frag_B double buffer. Must carry across CTA-K stages;
+    // deriving it from the per-stage load offset silently breaks when kWarpGemmIterationsForB
+    // is odd (int2). See dq_mma_multistage_finegrained.h for the detailed rationale.
+    int warp_frag_B_read_idx = 0;
+
     //
     // Mainloop
     //
@@ -472,11 +477,13 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
         if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
           this->warp_tile_iterator_B_.set_kgroup_index(
               (warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
-          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_k_load_offset + 1) % 2]);
+          this->warp_tile_iterator_B_.load(
+              warp_frag_B[(warp_frag_B_read_idx + warp_tileB_k_load_offset + 1) % 2]);
           ++this->warp_tile_iterator_B_;
         }
 
-        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
+        typename TransformBAfterLDS::result_type converted_frag_B =
+            lds_converter(warp_frag_B[(warp_frag_B_read_idx + warp_tileB_k_load_offset) % 2]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales);
 
         using FragmentOperandB = cutlass::Array<ElementA, Operator::FragmentB::kElements>;
@@ -547,6 +554,10 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
           iterator_B.clear_mask(gemm_k_iterations == 0);
         }
       }
+
+      // Advance the warp_frag_B double-buffer parity by the B loads consumed this stage.
+      // Even kWarpGemmIterationsForB (int4/int8) is a no-op; odd (int2) flips.
+      warp_frag_B_read_idx = (warp_frag_B_read_idx + Base::kWarpGemmIterationsForB) % 2;
     }
 
     if (SharedMemoryClear == SharedMemoryClearOption::kZfill) {

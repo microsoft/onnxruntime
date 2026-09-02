@@ -127,7 +127,7 @@ struct genericMoeGemmKernelLauncher {
                   "Specialized for half, float");
 #endif
 
-    static_assert(cutlass::platform::is_same<T, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value
+    static_assert(cutlass::platform::is_same<T, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint2b_t>::value
 #if defined(ENABLE_FP4)
                   || cutlass::platform::is_same<WeightType, __nv_fp4_e2m1>::value
 #endif

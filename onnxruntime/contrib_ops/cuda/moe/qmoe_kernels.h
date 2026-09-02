@@ -138,6 +138,29 @@ void LaunchQMoEPrePackOffsetBias(
     float offset,
     cudaStream_t stream);
 
+// Constant fractional zero-point bias: output = delta * scale (delta = center - offset).
+// See qmoe_kernels.cu for the rationale (int2 balanced fractional center, e.g. 1.5).
+void LaunchQMoEConstantBias(
+    const float* scales,
+    float* output,
+    int num_elements,
+    float delta,
+    cudaStream_t stream);
+
+void LaunchQMoEConstantBias(
+    const half* scales,
+    half* output,
+    int num_elements,
+    float delta,
+    cudaStream_t stream);
+
+void LaunchQMoEConstantBias(
+    const __nv_bfloat16* scales,
+    __nv_bfloat16* output,
+    int num_elements,
+    float delta,
+    cudaStream_t stream);
+
 // Batched 4-bit packed zero-point scaled bias computation.
 // ZP layout: [experts, n, packed_k_blocks] (packed_k_blocks = (k_blocks+1)/2)
 // Scale/Output layout: [experts, k_blocks, n]

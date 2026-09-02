@@ -5474,7 +5474,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu, geglu and identity. geglu is the GELU-gated linear unit (a gated activation like swiglu but using gelu as the gate). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
@@ -5493,6 +5493,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
 <dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
+<dt><tt>zero_point_offset</tt> : float</dt>
+<dd>CUDA execution provider only; other execution providers (CPU, WebGPU) reject a non-default value. Only meaningful when quant_type='int' and block_size > 0 and no integer fc*_zero_points are provided. A single fractional zero-point applied uniformly to every weight code: dequant = (code - zero_point_offset) * scale. Enables balanced asymmetric schemes whose zero-point is not integer-representable (e.g. the 1.5 midpoint of a 2-bit checkpoint, giving codes {0,1,2,3} -> {-1.5,-0.5,0.5,1.5}*scale). When omitted, symmetric quantization centered on 2^(expert_weight_bits-1) is used.</dd>
 </dl>
 
 #### Inputs (6 - 21)

@@ -181,6 +181,7 @@ struct MoeFCGemm {
               GemmCoord* host_problem_sizes = nullptr)
         : problem_count(problem_count), threadblock_count(threadblock_count), group_size(group_size), output_op(output_op), ptr_A(const_cast<ElementA*>(ptr_A)), ptr_B(const_cast<ElementB*>(ptr_B)), weight_scales(const_cast<ElementScale*>(weight_scales)), weight_zeros(const_cast<ElementScale*>(weight_zeros)), ptr_C(const_cast<ElementC*>(ptr_C)), C_is_broadcast{C_is_broadcast}, ptr_D(ptr_D), total_tokens_including_expert(total_tokens_including_expert), gemm_n(gemm_n), gemm_k(gemm_k), host_problem_sizes(nullptr) {
       if (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value ||
+          platform::is_same<uint2b_t, ElementB>::value ||
           platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
         assert(weight_scales);
       }
@@ -285,9 +286,10 @@ struct MoeFCGemm {
 
   static Status can_implement(Arguments const& args) {
     if constexpr (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value ||
+                  platform::is_same<uint2b_t, ElementB>::value ||
                   platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
       if (args.weight_scales == nullptr) {
-        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t and uint4b_t");
+        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t, uint4b_t and uint2b_t");
         return Status::kInvalid;
       }
       static int const kAlignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
