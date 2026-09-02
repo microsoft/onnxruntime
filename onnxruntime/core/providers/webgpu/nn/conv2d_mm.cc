@@ -168,7 +168,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                   : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, bool use_reported_nvidia_pascal_tuning, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -188,6 +188,12 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
+  // in_channels % 4 == 0 keeps inner_element_size at 4, so tile_inner stays 32. 32 * 1 then
+  // covers the same 32-row A tile as the default 8 * 4, at four times the occupancy.
+  if (use_reported_nvidia_pascal_tuning && is_vec4 && in_channels % 4 == 0 && dim_a_outer > 8) {
+    workgroup_size[1] = 32;
+    elements_per_thread[1] = 1;
+  }
   auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {

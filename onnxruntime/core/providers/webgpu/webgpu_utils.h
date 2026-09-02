@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -30,6 +31,13 @@ inline int GetMaxComponents(int64_t size) {
     return 2;
   }
   return 1;
+}
+
+// Some newer NVIDIA parts also report "pascal", so this matches the reported
+// architecture rather than the actual silicon.
+inline bool IsReportedNvidiaPascalAdapter(const wgpu::AdapterInfo& adapter_info) {
+  return adapter_info.vendor == std::string_view{"nvidia"} &&
+         adapter_info.architecture == std::string_view{"pascal"};
 }
 
 /**
