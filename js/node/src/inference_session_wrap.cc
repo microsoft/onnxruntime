@@ -12,7 +12,6 @@
 #include "tensor_helper.h"
 #include <mutex>
 #include <string>
-#include <thread>
 
 namespace {
 // Guards the IO-binding path across every session in the process. Binding inputs and outputs does
@@ -185,12 +184,11 @@ Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   return scope.Escape(array);
 }
 
-// Inference runs on a thread this class owns rather than on the libuv thread pool that
-// Napi::AsyncWorker would use. That pool is shared with fs, dns, zlib and crypto, and it defaults to
-// four threads, so dispatching inference there makes long runs stall unrelated I/O for the whole
-// process. Completion is handed back to the Javascript thread through a ThreadSafeFunction, which
-// also keeps the event loop alive until the run settles.
-class InferenceSessionWrap::RunAsyncWorker {
+// Inference is dispatched with Napi::AsyncWorker, so it runs on the libuv thread pool. That pool is
+// shared with fs, dns, zlib and crypto and defaults to four threads, so a run occupies one slot for
+// its duration; unrelated work only queues once concurrent runs reach the pool size, and
+// UV_THREADPOOL_SIZE raises that ceiling.
+class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
  public:
   using OutputBufferLease = OrtInstanceData::OutputBufferLease;
 
@@ -221,7 +219,8 @@ class InferenceSessionWrap::RunAsyncWorker {
 
   RunAsyncWorker(InferenceSessionWrap& session, const Napi::Object& feed, const Napi::Object& fetch,
                  const Napi::Object& options, Napi::Promise::Deferred deferred)
-      : env_(session.Value().Env()),
+      : Napi::AsyncWorker(session.Value().Env(), "InferenceSession.run", session.Value()),
+        env_(session.Value().Env()),
         session_(&session),
         deferred_(deferred),
         session_reference_(Napi::Persistent(session.Value())),
@@ -283,32 +282,15 @@ class InferenceSessionWrap::RunAsyncWorker {
     ParseRunOptions(options, run_options_);
   }
 
-  ~RunAsyncWorker() {
-    // The worker owns its thread rather than detaching it, so it cannot be destroyed while that
-    // thread is still touching it. If the run never completed — the environment is being torn down,
-    // say — ask ORT to abandon it first so the join returns promptly instead of waiting out a full
-    // inference on the Javascript thread.
-    if (thread_.joinable()) {
-      if (thread_.get_id() == std::this_thread::get_id()) {
-        // Nothing can join itself. Unreachable today: the ThreadSafeFunction finalizer that destroys
-        // the worker always runs on the Javascript thread.
-        thread_.detach();
-      } else {
-        if (!completed_) {
-          run_options_.SetTerminate();
-        }
-        thread_.join();
-      }
-    }
-
-    // The completion callback may never have run, so drain the run count here and reject rather than
-    // leaving the promise pending forever.
+  ~RunAsyncWorker() override {
+    // AsyncWorker::OnWorkComplete() skips OnOK() and OnError() entirely when the work was cancelled
+    // and still destroys the worker, so drain the run count here and settle the promise rather than
+    // leaving it pending forever.
     Complete();
     if (!settled_) {
       settled_ = true;
       try {
-        deferred_.Reject(
-            Napi::Error::New(env_, error_.empty() ? "Inference was abandoned before it completed." : error_).Value());
+        deferred_.Reject(Napi::Error::New(env_, "Inference was abandoned before it completed.").Value());
       } catch (...) {
         // The environment is going away; there is nobody left to observe the rejection.
       }
@@ -322,38 +304,6 @@ class InferenceSessionWrap::RunAsyncWorker {
     Settle([&] { deferred_.Reject(error); });
   }
 
-  // Start the run. Ownership passes to the ThreadSafeFunction, whose finalizer deletes the worker on
-  // the Javascript thread once the completion callback has run.
-  //
-  // Returns false if the worker thread could not be started, for instance when the process is out of
-  // thread resources. Ownership has still passed to the ThreadSafeFunction in that case, and its
-  // finalizer settles the promise, so the caller must not delete the worker either.
-  bool Queue() {
-    tsfn_ = Napi::ThreadSafeFunction::New(
-        env_, Napi::Function::New(env_, [](const Napi::CallbackInfo&) {}), "InferenceSession.run", 0, 1,
-        [this](Napi::Env) { delete this; });
-
-    try {
-      // The thread holds the ThreadSafeFunction's initial reference until it calls Release(), so the
-      // finalizer cannot destroy this worker while the thread is still using it.
-      thread_ = std::thread([this] {
-        Execute();
-        // Copy the handle: Release() can let the finalizer delete this worker immediately.
-        auto tsfn = tsfn_;
-        tsfn.BlockingCall([this](Napi::Env env, Napi::Function) { OnComplete(env); });
-        tsfn.Release();
-      });
-    } catch (const std::system_error& e) {
-      // The thread never started, so nothing will ever release the ThreadSafeFunction. Release it
-      // here through a copied handle, which runs the finalizer and destroys this worker; nothing may
-      // touch the worker afterwards.
-      error_ = std::string("Could not start a thread to run inference: ") + e.what();
-      auto tsfn = tsfn_;
-      tsfn.Release();
-      return false;
-    }
-    return true;
-  }
 
   void AcquireOutputBufferLeases() {
     for (const auto& output : outputs_) {
@@ -365,7 +315,7 @@ class InferenceSessionWrap::RunAsyncWorker {
     }
   }
 
-  void Execute() {
+  void Execute() override {
     try {
       std::vector<const char*> input_names_cstr;
       input_names_cstr.reserve(input_names_.size());
@@ -412,23 +362,22 @@ class InferenceSessionWrap::RunAsyncWorker {
       session_->session_->Run(run_options_, *io_binding_);
       output_values_ = io_binding_->GetOutputValues();
       if (output_values_.size() != outputs_.size()) {
-        error_ = "Output count mismatch.";
+        SetError("Output count mismatch.");
       }
     } catch (const std::exception& e) {
-      error_ = e.what();
+      SetError(e.what());
     } catch (...) {
-      error_ = "Unknown error while running the model.";
+      SetError("Unknown error while running the model.");
     }
   }
 
-  void OnComplete(Napi::Env env) {
-    Napi::HandleScope scope(env);
-    if (!error_.empty()) {
-      Complete();
-      Settle([&] { deferred_.Reject(Napi::Error::New(env_, error_).Value()); });
-      return;
-    }
+  void OnError(const Napi::Error& error) override {
+    Complete();
+    Settle([&] { deferred_.Reject(error.Value()); });
+  }
 
+  void OnOK() override {
+    Napi::HandleScope scope(env_);
     try {
       // Build the result first. OrtValueToNapiValue() runs the Javascript Tensor constructor and can
       // throw, and no caller-owned buffer may be written before the last step that can fail or hand
@@ -537,9 +486,6 @@ class InferenceSessionWrap::RunAsyncWorker {
   std::vector<OutputBufferLease> output_buffer_leases_;
   std::vector<int> preferred_output_locations_;
   std::unique_ptr<Ort::IoBinding> io_binding_;
-  std::string error_;
-  Napi::ThreadSafeFunction tsfn_;
-  std::thread thread_;
   bool completed_{false};
   bool settled_{false};
 };
@@ -583,11 +529,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   try {
     worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
     worker->AcquireOutputBufferLeases();
-    if (!worker->Queue()) {
-      // The ThreadSafeFunction finalizer owns the worker now and has settled the promise.
-      worker.release();
-      return deferred.Promise();
-    }
+    worker->Queue();
   } catch (const Napi::Error& e) {
     // Reject rather than throw: the deferred already exists, and N-API frees it only once it has
     // been settled. Throwing would leak it and would also make a method that is typed as returning
