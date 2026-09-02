@@ -193,8 +193,6 @@ stages:
     - template: ../templates/common-variables.yml
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml
-      parameters:
-        submodules: recursive
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 

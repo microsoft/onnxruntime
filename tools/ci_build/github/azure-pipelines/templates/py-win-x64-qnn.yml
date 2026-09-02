@@ -47,7 +47,7 @@ jobs:
   steps:
       - template: jobs/checkout-and-git-redirect.yml
         parameters:
-          submodules: true
+          submodules: recursive
 
       - template: setup-build-tools.yml
         parameters:

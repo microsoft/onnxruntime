@@ -61,8 +61,6 @@ jobs:
   pool: ${{ parameters.machine_pool }}
   steps:
   - template: jobs/checkout-and-git-redirect.yml
-    parameters:
-      submodules: true
 
   - template: setup-feeds-and-python-steps.yml
     parameters:
