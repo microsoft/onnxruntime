@@ -25,7 +25,19 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
+from onnxruntime import (
+    GraphOptimizationLevel,
+    InferenceSession,
+    OrtValue,
+    SessionOptions,
+    get_available_providers,
+    get_ep_devices,
+    register_execution_provider_library,
+)
+
+_webgpu_plugin_path = os.environ.get("ORT_WEBGPU_PLUGIN_PATH")
+if _webgpu_plugin_path and "WebGpuExecutionProvider" not in get_available_providers():
+    register_execution_provider_library("webgpu_test", _webgpu_plugin_path)
 
 torch.manual_seed(0)
 
@@ -525,7 +537,14 @@ def paged_attention_func(
         ort_inputs["key_cache"] = OrtValue.ortvalue_from_numpy(key_cache_np, config.ort_device, 0)
         ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache_np, config.ort_device, 0)
     sess_options = SessionOptions()
-    if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
+    if config.ep == "WebGpuExecutionProvider":
+        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+        webgpu_devices = [device for device in get_ep_devices() if device.ep_name == config.ep]
+        if not webgpu_devices:
+            raise RuntimeError("No WebGPU EP device found.")
+        sess_options.add_provider_for_devices([webgpu_devices[0]], {})
+        providers = None
+    elif sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
         providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
     else:
         providers = [config.ep]
@@ -849,6 +868,7 @@ def parity_check_paged_attention(
     sdpa_kernel=0,
     new_seqlens_override=None,
     local_window_size_override=None,
+    past_seqlens_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -880,13 +900,19 @@ def parity_check_paged_attention(
     )
 
     # Generate random sequence lengths
-    past_seqlens = torch.randint(
-        0,
-        config.total_sequence_length - config.sequence_length + 1,  # one above highest integer to be drawn
-        (config.batch_size,),
-        dtype=torch.int32,
-        device=config.torch_device,
-    )
+    if past_seqlens_override is not None:
+        past_seqlens = past_seqlens_override.to(dtype=torch.int32, device=config.torch_device)
+        assert past_seqlens.shape == (config.batch_size,)
+        assert int(past_seqlens.min().item()) >= 0
+        assert int(past_seqlens.max().item()) <= config.total_sequence_length - config.sequence_length
+    else:
+        past_seqlens = torch.randint(
+            0,
+            config.total_sequence_length - config.sequence_length + 1,  # one above highest integer to be drawn
+            (config.batch_size,),
+            dtype=torch.int32,
+            device=config.torch_device,
+        )
     if new_seqlens_override is not None:
         new_seqlens = new_seqlens_override.to(dtype=torch.int32, device=config.torch_device)
         assert new_seqlens.shape == (config.batch_size,)
@@ -917,7 +943,7 @@ def parity_check_paged_attention(
     if config.use_head_sink:
         # Spread over [-2, 6]: exp(sink) then ranges from negligible to far larger than a typical
         # softmax denominator, so a kernel that ignored the sink could not pass within tolerance.
-        head_sink = (torch.rand(config.num_heads, device="cuda") * 8.0 - 2.0).to(dtype=torch.float16)
+        head_sink = (torch.rand(config.num_heads, device=config.torch_device) * 8.0 - 2.0).to(dtype=torch.float16)
 
     # Optional QK-Norm. The kernel applies RMSNorm to every Q and K head before rotary embedding,
     # so the reference has to normalize before computing q_ro / k_ro below, and the normalized +
@@ -925,8 +951,8 @@ def parity_check_paged_attention(
     q_norm_weight = None
     k_norm_weight = None
     if config.use_qk_norm:
-        q_norm_weight = torch.randn(config.head_size, device="cuda", dtype=torch.float16)
-        k_norm_weight = torch.randn(config.head_size, device="cuda", dtype=torch.float16)
+        q_norm_weight = torch.randn(config.head_size, device=config.torch_device, dtype=torch.float16)
+        k_norm_weight = torch.randn(config.head_size, device=config.torch_device, dtype=torch.float16)
         q = rms_norm_ref(q, q_norm_weight, config.qk_norm_epsilon)
         k_new = rms_norm_ref(k_new, k_norm_weight, config.qk_norm_epsilon)
 
@@ -947,8 +973,10 @@ def parity_check_paged_attention(
         left_window_size = (
             local_window_size_override
             if local_window_size_override is not None
-            else random.randint(1, config.total_sequence_length - 1)
+            else getattr(config, "local_window_size", None)
         )
+        if left_window_size is None:
+            left_window_size = random.randint(1, config.total_sequence_length - 1)
         assert 0 < left_window_size < config.total_sequence_length
         window_size = (left_window_size, right_window_size)
     else:
@@ -1181,13 +1209,11 @@ def has_webgpu_ep() -> bool:
 def _webgpu_supports_config(config: Config) -> bool:
     """Feature guard for the WebGPU PagedAttention op.
 
-    The WebGPU kernel is fp16-only and does not yet implement softcap or
-    sliding-window local attention. Rotary (interleaved and non-interleaved),
-    packed QKV, and GQA are supported.
+    The WebGPU kernel is fp16-only and does not yet implement softcap. Local
+    attention, rotary (interleaved and non-interleaved), packed QKV, GQA, and
+    learned attention sinks are supported.
     """
     if config.softcap != 0.0:
-        return False
-    if config.local:
         return False
     return True
 
@@ -1576,7 +1602,7 @@ def paged_attention_test_cases_webgpu():
                                     n2,
                                     h,
                                     block_size,
-                                    False,  # local - not supported on WebGPU
+                                    False,
                                     rotary,
                                     rotary_interleaved,
                                     packed,
@@ -1626,6 +1652,69 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
         config.attention_metadata_shape = [3]
         config.attention_metadata_override = numpy.array([1, 64, 1], dtype=numpy.int32)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def _gptoss_config(self, sequence_length, *, local=True, use_head_sink=True):
+        config = Config(
+            batch_size=2,
+            sequence_length=sequence_length,
+            total_sequence_length=256,
+            num_heads=64,
+            kv_num_heads=8,
+            head_size=64,
+            paged_kv_block_size=256,
+            local=local,
+            rotary=True,
+            rotary_interleaved=False,
+            packed=True,
+            softcap=0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.local_window_size = 128
+        config.use_head_sink = use_head_sink
+        return config
+
+    def test_gptoss_local_window_head_sink_prefill(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=16),
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([16, 9], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([240, 192], dtype=torch.int32),
+        )
+
+    def test_gptoss_local_window_head_sink_decode(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=1),
+            rtol=5e-3,
+            atol=5e-3,
+            past_seqlens_override=torch.tensor([255, 192], dtype=torch.int32),
+        )
+
+    def test_local_window_short_history(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=4, use_head_sink=False),
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([4, 2], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([0, 4], dtype=torch.int32),
+        )
+
+    def test_head_sink_prefill_without_local_window(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=32, local=False),
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([32, 17], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([224, 100], dtype=torch.int32),
+        )
+
+    def test_head_sink_decode_without_local_window(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=1, local=False),
+            rtol=5e-3,
+            atol=5e-3,
+            past_seqlens_override=torch.tensor([255, 192], dtype=torch.int32),
+        )
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")

@@ -541,15 +541,10 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
-  // Feature guards. softcap and local_window_size are rejected until FA gains
-  // the corresponding shader-side support (tracked in the design doc).
+  // Feature guards for combinations not yet implemented by the WebGPU path.
   if (softcap_ != 0.0f) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): non-zero softcap is not supported yet.");
-  }
-  if (local_window_size_ != -1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "PagedAttention (WebGPU): local_window_size != -1 is not supported yet.");
   }
   if (kv_cache_layout_ != "SEPARATE") {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -584,10 +579,6 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   if (slot_mapping != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): slot_mapping input is not supported yet.");
-  }
-  if (head_sink != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "PagedAttention (WebGPU): head_sink input is not supported yet.");
   }
   if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -822,7 +813,8 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const uint64_t q_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
                                   static_cast<uint64_t>(max_seqlen_q) *
                                   static_cast<uint64_t>(parameters.hidden_size) * sizeof(MLFloat16);
-  const bool use_direct_paged_decode = max_seqlen_q < 32;
+  const bool has_local_window = local_window_size_ > 0;
+  const bool use_direct_paged_decode = max_seqlen_q < 32 && !has_local_window;
   // Direct-paged prefill is only safe when the fused paged-prefill shader
   // will actually run for this (adapter, dtype, shape, block_size) tuple.
   // If the helper rejects, dense FA would interpret the paged cache as a
@@ -830,6 +822,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const bool is_fp16_q =
       query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   const bool use_direct_paged_prefill =
+      !has_local_window && head_sink == nullptr &&
       ShouldRunFusedPagedPrefill(context, is_fp16_q,
                                  static_cast<int>(max_seqlen_q),
                                  parameters.head_size,
@@ -1032,12 +1025,13 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       /*past_key=*/use_direct_paged_attention ? key_cache_out : &k_padded, /*present_key=*/nullptr,
       /*past_value=*/use_direct_paged_attention ? value_cache_out : &v_padded, /*present_value=*/nullptr,
       fa_params, context, &seqlen_k_gpu,
-      /*cos_cache=*/nullptr, /*sin_cache=*/nullptr, /*head_sink=*/nullptr,
+      /*cos_cache=*/nullptr, /*sin_cache=*/nullptr, head_sink,
       /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu,
       use_direct_paged_attention ? block_table : nullptr,
       use_direct_paged_attention ? static_cast<uint32_t>(parameters.block_size) : 0u,
       use_direct_paged_attention ? static_cast<uint32_t>(parameters.max_num_blocks_per_seq) : 0u,
-      /*cumulative_seqlens_q=*/varlen_mode ? cumulative_seqlens_q : nullptr));
+      /*cumulative_seqlens_q=*/varlen_mode ? cumulative_seqlens_q : nullptr,
+      local_window_size_));
 
   if (!skip_unpack_repack) {
     ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, &output_padded,
