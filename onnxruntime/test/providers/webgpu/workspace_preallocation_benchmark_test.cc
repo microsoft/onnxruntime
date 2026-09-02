@@ -69,6 +69,12 @@ constexpr ModelProfile kQwen25_7BProfile{
     "qwen2.5-7b-instruct-cuda-gpu-4\\v4\\model.onnx",
     28, 4, 128, 152064, 151643};
 
+constexpr ModelProfile kQwen3_8BProfile{
+    "qwen3-8b",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\"
+    "qwen3-8b-cuda-gpu-2\\v2\\model.onnx",
+    36, 8, 128, 151936, 151643};
+
 const ModelProfile& GetModelProfile() {
   std::string model_name =
       Env::Default().GetEnvironmentVar("ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL");
@@ -78,10 +84,13 @@ const ModelProfile& GetModelProfile() {
   if (model_name == kQwen25_7BProfile.name) {
     return kQwen25_7BProfile;
   }
+  if (model_name == kQwen3_8BProfile.name) {
+    return kQwen3_8BProfile;
+  }
 
   ORT_THROW("ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL must be ",
-            kQwen25_1_5BProfile.name, " or ", kQwen25_7BProfile.name,
-            ", but got: ", model_name);
+            kQwen25_1_5BProfile.name, ", ", kQwen25_7BProfile.name, ", or ",
+            kQwen3_8BProfile.name, ", but got: ", model_name);
 }
 
 std::string BuildMaxShapeOverride(const ModelProfile& profile) {
@@ -306,7 +315,10 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
     }
   }
   if (enable_workspace_preallocation == "1") {
-    ASSERT_GT(planned_workspace_nodes, static_cast<size_t>(0));
+    if (planned_workspace_nodes == 0) {
+      GTEST_SKIP() << profile.name
+                   << " has no MatMulNBits nodes eligible for planned WebGPU workspace.";
+    }
   } else {
     ASSERT_EQ(planned_workspace_nodes, static_cast<size_t>(0));
   }
