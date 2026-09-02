@@ -129,11 +129,13 @@ void VerifyTensorSequenceAndOptionalTypes(ONNX_NAMESPACE::TensorProto_DataType p
 
   ONNX_NAMESPACE::TypeProto optional_tensor;
   optional_tensor.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor);
-  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_tensor), DataTypeImpl::GetOptionalType<Tensor, T>());
+  const auto optional_tensor_type = DataTypeImpl::GetOptionalType<Tensor, T>();
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_tensor), optional_tensor_type);
 
   ONNX_NAMESPACE::TypeProto optional_sequence;
   optional_sequence.mutable_optional_type()->mutable_elem_type()->CopyFrom(sequence);
-  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_sequence), DataTypeImpl::GetOptionalType<TensorSeq, T>());
+  const auto optional_sequence_type = DataTypeImpl::GetOptionalType<TensorSeq, T>();
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_sequence), optional_sequence_type);
 
   const auto optional_type_info = OrtTypeInfo::FromTypeProto(optional_sequence);
   ASSERT_EQ(optional_type_info->type, ONNX_TYPE_OPTIONAL);
