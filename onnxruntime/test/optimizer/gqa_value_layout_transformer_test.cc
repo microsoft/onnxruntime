@@ -82,6 +82,12 @@ struct BuildOptions {
   // Bind one graph input to both past_key and past_value. Graph::GetConsumerNodes() de-duplicates by
   // node index, so the boundary still looks singly consumed even though two inputs read it.
   bool past_key_and_value_shared = false;
+  // With already_transformed: give the internal BNSH present_value a second, unrelated consumer. The
+  // conversion is still in place and must be recognized despite the extra reader.
+  bool extra_internal_present_consumer = false;
+  // Keep present_value as a graph output and also transpose it to a second graph output. The operand
+  // is application visible and unconverted, so it must not be mistaken for an already converted node.
+  bool present_value_also_transposed_to_output = false;
 
   bool TransposedPastValue() const { return partially_transformed || already_transformed; }
 
@@ -194,6 +200,18 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
 
   if (bnhs_present_target != nullptr) {
     Node& transpose = builder.AddNode("Transpose", {present_value}, {bnhs_present_target});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  }
+
+  if (opts.extra_internal_present_consumer) {
+    NodeArg* extra_output = builder.MakeOutput<MLFloat16>(present_shape);
+    builder.AddNode("Identity", {present_value}, {extra_output});
+  }
+
+  if (opts.present_value_also_transposed_to_output) {
+    NodeArg* transposed_output = builder.MakeOutput<MLFloat16>(
+        std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, opts.PresentCacheLength()});
+    Node& transpose = builder.AddNode("Transpose", {present_value}, {transposed_output});
     transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
   }
 
@@ -894,6 +912,57 @@ TEST_F(GqaValueLayoutTransformerTest, RecordsBoundariesForAnAlreadyTransformedMo
   // And the diagnostic must then flag them, because the Transposes are still in the graph.
   const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
   EXPECT_EQ(unfused.size(), 2u);
+}
+
+// The BNSH result of an already converted node may legitimately feed other internal BNSH readers
+// besides the boundary Transpose. Treating that as out of scope would drop the boundary from the
+// post-partition diagnostic and log a misleading warning for an operand that is in fact converted.
+TEST_F(GqaValueLayoutTransformerTest, RecognizesConversionWhenPresentValueHasExtraInternalConsumers) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutExtraPresentConsumer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  opts.extra_internal_present_consumer = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  ASSERT_EQ(graph.GetConsumerNodes(gqa->OutputDefs()[2]->Name()).size(), 2u)
+      << "fixture must give present_value a second consumer";
+
+  GqaValueLayoutBoundaries boundaries;
+  GqaValueLayoutTransformer transformer{&boundaries};
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+  EXPECT_EQ(FindConvertedGqaValueLayoutBoundaries(graph).present_value_outputs.size(), 1u);
+}
+
+// The mirror image: a present_value that is itself a graph output has not been converted, however it
+// is consumed downstream. Mistaking it for the intermediate of an already converted node would leave
+// an application-visible output in BNSH after the session accepted BNHS.
+TEST_F(GqaValueLayoutTransformerTest, DoesNotMistakeAGraphOutputPresentValueForAConvertedOne) {
+  BuildOptions opts;
+  opts.present_value_also_transposed_to_output = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  // Classified convertible, then rejected because converting it would hand the internal Transpose
+  // BNHS data where it expects BNSH. Silently skipping it would be the real bug.
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires it to have no internal consumers");
 }
 
 // An ORT format model converted after the transform was applied is loaded without the option, so
