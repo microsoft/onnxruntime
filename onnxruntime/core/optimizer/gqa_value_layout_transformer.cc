@@ -479,6 +479,33 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
   return Status::OK();
 }
 
+GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph) {
+  GqaValueLayoutBoundaries boundaries;
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention" || node.Domain() != kMSDomain) {
+      continue;
+    }
+
+    OperandStatus past_value_status = OperandStatus::kAbsent;
+    std::string past_value_boundary;
+    // ClassifyPastValue() can fail on an overridable-initializer past_value. That is not this
+    // function's concern -- it only reports what is already converted -- so the status is ignored and
+    // such a node simply contributes nothing.
+    if (ClassifyPastValue(graph, node, past_value_status, past_value_boundary).IsOK() &&
+        past_value_status == OperandStatus::kConverted) {
+      boundaries.past_value_inputs.push_back(past_value_boundary);
+    }
+
+    std::string present_value_boundary;
+    if (ClassifyPresentValue(graph, node, present_value_boundary) == OperandStatus::kConverted) {
+      boundaries.present_value_outputs.push_back(present_value_boundary);
+    }
+  }
+
+  return boundaries;
+}
+
 InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& graph,
                                                                  const GqaValueLayoutBoundaries& boundaries,
                                                                  const logging::Logger& logger) {
@@ -506,9 +533,17 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
   };
 
   for (const auto& boundary_name : boundaries.past_value_inputs) {
-    // The graph input feeds the Transpose, so look at what consumes it.
-    const auto consumers = graph.GetConsumerNodes(boundary_name);
-    report(boundary_name, consumers.size() == 1 ? consumers[0] : nullptr, "past_value");
+    // The graph input feeds the Transpose, so look at what consumes it. Search the consumers rather
+    // than requiring a single one: a BNHS boundary may legitimately have other BNHS readers, and
+    // demanding sole consumership here would suppress the warning while the Transpose still runs.
+    const Node* transpose = nullptr;
+    for (const Node* consumer : graph.GetConsumerNodes(boundary_name)) {
+      if (consumer != nullptr && IsValueLayoutTranspose(*consumer)) {
+        transpose = consumer;
+        break;
+      }
+    }
+    report(boundary_name, transpose, "past_value");
   }
 
   for (const auto& boundary_name : boundaries.present_value_outputs) {

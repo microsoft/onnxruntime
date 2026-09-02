@@ -1333,6 +1333,27 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 #endif
 }
 
+namespace {
+// Validates the GroupQueryAttention Value layout session option and returns the requested layout.
+//
+// An unrecognized value is a caller mistake regardless of model format, so this has to run before any
+// format-specific restriction; otherwise a typo like "NHWC" would be reported as an ORT format
+// limitation instead of naming the bad value and the accepted ones.
+//
+// Defined outside the !ORT_MINIMAL_BUILD block because PartitionOrtFormatModel() also needs it.
+Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layout) {
+  layout = config_options.GetConfigOrDefault(kOrtSessionOptionsGqaValueLayout, kGqaValueLayoutBNSH);
+
+  if (layout != kGqaValueLayoutBNSH && layout != kGqaValueLayoutBNHS) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid value for session option '", kOrtSessionOptionsGqaValueLayout, "': '", layout,
+                           "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS, "'.");
+  }
+
+  return Status::OK();
+}
+}  // namespace
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
@@ -1643,21 +1664,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // cmake/onnxruntime_optimizer.cmake, which is safe because this whole function is inside the
   // !defined(ORT_MINIMAL_BUILD) block, and an extended minimal build defines ORT_MINIMAL_BUILD too.
   // A minimal build reaches PartitionOrtFormatModel() instead, which rejects the option there.
-  const std::string gqa_value_layout =
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGqaValueLayout, kGqaValueLayoutBNSH);
+  // An unrecognized value is the caller passing a bad argument, so GetGqaValueLayout() reports
+  // INVALID_ARGUMENT. A recognized value that this particular model cannot satisfy is reported as
+  // FAIL by the transformer, which keeps the two situations distinguishable to an application that
+  // wants to fall back to BNSH.
+  std::string gqa_value_layout;
+  ORT_RETURN_IF_ERROR_SESSIONID_(GetGqaValueLayout(session_options_.config_options, gqa_value_layout));
+
   GqaValueLayoutBoundaries converted_gqa_value_boundaries;
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
-    // An unrecognized value is the caller passing a bad argument, so report INVALID_ARGUMENT. A
-    // recognized value that this particular model cannot satisfy is reported as FAIL by the
-    // transformer, which keeps the two situations distinguishable to an application that wants to
-    // fall back to BNSH.
-    if (gqa_value_layout != kGqaValueLayoutBNHS) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(
-          ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                          "Invalid value for session option '", kOrtSessionOptionsGqaValueLayout, "': '",
-                          gqa_value_layout, "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS, "'."));
-    }
-
     GqaValueLayoutTransformer gqa_value_layout_transformer{&converted_gqa_value_boundaries};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout_transformer, *session_logger_, graph));
   }
@@ -2350,14 +2365,30 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   //
   // Deliberately not guarded on the build flavour: a minimal build serves ORT format models only, so
   // this is the only place the option can be caught there.
-  if (sess_options.config_options.GetConfigOrDefault(kOrtSessionOptionsGqaValueLayout, kGqaValueLayoutBNSH) !=
-      kGqaValueLayoutBNSH) {
+  //
+  // Validate the value before applying the format restriction, so that a typo is reported as a bad
+  // option value naming the accepted ones, rather than as an ORT format limitation.
+  std::string gqa_value_layout;
+  ORT_RETURN_IF_ERROR(GetGqaValueLayout(sess_options.config_options, gqa_value_layout));
+  if (gqa_value_layout != kGqaValueLayoutBNSH) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Session option '", kOrtSessionOptionsGqaValueLayout,
                            "' is not supported for ORT format models. Apply the Value layout transform when "
                            "converting the model to ORT format and load it without setting this option, or load the "
                            "ONNX model instead.");
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // A model converted to ORT format after the transform was applied still carries the Transposes, and
+  // is loaded without the option (the check above requires that). Detect those boundaries anyway so
+  // the same unfused-Transpose diagnostic is available here; otherwise such a model silently pays the
+  // full-cache copies with nothing in the logs.
+  //
+  // Detected before partitioning, while the GQA nodes are still present to anchor on. Only in a full
+  // build: gqa_value_layout_transformer.cc is not in the minimal source lists, and this is a
+  // developer diagnostic rather than something correctness depends on.
+  const GqaValueLayoutBoundaries converted_gqa_value_boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+#endif
 
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
@@ -2389,6 +2420,14 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             logger,
                                             nullptr /*layering_index*/,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // kOrtFormatLoad does compile and fuse, unlike the kAssignOnly pass used when writing an ORT format
+  // model, so a surviving Transpose here really will execute.
+  if (!converted_gqa_value_boundaries.Empty()) {
+    ReportUnfusedGqaValueLayoutTransposes(graph, converted_gqa_value_boundaries, logger);
+  }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // a compiling EP (e.g. CoreML) may copy initializers to its own memory. run the cleanup of unused initializers
