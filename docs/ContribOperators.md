@@ -5460,6 +5460,15 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      
+        The GeGLU (GELU-Gated Linear Unit) activation function is like SwiGLU but uses a GELU gate instead of Swish:
+           g = xW + b
+           l = xV + c
+           G = clamp(g, max=limit)
+           L = clamp(l, min=-limit, max=limit)
+           geglu = gelu(alpha * G) * (L + beta)
+        where gelu is the tanh approximation gelu(z) = 0.5 * z * (1 + tanh(0.7978845608 * (z + 0.044715 * z^3))), matching HF gelu_pytorch_tanh.
+        GeGLU on CPU QMoE is only supported with the interleaved fused layout, so swiglu_fusion=1 is required: g and l are interleaved on each row of size 2 * inter_size (g at even positions, l at odd positions). The swiglu_limit attribute is reused as the clamp limit for GeGLU.
         
 
 #### Version
@@ -5474,7 +5483,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu, geglu and identity. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
