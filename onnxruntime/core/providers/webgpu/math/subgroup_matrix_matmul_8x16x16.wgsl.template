@@ -23,11 +23,18 @@
 // distributed round-robin across the subgroups, each accumulates its own partial
 // tile in shared memory, and the partials are summed at write-out.
 //
-// Preconditions enforced by the host: K % sg_mat_k == 0, and B's row stride N_b
-// is even (the load requires 4-byte-aligned row starts). M and N may be any size;
-// partial tiles are handled by bounds-checked stores. Out-of-range A/B loads
-// return zero (WebGPU bounds checking). Output width/stride uses N (not N_b), so
-// any padded B columns in [N, N_b) are read but never written.
+// Preconditions enforced by the host: K % sg_mat_k == 0; B's row stride N_b is
+// even (the load requires 4-byte-aligned row starts); and the tile fits the
+// matrix (kTileM <= M, kTileN <= N - the host falls back otherwise). M and N may
+// otherwise be any size: a trailing partial tile is shifted back to end exactly
+// at M / N_b so no operand load runs past the end of A or B, and the rows/columns
+// the shifted tile re-covers are skipped at write-out. The shift is required for
+// correctness, not just safety - a subgroupMatrixLoad whose footprint leaves the
+// buffer does not degrade to a per-element zero fill: Tint's robustness transform
+// resets the whole load to offset 0 with the minimum stride, so it silently
+// returns a different, valid tile, which would corrupt the in-range rows of that
+// tile too. Output width/stride uses N (not N_b), so a padded B column in
+// [N, N_b) may be read but is never written.
 //
 // Batching: the host dispatches one num_n_tile x num_m_tile tile grid per batch
 // slice; the batch slice is recovered from the flattened workgroup_idx (the
@@ -74,9 +81,16 @@ $MAIN {
     let batch_id = workgroup_idx / tiles_per_slice;     // which batch slice (0 for a shared 2D weight)
     let slice_idx = workgroup_idx % tiles_per_slice;    // tile index within the slice
     let n_tile = slice_idx % uniforms.num_n_tile;       // which kTileN-wide column tile
-    let global_base_n = n_tile * kTileN;
     let m_tile = slice_idx / uniforms.num_n_tile;       // which kTileM-tall row tile
-    let m_base = m_tile * kTileM;
+    let n_tile_start = n_tile * kTileN;
+    let m_tile_start = m_tile * kTileM;
+    // Shift a trailing partial tile back so its operand loads stay inside A and B.
+    // The N shift uses B's padded stride N_b so the shifted origin stays even (the
+    // load needs 4-byte-aligned row starts); the extra column is clipped at
+    // write-out. The max() only guards the u32 subtraction; the host guarantees
+    // the tile fits.
+    let global_base_n = min(n_tile_start, max(uniforms.N_b, kTileN) - kTileN);
+    let m_base = min(m_tile_start, max(uniforms.M, kTileM) - kTileM);
     // Flat-element offsets into A/B/output for this batch slice, derived from
     // M/N/K. For a shared 2D weight batch_id is 0, so B collapses to its base.
     let a_batch_offset = batch_id * uniforms.M * uniforms.K;
@@ -468,15 +482,18 @@ $MAIN {
     // Write-out pass: every subgroup writes out whole M-rows from the summed tile
     // in slot 0, striding by kSplitK subgroups (subgroup sg_index handles rows
     // sg_index, sg_index + kSplitK, ...). The subgroup's lanes cooperate on a
-    // row's N elements (strided by the subgroup size). M and N are bounds-checked
-    // so non-multiple dimensions only write valid data.
+    // row's N elements (strided by the subgroup size). Rows and columns before the
+    // unshifted tile origin belong to the previous tile and are skipped, so a
+    // shifted tile never writes the same output element twice; M and N are
+    // bounds-checked so non-multiple dimensions only write valid data.
+    let n_skip = n_tile_start - global_base_n;
     let n_count = min(kTileN, uniforms.N - global_base_n);
     for (var r: u32 = sg_index; r < kTileM; r = r + kSplitK) {
         let global_m = m_base + r;
-        if (global_m < uniforms.M) {
+        if (global_m >= m_tile_start && global_m < uniforms.M) {
             let scratch_base = r * kTileN;
             let out_base = out_batch_offset + global_m * uniforms.N + global_base_n;
-            for (var i: u32 = sg_lane; i < n_count; i = i + kSubgroupSize) {
+            for (var i: u32 = sg_lane + n_skip; i < n_count; i = i + kSubgroupSize) {
                 var val = output_element_t(scratch[scratch_base + i]);
 #if has_bias
                 val += bias[global_base_n + i];
