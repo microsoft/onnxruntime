@@ -78,18 +78,10 @@ void RunOnSupportedProviders(OpTester& test) {
   }
 }
 
-// Deterministic ramp of `count` values starting at `start` and advancing by `step`. Deterministic
-// inputs keep the hand-computed expectations in the vectorized tests reproducible.
-std::vector<float> MakeRamp(size_t count, float start, float step) {
-  std::vector<float> values(count);
-  for (size_t i = 0; i < count; ++i) {
-    values[i] = start + step * static_cast<float>(i);
-  }
-  return values;
-}
-
-// Deterministic values bounded to [-1, 1]. A ramp would grow without bound over the hundreds of
-// channels the multi-iteration reduction test needs, which saturates the gate and hides errors.
+// Deterministic values bounded to [-1, 1]. Deterministic inputs keep the expectations in the
+// vectorized tests reproducible, and the bound matters because a plain ramp would grow without
+// limit over the hundreds of channels the multi-iteration reduction test needs, saturating the gate
+// and hiding exactly the accumulation errors that case is meant to catch.
 std::vector<float> MakeWave(size_t count, float phase, float step) {
   std::vector<float> values(count);
   for (size_t i = 0; i < count; ++i) {
