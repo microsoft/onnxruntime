@@ -26,6 +26,27 @@
 namespace onnxruntime {
 namespace concurrency {
 
+#if (defined(_M_AMD64) || defined(__x86_64__)) && \
+    !defined(_M_ARM64EC) &&                       \
+    !defined(__ANDROID__) &&                      \
+    !defined(__APPLE__)
+#if defined(_WIN32) || defined(__WAITPKG__)
+// clang (including clang-cl) gates the _tpause intrinsic behind the 'waitpkg'
+// target feature and refuses to emit it from a function that was not compiled
+// with that feature. Isolate the intrinsic in a helper carrying the target
+// attribute so it is never inlined into SpinPause(); the call remains
+// runtime-guarded by CPUIDInfo::HasTPAUSE(). MSVC does not feature-gate
+// intrinsics and ignores the (clang-only) attribute.
+#if defined(__clang__)
+__attribute__((target("waitpkg")))
+#endif
+inline void
+OrtTPause(uint64_t deadline) {
+  _tpause(0x0, deadline);
+}
+#endif
+#endif
+
 // Intrinsic to use in spin-loops
 void SpinPause() {
 #if (defined(_M_AMD64) || defined(__x86_64__)) && \
@@ -37,7 +58,7 @@ void SpinPause() {
   static constexpr uint64_t tpause_spin_delay_cycles = 1000;
   if (has_tpause) {
 #if defined(_WIN32) || defined(__WAITPKG__)
-    _tpause(0x0, __rdtsc() + tpause_spin_delay_cycles);
+    OrtTPause(__rdtsc() + tpause_spin_delay_cycles);
 #else
     _mm_pause();
 #endif
