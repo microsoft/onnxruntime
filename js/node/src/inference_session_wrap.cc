@@ -458,11 +458,24 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   }
 
   void OnError(const Napi::Error& error) override {
-    Complete();
-    Settle([&] { deferred_.Reject(error.Value()); });
+    try {
+      Complete();
+      Settle([&] { deferred_.Reject(error.Value()); });
+    } catch (...) {
+      // See Settle(): nothing may escape a completion callback.
+    }
   }
 
   void OnOK() override {
+    // See Settle(): nothing may escape a completion callback, including from the handlers below or
+    // from Complete(), which calls into ORT.
+    try {
+      DeliverOutputs();
+    } catch (...) {
+    }
+  }
+
+  void DeliverOutputs() {
     Napi::HandleScope scope(env_);
     try {
       // Build the result first. OrtValueToNapiValue() runs the Javascript Tensor constructor and can
@@ -520,13 +533,20 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
  private:
 
+  // Settling can itself fail while the environment is being torn down: node-addon-api turns an
+  // exception escaping OnOK()/OnError() into a Javascript one, and that conversion throws in turn,
+  // reaching std::terminate through libuv's C frames. Nobody is left to observe the promise at that
+  // point, so drop the failure rather than take the process down.
   template <typename Fn>
   void Settle(Fn&& settle) {
     if (settled_) {
       return;
     }
     settled_ = true;
-    settle();
+    try {
+      settle();
+    } catch (...) {
+    }
   }
 
   void Complete() {
@@ -536,10 +556,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     completed_ = true;
 
     ReleaseOutputBufferLeases();
-
-    // Ort::IoBinding references the session, so it must go before EndRun() may tear the session
-    // down; Execute() has already dropped it under the device lock on every path that created one.
-    io_binding_.reset();
 
     // The remaining values may be device-backed, and releasing those is device work. Hand them over
     // rather than destroying them here: this runs on the Javascript thread, where taking the device
@@ -672,8 +688,9 @@ void InferenceSessionWrap::TeardownSession() {
     // a manager bound to the shared device context. Hand it over so that happens under the device
     // lock instead of on the Javascript thread while another session is encoding.
     OrtInstanceData::ReleaseDeviceObject(std::move(session_));
+  } else {
+    session_.reset();
   }
-  session_.reset();
 }
 
 std::unique_lock<std::mutex> InferenceSessionWrap::LockDeviceIfRequired() {
