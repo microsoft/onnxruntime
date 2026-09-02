@@ -90,7 +90,7 @@ Parity work includes:
 - Error and diagnostic behavior.
 - Process, environment, factory, and session lifetime behavior.
 
-The direct in-tree WebGPU provider path remains only as a temporary comparison baseline.
+The WebGPU non-plugin path remains only as a temporary comparison baseline.
 
 ## Plugin API gap closure
 
@@ -140,7 +140,7 @@ The bridge should not expose unrelated ORT private implementation details.
    plugin-path change lands, since the size and latency completion criteria are relative to them.
 2. **Static registration core:** implement and contract-test generic static factory registration.
 3. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
-4. **Emscripten prototype:** compile the adapter path statically and run a small model.
+4. **Emscripten prototype:** compile the plugin path statically and run a small model.
 5. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
 6. **Browser bridge:** specify and prototype object and lifetime exchange.
 7. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.

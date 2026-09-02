@@ -18,7 +18,7 @@ The WebGPU repository owns:
 
 - `OrtEpFactory` and `OrtEp` provider implementation.
 - WebGPU kernels, contrib kernels, runtime, and device infrastructure.
-- WebGPU-owned support code copied or replaced from ORT.
+- WebGPU-owned support code copied from ORT.
 - Dawn selection, patches, and build configuration.
 - WGSL templates, generators, and generated-source policy.
 - WebGPU-specific unit, integration, package, and regression tests, and browser tests of provider behavior.
@@ -38,7 +38,7 @@ rather than moved. The WebNN code in that directory is unaffected by this work.
 
 Expand the existing `plugin-ep-webgpu/` directory into the in-tree staging root. It already owns Python and NuGet
 plugin packaging, version metadata, and release documentation. Add provider source, build, dependency, and test
-ownership until the directory mirrors the intended external repository:
+ownership until the directory mirrors the intended external repository. An example directory structure:
 
 ```text
 plugin-ep-webgpu/
