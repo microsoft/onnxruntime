@@ -302,12 +302,17 @@ class MlasLinearAttentionTest : public MlasTestBase {
         // d_k not a multiple of 4, all three remainders. The SVE kernel loads
         // key/query/decay weights four at a time for its lane-indexed FMA, so
         // these are the only shapes that reach its scalar remainder path -- and
-        // every other d_k in this table is a multiple of 4. d_v is kept at or
-        // above 32 so a full column panel is exercised too, not just the
-        // trailing partial one.
-        {13, 64},
-        {14, 32},
-        {15, 96},
+        // every other d_k in this table is a multiple of 4. That path lives in
+        // the hand-written FULL-panel bodies, which only run when d_v holds a
+        // complete panel: 8 vectors of svcntw() words, i.e. 8 * 64 = 512 floats
+        // at the architectural maximum VL of 2048 bits. d_v = 512 therefore
+        // guarantees at least one full panel -- and so remainder coverage in
+        // the assembly -- at every legal vector length, where a smaller d_v
+        // would quietly demote these cases to the trailing-panel intrinsics at
+        // larger VLs and test nothing.
+        {13, 512},
+        {14, 512},
+        {15, 512},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,
