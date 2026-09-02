@@ -20,8 +20,7 @@ fn kv_cache_quant_unpack_vec4(packed: u32) -> q_value_t {
       q_element_t(tq_lut[(packed >> (3u * KV_CACHE_QUANT_BITS)) & KV_CACHE_QUANT_VALUE_MASK]));
 #else
   let bytes = vec4<u32>(packed, packed >> 8u, packed >> 16u, packed >> 24u) & vec4<u32>(0xffu);
-  let signed_values =
-      vec4<i32>(bytes) - select(vec4<i32>(0), vec4<i32>(256), bytes >= vec4<u32>(128u));
+  let signed_values = vec4<i32>(bytes) - vec4<i32>(128);
   return q_value_t(signed_values);
 #endif
 }

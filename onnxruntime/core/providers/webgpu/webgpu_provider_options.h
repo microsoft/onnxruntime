@@ -71,7 +71,7 @@ constexpr const char* kPreserveDevice_OFF = "0";
 
 // kKvCacheQuantizationBits value is the number of quantization bits as a string.
 // "0" disables quantization, "4" selects TurboQuant centroid indices, and "8" selects
-// symmetric signed-value block quantization.
+// symmetric block quantization with offset-binary storage.
 constexpr const char* kKvCacheQuantizationBits_OFF = "0";
 constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
 constexpr const char* kKvCacheQuantizationBits_8Bit = "8";

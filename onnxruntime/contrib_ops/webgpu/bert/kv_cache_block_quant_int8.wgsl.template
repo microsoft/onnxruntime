@@ -133,7 +133,7 @@ $MAIN {
   let inv_scale = select(0.0f, 1.0f / quant_scale, quant_scale > 0.0f);
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
     let quantized = i32(clamp(round(block_values[i] * inv_scale), -127.0f, 127.0f));
-    quantized_values[i] = u32(quantized) & 0xffu;
+    quantized_values[i] = u32(quantized + 128);
   }
   workgroupBarrier();
 

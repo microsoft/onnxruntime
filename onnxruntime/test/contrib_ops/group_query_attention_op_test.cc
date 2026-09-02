@@ -4333,7 +4333,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Float16) {
   ExpectFiniteNonzeroOutput(output, "Q8 float16 prefill");
 }
 
-TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesSymmetricInt8Storage) {
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesOffsetBinaryStorage) {
   auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
@@ -4356,8 +4356,8 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesSymmetricInt8Storage) {
     value[i] = static_cast<float>(value_q) / 127.0f;
     const int word = 1 + i / 4;
     const int shift = (i % 4) * 8;
-    expected_key[word] |= (static_cast<uint32_t>(key_q) & 0xffu) << shift;
-    expected_value[word] |= (static_cast<uint32_t>(value_q) & 0xffu) << shift;
+    expected_key[word] |= static_cast<uint32_t>(key_q + 128) << shift;
+    expected_value[word] |= static_cast<uint32_t>(value_q + 128) << shift;
   }
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
