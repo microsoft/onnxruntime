@@ -46,6 +46,8 @@ std::optional<MatMulNaiveProgramInfo> AnalyzeMatMulNaiveProgram(
   const size_t output_rank = output_shape.NumDimensions();
   const TensorShape outer_dims =
       output_rank > 2 ? output_shape.Slice(0, output_rank - 2) : TensorShape({});
+  const int64_t output_rows =
+      a_shape.NumDimensions() > 1 ? a_shape[a_shape.NumDimensions() - 2] : 1;
 
   return MatMulNaiveProgramInfo{
       m,
@@ -59,7 +61,7 @@ std::optional<MatMulNaiveProgramInfo> AnalyzeMatMulNaiveProgram(
       output_rank,
       ReduceShapeByComponents(a_shape, a_components),
       ReduceShapeByComponents(b_shape, components),
-      TensorShape({outer_dims.Size(), m, n / components}),
+      TensorShape({outer_dims.Size(), output_rows, n / components}),
       outer_dims};
 }
 
@@ -176,22 +178,34 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     inputs[2] = bias;
   }
 
+  // ComputeMatMul operates on matrices or batched matrices. Promote ONNX MatMul's
+  // rank-1 operands to matrix views while keeping the logical output shape above.
+  Tensor promoted_a;
+  Tensor promoted_b;
+  if (a->Shape().NumDimensions() == 1) {
+    promoted_a = CreateTensorView(*a, TensorShape({1, a->Shape()[0]}));
+    inputs[0] = &promoted_a;
+  }
+  if (b->Shape().NumDimensions() == 1) {
+    promoted_b = CreateTensorView(*b, TensorShape({b->Shape()[0], 1}));
+    inputs[1] = &promoted_b;
+  }
+
   return ComputeMatMul(&context, Activation(), inputs, output_tensor,
-                       /*is_channels_last=*/false, TensorShape(), TensorShape(),
-                       &compute_cache_, b_is_constant_);
+                       /*is_channels_last=*/true, &compute_cache_, b_is_constant_);
 }
 
 Status ComputeMatMul(ComputeContext* context,
                      const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
-                     const TensorShape& input_a_reshape,
-                     const TensorShape& input_b_reshape,
                      MatMulComputeCache* cache,
                      bool b_is_constant) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
-  const TensorShape logical_a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
-  const TensorShape logical_b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
+  const TensorShape& logical_a_shape = a->Shape();
+  const TensorShape& logical_b_shape = b->Shape();
+  ORT_RETURN_IF_NOT(logical_a_shape.NumDimensions() >= 2 && logical_b_shape.NumDimensions() >= 2,
+                    "ComputeMatMul expects matrix or batched-matrix inputs.");
   TensorShape a_shape = logical_a_shape;
   TensorShape b_shape = logical_b_shape;
 
@@ -262,32 +276,8 @@ Status ComputeMatMul(ComputeContext* context,
     return context->RunProgram(program);
   }
 
-  // The generic and Intel programs operate on matrices. MatMulComputeHelper accepts
-  // rank-1 operands using ONNX's implicit row/column promotion, so mirror that
-  // promotion in the program metadata before indexing the last two dimensions.
-  TensorShape intel_a_shape = logical_a_shape;
-  TensorShape intel_b_shape = logical_b_shape;
-  const bool has_vector_operand = logical_a_shape.NumDimensions() == 1 ||
-                                  logical_b_shape.NumDimensions() == 1;
-  if (logical_a_shape.NumDimensions() == 1) {
-    intel_a_shape = TensorShape({1, logical_a_shape[0]});
-    a_shape = intel_a_shape;
-  }
-  if (logical_b_shape.NumDimensions() == 1) {
-    intel_b_shape = TensorShape({logical_b_shape[0], 1});
-    if (b_shape.NumDimensions() == 1) {
-      b_shape = intel_b_shape;
-    }
-  }
-  if (has_vector_operand) {
-    MatMulComputeHelper program_helper;
-    ORT_THROW_IF_ERROR(program_helper.Compute(a_shape, b_shape));
-    output_shape = program_helper.OutputShape();
-  }
-
   if (intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
-    return intel::ApplyMatMulIntel(*context, activation, inputs, intel_a_shape, intel_b_shape,
-                                   output_tensor, is_channels_last);
+    return intel::ApplyMatMulIntel(*context, activation, inputs, output_tensor, is_channels_last);
   }
 
   // helpful dimension variables
@@ -337,10 +327,9 @@ Status ComputeMatMul(ComputeContext* context,
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context->KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context->GetSplitKConfig();
-    const bool split_k_layout_supported = !has_bias || is_channels_last;
     const bool need_split_k = split_k_config.UseSplitK(
         is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer,
-        dim_inner, split_k_layout_supported);
+        dim_inner, is_channels_last);
     if (need_split_k) {
       ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
 

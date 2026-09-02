@@ -43,15 +43,13 @@ bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, in
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
                         const std::vector<const Tensor*>& inputs,
-                        const TensorShape& input_a_shape,
-                        const TensorShape& input_b_shape,
                         Tensor* output,
                         bool is_channels_last) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
-  TensorShape a_shape = input_a_shape;
-  TensorShape b_shape = input_b_shape;
+  TensorShape a_shape = a->Shape();
+  TensorShape b_shape = b->Shape();
 
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));

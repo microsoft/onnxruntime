@@ -48,8 +48,6 @@ class MatMulComputeCache {
 };
 
 Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last = true,
-                     const TensorShape& input_a_reshape = TensorShape(),
-                     const TensorShape& input_b_reshape = TensorShape(),
                      MatMulComputeCache* cache = nullptr,
                      bool b_is_constant = false);
 

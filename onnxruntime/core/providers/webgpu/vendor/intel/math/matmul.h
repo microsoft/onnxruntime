@@ -51,8 +51,6 @@ bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, in
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
                         const std::vector<const Tensor*>& inputs,
-                        const TensorShape& a_shape,
-                        const TensorShape& b_shape,
                         Tensor* output,
                         bool is_channels_last);
 

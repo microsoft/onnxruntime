@@ -56,6 +56,17 @@ TEST(MatMulNaiveProgramTest, FlattensBroadcastDimensionsForShaderIndexing) {
   EXPECT_EQ(info->output_program_shape.AsShapeVector(), TensorShapeVector({6, 4, 3}));
 }
 
+TEST(MatMulNaiveProgramTest, UsesPhysicalRowsForShared2DWeight) {
+  const auto info = webgpu::AnalyzeMatMulNaiveProgram(
+      TensorShape({2, 2, 3, 2}), TensorShape({2, 1}),
+      /*is_channels_last=*/false);
+
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->M, 12u);
+  EXPECT_EQ(info->outer_dims.AsShapeVector(), TensorShapeVector({2, 2}));
+  EXPECT_EQ(info->output_program_shape.AsShapeVector(), TensorShapeVector({4, 3, 1}));
+}
+
 TEST(MatMulNaiveProgramTest, DeclinesNonSmallProblem) {
   EXPECT_FALSE(webgpu::AnalyzeMatMulNaiveProgram(
                    TensorShape({1, 64, 8}), TensorShape({1, 8, 6}),
