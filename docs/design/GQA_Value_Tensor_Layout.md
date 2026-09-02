@@ -307,11 +307,19 @@ skipping would make the option self-inconsistent, so `ClassifyNode` returns an e
 - **A Value cache tensor that is not rank 4** (a declared shape of any other rank; an undeclared shape
   imposes no constraint and is fine).
 
-**Check order matters.** `ValidateCacheFormat` (the 4-bit check) runs *before* the layout-state switch
-in `ClassifyNode`, not after it. A 4-bit cache is unsupported whether this run would insert the
-Transposes or a previous one already did, so recognizing an already-converted node and returning early
-would let such a model initialize and then execute the invalid byte-wise transpose on a non-fusing EP. The rank check stays after the switch, because it only constrains a conversion this
-run is about to perform.
+**Check order matters.** `ValidateCacheFormat` (the 4-bit check) runs *after* operand classification,
+and only for a node with at least one operand `kConverted` or `kConvertible`. Both halves of that are
+load-bearing:
+
+- It must cover `kConverted`, not just `kConvertible`. A 4-bit cache is unsupported whether this run
+  would insert the Transposes or a previous one already did; skipping an already-converted node would
+  let such a model initialize and then execute the invalid byte-wise transpose on a non-fusing EP.
+- It must **not** run for a node with no operand in scope. A GQA node whose Value caches are entirely
+  internal is untouched by the option, so rejecting the model for its cache format would contradict
+  the per-boundary scope above and stop an otherwise fine BNSH cache from running.
+
+The rank check stays with the per-operand conversion checks, because it only constrains a conversion
+this run is about to perform.
 
 Supporting shared boundaries would mean converting each boundary once and rewiring every BNSH user of
 it, which is more than this design needs for the single-cache-per-layer models it targets.
@@ -486,7 +494,9 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - Errors, per section 3.5: a `past_value` graph input shared by two GQA nodes; a `present_value` graph
   output also consumed inside the graph; a node with the layout applied to only one operand; a 4-bit
   quantized Value cache; a `past_value` whose declared shape is not rank 4; a `past_value` also bound
-  to `past_key` on the same node. The rank case needs
+  to `past_key` on the same node.
+- A 4-bit Value cache is **accepted** as a no-op when both operands are internal, since the option
+  does not touch that node. The test fails against an unconditional format check. The rank case needs
   `strict_shape_type_inference = false` to build, because GQA shape inference validates `past_key`'s
   rank but not `past_value`'s — which is also why the transformer has to check it.
 - An already-converted model is left alone but still records its boundaries, so the 4.2 diagnostic
