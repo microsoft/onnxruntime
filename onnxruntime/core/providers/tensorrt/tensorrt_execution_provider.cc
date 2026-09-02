@@ -4077,6 +4077,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
     }
 
+    // A cached multi-profile engine was built from explicit profiles. Use those profiles as-is instead of
+    // treating the first profile as an implicit profile that can be expanded from runtime input shapes.
+    const bool has_multi_profile_engine =
+        trt_engine != nullptr && trt_engine->getNbOptimizationProfiles() > 1;
+
     // Check and update shape ranges for dynamic shape inputs.
     for (int i = 0, end = num_inputs; i < end; ++i) {
       auto input = trt_state->network->get()->getInput(i);
@@ -4085,7 +4090,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
       // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
       // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
-      if (shape_ranges.find(input_name) != shape_ranges.end()) {
+      if (!has_multi_profile_engine && shape_ranges.find(input_name) != shape_ranges.end()) {
         auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, shape_tensor_values, shape_tensor_values_int64, stream, &engine_update);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");

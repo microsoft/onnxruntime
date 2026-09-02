@@ -771,9 +771,13 @@ void RunWithOneSessionMultiProfiles(bool multi_thread) {
   const std::string context_model_name_string = multi_thread
                                                     ? "trt_execution_provider_multi_profile_multithread_ctx.onnx"
                                                     : "trt_execution_provider_multi_profile_ctx.onnx";
+  const std::string cache_directory = multi_thread
+                                          ? "trt_execution_provider_multi_profile_multithread_cache"
+                                          : "trt_execution_provider_multi_profile_cache";
   const PathString context_model_name = ToPathString(context_model_name_string);
   std::filesystem::remove(model_name);
   std::filesystem::remove(context_model_name);
+  std::filesystem::remove_all(cache_directory);
   CreateBaseModel(model_name, "multi_profile_test", {1, -1, -1});
 
   SessionOptions so;
@@ -793,6 +797,9 @@ void RunWithOneSessionMultiProfiles(bool multi_thread) {
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_embed_mode = 1;
   params.trt_ep_context_file_path = context_model_name_string.c_str();
+  params.trt_engine_cache_enable = 1;
+  params.trt_engine_cache_path = cache_directory.c_str();
+  params.trt_engine_cache_prefix = "multi_profile";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
   ASSERT_STATUS_OK(session_object.Load(model_name));
@@ -851,6 +858,27 @@ void RunWithOneSessionMultiProfiles(bool multi_thread) {
 
   run_profiles(session_object);
 
+  const auto engine_cache_files = GetCachesByType(cache_directory, ".engine");
+  const auto profile_cache_files = GetCachesByType(cache_directory, ".profile");
+  ASSERT_EQ(engine_cache_files.size(), 1);
+  ASSERT_EQ(profile_cache_files.size(), 1);
+  const auto engine_cache = ReadFileFromDisk(engine_cache_files[0]);
+  const auto profile_cache = ReadFileFromDisk(profile_cache_files[0]);
+
+  InferenceSession cache_session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 cache_params;
+  cache_params.trt_engine_cache_enable = 1;
+  cache_params.trt_engine_cache_path = cache_directory.c_str();
+  cache_params.trt_engine_cache_prefix = "multi_profile";
+  ASSERT_STATUS_OK(cache_session.RegisterExecutionProvider(
+      TensorrtExecutionProviderWithOptions(&cache_params)));
+  ASSERT_STATUS_OK(cache_session.Load(model_name));
+  ASSERT_STATUS_OK(cache_session.Initialize());
+
+  run_profiles(cache_session);
+  EXPECT_EQ(ReadFileFromDisk(engine_cache_files[0]), engine_cache);
+  EXPECT_EQ(ReadFileFromDisk(profile_cache_files[0]), profile_cache);
+
   InferenceSession context_session{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 context_params;
   context_params.trt_ep_context_embed_mode = 1;
@@ -877,6 +905,7 @@ void RunWithOneSessionMultiProfiles(bool multi_thread) {
 
   std::filesystem::remove(model_name);
   std::filesystem::remove(context_model_name);
+  std::filesystem::remove_all(cache_directory);
 }
 
 TEST(TensorrtExecutionProviderTest, MultiProfilesSingleThread) {
