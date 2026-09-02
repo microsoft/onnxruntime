@@ -134,7 +134,8 @@ struct IsOrtInt4NumericConversionType {
       IsStandardIntegerType<T>::value ||
       std::is_floating_point_v<T> ||
       IsOrtFloat16Type<T>::value ||
-      IsOrtFloat8Type<T>::value;
+      IsOrtFloat8Type<T>::value ||
+      IsOrtFloat6Type<T>::value;
 };
 
 template <typename T>
@@ -154,7 +155,8 @@ struct IsOrtInt2NumericConversionType {
       IsStandardIntegerType<T>::value ||
       std::is_floating_point_v<T> ||
       IsOrtFloat16Type<T>::value ||
-      IsOrtFloat8Type<T>::value;
+      IsOrtFloat8Type<T>::value ||
+      IsOrtFloat6Type<T>::value;
 };
 
 template <typename T>
@@ -287,6 +289,8 @@ struct FromInt4Converter {
       return DstType(static_cast<float>(val));
     } else if constexpr (IsOrtFloat8Type<DstType>::value) {
       return DstType(static_cast<float>(val), true);
+    } else if constexpr (IsOrtFloat6Type<DstType>::value) {
+      return DstType(static_cast<float>(val));
     } else if constexpr (std::is_same_v<bool, DstType>) {
       return val != 0;
     } else if constexpr (std::is_same_v<std::string, DstType>) {
@@ -394,6 +398,14 @@ struct ToInt4Converter<SrcType, DstType,
   }
 };
 
+template <typename SrcType, typename DstType>
+struct ToInt4Converter<SrcType, DstType,
+                       std::enable_if_t<IsOrtFloat6Type<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
+  static typename DstType::UnpackedType Convert(const SrcType& val) {
+    return ToInt4Converter<float, DstType>::Convert(static_cast<float>(val));
+  }
+};
+
 // string -> (U)Int4x2
 template <typename DstType>
 struct ToInt4Converter<std::string, DstType,
@@ -415,6 +427,8 @@ struct FromInt2Converter {
       return DstType(static_cast<float>(val));
     } else if constexpr (IsOrtFloat8Type<DstType>::value) {
       return DstType(static_cast<float>(val), true);
+    } else if constexpr (IsOrtFloat6Type<DstType>::value) {
+      return DstType(static_cast<float>(val));
     } else if constexpr (std::is_same_v<bool, DstType>) {
       return val != 0;
     } else if constexpr (std::is_same_v<std::string, DstType>) {
@@ -506,6 +520,14 @@ struct ToInt2Converter<SrcType, DstType,
   static typename DstType::UnpackedType Convert(const SrcType& val) {
     float f_val = static_cast<float>(val);
     return ToInt2Converter<float, DstType>::Convert(f_val);
+  }
+};
+
+template <typename SrcType, typename DstType>
+struct ToInt2Converter<SrcType, DstType,
+                       std::enable_if_t<IsOrtFloat6Type<SrcType>::value && IsOrtInt2Type<DstType>::value>> {
+  static typename DstType::UnpackedType Convert(const SrcType& val) {
+    return ToInt2Converter<float, DstType>::Convert(static_cast<float>(val));
   }
 };
 
