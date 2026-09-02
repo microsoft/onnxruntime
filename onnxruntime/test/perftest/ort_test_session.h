@@ -4,9 +4,11 @@
 #pragma once
 #include <atomic>
 #include <core/session/onnxruntime_cxx_api.h>
+#include <optional>
 #include <random>
 #include "test_configuration.h"
 #include "test_session.h"
+#include "utils.h"
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
 #include <cuda_runtime.h>
@@ -49,6 +51,11 @@ class OnnxRuntimeTestSession : public TestSession {
   // Stores an already-staged value; used to avoid double-staging in CreateAndStoreGeneratedInput.
   void StoreTestData(size_t test_data_id, size_t input_id, Ort::Value&& value);
 
+  // True if allocator_ can't safely hold placement-constructed std::string values, i.e. it's a
+  // plugin EP allocator without host-accessible memory, or the legacy CUDA custom allocator.
+  // Used to keep string tensors (inputs and outputs) out of device-only memory.
+  bool IsAllocatorDeviceOnly() const;
+
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
@@ -70,8 +77,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
   const std::unordered_map<std::string, std::string>& run_config_entries_;
   Ort::Env& env_;
-  bool requires_input_staging_ = false;
-  bool has_plugin_ep_allocator_ = false;
+  std::optional<perftest::utils::PluginEpAllocatorSelection> plugin_ep_allocator_selection_;
   bool has_dynamic_output_shapes_ = false;
   // Per-output dynamic-shape flag, aligned with outputs_. Lets Run() reset only the outputs that
   // actually have dynamic shapes instead of discarding every pre-allocated buffer.

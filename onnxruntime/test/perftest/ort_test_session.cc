@@ -131,8 +131,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         fprintf(stdout, "[Plugin EP] Forcing CPU allocator (--plugin_ep_force_cpu_allocator was specified).\n");
       } else if (auto plugin_ep_allocator = perftest::utils::GetPluginEpAllocator(env, selected_ep_devices)) {
         allocator_ = plugin_ep_allocator->allocator;
-        requires_input_staging_ = !plugin_ep_allocator->is_host_accessible;
-        has_plugin_ep_allocator_ = true;
+        plugin_ep_allocator_selection_ = std::move(plugin_ep_allocator);
       }
     }
   }
@@ -1023,8 +1022,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     // String tensors require host-accessible memory; skip pre-allocation for them when allocator_
     // is device-only and let the session allocate them itself.
     bool is_string_output = tensor_info.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    if (is_dynamic || (device_memory_name_.empty() && !has_plugin_ep_allocator_) ||
-        (requires_input_staging_ && is_string_output)) {
+    if (is_dynamic || (device_memory_name_.empty() && !plugin_ep_allocator_selection_.has_value()) ||
+        (is_string_output && IsAllocatorDeviceOnly())) {
       outputs_.emplace_back(Ort::Value(nullptr));
     } else {
       auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
@@ -1048,8 +1047,20 @@ void OnnxRuntimeTestSession::StoreTestData(size_t test_data_id, size_t input_id,
   test_inputs_[test_data_id][input_id] = std::move(value);
 }
 
+bool OnnxRuntimeTestSession::IsAllocatorDeviceOnly() const {
+  if (plugin_ep_allocator_selection_.has_value()) {
+    return !plugin_ep_allocator_selection_->is_host_accessible;
+  }
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+  if (device_memory_name_ == CUDA) {
+    return true;
+  }
+#endif
+  return false;
+}
+
 Ort::Value OnnxRuntimeTestSession::StageInputForPluginEpAllocator(Ort::Value&& value) {
-  if (!has_plugin_ep_allocator_ || !value.IsTensor()) {
+  if (!plugin_ep_allocator_selection_.has_value() || !value.IsTensor()) {
     return std::move(value);
   }
 
@@ -1175,7 +1186,7 @@ void OnnxRuntimeTestSession::CreateAndStoreGeneratedInput(size_t test_data_id, s
   }
 #endif
 
-  if (requires_input_staging_) {
+  if (IsAllocatorDeviceOnly()) {
     // allocator_ is device-only memory; fill a CPU tensor and stage it via StageInputForPluginEpAllocator.
     Ort::AllocatorWithDefaultOptions default_allocator;
     Ort::Value cpu_tensor = Ort::Value::CreateTensor(default_allocator, dims.data(),
