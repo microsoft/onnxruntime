@@ -377,6 +377,9 @@ void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::
 
   auto typedArray = destination.As<Napi::TypedArray>();
   auto* data = static_cast<char*>(typedArray.ArrayBuffer().Data());
+  // Unreachable while the precondition holds, but a dead pointer here would be a silent memcpy into
+  // freed memory rather than an exception.
+  ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "Preallocated output tensor buffer was detached.");
   memcpy(data + typedArray.ByteOffset(), value.GetTensorRawData(), sourceByteLength);
 }
 

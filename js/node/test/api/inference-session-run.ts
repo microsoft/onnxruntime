@@ -234,6 +234,38 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('does not assign result properties through an inherited setter', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    const outputData = new Float32Array(5);
+    let stored: unknown;
+    let sets = 0;
+
+    // The Javascript layer assigns 'output' once while building `fetches`. If native result
+    // construction assigned too, this setter would run between the validation of the preallocated
+    // buffer and the copy into it, and the detach below would leave the copy writing through a
+    // dead backing store. Reaching the end of this test is the assertion.
+    Object.defineProperty(Object.prototype, 'output', {
+      configurable: true,
+      get: () => stored,
+      set: (value) => {
+        stored = value;
+        if (++sets === 2) {
+          structuredClone(outputData.buffer, { transfer: [outputData.buffer] });
+        }
+      },
+    });
+
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const output = new Tensor('float32', outputData, [1, 5]);
+      const result = await localSession.run({ input }, { output });
+      assert.strictEqual(result.output, output);
+    } finally {
+      delete (Object.prototype as { output?: unknown }).output;
+      await localSession.release().catch(() => {});
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });

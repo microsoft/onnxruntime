@@ -337,9 +337,26 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     try {
       auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
 
-      // Validate every preallocated output before writing to any of them. Rejecting partway through
-      // would otherwise hand back a failed promise with some of the caller's buffers already
-      // holding this run's results.
+      // Build the result first. OrtValueToNapiValue() runs the Javascript Tensor constructor and can
+      // throw, and no caller-owned buffer may be written before the last step that can fail or hand
+      // control back to Javascript.
+      auto result = Napi::Object::New(env_);
+      for (size_t i = 0; i < output_values_.size(); ++i) {
+        const auto& output = outputs_[i];
+        auto value = output.reuse ? keep_alive.Get(output.js_value_index)
+                                  : OrtValueToNapiValue(env_, std::move(output_values_[i]));
+        // Define the property rather than assigning it: assignment would run an inherited setter for
+        // the output name (Object.prototype.<name>), which is user Javascript that could both
+        // swallow the output and detach a preallocated buffer.
+        result.DefineProperty(Napi::PropertyDescriptor::Value(
+            output.name, value,
+            static_cast<napi_property_attributes>(napi_writable | napi_enumerable | napi_configurable)));
+      }
+
+      // Validate every preallocated destination, then write them. Nothing between these two loops
+      // may run Javascript: a buffer detached after its check would be memcpy'd through a dead
+      // pointer, and a failure partway through the writes would reject with some caller buffers
+      // already holding this run's results.
       for (size_t i = 0; i < output_values_.size(); ++i) {
         const auto& output = outputs_[i];
         if (output.copy_to_js) {
@@ -352,18 +369,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           // GetOutputValues(); on the plain Run() path it still holds the wrapper built from the
           // caller's own declaration, so the comparison there is trivially satisfied.
           ValidateOrtValueMatchesDeclared(env_, output_values_[i], output.declared);
-        }
-      }
-
-      // Build the result before writing anything: OrtValueToNapiValue() can throw, and every write
-      // to a caller-owned buffer has to happen after the last operation that can reject.
-      auto result = Napi::Object::New(env_);
-      for (size_t i = 0; i < output_values_.size(); ++i) {
-        const auto& output = outputs_[i];
-        if (output.reuse) {
-          result.Set(output.name, keep_alive.Get(output.js_value_index));
-        } else {
-          result.Set(output.name, OrtValueToNapiValue(env_, std::move(output_values_[i])));
         }
       }
 
