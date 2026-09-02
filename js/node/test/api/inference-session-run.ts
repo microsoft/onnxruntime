@@ -301,13 +301,26 @@ describe('API Tests - InferenceSession.run()', async () => {
     const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
     const first = await InferenceSession.create(modelPath);
     const retained: Tensor[] = [];
+    // Also keep storage whose owning Tensor is dropped immediately: ORT offers no way to detach a
+    // buffer from its OrtValue, so the whole native value has to stay alive for as long as any
+    // JavaScript view of it does, not merely for as long as the Tensor does.
+    let orphanedData: Float32Array;
+    let orphanedBuffer: ArrayBufferLike;
     try {
       for (let i = 0; i < 8; i++) {
         retained.push((await first.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) })).output);
       }
+      orphanedData = (await first.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) })).output
+        .data as Float32Array;
+      orphanedBuffer = (
+        (await first.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) })).output.data as Float32Array
+      ).buffer;
     } finally {
       await first.release();
     }
+
+    const gc = (global as unknown as { gc?: () => void }).gc;
+    gc?.();
 
     // Churn allocations through an unrelated session, then check the retained outputs again.
     const second = await InferenceSession.create(modelPath);
@@ -319,9 +332,12 @@ describe('API Tests - InferenceSession.run()', async () => {
       await second.release();
     }
 
+    gc?.();
     for (const output of retained) {
       assertTensorEqual(output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
     }
+    assert.deepStrictEqual(Array.from(orphanedData), [1, 2, 3, 4, 5]);
+    assert.deepStrictEqual(Array.from(new Float32Array(orphanedBuffer)), [1, 2, 3, 4, 5]);
   });
 
   it('rejects endProfiling() while inference is running', async () => {
