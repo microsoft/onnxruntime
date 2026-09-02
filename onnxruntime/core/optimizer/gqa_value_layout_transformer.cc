@@ -276,18 +276,29 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
                     NodeConversionPlan& plan, GqaValueLayoutBoundaries* converted_boundaries) {
   plan = NodeConversionPlan{};
 
-  // Checked before the operand statuses, so that a model which already carries the Transposes is
-  // rejected too. A 4-bit cache is unsupported whether this run would insert the Transposes or a
-  // previous one already did: accepting an already converted node here would let the model
-  // initialize and then run the invalid byte-wise transpose on any EP that does not fuse it.
-  ORT_RETURN_IF_ERROR(ValidateCacheFormat(node));
-
   OperandStatus past_value_status = OperandStatus::kAbsent;
   std::string past_value_boundary;
   ORT_RETURN_IF_ERROR(ClassifyPastValue(graph, node, past_value_status, past_value_boundary));
 
   std::string present_value_boundary;
   const OperandStatus present_value_status = ClassifyPresentValue(graph, node, present_value_boundary);
+
+  const auto in_scope = [](OperandStatus status) {
+    return status == OperandStatus::kConverted || status == OperandStatus::kConvertible;
+  };
+
+  // Checked after classification, and only for a node with at least one operand in scope. A node
+  // whose Value caches are entirely internal is untouched by this option, so rejecting the model for
+  // its cache format would contradict the option's per-boundary scope and stop an otherwise fine BNSH
+  // cache from running.
+  //
+  // kConverted counts as in scope, not just kConvertible: a 4-bit cache is unsupported whether this
+  // run would insert the Transposes or a previous one already did, and accepting an already converted
+  // node would let the model initialize and then run the invalid byte-wise transpose on any EP that
+  // does not fuse it.
+  if (in_scope(past_value_status) || in_scope(present_value_status)) {
+    ORT_RETURN_IF_ERROR(ValidateCacheFormat(node));
+  }
 
   // One boundary converted while the other was equally convertible means the graph was edited by
   // hand or produced by a build that failed part way. The two boundaries no longer agree with each

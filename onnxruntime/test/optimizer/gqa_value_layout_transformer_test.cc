@@ -1024,6 +1024,23 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsNonRank4PastValue) {
       "must be rank 4");
 }
 
+// ...but only for a node the option actually touches. A GQA node whose Value caches are entirely
+// internal is out of scope, so no Transpose is inserted and its cache format is irrelevant. Rejecting
+// it would contradict the per-boundary scope and stop an otherwise fine BNSH cache from running.
+TEST_F(GqaValueLayoutTransformerTest, AllowsFourBitValueCacheWhenBothOperandsAreInternal) {
+  BuildOptions opts;
+  opts.four_bit_value_cache = true;
+  opts.past_value_behind_identity = true;
+  opts.present_value_behind_identity = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectNoTransposes(graph); }));
+}
+
 // The same rejection must apply to a model that already carries the Transposes. Classifying it as
 // already-converted and returning early would let a 4-bit model initialize and then execute the
 // invalid byte-wise transpose on any EP that does not fuse it.
