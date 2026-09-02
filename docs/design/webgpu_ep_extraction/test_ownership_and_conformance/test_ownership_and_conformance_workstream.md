@@ -15,6 +15,15 @@ existing coverage is accounted for and continues to run against the isolated or 
 The detailed general-purpose conformance design is in
 [Execution Provider Operator Conformance Suite](ep_operator_conformance_design.md).
 
+## Terminology
+
+| Term | Meaning |
+| --- | --- |
+| Conformance suite | The portable operator cases together with their execution and result semantics |
+| Conformance kit | The versioned artifact published with an ORT release, containing cases, schemas, and a runner |
+| Case archive | The platform-neutral conformance cases and schemas within a conformance kit |
+| Provider profile | An EP's declared support surface, options, exclusions, and comparison overrides, supplied when running the conformance suite |
+
 ## Desired end state
 
 - Every current WebGPU-related test has a stable owner and destination.
@@ -207,8 +216,6 @@ tested behavior is an extraction blocker.
 ## Open questions
 
 - What exact current test set defines the extraction regression baseline?
-- Which operators and data types form the minimum representative conformance set?
 - What additional reporting is needed for cases that intentionally permit partial graph assignment?
 - Which browser tests can consume the same portable cases without changing semantics?
-- How should large test datasets be versioned and distributed?
 - Which test generators should remain in ORT, move, or be copied?

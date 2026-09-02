@@ -367,7 +367,9 @@ The report should make newly unsupported or newly excluded cases easy to detect 
   `GetCapability()`?
 - Should contrib-op cases ship in the default kit or a separate ORT-extension bundle?
 - Which runner artifacts should be included in each ORT package and release channel?
-- How should large datasets be deduplicated and downloaded?
+- How should tensor data shared across cases be deduplicated?
+- How should large datasets be versioned and distributed?
 - What compatibility promise applies to case, provider-profile, and report schema versions?
 - How should randomized or generated inputs remain deterministic and reproducible?
-- What is the minimum representative operator set needed before using the suite as an extraction prerequisite?
+- What is the minimum representative set of operators and data types needed before using the suite as an extraction
+  prerequisite?

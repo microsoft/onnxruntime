@@ -262,7 +262,7 @@ Package signing, provenance, and release controls should meet the same requireme
 ORT should consume WebGPU source using the standard mechanism used for comparable third-party source dependencies.
 The dependency inventory should compare existing ORT mechanisms before selecting the exact implementation.
 
-### Cross-repository version policy
+## Cross-repository version policy
 
 Each repository pins the other, so the pins must be arranged so that the dependency does not become circular. Only
 one lane floats, and it never blocks a merge:
@@ -381,3 +381,6 @@ The provider lives in its own repository:
 - Which copied ORT helpers need independent namespaces or API cleanup before transfer?
 - How should reduced-operator configuration be represented as an external provider input?
 - Which platforms and architectures are required for the first independent release?
+- Which ORT-standard dependency mechanism should consume the external WebGPU source for WebAssembly builds?
+- What compatibility window should the WebGPU EP promise across ORT releases?
+- May the WebGPU build-against ORT version reference a pre-release, to shorten the wait for a newly added EP API?

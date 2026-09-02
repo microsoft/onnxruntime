@@ -46,8 +46,6 @@ The design must address:
 
 The facility must be generic and validated with at least one non-WebGPU test plugin where practical.
 
-The detailed design is in [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
-
 ## Process-global ownership and teardown
 
 Static registration removes the dynamic-library unload boundary. The current WebGPU plugin cleanup path cannot be
@@ -138,14 +136,17 @@ The bridge should not expose unrelated ORT private implementation details.
 
 ## Work packages
 
-1. **Static registration core:** implement and contract-test generic static factory registration.
-2. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
-3. **Emscripten prototype:** compile the adapter path statically and run a small model.
-4. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
-5. **Browser bridge:** specify and prototype object and lifetime exchange.
-6. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
+1. **Size and latency baselines:** measure `onnxruntime-web` WebAssembly size and inference latency before any
+   plugin-path change lands, since the size and latency completion criteria are relative to them.
+2. **Static registration core:** implement and contract-test generic static factory registration.
+3. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
+4. **Emscripten prototype:** compile the adapter path statically and run a small model.
+5. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
+6. **Browser bridge:** specify and prototype object and lifetime exchange.
+7. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
 
-The first five packages can proceed largely in parallel. Legacy-path removal waits for their convergence.
+Baselines come first, because they cannot be captured once the plugin path has changed anything. Packages 2 through 6
+can then proceed largely in parallel. Legacy-path removal waits for their convergence.
 
 ## Interfaces with other workstreams
 
@@ -178,6 +179,6 @@ The first five packages can proceed largely in parallel. Legacy-path removal wai
 
 ## Open questions
 
-- Resolved: neither. ORT core registers static factories during `OrtEnv` creation, after the environment is
-  constructed and published. See [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
+- Should static factories be registered before environment creation or through environment construction options?
 - What is the stable representation of JavaScript-owned WebGPU objects at the C API boundary?
+- Which private-dependency findings require a public plugin EP API addition rather than a provider-owned replacement?

@@ -39,10 +39,6 @@ provider into its WebAssembly module.
 | --- | --- |
 | Plugin EP API | The public ORT API used to implement a plugin EP: `OrtApi`, `OrtEpApi`, `OrtEpFactory`, and `OrtEp` |
 | Staging root | `plugin-ep-webgpu/`, the in-tree directory the provider is consolidated into before the move |
-| Conformance suite | The portable operator cases together with their execution and result semantics |
-| Conformance kit | The versioned artifact published with an ORT release, containing cases, schemas, and a runner |
-| Case archive | The platform-neutral conformance cases and schemas within a conformance kit |
-| Provider profile | An EP's declared support surface, options, exclusions, and comparison overrides, supplied when running the conformance suite |
 
 ## Workstreams
 
@@ -54,9 +50,6 @@ The effort is divided into four workstreams:
 | `provider-isolation` | [Provider isolation and repository migration](provider_isolation_and_repository_migration/provider_isolation_and_repository_migration_workstream.md) | WebGPU-owned code, dependencies, tests, and existing plugin packaging move under `plugin-ep-webgpu/` and then to an independent repository |
 | `test-conformance` | [Test ownership and operator conformance](test_ownership_and_conformance/test_ownership_and_conformance_workstream.md) | Existing coverage is preserved, every test has an owner, and portable conformance coverage protects the external provider |
 | `node-migration` | [Node plugin migration](node_plugin_migration/node_plugin_migration_workstream.md) | Existing bundled Node WebGPU support is replaced by an explicitly consumable plugin without regressing current users |
-
-The detailed static plugin EP registration design is in
-[Static Plugin EP Registration](plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md).
 
 The detailed reusable conformance-suite design is in
 [Execution Provider Operator Conformance Suite](test_ownership_and_conformance/ep_operator_conformance_design.md).
@@ -79,7 +72,26 @@ implementation-specific even though the tests are not, so a passing default-bund
 provider being extracted. This is handled in
 [Test ownership and operator conformance](test_ownership_and_conformance/test_ownership_and_conformance_workstream.md).
 
-## Workstream dependencies
+## Consumer dispositions
+
+Every consumer that receives WebGPU today needs a recorded disposition before the built-in implementation is removed
+from ORT. Platform and architecture details remain to be inventoried in the individual workstreams.
+
+| Consumer or package | Disposition | Extraction requirement |
+| --- | --- | --- |
+| `onnxruntime-web` | Consume a pinned external WebGPU source revision through static plugin registration | Required |
+| Python WebGPU plugin package | Move the existing optional plugin package and release pipeline | Required |
+| WebGPU NuGet plugin package | Move the existing optional plugin package and release pipeline | Required |
+| Node WebGPU support | Provide a tested replacement for the WebGPU implementation currently bundled in `onnxruntime-node`; final package naming is open | Required before bundled support is removed |
+| `onnxruntime-webgpu` on PyPI | Publication has already stopped; do not resurrect it or convert it into a plugin-dependent package | Confirm whether any other retired package needs the same treatment |
+
+Hosts that do not ship WebGPU support today are outside this table. Adding one is a separate decision and is not an
+extraction prerequisite.
+
+The table should be updated as the current package and platform inventory is completed. Dropping a consumer requires
+an explicit compatibility decision rather than silently removing support.
+
+## Sequencing
 
 Most work proceeds concurrently, but one sequence determines the end date:
 
@@ -108,90 +120,17 @@ The remaining convergence points are not on the critical path:
 - The Node workstream consumes generic plugin loading from ORT and native WebGPU artifacts from the external provider.
 - The final repository copy depends on `plugin-ep-webgpu/` being independently buildable.
 
-## Consumer dispositions
-
-Every consumer that receives WebGPU today needs a recorded disposition before the built-in implementation is removed
-from ORT. Platform and architecture details remain to be inventoried in the individual workstreams.
-
-| Consumer or package | Disposition | Extraction requirement |
-| --- | --- | --- |
-| `onnxruntime-web` | Consume a pinned external WebGPU source revision through static plugin registration | Required |
-| Python WebGPU plugin package | Move the existing optional plugin package and release pipeline | Required |
-| WebGPU NuGet plugin package | Move the existing optional plugin package and release pipeline | Required |
-| Node WebGPU support | Provide a tested replacement for the WebGPU implementation currently bundled in `onnxruntime-node`; final package naming is open | Required before bundled support is removed |
-| `onnxruntime-webgpu` on PyPI | Publication has already stopped; do not resurrect it or convert it into a plugin-dependent package | Confirm whether any other retired package needs the same treatment |
-
-Hosts that do not ship WebGPU support today are outside this table. Adding one is a separate decision and is not an
-extraction prerequisite.
-
-The table should be updated as the current package and platform inventory is completed. Dropping a consumer requires
-an explicit compatibility decision rather than silently removing support.
-
-## Integrated delivery stages
-
-### Stage 1: Establish baselines
-
-- Inventory private dependencies, build inputs, packages, consumers, platforms, and tests.
-- Record every current test's owner and intended destination.
-- Establish baselines for correctness, package installation, WebAssembly size, and inference latency. The later size
-  and performance gates are measured against these baselines.
-- Confirm the consumer dispositions and platform coverage.
-
-### Stage 2: Execute workstreams in parallel
-
-The critical path runs through this stage: static plugin registration, then code isolation and the standalone build.
-The remaining items proceed alongside it.
-
-- Add generic static plugin registration and run WebGPU through the plugin path.
-- Replace the kernel-authoring foundation and consolidate provider-owned sources and build inputs under
-  `plugin-ep-webgpu/`, so the staging root is adapter-free and independently buildable.
-- Preserve current tests while implementing the conformance MVP.
-- Scaffold the external repository and CI against the standalone build contract.
-- Design and implement the Node plugin-loading and package transition.
-
-### Stage 3: Prove extraction readiness
-
-The source move is ready when:
-
-- Static and dynamic forms execute the same provider implementation through the public plugin EP API.
-- Process-global initialization and teardown in the static plugin setup work correctly.
-- `plugin-ep-webgpu/` builds from a clean copy without private ORT implementation headers or libraries.
-- Every existing test is classified and current tested behavior remains blocking.
-- WebGPU-specific tests run from the isolated provider tree.
-- A representative conformance set detects output failures, unsupported regressions, and CPU fallback.
-- Existing Python and NuGet plugin packages can be produced from the isolated tree.
-- Node has an approved package transition and a tested replacement path.
-- `onnxruntime-web` passes browser integration, reduced-build, binary-size, and performance checks through static plugin
-  registration.
-
-### Stage 4: Move and switch consumers
-
-- Import the isolated provider code and selected history into the new repository.
-- Publish versioned native plugin artifacts and immutable source artifacts for static consumers.
-- Move Python and NuGet plugin releases to the WebGPU repository.
-- Pin the WebGPU revision used by `onnxruntime-web`.
-- Execute the approved Node package transition, including any package retirement it implies.
-- Remove obsolete WebGPU implementation and packaging code from ORT.
-
 ## Success criteria
 
-- WebGPU has one runtime boundary with ORT: the public plugin EP API.
-- Static and shared builds execute the same provider implementation and operator tests.
-- `plugin-ep-webgpu/` can be copied and built outside the ORT source tree.
+These are the outcomes that show the whole effort is complete:
+
+- Static and shared builds execute the same provider implementation, through the public plugin EP API, against the
+  same operator tests.
+- The ORT repository retains provider integration shims only, and no longer contains WebGPU EP implementation, build,
+  or packaging inputs.
 - The external repository owns WebGPU code, dependencies, tests, packages, and releases.
 - ORT updates its pinned WebGPU revision through a routine dependency update.
 - `onnxruntime-web` preserves supported functionality and accepted size and performance characteristics.
 - Native ORT packages remain usable without installing WebGPU.
 - Existing Node WebGPU users have a documented and tested migration path.
 - Compatibility failures produce clear build-time, registration-time, or package-time diagnostics.
-
-## Cross-workstream decisions still open
-
-- What public API gaps remain after private dependencies are classified?
-- What is the stable browser boundary for JavaScript `GPUDevice` and `GPUBuffer` objects?
-- Which ORT-standard dependency mechanism should consume the external WebGPU source for WebAssembly builds?
-- What platform and architecture matrix is required for the first independent release?
-- What compatibility window should the WebGPU EP promise across ORT releases?
-- Should the Node transition keep the `onnxruntime-node` name or introduce a core-only package such as
-  `onnxruntime-node-core`?
-- May the WebGPU build-against ORT version reference a pre-release, to shorten the wait for a newly added EP API?
