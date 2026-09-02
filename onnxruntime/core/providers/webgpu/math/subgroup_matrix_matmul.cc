@@ -371,9 +371,11 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
   }
   const auto& output = shader.AddOutput(
       "output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AdditionalImplementation() << BuildSubgroupMatrixMatMulOutputWriter(
-      has_bias_, GetActivationSnippet(activation_, "output_value_t", "output_element_t"),
-      output.SetByOffset("output_offset", "value"));
+  shader.AdditionalImplementation()
+      << GetActivationDeclaration(activation_, "output_value_t", "output_element_t")
+      << BuildSubgroupMatrixMatMulOutputWriter(
+             has_bias_, GetActivationSnippet(activation_, "output_value_t", "output_element_t"),
+             output.SetByOffset("output_offset", "value"));
 
   const auto& config = supported_subgroup_matrix_configs[config_index_];
   if (config.Is(8, 16, 16)) {

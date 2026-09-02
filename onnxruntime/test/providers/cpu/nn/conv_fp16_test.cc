@@ -6,6 +6,7 @@
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
 #include <algorithm>
+#include <cmath>
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -1422,10 +1423,19 @@ enum class WebGpuPointwiseConvCase {
   NoBias,
   Bias,
   FusedClip,
+  FusedQuickGelu,
+  FusedHardSwish,
+  FusedElu,
+  FusedGelu,
+  FusedGeluTanh,
+  FusedSoftplus,
+  FusedThresholdedRelu,
+  FusedErf,
 };
 
 void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
-  const bool is_fused = test_case == WebGpuPointwiseConvCase::FusedClip;
+  const bool is_fused = test_case != WebGpuPointwiseConvCase::NoBias &&
+                        test_case != WebGpuPointwiseConvCase::Bias;
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
@@ -1447,8 +1457,49 @@ void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
   test.AddAttribute("strides", vector<int64_t>{1, 1});
   test.AddAttribute("dilations", vector<int64_t>{1, 1});
   if (is_fused) {
-    test.AddAttribute("activation", "Clip");
-    test.AddAttribute("activation_params", vector<float>{-1.0f, 2.0f});
+    std::string activation;
+    vector<float> activation_params;
+    switch (test_case) {
+      case WebGpuPointwiseConvCase::FusedClip:
+        activation = "Clip";
+        activation_params = {-1.0f, 2.0f};
+        break;
+      case WebGpuPointwiseConvCase::FusedQuickGelu:
+        activation = "QuickGelu";
+        activation_params = {1.4f};
+        break;
+      case WebGpuPointwiseConvCase::FusedHardSwish:
+        activation = "HardSwish";
+        break;
+      case WebGpuPointwiseConvCase::FusedElu:
+        activation = "Elu";
+        activation_params = {0.5f};
+        break;
+      case WebGpuPointwiseConvCase::FusedGelu:
+        activation = "Gelu";
+        activation_params = {0.0f};
+        break;
+      case WebGpuPointwiseConvCase::FusedGeluTanh:
+        activation = "Gelu";
+        activation_params = {1.0f};
+        break;
+      case WebGpuPointwiseConvCase::FusedSoftplus:
+        activation = "Softplus";
+        break;
+      case WebGpuPointwiseConvCase::FusedThresholdedRelu:
+        activation = "ThresholdedRelu";
+        activation_params = {0.6f};
+        break;
+      case WebGpuPointwiseConvCase::FusedErf:
+        activation = "Erf";
+        break;
+      default:
+        ORT_THROW("Unexpected non-fused WebGPU pointwise Conv case.");
+    }
+    test.AddAttribute("activation", activation);
+    if (!activation_params.empty()) {
+      test.AddAttribute("activation_params", activation_params);
+    }
   }
 
   const vector<int64_t> x_shape = is_fused
@@ -1480,7 +1531,32 @@ void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
   }
   if (is_fused) {
     std::transform(channel_values.begin(), channel_values.end(), channel_values.begin(),
-                   [](float value) { return std::clamp(value, -1.0f, 2.0f); });
+                   [test_case](float value) {
+                     switch (test_case) {
+                       case WebGpuPointwiseConvCase::FusedClip:
+                         return std::clamp(value, -1.0f, 2.0f);
+                       case WebGpuPointwiseConvCase::FusedQuickGelu:
+                         return value / (1.0f + std::exp(-1.4f * value));
+                       case WebGpuPointwiseConvCase::FusedHardSwish:
+                         return value * std::clamp(value / 6.0f + 0.5f, 0.0f, 1.0f);
+                       case WebGpuPointwiseConvCase::FusedElu:
+                         return value >= 0.0f ? value : 0.5f * (std::exp(value) - 1.0f);
+                       case WebGpuPointwiseConvCase::FusedGelu:
+                         return 0.5f * value * (1.0f + std::erf(value / std::sqrt(2.0f)));
+                       case WebGpuPointwiseConvCase::FusedGeluTanh:
+                         return 0.5f * value *
+                                (1.0f + std::tanh(0.7978845608f *
+                                                  (value + 0.044715f * value * value * value)));
+                       case WebGpuPointwiseConvCase::FusedSoftplus:
+                         return std::log1p(std::exp(value));
+                       case WebGpuPointwiseConvCase::FusedThresholdedRelu:
+                         return value > 0.6f ? value : 0.0f;
+                       case WebGpuPointwiseConvCase::FusedErf:
+                         return std::erf(value);
+                       default:
+                         ORT_THROW("Unexpected non-fused WebGPU pointwise Conv case.");
+                     }
+                   });
   }
 
   const vector<int64_t> y_shape = is_fused
@@ -1553,6 +1629,24 @@ TEST(ConvFp16Test, WebGpuNaivePointwiseNhwcBias) {
 #ifndef DISABLE_CONTRIB_OPS
 TEST(ConvFp16Test, WebGpuSubgroupPointwiseNhwcFusedConvClip) {
   RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::FusedClip);
+}
+
+TEST(ConvFp16Test, WebGpuSubgroupPointwiseNhwcFusedConvNewActivations) {
+  const vector<pair<const char*, WebGpuPointwiseConvCase>> cases = {
+      {"QuickGelu", WebGpuPointwiseConvCase::FusedQuickGelu},
+      {"HardSwish", WebGpuPointwiseConvCase::FusedHardSwish},
+      {"Elu", WebGpuPointwiseConvCase::FusedElu},
+      {"Gelu", WebGpuPointwiseConvCase::FusedGelu},
+      {"GeluTanh", WebGpuPointwiseConvCase::FusedGeluTanh},
+      {"Softplus", WebGpuPointwiseConvCase::FusedSoftplus},
+      {"ThresholdedRelu", WebGpuPointwiseConvCase::FusedThresholdedRelu},
+      {"Erf", WebGpuPointwiseConvCase::FusedErf},
+  };
+
+  for (const auto& [name, test_case] : cases) {
+    SCOPED_TRACE(name);
+    RunWebGpuSubgroupPointwiseConvTest(test_case);
+  }
 }
 #endif
 
