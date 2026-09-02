@@ -33,6 +33,10 @@ inline uint8_t FloatToFloat6(float value, int exponent_bits, int mantissa_bits, 
     return static_cast<uint8_t>(sign | 0x1F);
   }
   const float magnitude = std::abs(value);
+  const float max_finite = Float6ToFloat(0x1F, exponent_bits, mantissa_bits, exponent_bias);
+  if (magnitude > max_finite) {
+    return static_cast<uint8_t>(sign | 0x1F);
+  }
   uint8_t best = sign;
   float best_distance = std::numeric_limits<float>::infinity();
   for (uint8_t bits = 0; bits < 0x20; ++bits) {
