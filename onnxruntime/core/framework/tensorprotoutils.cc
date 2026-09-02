@@ -1802,7 +1802,15 @@ Status GetExtDataFromTensorProto(const Env& env,
     const TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
     const DataTypeImpl* type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     Tensor tensor{type, tensor_shape, CPUAllocator::DefaultInstance()};
-    ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, tensor));
+    const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
+    const auto tensor_proto_dir = model_path.empty() ? std::filesystem::path{} : model_path.parent_path();
+    if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3) {
+      ORT_RETURN_IF_ERROR(UnpackTensorWithExternalData(
+          tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E2M3>()));
+    } else {
+      ORT_RETURN_IF_ERROR(UnpackTensorWithExternalData(
+          tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E3M2>()));
+    }
     Tensor::InitOrtValue(std::move(tensor), ort_value);
     return Status::OK();
   }
@@ -1983,13 +1991,27 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
 
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+
+  if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+      tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    Tensor packed_tensor{DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(raw_data_safe_len)}),
+                         CPUAllocator::DefaultInstance()};
+    ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len,
+                                                    packed_tensor));
+    ONNX_NAMESPACE::TensorProto packed_proto = tensor_proto;
+    packed_proto.clear_external_data();
+    packed_proto.set_data_location(TensorProto_DataLocation_DEFAULT);
+    packed_proto.set_raw_data(packed_tensor.DataRaw(), raw_data_safe_len);
+    return TensorProtoToTensor(env, model_path, packed_proto, tensor);
+  }
+
   ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
                 "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
                 " size to read: ", static_cast<size_t>(raw_data_safe_len),
                 " does not match the tensor size: ", tensor.SizeInBytes());
-  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
-                "Memory address tag is not supported by custom external data loader.");
-
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 }
 
