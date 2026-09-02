@@ -595,6 +595,7 @@ Status SaveOrtTensorOrtFormat(
   // To avoid issues with vtable offsets, raw_data fbs::vector must be constructed before the TensorBuilder begins
   // building the tensor. See flatbuffer_builder.h's NotNested() function for more details.
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
+  std::vector<uint8_t> packed_tensor_data;
 
   auto unpack_tensor_data_be = [&ort_tensor](std::vector<uint8_t>& unpacked_tensor_data) -> Status {
     unpacked_tensor_data.resize(ort_tensor.SizeInBytes());
