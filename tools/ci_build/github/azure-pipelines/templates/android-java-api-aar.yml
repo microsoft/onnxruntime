@@ -134,6 +134,7 @@ jobs:
           --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
           --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
           --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
+          --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
           $QNN_VOLUME \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
