@@ -1053,7 +1053,9 @@ introduce a separate `WorkspacePattern` or allocate a persistent execution buffe
    `GetScratchBuffer()`.
 5. ORT caches one pattern containing both activation and workspace blocks. On later runs with a
    compatible feed-shape key, the execution frame allocates the normal per-run pattern backing buffer
-   and returns `backing_buffer + workspace_offset`.
+   and returns `backing_buffer + workspace_offset`. The planned offset and returned pointer must
+   satisfy the requirement's binding `alignment_bytes` value, or the allocator's default alignment
+   when that value is zero.
 6. If the pattern is unavailable or the runtime request exceeds the declared capacity,
    `GetPreallocatedWorkspace(slot_id, requested_bytes)` returns no pointer and the kernel retains its
    dynamic `GetScratchBuffer()` fallback.
@@ -1076,8 +1078,9 @@ two internal regions:
 
 PMHA, whose Q/K/V inputs are already projected, naturally exposes one attention root. PA/PMHA root
 retrieval and slicing and the `SupportsPreallocatedWorkspace()` opt-in must land atomically. Until
-then, the current two dynamic `GetScratchBuffer()` allocations remain unchanged while Level 1 and
-Level 2 agree on the single-root declaration. This does not require multi-slot planner support.
+then, PA retains its two dynamic projection and Attention allocations, PMHA retains its one dynamic
+Attention allocation, and Level 1 and Level 2 agree on each operator's single-root declaration. This
+does not require multi-slot planner support.
 
 **Future stronger mode:** allocating and retaining the complete execution buffer during session
 initialization would be a separate feature. Such a mode would need trustworthy static or bounded
