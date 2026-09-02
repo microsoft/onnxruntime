@@ -1,7 +1,6 @@
 ---
 name: audit-agent-guidance
 description: "Audit ONNX Runtime agent guidance for conflicts, stale claims, ineffective scope, duplication, misplaced detail, and opportunities for mechanical enforcement; open a PR that refines, consolidates, relocates, or retires guidance with one logical change per commit."
-argument-hint: "[commit]"
 ---
 
 # Audit ONNX Runtime Agent Guidance

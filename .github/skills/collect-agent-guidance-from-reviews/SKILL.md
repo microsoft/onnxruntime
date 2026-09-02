@@ -1,7 +1,7 @@
 ---
 name: collect-agent-guidance-from-reviews
 description: "Review merged ONNX Runtime pull requests since the previous collection cutoff, identify accepted feedback and rejected Copilot review comments that generalize into reusable agent guidance, and open a PR containing scoped instruction or skill updates with one evidence-backed candidate per commit."
-argument-hint: "[since-date] [through-date]"
+argument-hint: "[since] [through]"
 ---
 
 # Collect Agent Guidance from PR Reviews
@@ -13,18 +13,6 @@ area: proposed text does not become authoritative guidance until maintainers mer
 
 Follow the lifecycle and classification rules in
 [`docs/Agent_Coding_Guidance.md`](../../../docs/Agent_Coding_Guidance.md).
-
-## Skill Inputs
-
-The user may specify the start and optional end of the collection interval in the skill request, for example:
-
-```text
-/collect-agent-guidance-from-reviews since 2026-08-01
-```
-
-Treat the first date as `since` and the second, when present, as `through`, and pass them to
-`scripts/list_merged_prs.py`. The script interprets a date without a time as midnight UTC and normalizes
-timezone-aware ISO 8601 timestamps to UTC. Explicit user values override marker discovery and the current-time default.
 
 ## Safety and Trust Boundary
 
@@ -47,6 +35,16 @@ ready.
 ## Establish the Collection Window
 
 Determine an immutable half-open window: `since < merged_at <= through`.
+
+The user may specify `since` and optionally `through`, for example:
+
+```text
+/collect-agent-guidance-from-reviews since 2026-08-01
+```
+
+Pass those values to `scripts/list_merged_prs.py`. The script interprets a date without a time as midnight UTC,
+normalizes timezone-aware ISO 8601 timestamps to UTC, and otherwise discovers the previous collection cutoff and current
+time.
 
 Run the `scripts/list_merged_prs.py` script to get the list of PRs to consider:
 
@@ -180,20 +178,13 @@ Before proposing text, inspect the committed guidance and enforcement on the cur
 
 ### 7. Choose the guidance response
 
-Apply these checks to each candidate in order:
-
-1. If it is a Copilot comment, apply the step 3 filters first.
-2. If the lesson is mechanically enforceable, record it as follow-up enforcement work and stop classifying it.
-3. If existing guidance already covers it correctly, record it in the omitted-candidates section and stop classifying it.
-4. Otherwise, apply the classification table below.
-
-Classify each candidate as one of:
+For Copilot comments, apply the step 3 filters first. Then classify each candidate using the first matching row:
 
 | Classification | Action |
 |---|---|
+| Mechanically enforceable | Record a follow-up test or tooling change; do not add redundant prose. |
 | Already covered and correctly scoped | Do not change guidance. Record it in the omitted-candidates section. |
 | Covered but repeatedly missed | Improve discoverability, scope, wording, examples, or mechanical enforcement. |
-| Mechanically enforceable | Prefer a follow-up test/tooling change; do not add redundant prose merely to produce output. |
 | Localized invariant | Update the narrowest matching path-scoped instruction. |
 | Complex reusable workflow | Refine an existing domain skill. If none applies, record a proposed new skill as follow-up work. |
 | Repository-wide stable convention | Update `AGENTS.md` sparingly. |
@@ -225,9 +216,8 @@ If there are no high- or medium-confidence changes:
 - report the collection window and the number of PRs and review threads examined;
 - do not advance the persisted cutoff, because only a merged collection PR records it.
 
-The next run will rescan from the last merged collection cutoff. This is intentionally idempotent and avoids hidden state
-in repository variables, issues, branches, or expiring workflow artifacts. A future automation may add a dedicated
-durable cursor store if repeated no-change scans become materially expensive, but this skill does not assume one.
+The next run rescans from the last merged collection cutoff. This keeps collection state in merged PR metadata and
+avoids hidden state.
 
 Stop the workflow after reporting the no-change result.
 
