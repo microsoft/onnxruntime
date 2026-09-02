@@ -46,20 +46,53 @@ using Microsoft::WRL::ComPtr;
 
 constexpr int64_t kSequenceLength = 1024;
 constexpr int64_t kPastSequenceLength = 1;
-constexpr int64_t kNumLayers = 28;
-constexpr int64_t kNumKeyValueHeads = 2;
-constexpr int64_t kHeadSize = 128;
-constexpr int64_t kVocabSize = 151936;
-constexpr int64_t kBosTokenId = 151643;
 
-std::string BuildMaxShapeOverride() {
+struct ModelProfile {
+  const char* name;
+  const char* default_model_path;
+  int64_t num_layers;
+  int64_t num_key_value_heads;
+  int64_t head_size;
+  int64_t vocab_size;
+  int64_t bos_token_id;
+};
+
+constexpr ModelProfile kQwen25_1_5BProfile{
+    "qwen2.5-1.5b",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\"
+    "qwen2.5-1.5b-instruct-cuda-gpu-4\\v4\\model.onnx",
+    28, 2, 128, 151936, 151643};
+
+constexpr ModelProfile kQwen25_7BProfile{
+    "qwen2.5-7b",
+    "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\"
+    "qwen2.5-7b-instruct-cuda-gpu-4\\v4\\model.onnx",
+    28, 4, 128, 152064, 151643};
+
+const ModelProfile& GetModelProfile() {
+  std::string model_name =
+      Env::Default().GetEnvironmentVar("ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL");
+  if (model_name.empty() || model_name == kQwen25_1_5BProfile.name) {
+    return kQwen25_1_5BProfile;
+  }
+  if (model_name == kQwen25_7BProfile.name) {
+    return kQwen25_7BProfile;
+  }
+
+  ORT_THROW("ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL must be ",
+            kQwen25_1_5BProfile.name, " or ", kQwen25_7BProfile.name,
+            ", but got: ", model_name);
+}
+
+std::string BuildMaxShapeOverride(const ModelProfile& profile) {
   std::ostringstream shapes;
   shapes << "input_ids:[1," << kSequenceLength << "]"
          << ";attention_mask:[1," << kPastSequenceLength + kSequenceLength << "]";
   const std::string cache_shape =
-      ":[1," + std::to_string(kNumKeyValueHeads) + "," +
-      std::to_string(kPastSequenceLength) + "," + std::to_string(kHeadSize) + "]";
-  for (int64_t layer = 0; layer < kNumLayers; ++layer) {
+      ":[1," + std::to_string(profile.num_key_value_heads) + "," +
+      std::to_string(kPastSequenceLength) + "," +
+      std::to_string(profile.head_size) + "]";
+  for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
     shapes << ";past_key_values." << layer << ".key" << cache_shape
            << ";past_key_values." << layer << ".value" << cache_shape;
   }
@@ -186,17 +219,16 @@ class WddmMemorySampler {
 // Run baseline and planned configurations in separate processes by setting
 // ORT_WEBGPU_WORKSPACE_BENCHMARK_PREALLOCATION to 0 or 1.
 TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
+  const ModelProfile& profile = GetModelProfile();
   std::string model_path_utf8 =
       Env::Default().GetEnvironmentVar("ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL_PATH");
   if (model_path_utf8.empty()) {
-    model_path_utf8 =
-        "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\"
-        "qwen2.5-1.5b-instruct-cuda-gpu-4\\v4\\model.onnx";
+    model_path_utf8 = profile.default_model_path;
   }
 
   const std::filesystem::path model_path(ToPathString(model_path_utf8));
   if (!std::filesystem::exists(model_path)) {
-    GTEST_SKIP() << "Qwen 2.5 1.5B model not found at " << model_path_utf8
+    GTEST_SKIP() << profile.name << " model not found at " << model_path_utf8
                  << "; set ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL_PATH.";
   }
 
@@ -206,7 +238,7 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   SessionOptions session_options;
   session_options.session_logid = "WebGpuQwen25WorkspacePreallocationBenchmark";
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsMaxShapeOverride, BuildMaxShapeOverride().c_str()));
+      kOrtSessionOptionsMaxShapeOverride, BuildMaxShapeOverride(profile).c_str()));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsEnableStaticWorkspacePreallocation,
       enable_workspace_preallocation.c_str()));
@@ -280,11 +312,12 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   }
 
   std::vector<int64_t> input_ids(
-      static_cast<size_t>(kSequenceLength), kBosTokenId);
+      static_cast<size_t>(kSequenceLength), profile.bos_token_id);
   std::vector<int64_t> attention_mask(
       static_cast<size_t>(kPastSequenceLength + kSequenceLength), 1);
   std::vector<MLFloat16> past_data(
-      static_cast<size_t>(kNumKeyValueHeads * kPastSequenceLength * kHeadSize),
+      static_cast<size_t>(
+          profile.num_key_value_heads * kPastSequenceLength * profile.head_size),
       MLFloat16(0.0f));
 
   NameMLValMap feeds;
@@ -301,8 +334,8 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   feeds.emplace("attention_mask", attention_mask_value);
 
   const std::array<int64_t, 4> past_shape{
-      1, kNumKeyValueHeads, kPastSequenceLength, kHeadSize};
-  for (int64_t layer = 0; layer < kNumLayers; ++layer) {
+      1, profile.num_key_value_heads, kPastSequenceLength, profile.head_size};
+  for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
     for (const char* kind : {"key", "value"}) {
       OrtValue past_value;
       CreateMLValue<MLFloat16>(
@@ -322,7 +355,7 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   }
   ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
   ASSERT_EQ(fetches.front().Get<Tensor>().Shape(),
-            TensorShape({1, kSequenceLength, kVocabSize}));
+            TensorShape({1, kSequenceLength, profile.vocab_size}));
   fetches.clear();
 
   size_t workspace_pattern_peak_bytes = 0;
@@ -400,7 +433,7 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
       std::min(measurement_peak_bytes, before_memory_measurement.bytes_in_use);
 
   std::cout << "[ WEBGPU WORKSPACE BENCHMARK ]"
-            << " model=qwen2.5-1.5b"
+            << " model=" << profile.name
             << " workspace_preallocation=" << enable_workspace_preallocation
             << " planned_workspace_nodes=" << planned_workspace_nodes
             << " planned_workspace_slots=" << planned_workspace_slots
