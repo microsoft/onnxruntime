@@ -220,9 +220,27 @@ metadata marker, which does not survive the ORT-format round trip reliably. `Cla
 | Status | Meaning | Effect |
 |---|---|---|
 | `kAbsent` | the node does not have this operand | nothing to do |
-| `kConverted` | already routed through a `Transpose(perm=[0,1,3,2])` to or from an application boundary | nothing to do |
+| `kConverted` | already routed through a `Transpose(perm=[0,1,3,2])` to or from an application boundary | nothing to do (boundary still recorded for 4.2) |
 | `kConvertible` | sits at an application boundary and is not converted yet | convert this operand |
 | `kOutOfScope` | present, but not a boundary the application binds | skip with a warning (3.5) |
+
+`ClassifyPresentValue` checks whether the operand is *itself* a graph output **before** looking for a
+boundary Transpose, and when it does look, it searches the consumers rather than requiring a single
+one. Both orderings matter:
+
+- An operand that is a graph output is an application-visible BNSH boundary in its own right. If
+  something downstream also transposes it to a second graph output, matching the Transpose first
+  would classify it `kConverted` and skip it, leaving an application-visible output in BNSH after the
+  session accepted BNHS. Checking `IsOutput` first makes it `kConvertible`, and the internal-consumer
+  rule in 3.5 then rejects the model — which is the correct outcome, since converting it would hand
+  that consumer BNHS data.
+- An already-converted operand is internal, and its BNSH result may legitimately feed other internal
+  BNSH readers besides the boundary Transpose. Requiring sole consumership would classify it
+  `kOutOfScope`, dropping the boundary from the 4.2 diagnostic and logging a misleading out-of-scope
+  warning for an operand that is in fact converted.
+
+The past side needs neither guard: a NodeArg has exactly one producer, and an operand with a producer
+cannot also be a graph input.
 
 Per-operand rather than per-node, because the two sides are genuinely independent: the GQA node stays
 BNSH on both sides whatever happens, so converting only the operand that is application visible leaves
@@ -482,6 +500,11 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
   asserts it contains no GQA node, so it cannot silently stop covering the regression.
 - The diagnostic still reports a boundary that has other consumers besides the Transpose; the fixture
   asserts two consumers, and the test fails against a sole-consumer lookup.
+- An already-converted `present_value` with an extra internal BNSH consumer is still recognized as
+  converted, by both `ClassifyPresentValue` and `FindConvertedGqaValueLayoutBoundaries`.
+- A `present_value` that is a graph output and is also transposed to a second graph output is not
+  mistaken for an already-converted node; it is rejected instead. Both tests fail against the
+  previous ordering.
 - `FindConvertedGqaValueLayoutBoundaries` finds both boundaries of an already-converted graph and
   none in an unconverted one, which is what makes the ORT-format diagnostic (5) possible.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.

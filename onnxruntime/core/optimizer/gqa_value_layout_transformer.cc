@@ -155,17 +155,28 @@ OperandStatus ClassifyPresentValue(const Graph& graph, const Node& node, std::st
 
   const NodeArg* arg = node.OutputDefs()[kPresentValueOutputIndex];
 
-  const auto consumers = graph.GetConsumerNodes(arg->Name());
-  if (consumers.size() == 1 && consumers[0] != nullptr && IsValueLayoutTranspose(*consumers[0]) &&
-      graph.IsOutput(consumers[0]->OutputDefs()[0])) {
-    boundary_name = consumers[0]->OutputDefs()[0]->Name();  // the graph output, not the GQA operand
-    return OperandStatus::kConverted;
-  }
-
+  // Checked before looking for a boundary Transpose. If the operand is itself a graph output then it
+  // is an application-visible BNSH boundary in its own right and needs converting -- it must not be
+  // mistaken for the internal intermediate of an already converted node just because something
+  // downstream happens to transpose it to a second graph output. Getting that backwards would leave
+  // an application-visible output in BNSH after the session accepted BNHS.
   if (graph.IsOutput(arg)) {
     boundary_name = arg->Name();
     return OperandStatus::kConvertible;
   }
+
+  // The operand is internal, so a value-layout Transpose from it to a graph output means this node is
+  // already converted. Search the consumers instead of requiring a single one: the BNSH result may
+  // legitimately feed other internal BNSH readers as well, and those must not hide the conversion --
+  // doing so would drop the boundary from the post-partition diagnostic and log a misleading
+  // out-of-scope warning for an operand that is in fact converted.
+  for (const Node* consumer : graph.GetConsumerNodes(arg->Name())) {
+    if (consumer != nullptr && IsValueLayoutTranspose(*consumer) && graph.IsOutput(consumer->OutputDefs()[0])) {
+      boundary_name = consumer->OutputDefs()[0]->Name();  // the graph output, not the GQA operand
+      return OperandStatus::kConverted;
+    }
+  }
+
   return OperandStatus::kOutOfScope;
 }
 
