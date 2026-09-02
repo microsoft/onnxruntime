@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include <napi.h>
 #include "onnxruntime_cxx_api.h"
 
@@ -47,6 +48,12 @@ struct OrtSingletonData {
 
   // Get the ORT singleton objects. Returns nullptr if the singleton has been destroyed.
   static OrtObjects* GetOrtObjects();
+
+  // The environment cleanup hook can destroy the singleton before N-API finalizers and queued
+  // releases run, and calling into ORT after that means calling into an unloaded library. Every
+  // late owner of an ORT object drops it through one of these, which leak instead in that case.
+  static void ReleaseValue(OrtValue* value);
+  static void DropSession(std::shared_ptr<Ort::Session>&& session);
 
  private:
   static void CleanupHook(void* arg);

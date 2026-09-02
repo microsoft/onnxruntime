@@ -284,9 +284,9 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       }
       auto* valueOwner = gpuBufferValue.As<Napi::External<OrtValueOwner>>().Data();
       ORT_NAPI_THROW_ERROR_IF(valueOwner == nullptr || !*valueOwner, env, "Tensor.gpuBuffer has been disposed.");
-      Ort::Value dataValue(valueOwner->get());
-      void* gpuBuffer = dataValue.GetTensorMutableRawData();
-      dataValue.release();
+      // A non-owning view: the External keeps ownership.
+      Ort::UnownedValue owned{valueOwner->get()};
+      void* gpuBuffer = owned.GetTensorMutableRawData();
       if (value_owners != nullptr) {
         value_owners->push_back(*valueOwner);
       }
@@ -296,9 +296,7 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       // declare a larger shape over a smaller device allocation; check the declaration against the
       // owned value before handing ORT a view over it, which for a preallocated output would
       // otherwise be an out-of-bounds device write.
-      OrtTensorTypeAndShapeInfo* ownedTypeAndShape = nullptr;
-      Ort::ThrowOnError(Ort::GetApi().GetTensorTypeAndShape(valueOwner->get(), &ownedTypeAndShape));
-      Ort::TensorTypeAndShapeInfo ownedInfo{ownedTypeAndShape};
+      auto ownedInfo = owned.GetTensorTypeAndShapeInfo();
       ORT_NAPI_THROW_TYPEERROR_IF(ownedInfo.GetElementType() != elemType, env,
                                   "Tensor.type does not match the type of the GPU buffer it wraps.");
       ORT_NAPI_THROW_ERROR_IF(ownedInfo.GetShape() != dims, env,
@@ -377,13 +375,10 @@ void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, N
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "Preallocated output tensor buffer was detached.");
 }
 
-void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
-                                  const PreallocatedOutputInfo& expected) {
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination) {
   // Precondition: ValidateOrtValueForNapiTypedArray() has already accepted this pair. Callers with
   // several preallocated outputs must validate all of them before copying any, so that a rejection
   // cannot leave some caller buffers already overwritten.
-  (void)expected;
-
   const size_t sourceByteLength = value.GetTensorSizeInBytes();
   if (sourceByteLength == 0) {
     return;
@@ -419,9 +414,13 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_p
   if (dimsCount > 0) {
     dimsVector = tensorTypeAndShapeInfo.GetShape();
   }
+  // Define the elements rather than assigning them: assignment consults Array.prototype, where an
+  // inherited setter would swallow the value and leave the returned Tensor with the wrong shape.
   auto dims = Napi::Array::New(env, dimsCount);
   for (uint32_t i = 0; i < dimsCount; i++) {
-    dims[i] = dimsVector[i];
+    dims.DefineProperty(Napi::PropertyDescriptor::Value(
+        std::to_string(i), Napi::Number::New(env, static_cast<double>(dimsVector[i])),
+        static_cast<napi_property_attributes>(napi_writable | napi_enumerable | napi_configurable)));
   }
 
   // location
@@ -467,13 +466,8 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_p
       // Capturing 'session' keeps the execution provider that owns this buffer alive for exactly as
       // long as the value is: the capture outlives the release below and is dropped right after it.
       auto releaseOrtValue = [session](OrtValue* value) mutable {
-        if (OrtSingletonData::GetOrtObjects()) {
-          Ort::GetApi().ReleaseValue(value);
-          return;
-        }
-        // The ORT singleton is already gone. Releasing the value would call into an unloaded
-        // library, and so would dropping the last reference to the session, so leak both.
-        new std::shared_ptr<Ort::Session>(std::move(session));
+        OrtSingletonData::ReleaseValue(value);
+        OrtSingletonData::DropSession(std::move(session));
       };
       // Build the shared owner out of the unique_ptr rather than from its raw pointer: if allocating
       // the control block throws, ownership stays with the unique_ptr instead of the deleter running
@@ -524,12 +518,7 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_p
         napi_value externalArrayBuffer = nullptr;
         const napi_status status = napi_create_external_arraybuffer(
             env, value.GetTensorMutableRawData(), byteLength,
-            [](napi_env, void*, void* hint) {
-              // The environment cleanup hook may run before N-API finalizers during shutdown.
-              if (OrtSingletonData::GetOrtObjects()) {
-                Ort::GetApi().ReleaseValue(static_cast<OrtValue*>(hint));
-              }
-            },
+            [](napi_env, void*, void* hint) { OrtSingletonData::ReleaseValue(static_cast<OrtValue*>(hint)); },
             static_cast<OrtValue*>(value), &externalArrayBuffer);
         if (status == napi_ok) {
           // Ownership of the OrtValue moves to the ArrayBuffer: the finalizer above releases it, so

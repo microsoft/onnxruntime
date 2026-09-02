@@ -66,10 +66,9 @@ void ValidateOrtValueMatchesDeclared(Napi::Env env, const Ort::Value& value, con
 void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
                                        const PreallocatedOutputInfo& expected);
 
-// copy an OrtValue tensor into an existing Javascript TypedArray, after checking that it matches
-// the type and shape the caller declared for the preallocated output
-void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
-                                  const PreallocatedOutputInfo& expected);
+// copy an OrtValue tensor into an existing Javascript TypedArray that
+// ValidateOrtValueForNapiTypedArray() has already accepted
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination);
 
 // convert an OrtValue object to a Javascript OnnxValue object
 //

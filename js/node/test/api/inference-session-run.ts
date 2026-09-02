@@ -8,6 +8,12 @@ import * as path from 'path';
 import { listSupportedBackends } from '../../lib/backend';
 import { assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT } from '../test-utils';
 
+const skipWithoutWebGpu = (context: Mocha.Context) => {
+  if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+    context.skip();
+  }
+};
+
 describe('API Tests - InferenceSession.run()', async () => {
   let session: InferenceSession;
   const input0 = new Tensor('float32', SQUEEZENET_INPUT0_DATA, [1, 3, 224, 224]);
@@ -286,6 +292,12 @@ describe('API Tests - InferenceSession.run()', async () => {
       const result = await localSession.run({ input }, { output });
       assert.strictEqual(result.output, output);
       assertTensorEqual(output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+
+      // A fresh output builds its dims array natively; an inherited index setter must not be able to
+      // swallow those elements either.
+      const allocated = (await localSession.run({ input })).output;
+      assert.deepStrictEqual(allocated.dims, [1, 5]);
+      assertTensorEqual(allocated, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
     } finally {
       for (const index of indices) {
         delete (Array.prototype as unknown as Record<number, unknown>)[index];
@@ -413,10 +425,8 @@ describe('API Tests - InferenceSession.run()', async () => {
   });
 
   it('reuses a preallocated GPU output', async function () {
-    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
-      // eslint-disable-next-line no-invalid-this
-      this.skip();
-    }
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
 
     const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
     const localSession = await InferenceSession.create(modelPath, {
@@ -453,10 +463,8 @@ describe('API Tests - InferenceSession.run()', async () => {
   });
 
   it('runs concurrent inferences across device sessions safely', async function () {
-    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
-      // eslint-disable-next-line no-invalid-this
-      this.skip();
-    }
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
 
     // No preferredOutputLocation, so these take the plain Run() path. Sessions on the same device
     // still share the provider's global state, so the runs have to serialize against each other.
@@ -484,10 +492,8 @@ describe('API Tests - InferenceSession.run()', async () => {
   });
 
   it('runs concurrent IO-binding inferences across sessions safely', async function () {
-    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
-      // eslint-disable-next-line no-invalid-this
-      this.skip();
-    }
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
 
     const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
     // preferredOutputLocation selects the IO-binding path, where binding does device work outside
@@ -527,10 +533,8 @@ describe('API Tests - InferenceSession.run()', async () => {
   });
 
   it('lets a GPU output outlive the session that produced it', async function () {
-    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
-      // eslint-disable-next-line no-invalid-this
-      this.skip();
-    }
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
 
     // The buffer belongs to an allocator owned by the session's execution provider, so releasing it
     // after the session is gone would call into a destroyed provider. The value holds the session
@@ -551,10 +555,8 @@ describe('API Tests - InferenceSession.run()', async () => {
   });
 
   it('rejects a device output on a session without preferredOutputLocation', async function () {
-    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
-      // eslint-disable-next-line no-invalid-this
-      this.skip();
-    }
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
 
     const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
     const deviceSession = await InferenceSession.create(modelPath, {
@@ -580,10 +582,8 @@ describe('API Tests - InferenceSession.run()', async () => {
   });
 
   it('keeps a GPU buffer alive when Tensor disposal bypasses instance methods', async function () {
-    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
-      // eslint-disable-next-line no-invalid-this
-      this.skip();
-    }
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
 
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'), {
       executionProviders: ['webgpu'],

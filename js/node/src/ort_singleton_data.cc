@@ -46,3 +46,21 @@ void OrtSingletonData::CleanupHook(void* arg) {
 OrtSingletonData::OrtObjects* OrtSingletonData::GetOrtObjects() {
   return ort_objects.load(std::memory_order_acquire);
 }
+
+void OrtSingletonData::ReleaseValue(OrtValue* value) {
+  if (value != nullptr && GetOrtObjects() != nullptr) {
+    Ort::GetApi().ReleaseValue(value);
+  }
+}
+
+void OrtSingletonData::DropSession(std::shared_ptr<Ort::Session>&& session) {
+  if (session == nullptr) {
+    return;
+  }
+  if (GetOrtObjects() == nullptr) {
+    // Leak the reference: dropping the last one would release the session into an unloaded library.
+    new std::shared_ptr<Ort::Session>(std::move(session));
+    return;
+  }
+  session.reset();
+}

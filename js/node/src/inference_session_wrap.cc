@@ -14,26 +14,30 @@
 #include <string>
 
 namespace {
-// Owns run values handed to OrtInstanceData::ReleaseDeviceObject(). If the environment cleanup hook
-// destroyed the ORT singleton before these are drained -- at process exit, say -- releasing them
-// would call into an unloaded library, so leak instead, as ~InferenceSessionWrap does.
+// Run values handed to OrtInstanceData::ReleaseDeviceObject(). They may be device-backed, so they
+// hold the session whose execution provider owns their buffers; draining can happen long after the
+// run.
 struct DeviceValues {
   DeviceValues(std::vector<Ort::Value>&& moved, std::shared_ptr<Ort::Session> owning_session)
       : values(std::move(moved)), session(std::move(owning_session)) {}
 
   std::vector<Ort::Value> values;
-  // These may be device-backed, in which case their buffers belong to an allocator owned by the
-  // session's execution provider. Draining can happen long after the run, so hold the session.
   std::shared_ptr<Ort::Session> session;
 
   ~DeviceValues() {
-    if (!OrtSingletonData::GetOrtObjects()) {
-      for (auto& value : values) {
-        (void)value.release();
-      }
-      new std::shared_ptr<Ort::Session>(std::move(session));
+    for (auto& value : values) {
+      OrtSingletonData::ReleaseValue(value.release());
     }
+    OrtSingletonData::DropSession(std::move(session));
   }
+};
+
+// A session reference handed to OrtInstanceData::ReleaseDeviceObject(): destroying a session tears
+// its execution provider down, which is device work.
+struct SessionRelease {
+  explicit SessionRelease(std::shared_ptr<Ort::Session>&& moved) : session(std::move(moved)) {}
+  std::shared_ptr<Ort::Session> session;
+  ~SessionRelease() { OrtSingletonData::DropSession(std::move(session)); }
 };
 }  // namespace
 
@@ -93,9 +97,10 @@ InferenceSessionWrap::~InferenceSessionWrap() {
     for (auto& type_info : outputTypes_) {
       (void)type_info.release();
     }
-    // Intentionally leak the session as well: a device-backed value may still reference it.
-    new std::shared_ptr<Ort::Session>(std::move(session_));
   }
+  // Collected without dispose(): the session may still be ours to drop, and for a device provider
+  // that is device work that must not run on this thread outside the device lock.
+  ReleaseSession();
 }
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
@@ -218,14 +223,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     bool copy_to_js{false};
     // Type and shape the caller's tensor declares, checked against what the model produced.
     PreallocatedOutputInfo declared;
-    // The caller's Tensor, and the storage behind it: the typed array for a CPU output (which is
-    // also the copy destination) or the gpu-buffer External for a device one. The two never coexist,
-    // and the lease key is derived from the storage, so no third reference is needed.
-    //
-    // Held as persistent references rather than slots in a Javascript array: array element
-    // assignment can be intercepted by an inherited setter (Array.prototype[0]), leaving the value
-    // unpinned and letting a matching getter return a different object on every read, so validation
-    // and the copy could see different buffers.
+    // The caller's Tensor, and the storage behind it: the typed array for a CPU output (also the
+    // copy destination) or the gpu-buffer External for a device one. Persistent references, not
+    // slots in a Javascript array, so nothing a script controls can swap what was pinned.
     Napi::Reference<Napi::Value> js_value;
     Napi::Reference<Napi::Value> js_storage;
     size_t lease_byte_offset{0};
@@ -251,7 +251,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       bool armed{true};
       ~FailureGuard() {
         if (armed) {
-          worker->ReleaseDeviceValuesOnFailure(owner->session_);
+          // A throwing constructor never runs its own destructor, so this is the only chance.
+          worker->ReleaseRunValues(owner->session_, worker->MayHoldDeviceValues());
         }
       }
     } failure_guard{this, &session};
@@ -259,6 +260,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     for (const auto& name : session.inputNames_) {
       if (feed.Has(name)) {
         auto value = feed.Get(name);
+        // The subset actually fed, in session order; Execute() needs it as C strings.
         input_names_.push_back(name);
         // No conversion detail is needed for inputs: cpu data is copied into ORT-owned storage and
         // gpu-buffer storage is held for the run by gpu_value_owners_, so there is nothing to pin.
@@ -315,18 +317,28 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       }
     }
 
-    preferred_output_locations_ = session.preferredOutputLocations_;
     ParseRunOptions(options, run_options_);
     failure_guard.armed = false;
   }
 
-  // Hand over anything device-backed that was built before a failure. A constructor that throws
-  // never runs its own destructor, so its members would otherwise be destroyed inline on the
-  // Javascript thread, outside the device lock every other release path goes through.
-  void ReleaseDeviceValuesOnFailure(const std::shared_ptr<Ort::Session>& owning_session) {
+  // Drop this run's values. Releasing a device-backed value is device work, so when any may be
+  // device-backed they go through the release queue rather than being destroyed on this thread;
+  // plain CPU values are destroyed directly. 'owning_session' is passed rather than read from
+  // session_ because the constructor's failure path runs before that pointer is usable.
+  void ReleaseRunValues(const std::shared_ptr<Ort::Session>& owning_session, bool may_be_device_backed) {
+    if (!may_be_device_backed) {
+      output_values_.clear();
+      input_values_.clear();
+      gpu_value_owners_.clear();
+      return;
+    }
     OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(output_values_), owning_session));
     OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(input_values_), owning_session));
     OrtInstanceData::ReleaseDeviceObject(std::make_shared<std::vector<OrtValueOwner>>(std::move(gpu_value_owners_)));
+  }
+
+  bool MayHoldDeviceValues() const {
+    return session_->requires_device_serialization_ || !gpu_value_owners_.empty();
   }
 
   ~RunAsyncWorker() override {
@@ -347,8 +359,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   // Settle the promise for a run that failed before it was queued. Routed through the worker so the
   // deferred is settled exactly once: settling it twice frees the napi_deferred twice.
   void Fail(Napi::Value error) {
-    Complete();
-    Settle([&] { deferred_.Reject(error); });
+    Finish([&] { deferred_.Reject(error); });
   }
 
 
@@ -408,9 +419,12 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
             OrtInstanceData::DrainDeviceReleasesLocked();
             return;
           }
-          // This session does not serialize its runs, but it can still have been handed a gpu-buffer
-          // input, so the values may be device-backed even here. Hand them over rather than
-          // destroying them on a pool thread with no lock held.
+          // No lock: a session that does not serialize its runs can still have been handed a
+          // gpu-buffer input, and only then is there anything that must not be destroyed here.
+          if (worker->gpu_value_owners_.empty()) {
+            worker->input_values_.clear();
+            return;
+          }
           OrtInstanceData::ReleaseDeviceObject(
               std::make_shared<DeviceValues>(std::move(worker->input_values_), worker->session_->session_));
           OrtInstanceData::ReleaseDeviceObject(
@@ -418,7 +432,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         }
       } device_cleanup{this, &device_lock};
 
-      if (preferred_output_locations_.empty()) {
+      // Session state read from the pool thread is immutable after LoadModel(), and the session cannot
+      // be torn down while this run is counted in active_runs_.
+      if (session_->preferredOutputLocations_.empty()) {
         session_->session_->Run(run_options_, input_names_cstr.data(), input_values_.data(), input_values_.size(),
                                 output_names_cstr.data(), output_values_.data(), output_values_.size());
         return;
@@ -438,7 +454,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
             // Preallocated CPU output: ORT allocates and OnOK() copies into the caller's buffer.
             io_binding_->BindOutput(output_names_cstr[i], cpu_memory_info_);
           }
-        } else if (preferred_output_locations_[i] == DATA_LOCATION_GPU_BUFFER) {
+        } else if (session_->preferredOutputLocations_[i] == DATA_LOCATION_GPU_BUFFER) {
           io_binding_->BindOutput(output_names_cstr[i], gpu_buffer_memory_info_);
         } else {
           io_binding_->BindOutput(output_names_cstr[i], cpu_memory_info_);
@@ -459,8 +475,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
   void OnError(const Napi::Error& error) override {
     try {
-      Complete();
-      Settle([&] { deferred_.Reject(error.Value()); });
+      Finish([&] { deferred_.Reject(error.Value()); });
     } catch (...) {
       // See Settle(): nothing may escape a completion callback.
     }
@@ -514,20 +529,16 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
       for (size_t i = 0; i < output_values_.size(); ++i) {
         if (outputs_[i].copy_to_js) {
-          CopyOrtValueToNapiTypedArray(env_, output_values_[i], outputs_[i].js_storage.Value(), outputs_[i].declared);
+          CopyOrtValueToNapiTypedArray(env_, output_values_[i], outputs_[i].js_storage.Value());
         }
       }
-      Complete();
-      Settle([&] { deferred_.Resolve(result); });
+      Finish([&] { deferred_.Resolve(result); });
     } catch (const Napi::Error& e) {
-      Complete();
-      Settle([&] { deferred_.Reject(e.Value()); });
+      Finish([&] { deferred_.Reject(e.Value()); });
     } catch (const std::exception& e) {
-      Complete();
-      Settle([&] { deferred_.Reject(Napi::Error::New(env_, e.what()).Value()); });
+      Finish([&] { deferred_.Reject(Napi::Error::New(env_, e.what()).Value()); });
     } catch (...) {
-      Complete();
-      Settle([&] { deferred_.Reject(Napi::Error::New(env_, "Unknown error while converting model outputs.").Value()); });
+      Finish([&] { deferred_.Reject(Napi::Error::New(env_, "Unknown error while converting model outputs.").Value()); });
     }
   }
 
@@ -537,6 +548,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   // exception escaping OnOK()/OnError() into a Javascript one, and that conversion throws in turn,
   // reaching std::terminate through libuv's C frames. Nobody is left to observe the promise at that
   // point, so drop the failure rather than take the process down.
+  // End the run, then settle the promise: every completion path must do both, in that order.
+  template <typename Fn>
+  void Finish(Fn&& settle) {
+    Complete();
+    Settle(std::forward<Fn>(settle));
+  }
+
   template <typename Fn>
   void Settle(Fn&& settle) {
     if (settled_) {
@@ -557,15 +575,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
     ReleaseOutputBufferLeases();
 
-    // The remaining values may be device-backed, and releasing those is device work. Hand them over
-    // rather than destroying them here: this runs on the Javascript thread, where taking the device
-    // lock would stall the event loop for the length of another session's inference. Their buffers
-    // keep their allocators alive through a shared_ptr, so they do not depend on the session.
-    OrtInstanceData::ReleaseDeviceObject(
-        std::make_shared<DeviceValues>(std::move(output_values_), session_->session_));
-    OrtInstanceData::ReleaseDeviceObject(
-        std::make_shared<DeviceValues>(std::move(input_values_), session_->session_));
-    OrtInstanceData::ReleaseDeviceObject(std::make_shared<std::vector<OrtValueOwner>>(std::move(gpu_value_owners_)));
+    // Runs on the Javascript thread. Device-backed values are queued rather than destroyed here, since
+    // taking the device lock could stall the event loop for another session's whole inference; a
+    // pure CPU run never touches that lock at all.
+    ReleaseRunValues(session_->session_, MayHoldDeviceValues());
 
     session_->EndRun();
   }
@@ -580,6 +593,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   Napi::Env env_;
   InferenceSessionWrap* session_;
   Napi::Promise::Deferred deferred_;
+  // Keeps the wrapper alive for the run. The AsyncWorker constructor used here takes the session
+  // only as the async resource for async_hooks and holds no reference to it.
   Napi::ObjectReference session_reference_;
   Ort::MemoryInfo cpu_memory_info_;
   Ort::MemoryInfo gpu_buffer_memory_info_;
@@ -592,7 +607,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   // contiguous array of Ort::Value, and IoBinding replaces the whole vector with its results.
   std::vector<Ort::Value> output_values_;
   std::vector<OutputBufferLease> output_buffer_leases_;
-  std::vector<int> preferred_output_locations_;
   std::unique_ptr<Ort::IoBinding> io_binding_;
   bool completed_{false};
   bool settled_{false};
@@ -642,13 +656,13 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     // Reject rather than throw: the deferred already exists, and N-API frees it only once it has
     // been settled. Throwing would leak it and would also make a method that is typed as returning
     // a Promise raise synchronously.
-    FailRun(worker, deferred, e.Value());
+    FailRun(worker.get(), deferred, e.Value());
     return deferred.Promise();
   } catch (const std::exception& e) {
-    FailRun(worker, deferred, Napi::Error::New(env, e.what()).Value());
+    FailRun(worker.get(), deferred, Napi::Error::New(env, e.what()).Value());
     return deferred.Promise();
   } catch (...) {
-    FailRun(worker, deferred, Napi::Error::New(env, "Unknown error while preparing inference.").Value());
+    FailRun(worker.get(), deferred, Napi::Error::New(env, "Unknown error while preparing inference.").Value());
     return deferred.Promise();
   }
 
@@ -660,8 +674,7 @@ void InferenceSessionWrap::BeginRun() {
   ++active_runs_;
 }
 
-void InferenceSessionWrap::FailRun(const std::unique_ptr<RunAsyncWorker>& worker,
-                                   Napi::Promise::Deferred& deferred, Napi::Value error) {
+void InferenceSessionWrap::FailRun(RunAsyncWorker* worker, Napi::Promise::Deferred& deferred, Napi::Value error) {
   // Once the worker exists it owns both the run registration and the promise, so let it settle them;
   // its destructor would otherwise reject a promise this function had already rejected.
   if (worker) {
@@ -683,14 +696,21 @@ void InferenceSessionWrap::TeardownSession() {
   inputTypes_.clear();
   outputTypes_.clear();
 
+  ReleaseSession();
+}
+
+void InferenceSessionWrap::ReleaseSession() {
+  if (session_ == nullptr) {
+    return;
+  }
   if (requires_device_serialization_) {
     // Destroying the session tears down its execution provider, which returns pooled buffers through
-    // a manager bound to the shared device context. Hand it over so that happens under the device
-    // lock instead of on the Javascript thread while another session is encoding.
-    OrtInstanceData::ReleaseDeviceObject(std::move(session_));
-  } else {
-    session_.reset();
+    // a manager bound to the shared device context. Queue it so that happens under the device lock
+    // instead of on the Javascript thread while another session is encoding.
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<SessionRelease>(std::move(session_)));
+    return;
   }
+  OrtSingletonData::DropSession(std::move(session_));
 }
 
 std::unique_lock<std::mutex> InferenceSessionWrap::LockDeviceIfRequired() {

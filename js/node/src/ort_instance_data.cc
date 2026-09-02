@@ -86,18 +86,20 @@ void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
     return;
   }
 
+  {
+    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+    PendingReleases().push_back(std::move(object));
+  }
+
+  // Everything is destroyed from the queue, so the draining flag covers this object too; releasing
+  // it inline after the drain would let a destructor that releases another device object re-enter
+  // and try_lock a mutex this thread already owns.
   if (!draining_device_releases) {
     std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
     if (device_lock.owns_lock()) {
       DrainDeviceReleasesLocked();
-      object.reset();
       return;
     }
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
-    PendingReleases().push_back(std::move(object));
   }
 
   // The lock may have been dropped while we were queueing. Without this, an object queued during the

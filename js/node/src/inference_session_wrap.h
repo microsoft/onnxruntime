@@ -87,9 +87,11 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   void EndRun();
   // Settle and drain a run that failed during preparation, without double-counting or double-settling
   // a worker that already owns them.
-  void FailRun(const std::unique_ptr<RunAsyncWorker>& worker, Napi::Promise::Deferred& deferred, Napi::Value error);
+  void FailRun(RunAsyncWorker* worker, Napi::Promise::Deferred& deferred, Napi::Value error);
   // Release the ORT objects. Deferred until the last in-flight run finishes if one is outstanding.
   void TeardownSession();
+  // Drop our reference to the ORT session, through the device lock if its provider needs that.
+  void ReleaseSession();
   // Hold the device lock for the duration of the returned guard, if this session's provider needs it.
   std::unique_lock<std::mutex> LockDeviceIfRequired();
 
