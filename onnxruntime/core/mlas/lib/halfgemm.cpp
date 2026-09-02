@@ -78,6 +78,24 @@ MlasHalfGemmDecodeSupported(
 #endif
 }
 
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr) {
+        return true;
+    }
+
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH))
+    return MlasFp16AccelerationSupported();
+#else
+    return false;
+#endif
+}
+
 static bool
 TryGetHalfGemmBackendSelectorConfig(
     size_t BatchN,

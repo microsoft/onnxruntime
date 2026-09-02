@@ -415,9 +415,14 @@ class KernelTestFixture : public ::testing::Test {
     if (m_ < 16) {
       cuda_time_ms = measure_kernel_time(
           [&]() {
-            int arch = onnxruntime::llm::common::getSMVersion();
-            ORT_ENFORCE(wo::is_supported(arch, params.type));
-            wo::kernel_launcher(arch, params, s_);
+            const int device_arch = onnxruntime::llm::common::getSMVersion();
+#if USE_COMPACT_FPA_INTB_GEMM
+            constexpr int kernel_arch = 80;
+#else
+            const int kernel_arch = device_arch;
+#endif
+            ORT_ENFORCE(wo::is_supported(device_arch, kernel_arch, params.type));
+            wo::kernel_launcher(kernel_arch, params, s_);
           },
           warmup_, repeats_, s_);
       d_out_->to_cpu(h_out1_.data());
@@ -595,6 +600,28 @@ using Fp16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwis
 using Bf16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int8Groupwise>;
 using Bf16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwise>;
 #endif
+
+TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
+  EXPECT_FALSE(wo::is_supported(74, 80, wo::KernelType::FP16Int4Groupwise));
+  EXPECT_TRUE(wo::is_supported(75, 80, wo::KernelType::FP16Int4Groupwise));
+  EXPECT_FALSE(wo::is_supported(75, 80, wo::KernelType::BF16Int4Groupwise));
+  EXPECT_FALSE(wo::is_supported(90, 80, wo::KernelType::FP16Int4PerChannel));
+
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::FP16Int4Groupwise));
+  EXPECT_FALSE(wo::is_supported(90, 80, wo::KernelType::BF16Int4Groupwise));
+  EXPECT_FALSE(wo::is_supported(90, 90, wo::KernelType::FP16Int4Groupwise));
+#else
+  EXPECT_TRUE(wo::is_supported(80, 80, wo::KernelType::BF16Int4Groupwise));
+  EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::BF16Int4Groupwise));
+  EXPECT_FALSE(wo::is_supported(80, 90, wo::KernelType::FP16Int4Groupwise));
+#ifdef EXCLUDE_SM_90
+  EXPECT_FALSE(wo::is_supported(90, 90, wo::KernelType::FP16Int4Groupwise));
+#else
+  EXPECT_TRUE(wo::is_supported(90, 90, wo::KernelType::FP16Int4Groupwise));
+#endif
+#endif
+}
 
 TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
   int const arch = onnxruntime::llm::common::getSMVersion();

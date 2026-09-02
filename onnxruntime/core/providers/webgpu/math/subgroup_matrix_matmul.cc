@@ -24,7 +24,6 @@ namespace {
 
 // Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
 // split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-// TODO: use subgroup-size-control to enforce the subgroup size is 32.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
 // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
@@ -172,6 +171,7 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
 
     SubgroupMatrixMatMulProgram program{has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
+    program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
@@ -289,10 +289,13 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
 std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(
     const MatMul& parent, const ComputeContextBase& context) {
   // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
+  // this kernel is implemented for. That config's adapters expose a 16-32 subgroup
+  // size range, so the kernel's fixed 32 lanes per subgroup must be pinned with
+  // subgroup-size control.
   int32_t config_index = 0;
   if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
+      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16) ||
+      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
