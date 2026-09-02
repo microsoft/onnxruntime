@@ -4,6 +4,7 @@
 #include <memory>
 #include <utility>
 
+#include "core/common/safeint.h"
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -29,23 +30,51 @@ void* GpuBufferAllocator::Alloc(size_t size) {
     return nullptr;
   }
 
-  stats_.num_allocs++;
-
   wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
-  return buffer_manager_getter_().Create(size, usage);
+  void* buffer = buffer_manager_getter_().Create(size, usage);
+  const size_t allocated_size = static_cast<size_t>(
+      wgpuBufferGetSize(static_cast<WGPUBuffer>(buffer)));
+  const int64_t allocated_size_int64 = SafeInt<int64_t>(allocated_size);
+  const int64_t requested_size_int64 = SafeInt<int64_t>(size);
+  {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    allocations_.emplace(buffer, AllocationSize{size, allocated_size});
+    ++stats_.num_allocs;
+    stats_.bytes_in_use += allocated_size_int64;
+    stats_.bytes_requested_in_use += requested_size_int64;
+    stats_.max_bytes_in_use = std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
+    stats_.max_alloc_size =
+        std::max(stats_.max_alloc_size, allocated_size_int64);
+  }
+
+  return buffer;
 }
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
+    {
+      std::lock_guard<std::mutex> lock(stats_mutex_);
+      const auto allocation = allocations_.find(p);
+      ORT_ENFORCE(allocation != allocations_.end(), "Unknown WebGPU buffer allocation.");
+      stats_.bytes_in_use -= SafeInt<int64_t>(allocation->second.allocated);
+      stats_.bytes_requested_in_use -= SafeInt<int64_t>(allocation->second.requested);
+      allocations_.erase(allocation);
+    }
     buffer_manager_getter_().Release(static_cast<WGPUBuffer>(p));
-    stats_.num_allocs--;
   }
 }
 
 void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
+  std::lock_guard<std::mutex> lock(stats_mutex_);
   *stats = stats_;
+}
+
+void GpuBufferAllocator::ResetPeakStats() {
+  std::lock_guard<std::mutex> lock(stats_mutex_);
+  stats_.max_bytes_in_use = stats_.bytes_in_use;
+  stats_.max_alloc_size = 0;
 }
 
 WebGpuNoOpAllocator::WebGpuNoOpAllocator(bool is_read_only_allocator)

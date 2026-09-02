@@ -4,6 +4,8 @@
 #pragma once
 
 #include <functional>
+#include <mutex>
+#include <unordered_map>
 
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -28,9 +30,17 @@ class GpuBufferAllocator : public IAllocator {
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
+  void ResetPeakStats();
 
  private:
+  struct AllocationSize {
+    size_t requested;
+    size_t allocated;
+  };
+
+  std::mutex stats_mutex_;
   AllocatorStats stats_;
+  std::unordered_map<void*, AllocationSize> allocations_;
   std::function<const BufferManager&()> buffer_manager_getter_;
   bool mapped_at_creation_;
 };
