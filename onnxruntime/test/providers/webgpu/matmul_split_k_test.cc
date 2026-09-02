@@ -7,6 +7,7 @@
 // path on an adapter that would otherwise leave it disabled, or `off` to force it off. The value is
 // read when the WebGPU context is created, so it must be set before the process starts.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -183,6 +184,8 @@ void RunFusedConvAgainstReference(const char* activation_name,
 
   constexpr int64_t kIn = 1024;
   constexpr int64_t kOut = 16;
+  constexpr int64_t kSplitDimInner = 256;  // SplitKConfig's split width
+  static_assert(kIn % kSplitDimInner == 0, "kIn must divide evenly into splits");
   const std::vector<int64_t> x_dims{1, kIn, 1, 1};
   const std::vector<int64_t> w_dims{kOut, kIn, 1, 1};
 
@@ -191,13 +194,25 @@ void RunFusedConvAgainstReference(const char* activation_name,
   std::vector<float> w_vals(random.Gaussian<float>(AsSpan(w_dims), 0.0f, 0.25f));
 
   std::vector<float> expected(kOut);
+  float max_gap = 0.0f;
   for (int64_t o = 0; o < kOut; ++o) {
     float acc = 0.0f;
-    for (int64_t c = 0; c < kIn; ++c) {
-      acc += x_vals[static_cast<size_t>(c)] * w_vals[static_cast<size_t>(o * kIn + c)];
+    float per_split = 0.0f;
+    for (int64_t base = 0; base < kIn; base += kSplitDimInner) {
+      float partial = 0.0f;
+      for (int64_t c = base; c < base + kSplitDimInner; ++c) {
+        partial += x_vals[static_cast<size_t>(c)] * w_vals[static_cast<size_t>(o * kIn + c)];
+      }
+      acc += partial;
+      per_split += apply(partial);
     }
     expected[static_cast<size_t>(o)] = apply(acc);
+    max_gap = std::max(max_gap, std::fabs(per_split - apply(acc)));
   }
+
+  // Applying the activation per split rather than once to the total would produce `per_split`, so
+  // assert the inputs separate the two.
+  ASSERT_GT(max_gap, 1e-2f);
 
   OpTester test("FusedConv", 1, kMSDomain);
   test.AddAttribute("activation", activation_name);
@@ -215,8 +230,7 @@ void RunFusedConvAgainstReference(const char* activation_name,
 
 }  // namespace
 
-// The activation must be applied to the completed sum, not per split. That is only distinguishable
-// when some partial sums differ in sign from the total, which the Gaussian inputs provide.
+// The activation must be applied to the completed sum, not per split.
 TEST(MatMul_SplitK, FusedConvReluAppliedAfterReduction) {
   RunFusedConvAgainstReference("Relu", {}, [](float v) { return v > 0.0f ? v : 0.0f; });
 }
@@ -260,8 +274,7 @@ TEST(MatMul_SplitK, GemvClassifierShapeFloat16) {
 }
 
 // The reduction's `has_bias && !is_gemm` branch is only reachable through Conv, since ONNX MatMul has
-// no bias input. Conv's 1x1 fast path forwards its bias into `ComputeMatMul`. With an activation the
-// reduction must compute `act(sum + b)`; the two are distinguishable because Relu is not additive.
+// no bias input. Conv's 1x1 fast path forwards its bias into `ComputeMatMul`.
 void RunConv1x1BiasAgainstReference(const char* activation_name,
                                     const std::function<float(float)>& apply) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
@@ -289,17 +302,26 @@ void RunConv1x1BiasAgainstReference(const char* activation_name,
 
   // A 1x1 convolution is a matmul over the channel axis, plus the bias once per output channel.
   std::vector<float> expected(static_cast<size_t>(kOutChannels * kSpatial));
+  float max_gap = 0.0f;
   for (int64_t m = 0; m < kOutChannels; ++m) {
     for (int64_t p = 0; p < kSpatial; ++p) {
       float sum = 0.0f;
       for (int64_t c = 0; c < kInChannels; ++c) {
         sum += w_vals[static_cast<size_t>(m * kInChannels + c)] * x_vals[static_cast<size_t>(c * kSpatial + p)];
       }
-      expected[static_cast<size_t>(m * kSpatial + p)] = apply(sum + b_vals[static_cast<size_t>(m)]);
+      const float bias = b_vals[static_cast<size_t>(m)];
+      expected[static_cast<size_t>(m * kSpatial + p)] = apply(sum + bias);
+      max_gap = std::max(max_gap, std::fabs((apply(sum) + bias) - apply(sum + bias)));
     }
   }
 
   const bool fused = activation_name != nullptr;
+
+  // `act(sum) + b` is the plausible wrong order, so assert the inputs separate it from `act(sum + b)`.
+  if (fused) {
+    ASSERT_GT(max_gap, 1e-2f);
+  }
+
   OpTester test(fused ? "FusedConv" : "Conv", fused ? 1 : 11, fused ? kMSDomain : kOnnxDomain);
   if (fused) {
     test.AddAttribute("activation", activation_name);
@@ -321,8 +343,7 @@ TEST(MatMul_SplitK, Conv1x1BiasAppliedOnceByReduction) {
   RunConv1x1BiasAgainstReference(nullptr, [](float v) { return v; });
 }
 
-// Bias and activation together. `act(sum + b)` and `act(sum) + b` differ, and only the first is
-// correct, so this guards the order the reduction applies them in.
+// Bias and activation together. The reduction must compute `act(sum + b)`, not `act(sum) + b`.
 TEST(MatMul_SplitK, Conv1x1BiasThenActivation) {
   RunConv1x1BiasAgainstReference("Relu", [](float v) { return v > 0.0f ? v : 0.0f; });
 }

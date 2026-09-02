@@ -160,10 +160,11 @@ jobs:
               -not (Select-String -Path $dump -Pattern 'MatMul_Split_K_Reduce' -SimpleMatch -Quiet)) {
             throw "MatMul_Split_K_Reduce never dispatched, so the tests did not exercise Split-K."
           }
-          # The activation tests pass whichever path they take, so assert a fused activation reached
-          # the reduction rather than the convolutions falling back to the non-Split-K path.
-          if (-not (Select-String -Path $dump -Pattern 'MatMul_Split_K_Reduce\[[^\]]*ActivationKind: [1-9]' -Quiet)) {
-            throw "No fused activation reached the Split-K reduction."
+          # Relu is 1 and QuickGelu is 7. Assert both reached the reduction, not just one.
+          foreach ($kind in 1, 7) {
+            if (-not (Select-String -Path $dump -Pattern "MatMul_Split_K_Reduce\[[^\]]*ActivationKind: $kind;" -Quiet)) {
+              throw "ActivationKind $kind never reached the Split-K reduction."
+            }
           }
 
       - name: Validate C# native delegates

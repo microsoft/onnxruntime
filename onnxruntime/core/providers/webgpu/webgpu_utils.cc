@@ -30,9 +30,8 @@ SplitKOverride ReadSplitKOverride() {
   return SplitKOverride::Default;
 }
 
-// Activations the Split-K reduction has been measured with. Relu and unit-alpha QuickGelu, which is
-// SiLU, cover the fused convolutions in ResNet and EfficientNet. Other kinds are excluded pending
-// measurement, since each one changes which dispatches take the Split-K path.
+// Relu and unit-alpha QuickGelu, which is SiLU, are the kinds the Split-K reduction has been
+// measured with. Others are excluded pending measurement.
 bool IsActivationSupportedBySplitK(const Activation& activation) {
   return activation.activation_kind_ == ActivationKind::None ||
          activation.activation_kind_ == ActivationKind::Relu ||
