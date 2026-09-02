@@ -466,15 +466,20 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_p
                                                .As<Napi::Function>();
       // Capturing 'session' keeps the execution provider that owns this buffer alive for exactly as
       // long as the value is: the capture outlives the release below and is dropped right after it.
-      auto releaseOrtValue = [session](OrtValue* value) {
+      auto releaseOrtValue = [session](OrtValue* value) mutable {
         if (OrtSingletonData::GetOrtObjects()) {
           Ort::GetApi().ReleaseValue(value);
+          return;
         }
+        // The ORT singleton is already gone. Releasing the value would call into an unloaded
+        // library, and so would dropping the last reference to the session, so leak both.
+        new std::shared_ptr<Ort::Session>(std::move(session));
       };
-      // Keep ownership while allocating the shared owner so allocation failures cannot leak the OrtValue.
+      // Build the shared owner out of the unique_ptr rather than from its raw pointer: if allocating
+      // the control block throws, ownership stays with the unique_ptr instead of the deleter running
+      // once for the failed shared_ptr and again while unwinding.
       auto underlyingOrtValue = std::unique_ptr<OrtValue, decltype(releaseOrtValue)>(value.release(), releaseOrtValue);
-      auto valueOwner = std::make_unique<OrtValueOwner>(underlyingOrtValue.get(), releaseOrtValue);
-      underlyingOrtValue.release();
+      auto valueOwner = std::make_unique<OrtValueOwner>(std::move(underlyingOrtValue));
 
       auto options = Napi::Object::New(env);
       options.Set("dataType", type);

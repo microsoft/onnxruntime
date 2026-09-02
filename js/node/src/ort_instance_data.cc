@@ -73,8 +73,18 @@ void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
     return;
   }
 
-  std::lock_guard<std::mutex> lock(PendingReleaseMutex());
-  PendingReleases().push_back(std::move(object));
+  {
+    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+    PendingReleases().push_back(std::move(object));
+  }
+
+  // The lock may have been dropped while we were queueing. Without this, an object queued during the
+  // last device run of a session would sit there until the next one, which may never come, so the
+  // memory it holds would survive release().
+  std::unique_lock<std::mutex> retry(DeviceMutex(), std::try_to_lock);
+  if (retry.owns_lock()) {
+    DrainDeviceReleasesLocked();
+  }
 }
 
 bool OrtInstanceData::ExternalArrayBuffersRefused(Napi::Env env) {

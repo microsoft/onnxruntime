@@ -18,15 +18,20 @@ namespace {
 // destroyed the ORT singleton before these are drained -- at process exit, say -- releasing them
 // would call into an unloaded library, so leak instead, as ~InferenceSessionWrap does.
 struct DeviceValues {
-  explicit DeviceValues(std::vector<Ort::Value>&& moved) : values(std::move(moved)) {}
+  DeviceValues(std::vector<Ort::Value>&& moved, std::shared_ptr<Ort::Session> owning_session)
+      : values(std::move(moved)), session(std::move(owning_session)) {}
 
   std::vector<Ort::Value> values;
+  // These may be device-backed, in which case their buffers belong to an allocator owned by the
+  // session's execution provider. Draining can happen long after the run, so hold the session.
+  std::shared_ptr<Ort::Session> session;
 
   ~DeviceValues() {
     if (!OrtSingletonData::GetOrtObjects()) {
       for (auto& value : values) {
         (void)value.release();
       }
+      new std::shared_ptr<Ort::Session>(std::move(session));
     }
   }
 };
@@ -234,6 +239,19 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         session_reference_(Napi::Persistent(session.Value())),
         cpu_memory_info_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)),
         gpu_buffer_memory_info_("WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault) {
+    // Disarmed once construction succeeds; until then it hands back anything device-backed that has
+    // already been built, since a throwing constructor never runs its own destructor.
+    struct FailureGuard {
+      RunAsyncWorker* worker;
+      const InferenceSessionWrap* owner;
+      bool armed{true};
+      ~FailureGuard() {
+        if (armed) {
+          worker->ReleaseDeviceValuesOnFailure(owner->session_);
+        }
+      }
+    } failure_guard{this, &session};
+
     for (const auto& name : session.inputNames_) {
       if (feed.Has(name)) {
         auto value = feed.Get(name);
@@ -298,6 +316,15 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
     preferred_output_locations_ = session.preferredOutputLocations_;
     ParseRunOptions(options, run_options_);
+    failure_guard.armed = false;
+  }
+
+  // Hand over anything device-backed that was built before a failure. A constructor that throws
+  // never runs its own destructor, so its members would otherwise be destroyed inline on the
+  // Javascript thread, outside the device lock every other release path goes through.
+  void ReleaseDeviceValuesOnFailure(const std::shared_ptr<Ort::Session>& owning_session) {
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(input_values_), owning_session));
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<std::vector<OrtValueOwner>>(std::move(gpu_value_owners_)));
   }
 
   ~RunAsyncWorker() override {
@@ -368,6 +395,12 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           worker->gpu_value_owners_.clear();
         }
       } device_cleanup{this};
+
+      // Drained again on the way out by DeviceReleaseDrain, so values queued while this run held the
+      // lock do not wait for the next one.
+      struct DeviceReleaseDrain {
+        ~DeviceReleaseDrain() { OrtInstanceData::DrainDeviceReleasesLocked(); }
+      } device_release_drain;
 
       io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
       for (size_t i = 0; i < input_names_.size(); ++i) {
@@ -490,8 +523,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     // rather than destroying them here: this runs on the Javascript thread, where taking the device
     // lock would stall the event loop for the length of another session's inference. Their buffers
     // keep their allocators alive through a shared_ptr, so they do not depend on the session.
-    OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(output_values_)));
-    OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(input_values_)));
+    OrtInstanceData::ReleaseDeviceObject(
+        std::make_shared<DeviceValues>(std::move(output_values_), session_->session_));
+    OrtInstanceData::ReleaseDeviceObject(
+        std::make_shared<DeviceValues>(std::move(input_values_), session_->session_));
     OrtInstanceData::ReleaseDeviceObject(std::make_shared<std::vector<OrtValueOwner>>(std::move(gpu_value_owners_)));
 
     session_->EndRun();
