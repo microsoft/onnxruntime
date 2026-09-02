@@ -109,16 +109,19 @@ Static plugin registration is a prerequisite for isolation, not merely an enable
 moves provider sources into the staging root rather than copying them, so once isolation completes there is exactly
 one WebGPU implementation and it is adapter-free. The non-plugin static build that `onnxruntime-web` ships from today
 must already be served through static plugin registration before the adapter can be removed. Relocating the sources
-is not itself blocked; removing the adapter is.
+is not itself blocked; removing the adapter is. Source transfer then waits on the staging root being independently
+buildable.
 
-The remaining convergence points are not on the critical path:
+The other convergence points between workstreams:
 
 - Provider isolation identifies private dependencies. A dependency becomes public API work only when an existing
   public API cannot express a necessary, stable runtime interaction and the proposed addition meets the high bar for
-  a permanent plugin EP API.
-- Test classification determines which tests move with the provider and which remain in ORT.
-- The Node workstream consumes generic plugin loading from ORT and native WebGPU artifacts from the external provider.
-- The final repository copy depends on `plugin-ep-webgpu/` being independently buildable.
+  a permanent plugin EP API. Such an addition has to ship in an ORT release before the provider can build against it,
+  so it can extend isolation.
+- Test classification determines which tests move with the provider and which remain in ORT. Source transfer waits on
+  it.
+- The Node workstream consumes generic plugin loading from ORT and native WebGPU artifacts from the external
+  provider. It does not gate source transfer, but bundled Node WebGPU cannot be removed until it lands.
 
 ## Success criteria
 
@@ -133,4 +136,4 @@ These are the outcomes that show the whole effort is complete:
 - `onnxruntime-web` preserves supported functionality and accepted size and performance characteristics.
 - Native ORT packages remain usable without installing WebGPU.
 - Existing Node WebGPU users have a documented and tested migration path.
-- Compatibility failures produce clear build-time, registration-time, or package-time diagnostics.
+- Compatibility failures produce clear build-time or registration-time diagnostics.
