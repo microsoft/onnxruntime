@@ -1999,6 +1999,8 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
 
   if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
       tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    ORT_RETURN_IF(tensor.Location().device.Type() != OrtDevice::CPU,
+                  "FP6 external data requires a CPU destination when loaded through IExternalDataLoader.");
     Tensor packed_tensor{DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(raw_data_safe_len)}),
                          CPUAllocator::DefaultInstance()};
     ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len,
