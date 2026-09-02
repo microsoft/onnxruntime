@@ -1049,6 +1049,8 @@ TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonPositiveVocabSizeInt64) {
 }
 
 TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonPositiveVocabSizeInt32) {
+  RunVarlenNGramHashMappingNonPositiveVocabTest<int32_t>();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
