@@ -84,8 +84,9 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // callback, which node-addon-api also invokes there. Execute() never touches these.
   void BeginRun();
   void EndRun();
-  // End a run that failed during preparation, without double-counting a worker that already owns it.
-  void AbandonRun(const std::unique_ptr<RunAsyncWorker>& worker);
+  // Settle and drain a run that failed during preparation, without double-counting or double-settling
+  // a worker that already owns them.
+  void FailRun(const std::unique_ptr<RunAsyncWorker>& worker, Napi::Promise::Deferred& deferred, Napi::Value error);
   // Release the ORT objects. Deferred until the last in-flight run finishes if one is outstanding.
   void TeardownSession();
 

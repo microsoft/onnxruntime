@@ -11,6 +11,7 @@
 #include "session_options_helper.h"
 #include "tensor_helper.h"
 #include <string>
+#include <thread>
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
@@ -171,7 +172,12 @@ Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   return scope.Escape(array);
 }
 
-class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
+// Inference runs on a thread this class owns rather than on the libuv thread pool that
+// Napi::AsyncWorker would use. That pool is shared with fs, dns, zlib and crypto, and it defaults to
+// four threads, so dispatching inference there makes long runs stall unrelated I/O for the whole
+// process. Completion is handed back to the Javascript thread through a ThreadSafeFunction, which
+// also keeps the event loop alive until the run settles.
+class InferenceSessionWrap::RunAsyncWorker {
  public:
   using OutputBufferLease = OrtInstanceData::OutputBufferLease;
 
@@ -202,8 +208,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
   RunAsyncWorker(InferenceSessionWrap& session, const Napi::Object& feed, const Napi::Object& fetch,
                  const Napi::Object& options, Napi::Promise::Deferred deferred)
-      : Napi::AsyncWorker(session.Value().Env(), "InferenceSession.run", session.Value()),
-        env_(session.Value().Env()),
+      : env_(session.Value().Env()),
         session_(&session),
         deferred_(deferred),
         session_reference_(Napi::Persistent(session.Value())),
@@ -213,17 +218,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (feed.Has(name)) {
         auto value = feed.Get(name);
         input_names_.push_back(name);
-        NapiTensorConversion conversion;
-        input_values_.push_back(
-            NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_, NapiValueUsage::kInput,
-                                &gpu_value_owners_, &conversion));
-        input_references_.push_back(Napi::Persistent(value));
-        if (!conversion.data.IsEmpty()) {
-          input_references_.push_back(Napi::Persistent(conversion.data));
-        }
-        if (!conversion.gpuBuffer.IsEmpty()) {
-          input_references_.push_back(Napi::Persistent(conversion.gpuBuffer));
-        }
+        // No conversion detail is needed for inputs: cpu data is copied into ORT-owned storage and
+        // gpu-buffer storage is held for the run by gpu_value_owners_, so there is nothing to pin.
+        input_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_,
+                                                    NapiValueUsage::kInput, &gpu_value_owners_));
       }
     }
 
@@ -272,10 +270,42 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     ParseRunOptions(options, run_options_);
   }
 
-  ~RunAsyncWorker() override {
-    // AsyncWorker::OnWorkComplete() skips OnOK()/OnError() entirely when the work was cancelled and
-    // still destroys the worker, so the run has to be drained here too. Complete() is idempotent.
+  ~RunAsyncWorker() {
+    // The worker can be destroyed without the completion callback ever running, for instance if the
+    // environment is torn down while the run is queued. Draining here keeps the run count honest,
+    // and the promise is rejected rather than left pending forever.
     Complete();
+    if (!settled_) {
+      settled_ = true;
+      try {
+        deferred_.Reject(Napi::Error::New(env_, "Inference was abandoned before it completed.").Value());
+      } catch (...) {
+        // The environment is going away; there is nobody left to observe the rejection.
+      }
+    }
+  }
+
+  // Settle the promise for a run that failed before it was queued. Routed through the worker so the
+  // deferred is settled exactly once: settling it twice frees the napi_deferred twice.
+  void Fail(Napi::Value error) {
+    Complete();
+    Settle([&] { deferred_.Reject(error); });
+  }
+
+  // Start the run. Ownership passes to the ThreadSafeFunction, whose finalizer deletes the worker on
+  // the Javascript thread once the completion callback has run.
+  void Queue() {
+    tsfn_ = Napi::ThreadSafeFunction::New(
+        env_, Napi::Function::New(env_, [](const Napi::CallbackInfo&) {}), "InferenceSession.run", 0, 1,
+        [this](Napi::Env) { delete this; });
+
+    std::thread([this] {
+      Execute();
+      // Copy the handle: after Release() the finalizer may have deleted this worker already.
+      auto tsfn = tsfn_;
+      tsfn.BlockingCall([this](Napi::Env env, Napi::Function) { OnComplete(env); });
+      tsfn.Release();
+    }).detach();
   }
 
   void AcquireOutputBufferLeases() {
@@ -288,7 +318,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     }
   }
 
-  void Execute() override {
+  void Execute() {
     try {
       std::vector<const char*> input_names_cstr;
       input_names_cstr.reserve(input_names_.size());
@@ -305,11 +335,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (preferred_output_locations_.empty()) {
         session_->session_->Run(run_options_, input_names_cstr.data(), input_values_.data(), input_values_.size(),
                                 output_names_cstr.data(), output_values_.data(), output_values_.size());
-        return;
-      }
-
-      if (preferred_output_locations_.size() != session_->outputNames_.size()) {
-        SetError("Preferred output locations must have the same size as output names.");
         return;
       }
 
@@ -337,17 +362,23 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       session_->session_->Run(run_options_, *io_binding_);
       output_values_ = io_binding_->GetOutputValues();
       if (output_values_.size() != outputs_.size()) {
-        SetError("Output count mismatch.");
+        error_ = "Output count mismatch.";
       }
     } catch (const std::exception& e) {
-      SetError(e.what());
+      error_ = e.what();
     } catch (...) {
-      SetError("Unknown error while running the model.");
+      error_ = "Unknown error while running the model.";
     }
   }
 
-  void OnOK() override {
-    Napi::HandleScope scope(env_);
+  void OnComplete(Napi::Env env) {
+    Napi::HandleScope scope(env);
+    if (!error_.empty()) {
+      Complete();
+      Settle([&] { deferred_.Reject(Napi::Error::New(env_, error_).Value()); });
+      return;
+    }
+
     try {
       // Build the result first. OrtValueToNapiValue() runs the Javascript Tensor constructor and can
       // throw, and no caller-owned buffer may be written before the last step that can fail or hand
@@ -389,25 +420,29 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         }
       }
       Complete();
-      deferred_.Resolve(result);
+      Settle([&] { deferred_.Resolve(result); });
     } catch (const Napi::Error& e) {
       Complete();
-      deferred_.Reject(e.Value());
+      Settle([&] { deferred_.Reject(e.Value()); });
     } catch (const std::exception& e) {
       Complete();
-      deferred_.Reject(Napi::Error::New(env_, e.what()).Value());
+      Settle([&] { deferred_.Reject(Napi::Error::New(env_, e.what()).Value()); });
     } catch (...) {
       Complete();
-      deferred_.Reject(Napi::Error::New(env_, "Unknown error while converting model outputs.").Value());
+      Settle([&] { deferred_.Reject(Napi::Error::New(env_, "Unknown error while converting model outputs.").Value()); });
     }
   }
 
-  void OnError(const Napi::Error& error) override {
-    Complete();
-    deferred_.Reject(error.Value());
-  }
-
  private:
+
+  template <typename Fn>
+  void Settle(Fn&& settle) {
+    if (settled_) {
+      return;
+    }
+    settled_ = true;
+    settle();
+  }
 
   void Complete() {
     if (completed_) {
@@ -443,9 +478,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   Ort::MemoryInfo gpu_buffer_memory_info_;
   Ort::RunOptions run_options_;
   std::vector<OrtValueOwner> gpu_value_owners_;
-  // Inputs pinned for the run: their OrtValues either borrow the storage (gpu-buffer) or were
-  // copied from it (cpu).
-  std::vector<Napi::Reference<Napi::Value>> input_references_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> input_values_;
   std::vector<OutputBinding> outputs_;
@@ -455,7 +487,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   std::vector<OutputBufferLease> output_buffer_leases_;
   std::vector<int> preferred_output_locations_;
   std::unique_ptr<Ort::IoBinding> io_binding_;
+  std::string error_;
+  Napi::ThreadSafeFunction tsfn_;
   bool completed_{false};
+  bool settled_{false};
 };
 
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
@@ -502,16 +537,13 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     // Reject rather than throw: the deferred already exists, and N-API frees it only once it has
     // been settled. Throwing would leak it and would also make a method that is typed as returning
     // a Promise raise synchronously.
-    AbandonRun(worker);
-    deferred.Reject(e.Value());
+    FailRun(worker, deferred, e.Value());
     return deferred.Promise();
   } catch (const std::exception& e) {
-    AbandonRun(worker);
-    deferred.Reject(Napi::Error::New(env, e.what()).Value());
+    FailRun(worker, deferred, Napi::Error::New(env, e.what()).Value());
     return deferred.Promise();
   } catch (...) {
-    AbandonRun(worker);
-    deferred.Reject(Napi::Error::New(env, "Unknown error while preparing inference.").Value());
+    FailRun(worker, deferred, Napi::Error::New(env, "Unknown error while preparing inference.").Value());
     return deferred.Promise();
   }
 
@@ -523,12 +555,15 @@ void InferenceSessionWrap::BeginRun() {
   ++active_runs_;
 }
 
-void InferenceSessionWrap::AbandonRun(const std::unique_ptr<RunAsyncWorker>& worker) {
-  // Once the worker exists it owns the run registration: its destructor runs Complete(), which ends
-  // the run exactly once when the unique_ptr goes out of scope. Only a throw out of the constructor
-  // leaves the registration unowned.
-  if (!worker) {
+void InferenceSessionWrap::FailRun(const std::unique_ptr<RunAsyncWorker>& worker,
+                                   Napi::Promise::Deferred& deferred, Napi::Value error) {
+  // Once the worker exists it owns both the run registration and the promise, so let it settle them;
+  // its destructor would otherwise reject a promise this function had already rejected.
+  if (worker) {
+    worker->Fail(error);
+  } else {
     EndRun();
+    deferred.Reject(error);
   }
 }
 
