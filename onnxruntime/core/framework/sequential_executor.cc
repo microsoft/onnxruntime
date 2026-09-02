@@ -767,6 +767,13 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
     }
   }
 
+  if (ctx.GetExecutionFrame().HasWorkspaceMemoryPatternPlanner()) {
+    MemoryPatternGroup workspace_mem_patterns;
+    ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame().GenerateWorkspacePatterns(workspace_mem_patterns));
+    ORT_RETURN_IF_ERROR(
+        session_state.UpdateWorkspaceMemoryPatternGroupCache(std::move(workspace_mem_patterns)));
+  }
+
   return Status::OK();
 }
 

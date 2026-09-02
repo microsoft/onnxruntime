@@ -59,8 +59,9 @@ class OpKernelContextInternal : public OpKernelContext {
     }
   }
 
-  Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) override {
-    *workspace = nullptr;
+  Status GetPreallocatedWorkspaceRegion(int slot_id, size_t requested_bytes,
+                                        WorkspaceBufferRegion& workspace) override {
+    workspace = {};
     const auto* execution_plan = session_state_.GetExecutionPlan();
     if (execution_plan == nullptr) {
       return Status::OK();
@@ -83,6 +84,13 @@ class OpKernelContextInternal : public OpKernelContext {
           workspace_plan.pattern_id, workspace_plan.location,
           workspace_plan.allocation_bytes, workspace_plan.alignment_bytes, workspace));
       active_workspace_plans_.push_back(&workspace_plan);
+      if (workspace.buffer != nullptr && workspace.size_bytes < requested_bytes) {
+        LOGS(Logger(), WARNING)
+            << "Planned workspace slot " << slot_id << " for node " << GetNodeIndex()
+            << " has " << workspace.size_bytes << " usable bytes but " << requested_bytes
+            << " bytes were requested. Falling back to dynamic allocation.";
+        workspace = {};
+      }
       return Status::OK();
     }
 

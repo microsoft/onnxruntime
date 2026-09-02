@@ -253,6 +253,13 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> tensor_inputs,
                                        MemoryPatternGroup mem_patterns) const;
 
+  const MemoryPatternGroup* GetWorkspaceMemoryPatternGroup() const;
+  Status UpdateWorkspaceMemoryPatternGroupCache(MemoryPatternGroup workspace_mem_patterns) const;
+  bool GetEnableStaticWorkspacePreallocation() const;
+  bool GetEnableWorkspaceMemoryPattern() const {
+    return enable_workspace_mem_pattern_;
+  }
+
   bool GetUseDeterministicCompute() const { return sess_options_.use_deterministic_compute; }
 
   /**
@@ -554,12 +561,15 @@ class SessionState {
 
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_;
+  bool enable_workspace_mem_pattern_{true};
 
   // lock for the mem_patterns_
   mutable std::mutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   // must be a node based container as a pointer is cached.
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
+  mutable std::mutex workspace_mem_pattern_lock_;
+  mutable std::optional<MemoryPatternGroup> workspace_mem_pattern_;
   // This is mutable under mutex in training scenarios so execution frame would make a copy
   // of the value when created.
 #ifdef ENABLE_TRAINING

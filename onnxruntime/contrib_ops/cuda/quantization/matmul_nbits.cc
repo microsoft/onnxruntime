@@ -794,15 +794,20 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         last_compute_workspace_bytes_.store(workspace_size, std::memory_order_relaxed);
         IAllocatorUniquePtr<void> workspace_buffer;
         void* workspace = nullptr;
+        bool use_preallocated_workspace = false;
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
-        ORT_RETURN_IF_ERROR(ctx->GetPreallocatedWorkspace(
-            /*slot_id=*/0, workspace_size, &workspace));
-        const bool use_preallocated_workspace = workspace != nullptr;
+        WorkspaceBufferRegion workspace_region{};
+        ORT_RETURN_IF_ERROR(ctx->GetPreallocatedWorkspaceRegion(
+            /*slot_id=*/0, workspace_size, workspace_region));
+        use_preallocated_workspace = workspace_region.buffer != nullptr;
         last_compute_used_preallocated_workspace_.store(
             use_preallocated_workspace, std::memory_order_relaxed);
-        if (!use_preallocated_workspace)
+        if (use_preallocated_workspace) {
+          workspace = static_cast<void*>(
+              static_cast<char*>(workspace_region.buffer) + workspace_region.offset_bytes);
+        }
 #endif
-        {
+        if (!use_preallocated_workspace) {
           workspace_buffer = this->template GetScratchBuffer<void>(
               workspace_size, this->GetComputeStream(ctx));
           workspace = workspace_buffer.get();

@@ -163,16 +163,14 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       const Tensor* weight_index_indirect) {
   // Determine tile sizes first (needed for prepack padding).
   const auto& config = supported_subgroup_matrix_configs[config_index];
-  uint32_t tile_size_a = 32;
+  const uint32_t tile_size_a = SubgroupMatrixMatMulNBitsTileSizeA(config_index);
   uint32_t tile_size_b = 64;
   uint32_t work_group_size = 128;
   if (config.Is(8, 16, 16)) {
     // 8x16x16 config: 8 subgroups, 256 threads, 64x64 tiles
-    tile_size_a = 64;
     work_group_size = 256;
   } else if (config.Is(16, 16, 16)) {
     // 16x16x16 config: 4 subgroups, 128 threads, 128x128 tiles
-    tile_size_a = 128;
     tile_size_b = 128;
     work_group_size = 128;
   }
@@ -197,7 +195,14 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
 
     TensorShape a_prepack_shape{padded_M, K};
-    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
+    const size_t a_prepack_size = Tensor::CalculateTensorStorageSize(a->DataType(), a_prepack_shape);
+    WorkspaceBufferRegion a_prepack_workspace;
+    ORT_RETURN_IF_ERROR(context.KernelContext().GetPreallocatedWorkspaceRegion(
+        kMatMulNBitsSubgroupPrepackWorkspaceSlot, a_prepack_size, a_prepack_workspace));
+    a_prepack =
+        a_prepack_workspace.buffer != nullptr
+            ? context.CreateGPUTensorFromWorkspace(a->DataType(), a_prepack_shape, a_prepack_workspace)
+            : context.CreateGPUTensor(a->DataType(), a_prepack_shape);
     prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
         .AddUniformVariables({{M}, {K}})
@@ -248,7 +253,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   return context.RunProgram(mul_program);
 }
 
-bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
+bool CanApplySubgroupMatrixMatMulNBits(const onnxruntime::webgpu::ComputeContextBase& context,
                                        uint64_t accuracy_level,
                                        uint32_t block_size,
                                        uint32_t batch_count,
@@ -290,6 +295,19 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
          batch_count == 1 &&
          K % 32 == 0 &&
          N % 64 == 0;
+}
+
+uint32_t SubgroupMatrixMatMulNBitsTileSizeA(int32_t config_index) {
+  const auto& config = supported_subgroup_matrix_configs[config_index];
+  if (config.Is(8, 16, 16)) {
+    return 64;
+  }
+
+  if (config.Is(16, 16, 16)) {
+    return 128;
+  }
+
+  return 32;
 }
 }  // namespace webgpu
 }  // namespace contrib

@@ -10,6 +10,7 @@
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -109,6 +110,70 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_VARIABLE(b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+}
+
+Status MatMulNBits::DeclareWorkspaceRequirements(
+    gsl::span<const TensorShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
+  ORT_RETURN_IF(input_shapes.empty(), "MatMulNBits workspace declaration requires input A's shape.");
+
+  MatMulComputeHelper helper;
+  const TensorShape b_shape({N_, K_});
+  ORT_RETURN_IF_ERROR(helper.Compute(input_shapes[0], b_shape, false, true));
+  const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
+  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
+  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
+  const uint32_t components_a = GetMaxComponents(K);
+  const MLDataType input_type =
+      input_a_is_fp16_ ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
+
+  ComputeContextBase context{Context(), ExecutionProvider(), *this};
+  const size_t alignment =
+      SafeInt<size_t>(context.DeviceLimits().minStorageBufferOffsetAlignment);
+
+#if !defined(__wasm__)
+  int32_t subgroup_matrix_config_index = -1;
+  if (CanApplySubgroupMatrixMatMulNBits(
+          context, accuracy_level_, block_size, batch_count, N, K, nbits, input_a_is_fp16_,
+          subgroup_matrix_config_index, M, false)) {
+    const auto& config = supported_subgroup_matrix_configs[subgroup_matrix_config_index];
+    if (config.needsPrepack) {
+      const uint32_t tile_size_a = SubgroupMatrixMatMulNBitsTileSizeA(subgroup_matrix_config_index);
+      const uint32_t padded_M = (M + tile_size_a - 1) / tile_size_a * tile_size_a;
+      const TensorShape prepack_shape{padded_M, K};
+      requirements.push_back({
+          Tensor::CalculateTensorStorageSize(input_type, prepack_shape),
+          kMatMulNBitsSubgroupPrepackWorkspaceSlot,
+          alignment,
+      });
+    }
+    return Status::OK();
+  }
+#endif
+
+  if (CanApplyDP4AMatrixMatMulNBits(
+          context.HasFeature(wgpu::FeatureName::Subgroups), context.AdapterInfo().vendor,
+          accuracy_level_, block_size, N, K, components_a, M, false, !input_a_is_fp16_)) {
+    const TensorShape quantized_activation_shape{batch_count, M, K / 4};
+    const TensorShape activation_scale_shape{batch_count, 1, M, K / 128};
+    requirements.push_back({
+        Tensor::CalculateTensorStorageSize(
+            DataTypeImpl::GetType<uint32_t>(), quantized_activation_shape),
+        kMatMulNBitsDP4AQuantizedActivationWorkspaceSlot,
+        alignment,
+    });
+    requirements.push_back({
+        Tensor::CalculateTensorStorageSize(input_type, activation_scale_shape),
+        kMatMulNBitsDP4AActivationScaleWorkspaceSlot,
+        alignment,
+    });
+  }
+
+  return Status::OK();
 }
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {

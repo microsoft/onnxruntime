@@ -15,6 +15,7 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
+#include "core/framework/workspace_requirement.h"
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
@@ -97,8 +98,8 @@ class IExecutionFrame {
 
   virtual Status GetPlannedWorkspace(int /*pattern_id*/, const OrtDevice& /*location*/,
                                      size_t /*allocation_bytes*/, size_t /*alignment_bytes*/,
-                                     void** workspace) {
-    *workspace = nullptr;
+                                     WorkspaceBufferRegion& workspace) {
+    workspace = {};
     return Status::OK();
   }
 
@@ -177,9 +178,15 @@ class ExecutionFrame final : public IExecutionFrame {
     return planner_.has_value();
   }
 
+  bool HasWorkspaceMemoryPatternPlanner() const {
+    return workspace_planner_.has_value();
+  }
+
+  Status GenerateWorkspacePatterns(MemoryPatternGroup& out);
+
   Status GetPlannedWorkspace(int pattern_id, const OrtDevice& location,
                              size_t allocation_bytes, size_t alignment_bytes,
-                             void** workspace) override;
+                             WorkspaceBufferRegion& workspace) override;
   void ReleasePlannedWorkspace(int pattern_id, const OrtDevice& location) override;
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -265,6 +272,10 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Big chunks on different locations that will be used by mem_pattern.
   InlinedHashMap<OrtDevice, BufferUniquePtr> buffers_;
+
+  const MemoryPatternGroup* workspace_mem_patterns_{nullptr};
+  std::optional<OrtValuePatternPlanner> workspace_planner_;
+  InlinedHashMap<OrtDevice, BufferUniquePtr> workspace_buffers_;
 
   // Given the input shapes of the executed graph, ExecutionFrame tries inferring
   // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed

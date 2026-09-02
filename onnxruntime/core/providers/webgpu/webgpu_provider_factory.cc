@@ -441,21 +441,33 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       Ort::UnownedValue dst_value{dst_tensors[idx]};
       void* dst_data = dst_value.GetTensorMutableRawData();
       bool dst_is_gpu = dst_value.GetTensorMemoryInfo().GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+      size_t src_offset = 0;
+      size_t dst_offset = 0;
 #else
       const Tensor& src_tensor = src_tensors[idx]->Get<Tensor>();
-      const void* src_data = src_tensor.DataRaw();
       size_t size = src_tensor.SizeInBytes();
       bool src_is_gpu = src_tensor.Location().device.Type() == OrtDevice::GPU;
+      if (src_tensor.ByteOffset() < 0) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Source tensor buffer offset must not be negative.");
+      }
+      const void* src_data = src_is_gpu ? src_tensor.DataRawBase() : src_tensor.DataRaw();
+      size_t src_offset = src_is_gpu ? static_cast<size_t>(src_tensor.ByteOffset()) : 0;
 
       Tensor& dst_tensor = *dst_tensors[idx]->GetMutable<Tensor>();
-      void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
+      if (dst_tensor.ByteOffset() < 0) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Destination tensor buffer offset must not be negative.");
+      }
+      void* dst_data = dst_is_gpu ? dst_tensor.MutableDataRawBase() : dst_tensor.MutableDataRaw();
+      size_t dst_offset = dst_is_gpu ? static_cast<size_t>(dst_tensor.ByteOffset()) : 0;
 #endif
       auto status = impl.data_transfer_->CopyTensor(src_data,
                                                     src_is_gpu,
                                                     dst_data,
                                                     dst_is_gpu,
-                                                    size);
+                                                    size,
+                                                    src_offset,
+                                                    dst_offset);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }

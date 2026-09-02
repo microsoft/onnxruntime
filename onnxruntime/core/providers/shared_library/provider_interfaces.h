@@ -11,6 +11,7 @@
 #include "core/providers/shared_library/provider_host_api.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/workspace_requirement.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
@@ -1424,6 +1425,11 @@ struct ProviderHost {
   virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
+
+  // Workspace buffer-region support — appended at end to preserve vtable ABI compatibility.
+  virtual Status OpKernelContext__GetPreallocatedWorkspaceRegion(
+      OpKernelContext* p, int slot_id, size_t requested_bytes,
+      WorkspaceBufferRegion& workspace) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

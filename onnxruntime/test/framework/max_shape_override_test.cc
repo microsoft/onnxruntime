@@ -313,4 +313,13 @@ TEST(WorkspaceRequirement, MultipleSlots) {
   EXPECT_EQ(reqs[2].slot_id, 2);
 }
 
+TEST(WorkspaceBufferRegion, PreservesOpaqueBufferAndRange) {
+  int allocation = 0;
+  WorkspaceBufferRegion region{&allocation, 256, 4096};
+
+  EXPECT_EQ(region.buffer, &allocation);
+  EXPECT_EQ(region.offset_bytes, 256u);
+  EXPECT_EQ(region.size_bytes, 4096u);
+}
+
 }  // namespace onnxruntime::test

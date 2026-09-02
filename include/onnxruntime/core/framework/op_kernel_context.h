@@ -4,6 +4,7 @@
 namespace onnxruntime {
 class IExecutionFrame;
 class Stream;
+struct WorkspaceBufferRegion;
 namespace concurrency {
 class ThreadPool;
 }
@@ -18,10 +19,15 @@ class OpKernelContext {
 
   virtual ~OpKernelContext() = default;
 
-  // Returns a run-scoped planned workspace buffer when one is available. A nullptr result means
-  // the kernel must use its normal dynamic allocation path.
-  virtual Status GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
+  // Legacy pointer-returning workspace API. Providers with opaque buffer handles should use
+  // GetPreallocatedWorkspaceRegion instead.
+  virtual Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) {
     *workspace = nullptr;
+    WorkspaceBufferRegion region{};
+    ORT_RETURN_IF_ERROR(GetPreallocatedWorkspaceRegion(slot_id, requested_bytes, region));
+    if (region.buffer != nullptr) {
+      *workspace = static_cast<void*>(static_cast<char*>(region.buffer) + region.offset_bytes);
+    }
     return Status::OK();
   }
 
@@ -212,6 +218,16 @@ class OpKernelContext {
   virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
   virtual int GetOrtValueIndexForOutput(int output_index) const;
+
+ public:
+  // Returns a run-scoped planned workspace region when one is available. A null buffer means the
+  // kernel must use its normal dynamic allocation path. Appended after the existing virtual methods
+  // so adding the region representation does not change prior vtable entries.
+  virtual Status GetPreallocatedWorkspaceRegion(int /*slot_id*/, size_t /*requested_bytes*/,
+                                                WorkspaceBufferRegion& workspace) {
+    workspace = {};
+    return Status::OK();
+  }
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);

@@ -115,9 +115,24 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   uint32_t tile_size = 64 * kVec4Components;
   quantize_program.SetDispatchGroupSize((batch_count * M * K + tile_size - 1) / tile_size, 1, 1);
   TensorShape a_quant_shape{batch_count, M, K / kU32Components};
-  Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
-  TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
-  Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
+  TensorShape a_scale_shape{batch_count, 1, M, K / kBlockSizeA};
+  const size_t a_quant_size =
+      Tensor::CalculateTensorStorageSize(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+  const size_t a_scale_size = Tensor::CalculateTensorStorageSize(a->DataType(), a_scale_shape);
+  WorkspaceBufferRegion a_quant_workspace;
+  WorkspaceBufferRegion a_scale_workspace;
+  ORT_RETURN_IF_ERROR(context.KernelContext().GetPreallocatedWorkspaceRegion(
+      kMatMulNBitsDP4AQuantizedActivationWorkspaceSlot, a_quant_size, a_quant_workspace));
+  ORT_RETURN_IF_ERROR(context.KernelContext().GetPreallocatedWorkspaceRegion(
+      kMatMulNBitsDP4AActivationScaleWorkspaceSlot, a_scale_size, a_scale_workspace));
+  Tensor a_quant = a_quant_workspace.buffer != nullptr
+                       ? context.CreateGPUTensorFromWorkspace(
+                             DataTypeImpl::GetType<uint32_t>(), a_quant_shape, a_quant_workspace)
+                       : context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+  Tensor a_scale =
+      a_scale_workspace.buffer != nullptr
+          ? context.CreateGPUTensorFromWorkspace(a->DataType(), a_scale_shape, a_scale_workspace)
+          : context.CreateGPUTensor(a->DataType(), a_scale_shape);
   quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
       .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
                    {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
@@ -203,11 +218,26 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint32_t M,
                                    bool has_weight_idx_indirect,
                                    const Tensor* y) {
+  return CanApplyDP4AMatrixMatMulNBits(
+      context.HasFeature(wgpu::FeatureName::Subgroups), context.AdapterInfo().vendor,
+      accuracy_level, block_size, N, K, components_k, M, has_weight_idx_indirect,
+      y != nullptr && y->DataType() == DataTypeImpl::GetType<float>());
+}
+
+bool CanApplyDP4AMatrixMatMulNBits(bool has_subgroups,
+                                   std::string_view adapter_vendor,
+                                   uint64_t accuracy_level,
+                                   uint32_t block_size,
+                                   uint32_t N,
+                                   uint32_t K,
+                                   uint32_t components_k,
+                                   uint32_t M,
+                                   bool has_weight_idx_indirect,
+                                   bool output_is_fp32) {
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
   // Use 'vendor' to check for metal; 'backend' is always WEBGPU when running under wasm.
-  bool use_dp4a = context.HasFeature(wgpu::FeatureName::Subgroups) &&
-                  context.AdapterInfo().vendor != std::string_view{"apple"};
+  const bool use_dp4a = has_subgroups && adapter_vendor != std::string_view{"apple"};
   if (!(accuracy_level == 4 && block_size % 32 == 0 &&
         components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
         use_dp4a)) {
@@ -218,9 +248,8 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
   // weight is contiguous), or unconditionally on FP32-only GPUs and Qualcomm
   // GPUs where integer math beats FP32.
   const bool m_large_enough = (M >= kMinMForTileOptimization && !has_weight_idx_indirect);
-  const bool fp32_output = (y != nullptr && y->DataType() == DataTypeImpl::GetType<float>());
-  const bool qualcomm_vendor = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
-  return m_large_enough || fp32_output || qualcomm_vendor;
+  const bool qualcomm_vendor = adapter_vendor == std::string_view{"qualcomm"};
+  return m_large_enough || output_is_fp32 || qualcomm_vendor;
 }
 
 }  // namespace webgpu

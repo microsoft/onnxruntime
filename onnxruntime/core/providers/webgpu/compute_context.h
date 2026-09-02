@@ -3,10 +3,12 @@
 
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <utility>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
+#include "core/common/safeint.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -217,6 +219,40 @@ class ComputeContext final : public ComputeContextBase {
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
 
+  // Creates a non-owning GPU tensor view over a planned workspace region. The WebGPU buffer handle
+  // remains the tensor's allocation base; the region offset is preserved separately for bind-group
+  // construction.
+  template <typename TensorShapeType>
+  Tensor CreateGPUTensorFromWorkspace(MLDataType data_type, TensorShapeType&& shape,
+                                      const WorkspaceBufferRegion& workspace) {
+    TensorShape tensor_shape{std::forward<TensorShapeType>(shape)};
+    const size_t required_bytes = Tensor::CalculateTensorStorageSize(data_type, tensor_shape);
+    constexpr size_t kWebGpuBufferAlignment = 16;
+    const size_t binding_bytes = static_cast<size_t>(
+        (SafeInt<size_t>(required_bytes) + kWebGpuBufferAlignment - 1) /
+        kWebGpuBufferAlignment * kWebGpuBufferAlignment);
+    ORT_ENFORCE(workspace.buffer != nullptr || required_bytes == 0,
+                "A non-empty workspace tensor requires a buffer.");
+    ORT_ENFORCE(workspace.offset_bytes <=
+                    std::numeric_limits<size_t>::max() - binding_bytes,
+                "Workspace tensor range overflows size_t.");
+    ORT_ENFORCE(binding_bytes <= workspace.size_bytes,
+                "Workspace tensor requires ", binding_bytes,
+                " binding bytes after WebGPU alignment but the region has ",
+                workspace.size_bytes, " bytes.");
+    ORT_ENFORCE(workspace.offset_bytes <= static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max()),
+                "Workspace tensor offset exceeds ptrdiff_t.");
+    const uint64_t offset_alignment = DeviceLimits().minStorageBufferOffsetAlignment;
+    ORT_ENFORCE(offset_alignment == 0 || workspace.offset_bytes % offset_alignment == 0,
+                "Workspace tensor offset ", workspace.offset_bytes,
+                " is not aligned to WebGPU's ", offset_alignment, "-byte requirement.");
+
+    AllocatorPtr allocator;
+    ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
+    return {data_type, tensor_shape, workspace.buffer, allocator->Info(),
+            static_cast<ptrdiff_t>(workspace.offset_bytes)};
+  }
+
   //
   // Copy data from a tensor to another tensor.
   //
@@ -232,8 +268,13 @@ class ComputeContext final : public ComputeContextBase {
   inline void FillZero(Tensor& dst) {
     webgpu_context_.EndComputePass();
     auto& command_encoder = webgpu_context_.GetCommandEncoder();
-    WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
-    command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
+    ORT_ENFORCE(dst.ByteOffset() >= 0, "WebGPU tensor buffer offset must not be negative.");
+    WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRawBase());
+    constexpr uint64_t kClearBufferAlignment = 4;
+    const uint64_t clear_size =
+        (SafeInt<uint64_t>(dst.SizeInBytes()) + kClearBufferAlignment - 1) /
+        kClearBufferAlignment * kClearBufferAlignment;
+    command_encoder.ClearBuffer(buffer, static_cast<uint64_t>(dst.ByteOffset()), clear_size);
   }
 
  private:

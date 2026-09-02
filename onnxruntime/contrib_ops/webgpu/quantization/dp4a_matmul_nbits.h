@@ -128,6 +128,7 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    bool has_weight_idx_indirect = false,
                                    const Tensor* y = nullptr);
 
+
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

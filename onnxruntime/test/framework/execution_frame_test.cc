@@ -8,6 +8,7 @@
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -368,6 +369,115 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_EQ(p->PeakSize(), 2u * kAllocAlignment);  // each allocation is kAllocAlignment-byte aligned
   ASSERT_EQ(p->GetBlock(3)->offset_, 0u);
   ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
+}
+
+TEST_F(ExecutionFrameTest, WorkspacePatternWithoutActivationPattern) {
+  auto cpu_xp = CreateCPUExecutionProvider();
+  const auto xp_type = cpu_xp->Type();
+  const auto cpu_allocator = cpu_xp->CreatePreferredAllocators()[0];
+  const OrtDevice location = cpu_allocator->Info().device;
+  onnxruntime::Model model("test", true, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           {{onnxruntime::kOnnxDomain, 13}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model.MainGraph();
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
+  auto& node = graph.AddNode("node1", "Relu", "Relu operator",
+                             ArgMap{&input_def}, ArgMap{&output_def});
+  node.SetExecutionProviderType(xp_type);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  KernelRegistryManager kernel_registry_manager;
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  auto* execution_plan =
+      const_cast<SequentialExecutionPlan*>(state.GetExecutionPlan());
+  ASSERT_NE(execution_plan, nullptr);
+  execution_plan->workspace_allocation_plan[node.Index()] = {
+      {-1, 0, 1024, 1024, 256, location},
+      {-2, 1, 512, 512, 256, location},
+  };
+
+  const auto& name_idx_map = state.GetOrtValueNameIdxMap();
+  int input_idx = -1;
+  int output_idx = -1;
+  ASSERT_STATUS_OK(name_idx_map.GetIdx("X", input_idx));
+  ASSERT_STATUS_OK(name_idx_map.GetIdx("Y", output_idx));
+  OrtValue input;
+  std::array<float, 1> input_data{1.0f};
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}),
+                       input_data.data(), OrtMemoryInfo(), input);
+
+  {
+    std::vector<OrtValue> outputs;
+    ExecutionFrame frame(
+        AsSpan({input_idx}), AsSpan({input}), AsSpan({output_idx}), outputs, {},
+#ifdef ORT_ENABLE_STREAM
+        {},
+#endif
+        state);
+    EXPECT_FALSE(frame.HasMemoryPatternPlanner());
+    ASSERT_TRUE(frame.HasWorkspaceMemoryPatternPlanner());
+
+    WorkspaceBufferRegion first_region;
+    WorkspaceBufferRegion second_region;
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-1, location, 1024, 256, first_region));
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-2, location, 512, 256, second_region));
+    EXPECT_EQ(first_region.buffer, nullptr);
+    EXPECT_EQ(second_region.buffer, nullptr);
+    frame.ReleasePlannedWorkspace(-2, location);
+    frame.ReleasePlannedWorkspace(-1, location);
+
+    MemoryPatternGroup workspace_patterns;
+    ASSERT_STATUS_OK(frame.GenerateWorkspacePatterns(workspace_patterns));
+    const MemoryPattern* pattern = workspace_patterns.GetPatterns(location);
+    ASSERT_NE(pattern, nullptr);
+    ASSERT_NE(pattern->GetBlock(-1), nullptr);
+    ASSERT_NE(pattern->GetBlock(-2), nullptr);
+    EXPECT_NE(pattern->GetBlock(-1)->offset_, pattern->GetBlock(-2)->offset_);
+    ASSERT_STATUS_OK(
+        state.UpdateWorkspaceMemoryPatternGroupCache(std::move(workspace_patterns)));
+  }
+
+  {
+    std::vector<OrtValue> outputs;
+    ExecutionFrame frame(
+        AsSpan({input_idx}), AsSpan({input}), AsSpan({output_idx}), outputs, {},
+#ifdef ORT_ENABLE_STREAM
+        {},
+#endif
+        state);
+    EXPECT_FALSE(frame.HasMemoryPatternPlanner());
+    EXPECT_FALSE(frame.HasWorkspaceMemoryPatternPlanner());
+
+    WorkspaceBufferRegion first_region;
+    WorkspaceBufferRegion second_region;
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-1, location, 1024, 256, first_region));
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-2, location, 512, 256, second_region));
+    ASSERT_NE(first_region.buffer, nullptr);
+    EXPECT_EQ(second_region.buffer, first_region.buffer);
+    EXPECT_NE(second_region.offset_bytes, first_region.offset_bytes);
+    EXPECT_GE(first_region.size_bytes, 1024u);
+    EXPECT_GE(second_region.size_bytes, 512u);
+    frame.ReleasePlannedWorkspace(-2, location);
+    frame.ReleasePlannedWorkspace(-1, location);
+  }
 }
 
 #ifdef ENABLE_TRAINING

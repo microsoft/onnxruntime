@@ -34,6 +34,9 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
 
   const T* t_data = t.Data<T>();
   EXPECT_EQ(first_element, t_data);
+  EXPECT_EQ(t.DataRawBase(), data);
+  EXPECT_EQ(t.MutableDataRawBase(), data);
+  EXPECT_EQ(t.ByteOffset(), offset_bytes);
   alloc->Free(data);
 
   // test when the Tensor allocates the buffer.

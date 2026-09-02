@@ -65,6 +65,7 @@ struct CapturedCommandInfo {
   std::array<uint32_t, 3> dispatch_group;
   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
   WGPUBuffer indirect_buffer;
+  uint64_t indirect_offset{0};
   // Optional profiling data
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
@@ -309,8 +310,14 @@ class WebGpuContext final {
 
   void Initialize(const WebGpuContextConfig& config);
 
+  struct BufferBinding {
+    WGPUBuffer buffer;
+    uint64_t offset;
+    uint64_t size;
+  };
+
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
-                             const std::vector<WGPUBuffer>& bind_buffers,
+                             const std::vector<BufferBinding>& bind_buffers,
                              const std::vector<uint32_t>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
                              uint32_t x, uint32_t y, uint32_t z,

@@ -259,6 +259,16 @@ class Tensor final {
     return static_cast<char*>(p_data_) + byte_offset_;
   }
 
+  // Returns the allocation base without applying ByteOffset(). Providers that represent device
+  // memory with an opaque handle must keep the handle and offset separate.
+  void* MutableDataRawBase() noexcept {
+    return p_data_;
+  }
+
+  const void* DataRawBase() const noexcept {
+    return p_data_;
+  }
+
   bool OwnsBuffer() const noexcept {
     return buffer_deleter_ != nullptr;
   }

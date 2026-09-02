@@ -1329,6 +1329,11 @@ struct OpKernelContext final {
   Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) {
     return g_host->OpKernelContext__GetPreallocatedWorkspace(this, slot_id, requested_bytes, workspace);
   }
+  Status GetPreallocatedWorkspaceRegion(int slot_id, size_t requested_bytes,
+                                        WorkspaceBufferRegion& workspace) {
+    return g_host->OpKernelContext__GetPreallocatedWorkspaceRegion(
+        this, slot_id, requested_bytes, workspace);
+  }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };

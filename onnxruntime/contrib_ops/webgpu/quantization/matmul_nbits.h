@@ -78,11 +78,20 @@ class MatMulNBits final : public WebGpuKernel {
     block_size_ = info.GetAttr<int64_t>("block_size");
     bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
+    const auto* input_type = info.GetInputType(0);
+    ORT_ENFORCE(input_type != nullptr && input_type->has_tensor_type(),
+                "MatMulNBits input A must be a tensor.");
+    input_a_is_fp16_ =
+        input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
     ORT_ENFORCE(bits_ == 4 || bits_ == 8 || bits_ == 2,
                 "Only 4b/8b/2b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const TensorShape> input_shapes,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+  bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
 
  private:
   int64_t K_;
@@ -90,6 +99,7 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t block_size_;
   int64_t accuracy_level_;
   int64_t bits_;
+  bool input_a_is_fp16_;
 };
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
