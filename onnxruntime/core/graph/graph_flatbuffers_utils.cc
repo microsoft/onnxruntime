@@ -266,6 +266,10 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
   size_t byte_size_of_one_element;
 
   switch (tensor.data_type()) {
+    case fbs::TensorDataType::FLOAT6E2M3:
+    case fbs::TensorDataType::FLOAT6E3M2:
+      size_in_bytes = num_elements - num_elements / 4;
+      return Status::OK();
     case fbs::TensorDataType::FLOAT:
       byte_size_of_one_element = sizeof(float);
       break;
@@ -382,7 +386,9 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
           "'. Expected ", expected_num_bytes, " bytes but found ", fbs_raw_data->size(),
           ". Invalid ORT format model.");
 
-      if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
+      if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127 &&
+          fbs_data_type != fbs::TensorDataType::FLOAT6E2M3 &&
+          fbs_data_type != fbs::TensorDataType::FLOAT6E3M2) {
         static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
         const void* data_offset = fbs_raw_data->Data();
         // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
