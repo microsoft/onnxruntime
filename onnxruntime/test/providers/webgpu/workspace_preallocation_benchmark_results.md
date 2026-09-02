@@ -117,3 +117,95 @@ the hundreds-of-MiB difference is far larger than the controlled 37.00 MiB
 workspace buffer and varied substantially between runs. The exact allocator
 high-water mark is the reliable memory comparison; no feature-attributable WDDM
 delta is claimed.
+
+## Note
+
+WebGPU needs a separate workspace-only memory-pattern path because its ordinary
+activation memory patterns remain disabled: activation planning assumes
+addressable pointers, while WebGPU allocations are opaque `WGPUBuffer` handles.
+
+### Required updates
+
+1. **Represent workspace as a buffer region**
+   - Replace the raw workspace pointer concept with
+     `{buffer, offset_bytes, size_bytes}`.
+   - `buffer` may be an opaque `WGPUBuffer`; arithmetic is performed on the
+     offset, not the handle.
+   - Implemented in
+     `include\onnxruntime\core\framework\workspace_requirement.h`.
+2. **Preserve offsets through WebGPU tensors**
+   - Non-owning workspace tensors must retain the allocation base and byte
+     offset.
+   - WebGPU bind groups, copies, uploads/downloads, tensor views, segmented
+     bindings, and graph capture must bind the correct range.
+   - Implemented primarily under `onnxruntime\core\providers\webgpu\`.
+3. **Support multiple workspace slots**
+   - Each kernel can declare independently-lived temporary buffers with stable
+     slot IDs.
+   - Each slot receives a synthetic negative memory-pattern ID.
+   - DP4A declares two slots: quantized activation and activation scales.
+   - Subgroup MatMulNBits declares one conditional activation-prepack slot.
+4. **Create a workspace-only planner**
+   - When activation memory patterns are disabled, `ExecutionFrame` creates a
+     separate `workspace_planner_`.
+   - On the first successful run, it traces workspace allocation and release
+     lifetimes. Kernels still dynamically allocate because no cached pattern
+     exists yet.
+   - On later runs, it allocates one provider-native backing buffer and returns
+     each slot as a region within that buffer.
+   - Ordinary WebGPU activations continue using normal dynamic allocations.
+5. **Cache workspace patterns separately**
+   - `SessionState` owns a separate session-wide workspace
+     `MemoryPatternGroup`.
+   - It is not keyed by runtime input shapes because declarations use static or
+     maximum-shape upper bounds.
+   - The first successful cache insertion wins, keeping cached pattern pointers
+     stable.
+6. **Acquire and release around kernel execution**
+   - `OpKernelContextInternal` maps `(node, slot_id)` to the planned region.
+   - Workspace lifetimes end when the kernel context is destroyed.
+   - Missing patterns, unavailable backing buffers, or undersized regions fall
+     back to dynamic allocation.
+7. **Match declaration and dispatch logic**
+   - Workspace must be declared only when the corresponding implementation
+     will actually run.
+   - Subgroup feature/configuration selection and DP4A eligibility use the same
+     predicates during declaration and execution.
+8. **Retain safety restrictions**
+   - Workspace planning supports sequential execution only.
+   - It is disabled for multiple logical streams on the same device because
+     lifetime ordering is nondeterministic.
+   - Requested alignment cannot exceed the allocator guarantee.
+   - Failed execution does not cache a workspace pattern.
+
+### MatMulNBits implementation count
+
+The base WebGPU `ApplyMatMulNBits()` dispatcher has four implementation
+families:
+
+| Implementation | Per-run temporary buffers | Benefits from workspace planning |
+|---|---|---|
+| Subgroup-matrix | Conditional activation prepack | Yes, when `needsPrepack` is true |
+| DP4A | Quantized activation and activation scales | Yes |
+| Wide-tile | None | No current benefit |
+| Generic tiled MatMulNBits | None | No current benefit |
+
+Therefore, two of the four base MatMulNBits implementation families can
+currently benefit.
+
+DP4A has two multiplication variants--small-M and tiled--but both consume the
+same two quantization workspaces, so they count as one high-level dispatch
+family for workspace planning. Similarly, subgroup-matrix supports several
+hardware tile configurations but remains one implementation family.
+
+There are also three WebGPU operator kernels involving MatMulNBits:
+
+1. `MatMulNBits`
+2. `MatMulNBitsQkv`
+3. `MatMulNBitsMlp`
+
+Only the base `MatMulNBits` kernel currently declares workspace requirements.
+The fused QKV and MLP kernels can internally call `ApplyMatMulNBits`, so they
+are potential future beneficiaries, but they need their own declarations and
+slot-lifetime handling. Thus, at the operator level, one of three is currently
+wired for planned workspace; the other two could potentially be extended.
