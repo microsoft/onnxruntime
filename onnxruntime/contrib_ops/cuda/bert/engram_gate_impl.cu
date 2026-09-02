@@ -120,8 +120,8 @@ Status LaunchEngramGateKernel(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_ENGRAM_GATE(T)                                                                            \
-  template Status LaunchEngramGateKernel<T>(cudaStream_t, const T*, const T*, const T*, const T*, const T*,  \
+#define INSTANTIATE_ENGRAM_GATE(T)                                                                          \
+  template Status LaunchEngramGateKernel<T>(cudaStream_t, const T*, const T*, const T*, const T*, const T*, \
                                             const T*, T*, T*, int64_t, int64_t, int64_t, int64_t, float);
 
 INSTANTIATE_ENGRAM_GATE(float)

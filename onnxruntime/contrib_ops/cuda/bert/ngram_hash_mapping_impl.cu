@@ -199,9 +199,9 @@ Status LaunchNGramHashMappingKernel(
   return Status::OK();
 }
 
-#define INSTANTIATE_NGRAM_HASH_MAPPING(T)                                                                    \
-  template Status LaunchNGramHashMappingKernel<T>(cudaStream_t, const T*, const T*, const T*, const T*,      \
-                                                  const T*, const T*, const int32_t*, T*, T*, int64_t,       \
+#define INSTANTIATE_NGRAM_HASH_MAPPING(T)                                                               \
+  template Status LaunchNGramHashMappingKernel<T>(cudaStream_t, const T*, const T*, const T*, const T*, \
+                                                  const T*, const T*, const int32_t*, T*, T*, int64_t,  \
                                                   int64_t, int64_t, int64_t, T, bool);
 
 INSTANTIATE_NGRAM_HASH_MAPPING(int32_t)

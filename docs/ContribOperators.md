@@ -2331,9 +2331,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs, and by the
   Qwen4-Exp text QSA/PLE gated norms:
-  
+
     Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate)
-  
+
   where `activation` is SiLU by default (`Y = X * rsqrt(mean(X^2) + epsilon) * scale *
   gate * Sigmoid(gate)`) or plain Sigmoid when the `activation` attribute is set to
   `"sigmoid"` (`Y = X * rsqrt(mean(X^2) + epsilon) * scale * Sigmoid(gate)`).

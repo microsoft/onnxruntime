@@ -139,9 +139,7 @@ Status EngramGateNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  workgroupBarrier();\n"
       << "  for (var d = local_idx; d < uniforms.hidden_size; d += " << kGateWorkgroupSize << "u) {\n"
       << "    let value = f32(" << gated_value.GetByOffset("row_base + d") << ");\n"
-      << "    " << gated_value_normed.SetByOffset("row_base + d",
-                                                   "gated_value_normed_element_t(value * inv_rms * f32(" +
-                                                       conv_norm_scale.GetByOffset("scale_base + d") + "))")
+      << "    " << gated_value_normed.SetByOffset("row_base + d", "gated_value_normed_element_t(value * inv_rms * f32(" + conv_norm_scale.GetByOffset("scale_base + d") + "))")
       << "\n"
       << "  }\n";
   return Status::OK();

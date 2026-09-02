@@ -370,7 +370,6 @@ void RunNGramHashMappingNegativeIdsTest() {
   test.Run();
 }
 
-
 // Verifies head_offsets is applied as a fixed additive offset after the modulo, per output head.
 template <typename T>
 void RunNGramHashMappingHeadOffsetsTest() {
@@ -748,7 +747,6 @@ TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt64) {
 TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt32) {
   RunNGramHashMappingChunkedTest<int32_t>();
 }
-
 
 TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt64) {
   RunNGramHashMappingHeadOffsetsTest<int64_t>();
