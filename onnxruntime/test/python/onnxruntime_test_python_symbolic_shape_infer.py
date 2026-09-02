@@ -725,6 +725,74 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_reduce_ops_opset18_axes_input(self):
+        # Since opset 18 axes is an input. Without the initializer the output shape is lost.
+        for op_type in [
+            "ReduceL1",
+            "ReduceL2",
+            "ReduceLogSum",
+            "ReduceLogSumExp",
+            "ReduceMax",
+            "ReduceMin",
+            "ReduceSumSquare",
+        ]:
+            with self.subTest(op_type=op_type):
+                initializers = [numpy_helper.from_array(numpy.array([1], dtype=numpy.int64), "axes")]
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(op_type, ["input", "axes"], ["temp"], keepdims=0),
+                        helper.make_node("Identity", ["temp"], ["output"]),
+                    ],
+                    f"{op_type}_Opset18_Test",
+                    [
+                        helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 3, 4]),
+                    ],
+                    [
+                        helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 4]),
+                    ],
+                    initializers,
+                )
+                model = helper.make_model(graph, producer_name=f"{op_type}_Opset18_Test_Model")
+                model.opset_import[0].version = 18
+
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                expected_shapes = [
+                    helper.make_tensor_value_info("temp", TensorProto.FLOAT, [2, 4]),
+                    helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 4]),
+                ]
+                self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_reduce_sum_empty_axes(self):
+        # An empty axes input reduces every axis unless noop_with_empty_axes is set.
+        for noop, expected in [(0, []), (1, [2, 3, 4])]:
+            with self.subTest(noop_with_empty_axes=noop):
+                initializers = [numpy_helper.from_array(numpy.array([], dtype=numpy.int64), "axes")]
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "ReduceSum", ["input", "axes"], ["temp"], keepdims=0, noop_with_empty_axes=noop
+                        ),
+                        helper.make_node("Identity", ["temp"], ["output"]),
+                    ],
+                    "ReduceSum_EmptyAxes_Test",
+                    [
+                        helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 3, 4]),
+                    ],
+                    [
+                        helper.make_tensor_value_info("output", TensorProto.FLOAT, expected),
+                    ],
+                    initializers,
+                )
+                model = helper.make_model(graph, producer_name="ReduceSum_EmptyAxes_Test_Model")
+                model.opset_import[0].version = 18
+
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                expected_shapes = [
+                    helper.make_tensor_value_info("temp", TensorProto.FLOAT, expected),
+                    helper.make_tensor_value_info("output", TensorProto.FLOAT, expected),
+                ]
+                self._check_shapes(graph, inferred.graph, expected_shapes)
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
