@@ -7405,7 +7405,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.VarlenEngramGate"></a><a name="com.microsoft.varlenengramgate">**com.microsoft.VarlenEngramGate**</a>
 
   EngramGate over a packed token-major batch of variable-length sequences (CUDA only).
-  
+
   key and query have shape (total_tokens, hc_mult, hidden_size), value has shape
   (total_tokens, hidden_size), and output has the same shape as key. cumulative_sequence_length is a
   device-resident int32 tensor of shape (batch_size + 1); sequence i occupies the half-open range
@@ -7461,7 +7461,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.VarlenNGramHashMapping"></a><a name="com.microsoft.varlenngramhashmapping">**com.microsoft.VarlenNGramHashMapping**</a>
 
   NGramHashMapping over a packed token-major batch of variable-length sequences (CUDA only).
-  
+
   input_ids has shape (total_tokens), and cumulative_sequence_length gives each request's packed
   range. initial_ids and final_ids have shape (batch_size, max_ngram_size - 1) and contain the
   committed ids immediately before and after this call. prefix_ids optionally exposes the state after
