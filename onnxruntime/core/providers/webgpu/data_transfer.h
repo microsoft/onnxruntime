@@ -12,7 +12,8 @@ namespace webgpu {
 
 class BufferManager;
 
-// Low-level data transfer implementation that operates on raw pointers.
+// Low-level data transfer implementation that operates on CPU pointers or opaque GPU buffer handles
+// with explicit byte offsets.
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
 class DataTransferImpl {
  public:
@@ -22,7 +23,9 @@ class DataTransferImpl {
                             bool src_is_gpu,
                             void* dst_data,
                             bool dst_is_gpu,
-                            size_t bytes) const;
+                            size_t bytes,
+                            size_t src_offset = 0,
+                            size_t dst_offset = 0) const;
 
  private:
   const BufferManager& buffer_manager_;

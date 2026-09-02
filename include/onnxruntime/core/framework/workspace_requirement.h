@@ -21,13 +21,25 @@ struct WorkspaceRequirement {
   size_t size_bytes;  // upper-bound scratch bytes for this slot
   int slot_id;        // kernel-defined, stable across runs; unique within one kernel instance
 
-  // Pointer-alignment requirement for this slot's buffer, in bytes (e.g. 128, 256). 0 requests the
-  // allocator's default alignment. Any nonzero value is a binding requirement on the returned
-  // buffer/root that a planner must honor.
+  // Alignment requirement for this slot's region offset, in bytes (e.g. 128, 256). For providers
+  // with addressable allocations, the allocation base must also satisfy this alignment. 0 requests
+  // the allocator's default alignment. Any nonzero value is a binding requirement on the returned
+  // region that a planner must honor.
   // A plain size_t (not std::optional<size_t>) is used deliberately: this struct is meant to be usable
   // across a plugin-DLL boundary eventually, and std::optional's layout is not guaranteed stable across
   // compilers/STL versions the way a scalar with a sentinel value is.
   size_t alignment_bytes;
+};
+
+// A run-scoped view into a planned workspace allocation. `buffer` is the provider-native base
+// allocation (for example, a CUDA device pointer or an opaque WGPUBuffer handle). `offset_bytes`
+// is relative to that allocation and satisfies the workspace's requested offset alignment.
+// Consumers must interpret the pair according to the provider's memory model instead of assuming
+// that pointer arithmetic is valid for every device allocation.
+struct WorkspaceBufferRegion {
+  void* buffer{nullptr};
+  size_t offset_bytes{0};
+  size_t size_bytes{0};
 };
 
 }  // namespace onnxruntime

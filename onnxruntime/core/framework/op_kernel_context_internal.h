@@ -214,8 +214,9 @@ class OpKernelContextInternal : public OpKernelContext {
     }
   }
 
-  Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) override {
-    *workspace = nullptr;
+  Status GetPreallocatedWorkspaceRegion(int slot_id, size_t requested_bytes,
+                                        WorkspaceBufferRegion& workspace) override {
+    workspace = {};
     static const bool trace_workspace_lookup =
         ParseEnvironmentVariableWithDefault<int>(
             "ORT_MATMULNBITS_TRACE_LEGACY_WORKSPACE", 0) != 0;
@@ -263,10 +264,10 @@ class OpKernelContextInternal : public OpKernelContext {
           workspace_plan.pattern_id, workspace_plan.location,
           workspace_plan.allocation_bytes, workspace_plan.alignment_bytes, workspace));
       if (trace_workspace_lookup) {
-        auto& logged = *workspace == nullptr ? logged_frame_null : logged_success;
+        auto& logged = workspace.buffer == nullptr ? logged_frame_null : logged_success;
         if (!logged.exchange(true, std::memory_order_relaxed)) {
           std::cerr << "[workspace_plan_lookup] state="
-                    << (*workspace == nullptr ? "frame_returned_null" : "success")
+                    << (workspace.buffer == nullptr ? "frame_returned_null" : "success")
                     << " node=" << GetNodeIndex()
                     << " slot=" << slot_id
                     << " requested_bytes=" << requested_bytes
@@ -277,6 +278,13 @@ class OpKernelContextInternal : public OpKernelContext {
         }
       }
       active_workspace_plans_.push_back(&workspace_plan);
+      if (workspace.buffer != nullptr && workspace.size_bytes < requested_bytes) {
+        LOGS(Logger(), WARNING)
+            << "Planned workspace slot " << slot_id << " for node " << GetNodeIndex()
+            << " has " << workspace.size_bytes << " usable bytes but " << requested_bytes
+            << " bytes were requested. Falling back to dynamic allocation.";
+        workspace = {};
+      }
       return Status::OK();
     }
 

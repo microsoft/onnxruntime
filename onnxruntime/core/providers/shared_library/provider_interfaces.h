@@ -12,6 +12,7 @@
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/run_instrumentation.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/workspace_requirement.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
@@ -1452,6 +1453,10 @@ struct ProviderHost {
       int execution_device_id,
       int64_t completion_ns,
       const std::string& completion_timestamp_source) = 0;
+  // Workspace buffer-region support — appended at end to preserve vtable ABI compatibility.
+  virtual Status OpKernelContext__GetPreallocatedWorkspaceRegion(
+      OpKernelContext* p, int slot_id, size_t requested_bytes,
+      WorkspaceBufferRegion& workspace) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
