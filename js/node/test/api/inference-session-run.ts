@@ -452,6 +452,37 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('runs concurrent inferences across device sessions safely', async function () {
+    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+
+    // No preferredOutputLocation, so these take the plain Run() path. Sessions on the same device
+    // still share the provider's global state, so the runs have to serialize against each other.
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const sessions = [
+      await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] }),
+      await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] }),
+    ];
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const expected = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      for (let round = 0; round < 10; round++) {
+        const results = await Promise.all(
+          sessions.flatMap((session) => [session.run({ input }), session.run({ input })]),
+        );
+        for (const result of results) {
+          assertTensorEqual(result.output, expected);
+        }
+      }
+    } finally {
+      for (const session of sessions) {
+        await session.release().catch(() => {});
+      }
+    }
+  });
+
   it('runs concurrent IO-binding inferences across sessions safely', async function () {
     if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
       // eslint-disable-next-line no-invalid-this

@@ -114,7 +114,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
     if (argsLength == 2 && info[0].IsString() && info[1].IsObject()) {
       Napi::String value = info[0].As<Napi::String>();
 
-      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
+      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions, &requires_device_serialization_);
       this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
@@ -129,7 +129,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       int64_t bytesOffset = info[1].As<Napi::Number>().Int64Value();
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
-      ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
+      ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions, &requires_device_serialization_);
       this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
                                             reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
@@ -377,33 +377,35 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         output_names_cstr.push_back(output.name.c_str());
       }
 
-      if (preferred_output_locations_.empty()) {
-        session_->session_->Run(run_options_, input_names_cstr.data(), input_values_.data(), input_values_.size(),
-                                output_names_cstr.data(), output_values_.data(), output_values_.size());
-        return;
+      // A provider with global device state cannot have two runs in flight anywhere in the process,
+      // and binding does device work before Run() that ORT's own guard does not cover either.
+      // Sessions without such a provider never take the lock and stay fully concurrent.
+      std::unique_lock<std::mutex> device_lock;
+      if (session_->requires_device_serialization_) {
+        device_lock = std::unique_lock<std::mutex>(OrtInstanceData::DeviceMutex());
+        OrtInstanceData::DrainDeviceReleasesLocked();
       }
-
-      // See OrtInstanceData::DeviceMutex(): binding does device work that ORT's own run guard does
-      // not cover, and the provider context it touches is shared across sessions.
-      std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
-      OrtInstanceData::DrainDeviceReleasesLocked();
 
       // Whatever happens below, drop everything bound to the device before leaving the lock. Doing
       // it from Complete() instead would run on the Javascript thread while another session binds.
       struct DeviceCleanup {
         RunAsyncWorker* worker;
+        std::unique_lock<std::mutex>* lock;
         ~DeviceCleanup() {
           worker->io_binding_.reset();
           worker->input_values_.clear();
           worker->gpu_value_owners_.clear();
+          if (lock->owns_lock()) {
+            OrtInstanceData::DrainDeviceReleasesLocked();
+          }
         }
-      } device_cleanup{this};
+      } device_cleanup{this, &device_lock};
 
-      // Drained again on the way out by DeviceReleaseDrain, so values queued while this run held the
-      // lock do not wait for the next one.
-      struct DeviceReleaseDrain {
-        ~DeviceReleaseDrain() { OrtInstanceData::DrainDeviceReleasesLocked(); }
-      } device_release_drain;
+      if (preferred_output_locations_.empty()) {
+        session_->session_->Run(run_options_, input_names_cstr.data(), input_values_.data(), input_values_.size(),
+                                output_names_cstr.data(), output_values_.data(), output_values_.size());
+        return;
+      }
 
       io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
       for (size_t i = 0; i < input_names_.size(); ++i) {

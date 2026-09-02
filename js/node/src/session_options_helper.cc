@@ -37,7 +37,8 @@ const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NA
 const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_MAP = {{"sequential", ORT_SEQUENTIAL},
                                                                                       {"parallel", ORT_PARALLEL}};
 
-void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions) {
+void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions,
+                             bool* requires_device_serialization) {
   for (uint32_t i = 0; i < epList.Length(); i++) {
     Napi::Value epValue = epList[i];
     std::string name;
@@ -166,6 +167,12 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_WEBGPU
     } else if (name == "webgpu") {
+      // WebGPU sessions sharing a device id share one WebGpuContext, and its command encoder is
+      // mutable global state. ORT declares ConcurrentRunSupported() false for this provider, but its
+      // own guard only covers graph execution within a single session.
+      if (requires_device_serialization != nullptr) {
+        *requires_device_serialization = true;
+      }
       sessionOptions.AppendExecutionProvider("WebGPU", webgpu_options);
 #endif
 #ifdef USE_COREML
@@ -199,13 +206,14 @@ void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort
   }
 }
 
-void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions) {
+void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
+                         bool* requires_device_serialization) {
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");
     ORT_NAPI_THROW_TYPEERROR_IF(!epsValue.IsArray(), options.Env(),
                                 "Invalid argument: sessionOptions.executionProviders must be an array.");
-    ParseExecutionProviders(epsValue.As<Napi::Array>(), sessionOptions);
+    ParseExecutionProviders(epsValue.As<Napi::Array>(), sessionOptions, requires_device_serialization);
   }
 
   // Intra threads number

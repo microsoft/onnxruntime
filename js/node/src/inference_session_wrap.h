@@ -95,6 +95,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // session objects
   bool initialized_;
   bool disposed_;
+  // Whether runs on this session must hold OrtInstanceData::DeviceMutex(); see ParseSessionOptions.
+  bool requires_device_serialization_{false};
   // Set when dispose() is called while runs are still in flight; EndRun() completes the teardown.
   bool teardown_pending_{false};
   size_t active_runs_{0};
