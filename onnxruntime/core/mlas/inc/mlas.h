@@ -105,6 +105,14 @@ Abstract:
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
 //
+// Define whether an accelerated half-GEMM backend can be available for this build.
+//
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    (defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)) || defined(MLAS_TARGET_RISCV64)
+#define MLAS_HALF_GEMM_ACCELERATION_POSSIBLE
+#endif
+
+//
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
 
@@ -1830,6 +1838,17 @@ MlasGemm(
 */
 bool MLASCALL
 MlasFp16AccelerationSupported();
+
+/**
+ * @brief Whether an accelerated HalfGemm backend is available with the given configuration.
+ *
+ * @param BackendKernelSelectorConfig Backend kernel selection configuration. A
+ *        null pointer enables the default backend configuration.
+ * @return True if HalfGemm can use an accelerated backend.
+ */
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
  * @brief Interface for half gemm post processors.

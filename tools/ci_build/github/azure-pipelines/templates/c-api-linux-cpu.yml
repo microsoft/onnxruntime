@@ -42,9 +42,7 @@ jobs:
     ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
       hostArchitecture: Arm64
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   # Authenticate to Lotus to pull pip in UsePythonVersion task
   - template: setup-feeds-and-python-steps.yml

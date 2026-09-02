@@ -1,0 +1,172 @@
+# CUDA Attention Workspace Estimation Roadmap
+
+## Goal and scope
+
+This work provides operator-specific workspace estimation for the CUDA Attention family. It defines how an
+Attention kernel derives a workspace recipe from a plain problem description and a selected backend.
+
+The generic memory-estimation framework is a separate work track and is out of scope here. That track includes L1/L2
+callback plumbing, kernel registration, shape and max-shape infrastructure, optional-input contracts at the framework
+boundary, partition budgeting, memory planning, and planned-root or preallocation integration.
+
+The Attention work owns:
+
+- graph-free problem descriptions and checked workspace recipes;
+- backend- and layout-specific workspace formulas;
+- runtime allocation and view parity;
+- route and boundary tests; and
+- thin Attention-specific adapters after the generic framework API stabilizes.
+
+## Runtime dispatch and AOT estimation
+
+CUDA EP assignment happens during session initialization. Backend dispatch inside an assigned CUDA Attention kernel
+can happen later, using the concrete inputs available to `Compute()`. These are distinct decisions.
+
+Runtime sizing can be exact because the kernel first selects a backend and then requests that backend's recipe:
+
+```text
+concrete inputs -> runtime dispatch -> selected backend -> exact workspace recipe
+```
+
+Ahead-of-time (AOT) estimation cannot assume that the same selection is known. Backend feasibility can depend on
+optional inputs, build and runtime options, cache state, runner availability, device properties, and concrete dynamic
+sequence lengths. When the exact backend cannot be proven, AOT estimation must enumerate the feasible backend recipes
+and take a safe upper bound:
+
+```text
+shapes and bounds -> feasible backends -> recipe per backend -> maximum workspace
+```
+
+An estimator must not copy the runtime dispatch cascade or assume that dispatch is monotonic with shape. For example,
+a larger shape may use a fused backend with small workspace while a nearby smaller shape falls back to an unfused
+backend with an `S^2` attention buffer.
+
+An AOT result should therefore be classified as:
+
+- **Exact:** the backend and all governing dimensions are proven.
+- **Safe bound:** the maximum workspace across all feasible backend recipes.
+- **Unavailable:** a required shape, optional-input, capability, or recipe contract is not available.
+
+## Recipe architecture
+
+The reusable implementation follows this boundary:
+
+```text
+operator shapes and attributes
+          |
+          v
+plain Attention problem
+          |
+          v
+checked backend/layout recipe
+          |
+          v
+runtime allocation and workspace views
+```
+
+The plain problem and recipe must not depend on `Node`, `NodeArg`, `GraphViewer`, `TensorShape`, or CUDA runtime types.
+A future framework adapter may translate framework inputs into the plain problem, but it must not duplicate sizing or
+validation arithmetic.
+
+Recipes must use checked arithmetic, enforce relevant CUDA ABI and grid limits, and prove that every derived view is
+contained in the allocated workspace.
+
+## PR1: packed Attention recipes
+
+[microsoft/onnxruntime#32283](https://github.com/microsoft/onnxruntime/pull/32283) is the first implementation in the
+roadmap tracked by [microsoft/onnxruntime#29775](https://github.com/microsoft/onnxruntime/issues/29775). Its scope is
+`PackedAttention` (PA) and `PackedMultiHeadAttention` (PMHA), plus a shared correction that widens CUTLASS MEA
+attention-bias stride arithmetic for all MEA consumers.
+
+PR1 establishes a single sizing and layout source of truth while preserving legacy workspace byte totals, allocation
+counts, and allocation lifetimes. It does not change Attention backend selection. The shared stride correction can
+change MEA's internal aligned-versus-unaligned kernel variant only in cases where the previous int32 calculation
+overflowed before assignment to an int64 stride.
+
+### `T` and `B * S`
+
+`T` is the packed real-token count. `B * S` is padded capacity. Existing packed Attention paths use both:
+
+- fused backend views can be governed by `T`;
+- the unfused Q/K/V layout is governed by `B * S`; and
+- PR1 retains the legacy `B * S` attention allocation total even when a fused inner view uses `T`.
+
+Shrinking the total allocation from `B * S` to `T` is a separate optimization.
+
+### Workspace components and layouts
+
+PA has a projection GEMM allocation and an Attention allocation. The recipe reports them separately; their sum must
+not replace either allocation. PMHA receives Q/K/V inputs and has zero projection workspace.
+
+| Backend | Q/K/V representation | Q/K/V view dimension | Backend scratch retained by PR1 |
+| --- | --- | --- | --- |
+| Flash | Planar materialized views or direct input views | `T` | Softmax LSE: `sizeof(float) * B * S * N` |
+| TensorRT fused (`FusedRunner`) | Interleaved `[T, N, 3, H]` | `T` | None |
+| Memory-efficient Attention | Planar materialized views or direct input views | `T` | Optional FP32 accumulator: `sizeof(float) * B * S * N * H_v` |
+| Unfused (`Default`) | Planar `[B, N, S, H]` views | `B * S` | Two individually aligned `element_size * B * N * S * S` regions |
+
+The MEA accumulator is needed when `H_v > 128` and the input element size is smaller than FP32. PA does not dispatch
+to Flash and always materializes Q/K/V after its projection GEMM. PMHA can skip materialization for packed
+`[T, N, 3, H]` input on TensorRT when bias is absent, or for separate Q/K/V input on Flash or MEA when bias is absent.
+
+### Validation and tests
+
+PR1 includes:
+
+- checked size, offset, alignment, and derived-stride arithmetic;
+- CUDA int32 and int64 ABI validation scoped to the selected backend and materialization producer;
+- explicit planar, interleaved, and direct-view contracts;
+- recipe containment validation;
+- independent hand-calculated byte and layout parity tests;
+- runtime route tests for Flash, TensorRT fused, memory-efficient, and unfused paths as applicable; and
+- empty-output handling before GEMM or CUDA kernel dispatch.
+
+PR1 validates token-offset and cumulative-sequence tensor shapes and host-visible geometry. It does not inspect or
+synchronize their device contents. Device-value validation requires a separate CUDA graph- and capture-safe contract.
+
+### PR1 non-goals
+
+PR1 does not:
+
+- connect to the generic L1/L2 framework;
+- change Attention backend selection or eligibility;
+- change allocation count or lifetime;
+- shrink the legacy `B * S` total to `T`;
+- introduce planned-root allocation or preallocation; or
+- validate device-side token-offset or cumulative-sequence values.
+
+## Attention family rollout
+
+PR1 precedes the sequence below and establishes the checked-recipe architecture that later families can reuse.
+
+The planned operator-specific sequence is:
+
+1. Shared backend primitives and `MultiHeadAttention`.
+2. `GroupQueryAttention`.
+3. `PagedAttention`.
+4. High-value decoder-specific variants.
+5. Separate memory models for Linear, Sparse, Longformer, quantized, and ONNX Attention operators.
+6. Thin Attention-specific adapters to the generic framework after its API stabilizes.
+
+MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
+dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
+unfused workspace governed by `S_q * S_kv_total`. GQA additionally has different Q and KV head counts. MHA can have
+different query and total-KV sequence lengths or different Q/K and V head sizes. Shared backend kernels do not
+eliminate operator-specific preparation, cache, transpose, grouping, or output workspace.
+
+Paged, Linear, Sparse, and Longformer Attention require distinct memory models. They must not be forced into a dense
+Attention formula solely because they share some backend infrastructure.
+
+## Acceptance standard
+
+Each Attention family must provide:
+
+- a runtime source of truth for the selected backend's workspace and layout;
+- checked arithmetic and ABI, grid, alignment, and containment validation;
+- byte-total and view-layout parity with runtime allocation;
+- tests for feasible backend routes and fallback boundaries;
+- explicit exact, safe-bound, or unavailable estimation semantics;
+- no copied runtime dispatch cascade; and
+- no dependency from the reusable recipe on graph or CUDA runtime types.
+
+This document defines operator-estimation work tracks and invariants. It does not prescribe a public framework API.

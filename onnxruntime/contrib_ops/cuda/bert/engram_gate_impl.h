@@ -13,12 +13,9 @@ namespace cuda {
 template <typename T>
 Status LaunchEngramGateKernel(
     cudaStream_t stream,
-    const T* embeddings,
-    const T* hidden_states,
-    const T* key_weight,
-    const T* key_bias,
-    const T* value_weight,
-    const T* value_bias,
+    const T* key,
+    const T* query,
+    const T* value,
     const T* key_norm_scale,
     const T* query_norm_scale,
     const T* conv_norm_scale,
@@ -28,7 +25,6 @@ Status LaunchEngramGateKernel(
     int64_t sequence_length,
     int64_t hc_mult,
     int64_t hidden_size,
-    int64_t embedding_size,
     float epsilon);
 
 }  // namespace cuda

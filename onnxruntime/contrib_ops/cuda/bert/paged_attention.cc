@@ -105,6 +105,7 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  is_causal_ = info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1;
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -211,6 +212,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           has_explicit_scale_,
                                                           device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
+  parameters.is_causal = is_causal_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
@@ -432,12 +434,29 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // input. The inequality rather than equality matters for continuous batching, where a scheduled
   // sequence may contribute no token on a given step.
   // Prefer it only where it is a clear win: a quantized cache (it avoids materializing and
-  // dequantizing the whole live context) or when FlashAttention is unavailable (it beats the
-  // dense-gather MemoryEfficientAttention fallback).
+  // dequantizing the whole live context), a supported native-cache XQA specialization, or when
+  // FlashAttention is unavailable (it beats the dense-gather MemoryEfficientAttention fallback).
   const bool decode_shaped = parameters.token_count <= parameters.batch_size;
-  const bool use_paged_decode = decode_eligible && decode_shaped && (kIsQuantizedCache || !flash_eligible);
-  const bool use_flash_attention = flash_eligible && !use_paged_decode;
-  const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode;
+  const int group_size = parameters.num_heads / parameters.kv_num_heads;
+  constexpr bool kIsFp16Cache =
+      std::is_same<T, MLFloat16>::value && std::is_same<TCACHE, MLFloat16>::value;
+  const bool fp16_xqa_eligible =
+      enable_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
+      parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
+      (parameters.block_size % kXqaTokensPerPage) == 0;
+  // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
+  // both hard-code a bottom-right causal mask.
+  bool use_paged_decode =
+      decode_eligible && decode_shaped && parameters.is_causal && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible);
+  bool use_flash_attention = flash_eligible && !use_paged_decode;
+  const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode && parameters.is_causal;
+
+  if (!parameters.is_causal && !use_flash_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: is_causal=0 requires the FlashAttention backend (sm>=80, fp16/bf16, "
+                           "head_size ",
+                           parameters.head_size, ", block_size ", parameters.block_size, ").");
+  }
 
   // Both gather-based backends need a dense KV staging buffer when the cache is quantized
   // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).
@@ -446,19 +465,15 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // GQA-expanded for the CUTLASS kernel.
   const int gathered_num_heads = use_memory_efficient_attention ? parameters.num_heads : parameters.kv_num_heads;
 
-  // Within the decode-on-a-quantized-cache case, prefer XQA: it is the same tensor-core kernel
-  // GroupQueryAttention uses, reading the paged cache in place, and is roughly an order of
-  // magnitude faster than the portable PagedDecodeSplitKV kernel. Constraints come from the
-  // compiled instantiations (head_size, query/KV group size), from XQA itself (no softcap) and
-  // from the page remap (a PagedAttention block must split into whole 128-token XQA pages).
+  // Prefer XQA where a matching native or quantized cache specialization is compiled. It is the
+  // tensor-core kernel GroupQueryAttention uses and reads the paged cache in place.
   // XQA additionally lays its output out as one row per batch index, so unlike PagedDecodeSplitKV
   // it needs *proof* that every sequence contributes exactly one token, not just the shape
   // heuristic. token_count == batch_size rules out a sequence contributing none; max_query_len == 1,
   // from the metadata bound or from the readback below, then rules out any contributing two.
   bool xqa_candidate = false;
-  if (use_paged_decode && enable_xqa_ && kIsQuantizedCache &&
+  if (use_paged_decode && enable_xqa_ && (kIsQuantizedCache || fp16_xqa_eligible) &&
       parameters.token_count == parameters.batch_size) {
-    const int group_size = parameters.num_heads / parameters.kv_num_heads;
     const bool is_fp8_cache = IsFp8CacheType<TCACHE>();
     const auto is_supported_quant_type = [](KVQuantizationType t) {
       return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
@@ -469,10 +484,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         (parameters.head_size == 64 || parameters.head_size == 128 || parameters.head_size == 256) &&
         (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
         (parameters.block_size % kXqaTokensPerPage) == 0 &&
-        is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
+        (!kIsQuantizedCache ||
+         (is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_))) &&
         // FP8 arithmetic in the XQA kernel needs Ada (sm_89) or Hopper+.
         (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9));
   }
+  const XqaQuantType xqa_kv_quant_type =
+      !kIsQuantizedCache ? XqaQuantType::kNone
+                         : (IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8);
 
   // Obtaining the exact lengths from the device means copying the two cumulative arrays back and
   // blocking the host until they land, which drains everything already queued on the compute
@@ -546,8 +565,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       if (!onnxruntime::llm::common::isCapturing(cuda_stream)) {
         const size_t required_smem = GetXQAPagedRequiredSharedMemoryBytes(
             device_prop, parameters.head_size, parameters.num_heads, parameters.kv_num_heads,
-            IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8,
-            std::is_same<T, BFloat16>::value);
+            xqa_kv_quant_type, std::is_same<T, BFloat16>::value);
         // A zero result means the selected CUDA image has no compatible XQA symbol or the symbol
         // query failed. Either case must use the portable fallback rather than attempting a launch.
         xqa_smem_ok = (required_smem != 0 && required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
@@ -557,6 +575,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       }
     }
     use_xqa_decode = (xqa_smem_ok != 0);
+  }
+  // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
+  // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving
+  // them on the portable scalar paged-decode fallback. This is safe without dense KV staging
+  // because the native FP16 cache is already a Flash-supported dtype.
+  if (!use_xqa_decode && fp16_xqa_eligible && !kIsQuantizedCache && flash_eligible) {
+    use_paged_decode = false;
+    use_flash_attention = true;
   }
   DUMP_STRING("Backend = ", use_latent_attention  ? "latent"
                             : use_xqa_decode      ? "paged decode (XQA)"
@@ -667,8 +693,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     xqa_workspace_bytes = GetXQAScratchSize(
         device_prop, parameters.batch_size, parameters.num_heads, parameters.kv_num_heads,
         parameters.head_size, xqa_max_pages_per_seq * kXqaTokensPerPage,
-        IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8,
-        std::is_same<T, BFloat16>::value);
+        xqa_kv_quant_type, std::is_same<T, BFloat16>::value);
     xqa_workspace_buffer = GetScratchBuffer<void>(xqa_workspace_bytes, GetComputeStream(context));
     if (xqa_page_table_expanded) {
       xqa_page_table_buffer = GetScratchBuffer<void>(

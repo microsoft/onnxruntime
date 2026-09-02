@@ -21,6 +21,7 @@ using namespace onnxruntime::cuda;
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
+          .MayInplace(3, 1)                                       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<T>()), \
       NGramHashMapping<T>);
 
@@ -51,7 +52,7 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
-  const Tensor* past_tokens = context->Input<Tensor>(3);
+  const Tensor* past_ids = context->Input<Tensor>(3);
   const Tensor* head_offsets = context->Input<Tensor>(4);
   const Tensor* eos_token_id = context->Input<Tensor>(5);
   const Tensor* segment_ids = context->Input<Tensor>(6);
@@ -66,11 +67,10 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
-  const int64_t history_length = max_ngram_size_ - 1;
-
-  if (past_tokens != nullptr) {
-    ORT_RETURN_IF_NOT(past_tokens->Shape() == TensorShape({batch_size, history_length}),
-                      "past_tokens must have shape (batch_size, max_ngram_size - 1)");
+  const int64_t state_length = max_ngram_size_ - 1;
+  if (past_ids != nullptr) {
+    ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_ids must have shape (batch_size, max_ngram_size - 1)");
   }
   if (head_offsets != nullptr) {
     ORT_RETURN_IF_NOT(head_offsets->Shape().NumDimensions() == 1 && head_offsets->Shape()[0] == num_heads,
@@ -85,19 +85,18 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   Tensor* output = context->Output(0, TensorShape({batch_size, sequence_length, num_heads}));
-  Tensor* present_tokens = context->Output(1, TensorShape({batch_size, history_length}));
-
+  Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
   return LaunchNGramHashMappingKernel<T>(
       Stream(context),
       input_ids->Data<T>(),
       multipliers->Data<T>(),
       vocab_sizes->Data<T>(),
-      past_tokens == nullptr ? nullptr : past_tokens->Data<T>(),
+      past_ids == nullptr ? nullptr : past_ids->Data<T>(),
       head_offsets == nullptr ? nullptr : head_offsets->Data<T>(),
       eos_token_id == nullptr ? nullptr : eos_token_id->Data<T>(),
       segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>(),
       output->MutableData<T>(),
-      present_tokens == nullptr ? nullptr : present_tokens->MutableData<T>(),
+      present_ids == nullptr ? nullptr : present_ids->MutableData<T>(),
       batch_size,
       sequence_length,
       max_ngram_size_,

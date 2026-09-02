@@ -26,61 +26,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr size_t kCUDAMemoryAlignment = 256;
-
 constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
-
-size_t GetAttentionScratchSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t sequence_length) {
-  const size_t bytes = element_size * batch_size * num_heads * sequence_length * sequence_length;
-  return ((bytes + kCUDAMemoryAlignment - 1) / kCUDAMemoryAlignment) * kCUDAMemoryAlignment;
-}
-
-size_t GetAttentionWorkspaceSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t qk_head_size,
-    size_t v_head_size,
-    size_t sequence_length,
-    void* fused_runner,
-    bool use_flash_attention,
-    bool use_memory_efficient_attention,
-    bool no_qkv_workspace) {
-  // Note that q, k and v might need alignment for fused attention kernels.
-  const size_t qkv_bytes = no_qkv_workspace ? 0 : (element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size));
-
-#if USE_FLASH_ATTENTION
-  // Use portion of workspace for softmax buffer.
-  if (use_flash_attention) {
-    size_t flash_buffer_bytes = onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
-    return qkv_bytes + flash_buffer_bytes;
-  }
-#else
-  ORT_UNUSED_PARAMETER(use_flash_attention);
-#endif
-
-  if (fused_runner != nullptr) {
-    return qkv_bytes;
-  }
-
-#if USE_MEMORY_EFFICIENT_ATTENTION
-  if (use_memory_efficient_attention) {
-    size_t fmha_buffer_bytes = 0;
-    if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
-      fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
-    }
-    return qkv_bytes + fmha_buffer_bytes;
-  }
-#else
-  ORT_UNUSED_PARAMETER(use_memory_efficient_attention);
-#endif
-
-  return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length);
-}
 
 // Grid: (S, B)
 // Block: 256
@@ -312,7 +258,9 @@ void AddBiasTransposePacked(
     const int num_heads, const int qk_head_size, const int v_head_size,
     AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
-  if (0 == (qk_head_size & 3) && 0 == (v_head_size & 3)) {
+  const auto index_width =
+      GetPackedAttentionQkvMaterializationIndexWidth(qk_head_size, v_head_size);
+  if (index_width == PackedAttentionQkvMaterializationIndexWidth::Vector4) {
     using T4Type = typename T4<T>::Type;
     const int H = qk_head_size / 4;
     const int H_v = v_head_size / 4;
@@ -324,7 +272,7 @@ void AddBiasTransposePacked(
         batch_size, sequence_length,
         num_heads, H, H_v,
         format, token_offset, token_count, stream);
-  } else if (0 == (qk_head_size & 1) && 0 == (v_head_size & 1)) {
+  } else if (index_width == PackedAttentionQkvMaterializationIndexWidth::Vector2) {
     using T2Type = typename T2<T>::Type;
     const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
@@ -460,6 +408,10 @@ Status FusedScaledDotProductAttention(
   const int v_head_size = parameters.v_head_size;
   void* fused_runner = data.fused_runner;
   ORT_RETURN_IF_NOT(nullptr != fused_runner, "fused_runner cannot be NULL");
+  ORT_RETURN_IF_NOT(
+      data.workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::InterleavedTn3h &&
+          data.workspace_recipe.interleaved_qkv_offset_bytes == 0,
+      "PackedAttention TRT requires a root [T, N, 3, H] QKV workspace.");
 
   AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
@@ -486,6 +438,8 @@ Status FusedScaledDotProductAttentionCutlass(
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
+  ORT_RETURN_IF_NOT(data.workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::Planar,
+                    "PackedAttention MEA requires planar Q/K/V workspace views.");
   AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
@@ -497,15 +451,12 @@ Status FusedScaledDotProductAttentionCutlass(
   DUMP_TENSOR_D("PackedAttention cutlass data.bias", data.bias, 1, 3 * num_heads * qk_head_size);
 
   // Q, K and V pointers
-  const int model_dimension_qk = num_heads * qk_head_size;
-  const int model_dimension_v = num_heads * v_head_size;
-  const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
-  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
+  const auto& workspace_recipe = data.workspace_recipe;
   T* qkv = data.workspace;
-  T* query = qkv;
-  T* key = query + elements_qk;
-  T* value = key + elements_qk;
-  T* accum_workspace = value + elements_v;
+  T* query = PackedAttentionWorkspaceAt(qkv, workspace_recipe.q_offset_bytes);
+  T* key = PackedAttentionWorkspaceAt(qkv, workspace_recipe.k_offset_bytes);
+  T* value = PackedAttentionWorkspaceAt(qkv, workspace_recipe.v_offset_bytes);
+  T* accum_workspace = PackedAttentionWorkspaceAt(qkv, workspace_recipe.backend_workspace_offset_bytes);
 
   DUMP_TENSOR_D("PackedAttention cutlass q(BSNH)", query, parameters.token_count, num_heads * qk_head_size);
   DUMP_TENSOR_D("PackedAttention cutlass k(BSNH)", key, parameters.token_count, num_heads * qk_head_size);
@@ -557,7 +508,6 @@ Status UnfusedScaledDotProductAttention(
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedAttentionData<T>& data) {
-  constexpr size_t element_size = sizeof(T);
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
@@ -565,18 +515,15 @@ Status UnfusedScaledDotProductAttention(
   const int v_head_size = parameters.v_head_size;
 
   const int batches = batch_size * num_heads;
-  const int size_per_batch_q = sequence_length * qk_head_size;
-  const int size_per_batch_k = sequence_length * qk_head_size;
-  const int size_per_batch_v = sequence_length * v_head_size;
-  const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
-  const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
-  const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
+  const auto& workspace_recipe = data.workspace_recipe;
+  ORT_RETURN_IF_NOT(workspace_recipe.qkv_layout == PackedAttentionQkvWorkspaceLayout::Planar,
+                    "PackedAttention unfused attention requires planar Q/K/V workspace views.");
 
   // Q, K and V pointers when fused attention is not used
   T* qkv = data.workspace;
-  T* q = qkv;
-  T* k = q + elements_q;
-  T* v = k + elements_k;
+  T* q = PackedAttentionWorkspaceAt(qkv, workspace_recipe.q_offset_bytes);
+  T* k = PackedAttentionWorkspaceAt(qkv, workspace_recipe.k_offset_bytes);
+  T* v = PackedAttentionWorkspaceAt(qkv, workspace_recipe.v_offset_bytes);
 
   AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
@@ -584,7 +531,7 @@ Status UnfusedScaledDotProductAttention(
                          AttentionQkvFormat::Q_K_V_BNSH, data.token_offset,
                          parameters.token_count, stream);
 
-  T* scaled_qk = qkv + elements_q + elements_k + elements_v;
+  T* scaled_qk = PackedAttentionWorkspaceAt(qkv, workspace_recipe.backend_workspace_offset_bytes);
 
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
@@ -613,9 +560,7 @@ Status UnfusedScaledDotProductAttention(
 
   DUMP_TENSOR_D("PackedAttention unfused QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
 
-  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                               sequence_length);
-  T* attention_score = scaled_qk + (bytes / element_size);
+  T* attention_score = PackedAttentionWorkspaceAt(qkv, workspace_recipe.second_scratch_offset_bytes);
 
   const bool broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   const bool broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;

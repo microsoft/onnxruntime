@@ -89,4 +89,9 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const cudaDeviceProp& device_prop,
                                       cudaStream_t stream);
 
+// Largest M selected for GEMV dispatch. The tensor-core default is conservative because the
+// crossover with dequantize + cuBLAS depends on the matrix shape; ORT_FP8_GEMV_MAX_M can raise the
+// limit through 64 for tuned workloads. The direct launcher accepts tensor-core cases through 64.
+int MatMulBlockScaledFp8GemvMaxM(int k, int block_size, const cudaDeviceProp& device_prop);
+
 }  // namespace onnxruntime::contrib::cuda

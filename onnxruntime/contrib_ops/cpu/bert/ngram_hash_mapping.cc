@@ -7,7 +7,7 @@
 #include <limits>
 #include <vector>
 
-#include "contrib_ops/cpu/bert/kernel_helper.h"
+#include "contrib_ops/cpu/bert/engram_helper.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -24,6 +24,7 @@ namespace contrib {
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
+          .MayInplace(3, 1)                                       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<T>()), \
       NGramHashMapping<T>);
 
@@ -50,11 +51,20 @@ NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : OpKernel(info)
 }
 
 template <typename T>
+T NGramHashMapping<T>::HistoryId(const T* past_data, int64_t b, int64_t slot, int64_t state_length,
+                                 T missing_history_value) const {
+  if (past_data == nullptr || slot < 0 || slot >= state_length) {
+    return missing_history_value;
+  }
+  return past_data[b * state_length + slot];
+}
+
+template <typename T>
 Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* multipliers = context->Input<Tensor>(1);
   const Tensor* vocab_sizes = context->Input<Tensor>(2);
-  const Tensor* past_tokens = context->Input<Tensor>(3);
+  const Tensor* past_ids = context->Input<Tensor>(3);
   const Tensor* head_offsets = context->Input<Tensor>(4);
   const Tensor* eos_token_id = context->Input<Tensor>(5);
   const Tensor* segment_ids = context->Input<Tensor>(6);
@@ -70,11 +80,10 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
 
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
-  const int64_t history_length = max_ngram_size_ - 1;
-
-  if (past_tokens != nullptr) {
-    ORT_RETURN_IF_NOT(past_tokens->Shape() == TensorShape({batch_size, history_length}),
-                      "past_tokens must have shape (batch_size, max_ngram_size - 1)");
+  const int64_t state_length = max_ngram_size_ - 1;
+  if (past_ids != nullptr) {
+    ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_ids must have shape (batch_size, max_ngram_size - 1)");
   }
   if (head_offsets != nullptr) {
     ORT_RETURN_IF_NOT(head_offsets->Shape().NumDimensions() == 1 && head_offsets->Shape()[0] == num_heads,
@@ -89,66 +98,69 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   }
 
   Tensor* output = context->Output(0, TensorShape({batch_size, sequence_length, num_heads}));
-  Tensor* present_tokens = context->Output(1, TensorShape({batch_size, history_length}));
+  Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
 
   const T* input_data = input_ids->Data<T>();
   const T* multiplier_data = multipliers->Data<T>();
   const T* vocab_data = vocab_sizes->Data<T>();
-  const T* past_data = past_tokens == nullptr ? nullptr : past_tokens->Data<T>();
+  const T* past_data = past_ids == nullptr ? nullptr : past_ids->Data<T>();
   const T* offset_data = head_offsets == nullptr ? nullptr : head_offsets->Data<T>();
   const int32_t* segment_data = segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>();
-  T* output_data = output->MutableData<T>();
-  T* present_data = present_tokens == nullptr ? nullptr : present_tokens->MutableData<T>();
+
+  for (int64_t h = 0; h < num_heads; ++h) {
+    ORT_RETURN_IF_NOT(vocab_data[h] > 0,
+                      "vocab_sizes must be positive; entry ", h, " is ", static_cast<int64_t>(vocab_data[h]));
+  }
 
   const bool has_eos = eos_token_id != nullptr;
   const T eos_value = has_eos ? eos_token_id->Data<T>()[0] : pad_id_;
   const bool do_reset = reset_on_eos_ != 0 && has_eos;
-  const int64_t combined_length = history_length + sequence_length;
+  const int64_t combined_length = state_length + sequence_length;
 
-  // Per batch row, walk a conceptual combined timeline of [past history | input_ids] once,
-  // tracking the most recent causal-reset boundary so each n-gram shift can be substituted with
-  // eos_value when it would otherwise reach across an EOS/segment boundary into unrelated history.
-  ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(batch_size),
-      static_cast<double>(combined_length * max_ngram_size_),
-      [&](ptrdiff_t begin, ptrdiff_t end) {
-        std::vector<T> local_combined(static_cast<size_t>(combined_length));
-        for (int64_t b = begin; b < end; ++b) {
-          for (int64_t i = 0; i < history_length; ++i) {
-            local_combined[static_cast<size_t>(i)] =
-                past_data != nullptr ? past_data[b * history_length + i] : eos_value;
-          }
-          for (int64_t t = 0; t < sequence_length; ++t) {
-            local_combined[static_cast<size_t>(history_length + t)] = input_data[b * sequence_length + t];
-          }
-
-          int64_t last_reset = -1;  // most recent boundary position (combined index) seen so far
-          for (int64_t idx = 0; idx < combined_length; ++idx) {
-            if (segment_data != nullptr && idx > history_length) {
-              const int64_t t = idx - history_length;
-              if (segment_data[b * sequence_length + t] != segment_data[b * sequence_length + t - 1]) {
-                last_reset = idx - 1;
-              }
+  if (input_shape.Size() != 0) {
+    T* output_data = output->MutableData<T>();
+    ThreadPool::TryParallelFor(
+        context->GetOperatorThreadPool(), narrow<ptrdiff_t>(batch_size),
+        static_cast<double>(combined_length * max_ngram_size_),
+        [&](ptrdiff_t begin, ptrdiff_t end) {
+          std::vector<T> combined(static_cast<size_t>(combined_length));
+          for (int64_t b = begin; b < end; ++b) {
+            for (int64_t i = 0; i < state_length; ++i) {
+              combined[static_cast<size_t>(i)] = HistoryId(past_data, b, i, state_length, eos_value);
+            }
+            for (int64_t t = 0; t < sequence_length; ++t) {
+              combined[static_cast<size_t>(state_length + t)] = input_data[b * sequence_length + t];
             }
 
-            if (idx >= history_length) {
-              const int64_t t = idx - history_length;
-              const int64_t output_base = (b * sequence_length + t) * num_heads;
+            int64_t last_reset = -1;
+            for (int64_t idx = state_length; idx < combined_length; ++idx) {
+              const int64_t t = idx - state_length;
+              if (idx > 0) {
+                const int64_t previous = idx - 1;
+                bool boundary = do_reset && combined[static_cast<size_t>(previous)] == eos_value;
+                if (segment_data != nullptr && t > 0 &&
+                    segment_data[b * sequence_length + t] != segment_data[b * sequence_length + t - 1]) {
+                  boundary = true;
+                }
+                if (boundary) {
+                  last_reset = previous;
+                }
+              }
 
+              const int64_t output_base = (b * sequence_length + t) * num_heads;
               for (int64_t n = 2; n <= max_ngram_size_; ++n) {
                 T mix = 0;
                 for (int64_t k = 0; k < n; ++k) {
                   const int64_t source = idx - k;
-                  const T token = (last_reset >= source) ? eos_value : local_combined[static_cast<size_t>(source)];
-                  const T product = kernel_helper::WrappedMultiply(token, multiplier_data[k]);
+                  const T token = (last_reset >= source) ? eos_value : combined[static_cast<size_t>(source)];
+                  const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
                   mix = k == 0 ? product : static_cast<T>(mix ^ product);
                 }
 
                 const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
                 for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
                   const int64_t out_h = ngram_offset + h;
-                  const T mod = vocab_data[out_h];
-                  T result = mod <= 0 ? T{} : kernel_helper::PositiveMod(mix, mod);
+                  T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
                   if (offset_data != nullptr) {
                     result = static_cast<T>(result + offset_data[out_h]);
                   }
@@ -156,21 +168,25 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
                 }
               }
             }
-
-            // Update the EOS reset boundary with the position just processed (idx), so subsequent
-            // positions (idx+1, ...) see it as the most recent boundary strictly before them.
-            if (do_reset && local_combined[static_cast<size_t>(idx)] == eos_value) {
-              last_reset = idx;
-            }
           }
+        });
+  }
 
-          if (present_data != nullptr) {
-            for (int64_t i = 0; i < history_length; ++i) {
-              present_data[b * history_length + i] = local_combined[static_cast<size_t>(sequence_length + i)];
-            }
-          }
-        }
-      });
+  if (present_ids != nullptr) {
+    T* present_data = present_ids->MutableData<T>();
+    for (int64_t b = 0; b < batch_size; ++b) {
+      std::vector<T> present_row(static_cast<size_t>(state_length));
+      for (int64_t j = 0; j < state_length; ++j) {
+        const int64_t source_t = sequence_length - state_length + j;
+        present_row[static_cast<size_t>(j)] =
+            source_t >= 0 ? input_data[b * sequence_length + source_t]
+                          : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+      }
+      for (int64_t j = 0; j < state_length; ++j) {
+        present_data[b * state_length + j] = present_row[static_cast<size_t>(j)];
+      }
+    }
+  }
 
   return Status::OK();
 }

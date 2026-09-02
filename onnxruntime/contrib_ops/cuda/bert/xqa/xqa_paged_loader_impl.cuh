@@ -8,7 +8,7 @@
 // Expected macros:
 //   HEAD_ELEMS            head size (64 / 128 / 256)
 //   HEAD_DIM_NAMESPACE    namespace for the head size (H64 / H128 / H256)
-//   XQA_PAGED_CACHE_ELEM  1 = INT8 KV cache, 2 = FP8 KV cache
+//   XQA_PAGED_CACHE_ELEM  0 = FP16/BF16 KV cache, 1 = INT8 KV cache, 2 = FP8 KV cache
 //   XQA_PAGED_INPUT_FP16  1 = FP16 query/output, 0 = BF16
 //   XQA_PAGED_QUERY_T     query element type (half / __nv_bfloat16)
 //   XQA_PAGED_FAMILY      token used to make the per-TU namespaces unique (e.g. fp16_int8)
@@ -78,6 +78,7 @@ namespace contrib {
 namespace cuda {
 namespace HEAD_DIM_NAMESPACE {
 
+#if !defined(XQA_PAGED_GROUP6_ONLY)
 #define NAMESPACE_NAME XQA_PAGED_NS(grp4_)
 #define GRP_SIZE 4
 #define M_TILESIZE 8
@@ -85,6 +86,7 @@ namespace HEAD_DIM_NAMESPACE {
 #undef NAMESPACE_NAME
 #undef GRP_SIZE
 #undef M_TILESIZE
+#endif
 
 #define NAMESPACE_NAME XQA_PAGED_NS(grp6_)
 #define GRP_SIZE 6
@@ -94,6 +96,7 @@ namespace HEAD_DIM_NAMESPACE {
 #undef GRP_SIZE
 #undef M_TILESIZE
 
+#if !defined(XQA_PAGED_GROUP6_ONLY)
 #define NAMESPACE_NAME XQA_PAGED_NS(grp8_)
 #define GRP_SIZE 8
 #define M_TILESIZE 8
@@ -117,6 +120,7 @@ namespace HEAD_DIM_NAMESPACE {
 #undef NAMESPACE_NAME
 #undef GRP_SIZE
 #undef M_TILESIZE
+#endif
 
 #define XQA_PAGED_DISPATCH(grp)                                                                      \
   return XQA_PAGED_NS(grp)::Launch<XQA_PAGED_QUERY_T>(                                               \
@@ -147,19 +151,28 @@ Status XQA_PAGED_LAUNCH_FN(
     size_t workspace_size) {
   const int group_size = num_heads / kv_num_heads;
   switch (group_size) {
+#if !defined(XQA_PAGED_GROUP6_ONLY)
     case 4:
       XQA_PAGED_DISPATCH(grp4_);
+#endif
     case 6:
       XQA_PAGED_DISPATCH(grp6_);
+#if !defined(XQA_PAGED_GROUP6_ONLY)
     case 8:
       XQA_PAGED_DISPATCH(grp8_);
     case 16:
       XQA_PAGED_DISPATCH(grp16_);
     case 32:
       XQA_PAGED_DISPATCH(grp32_);
+#endif
     default:
+#if defined(XQA_PAGED_GROUP6_ONLY)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This paged XQA specialization only supports group_size 6. Input has ", group_size);
+#else
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Paged XQA only supports group_size 4, 6, 8, 16, 32. Input has ", group_size);
+#endif
   }
 }
 
@@ -168,16 +181,20 @@ Status XQA_PAGED_LAUNCH_FN(
 size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, SmemSize)(const int num_heads, const int kv_num_heads) {
   const int group_size = num_heads / kv_num_heads;
   switch (group_size) {
+#if !defined(XQA_PAGED_GROUP6_ONLY)
     case 4:
       return XQA_PAGED_NS(grp4_)::GetSmemSize();
+#endif
     case 6:
       return XQA_PAGED_NS(grp6_)::GetSmemSize();
+#if !defined(XQA_PAGED_GROUP6_ONLY)
     case 8:
       return XQA_PAGED_NS(grp8_)::GetSmemSize();
     case 16:
       return XQA_PAGED_NS(grp16_)::GetSmemSize();
     case 32:
       return XQA_PAGED_NS(grp32_)::GetSmemSize();
+#endif
     default:
       return 0;
   }

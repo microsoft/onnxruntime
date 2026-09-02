@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
 
 #include <cstddef>
@@ -217,5 +215,3 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixTilingSelector(
 }  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

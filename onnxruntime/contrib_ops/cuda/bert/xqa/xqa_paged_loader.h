@@ -27,7 +27,8 @@ constexpr int kXqaTokensPerPage = 128;
 // K and V from a shared block pool addressed through a page table.
 //
 // Preconditions: one query token per sequence, head_size in {64, 128, 256}, group_size in
-// {4, 6, 8, 16, 32}, quantized (INT8/FP8) cache, block_size % kXqaTokensPerPage == 0.
+// {4, 6, 8, 16, 32}, supported FP16/INT8/FP8 cache, block_size % kXqaTokensPerPage == 0.
+// PagedAttention currently routes native FP16 cache only for head_size=256 and group_size=6.
 Status LaunchXQAPagedKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,

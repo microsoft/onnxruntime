@@ -14,35 +14,26 @@ using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 // Computes the scalar gate for each (token, g) row. The gate does not depend on the output channel,
-// so one workgroup computes it once per row instead of every channel recomputing the key projection.
+// so one workgroup reduces it once per row instead of every channel repeating the reduction.
 class EngramGateScalarProgram final : public Program<EngramGateScalarProgram> {
  public:
-  explicit EngramGateScalarProgram(bool has_key_bias)
-      : Program{"EngramGateScalar"}, has_key_bias_(has_key_bias) {}
+  EngramGateScalarProgram() : Program{"EngramGateScalar"} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"embedding_size", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  bool has_key_bias_;
 };
 
-// Applies the per-row gate to the value projection, one invocation per output element.
+// Broadcasts the per-row gate over the value channels, one invocation per vecN of output channels.
 class EngramGateProgram final : public Program<EngramGateProgram> {
  public:
-  explicit EngramGateProgram(bool has_value_bias)
-      : Program{"EngramGate"}, has_value_bias_(has_value_bias) {}
+  EngramGateProgram() : Program{"EngramGate"} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"hc_mult", ProgramUniformVariableDataType::Uint32},
-                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"embedding_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_value_bias_;
+                                          {"hidden_vec_size", ProgramUniformVariableDataType::Uint32});
 };
 
 // Applies a branchwise RMSNorm to gated_value (one hidden_size slice per hyper-connection branch)

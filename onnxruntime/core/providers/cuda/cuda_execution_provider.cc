@@ -555,6 +555,11 @@ Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   return GetPerThreadContext().ReplayGraph(graph_annotation_id, sync);
 }
 
+void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const {
+  std::lock_guard<std::mutex> lock(captured_host_buffers_mutex_);
+  captured_host_buffers_.push_back(std::move(buffer));
+}
+
 namespace cuda {
 
 template <>

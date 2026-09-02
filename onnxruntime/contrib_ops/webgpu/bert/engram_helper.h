@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
-namespace kernel_helper {
+namespace engram_helper {
 
 // WGSL snippets shared by the contrib kernels. Append them to ShaderHelper::AdditionalImplementation().
 
@@ -18,12 +18,6 @@ constexpr std::string_view kStableSigmoidWgsl =
     "  if (x > 0.0) { return 1.0 / (1.0 + exp(-x)); }\n"
     "  let e = exp(x);\n"
     "  return e / (1.0 + e);\n"
-    "}\n";
-
-// Requires kStableSigmoidWgsl to be emitted as well.
-constexpr std::string_view kSiluWgsl =
-    "fn silu(x: f32) -> f32 {\n"
-    "  return x * stable_sigmoid(x);\n"
     "}\n";
 
 // Engram gate pre-activation: sign(dot) * sqrt(max(abs(dot), 1e-6)). WGSL sign() already maps zero
@@ -41,7 +35,7 @@ constexpr std::string_view kPositiveModWgsl =
     "  return result;\n"
     "}\n";
 
-}  // namespace kernel_helper
+}  // namespace engram_helper
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

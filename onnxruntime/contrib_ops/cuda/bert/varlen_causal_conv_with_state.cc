@@ -37,10 +37,12 @@ VarlenCausalConvWithState<T>::VarlenCausalConvWithState(const OpKernelInfo& info
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
 
-  const int64_t max_checkpoints = info.GetAttrOrDefault<int64_t>("max_checkpoints", 0);
-  ORT_ENFORCE(max_checkpoints >= 0 && max_checkpoints <= kMaxStateWindow,
-              "max_checkpoints must be in [0, ", kMaxStateWindow, "]");
-  max_checkpoints_ = static_cast<int>(max_checkpoints);
+  const int64_t state_update_capacity = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
+  ORT_ENFORCE(state_update_capacity >= 0 && state_update_capacity <= kMaxStateWindow,
+              "state_update_capacity must be in [0, ", kMaxStateWindow, "]");
+  state_update_capacity_ = static_cast<int>(state_update_capacity);
+
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
 }
 
 template <typename T>
@@ -50,11 +52,14 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   const Tensor* cu_seqlens_tensor = context->Input<Tensor>(2);
   const Tensor* bias_tensor = context->Input<Tensor>(3);  // optional
   const Tensor* initial_state_tensor = context->Input<Tensor>(4);
+  const Tensor* capture_count_tensor = context->Input<Tensor>(5);  // optional
 
   ORT_RETURN_IF_NOT(input_tensor != nullptr, "input is required");
   ORT_RETURN_IF_NOT(weight_tensor != nullptr, "weight is required");
   ORT_RETURN_IF_NOT(cu_seqlens_tensor != nullptr, "cumulative_sequence_length input is required");
   ORT_RETURN_IF_NOT(initial_state_tensor != nullptr, "initial_state input is required");
+  ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count_tensor != nullptr),
+                    "capture_count must be present exactly when state_update_capacity is positive");
 
   const auto& input_shape = input_tensor->Shape();
   const auto& weight_shape = weight_tensor->Shape();
@@ -78,6 +83,13 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
                     "batch size is too large for the CUDA kernel");
   const int batch_size = static_cast<int>(batch_size_64);
 
+  if (capture_count_tensor != nullptr) {
+    const auto& capture_count_shape = capture_count_tensor->Shape();
+    ORT_RETURN_IF_NOT(capture_count_shape.NumDimensions() == 1 && capture_count_shape[0] == batch_size_64,
+                      "capture_count must have shape (", batch_size_64, "), got ",
+                      capture_count_shape.ToString());
+  }
+
   const int64_t total_tokens_64 = input_shape[0];
   const int64_t channels_64 = input_shape[1];
   ORT_RETURN_IF_NOT(total_tokens_64 <= std::numeric_limits<int>::max() &&
@@ -96,7 +108,10 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   ORT_RETURN_IF_NOT(kernel_size_64 >= 1 && kernel_size_64 <= std::numeric_limits<int>::max(),
                     "weight last dim (kernel_size) must be positive, got ", kernel_size_64);
   const int kernel_size = static_cast<int>(kernel_size_64);
-  const int pad = kernel_size - 1;
+  const int64_t pad_64 = (kernel_size_64 - 1) * dilation_;
+  ORT_RETURN_IF_NOT(pad_64 <= std::numeric_limits<int>::max(),
+                    "(kernel_size - 1) * dilation is too large for the CUDA kernel");
+  const int pad = static_cast<int>(pad_64);
 
   if (bias_tensor != nullptr) {
     const auto& bias_shape = bias_tensor->Shape();
@@ -111,8 +126,13 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
 
   Tensor* output_tensor = context->Output(0, input_shape);
   Tensor* final_state_tensor = context->Output(1, state_shape);
-  const TensorShape checkpoint_shape({max_checkpoints_, batch_size_64, channels_64, pad});
-  Tensor* prefix_states_tensor = context->Output(2, checkpoint_shape);
+  const TensorShape state_update_shape({batch_size_64, state_update_capacity_, channels_64});
+  Tensor* state_update_tensor = context->Output(2, state_update_shape);
+  if (state_update_capacity_ > 0 && state_update_tensor != nullptr) {
+    const size_t count = SafeInt<size_t>(batch_size) * state_update_capacity_ * channels;
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+        state_update_tensor->MutableDataRaw(), 0, count * sizeof(T), Stream(context)));
+  }
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");
 
@@ -130,16 +150,20 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
       reinterpret_cast<const CudaT*>(initial_state_tensor->Data<T>()),
       reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
       reinterpret_cast<CudaT*>(final_state_tensor->MutableData<T>()),
-      prefix_states_tensor ? reinterpret_cast<CudaT*>(prefix_states_tensor->MutableData<T>()) : nullptr,
+      state_update_capacity_ > 0 && state_update_tensor
+          ? reinterpret_cast<CudaT*>(state_update_tensor->MutableData<T>())
+          : nullptr,
       cu_seqlens_tensor->Data<int32_t>(),
+      capture_count_tensor ? capture_count_tensor->Data<int32_t>() : nullptr,
       batch_size,
       static_cast<int>(total_tokens_64),
       all_ones,
       channels,
       kernel_size,
+      dilation_,
       apply_silu,
       GetDeviceProp().maxThreadsPerBlock,
-      max_checkpoints_);
+      state_update_capacity_);
 }
 
 }  // namespace cuda
