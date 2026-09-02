@@ -262,9 +262,9 @@
       ],
       "tool": "binskim",
       "ruleId": "BA2007",
-      "createdDate": "2026-08-31 09:28:09Z",
-      "expirationDate": "2027-02-17 10:15:33Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-31 10:15:33Z"
+      "createdDate": "2026-09-02 09:28:18Z",
+      "expirationDate": "2027-02-19 10:09:48Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-09-02 10:09:48Z"
     },
     "67ebac3fb9322d3860806b2aaa0376c16581131ca42fbf31e6bcf000b224c733": {
       "signature": "67ebac3fb9322d3860806b2aaa0376c16581131ca42fbf31e6bcf000b224c733",
@@ -277,9 +277,9 @@
       ],
       "tool": "binskim",
       "ruleId": "BA2007",
-      "createdDate": "2026-08-31 09:28:09Z",
-      "expirationDate": "2027-02-17 10:15:33Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-31 10:15:33Z"
+      "createdDate": "2026-09-02 09:28:18Z",
+      "expirationDate": "2027-02-19 10:09:48Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-09-02 10:09:48Z"
     },
     "783af79fa4bd4c485defbfedb60605bf88ab8683a4e0fd8d10869c3688db0202": {
       "signature": "783af79fa4bd4c485defbfedb60605bf88ab8683a4e0fd8d10869c3688db0202",
@@ -292,9 +292,9 @@
       ],
       "tool": "binskim",
       "ruleId": "BA2007",
-      "createdDate": "2026-08-31 09:28:09Z",
-      "expirationDate": "2027-02-17 10:15:33Z",
-      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-31 10:15:33Z"
+      "createdDate": "2026-09-02 09:28:18Z",
+      "expirationDate": "2027-02-19 10:09:48Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-09-02 10:09:48Z"
     }
   }
 }

@@ -150,18 +150,18 @@ pipelines:
         credscan:
           lastModifiedDate: 2025-04-25
         eslint:
-          lastModifiedDate: 2026-08-31
+          lastModifiedDate: 2025-04-25
         psscriptanalyzer:
-          lastModifiedDate: 2026-08-31
+          lastModifiedDate: 2025-04-25
         armory:
-          lastModifiedDate: 2026-08-31
+          lastModifiedDate: 2025-04-25
         policheck:
-          lastModifiedDate: 2026-08-31
+          lastModifiedDate: 2025-07-23
       binary:
         credscan:
           lastModifiedDate: 2025-04-25
         binskim:
-          lastModifiedDate: 2026-08-31
+          lastModifiedDate: 2026-09-02
         spotbugs:
           lastModifiedDate: 2025-04-25
     usedBinskimScanAllExtensions: true
