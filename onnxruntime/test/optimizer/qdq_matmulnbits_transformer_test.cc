@@ -567,8 +567,8 @@ RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
 
   // Two chained MatMulNBits accumulate rounding differences against the unfused fp32
   // baseline; the CUDA kernel's accumulation order differs further from CPU's, so it
-  // needs the wider tolerance already used elsewhere in this file for blockwise
-  // accumulation reordering (see DQMatMulPerTensor/PerChannelConvertedToMatMulNBits).
+  // needs the wider tolerance already used by the per-tensor tests in this file for
+  // blockwise accumulation reordering.
   const bool is_cuda = ep != nullptr;
   TransformerTester(build_test_case,
                     check_graph,
