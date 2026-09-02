@@ -155,13 +155,12 @@ $MAIN {
     }
     workgroupBarrier();
   }
-  let l2_norm = sqrt(scale_reduction_buffer[0]);
-  let inv_l2 = select(0.0f, 1.0f / l2_norm, l2_norm > 0.0f);
-  let quant_scale = l2_norm;
+  let quant_scale = sqrt(scale_reduction_buffer[0]);
+  let inv_quant_scale = select(0.0f, 1.0f / quant_scale, quant_scale > 0.0f);
 
   // Quantize: compute centroid index for each element and store in index_buffer.
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
-    let unit_val = hadamard_buffer[i] * inv_l2;
+    let unit_val = hadamard_buffer[i] * inv_quant_scale;
     index_buffer[i] = snap_to_centroid_index(unit_val);
   }
   workgroupBarrier();

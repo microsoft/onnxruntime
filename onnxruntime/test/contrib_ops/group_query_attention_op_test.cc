@@ -3485,6 +3485,8 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillNonFlashAttention_W
 static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(bool enable_graph_capture,
                                                                  uint32_t kv_cache_quant_bits,
                                                                  uint32_t multi_rotary_cache_concat_offset = 0) {
+  ORT_ENFORCE(kv_cache_quant_bits == 0 || kv_cache_quant_bits == 4 || kv_cache_quant_bits == 8,
+              "KV cache quantization bit width must be 0, 4, or 8, got ", kv_cache_quant_bits);
   ConfigOptions config_options{};
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                                    webgpu::options::kBufferCacheMode_Disabled));
@@ -3507,13 +3509,9 @@ static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(bool enable_gra
   return WebGpuExecutionProviderWithOptions(config_options);
 }
 
-// Helper: creates a WebGPU EP with TurboQuant 4-bit enabled.
-static std::unique_ptr<IExecutionProvider> WebGpuEPWithTurboQuant4(bool enable_graph_capture = false) {
-  return WebGpuEPForGqaOptions(enable_graph_capture, /*kv_cache_quant_bits=*/4);
-}
-
-static std::unique_ptr<IExecutionProvider> WebGpuEPWithTurboQuant(uint32_t bit_width,
-                                                                  bool enable_graph_capture = false) {
+static std::unique_ptr<IExecutionProvider> WebGpuEPWithKVCacheQuantization(
+    uint32_t bit_width,
+    bool enable_graph_capture = false) {
   return WebGpuEPForGqaOptions(enable_graph_capture, bit_width);
 }
 
@@ -4028,7 +4026,7 @@ static std::vector<float> RunGQATurboQuant(
   });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  auto ep = WebGpuEPWithTurboQuant(bit_width);
+  auto ep = WebGpuEPWithKVCacheQuantization(bit_width);
   if (!ep) {
     // GTEST_SKIP() cannot be used in a value-returning helper (it expands to a
     // void `return`). Callers already GTEST_SKIP() when the EP is unavailable, so
@@ -4063,7 +4061,7 @@ static void ExpectFiniteNonzeroOutput(const std::vector<float>& output, const ch
 
 // --- Error path: TurboQuant with smooth_softmax (non-flash attention) ---
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonFlashAttention) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4122,7 +4120,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonFlashAttention) {
 
 // --- Error path: TurboQuant with invalid head_size (not power of 2) ---
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4187,7 +4185,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
 
 // Decode (sequence_length=1) with separate K/V, no rotary. past_seq_len controls k_size.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K1) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4199,7 +4197,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K1) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4211,7 +4209,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K24) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K128) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4224,7 +4222,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K128) {
 
 // Prefill (sequence_length > 1) with separate K/V, no rotary.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K1) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4236,7 +4234,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K1) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4248,7 +4246,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K24) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K128) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4261,7 +4259,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K128) {
 
 // Decode with rotary embedding (separate K/V path).
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_Rotary_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4274,7 +4272,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_Rotary_K24) {
 
 // Decode with packed QKV + rotary (fused split+rotary+Hadamard+quantize path).
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_PackedRotary_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4287,7 +4285,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_PackedRotary_K24) {
 
 // Prefill with packed QKV + rotary (fused path, sequence_length > 1).
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_PackedRotary_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4299,7 +4297,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_PackedRotary_K24) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Regular_UsesQ8CacheShape) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4311,7 +4309,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Regular_UsesQ8CacheS
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Decode_PackedRotary_UsesQ8CacheShape) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4323,7 +4321,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Decode_PackedRotary_UsesQ8Ca
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Float16) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4336,7 +4334,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Float16) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesSymmetricInt8Storage) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4417,7 +4415,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesSymmetricInt8Storage) {
 // Both variants exercise turbo_quant_hadamard. The rotary variant additionally covers
 // the separate Q/K rotary preprocessing used when past/present buffers are not aliased.
 static void RunTurboQuantMultiBatchSwapInvariance(bool do_rotary) {
-  if (!WebGpuEPWithTurboQuant4()) {
+  if (!WebGpuEPWithKVCacheQuantization(4)) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
 
@@ -4535,7 +4533,7 @@ static void RunTurboQuantMultiBatchSwapInvariance(bool do_rotary) {
     tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(WebGpuEPWithTurboQuant4());
+    execution_providers.push_back(WebGpuEPWithKVCacheQuantization(4));
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
     auto fetches = tester.GetFetches();
@@ -4586,7 +4584,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_MultiBatch_NoRotary_UsesP
 // padded K/V sequence length. Exercise the dynamic-cache path for turbo_quant_hadamard;
 // the graph-capture tests above cover the static-cache and fused rotary variants.
 static void RunTurboQuantRightPaddedPrefill(bool do_rotary) {
-  if (!WebGpuEPWithTurboQuant4()) {
+  if (!WebGpuEPWithKVCacheQuantization(4)) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
 
@@ -4675,7 +4673,7 @@ static void RunTurboQuantRightPaddedPrefill(bool do_rotary) {
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(WebGpuEPWithTurboQuant4());
+  execution_providers.push_back(WebGpuEPWithKVCacheQuantization(4));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
@@ -4933,7 +4931,7 @@ static std::vector<float> RunGQATurboQuantNoPast(
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(WebGpuEPWithTurboQuant(bit_width));
+  execution_providers.push_back(WebGpuEPWithKVCacheQuantization(bit_width));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
@@ -4954,7 +4952,7 @@ static std::vector<float> RunGQATurboQuantNoPast(
 // Cross-validate TQ vs non-TQ: Prefill with 4 tokens, no past, no rotary.
 // With 4-bit quantization (16 centroids), expect bounded error.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_NoRotary) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5003,7 +5001,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_NoRotary) 
 
 // Cross-validate TQ vs non-TQ: Prefill with rotary embedding.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_Rotary) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5050,7 +5048,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_Rotary) {
 // Cross-validate: single decode token (sequence_length=1, past_seq_len=0).
 // This exercises the split-reduce decode kernel path.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Decode) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5097,7 +5095,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Decode) {
 
 // Cross-validate: longer prefill (8 tokens) with multiple KV heads.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill8_MultiKVHead) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5161,7 +5159,7 @@ static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Prefill_Rotary) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5192,7 +5190,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Prefill_Rotary
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5223,7 +5221,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) 
 }
 
 static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width) {
-  auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithTurboQuant(bit_width);
+  auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithKVCacheQuantization(bit_width);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5300,7 +5298,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_HighMagnitude_SplitRedu
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Decode) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -5331,7 +5329,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Decode) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_NonPowerOfTwoHeadSize) {
-  auto ep = WebGpuEPWithTurboQuant(8);
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
