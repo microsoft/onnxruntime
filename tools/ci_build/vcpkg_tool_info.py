@@ -1,5 +1,7 @@
 """Accessors for the vcpkg tool release supported by ONNX Runtime."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 

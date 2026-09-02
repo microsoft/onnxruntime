@@ -306,8 +306,9 @@ def generate_vcpkg_install_options(build_dir, args):
         terrapin_path_candidates = [
             args.terrapin_retrieval_tool_path,
             shutil.which("TerrapinRetrievalTool"),
-            "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe",
         ]
+        if is_windows():
+            terrapin_path_candidates.append("C:\\local\\Terrapin\\TerrapinRetrievalTool.exe")
 
         terrapin_cmd_path = next(
             (path for path in terrapin_path_candidates if path is not None and os.path.exists(path)),
@@ -315,9 +316,10 @@ def generate_vcpkg_install_options(build_dir, args):
         )
 
         if terrapin_cmd_path is not None:
+            terrapin_command = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
+                + terrapin_command
                 + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
             )
         else:
