@@ -46,6 +46,18 @@ Status ComputeMatMul(ComputeContext* context, const Activation& activation, std:
                      bool is_channels_last, MatMulOptImplCache& cache,
                      bool b_is_constant = false);
 
+struct MatMulWorkgroupConfig {
+  uint32_t workgroup_size_y;
+  int64_t elements_per_thread_y;
+};
+
+// workgroup_size_y * elements_per_thread_y is held constant, so the A tile and dispatch
+// grid do not change with the shape this returns.
+MatMulWorkgroupConfig SelectMatMulWorkgroupConfig(bool use_reported_nvidia_pascal_tuning,
+                                                  bool is_channels_last,
+                                                  bool is_vec4,
+                                                  uint32_t dim_a_outer);
+
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
