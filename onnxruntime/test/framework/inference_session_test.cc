@@ -5,14 +5,16 @@
 #include "core/session/inference_session.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <filesystem>
 #include <functional>
 #include <future>
 #include <iterator>
-#include <thread>
 #include <fstream>
 #include <random>
+#include <set>
+#include <thread>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -3482,6 +3484,139 @@ static OrtStatus* ORT_API_CALL AppendToStringWriteFunc(void* stream_state, const
   return nullptr;  // No error
 }
 
+struct CompileApiInitializerHandlerState {
+  bool externalize = false;
+  const ORTCHAR_T* external_file_path = nullptr;
+  std::ofstream* external_file = nullptr;
+  size_t callback_count = 0;
+};
+
+static OrtStatus* ORT_API_CALL HandleCompileApiInitializer(
+    void* state, const char* /*initializer_name*/, const OrtValue* initializer_value,
+    const OrtExternalInitializerInfo* /*existing_info*/, OrtExternalInitializerInfo** new_external_info) {
+  auto& handler_state = *reinterpret_cast<CompileApiInitializerHandlerState*>(state);
+  ++handler_state.callback_count;
+  *new_external_info = nullptr;
+
+  if (!handler_state.externalize) {
+    return nullptr;
+  }
+
+  Ort::Status status{nullptr};
+  ORT_TRY {
+    Ort::ConstValue value{initializer_value};
+    const size_t byte_size = value.GetTensorSizeInBytes();
+    const int64_t offset = handler_state.external_file->tellp();
+    handler_state.external_file->write(static_cast<const char*>(value.GetTensorRawData()), byte_size);
+    handler_state.external_file->flush();
+
+    Ort::ExternalInitializerInfo external_info{nullptr};
+    status = Ort::ExternalInitializerInfo::Create(handler_state.external_file_path, offset, byte_size, external_info);
+    if (status.IsOK()) {
+      *new_external_info = external_info.release();
+    }
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &status]() { status = Ort::Status{ex}; }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &status]() { status = Ort::Status{ex.what(), ORT_FAIL}; }));
+  }
+
+  return status.release();
+}
+
+static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(17);
+
+  GraphProto& graph = *model_proto.mutable_graph();
+  graph.set_name("compile_api_custom_initializer_graph");
+
+  auto add_value_info = [](ValueInfoProto& value_info, const char* name) {
+    value_info.set_name(name);
+    auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
+    tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(2);
+  };
+
+  add_value_info(*graph.add_input(), "X");
+  if (!use_initializer) {
+    add_value_info(*graph.add_input(), "Y");
+  } else {
+    TensorProto& initializer = *graph.add_initializer();
+    initializer.set_name("Y");
+    initializer.set_data_type(TensorProto_DataType_FLOAT);
+    initializer.add_dims(2);
+    initializer.add_float_data(3.0f);
+    initializer.add_float_data(4.0f);
+  }
+  add_value_info(*graph.add_output(), "Z");
+
+  NodeProto& node = *graph.add_node();
+  node.set_name("add_node");
+  node.set_op_type("Add");
+  node.add_input("X");
+  node.add_input("Y");
+  node.add_output("Z");
+
+  std::ofstream output(model_path, std::ios::binary);
+  ASSERT_TRUE(output.is_open());
+  ASSERT_TRUE(model_proto.SerializeToOstream(&output));
+}
+
+static void VerifyCompileApiAddModel(const ModelProto& model_proto, bool use_initializer, bool externalized) {
+  const GraphProto& graph = model_proto.graph();
+  ASSERT_EQ(graph.input_size(), use_initializer ? 1 : 2);
+  ASSERT_EQ(graph.output_size(), 1);
+  ASSERT_EQ(graph.node_size(), 1);
+  ASSERT_EQ(graph.initializer_size(), use_initializer ? 1 : 0);
+
+  std::set<std::string> names;
+  for (const ValueInfoProto& input : graph.input()) {
+    EXPECT_TRUE(names.insert(input.name()).second) << "Duplicate graph input: " << input.name();
+  }
+  names.clear();
+  for (const ValueInfoProto& output : graph.output()) {
+    EXPECT_TRUE(names.insert(output.name()).second) << "Duplicate graph output: " << output.name();
+  }
+
+  if (use_initializer) {
+    const TensorProto& initializer = graph.initializer(0);
+    EXPECT_EQ(initializer.name(), "Y");
+    EXPECT_EQ(initializer.data_location(),
+              externalized ? TensorProto_DataLocation_EXTERNAL : TensorProto_DataLocation_DEFAULT);
+  }
+}
+
+static void RunCompileApiAddModel(const std::string& model_data, const ORTCHAR_T* model_path,
+                                  bool use_initializer) {
+  Ort::SessionOptions session_options;
+  Ort::Session session = model_path == nullptr
+                             ? Ort::Session(*ort_env, model_data.data(), model_data.size(), session_options)
+                             : Ort::Session(*ort_env, model_path, session_options);
+
+  const std::array<int64_t, 1> shape{2};
+  std::array<float, 2> x{1.0f, 2.0f};
+  std::array<float, 2> y{3.0f, 4.0f};
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  std::vector<Ort::Value> inputs;
+  inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, x.data(), x.size(), shape.data(), shape.size()));
+  if (!use_initializer) {
+    inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, y.data(), y.size(), shape.data(), shape.size()));
+  }
+
+  const std::array<const char*, 2> input_names{"X", "Y"};
+  const std::array<const char*, 1> output_names{"Z"};
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                             output_names.data(), output_names.size());
+  ASSERT_EQ(outputs.size(), 1);
+  const float* output = outputs[0].GetTensorData<float>();
+  EXPECT_EQ(output[0], 4.0f);
+  EXPECT_EQ(output[1], 6.0f);
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 // A compile-only session (Compile API path, marked by kOrtSessionOptionCompileOnly) whose EPs compile no
 // nodes emits a plain optimized output model. The serialization point is chosen by the requested level:
@@ -3727,6 +3862,91 @@ TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToWriteFunc) {
   EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
       << "Compile API plain output must not contain EPContext nodes.";
   EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+}
+
+TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerDoesNotDuplicateGraph) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_custom_initializer_no_init.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{input_path};
+  CreateCompileApiAddModel(input_path, false);
+
+  std::string sink;
+  CompileApiInitializerHandlerState handler_state;
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+  compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+  compile_options.SetOutputModelGetInitializerLocationFunc(HandleCompileApiInitializer, &handler_state);
+  compile_options.SetEpContextEmbedMode(true);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_FALSE(sink.empty());
+  EXPECT_EQ(handler_state.callback_count, 0u);
+
+  ModelProto model_proto;
+  ASSERT_TRUE(model_proto.ParseFromString(sink));
+  VerifyCompileApiAddModel(model_proto, false, false);
+  RunCompileApiAddModel(sink, nullptr, false);
+}
+
+TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerPreservesInitializerOnce) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_custom_initializer_input.onnx");
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_custom_initializer_output.onnx");
+  const std::basic_string<ORTCHAR_T> external_path = ORT_TSTR("compile_api_custom_initializer.bin");
+  struct RemoveOnExit {
+    std::array<std::basic_string<ORTCHAR_T>, 3> paths;
+    ~RemoveOnExit() {
+      for (const auto& path : paths) {
+        std::filesystem::remove(path);
+      }
+    }
+  } remove_on_exit{{input_path, output_path, external_path}};
+  CreateCompileApiAddModel(input_path, true);
+
+  for (bool externalize : {false, true}) {
+    std::string sink;
+    std::ofstream external_file;
+    if (externalize) {
+      external_file.open(external_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(external_file.is_open());
+    }
+
+    CompileApiInitializerHandlerState handler_state{
+        externalize, external_path.c_str(), externalize ? &external_file : nullptr, 0};
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_path.c_str());
+    compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+    compile_options.SetOutputModelGetInitializerLocationFunc(HandleCompileApiInitializer, &handler_state);
+    compile_options.SetEpContextEmbedMode(true);
+
+    const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    ASSERT_FALSE(sink.empty());
+    EXPECT_EQ(handler_state.callback_count, 1u);
+
+    ModelProto model_proto;
+    ASSERT_TRUE(model_proto.ParseFromString(sink));
+    VerifyCompileApiAddModel(model_proto, true, externalize);
+
+    if (externalize) {
+      external_file.close();
+      ASSERT_GT(std::filesystem::file_size(external_path), 0u);
+#if !defined(__EMSCRIPTEN__)
+      // WASM cannot load host filesystem external data without a Module.MountedFiles mapping.
+      std::ofstream output_model(output_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(output_model.is_open());
+      output_model.write(sink.data(), static_cast<std::streamsize>(sink.size()));
+      output_model.close();
+      RunCompileApiAddModel(sink, output_path.c_str(), true);
+#endif
+    } else {
+      RunCompileApiAddModel(sink, nullptr, true);
+    }
+  }
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
