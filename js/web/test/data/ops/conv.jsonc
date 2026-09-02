@@ -1,5 +1,37 @@
 [
   {
+    "name": "conv with kernel the size of the input and end padding",
+    "operator": "Conv",
+    "attributes": [
+      { "name": "kernel_shape", "data": [2, 2], "type": "ints" },
+      { "name": "pads", "data": [0, 0, 1, 1], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [1, 1, 2, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [1, 1, 2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [30, 14, 11, 4],
+            "dims": [1, 1, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "conv without bias addition A",
     "operator": "Conv",
     "attributes": [{ "name": "kernel_shape", "data": [2, 2], "type": "ints" }],

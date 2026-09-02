@@ -168,7 +168,10 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     return context.RunProgram(program);
   }
 
-  const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
+  // A kernel the size of the input collapses to one dot product per output channel only when the output is a
+  // single pixel. End padding (pads[2], pads[3]) enlarges the output, so check the output size, not just the begin pads.
+  const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width &&
+                         output_height == 1 && output_width == 1 && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
     Tensor transposed_kernel;
     TensorShape input_reshape;

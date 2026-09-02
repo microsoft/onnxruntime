@@ -228,10 +228,16 @@ const conv2d = (
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
 
+  // A kernel the size of the input collapses to one dot product per output
+  // channel only when the output is a single pixel. End padding (pads[2],
+  // pads[3]) enlarges the output, so check the output size, not just the
+  // begin pads.
   const sameSize =
     isChannelsLast &&
     weightHeight === inputHeight &&
     weightWidth === inputWidth &&
+    outHeight === 1 &&
+    outWidth === 1 &&
     attributes.pads[0] === 0 &&
     attributes.pads[1] === 0;
   if (
