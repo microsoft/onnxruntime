@@ -345,8 +345,9 @@
       SOURCES ${WGSL_TEMPLATE_FILES}
     )
 
-    # Add the generated directory to include paths
-    target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
+    # PUBLIC because shader_helper.h reaches the generated index.h, so header consumers need it.
+    # BUILD_INTERFACE keeps this build-tree path out of the target exported by install() below.
+    target_include_directories(onnxruntime_providers_webgpu PUBLIC $<BUILD_INTERFACE:${WGSL_GENERATED_ROOT}>)
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
