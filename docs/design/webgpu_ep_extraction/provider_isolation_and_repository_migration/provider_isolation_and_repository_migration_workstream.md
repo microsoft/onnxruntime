@@ -163,7 +163,9 @@ validates its pinned WebGPU revision as part of ORT Web release gating.
 Python and NuGet plugin packaging sources already live under `plugin-ep-webgpu/`. The plugin build, test, and
 packaging pipeline definitions are still outside the staging root, split between
 `tools/ci_build/github/azure-pipelines/` and `.github/workflows/`. This workstream relocates those and rewires them
-to invoke the standalone build, but does not redesign the packaging scripts themselves.
+to invoke the standalone build, but does not redesign the packaging scripts themselves. Workflow files under
+`.github/workflows/` are an exception: GitHub discovers them only at the repository root, so they stay there and only
+the scripts, actions, and templates they call move.
 
 The pipelines invoke `tools/ci_build/build.py --use_webgpu shared_lib` and consume artifacts from ORT's build output
 locations, so they break the moment the standalone build replaces the in-tree one. The rewiring therefore lands with
