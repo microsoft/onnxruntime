@@ -781,6 +781,12 @@ else()
     # Specifically, the code was tuned based on the build machine's CPU cache line size, which can vary a lot.
     list(APPEND ORT_WARNING_FLAGS -Wno-interference-size)
   endif()
+  if(HAS_ARRAY_BOUNDS AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
+    # GCC 15+ can emit false positive -Warray-bounds diagnostics for Eigen vectorized half conversions when
+    # distro builds add CPU-specific flags such as -march=broadwell. Keep the diagnostic enabled, but do not
+    # promote those system-header warnings to errors under ORT's global -Werror policy.
+    list(APPEND ORT_WARNING_FLAGS -Wno-error=array-bounds)
+  endif()
   # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
