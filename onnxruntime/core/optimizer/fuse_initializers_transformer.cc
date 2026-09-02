@@ -104,16 +104,9 @@ static void FuseInitializerWithNode(Graph& graph,
                                     Node& node,
                                     const onnxruntime::MLDataType next_node_arg_type,
                                     onnxruntime::concurrency::ThreadPool* thread_pool) {
-  // Get next node
-  Node& next_node = *graph.GetNode(node.OutputNodesBegin()->Index());
-
-  // Get the index in next node at which the initializer must be replaced
-  NodeIndex next_node_arg_index = 0;
-  for (; next_node_arg_index < next_node.InputDefs().size(); ++next_node_arg_index) {
-    if (node.Name() == next_node.InputDefs()[next_node_arg_index]->Name()) {
-      break;
-    }
-  }
+  const auto& output_edge = *node.OutputEdgesBegin();
+  Node& next_node = *graph.GetNode(output_edge.GetNode().Index());
+  const int next_node_arg_index = output_edge.GetDstArgIndex();
 
   // Get the src initialized tensor at input def index 0
   const auto* constant_initializer_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[0]->Name());
@@ -134,7 +127,7 @@ static void FuseInitializerWithNode(Graph& graph,
     return;
 
   // Remove the edge between the current node output def at index 0 and next node arg at relative arg index.
-  graph.RemoveEdge(node.Index(), next_node.Index(), 0, static_cast<int>(next_node_arg_index));
+  graph.RemoveEdge(node.Index(), next_node.Index(), 0, next_node_arg_index);
 
   // Add the new converted Tensor in next node as initializer potentially with external data
   ONNX_NAMESPACE::TensorProto dst_tensor = utils::TensorToTensorProto(new_data.Get<Tensor>(), new_arg_name, true);
@@ -143,7 +136,7 @@ static void FuseInitializerWithNode(Graph& graph,
   }
 
   auto& new_arg = graph_utils::AddInitializerWithOrtValue(graph, dst_tensor, std::move(new_data));
-  graph_utils::ReplaceNodeInput(next_node, static_cast<int>(next_node_arg_index), new_arg);
+  graph_utils::ReplaceNodeInput(next_node, next_node_arg_index, new_arg);
 }
 
 Status FuseInitializersTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
