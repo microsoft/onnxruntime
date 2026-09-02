@@ -402,7 +402,7 @@ template <typename SrcType, typename DstType>
 struct ToInt4Converter<SrcType, DstType,
                        std::enable_if_t<IsOrtFloat6Type<SrcType>::value && IsOrtInt4Type<DstType>::value>> {
   static typename DstType::UnpackedType Convert(const SrcType& val) {
-    return ToInt4Converter<float, DstType>::Convert(static_cast<float>(val));
+    return ToInt4Converter<int, DstType>::Convert(static_cast<int>(static_cast<float>(val)));
   }
 };
 
@@ -527,7 +527,7 @@ template <typename SrcType, typename DstType>
 struct ToInt2Converter<SrcType, DstType,
                        std::enable_if_t<IsOrtFloat6Type<SrcType>::value && IsOrtInt2Type<DstType>::value>> {
   static typename DstType::UnpackedType Convert(const SrcType& val) {
-    return ToInt2Converter<float, DstType>::Convert(static_cast<float>(val));
+    return ToInt2Converter<int, DstType>::Convert(static_cast<int>(static_cast<float>(val)));
   }
 };
 

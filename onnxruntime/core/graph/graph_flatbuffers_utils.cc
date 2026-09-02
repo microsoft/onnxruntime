@@ -67,6 +67,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   // issues.
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data;
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
+  std::vector<uint8_t> packed_tensor_data;
   int64_t external_data_offset = -1;
 
   auto src_type = initializer.data_type();
@@ -608,13 +609,27 @@ Status SaveOrtTensorOrtFormat(
     return onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span);
   };
 
+  const bool is_float6 = ort_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 ||
+                         ort_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2;
+  if (is_float6) {
+    packed_tensor_data = PackFloat6Data(gsl::make_span(
+        static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes()));
+  }
+
   if (!external_data_writer) {
     if constexpr (endian::native != endian::little) {
       std::vector<uint8_t> unpacked_tensor;
 
       ORT_RETURN_IF_ERROR(unpack_tensor_data_be(unpacked_tensor));
 
-      raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
+      if (is_float6) {
+        const auto packed_data = PackFloat6Data(unpacked_tensor);
+        raw_data = builder.CreateVector(packed_data.data(), packed_data.size());
+      } else {
+        raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
+      }
+    } else if (is_float6) {
+      raw_data = builder.CreateVector(packed_tensor_data.data(), packed_tensor_data.size());
     } else {
       raw_data = builder.CreateVector(static_cast<const uint8_t*>(ort_tensor.DataRaw()),
                                       ort_tensor.SizeInBytes());
@@ -633,7 +648,11 @@ Status SaveOrtTensorOrtFormat(
 
       ORT_RETURN_IF_ERROR(unpack_tensor_data_be(unpacked_tensor));
 
-      gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
+      const auto serialized_data = is_float6 ? PackFloat6Data(unpacked_tensor) : std::move(unpacked_tensor);
+      gsl::span<const uint8_t> ort_tensor_data_span(serialized_data.data(), serialized_data.size());
+      ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    } else if (is_float6) {
+      gsl::span<const uint8_t> ort_tensor_data_span(packed_tensor_data.data(), packed_tensor_data.size());
       ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
     } else {
       gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
@@ -729,7 +748,7 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   unused_tensor_proto.set_data_type(tensor_data_type);
 
   onnxruntime::utils::MLTypeCallDispatcher<float, bool, double, int8_t, uint8_t, int16_t, uint16_t,
-                                           int32_t, uint32_t, int64_t, uint64_t>
+                                           int32_t, uint32_t, int64_t, uint64_t, Float6E2M3, Float6E3M2>
       dispatcher(tensor_data_type);
   return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, ort_tensor, external_data_reader);
 }
