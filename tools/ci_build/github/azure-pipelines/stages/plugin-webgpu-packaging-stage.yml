@@ -11,6 +11,10 @@ parameters:
   displayName: 'Build Linux x64'
   type: boolean
 
+- name: build_linux_aarch64
+  displayName: 'Build Linux AArch64'
+  type: boolean
+
 - name: build_macos_arm64
   displayName: 'Build macOS ARM64'
   type: boolean
@@ -60,6 +64,16 @@ stages:
     - ${{ if eq(parameters.build_linux_x64, true) }}:
       - template: plugin-linux-webgpu-stage.yml
         parameters:
+          arch: 'x64'
+          package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Linux AArch64
+    - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+      - template: plugin-linux-webgpu-stage.yml
+        parameters:
+          arch: 'aarch64'
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
@@ -82,6 +96,7 @@ stages:
           win_x64: ${{ parameters.build_windows_x64 }}
           win_arm64: ${{ parameters.build_windows_arm64 }}
           linux_x64: ${{ parameters.build_linux_x64 }}
+          linux_aarch64: ${{ parameters.build_linux_aarch64 }}
           macos_arm64: ${{ parameters.build_macos_arm64 }}
 
     # Create zip packages for Foundry Local consumption
@@ -94,6 +109,8 @@ stages:
           - Win_plugin_webgpu_arm64_Build
         - ${{ if eq(parameters.build_linux_x64, true) }}:
           - Linux_plugin_webgpu_x64_Build
+        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          - Linux_plugin_webgpu_aarch64_Build
         - ${{ if eq(parameters.build_macos_arm64, true) }}:
           - MacOS_plugin_webgpu_arm64_Build
       jobs:
@@ -135,6 +152,13 @@ stages:
               artifactName: webgpu_plugin_linux_x64
               targetPath: $(Build.SourcesDirectory)/webgpu-plugin-linux-x64
 
+        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_linux_aarch64'
+            inputs:
+              artifactName: webgpu_plugin_linux_aarch64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-linux-aarch64
+
         - ${{ if eq(parameters.build_macos_arm64, true) }}:
           - task: DownloadPipelineArtifact@2
             displayName: 'Download webgpu_plugin_macos_arm64'
@@ -154,6 +178,7 @@ stages:
                 @{ name = 'win-x64';      dir = '$(Build.SourcesDirectory)/webgpu-plugin-win-x64' },
                 @{ name = 'win-arm64';    dir = '$(Build.SourcesDirectory)/webgpu-plugin-win-arm64' },
                 @{ name = 'linux-x64';    dir = '$(Build.SourcesDirectory)/webgpu-plugin-linux-x64' },
+                @{ name = 'linux-arm64';  dir = '$(Build.SourcesDirectory)/webgpu-plugin-linux-aarch64' },
                 @{ name = 'macos-arm64';  dir = '$(Build.SourcesDirectory)/webgpu-plugin-macos-arm64' }
               )
 
@@ -191,7 +216,7 @@ stages:
                 #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
                 # Dev versions have - and + replaced with . for filename compatibility.
                 # Full version string is preserved in version.json.
-                # TODO: RC versioning (e.g. 0.1.0-rc1) is not yet implemented
+                # TODO: RC versioning (e.g. 0.1.0-rc.1) is not yet implemented
                 $filenameVersion = $versionString -replace '[-+]', '.'
                 if ($null -eq $resolvedVersion) {
                   $resolvedVersion = $filenameVersion

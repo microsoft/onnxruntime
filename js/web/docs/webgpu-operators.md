@@ -34,6 +34,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | CumSum | ai.onnx(11-13,14+) |  |
+| DFT | ai.onnx(17-19,20+) |  |
 | DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | DequantizeLinear | ai.onnx(10-12,13-18,19-20,21+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |

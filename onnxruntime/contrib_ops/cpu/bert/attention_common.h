@@ -85,8 +85,93 @@ inline KVQuantizationType StringToKVQuantizationType(std::string s) {
             "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL.");
 }
 
+// Logical element type of a KV cache. Members are named after the ONNX element type they denote.
+// DEFAULT means "whatever the cache tensor's own element type is" and is the only value a model
+// needs when that type is expressible in ONNX, i.e. for float16 / bfloat16 / int8 / float8e4m3fn;
+// naming one of those explicitly is allowed but must agree with the tensor.
+// The sub-byte members have no ONNX tensor type here: they are packed two per byte into a uint8
+// cache, so the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i
+// occupies the low-order bits of byte i.
+// Every member is a *signed*, zero-symmetric type. Quantization here has a scale but no zero point
+// (there are no zero-point inputs), so an unsigned logical type such as uint4 or uint8 would need
+// an implied offset of 2^(bits-1) that nothing in the contract can express. INT4 is still *stored*
+// in an unsigned nibble biased by +8, but that is a storage encoding removed on read, not a
+// quantization zero point. Unsigned types must arrive together with zero-point inputs.
+enum class KVCacheDataType : int {
+  DEFAULT = 0,
+  FLOAT16 = 1,
+  BFLOAT16 = 2,
+  INT8 = 3,
+  FLOAT8E4M3FN = 4,
+  INT4 = 5,
+  FLOAT4E2M1 = 6,
+};
+
+// True for the packed sub-byte members, which are stored in a uint8 cache.
+inline bool IsSubByteKVCacheDataType(KVCacheDataType t) {
+  return t == KVCacheDataType::INT4 || t == KVCacheDataType::FLOAT4E2M1;
+}
+
+// True for the members that require a scale on read/write.
+inline bool IsQuantizedKVCacheDataType(KVCacheDataType t) {
+  return t != KVCacheDataType::DEFAULT && t != KVCacheDataType::FLOAT16 && t != KVCacheDataType::BFLOAT16;
+}
+
+inline const char* KVCacheDataTypeToString(KVCacheDataType t) {
+  switch (t) {
+    case KVCacheDataType::FLOAT16:
+      return "float16";
+    case KVCacheDataType::BFLOAT16:
+      return "bfloat16";
+    case KVCacheDataType::INT8:
+      return "int8";
+    case KVCacheDataType::FLOAT8E4M3FN:
+      return "float8e4m3fn";
+    case KVCacheDataType::INT4:
+      return "int4";
+    case KVCacheDataType::FLOAT4E2M1:
+      return "float4e2m1";
+    default:
+      return "";
+  }
+}
+
+inline KVCacheDataType StringToKVCacheDataType(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+  if (s.empty()) {
+    return KVCacheDataType::DEFAULT;
+  }
+  if (s == "float16") {
+    return KVCacheDataType::FLOAT16;
+  }
+  if (s == "bfloat16") {
+    return KVCacheDataType::BFLOAT16;
+  }
+  if (s == "int8") {
+    return KVCacheDataType::INT8;
+  }
+  if (s == "float8e4m3fn") {
+    return KVCacheDataType::FLOAT8E4M3FN;
+  }
+  if (s == "int4") {
+    return KVCacheDataType::INT4;
+  }
+  if (s == "float4e2m1") {
+    return KVCacheDataType::FLOAT4E2M1;
+  }
+  ORT_THROW("Invalid KV cache data type: '", s,
+            "'. Valid values are: '' (use the cache tensor's element type), float16, bfloat16, int8, "
+            "float8e4m3fn, int4, float4e2m1. Unsigned types are excluded because quantization here is "
+            "symmetric with no zero point.");
+}
+
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
+
+// Upper bound on the `state_window` attribute of LinearAttention and CausalConvWithState. The
+// window only has to cover the tokens a multi-token predictor can propose, and the state tensors
+// grow linearly with it, so cap it rather than let a model request an unbounded allocation.
+constexpr int64_t kMaxStateWindow = 8;
 
 namespace sparse_attention {
 // Environment variable to enable or disable sparse attention v1 kernel. Default is 0 (enabled).

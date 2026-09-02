@@ -469,6 +469,14 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\session\\onnxruntime_*.inc")
+            + '" target="'
+            + include_dir
+            + '" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
             + os.path.join(args.sources_path, "include\\onnxruntime\\core\\framework\\provider_options.h")
             + '" target="'
             + include_dir

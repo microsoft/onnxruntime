@@ -4,6 +4,9 @@
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
 ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14_dotnet:20251017.1
 FROM $BASEIMAGE
+
+RUN dnf install -y perl-core && dnf clean all
+
 ARG TRT_VERSION
 
 #Install TensorRT only if TRT_VERSION is not empty

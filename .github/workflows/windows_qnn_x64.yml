@@ -35,28 +35,30 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
           architecture: x64
 
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
           architecture: x64
 
-      # onnx (pinned to cmake/deps.txt) + numpy (pinned to requirements.txt, python-conditional)
+      # onnx (pinned to cmake/deps.txt) + numpy (pinned in requirements-materialize-onnx-node-tests.txt,
+      # python-conditional)
       # are required at configure time by the onnxruntime_MATERIALIZE_ONNX_NODE_TESTS gate, which
       # regenerates the onnx node-test corpus into the build tree (onnx_node_tests\node) for
-      # onnx_test_runner. The numpy markers self-select the same pin the CMake gate asserts.
+      # onnx_test_runner. The numpy markers in requirements-materialize-onnx-node-tests.txt self-select
+      # the same pin the CMake gate asserts.
       - name: Install onnx for node-test materialization
         shell: cmd
-        run: python -m pip install onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
+        run: python -m pip install -r requirements-materialize-onnx-node-tests.txt
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env

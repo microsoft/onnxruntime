@@ -1,5 +1,5 @@
 //
-// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 //
 // SPDX-License-Identifier: MIT
 //
@@ -319,6 +319,83 @@ MlasDynamicQGemmBatch(
     );
 
 bool
+    MLASCALL
+    MlasQNBitGemmIsSupported(
+        size_t K,
+        size_t BlkBitWidth,
+        size_t BlkLen,
+        bool HasZeroPoint,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+size_t
+    MLASCALL
+    MlasQNBitGemmPackQuantBDataSize(
+        size_t N,
+        size_t K,
+        size_t BlkBitWidth,
+        size_t BlkLen,
+        bool HasZeroPoint,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+void
+    MLASCALL
+    MlasQNBitGemmPackQuantBData(
+        size_t N,
+        size_t K,
+        size_t BlkBitWidth,
+        size_t BlkLen,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const void* QuantBData,
+        void* PackedQuantBData,
+        const void* QuantBScale,
+        bool HasZeroPoint,
+        const void* QuantBZeroPoint,
+        MLAS_THREADPOOL* ThreadPool,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+size_t
+    MLASCALL
+    MlasQNBitGemmBatchWorkspaceSize(
+        size_t M,
+        size_t N,
+        size_t K,
+        size_t BatchN,
+        size_t BlkBitWidth,
+        size_t BlkLen,
+        bool HasZeroPoint,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+void
+    MLASCALL
+    MlasQNBitGemmBatch(
+        size_t M,
+        size_t N,
+        size_t K,
+        size_t BatchN,
+        size_t BlkBitWidth,
+        size_t BlkLen,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* DataParams,
+        void* Workspace,
+        MLAS_THREADPOOL* ThreadPool,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+#if defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)
+const char*
+GetKleidiAIQ4GemmKernelNameForTesting();
+const char*
+GetKleidiAIQ4GemvKernelNameForTesting();
+#endif
+
+bool
 MLASCALL
 MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t Dimensions,
@@ -395,8 +472,7 @@ MlasHalfGemmBatch(
     size_t K,
     size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    MLAS_THREADPOOL* ThreadPool
     );
 
 size_t

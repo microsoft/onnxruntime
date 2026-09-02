@@ -1199,6 +1199,11 @@ Return Value:
     }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
+        if (Padding != nullptr &&
+            (Padding[dim] < 0 || Padding[dim + Dimensions] < 0)) {
+            MLAS_THROW_EX(std::invalid_argument, "padding values must be non-negative");
+        }
+
         WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
         WorkBlock.OutputShape[dim] = size_t(OutputShape[dim]);
 

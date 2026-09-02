@@ -2192,7 +2192,8 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
  * @param input_bshape_idx    points to the shape tensor of the right hand side matrix
  */
 static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input_a_idx, int input_b_idx, int input_bshape_idx, MLAS_BLK_QUANT_TYPE blk_quant_type) {
-  if (!hasInputShape(ctx, input_a_idx) || !hasInputShape(ctx, input_b_idx)) {
+  if (!hasInputShape(ctx, input_a_idx) || !hasInputShape(ctx, input_b_idx) ||
+      !hasInputShape(ctx, input_bshape_idx)) {
     return;
   }
 
@@ -2202,9 +2203,15 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   }
 
   const auto& blob_shape = ctx.getInputType(input_b_idx)->tensor_type().shape();
+  if (blob_shape.dim_size() != 1 ||
+      (blob_shape.dim(0).has_dim_value() && blob_shape.dim(0).dim_value() < 0)) {
+    fail_shape_inference("B input for MatMulFpQ4 must be a 1-D tensor.");
+  }
+
   const auto& shape_shape = ctx.getInputType(input_bshape_idx)->tensor_type().shape();
-  if (shape_shape.dim_size() != 1 && shape_shape.dim(0).dim_value() != 2) {
-    fail_shape_inference("B input for MatMul must be a 2-D matrix!");
+  if (shape_shape.dim_size() != 1 ||
+      (shape_shape.dim(0).has_dim_value() && shape_shape.dim(0).dim_value() != 2)) {
+    fail_shape_inference("B_shape input for MatMulFpQ4 must be a 1-D int64 tensor of length 2.");
   }
 
   const TensorProto* b_shape_tensor = ctx.getInputData(input_bshape_idx);
@@ -2216,6 +2223,12 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
 
   std::vector<int64_t> shape_r_data = ParseData<int64_t>(b_shape_tensor);
+  if (shape_r_data.size() != 2) {
+    fail_shape_inference("B_shape initializer for MatMulFpQ4 must contain exactly 2 int64 values.");
+  }
+  if (shape_r_data[0] < 0 || shape_r_data[1] < 0) {
+    fail_shape_inference("B_shape initializer for MatMulFpQ4 must contain non-negative dimensions.");
+  }
   for (int d = 0; d < 2; d++) {
     shapeR.add_dim()->set_dim_value(shape_r_data[d]);
   }
@@ -2238,7 +2251,8 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   if (expectedPackSize == 0) {
     fail_shape_inference("4b quantization not yet supported on this hardware platform!");
   }
-  if (blob_shape.dim_size() != 1 && (size_t)blob_shape.dim(0).dim_value() != expectedPackSize) {
+  if (blob_shape.dim(0).has_dim_value() &&
+      static_cast<size_t>(blob_shape.dim(0).dim_value()) != expectedPackSize) {
     fail_shape_inference("Input q4 tensors of wrong size!");
   }
 
@@ -3004,6 +3018,117 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                   }
                                   updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
                                 }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulBlockQuantizedFp4Weight, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only NVFP4 (E2M1) matrix multiplication.
+
+The weight tensor B is stored as packed NVFP4: two E2M1 values per byte (low nibble first).
+The dequantized weight value is `e2m1(B) * weight_scale_2 * e4m3(weight_scale[n, k / block_size])`,
+where `weight_scale` holds one E4M3 scale per `block_size` (default 16) consecutive K values and
+`weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
+(FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
+runs on Hopper (SM90) as well as Blackwell.
+
+The output columns `N` and the contraction dimension `K` are derived from the weight shape:
+`N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.)DOC")
+        .Attr("block_size", "Number of consecutive K values that share one E4M3 weight scale. Default 16.",
+              AttributeProto::INT, static_cast<int64_t>(16))
+        .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
+        .Input(1, "B",
+               "Packed NVFP4 weight of shape [N, K/2] stored as uint8 (two E2M1 values per byte, low nibble first).",
+               "T1")
+        .Input(2, "weight_scale",
+               "Per-block E4M3 weight scales of shape [N, ceil(K / block_size)] stored as raw uint8 bytes.", "T2")
+        .Input(3, "weight_scale_2", "Global fp32 weight scale (scalar).", "T3")
+        .Input(4, "input_scale",
+               "Optional global fp32 activation scale (scalar). Accepted for parity with quantized checkpoints; "
+               "it is a no-op on the weight-only FP16/BF16 path and is reserved for the native NVFP4 path on Blackwell.",
+               "T3", OpSchema::Optional)
+        .Input(5, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain activation, bias and output to FP16 or BF16.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain packed NVFP4 weight to uint8.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain E4M3 weight scales to uint8.")
+        .TypeConstraint("T3", {"tensor(float)"}, "Constrain scalar scales to FP32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasNInputShapes(ctx, 2)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (a_shape.dim_size() < 1 || b_shape.dim_size() != 2) {
+            fail_shape_inference("A must have rank at least 1 and B must have rank 2.");
+          }
+          // B is packed two E2M1 values per byte, so the logical K is twice B's last dimension.
+          const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+          if (a_k.has_dim_value() && b_shape.dim(1).has_dim_value() &&
+              a_k.dim_value() != 2 * b_shape.dim(1).dim_value()) {
+            fail_shape_inference("A and B have incompatible K dimensions.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            *output_shape.add_dim() = a_shape.dim(i);
+          }
+          *output_shape.add_dim() = b_shape.dim(0);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulBlockQuantizedFp8Weight, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+
+The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
+K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
+`fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
+type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
+independent and runs on any CUDA architecture (SM80+).
+
+When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
+quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
+matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
+full FP16/BF16 precision (weight-only W8A16).)DOC")
+        .Attr("block_size", "Number of consecutive K values that share one weight scale. Default 128.",
+              AttributeProto::INT, static_cast<int64_t>(128))
+        .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
+        .Input(1, "B", "Row-major FP8 E4M3 weight of shape [N, K].", "T1")
+        .Input(2, "b_scale", "Per-block FP32 weight scales of shape [N, ceil(K / block_size)].", "T2")
+        .Input(3, "a_scale",
+               "Optional global fp32 activation scale (scalar). When present, A is statically "
+               "quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 "
+               "numerics); when absent, A stays in full FP16/BF16 precision.",
+               "T2", OpSchema::Optional)
+        .Input(4, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain activation, bias and output to FP16 or BF16.")
+        .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Constrain weight to FP8 E4M3.")
+        .TypeConstraint("T2", {"tensor(float)"}, "Constrain scales to FP32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasNInputShapes(ctx, 2)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (a_shape.dim_size() < 1 || b_shape.dim_size() != 2) {
+            fail_shape_inference("A must have rank at least 1 and B must have rank 2.");
+          }
+          if (a_shape.dim(a_shape.dim_size() - 1).has_dim_value() && b_shape.dim(1).has_dim_value() &&
+              a_shape.dim(a_shape.dim_size() - 1).dim_value() != b_shape.dim(1).dim_value()) {
+            fail_shape_inference("A and B have incompatible K dimensions.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            *output_shape.add_dim() = a_shape.dim(i);
+          }
+          *output_shape.add_dim() = b_shape.dim(0);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
 
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                 int64_t K,

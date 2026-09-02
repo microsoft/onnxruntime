@@ -35,11 +35,9 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
@@ -193,11 +191,9 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows

@@ -3997,6 +3997,30 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   return ForThisAndAllSubgraphs(all_subgraphs, inline_external_attr_tensors_func);
 }
 
+Status Graph::ValidateInMemoryInitializers() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+
+  auto validate_graph = [](Graph& graph) -> Status {
+    for (const auto& [name, tensor_proto] : graph.GetAllInitializedTensors()) {
+      if (!utils::HasExternalDataInMemory(*tensor_proto)) {
+        continue;
+      }
+
+      OrtValue ort_value;
+      ORT_RETURN_IF_NOT(graph.GetOrtValueInitializer(name, ort_value),
+                        "The model contains initializers with arbitrary in-memory references. ",
+                        "This is an invalid model.");
+      ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(*tensor_proto, ort_value.Get<Tensor>()),
+                        "In-memory data mismatch for initializer: ", name, ". This is an invalid model.");
+    }
+
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, validate_graph);
+}
+
 void Graph::SetName(const std::string& name) {
   graph_proto_->set_name(name);
 }
@@ -5476,10 +5500,10 @@ Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocatio
 }
 
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  graph_proto_->clear_node();
-  graph_proto_->clear_input();
-  graph_proto_->clear_output();
-  graph_proto_->clear_value_info();
+  graph_proto.clear_node();
+  graph_proto.clear_input();
+  graph_proto.clear_output();
+  graph_proto.clear_value_info();
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
 

@@ -236,16 +236,28 @@ bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
   bool Y_supported = has_Y && GetType(*output_defs[0], Y_type, logger);
   bool Y_h_supported = has_Y_h && GetType(*output_defs[1], Y_h_type, logger);
 
+  // WebNN gru output names: output0 -> Y_h, output1 -> Y.
   if (Y_supported && !Y_h_supported) {
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger);
+    std::vector<int64_t> Y_shape;
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger) &&
+           GetShape(*output_defs[0], Y_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "gru", "output1", Y_shape.size(), node.Name(), logger);
   } else if (!Y_supported && Y_h_supported) {
-    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger);
+    std::vector<int64_t> Y_h_shape;
+    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger) &&
+           GetShape(*output_defs[1], Y_h_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "gru", "output0", Y_h_shape.size(), node.Name(), logger);
   } else if (Y_supported && Y_h_supported) {
     if (Y_type != Y_h_type) {
       LOGS(logger, VERBOSE) << "[GRU] Output data types must be the same.";
       return false;
     }
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger);
+    std::vector<int64_t> Y_shape, Y_h_shape;
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger) &&
+           GetShape(*output_defs[0], Y_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "gru", "output1", Y_shape.size(), node.Name(), logger) &&
+           GetShape(*output_defs[1], Y_h_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "gru", "output0", Y_h_shape.size(), node.Name(), logger);
   } else {
     LOGS(logger, VERBOSE) << "[GRU] No output found.";
     return false;

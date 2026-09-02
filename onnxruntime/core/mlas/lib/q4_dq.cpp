@@ -2278,6 +2278,8 @@ MlasQDQQuantizeBlockwise(
     MLAS_THREADPOOL* thread_pool
 )
 {
+    ORT_ENFORCE(MlasQDQBlockwiseShapeIsValid(rows, columns, quant_block_size, qbits, columnwise, false),
+                "QDQ blockwise quantization shape exceeds the int32 index range.");
     if (columnwise) {
         if (zero_points) {
             BlockwiseQDQQuantizer<Tin, qbits, false>::QuantizeColumnWise(
@@ -2363,6 +2365,8 @@ MlasQDQTransposeBlockwiseQuantized(
     MLAS_THREADPOOL* thread_pool
 )
 {
+    ORT_ENFORCE(MlasQDQBlockwiseShapeIsValid(rows, columns, quant_block_size, qbits, columnwise, true),
+                "QDQ blockwise quantization shape exceeds the int32 index range.");
     if (columnwise) {
         BlockwiseQDQQuantizer<Tin, qbits, signed_quant>::TransposeColumnWiseQuantized(
             src_weights, src_scales, src_zero_points, dst_weights, dst_scales, dst_zero_points,

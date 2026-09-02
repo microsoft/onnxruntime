@@ -11,7 +11,10 @@
 // A: activation, loaded directly from global memory as a left operand
 //    (subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>), row-major with stride K.
 // B: weight, loaded directly from global memory in plain row-major KxN layout as a
-//    right operand (subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>) with stride N.
+//    right operand (subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>) with row stride
+//    N_b. N_b is the padded row stride of the (possibly column-padded) B buffer and
+//    equals N unless the host padded B to an even stride to satisfy the load's
+//    4-byte row-start alignment (see the odd-N handling in subgroup_matrix_matmul.cc).
 //
 // Workgroup: split_k subgroups x 32 lanes (split_k in {1,2,4,8}).
 // Tile: kTileM x kTileN, chosen adaptively by the host config provider. Each
@@ -20,9 +23,11 @@
 // distributed round-robin across the subgroups, each accumulates its own partial
 // tile in shared memory, and the partials are summed at write-out.
 //
-// Preconditions enforced by the host: K % sg_mat_k == 0. M and N may be any
-// size; partial tiles are handled by bounds-checked stores. Out-of-range A/B
-// loads return zero (WebGPU bounds checking).
+// Preconditions enforced by the host: K % sg_mat_k == 0, and B's row stride N_b
+// is even (the load requires 4-byte-aligned row starts). M and N may be any size;
+// partial tiles are handled by bounds-checked stores. Out-of-range A/B loads
+// return zero (WebGPU bounds checking). Output width/stride uses N (not N_b), so
+// any padded B columns in [N, N_b) are read but never written.
 //
 // Batching: the host dispatches one num_n_tile x num_m_tile tile grid per batch
 // slice; the batch slice is recovered from the flattened workgroup_idx (the
@@ -75,7 +80,7 @@ $MAIN {
     // Flat-element offsets into A/B/output for this batch slice, derived from
     // M/N/K. For a shared 2D weight batch_id is 0, so B collapses to its base.
     let a_batch_offset = batch_id * uniforms.M * uniforms.K;
-    let b_batch_offset = batch_id * uniforms.K * uniforms.N;
+    let b_batch_offset = batch_id * uniforms.K * uniforms.N_b;
     let out_batch_offset = batch_id * uniforms.M * uniforms.N;
     let k_blocks = uniforms.K / kSgMatK;
     let sg_index = local_idx / kSubgroupSize;          // which split-K subgroup (0..kSplitK-1)
@@ -179,25 +184,25 @@ $MAIN {
 #endif
 
     for (var kb: u32 = sg_index; kb < k_blocks; kb = kb + kSplitK) {
-        // Load the B right tiles for this K block (KxN row-major, stride N).
-        let b_base = b_batch_offset + kb * kSgMatK * uniforms.N + global_base_n;
+        // Load the B right tiles for this K block (KxN_b row-major, stride N_b).
+        let b_base = b_batch_offset + kb * kSgMatK * uniforms.N_b + global_base_n;
         var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(
-                &input_b, b_base + 0 * kSgMatN, false, uniforms.N);
+            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                &input_b, b_base + 0 * kSgMatN, uniforms.N_b);
 #if sg_mat_count_n >= 2
         var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(
-                &input_b, b_base + 1 * kSgMatN, false, uniforms.N);
+            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                &input_b, b_base + 1 * kSgMatN, uniforms.N_b);
 #endif
 #if sg_mat_count_n >= 3
         var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(
-                &input_b, b_base + 2 * kSgMatN, false, uniforms.N);
+            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                &input_b, b_base + 2 * kSgMatN, uniforms.N_b);
 #endif
 #if sg_mat_count_n >= 4
         var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(
-                &input_b, b_base + 3 * kSgMatN, false, uniforms.N);
+            subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                &input_b, b_base + 3 * kSgMatN, uniforms.N_b);
 #endif
 
         // Load the A left tiles (one per M block), row-major with stride K.
@@ -205,42 +210,42 @@ $MAIN {
         // every A load below reads from the correct batch slice.
         let a_col = a_batch_offset + kb * kSgMatK;
         var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #if sg_mat_count_m >= 2
         var sg_mat_a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 3
         var sg_mat_a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 4
         var sg_mat_a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 5
         var sg_mat_a4: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 6
         var sg_mat_a5: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 7
         var sg_mat_a6: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 8
         var sg_mat_a7: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, false, uniforms.K);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 
         // Accumulate every (M block, N block) pair.
@@ -343,98 +348,98 @@ $MAIN {
     // Store this subgroup's partial results into its split-K slot of scratch,
     // laid out as kSplitK x [kTileM, kTileN] row-major. Offset of block (mi, ni)
     // within a slot = mi * kSgMatM * kTileN + ni * kSgMatN, stride kTileN.
-    subgroupMatrixStore(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c0_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c0_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c0_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c0_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c0_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c0_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c0_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c0_3, kTileN);
 #endif
 #if sg_mat_count_m >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c1_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c1_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c1_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c1_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c1_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c1_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c1_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c1_3, kTileN);
 #endif
 #endif
 #if sg_mat_count_m >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c2_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c2_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c2_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c2_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c2_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c2_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c2_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c2_3, kTileN);
 #endif
 #endif
 #if sg_mat_count_m >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c3_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c3_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c3_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c3_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c3_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c3_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c3_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c3_3, kTileN);
 #endif
 #endif
 #if sg_mat_count_m >= 5
-    subgroupMatrixStore(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c4_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c4_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c4_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c4_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c4_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c4_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c4_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c4_3, kTileN);
 #endif
 #endif
 #if sg_mat_count_m >= 6
-    subgroupMatrixStore(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c5_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c5_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c5_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c5_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c5_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c5_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c5_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c5_3, kTileN);
 #endif
 #endif
 #if sg_mat_count_m >= 7
-    subgroupMatrixStore(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c6_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c6_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c6_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c6_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c6_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c6_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c6_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c6_3, kTileN);
 #endif
 #endif
 #if sg_mat_count_m >= 8
-    subgroupMatrixStore(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c7_0, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c7_0, kTileN);
 #if sg_mat_count_n >= 2
-    subgroupMatrixStore(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c7_1, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c7_1, kTileN);
 #endif
 #if sg_mat_count_n >= 3
-    subgroupMatrixStore(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c7_2, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c7_2, kTileN);
 #endif
 #if sg_mat_count_n >= 4
-    subgroupMatrixStore(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c7_3, false, kTileN);
+    subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c7_3, kTileN);
 #endif
 #endif
 

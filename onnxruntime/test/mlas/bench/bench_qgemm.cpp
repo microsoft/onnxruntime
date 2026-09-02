@@ -123,3 +123,9 @@ BENCHMARK_CAPTURE(QGEMM, SignedANoPackB, false, true, true)->Apply(QGemmSize)->U
 // UDOT kernel (see qgemm_kernel_udot.cpp) instead of falling back to scalar.
 BENCHMARK_CAPTURE(QGEMM, SignedAUnsignedBPackB, true, true, false)->Apply(QGemmSize)->UseRealTime();
 BENCHMARK_CAPTURE(QGEMM, SignedAUnsignedBNoPackB, false, true, false)->Apply(QGemmSize)->UseRealTime();
+
+// U8U8 (unsigned A, *unsigned* B). Every capture above uses signed B, so
+// without these the U8U8 dispatch -- a distinct kernel selection from U8S8 --
+// has no benchmark coverage at all.
+BENCHMARK_CAPTURE(QGEMM, UnsignedABPackB, true, false, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, UnsignedABNoPackB, false, false, false)->Apply(QGemmSize)->UseRealTime();

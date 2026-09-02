@@ -4,14 +4,8 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include "orttraining/training_ops/cuda/tensor/gather_grad_impl.h"
-
-#include <cub/device/device_radix_sort.cuh>
-#include <cub/device/device_reduce.cuh>
-#include <cub/device/device_run_length_encode.cuh>
-#include <cub/device/device_scan.cuh>
-#include <cub/iterator/counting_input_iterator.cuh>
-#include <cub/iterator/discard_output_iterator.cuh>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"

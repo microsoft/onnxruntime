@@ -45,6 +45,45 @@ TEST(FeatureVectorizer, HandleInputDimensionMismatch) {
   test.Run();
 }
 
+TEST(FeatureVectorizer, RejectMismatchedBatchSizes) {
+  OpTester test("FeatureVectorizer", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("inputdimensions", std::vector<int64_t>{1, 1});
+
+  test.AddInput<int32_t>("X0", std::vector<int64_t>{1, 1}, {1});
+  test.AddInput<int32_t>("X1", std::vector<int64_t>{2, 1}, {2, 3});
+  test.AddOutput<float>("Y", std::vector<int64_t>{1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "All inputs to FeatureVectorizer must have the same batch size.");
+}
+
+TEST(FeatureVectorizer, RejectScalarInput) {
+  OpTester test("FeatureVectorizer", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("inputdimensions", std::vector<int64_t>{1, 1});
+
+  test.AddInput<int32_t>("X0", std::vector<int64_t>{1}, {1});
+  test.AddInput<int32_t>("X1", std::vector<int64_t>{}, {2});
+  test.AddOutput<float>("Y", std::vector<int64_t>{1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "FeatureVectorizer input 1 must have at least 1 dimension.");
+}
+
+TEST(FeatureVectorizer, RejectScalarFirstInput) {
+  OpTester test("FeatureVectorizer", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("inputdimensions", std::vector<int64_t>{1, 1});
+
+  test.AddInput<int32_t>("X0", std::vector<int64_t>{}, {1});
+  test.AddInput<int32_t>("X1", std::vector<int64_t>{1}, {2});
+  test.AddOutput<float>("Y", std::vector<int64_t>{1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "FeatureVectorizer input 0 must have at least 1 dimension.");
+}
+
 // test with batch size of 2.
 TEST(FeatureVectorizer, Batch) {
   OpTester test("FeatureVectorizer", 1, onnxruntime::kMLDomain);

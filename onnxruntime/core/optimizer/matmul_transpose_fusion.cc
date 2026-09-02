@@ -188,8 +188,14 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   return &new_transpose;
 }
 
-// Check whether the element_type is an allowed FusedMatMul data type or not.
-constexpr static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type) {
+// Check whether the element_type is supported by FusedMatMul for the assigned EP.
+static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type,
+                                         std::string_view execution_provider_type) {
+  if (execution_provider_type == kCpuExecutionProvider) {
+    return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+           element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  }
+
   return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
@@ -306,13 +312,15 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
 
     NodeArg* left_input = node.MutableInputDefs()[0];
     auto left_type = left_input->TypeAsProto()->tensor_type().elem_type();
-    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type))) {
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type),
+                                      node.GetExecutionProviderType())) {
       continue;
     }
 
     NodeArg* right_input = node.MutableInputDefs()[1];
     auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
-    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type),
+                                      node.GetExecutionProviderType())) {
       continue;
     }
 

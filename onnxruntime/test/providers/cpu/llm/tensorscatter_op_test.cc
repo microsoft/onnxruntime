@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -192,6 +194,32 @@ TEST(TensorScatterTest, Circular_WrapAround) {
   test.Run();
 }
 
+// Regression test for circular-mode wrapping semantics clarified by onnx/onnx#8353.
+// Sequence positions wrap from 3 to 0, while batch 5 > max sequence 4 detects an
+// incorrect full-tuple modulo that would also wrap the batch coordinate.
+TEST(TensorScatterTest, Circular_BatchLargerThanMaxSequenceLength) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  // shape (5, 4, 1), default axis=-2 -> axis=1, max_seq=4, batch=5
+  test.AddInput<float>("past_cache", {5, 4, 1}, std::vector<float>(20, -1.0f));
+
+  // Two distinct values per batch exercise the 3 -> 0 sequence wrap.
+  test.AddInput<float>("update", {5, 2, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+
+  test.AddInput<int64_t>("write_indices", {5}, {3, 3, 3, 3, 3});
+
+  // Each batch preserves its prefix coordinate and writes only slots 3 and 0.
+  test.AddOutput<float>("present_cache", {5, 4, 1},
+                        {2, -1, -1, 1,
+                         4, -1, -1, 3,
+                         6, -1, -1, 5,
+                         8, -1, -1, 7,
+                         10, -1, -1, 9});
+
+  test.Run();
+}
+
 // IO-binding test: bind the same buffer as both input[0] (past_cache) and
 // output[0] (present_cache) to verify the MayInplace(0,0) in-place path.
 TEST(TensorScatterTest, InPlace_IOBinding) {
@@ -335,6 +363,21 @@ TEST(TensorScatterTest, Linear_OutOfBoundsWriteIndex) {
            {}, nullptr, &execution_providers);
 }
 
+TEST(TensorScatterTest, Linear_WriteIndexAdditionOverflow) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 2, 1}, {1, 2});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds max_sequence_length",
+           {}, nullptr, &execution_providers);
+}
+
 // Circular mode: negative write_indices should still fail.
 // Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
 TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
@@ -351,6 +394,158 @@ TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Circular_LargeWriteIndexWrapsWithoutOverflow) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 2, 1}, {1, 2});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {2, 0, 0, 1});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Circular_ZeroSequenceLengthIsNoOp) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  test.AddInput<float>("past_cache", {1, 0, 1}, {});
+  test.AddInput<float>("update", {1, 0, 1}, {});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 0, 1}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, ZeroSequenceLengthWithoutWriteIndicesSkipsLargeBatch) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  constexpr int64_t large_batch = std::numeric_limits<int64_t>::max();
+  test.AddInput<float>("past_cache", {large_batch, 0, 1}, {});
+  test.AddInput<float>("update", {large_batch, 0, 1}, {});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("present_cache", {large_batch, 0, 1}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, ExplicitWriteIndicesValidatedWithZeroPrefixDimension) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<int64_t>("axis", 2);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  test.AddInput<float>("past_cache", {2, 0, 4, 1}, {});
+  test.AddInput<float>("update", {2, 0, 1, 1}, {});
+  test.AddInput<int64_t>("write_indices", {2}, {-1, 0});
+  test.AddOutput<float>("present_cache", {2, 0, 4, 1}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Circular_ZeroSequenceLengthPreservesCache) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {1, 2, 3, 4});
+  test.AddInput<float>("update", {1, 0, 1}, {});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {1, 2, 3, 4});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Linear_ZeroSequenceLengthPreservesCache) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {1, 2, 3, 4});
+  test.AddInput<float>("update", {1, 0, 1}, {});
+  test.AddInput<int64_t>("write_indices", {1}, {4});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {1, 2, 3, 4});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Linear_ZeroSequenceLengthRejectsOutOfBoundsIndex) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {1, 2, 3, 4});
+  test.AddInput<float>("update", {1, 0, 1}, {});
+  test.AddInput<int64_t>("write_indices", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {1, 2, 3, 4});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds max_sequence_length",
+           {}, nullptr, &execution_providers);
+}
+
+static void RunZeroSequenceLengthNegativeWriteIndexTest(const std::string& mode) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", mode);
+
+  test.AddInput<float>("past_cache", {1, 4, 1}, {1, 2, 3, 4});
+  test.AddInput<float>("update", {1, 0, 1}, {});
+  test.AddInput<int64_t>("write_indices", {1}, {-1});
+  test.AddOutput<float>("present_cache", {1, 4, 1}, {1, 2, 3, 4});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(TensorScatterTest, Linear_ZeroSequenceLengthRejectsNegativeIndex) {
+  RunZeroSequenceLengthNegativeWriteIndexTest("linear");
+}
+
+TEST(TensorScatterTest, Circular_ZeroSequenceLengthRejectsNegativeIndex) {
+  RunZeroSequenceLengthNegativeWriteIndexTest("circular");
+}
+
+// The CPU kernel only supports fixed-size element types (matching the CUDA
+// kernel's type constraint). Non-fixed-size element types such as string are
+// intentionally excluded because the kernel operates on raw memory buffers.
+// Loading a graph that binds a string tensor to TensorScatter must fail at
+// kernel resolution rather than at Compute time.
+TEST(TensorScatterTest, StringType_NotSupported) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<std::string>("past_cache", {1, 4, 1},
+                             {"alpha", "beta", "gamma", "delta"});
+  test.AddInput<std::string>("update", {1, 1, 1}, {"omega"});
+  test.AddInput<int64_t>("write_indices", {1}, {2});
+  test.AddOutput<std::string>("present_cache", {1, 4, 1},
+                              {"alpha", "beta", "omega", "delta"});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  // The graph resolver rejects the node when no kernel matches the string
+  // element type. The exact wording differs between the graph-partitioner
+  // path ("Could not find an implementation for ...") and the later kernel
+  // lookup path ("Failed to find kernel for ..."), so match on the op name
+  // which is present in both.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "TensorScatter",
            {}, nullptr, &execution_providers);
 }
 

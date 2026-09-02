@@ -891,6 +891,18 @@ class InferenceSession {
   // graph partitioning is complete so node counts per EP are accurate.
   void PopulateEpDeviceInfo(const onnxruntime::Graph& graph);
 
+  // Logs the SessionCreation and initial EpDeviceUsage telemetry for the initialized session. Shared by the
+  // normal initialization path and the compile-only path (which otherwise skips session-state finalization).
+  void LogSessionCreationTelemetry(const onnxruntime::Graph& graph,
+                                   const std::string& model_weight_type,
+                                   const std::string& model_graph_hash,
+                                   const std::string& model_weight_hash);
+
+  // Records the profiling event and telemetry marking the end of session initialization (profiler event,
+  // OnSessionInitializationEnd for each EP, and SessionCreationEnd). Shared by the normal initialization path
+  // and the compile-only early-return path. Returns status updated with any error from OnSessionInitializationEnd.
+  common::Status RecordSessionCreationEndTelemetry(const TimePoint& tp, common::Status status);
+
 #ifdef _WIN32
   static void LogAllSessions();
 #endif

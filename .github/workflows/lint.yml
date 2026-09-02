@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: misspell # Check spellings as well
-        uses: reviewdog/action-misspell@v1
+        uses: reviewdog/action-misspell@d6429416b12b09b4e2768307d53bef58d172e962 # v1.27.0
         with:
           github_token: ${{ secrets.github_token }}
           locale: "US"
@@ -28,7 +28,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
-        uses: reviewdog/action-shellcheck@v1.31.0
+        uses: reviewdog/action-shellcheck@1bb9751763fdfbee4b5043772c37374f103bff9e # v1.31.0
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -48,14 +48,14 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           # Use the version configured in target-version of [tool.black] section in pyproject.toml.
           python-version: "3.10"
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
         with:
           toolchain: stable
           components: rustfmt
@@ -82,7 +82,7 @@ jobs:
       - name: Upload SARIF file
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3.37.7
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: lintrunner.sarif
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -110,7 +110,7 @@ jobs:
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
-      - uses: reviewdog/action-cpplint@master
+      - uses: reviewdog/action-cpplint@9552c62f4bd516c1e3a6f84eae56bd864cc304c6 # v1.11.0
         continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}

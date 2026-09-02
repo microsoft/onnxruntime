@@ -40,6 +40,8 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
   activation_ = ParseCausalConvActivation(activation_str);
   ORT_ENFORCE(info.GetAttr<int64_t>("ndim", &ndim_).IsOK(), "Attribute 'ndim' is required");
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
+              "WebGPU CausalConvWithState does not support state_window > 0 (CUDA EP only)");
 }
 
 Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {

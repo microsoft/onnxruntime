@@ -119,6 +119,52 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
 
   {
+    // Missing C uses effective beta == 0.
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.3f, -1.4f, -26.9f,
+                         -19.3f, 1.4f, 26.9f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 0.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    // beta == 0 ignores C, even when C has the full output shape.
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.3f, -1.4f, -26.9f,
+                         -19.3f, 1.4f, 26.9f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    std::vector<MLFloat16> f_C(6);
+    ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 0.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+    test.AddInput<MLFloat16>("C", {2, 3}, f_C);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
     // bias has same shape as output
     std::vector<MLFloat16> f_Y(6);
     std::vector<float> Y{19.8f, 0.7f, -25.7f,

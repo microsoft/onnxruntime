@@ -29,12 +29,12 @@ jobs:
         ]
     timeout-minutes: 210
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: 'none'
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
           architecture: x64
@@ -121,6 +121,7 @@ jobs:
             --use_vcpkg `
             --use_vcpkg_ms_internal_asset_cache `
             --enable_cuda_profiling `
+            --cmake_extra_defines onnxruntime_USE_TRT_FUSED_ATTENTION=OFF `
             --cmake_extra_defines onnxruntime_QUICK_BUILD=ON `
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
             --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
@@ -148,7 +149,7 @@ jobs:
           }
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: cuda-plugin-no-cudnn-build-artifacts
           path: ${{ runner.temp }}\build
@@ -171,18 +172,18 @@ jobs:
       "JobId=windows-cuda-plugin-no-cudnn-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     ]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: 'none'
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: cuda-plugin-no-cudnn-build-artifacts
           path: ${{ runner.temp }}\build
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
           architecture: x64

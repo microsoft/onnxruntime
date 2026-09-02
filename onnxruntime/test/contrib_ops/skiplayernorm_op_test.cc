@@ -236,6 +236,146 @@ TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
             kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortGamma) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}));
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{1}, ToFloat16({1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of gamma and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortSkip) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", std::vector<int64_t>{1, 1, 1}, ToFloat16({3.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last two dimensions of skip needs to be same as input",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortBeta) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of beta and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortBias) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddInput<MLFloat16>("bias", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of bias and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormPrePackRejectsShortBias) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("bias", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of bias and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsMismatchedSkipShape) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  const std::vector<int64_t> input_output_dims = {1, 5, 2};
+  test.AddInput<MLFloat16>("input", input_output_dims, ToFloat16(std::vector<float>(10, 1.f)));
+  test.AddInput<MLFloat16>("skip", std::vector<int64_t>{1, 3, 2}, ToFloat16(std::vector<float>(6, 1.f)), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_output_dims, ToFloat16(std::vector<float>(10)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last two dimensions of skip needs to be same as input",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackAllowsEmptySkip) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  const std::vector<int64_t> empty_dims = {1, 0, 2};
+  test.AddInput<MLFloat16>("input", empty_dims, {});
+  test.AddInput<MLFloat16>("skip", empty_dims, {}, true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", empty_dims, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
   int batch_size = 1;
   int sequence_length = 0;

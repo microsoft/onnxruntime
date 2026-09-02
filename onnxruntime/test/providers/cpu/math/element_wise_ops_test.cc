@@ -23,7 +23,6 @@
 // and adds no link dependency on the webgpu provider library (which is not linked into
 // onnxruntime_provider_test in every build configuration, e.g. the plugin build). See issue #28969.
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
-#include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
 namespace onnxruntime {
@@ -1023,6 +1022,27 @@ TEST(MathOpTest, Abs) {
   test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 0.0f, 10.0f});
   test.Run();
 }
+
+#ifdef USE_CUDA
+TEST(MathOpTest, Abs_Cuda_CanonicalizesSignedZero) {
+  OpTester test("Abs");
+  test.AddInput<float>("X", {2}, {0.0f, -0.0f});
+  test.AddOutput<float>("Y", {2}, {0.0f, 0.0f});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                  const std::string& /*provider_type*/) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+
+    const auto* output = fetches[0].Get<Tensor>().Data<float>();
+    EXPECT_FALSE(std::signbit(output[0])) << "Abs(+0.0f) must be +0.0f";
+    EXPECT_FALSE(std::signbit(output[1])) << "Abs(-0.0f) must be +0.0f";
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 #if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, Abs_bfloat16) {
@@ -2437,6 +2457,176 @@ TEST(MathOpTest, Min_13_Float16_with_scalar_Nan) {
                      std::numeric_limits<float>::quiet_NaN(),
                      std::numeric_limits<float>::quiet_NaN()});
 }
+
+// The default Max/Min NaN tests above are pinned to CPU/CUDA. These WebGPU-specific cases lock in
+// the ONNX opset-12+ requirement that Max/Min propagate NaN (a plain WGSL max/min builtin does
+// not guarantee this). The broadcast case exercises the vec4 broadcast shader path; the scalar
+// case exercises the element-wise scalar-operand path.
+TEST(MathOpTest, Max_12_Float_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -0.5f, 0.0f, -1.0f,
+                         1.0f, 1.0f, 2.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("min", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -1.0f, -1.0f, -2.0f,
+                         0.5f, 0.0f, 1.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// A scalar NaN operand must turn every output element into NaN (element-wise scalar path).
+TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {2, 2},
+                       {0.25f, -0.25f, -0.5f, 0.5f});
+  test.AddInput<float>("data_1", {1}, {std::numeric_limits<float>::quiet_NaN()});
+  test.AddOutput<float>("max", {2, 2},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN()});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Variadic (3-input) fold must also propagate a NaN that appears in a middle operand.
+TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {1, 3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("data_1", {1, 3},
+                       {std::numeric_limits<float>::quiet_NaN(), 0.0f, 5.0f});
+  test.AddInput<float>("data_2", {1, 3}, {-1.0f, -2.0f, 4.0f});
+  test.AddOutput<float>("min", {1, 3},
+                        {std::numeric_limits<float>::quiet_NaN(), -2.0f, 3.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Float16 exercises the distinct NaN-detection path in the shader: f16 is widened to f32 before the
+// integer bitcast, since a vec4<f16> is too narrow for the vec4<u32> bitcast the check relies on.
+TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {3, 1},
+                           MakeMLFloat16({-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 1},
+                           MakeMLFloat16({0.5f, 1.0f, std::numeric_limits<float>::quiet_NaN()}));
+  test.AddOutput<MLFloat16>("max", {3, 1},
+                            MakeMLFloat16({0.5f,
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN()}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// EP-agnostic int64 coverage for the binary ops this change newly gates on the WebGPU enableInt64
+// option (Mul, Div, Greater, Less, GreaterOrEqual, LessOrEqual). Running through the default
+// providers exercises every capable EP -- including WebGPU, for which the test harness enables
+// int64 (see DefaultWebGpuExecutionProvider and the dynamic plugin EP config in test_main.cc), so
+// no WebGPU-specific operator cases are needed. Values stay within the int32 range and include the
+// -1 (all-ones) pattern, so EPs that implement int64 on 32-bit lanes (e.g. WebGPU) still produce
+// correct results. Min/Max int64 are already covered by the generic Min_12_Int64/Max_12_Int64
+// cases above. TensorRT/OpenVINO are excluded to match those existing int64 element-wise cases.
+TEST(MathOpTest, Mul_Int64) {
+  OpTester test("Mul", 14);
+  test.AddInput<int64_t>("A", {3}, {-1, 100, 7});
+  test.AddInput<int64_t>("B", {3}, {5, 3, -2});
+  test.AddOutput<int64_t>("C", {3}, {-5, 300, -14});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Div_Int64) {
+  OpTester test("Div", 14);
+  test.AddInput<int64_t>("A", {3}, {-1, 100, -20});
+  test.AddInput<int64_t>("B", {3}, {1, 5, 4});
+  test.AddOutput<int64_t>("C", {3}, {-1, 20, -5});  // integer division truncates toward zero
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Greater_Int64) {
+  OpTester test("Greater", 13);
+  test.AddInput<int64_t>("A", {3}, {5, -1, 2147483647});
+  test.AddInput<int64_t>("B", {3}, {3, 0, -100});
+  test.AddOutput<bool>("C", {3}, {true, false, true});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Less_Int64) {
+  OpTester test("Less", 13);
+  test.AddInput<int64_t>("A", {3}, {5, -1, 100});
+  test.AddInput<int64_t>("B", {3}, {3, 0, 200});
+  test.AddOutput<bool>("C", {3}, {false, true, true});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, GreaterOrEqual_Int64) {
+  OpTester test("GreaterOrEqual", 16);
+  test.AddInput<int64_t>("A", {3}, {5, 5, -1});
+  test.AddInput<int64_t>("B", {3}, {5, 3, 0});
+  test.AddOutput<bool>("C", {3}, {true, true, false});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, LessOrEqual_Int64) {
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<int64_t>("A", {3}, {5, 5, -1});
+  test.AddInput<int64_t>("B", {3}, {5, 3, 0});
+  test.AddOutput<bool>("C", {3}, {true, false, true});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -4171,12 +4361,8 @@ TEST(MathOpTest, CosFloat) {
 }
 
 TEST(MathOpTest, CosDouble) {
-  if (DefaultCudaExecutionProvider().get() != nullptr) {  // double type not supported on CPU
-    OpTester test("Cos");
-    TrigDoubleTest<::cos>(test, {1.1, -1.1, 2.2, -2.2}, {kTensorrtExecutionProvider});
-    // Fails TensorRT unit-test because the unit tests only test one EP at a time and the TensorRT EP will not be able to find an implementation in the fall-back CPU EP,
-    // so skip it
-  }
+  OpTester test("Cos");
+  TrigDoubleTest<::cos>(test, {1.1, -1.1, 2.2, -2.2});
 }
 
 TEST(MathOpTest, CosFloat16) {
@@ -5054,163 +5240,170 @@ TEST(MathOpTest, BitwiseNot_uint8) {
   test.Run();
 }
 
-#ifdef USE_WEBGPU
-TEST(MathOpTest, Sub_webgpu_int64) {
+// EP-agnostic int64 coverage for Sub/Equal/Add. These run on every capable EP (including WebGPU,
+// for which the test harness enables int64). The shapes are chosen to exercise WebGPU's int64
+// shader paths (element-wise, broadcast, size divisible by 4, scalar operands); values stay within
+// the int32 range so 32-bit-lane int64 implementations (e.g. WebGPU) stay correct.
+TEST(MathOpTest, Sub_Int64) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {4}, {10, 5, -3, 0});
   test.AddInput<int64_t>("B", {4}, {3, 5, 1, -7});
   test.AddOutput<int64_t>("C", {4}, {7, 0, -4, 7});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // INT64 Sub with broadcast: A [1,3] broadcasts against B [2,3] -> output [2,3].
-TEST(MathOpTest, Sub_webgpu_int64_broadcast) {
+TEST(MathOpTest, Sub_Int64_broadcast) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {1, 3}, {10, 20, 30});
   test.AddInput<int64_t>("B", {2, 3}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<int64_t>("C", {2, 3}, {9, 18, 27, 6, 15, 24});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Size divisible by 4: catches future vec4 optimizations that might break INT64.
-TEST(MathOpTest, Sub_webgpu_int64_size_div4) {
+TEST(MathOpTest, Sub_Int64_size_div4) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {8}, {10, 20, 30, 40, 50, 60, 70, 80});
   test.AddInput<int64_t>("B", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
   test.AddOutput<int64_t>("C", {8}, {9, 18, 27, 36, 45, 54, 63, 72});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Scalar LHS: exercises is_lhs_scalar_ path for INT64 Sub.
-TEST(MathOpTest, Sub_webgpu_int64_lhs_scalar) {
+TEST(MathOpTest, Sub_Int64_lhs_scalar) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {1}, {100});
   test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 5});
   test.AddOutput<int64_t>("C", {5}, {99, 98, 97, 96, 95});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Scalar RHS: exercises is_rhs_scalar_ path for INT64 Sub.
-TEST(MathOpTest, Sub_webgpu_int64_rhs_scalar) {
+TEST(MathOpTest, Sub_Int64_rhs_scalar) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {5}, {10, 20, 30, 40, 50});
   test.AddInput<int64_t>("B", {1}, {7});
   test.AddOutput<int64_t>("C", {5}, {3, 13, 23, 33, 43});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
-TEST(MathOpTest, Sub_webgpu_int64_broadcast_size_div4) {
+TEST(MathOpTest, Sub_Int64_broadcast_size_div4) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {1, 4}, {10, 20, 30, 40});
   test.AddInput<int64_t>("B", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
   test.AddOutput<int64_t>("C", {2, 4}, {9, 18, 27, 36, 5, 14, 23, 32});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(MathOpTest, Equal_webgpu_int64) {
+TEST(MathOpTest, Equal_Int64) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
   test.AddInput<int64_t>("B", {5}, {1, 1, 2, -1, 3});
   test.AddOutput<bool>("C", {5}, {true, false, false, true, true});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Size divisible by 4: exercises the packed-bool path without tail padding.
-TEST(MathOpTest, Equal_webgpu_int64_size_div4) {
+TEST(MathOpTest, Equal_Int64_size_div4) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
   test.AddInput<int64_t>("B", {8}, {1, 0, 3, 0, 5, 0, 7, 0});
   test.AddOutput<bool>("C", {8}, {true, false, true, false, true, false, true, false});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Scalar LHS: lhs is a scalar, rhs is a vector; exercises is_lhs_scalar_ path.
-TEST(MathOpTest, Equal_webgpu_int64_lhs_scalar) {
+TEST(MathOpTest, Equal_Int64_lhs_scalar) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {1}, {3});
   test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 3});
   test.AddOutput<bool>("C", {5}, {false, false, true, false, true});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Scalar RHS: rhs is a scalar, lhs is a vector; exercises is_rhs_scalar_ path.
-TEST(MathOpTest, Equal_webgpu_int64_rhs_scalar) {
+TEST(MathOpTest, Equal_Int64_rhs_scalar) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {5}, {1, 2, 3, 4, 3});
   test.AddInput<int64_t>("B", {1}, {3});
   test.AddOutput<bool>("C", {5}, {false, false, true, false, true});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Shape broadcast, size not divisible by 4: A [1,3] broadcasts against B [2,3] -> output [2,3].
 // Exercises the INT64 broadcast path with tail padding in the packed-bool output.
-TEST(MathOpTest, Equal_webgpu_int64_broadcast) {
+TEST(MathOpTest, Equal_Int64_broadcast) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {1, 3}, {1, 2, 3});
   test.AddInput<int64_t>("B", {2, 3}, {1, 0, 3, 1, 2, 3});
   test.AddOutput<bool>("C", {2, 3}, {true, false, true, true, true, true});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
 // Exercises the INT64 broadcast path without tail padding.
-TEST(MathOpTest, Equal_webgpu_int64_broadcast_size_div4) {
+TEST(MathOpTest, Equal_Int64_broadcast_size_div4) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {1, 4}, {1, 2, 3, 4});
   test.AddInput<int64_t>("B", {2, 4}, {1, 0, 3, 0, 1, 2, 3, 4});
   test.AddOutput<bool>("C", {2, 4}, {true, false, true, false, true, true, true, true});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
-#endif
+
+TEST(MathOpTest, Add_Int64) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {4}, {10, 5, -3, 0});
+  test.AddInput<int64_t>("B", {4}, {3, 5, 1, -7});
+  test.AddOutput<int64_t>("C", {4}, {13, 10, -2, -7});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// INT64 Add with broadcast: A [1,3] broadcasts against B [2,3] -> output [2,3].
+TEST(MathOpTest, Add_Int64_broadcast) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {1, 3}, {10, 20, 30});
+  test.AddInput<int64_t>("B", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<int64_t>("C", {2, 3}, {11, 22, 33, 14, 25, 36});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Size divisible by 4: catches future vec4 optimizations that might break INT64.
+TEST(MathOpTest, Add_Int64_size_div4) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {8}, {10, 20, 30, 40, 50, 60, 70, 80});
+  test.AddInput<int64_t>("B", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {8}, {11, 22, 33, 44, 55, 66, 77, 88});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Scalar LHS: exercises is_lhs_scalar_ path for INT64 Add.
+TEST(MathOpTest, Add_Int64_lhs_scalar) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {1}, {100});
+  test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 5});
+  test.AddOutput<int64_t>("C", {5}, {101, 102, 103, 104, 105});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Scalar RHS: exercises is_rhs_scalar_ path for INT64 Add.
+TEST(MathOpTest, Add_Int64_rhs_scalar) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {5}, {10, 20, 30, 40, 50});
+  test.AddInput<int64_t>("B", {1}, {7});
+  test.AddOutput<int64_t>("C", {5}, {17, 27, 37, 47, 57});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
+TEST(MathOpTest, Add_Int64_broadcast_size_div4) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {1, 4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("B", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {2, 4}, {11, 22, 33, 44, 15, 26, 37, 48});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,6 +1,6 @@
 # NuGet packaging stage for WebGPU plugin EP.
-# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package,
-# signs it, and runs a basic test.
+# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package, and handles ESRP
+# signing if `DoEsrp` is set.
 
 parameters:
 - name: package_version
@@ -19,6 +19,7 @@ parameters:
     win_x64: false
     win_arm64: false
     linux_x64: false
+    linux_aarch64: false
     macos_arm64: false
 
 stages:
@@ -31,6 +32,8 @@ stages:
     - Win_plugin_webgpu_arm64_Build
   - ${{ if eq(parameters.platforms.linux_x64, true) }}:
     - Linux_plugin_webgpu_x64_Build
+  - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
+    - Linux_plugin_webgpu_aarch64_Build
   - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
     - MacOS_plugin_webgpu_arm64_Build
   jobs:
@@ -96,6 +99,13 @@ stages:
           artifactName: webgpu_plugin_linux_x64
           targetPath: '$(Build.BinariesDirectory)\artifacts\linux_x64'
 
+    - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download linux-arm64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_linux_aarch64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\linux_aarch64'
+
     - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download macos-arm64 artifacts'
@@ -121,6 +131,7 @@ stages:
               "win_x64":     "${{ parameters.platforms.win_x64 }}".lower() == "true",
               "win_arm64":   "${{ parameters.platforms.win_arm64 }}".lower() == "true",
               "linux_x64":   "${{ parameters.platforms.linux_x64 }}".lower() == "true",
+              "linux_aarch64": "${{ parameters.platforms.linux_aarch64 }}".lower() == "true",
               "macos_arm64": "${{ parameters.platforms.macos_arm64 }}".lower() == "true",
           }
           expected = [name for name, enabled in platforms_enabled.items() if enabled]

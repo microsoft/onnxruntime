@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if !defined(__wasm__)
-
 #include <functional>
 #include <memory>
 #include <optional>
@@ -58,10 +56,13 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
         sg_mat_count_n_(sg_mat_count_n),
         split_k_(split_k) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+  // N is the logical output width; N_b is B's physical row stride (== N unless B
+  // was column-padded to an even stride for odd N).
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
-                                          {"num_n_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_n_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"N_b", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool has_bias_;
@@ -73,5 +74,3 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
 
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

@@ -39,20 +39,20 @@
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
 template <class T>
-constexpr auto transpose_stride(T const& t) {
+constexpr auto transpose_stride(const T& t) {
   return cute::prepend(cute::prepend(cute::take<2, cute::rank_v<T>>(t), cute::get<0>(t)), cute::get<1>(t));
 }
 
 template <typename AType, typename BType, typename BScaleType, typename OType>
 struct GroupedGemmInput {
-  AType const* A = nullptr;
-  int64_t const* total_tokens_including_expert = nullptr;
-  BType const* B = nullptr;
-  BScaleType const* scales = nullptr;
-  BScaleType const* zeros = nullptr;
-  OType const* biases = nullptr;
+  const AType* A = nullptr;
+  const int64_t* total_tokens_including_expert = nullptr;
+  const BType* B = nullptr;
+  const BScaleType* scales = nullptr;
+  const BScaleType* zeros = nullptr;
+  const OType* biases = nullptr;
   OType* C = nullptr;
-  float const** alpha_scales = nullptr;
+  const float** alpha_scales = nullptr;
   int* occupancy = nullptr;
 
   ActivationType activation_type = ActivationType::InvalidType;
@@ -60,7 +60,7 @@ struct GroupedGemmInput {
   int64_t n = 0;
   int64_t k = 0;
   int num_experts = 0;
-  int const groupwise_quant_group_size = 0;
+  const int groupwise_quant_group_size = 0;
 
   bool bias_is_broadcast = true;
   bool use_fused_moe = false;
@@ -136,12 +136,12 @@ struct TmaWarpSpecializedGroupedGemmInput {
   StrideA* stride_a = nullptr;
   StrideB* stride_b = nullptr;
 
-  void const** ptr_a = nullptr;
-  void const** ptr_b = nullptr;
+  const void** ptr_a = nullptr;
+  const void** ptr_b = nullptr;
 
   // C is currently the same in both epilogues
   StrideC* stride_c = nullptr;
-  void const** ptr_c = nullptr;
+  const void** ptr_c = nullptr;
 
   struct DefaultEpilogue {
     using LayoutD = TransposeLayoutTag<cutlass::layout::RowMajor>;  // Layout type for D matrix operand
@@ -159,14 +159,14 @@ struct TmaWarpSpecializedGroupedGemmInput {
     void* ptr_final_output = nullptr;
     StrideFinalOutput stride_final_output{};
 
-    void const* ptr_bias = nullptr;
+    const void* ptr_bias = nullptr;
     StrideBias stride_bias{};
 
-    float const* ptr_router_scales = nullptr;
+    const float* ptr_router_scales = nullptr;
     StrideRouterScales stride_router_scales{};
 
-    int64_t const* ptr_expert_first_token_offset = nullptr;
-    int const* ptr_source_token_index = nullptr;
+    const int64_t* ptr_expert_first_token_offset = nullptr;
+    const int* ptr_source_token_index = nullptr;
 
     size_t num_rows_in_final_output = 0;
   };
@@ -182,13 +182,13 @@ struct TmaWarpSpecializedGroupedGemmInput {
   };
   EpilogueFusion fusion = EpilogueFusion::NONE;
 
-  float const** alpha_scale_ptr_array = nullptr;
+  const float** alpha_scale_ptr_array = nullptr;
 
   using ElementSF = uint8_t;
   using MXFPXElementSF = ElementSF;  // Just an alias for now
   using NVFP4ElementSF = ElementSF;  // Just an alias for now
-  ElementSF const** fpX_block_scaling_factors_A = nullptr;
-  ElementSF const** fpX_block_scaling_factors_B = nullptr;
+  const ElementSF** fpX_block_scaling_factors_A = nullptr;
+  const ElementSF** fpX_block_scaling_factors_B = nullptr;
 
   void* fpX_block_scaling_factors_stride_A = nullptr;
   void* fpX_block_scaling_factors_stride_B = nullptr;
@@ -237,8 +237,8 @@ struct TmaWarpSpecializedGroupedGemmInput {
     return stride_a != nullptr && ptr_a != nullptr;
   }
 
-  void setFinalizeFusionParams(void* final_output, float const* router_scales,
-                               int64_t const* expert_first_token_offset, int const* source_token_index, void const* bias, int hidden_size,
+  void setFinalizeFusionParams(void* final_output, const float* router_scales,
+                               const int64_t* expert_first_token_offset, const int* source_token_index, const void* bias, int hidden_size,
                                int num_output_tokens);
 
   std::string toString() const;

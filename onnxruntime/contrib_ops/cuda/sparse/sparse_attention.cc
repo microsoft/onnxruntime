@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/sparse/sparse_attention_helper.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
+#include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 
@@ -238,16 +239,16 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t rotary_buffer_bytes = 0;
   if (do_rotary_) {
-    rotary_buffer_bytes = 2 * sizeof(T) * parameters.batch_size * parameters.num_heads *
+    rotary_buffer_bytes = 2 * sizeof(T) * SafeInt<size_t>(parameters.batch_size) * parameters.num_heads *
                           parameters.sequence_length * parameters.head_size;
-    rotary_buffer_bytes += sizeof(int64_t) * parameters.batch_size * parameters.sequence_length;
+    rotary_buffer_bytes += sizeof(int64_t) * SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length;
   }
   auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, GetComputeStream(context));
   data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
 
   size_t transposed_q_bytes = 0;
   if (!parameters.is_packed_qkv) {
-    transposed_q_bytes = parameters.batch_size * parameters.sequence_length *
+    transposed_q_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length *
                          parameters.num_heads * parameters.head_size * sizeof(T);
   }
   auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, GetComputeStream(context));
@@ -257,8 +258,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t unpacked_qkv_bytes = 0;
   if (parameters.is_packed_qkv) {
-    unpacked_qkv_bytes = (parameters.batch_size * parameters.sequence_length *
-                          (parameters.num_heads + 2 * parameters.kv_num_heads) *
+    unpacked_qkv_bytes = (SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length *
+                          (SafeInt<size_t>(parameters.num_heads) + 2 * parameters.kv_num_heads) *
                           parameters.head_size * sizeof(T));
   }
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, GetComputeStream(context));

@@ -2760,6 +2760,23 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
+                    _In_ const void* source_model_data, _In_ size_t source_model_data_length) {
+  API_IMPL_BEGIN
+  if (source_model_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid source model: data pointer is null");
+  }
+
+  if (source_model_data_length == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid source model: data size is 0");
+  }
+
+  options->weightless_source_model_data = source_model_data;
+  options->weightless_source_model_data_size = source_model_data_length;
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_info) {
   delete value_info;
 }
@@ -4920,6 +4937,9 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::GetExperimentalFunction,
     &OrtApis::KernelContext_GetSyncStream,
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SessionOptionsSetWeightlessSourceModelBuffer,
+    // End of Version 29 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4960,9 +4980,10 @@ static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*)
 // no additions in version 26
 static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 421, "Size of version 27 API cannot change");
 static_assert(offsetof(OrtApi, KernelContext_GetSyncStream) / sizeof(void*) == 423, "Size of version 28 API cannot change");
+static_assert(offsetof(OrtApi, SessionOptionsSetWeightlessSourceModelBuffer) / sizeof(void*) == 424, "Size of version 29 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.29.0",
+static_assert(std::string_view(ORT_VERSION) == "1.30.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //

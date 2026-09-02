@@ -12,6 +12,7 @@
 #param turbo_quant
 #param use_indirect_dispatch
 #param use_seqlen_k
+#param use_seqlens_q
 #param v_head_size_vec
 
 #use .getByOffset .setByOffset
@@ -214,10 +215,15 @@ $MAIN {
 
   // Reduce inner_qk_values to tile_qk, apply attention bias and causal mask
 #if is_unidirectional
-  // Right-padded batches with prompt shorter than new_sequence_length would underflow u32; clamp to 0.
+#if use_seqlens_q
+  // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b.
+  let q_len_b = u32(seqlens_q[batch_idx]);
+  let past_sequence_length = total_sequence_length - q_len_b;
+#else
   let past_sequence_length = select(total_sequence_length - uniforms.new_sequence_length,
                                     0u,
                                     total_sequence_length <= uniforms.new_sequence_length);
+#endif
 #endif
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     let q_idx = q_base + m;

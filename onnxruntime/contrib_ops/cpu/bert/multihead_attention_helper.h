@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -248,16 +250,22 @@ inline Status CheckCacheIndirection(
                            "Input 'cache_indirection' is expected to have 3 dimensions, got ",
                            cache_indir_dims.size());
   }
-  num_beams = static_cast<int>(cache_indir_dims[1]);
-  if (cache_indir_dims[1] == 0) {
+  if (cache_indir_dims[1] <= 0 ||
+      cache_indir_dims[1] > static_cast<int64_t>(std::numeric_limits<int>::max())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' dimension 1 should be num_beams, got ",
                            cache_indir_dims[1]);
   }
-  if (cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
+  num_beams = static_cast<int>(cache_indir_dims[1]);
+  // Require num_beams to evenly divide batch_beam_size, and dim 0 to be exactly batch_beam_size / num_beams.
+  // Comparing dim 0 against the exact quotient (rather than multiplying dim 0 by num_beams) keeps the
+  // relation intact while avoiding int64_t overflow on the multiplication for arbitrary shape inputs.
+  if (batch_beam_size % num_beams != 0 ||
+      cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cache_indirection' dimension 0 should be batch_size, got ",
-                           cache_indir_dims[0]);
+                           "Input 'cache_indirection' dimension 0 (", cache_indir_dims[0],
+                           ") times dimension 1 (num_beams=", num_beams,
+                           ") must equal batch_beam_size (", batch_beam_size, ")");
   }
   if (max_sequence_length > 0 && cache_indir_dims[2] != static_cast<int64_t>(max_sequence_length)) {
     // First condition is to avoid this check for cross attention layers where

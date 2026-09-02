@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -16,6 +16,7 @@
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
@@ -23,8 +24,25 @@ namespace {
 
 // Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
 // split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-// TODO: use subgroup-size-control to enforce the subgroup size is 32.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
+
+// Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
+// (N_b >= N), zero-filling columns [N, N_b). Gives B an even row stride so the
+// subgroup-matrix f16 load's 4-byte row-start alignment holds for odd N.
+class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMulPadBProgram> {
+ public:
+  SubgroupMatrixMatMulPadBProgram() : Program{"SubgroupMatrixMatMulPadB"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input_b = shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul_pad_b.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(input_b, input_b),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"N_b", ProgramUniformVariableDataType::Uint32});
+};
 
 // Subgroup-matrix MatMul implementation. Loads both A and B directly from global
 // memory and runs the subgroup-matrix kernel during Compute. The class is
@@ -104,17 +122,31 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
     }
 
     // The B right-operand is loaded with subgroupMatrixLoad using a row stride of
-    // N (uniforms.N). Intel's f16 subgroup-matrix load reads columns in 32-bit
-    // (2xf16) pairs and requires each K-row to start 4-byte aligned, i.e. an even
-    // element stride. An odd N offsets every other K-row by 2 bytes and corrupts
-    // the odd output columns. Fall back to the generic MatMul path for odd N.
-    if (N % 2 != 0) {
+    // N_b. Intel's f16 subgroup-matrix load reads columns in 32-bit (2xf16) pairs
+    // and requires each K-row to start 4-byte aligned, i.e. an even element stride.
+    // An odd N would offset every other K-row by 2 bytes and corrupt the odd output
+    // columns. For a constant weight (2D or batched) we can pad B to an even stride
+    // (N_b = N + 1); a non-constant odd-N B falls back here. This is only the cheap
+    // eligibility check - the actual padding is deferred until after tiling selection
+    // so we never allocate/dispatch a padded copy for a problem that will fall back
+    // anyway (e.g. K % 16 != 0, which the tiling selector declines). B has already
+    // been validated as 2D or a well-formed batched shape above.
+    if (N % 2 != 0 && !parent_.IsBConstant()) {
       return Status::OK();
     }
 
     const std::optional<SubgroupMatrixTiling> tiling = tiling_selector_(context, M, N, K, batch);
     if (!tiling) {
       return Status::OK();
+    }
+
+    // The optimized path will run: now materialize the even-strided B for odd N.
+    const Tensor* b_used = b;
+    uint32_t N_b = N;
+    if (N % 2 != 0) {
+      ORT_RETURN_IF_ERROR(EnsurePaddedB(context, *b, N));
+      b_used = padded_b_.get();
+      N_b = padded_b_stride_;
     }
 
     TensorShapeVector output_dims{a_shape.GetDims().begin(), a_shape.GetDims().end()};
@@ -139,12 +171,13 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
 
     SubgroupMatrixMatMulProgram program{has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
+    program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+                    {b_used, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output->Shape(), 1})
-        .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}});
+        .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}, {N_b}});
     if (has_bias) {
       program.AddInput({bias, ProgramTensorMetadataDependency::None});
     }
@@ -155,8 +188,61 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
   }
 
  private:
+  // Lazily builds an even-strided copy of a constant weight B [..., K, N] with odd N
+  // by widening its last dim to N_b = N + 1 (zero-filling the extra column) and
+  // caches it, so the per-run pad cost is paid once. Works for a 2D weight [K, N]
+  // and a batched weight [batch, K, N] alike: the pad pass treats B as a flat
+  // [rows, N] -> [rows, N_b] copy over rows = numel / N (= K, or batch*K), which is
+  // exactly the even-stride layout the kernel indexes via N_b. Runs the GPU pad pass
+  // on first use under call_once; the cached tensor is held for the kernel's
+  // lifetime. Only valid when B is a constant initializer (checked by the caller) -
+  // a runtime B changes per run and must not be cached.
+  Status EnsurePaddedB(ComputeContext& context, const Tensor& b, uint32_t N) const {
+    ORT_RETURN_IF_NOT(N < std::numeric_limits<uint32_t>::max(),
+                      "Cannot pad odd-N B because N+1 exceeds uint32_t range.");
+    const uint32_t n_b = N + 1;
+    TensorShapeVector padded_dims{b.Shape().GetDims().begin(), b.Shape().GetDims().end()};
+    padded_dims.back() = static_cast<int64_t>(n_b);
+    const TensorShape padded_shape{padded_dims};
+    const int64_t output_size_i64 = padded_shape.Size();
+    ORT_RETURN_IF_NOT(output_size_i64 <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+                      "Cannot pad odd-N B because the padded tensor has ", output_size_i64,
+                      " elements, exceeding uint32_t shader indexing range.");
+    const uint32_t output_size = narrow<uint32_t>(output_size_i64);
+
+    std::call_once(pad_once_, [&]() {
+      auto padded = std::make_unique<Tensor>(context.CreateGPUTensor(b.DataType(), padded_shape));
+      Status s = Status::OK();
+      // A zero-element padded tensor (e.g. a zero-batch or empty constant B) needs no
+      // pad pass - dispatching 0 workgroups is pointless and some drivers reject it.
+      // Just cache the empty tensor; the main kernel dispatches nothing for it.
+      if (output_size != 0) {
+        SubgroupMatrixMatMulPadBProgram program;
+        program.SetWorkgroupSize(WORKGROUP_SIZE)
+            .SetDispatchGroupSize(CeilDiv<uint32_t>(output_size, WORKGROUP_SIZE))
+            .AddInput({&b, ProgramTensorMetadataDependency::TypeAndRank, 1})
+            .AddOutput({padded.get(), ProgramTensorMetadataDependency::TypeAndRank, padded->Shape(), 1})
+            .AddUniformVariables({{output_size}, {N}, {n_b}});
+        s = context.RunProgram(program);
+      }
+      if (s.IsOK()) {
+        padded_b_ = std::move(padded);
+        padded_b_stride_ = n_b;
+      }
+    });
+    // padded_b_ persists the outcome across calls: call_once runs the body only on
+    // the first call, so a failed pad stays failed (and null) on later calls.
+    return padded_b_ ? Status::OK()
+                     : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pad odd-N B for subgroup-matrix MatMul.");
+  }
+
   const int32_t config_index_;
   SubgroupMatrixTilingSelector tiling_selector_;
+
+  // Cached even-strided B for odd N; built once by EnsurePaddedB.
+  mutable std::once_flag pad_once_;
+  mutable std::unique_ptr<Tensor> padded_b_;
+  mutable uint32_t padded_b_stride_ = 0;
 };
 
 Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelper& output,
@@ -203,10 +289,13 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
 std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(
     const MatMul& parent, const ComputeContextBase& context) {
   // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
+  // this kernel is implemented for. That config's adapters expose a 16-32 subgroup
+  // size range, so the kernel's fixed 32 lanes per subgroup must be pinned with
+  // subgroup-size control.
   int32_t config_index = 0;
   if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
+      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16) ||
+      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
@@ -222,5 +311,3 @@ std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(
 
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

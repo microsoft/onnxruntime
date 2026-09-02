@@ -25,6 +25,10 @@ class MoEBaseCPU {
  protected:
   MoEBaseCPU(const OpKernelInfo& op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
+    // Defense-in-depth: k must be at least 1. The upper bound (k <= num_experts)
+    // cannot be checked here because num_experts is derived from a runtime input
+    // shape; it is enforced at Compute() entry in each derived operator.
+    ORT_ENFORCE(k_ >= 1, "MoE attribute 'k' must be >= 1, got k=", k_);
 
     std::string activation_type_str;
     ORT_ENFORCE(op_kernel_info.GetAttr<std::string>("activation_type", &activation_type_str).IsOK());
