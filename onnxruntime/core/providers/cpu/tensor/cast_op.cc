@@ -562,6 +562,8 @@ struct TensorCaster {
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
                     std::enable_if_t<(IsOrtFloat6Type<SrcType>::value || IsOrtFloat6Type<DstType>::value) &&
+                                     !std::is_same_v<SrcType, MLFloat16> &&
+                                     !std::is_same_v<DstType, MLFloat16> &&
                                      !IsOrtInt4Type<SrcType>::value && !IsOrtInt4Type<DstType>::value &&
                                      !IsOrtInt2Type<SrcType>::value && !IsOrtInt2Type<DstType>::value &&
                                      !std::is_same_v<SrcType, std::string> && !std::is_same_v<DstType, std::string>>> {
@@ -571,6 +573,18 @@ struct TensorCaster<SrcType, DstType,
     auto* out_data = out.MutableData<DstType>();
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
       out_data[i] = DstType(static_cast<float>(in_data[i]));
+    }
+  }
+};
+
+template <typename SrcType>
+struct TensorCaster<SrcType, MLFloat16, std::enable_if_t<IsOrtFloat6Type<SrcType>::value>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<MLFloat16>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      out_data[i] = MLFloat16(static_cast<float>(in_data[i]));
     }
   }
 };
@@ -1044,8 +1058,9 @@ class Cast final : public OpKernel {
       ORT_THROW("Attribute saturate is only used for cast to low-precision floating-point types.");
     }
 #else
-    if (saturate == 0) {
-      ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
+    if (saturate == 0 && to != ONNX_NAMESPACE::TensorProto::FLOAT6E2M3 &&
+        to != ONNX_NAMESPACE::TensorProto::FLOAT6E3M2) {
+      ORT_THROW("Attribute saturate is only used for cast to low-precision floating-point types.");
     }
 #endif
     saturate_ = saturate == 1;

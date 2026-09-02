@@ -2991,6 +2991,14 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
         initializer,
         model_path.parent_path(),
         unpacked_tensor));
+    if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 ||
+        initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2) {
+      ONNX_NAMESPACE::TensorProto packed_initializer = initializer;
+      packed_initializer.clear_external_data();
+      packed_initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+      packed_initializer.set_raw_data(unpacked_tensor.data(), unpacked_tensor.size());
+      return UnpackInitializerData(packed_initializer, {}, unpacked_tensor);
+    }
     return Status::OK();
   }
 
