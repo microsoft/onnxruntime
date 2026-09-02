@@ -87,7 +87,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
