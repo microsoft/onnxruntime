@@ -174,10 +174,10 @@ The **OpSet Version** column uses the following notation:
 |||12|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **indices** = tensor(int64)|
 |||11|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **indices** = tensor(int64)|
 |Gelu|*in* X:**T**<br> *out* Y:**T**|20+|**T** = tensor(float)|
-|Gemm|*in* A:**T**<br> *in* B:**T**<br> *in* C:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
-|||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
-|||[9, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
-|||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
+|Gemm|*in* A:**T**<br> *in* B:**T**<br> *in* C:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float)|
+|||[11, 12]|**T** = tensor(double), tensor(float)|
+|||[9, 10]|**T** = tensor(double), tensor(float)|
+|||[7, 8]|**T** = tensor(double), tensor(float)|
 |GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float)|
 |||[1, 21]|**T** = tensor(float)|
 |GlobalLpPool|*in* X:**T**<br> *out* Y:**T**|2+|**T** = tensor(float)|
@@ -258,9 +258,9 @@ The **OpSet Version** column uses the following notation:
 |||[18, 21]|**T** = tensor(float)|
 |||[11, 17]|**T** = tensor(float)|
 |||[2, 10]|**T** = tensor(float)|
-|MatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
-|||[9, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
-|||[1, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
+|MatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|||[9, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|||[1, 8]|**T** = tensor(double), tensor(float)|
 |MatMulInteger|*in* A:**T1**<br> *in* B:**T2**<br> *in* a_zero_point:**T1**<br> *in* b_zero_point:**T2**<br> *out* Y:**T3**|10+|**T1** = tensor(int8), tensor(uint8)<br/> **T2** = tensor(int8), tensor(uint8)<br/> **T3** = tensor(int32)|
 |Max|*in* data_0:**T**<br> *out* max:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -1091,6 +1091,7 @@ The **OpSet Version** column uses the following notation:
 |FusedConv|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *in* Z:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |FusedMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |GatedAdd|*in* X:**T**<br> *in* Y:**T**<br> *in* gate:**T**<br> *out* output:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
+|GatedDeltaNet|*in* query:**T**<br> *in* key:**T**<br> *in* value:**T**<br> *in* cu_seqlens:**TI**<br> *in* decay:**TS**<br> *in* beta:**TS**<br> *in* initial_state:**TS**<br> *in* a_log:**TS**<br> *in* dt_bias:**TS**<br> *in* capture_count:**TI**<br> *in* state_update_active:**TI**<br> *out* output:**T**<br> *out* final_state:**TS**<br> *out* state_update:**TS**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **TI** = tensor(int32)<br/> **TS** = tensor(float)|
 |GatedRMSNorm|*in* X:**T**<br> *in* scale:**T**<br> *in* gate:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |GatedRelativePositionBias|*in* query_layer:**T**<br> *in* query_bias:**T**<br> *in* rel_pos:**T**<br> *in* weight:**T**<br> *in* bias:**T**<br> *in* eco_a:**T**<br> *in* token_offset:**M**<br> *out* output:**T**|1+|**T** = tensor(float), tensor(float16)|
 |GatherBlockQuantized|*in* data:**T1**<br> *in* indices:**Tind**<br> *in* scales:**T2**<br> *in* zero_points:**T1**<br> *out* output:**T2**|1+|**T1** = tensor(int4), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **Tind** = tensor(int32), tensor(int64)|

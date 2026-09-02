@@ -5,7 +5,12 @@
 // Needed for the CUDA_VERSION check below. MatMulBlockQuantizedFp4Weight relies on the NVFP4
 // conversion intrinsics that are only available in CUDA 12.8 and newer.
 #include <cuda.h>
+#include <cuda_runtime_api.h>
+
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp4_tiling.h"
 #endif
+
+#include <algorithm>
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -449,7 +454,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeRowTiledBf16) {
 }
 
 // Exercises the tensor-core GEMV sub-path (mma.m16n8k16), which the launcher selects on SM80+
-// when K is a multiple of 128 and M <= 8. None of the tests above reach it (they use K = 32/64).
+// when K is a multiple of 128. None of the tests above reach it (they use K = 32/64).
 //
 // That path permutes the K axis so every lane's loads are contiguous, and folds the per-block
 // E4M3 scale into the decoded weight instead of flushing the accumulator per block. A K
@@ -521,10 +526,9 @@ struct MmaShape {
   int64_t k;
 };
 
-// N = 8704 gives 544 column tiles, i.e. 136 blocks at ColTiles = 4, which is above the SM count
-// of every current device and so selects the wide shape. N = 36 leaves 4 columns in the last
-// 16-column tile, which is the only way to make a lane's *low* column fall out of range (N = 40
-// only exercises the high column), so it covers the lo_ok == false predication.
+// N = 8704 gives 544 column tiles and exercises a large, ragged grid. N = 36 leaves 4 columns in
+// the last 16-column tile, which is the only way to make a lane's *low* column fall out of range
+// (N = 40 only exercises the high column), so it covers the lo_ok == false predication.
 constexpr MmaShape kMmaShapes[] = {{36, 128}, {40, 128}, {512, 256}, {2048, 512}, {8704, 256}};
 
 }  // namespace
@@ -535,7 +539,9 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesFp16) {
   }
 
   for (const auto& shape : kMmaShapes) {
-    for (int m_val : {1, 3, 4, 8}) {
+    // 1-8 use one row tile, 9-16 two and 17-32 four. M=33 and 64 exercise a partial and full
+    // second launch, respectively; odd values leave masked rows that must not be written.
+    for (int m_val : {1, 3, 4, 8, 9, 16, 17, 32, 33, 64}) {
       const int64_t m = m_val;
       const int64_t n = shape.n;
       const int64_t k = shape.k;
@@ -570,7 +576,7 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
   constexpr int64_t n = 512;
   constexpr int64_t k = 256;
 
-  for (int m_val : {1, 4, 8}) {
+  for (int m_val : {1, 4, 8, 16, 32, 33, 64}) {
     const int64_t m = m_val;
     SCOPED_TRACE("M = " + std::to_string(m));
 
@@ -601,6 +607,30 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundaries) {
+  struct Case {
+    int64_t n;
+    int64_t k;
+    int k_split;
+    int col_tiles;
+  };
+  constexpr int sm_count = 132;
+  const Case cases[] = {
+      {64 * sm_count, 5120, 2, 1},        // 4 waves of single-column blocks, ordinary reduction
+      {64 * sm_count, 8192, 8, 1},        // same grid, long reduction retains KSplit 8
+      {512 * sm_count, 512, 2, 4},        // 8 waves of four-column blocks
+      {64 * sm_count - 16, 2048, 16, 1},  // just below 4 single-column waves
+  };
+
+  for (const Case& shape : cases) {
+    SCOPED_TRACE("N = " + std::to_string(shape.n) + ", K = " + std::to_string(shape.k));
+    const auto config = onnxruntime::contrib::cuda::PickFp4MmaConfig(
+        static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count);
+    EXPECT_EQ(config.k_split, shape.k_split);
+    EXPECT_EQ(config.col_tiles, shape.col_tiles);
   }
 }
 
@@ -680,11 +710,12 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
 }
 
 // ---------------------------------------------------------------------------
-// Prefill (M > kGemvMaxM) dequantize + cuBLAS path.
+// Prefill dequantize + cuBLAS path.
 //
 // LaunchDequantizeNvFp4 picks DequantizeNvFp4Vec8Kernel when K % 8 == 0 and block_size is even,
 // and the scalar DequantizeNvFp4Kernel otherwise. The cases below cover both sides of that guard;
-// every one uses M > 8 so the decode GEMV is skipped and the dequant actually runs.
+// every one uses a block_size other than 16, which the decode GEMV does not handle, so the dequant
+// actually runs regardless of M.
 // ---------------------------------------------------------------------------
 
 // Vectorized path: K % 8 == 0, even block_size, scale boundaries inside every 8-element chunk,

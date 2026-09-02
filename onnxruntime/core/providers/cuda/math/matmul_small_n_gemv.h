@@ -17,7 +17,8 @@ int SmallNGemvSplitK(int n, int k);
 size_t SmallNGemvWorkspaceElements(int m, int n, int k);
 size_t SmallNGemvCounterElements(int n);
 
-// C[m, n] = sum_k A[m, k] * B[k, n], all row-major half, no transpose.
+// C[m, n] = sum_k A[m, k] * B[k, n], all row-major half, no transpose. M up to 64 is
+// processed in ordered 8-row chunks so every row keeps the same reduction geometry.
 // Targets decode-time projections whose N is far too small to keep a cuBLAS
 // tile kernel busy (router 2048x256, linear-attention gates 2048x32,
 // shared-expert gate 2048x1). The K axis is split across `SmallNGemvSplitK`
@@ -26,8 +27,8 @@ size_t SmallNGemvCounterElements(int n);
 // deterministic.
 //
 // `workspace` must hold SmallNGemvWorkspaceElements() floats. `counter` must
-// hold SmallNGemvCounterElements() unsigned ints and be zeroed before each
-// launch. Both buffers are exclusive to the launch.
+// hold SmallNGemvCounterElements() unsigned ints; the launcher clears it before
+// each 8-row chunk. Both buffers are exclusive to the launch.
 Status LaunchSmallNGemv(cudaStream_t stream, const half* a, const half* b, half* c,
                         int m, int n, int k, float* workspace, unsigned int* counter);
 

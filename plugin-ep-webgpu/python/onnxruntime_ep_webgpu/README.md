@@ -19,6 +19,7 @@ On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and availa
 | Windows x64 |
 | Windows arm64 |
 | Linux x64 (manylinux) |
+| Linux aarch64 (manylinux) |
 | macOS arm64 |
 
 ## Installation

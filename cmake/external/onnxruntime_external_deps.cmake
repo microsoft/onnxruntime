@@ -637,6 +637,27 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
+  if (DAWN_USE_AGILITY_SDK)
+    if (NOT WIN32)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is only supported on Windows.")
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_CUSTOM_DAWN_SRC_PATH.")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported for WindowsStore/UWP.")
+    endif()
+    if (onnxruntime_target_platform STREQUAL "ARM" OR
+        onnxruntime_target_platform STREQUAL "ARM64EC")
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK does not support Windows ARM32 or ARM64EC. "
+              "Use an x86, x64, or ARM64 target.")
+    endif()
+    if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK requires the Dawn D3D12 backend.")
+    endif()
+  endif()
+
   # TODO: the following code is used to disable building Dawn using vcpkg temporarily
   # until we figure out how to resolve the packaging pipeline failures
   #
@@ -832,7 +853,36 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
 
+    if (DAWN_USE_AGILITY_SDK)
+      # Set Dawn's expected Chromium CIPD layout before configuring Dawn. The SDK
+      # package is populated below, before any Dawn target is compiled.
+      if (FETCHCONTENT_BASE_DIR)
+        set(ONNXRUNTIME_DAWN_SRC_DIR "${FETCHCONTENT_BASE_DIR}/dawn-src")
+      else()
+        set(ONNXRUNTIME_DAWN_SRC_DIR "${CMAKE_BINARY_DIR}/_deps/dawn-src")
+      endif()
+      set(DAWN_AGILITY_SDK_DIR "${ONNXRUNTIME_DAWN_SRC_DIR}/third_party/agility-sdk"
+          CACHE PATH "Directory containing the D3D12 Agility SDK" FORCE)
+      message(STATUS "Dawn Agility SDK directory: ${DAWN_AGILITY_SDK_DIR}")
+    endif()
+
     onnxruntime_fetchcontent_makeavailable(dawn)
+
+    if (DAWN_USE_AGILITY_SDK)
+      onnxruntime_fetchcontent_declare(
+        dawn_agility_sdk
+        URL ${DEP_URL_dawn_agility_sdk}
+        URL_HASH SHA1=${DEP_SHA1_dawn_agility_sdk}
+        SOURCE_DIR "${DAWN_AGILITY_SDK_DIR}/src"
+        EXCLUDE_FROM_ALL
+      )
+      onnxruntime_fetchcontent_makeavailable(dawn_agility_sdk)
+      if (NOT EXISTS "${DAWN_AGILITY_SDK_DIR}/src/build/native/include/d3d12.h")
+        message(FATAL_ERROR
+                "The Agility SDK package does not contain build/native/include/d3d12.h: "
+                "${DAWN_AGILITY_SDK_DIR}/src")
+      endif()
+    endif()
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

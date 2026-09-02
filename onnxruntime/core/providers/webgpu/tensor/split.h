@@ -13,15 +13,19 @@ namespace webgpu {
 
 class SplitProgram final : public Program<SplitProgram> {
  public:
-  SplitProgram(const uint32_t axis) : Program{"Split"}, axis_{axis} {}
+  explicit SplitProgram(size_t output_count) : Program{"Split"}, output_count_{output_count} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
-                                          {"sizes_in_split_axis", ProgramUniformVariableDataType::Uint32});
+                                          {"total_segment_elements", ProgramUniformVariableDataType::Uint32},
+                                          {"segment_sizes", ProgramUniformVariableDataType::Uint32});
 
  private:
-  uint32_t axis_;
+  // The outputs are separate bindings, so the branch over them has to be unrolled at shader
+  // generation time. Their sizes are uniforms, so shapes that differ only in split sizes share
+  // one shader.
+  size_t output_count_;
 };
 
 class Split : public WebGpuKernel, public SplitBase {

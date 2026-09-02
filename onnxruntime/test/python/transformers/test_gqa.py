@@ -4221,6 +4221,8 @@ def _windowed_run_steps(
     ort_type,
     torch_type,
     head_sink=None,
+    attention_bias_all=None,
+    position_ids_all=None,
     k_scale=None,
     v_scale=None,
     providers=None,
@@ -4287,6 +4289,14 @@ def _windowed_run_steps(
         if cos is not None:
             bind_tensor(io_binding, "cos_cache", cos, device, ort_type)
             bind_tensor(io_binding, "sin_cache", sin, device, ort_type)
+
+        if position_ids_all is not None:
+            position_ids = position_ids_all[:, past_length:total_length].contiguous()
+            bind_tensor(io_binding, "position_ids", position_ids, device, TensorProto.INT64)
+
+        if attention_bias_all is not None:
+            attention_bias = attention_bias_all[:, :, past_length:total_length, :total_length].contiguous()
+            bind_tensor(io_binding, "attention_bias", attention_bias, device, ort_type)
 
         if head_sink is not None:
             bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
@@ -4372,6 +4382,22 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         if base_config.has_head_sink:
             head_sink = torch.rand(base_config.num_heads, dtype=torch_type, device=device)
 
+        attention_bias_all = None
+        if base_config.has_attention_bias:
+            bias_shape = (
+                1 if base_config.attention_bias_broadcast_dim_0 else base_config.batch_size,
+                base_config.num_heads if base_config.attention_bias_per_head else 1,
+                total_length,
+                total_length,
+            )
+            attention_bias_all = torch.randn(bias_shape, dtype=torch_type, device=device) * 0.5
+
+        position_ids_all = None
+        if base_config.has_position_ids:
+            position_ids_all = (torch.arange(total_length, dtype=torch.int64, device=device) * 7) % self.max_length
+            position_ids_all = position_ids_all.unsqueeze(0)
+            position_ids_all = position_ids_all.expand(base_config.batch_size, -1).contiguous()
+
         k_scale, v_scale = None, None
         if base_config.k_quant_type != "NONE":
             k_scale, v_scale = get_static_scale(base_config, device, torch_type, 0.2)
@@ -4389,6 +4415,8 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             "ort_type": ort_type,
             "torch_type": torch_type,
             "head_sink": head_sink,
+            "attention_bias_all": attention_bias_all,
+            "position_ids_all": position_ids_all,
             "k_scale": k_scale,
             "v_scale": v_scale,
             "providers": self.providers,
@@ -4557,6 +4585,29 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
         # The float32 CPU kernel keeps an unquantized float32 cache by default.
         overrides.setdefault("kv_cache_type", "float32")
         return super()._base_config(**overrides)
+
+    def test_attention_bias_with_position_ids(self):
+        self._check_parity(
+            self._base_config(
+                rotary=True,
+                has_position_ids=True,
+                has_attention_bias=True,
+                attention_bias_per_head=True,
+            ),
+            step_lengths=[64, *([1] * 400)],
+        )
+
+    def test_attention_bias_with_position_ids_non_flash(self):
+        with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", "1"):
+            self._check_parity(
+                self._base_config(
+                    rotary=True,
+                    has_position_ids=True,
+                    has_attention_bias=True,
+                    attention_bias_per_head=True,
+                ),
+                step_lengths=[self.window_size + self.slack, 1, 1],
+            )
 
 
 if __name__ == "__main__":

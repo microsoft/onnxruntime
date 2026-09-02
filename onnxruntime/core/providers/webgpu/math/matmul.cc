@@ -117,6 +117,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                       ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
   const auto& batch_dims = shader.AddIndices("batch_dims");
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")

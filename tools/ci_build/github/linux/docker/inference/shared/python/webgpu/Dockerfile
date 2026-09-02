@@ -1,4 +1,4 @@
-ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1
+ARG BASEIMAGE
 
 # ---------------------------------------------------------------------------
 # Builder stage: build SwiftShader (Google's software Vulkan ICD) from source.
