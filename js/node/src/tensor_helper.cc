@@ -499,24 +499,33 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
     } else {
       const size_t byteLength = value.GetTensorSizeInBytes();
       Napi::ArrayBuffer arrayBuffer;
-      napi_value externalArrayBuffer = nullptr;
       // Hand the OrtValue's memory straight to Javascript so the output is not copied. Electron's
       // V8 Memory Cage rejects external ArrayBuffers, as does any build with the V8 sandbox
       // enabled, so attempt the allocation and fall back to a copy rather than testing for a
-      // particular runtime by name.
-      if (byteLength > 0 &&
-          napi_create_external_arraybuffer(
-              env, value.GetTensorMutableRawData(), byteLength,
-              [](napi_env, void*, void* hint) {
-                // The environment cleanup hook may run before N-API finalizers during shutdown.
-                if (OrtSingletonData::GetOrtObjects()) {
-                  Ort::GetApi().ReleaseValue(static_cast<OrtValue*>(hint));
-                }
-              },
-              static_cast<OrtValue*>(value), &externalArrayBuffer) == napi_ok) {
-        value.release();
-        arrayBuffer = Napi::ArrayBuffer(env, externalArrayBuffer);
-      } else {
+      // particular runtime by name. A refusal is cached per environment: it cannot change for the
+      // life of the process, and re-probing would cost a failed call per output.
+      bool usingExternalBuffer = false;
+      if (byteLength > 0 && !OrtInstanceData::ExternalArrayBuffersRefused(env)) {
+        napi_value externalArrayBuffer = nullptr;
+        const napi_status status = napi_create_external_arraybuffer(
+            env, value.GetTensorMutableRawData(), byteLength,
+            [](napi_env, void*, void* hint) {
+              // The environment cleanup hook may run before N-API finalizers during shutdown.
+              if (OrtSingletonData::GetOrtObjects()) {
+                Ort::GetApi().ReleaseValue(static_cast<OrtValue*>(hint));
+              }
+            },
+            static_cast<OrtValue*>(value), &externalArrayBuffer);
+        if (status == napi_ok) {
+          value.release();
+          arrayBuffer = Napi::ArrayBuffer(env, externalArrayBuffer);
+          usingExternalBuffer = true;
+        } else {
+          OrtInstanceData::MarkExternalArrayBuffersRefused(env);
+        }
+      }
+
+      if (!usingExternalBuffer) {
         arrayBuffer = Napi::ArrayBuffer::New(env, byteLength);
         if (byteLength > 0) {
           memcpy(arrayBuffer.Data(), value.GetTensorRawData(), byteLength);

@@ -34,6 +34,12 @@ struct OrtInstanceData {
     // sub-range; distinct from a zero-length region, which writes nothing and conflicts with nothing.
     bool wholeResource{false};
   };
+  // Whether a previous attempt to hand Javascript an external ArrayBuffer was refused. Electron's
+  // V8 Memory Cage and V8-sandbox builds reject them for the lifetime of the process, so the answer
+  // is cached rather than re-probed for every model output.
+  static bool ExternalArrayBuffersRefused(Napi::Env env);
+  static void MarkExternalArrayBuffersRefused(Napi::Env env);
+
   using OutputBufferLease = std::shared_ptr<OutputBufferRegion>;
 
   // Acquire a lease for the region of a preallocated output resource that a run will write.
@@ -50,4 +56,5 @@ struct OrtInstanceData {
   Napi::FunctionReference wrappedSessionConstructor;
   Napi::FunctionReference ortTensorConstructor;
   std::vector<OutputBufferLease> outputBufferLeases;
+  bool externalArrayBuffersRefused{false};
 };

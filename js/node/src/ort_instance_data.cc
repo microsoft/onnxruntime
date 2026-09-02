@@ -34,6 +34,18 @@ const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env)
   return data->ortTensorConstructor;
 }
 
+bool OrtInstanceData::ExternalArrayBuffersRefused(Napi::Env env) {
+  auto data = env.GetInstanceData<OrtInstanceData>();
+  return data != nullptr && data->externalArrayBuffersRefused;
+}
+
+void OrtInstanceData::MarkExternalArrayBuffersRefused(Napi::Env env) {
+  auto data = env.GetInstanceData<OrtInstanceData>();
+  if (data != nullptr) {
+    data->externalArrayBuffersRefused = true;
+  }
+}
+
 namespace {
 bool RegionsOverlap(const OrtInstanceData::OutputBufferRegion& a, const OrtInstanceData::OutputBufferRegion& b) {
   if (a.wholeResource || b.wholeResource) {
