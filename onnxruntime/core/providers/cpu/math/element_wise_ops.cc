@@ -12,6 +12,7 @@
 #include "core/mlas/inc/mlas.h"
 
 #include <cmath>
+#include <limits>
 
 namespace onnxruntime {
 // Supported types for operators that have type reduction enabled
@@ -2097,6 +2098,7 @@ class Mod final : public OpKernel {
 
  private:
   bool fmod_{false};
+  bool supports_float_floor_mod_{false};
   bool divisor_is_validated_constant_{false};
 };
 
@@ -2110,9 +2112,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
             BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Mod,
     13,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
+    Mod);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Mod,
+    28,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
@@ -2160,6 +2172,12 @@ void BroadCastFMod(OpKernelContext* context) {
 
 template <class T>
 inline T Modulus(T x, T y) {
+  if constexpr (std::is_signed_v<T>) {
+    if (x == std::numeric_limits<T>::min() && y == T{-1}) {
+      return T{0};
+    }
+  }
+
   auto res = x % y;
   if ((res < 0 && y > 0) || (res > 0 && y < 0)) {
     res += y;
@@ -2204,6 +2222,56 @@ void BroadCastMod(OpKernelContext* context) {
   UntypedBroadcastTwo(*context, funcs);
 }
 
+template <class T>
+inline T FloorMod(T x, T y) {
+  auto res = std::fmod(x, y);
+  if (res == T{0}) {
+    return std::copysign(T{0}, y);
+  }
+
+  if ((res < T{0} && y > T{0}) || (res > T{0} && y < T{0})) {
+    res += y;
+  }
+  return res;
+}
+
+template <class T>
+void BroadCastFloorMod(OpKernelContext* context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const T& X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(Y.begin(), Y.end(), output.begin(),
+                       [X](T y) {
+                         return FloorMod(X, y);
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const T& Y = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [Y](T x) {
+                         return FloorMod(x, Y);
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
+                       [](T x, T y) {
+                         return FloorMod(x, y);
+                       });
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
+}
+
 void BroadCastMLFloat16FMod(OpKernelContext* context) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
@@ -2242,6 +2310,42 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
   UntypedBroadcastTwo(*context, funcs);
 }
 
+void BroadCastMLFloat16FloorMod(OpKernelContext* context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const auto X = per_iter_bh.ScalarInput0<MLFloat16>();
+        auto Y = per_iter_bh.SpanInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(Y.begin(), Y.end(), output.begin(),
+                       [X_fl = X.ToFloat()](const MLFloat16& y) {
+                         return MLFloat16(FloorMod(X_fl, y.ToFloat()));
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<MLFloat16>();
+        const MLFloat16 Y = per_iter_bh.ScalarInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [Y_fl = Y.ToFloat()](const MLFloat16& x) {
+                         return MLFloat16(FloorMod(x.ToFloat(), Y_fl));
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<MLFloat16>();
+        auto Y = per_iter_bh.SpanInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
+                       [](const MLFloat16& x, const MLFloat16& y) {
+                         return MLFloat16(FloorMod(x.ToFloat(), y.ToFloat()));
+                       });
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
+}
+
 template <class T, typename Enable = void>
 struct CallModImpl;
 
@@ -2263,7 +2367,7 @@ struct CheckZeroDivisorImpl {
 // Generic implementation of Mod kernel, non-floating point types
 template <class T>
 struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>::type> {
-  void operator()(bool fmod, OpKernelContext* ctx) const {
+  void operator()(bool fmod, bool /*supports_float_floor_mod*/, OpKernelContext* ctx) const {
     if (fmod) {
       BroadCastFMod<T>(ctx);
     } else {
@@ -2275,24 +2379,35 @@ struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>
 // Generic implementation of Mod kernel, floating point types
 template <class T>
 struct CallModImpl<T, typename std::enable_if<std::is_floating_point<T>::value, void>::type> {
-  void operator()(bool fmod, OpKernelContext* ctx) const {
-    ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
-    BroadCastFMod<T>(ctx);
+  void operator()(bool fmod, bool supports_float_floor_mod, OpKernelContext* ctx) const {
+    ORT_ENFORCE(fmod || supports_float_floor_mod,
+                "fmod attribute must be true for floating point types before opset 28");
+    if (fmod) {
+      BroadCastFMod<T>(ctx);
+    } else {
+      BroadCastFloorMod<T>(ctx);
+    }
   }
 };
 
 // MLFloat16 implementation of Mod kernel
 template <>
 struct CallModImpl<MLFloat16> {
-  void operator()(bool fmod, OpKernelContext* ctx) const {
-    ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
-    BroadCastMLFloat16FMod(ctx);
+  void operator()(bool fmod, bool supports_float_floor_mod, OpKernelContext* ctx) const {
+    ORT_ENFORCE(fmod || supports_float_floor_mod,
+                "fmod attribute must be true for floating point types before opset 28");
+    if (fmod) {
+      BroadCastMLFloat16FMod(ctx);
+    } else {
+      BroadCastMLFloat16FloorMod(ctx);
+    }
   }
 };
 
 }  // namespace mod_internal
 
 Mod::Mod(const OpKernelInfo& info) : OpKernel(info) {
+  supports_float_floor_mod_ = info.node().SinceVersion() >= 28;
   int64_t fmod = 0;
   Status s = info.GetAttr<int64_t>("fmod", &fmod);
   if (s.IsOK()) {
@@ -2327,7 +2442,7 @@ Status Mod::Compute(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> t_disp(dt_type);
-  t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);
+  t_disp.Invoke<mod_internal::CallModImpl>(fmod_, supports_float_floor_mod_, context);
 
   return Status::OK();
 }

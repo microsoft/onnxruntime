@@ -736,6 +736,10 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
 
   const auto& domain = node->Domain();
 
+  if (domain == kOnnxDomain && optype == "Mod" && node->SinceVersion() >= 28) {
+    return false;
+  }
+
   /*
   0. Check if node is in the unsupported list
   1. Check input and output data types are supported.
