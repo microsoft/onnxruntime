@@ -22,7 +22,7 @@
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
 // Precision of the partial sums accumulated along K, selected by the
-// "preferredMatmulAccumulatorPrecision" provider option. With fp16 outputs and an f16
+// "enableMatmulFp32Accumulation" provider option. With fp16 outputs and an f16
 // accumulator, summing 2048+ f16 products can overflow the f16 max (65504) and poison the
 // output with +Inf/NaN (issue #26732); f32 costs extra registers and shared memory instead.
 // Either way only the accumulator changes: the block-local `sum` stays in output_element_t

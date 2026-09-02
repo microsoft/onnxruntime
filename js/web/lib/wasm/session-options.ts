@@ -139,13 +139,14 @@ const setExecutionProviders = async (
               appendEpOption(epOptions, 'validationMode', webgpuOptions.validationMode, allocs);
             }
 
-            // set MatMulNBits accumulator precision
-            if (webgpuOptions.preferredMatmulAccumulatorPrecision) {
-              const precision = webgpuOptions.preferredMatmulAccumulatorPrecision;
-              if (precision !== 'f16' && precision !== 'f32') {
-                throw new Error(`preferredMatmulAccumulatorPrecision must be either 'f16' or 'f32': ${precision}`);
-              }
-              appendEpOption(epOptions, 'preferredMatmulAccumulatorPrecision', precision, allocs);
+            // set f32 accumulation for the MatMulNBits kernels
+            if (typeof webgpuOptions.enableMatmulFp32Accumulation === 'boolean') {
+              appendEpOption(
+                epOptions,
+                'enableMatmulFp32Accumulation',
+                webgpuOptions.enableMatmulFp32Accumulation ? '1' : '0',
+                allocs,
+              );
             }
 
             // set buffer cache modes

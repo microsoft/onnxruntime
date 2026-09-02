@@ -416,7 +416,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     }
 
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
-    const bool acc_f32 = context.MatmulAccumulatorPrecisionF32();
+    const bool acc_f32 = context.EnableMatmulFp32Accumulation();
 
     MatMulNBitsMlpDecodeProgram program{tile_size,
                                         has_gate_bias,

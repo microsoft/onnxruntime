@@ -42,7 +42,7 @@
 const double_tile_size_k_vec = 2 * tile_size_k_vec;
 
 // Precision of the cross-tile accumulator, selected by the
-// "preferredMatmulAccumulatorPrecision" provider option. SDP8AI itself is an exact integer
+// "enableMatmulFp32Accumulation" provider option. SDP8AI itself is an exact integer
 // dot product; it is the accumulation over K that can overflow the f16 max (~65504).
 #if acc_f32
 alias acc_element_t = f32;

@@ -889,8 +889,8 @@ TEST(MatMulNBits, Float32_Large) {
 // such a configuration this test can pass even with an f16 accumulator. It is a regression guard for
 // the backends that round strictly (Vulkan, and the looped code shapes), not a universal detector.
 //
-// The EP is built with preferredMatmulAccumulatorPrecision = "f32" because that is the setting under
-// test; the shipped default is "f16" and would legitimately produce +Inf here.
+// The EP is built with enableMatmulFp32Accumulation on because that is the setting under test; the
+// shipped default is off and would legitimately produce +Inf here.
 TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   constexpr int64_t M = 1;  // M < 4 keeps the dispatch on matmul_nbits.wgsl.template rather than wide-tile.
   constexpr int64_t N = 8;
@@ -939,8 +939,8 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   test.SetOutputAbsErr("Y", 0.05f);
 
   ConfigOptions config_options{};
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredMatmulAccumulatorPrecision,
-                                            webgpu::options::kPreferredMatmulAccumulatorPrecision_F32)
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
+                                            webgpu::options::kEnableMatmulFp32Accumulation_ON)
                   .IsOK());
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -959,7 +959,7 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
 //   M = 1                  -> matmul_nbits.wgsl.template
 //   M = 8,  block_size 32  -> matmul_nbits_wide_tile.wgsl.template
 //   accuracy_level 4       -> dp4a_matmul*.wgsl.template (where the adapter supports it)
-// With the option set to "f32" on an adapter with subgroup matrices, the subgroup-matrix path declines
+// With the option on and an adapter that has subgroup matrices, the subgroup-matrix path declines
 // itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch
 // falls through to one of the kernels above; that fallback is exercised here too.
 //
@@ -986,9 +986,9 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
   };
 
   for (const auto& c : cases) {
-    for (const char* precision : {webgpu::options::kPreferredMatmulAccumulatorPrecision_F16,
-                                  webgpu::options::kPreferredMatmulAccumulatorPrecision_F32}) {
-      SCOPED_TRACE(std::string{"preferredMatmulAccumulatorPrecision:"} + precision);
+    for (const char* acc_f32 : {webgpu::options::kEnableMatmulFp32Accumulation_OFF,
+                                webgpu::options::kEnableMatmulFp32Accumulation_ON}) {
+      SCOPED_TRACE(std::string{"enableMatmulFp32Accumulation:"} + acc_f32);
 
       TestOptions opts{};
       opts.M = c.M;
@@ -1002,7 +1002,7 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
       opts.output_rel_error = 0.02f;
 
       ConfigOptions config_options{};
-      ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredMatmulAccumulatorPrecision, precision)
+      ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, acc_f32)
                       .IsOK());
 
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

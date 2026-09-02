@@ -276,7 +276,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
   // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
   // the fp32 config accumulates in f32 already.
-  if (is_fp16 && context.MatmulAccumulatorPrecisionF32()) {
+  if (is_fp16 && context.EnableMatmulFp32Accumulation()) {
     return false;
   }
 

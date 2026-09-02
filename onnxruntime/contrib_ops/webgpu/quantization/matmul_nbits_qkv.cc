@@ -333,7 +333,7 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   }
 
   const uint32_t num_N_tile = CeilDiv(std::max(Nq, Nkv), tile_size);
-  const bool acc_f32 = context.MatmulAccumulatorPrecisionF32();
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   MatMulNBitsQkvDecodeProgram program{tile_size,
                                       single_scale_weights,
                                       tile_size_k_vec,

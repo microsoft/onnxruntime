@@ -137,7 +137,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
 
     const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
     const bool broadcast_a = dispatch_M > M;
-    const bool acc_f32 = context.MatmulAccumulatorPrecisionF32();
+    const bool acc_f32 = context.EnableMatmulFp32Accumulation();
     DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, broadcast_a, acc_f32};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);
@@ -166,7 +166,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
   uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
   bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
-  const bool acc_f32 = context.MatmulAccumulatorPrecisionF32();
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(batch_count * num_M_tile * num_N_tile);

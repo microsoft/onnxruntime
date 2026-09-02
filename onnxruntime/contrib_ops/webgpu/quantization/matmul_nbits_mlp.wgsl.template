@@ -31,8 +31,8 @@ var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
 #endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
 // Precision of the dot products and of the partial sums accumulated along K, selected by the
-// "preferredMatmulAccumulatorPrecision" provider option. "f16" is the shipped default and
-// leaves this shader identical to what it was before the option existed; "f32" keeps the
+// "enableMatmulFp32Accumulation" provider option. It is off by default, which leaves this
+// shader identical to what it was before the option existed; turning it on keeps the
 // accumulator out of reach of the f16 max (~65504).
 #if acc_f32
 alias acc_element_t = f32;

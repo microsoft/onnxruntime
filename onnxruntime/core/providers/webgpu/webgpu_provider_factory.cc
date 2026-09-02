@@ -110,14 +110,14 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
-  std::string matmul_accumulator_precision_str;
-  if (config_options.TryGetConfigEntry(kPreferredMatmulAccumulatorPrecision, matmul_accumulator_precision_str)) {
-    if (matmul_accumulator_precision_str == kPreferredMatmulAccumulatorPrecision_F32) {
-      webgpu_ep_config.matmul_accumulator_precision_f32 = true;
-    } else if (matmul_accumulator_precision_str == kPreferredMatmulAccumulatorPrecision_F16) {
-      webgpu_ep_config.matmul_accumulator_precision_f32 = false;
+  std::string enable_matmul_fp32_accumulation_str;
+  if (config_options.TryGetConfigEntry(kEnableMatmulFp32Accumulation, enable_matmul_fp32_accumulation_str)) {
+    if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_ON) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = true;
+    } else if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_OFF) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = false;
     } else {
-      ORT_THROW("Invalid preferredMatmulAccumulatorPrecision value: ", matmul_accumulator_precision_str, ". Must be \"f16\" or \"f32\".");
+      ORT_THROW("Invalid enableMatmulFp32Accumulation value: ", enable_matmul_fp32_accumulation_str, ". Must be \"0\" or \"1\".");
     }
   }
 

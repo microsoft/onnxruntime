@@ -21,8 +21,8 @@ const kTileM : u32 = tile_m;
 const kTileN : u32 = tile_n;
 
 // Precision of the partial sums accumulated along K, selected by the
-// "preferredMatmulAccumulatorPrecision" provider option. "f16" is the shipped default and
-// leaves this shader identical to what it was before the option existed; "f32" keeps the
+// "enableMatmulFp32Accumulation" provider option. It is off by default, which leaves this
+// shader identical to what it was before the option existed; turning it on keeps the
 // accumulator out of reach of the f16 max (~65504). The dequantized weights and the tile of
 // `a` in workgroup memory keep the output element type either way, so shared memory is
 // unchanged; only the per-lane `results` registers grow.

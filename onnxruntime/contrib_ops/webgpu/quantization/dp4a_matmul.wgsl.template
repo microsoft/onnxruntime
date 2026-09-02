@@ -173,7 +173,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 #endif
 
 // Precision of the cross-tile accumulator, selected by the
-// "preferredMatmulAccumulatorPrecision" provider option. SDP8AI is an exact integer
+// "enableMatmulFp32Accumulation" provider option. SDP8AI is an exact integer
 // dot4I8Packed dot product; it is the accumulation across K tiles that can saturate f16.
 #if acc_f32
 alias acc_element_t = f32;
