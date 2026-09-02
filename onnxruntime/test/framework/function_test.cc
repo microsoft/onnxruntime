@@ -92,7 +92,7 @@ static void Check(const char* source,
   }
 }
 
-static Status LoadModel(const char* source) {
+static Status LoadModel(const char* source, bool allow_released_opsets_only = true) {
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
@@ -117,7 +117,7 @@ static Status LoadModel(const char* source) {
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
   std::istringstream sstr(serialized_model);
-  return session_object.Load(sstr);
+  return session_object.Load(sstr, allow_released_opsets_only);
 }
 
 // A recursive/cyclic chain of model-local functions can be rejected by either layer:
@@ -154,6 +154,76 @@ const char* basic_code = R"(
 
 TEST(FunctionTest, Basic) {
   Check(basic_code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
+}
+
+TEST(FunctionTest, SwiGLUOpset28ExpansionAndNumerics) {
+  constexpr const char* code = R"(
+        <
+        ir_version: 13,
+        opset_import: [ "" : 28 ]
+        >
+        agraph (float[2, 2] A, float[2, 2] B) => (float[2, 2] Y)
+        {
+            Y = SwiGLU <alpha = 0.5> (A, B)
+        }
+        )";
+
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+  std::stringstream model_stream(serialized_model);
+  // Opset 28 is under development in ONNX 1.23, so allow it for focused function coverage.
+  ASSERT_STATUS_OK(session_object.Load(model_stream, false));
+
+  const auto loaded_ops = CountOpsInGraph(session_object.GetGraph());
+  ASSERT_EQ(loaded_ops.at("SwiGLU"), 1);
+  ASSERT_NE(session_object.GetGraph().Nodes().begin()->GetFunctionBody(), nullptr);
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+  EXPECT_EQ(CountOpsInGraph(session_object.GetGraph()).count("SwiGLU"), 0);
+
+  auto provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const auto allocator = provider->CreatePreferredAllocators()[0];
+  OrtValue a;
+  OrtValue b;
+  CreateMLValue<float>(allocator, {2, 2}, {-2.0f, -1.0f, 0.0f, 2.0f}, &a);
+  CreateMLValue<float>(allocator, {2, 2}, {0.5f, 2.0f, -3.0f, 4.0f}, &b);
+
+  const std::string input_names[] = {"A", "B"};
+  const std::string output_names[] = {"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object.Run(RunOptions{}, AsSpan(input_names), AsSpan({a, b}),
+                                      AsSpan(output_names), &fetches));
+
+  ASSERT_EQ(fetches.size(), 1);
+  const auto& output = fetches[0].Get<Tensor>();
+  EXPECT_THAT(output.Shape().GetDims(), testing::ElementsAre(2, 2));
+  const std::vector<float> expected{-0.26894143f, -0.75508136f, 0.0f, 5.8484688f};
+  const auto output_data = output.DataAsSpan<float>();
+  ASSERT_EQ(output_data.size(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(output_data[i], expected[i], 1e-6f);
+  }
+}
+
+TEST(FunctionTest, SwiGLUOpset28RejectsMismatchedShapes) {
+  constexpr const char* code = R"(
+        <
+        ir_version: 13,
+        opset_import: [ "" : 28 ]
+        >
+        agraph (float[2, 2] A, float[2, 3] B) => (float[2, 2] Y)
+        {
+            Y = SwiGLU (A, B)
+        }
+        )";
+
+  // Opset 28 is under development in ONNX 1.23, so allow shape inference to validate the model.
+  const auto status = LoadModel(code, false);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Dimension mismatch in unification"));
 }
 
 // Check that variables are renamed to avoid conflicts when multiple
