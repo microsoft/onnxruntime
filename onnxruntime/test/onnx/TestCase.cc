@@ -958,6 +958,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"reduce_max_empty_set_bool",
+       "ReduceMax does not support bool; mirrors onnx_backend_test_series_filters.jsonc global exclusion"},
       // onnx#7959: the materialized node corpus now runs on the CPU EP via the
       // onnx_test_node_materialized ctest (previously the C++ node runner was QNN-only). ORT has
       // no per-channel-quantization ConvInteger support on any EP -- the CPU kernel throws and
