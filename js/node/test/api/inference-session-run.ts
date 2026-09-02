@@ -294,14 +294,14 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
-  it('allows endProfiling() while inference is running', async () => {
+  it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     try {
       const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
 
-      // The profiler serializes ending against the event recording an in-flight run performs, so
-      // this neither throws nor disturbs the run.
-      localSession.endProfiling();
+      // The profiler stops execution provider profilers outside its own mutex, so ending it while a
+      // run is recording events would be a data race.
+      assert.throws(() => localSession.endProfiling(), /Cannot end profiling while inference is running/);
       assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
     } finally {
       await localSession.release().catch(() => {});
@@ -406,7 +406,7 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
-  it('runs concurrent IO-binding inferences safely', async function () {
+  it('runs concurrent IO-binding inferences across sessions safely', async function () {
     if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
       // eslint-disable-next-line no-invalid-this
       this.skip();
@@ -420,11 +420,22 @@ describe('API Tests - InferenceSession.run()', async () => {
       preferredOutputLocation: 'gpu-buffer',
     });
     const readbackSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
+    const sessions = [localSession, readbackSession];
     try {
       const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
       const expected = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      // Two sessions on the default device share one WebGpuContext, and therefore one command
+      // encoder, so they have to serialize against each other and not merely within a session.
+      const secondSession = await InferenceSession.create(modelPath, {
+        executionProviders: ['webgpu'],
+        preferredOutputLocation: 'gpu-buffer',
+      });
+      sessions.push(secondSession);
       for (let round = 0; round < 5; round++) {
-        const results = await Promise.all(Array.from({ length: 4 }, async () => localSession.run({ input })));
+        const results = await Promise.all([
+          ...Array.from({ length: 2 }, async () => localSession.run({ input })),
+          ...Array.from({ length: 2 }, async () => secondSession.run({ input })),
+        ]);
         for (const result of results) {
           assert.strictEqual(result.output.location, 'gpu-buffer');
           assertTensorEqual((await readbackSession.run({ input: result.output })).output, expected);
@@ -432,8 +443,9 @@ describe('API Tests - InferenceSession.run()', async () => {
         }
       }
     } finally {
-      await readbackSession.release().catch(() => {});
-      await localSession.release().catch(() => {});
+      for (const session of sessions) {
+        await session.release().catch(() => {});
+      }
     }
   });
 

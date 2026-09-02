@@ -10,8 +10,21 @@
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
+#include <mutex>
 #include <string>
 #include <thread>
+
+namespace {
+// Guards the IO-binding path across every session in the process. Binding inputs and outputs does
+// device work before Run() is reached, which ORT's per-session run guard does not cover, and WebGPU
+// sessions sharing a device id share one global WebGpuContext and therefore one command encoder
+// (see WebGpuContextFactory in core/providers/webgpu/webgpu_context.cc). A per-session lock would
+// leave two sessions free to encode onto the same encoder.
+std::mutex& IoBindingMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+}  // namespace
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
@@ -278,7 +291,8 @@ class InferenceSessionWrap::RunAsyncWorker {
     if (!settled_) {
       settled_ = true;
       try {
-        deferred_.Reject(Napi::Error::New(env_, "Inference was abandoned before it completed.").Value());
+        deferred_.Reject(
+            Napi::Error::New(env_, error_.empty() ? "Inference was abandoned before it completed." : error_).Value());
       } catch (...) {
         // The environment is going away; there is nobody left to observe the rejection.
       }
@@ -294,18 +308,33 @@ class InferenceSessionWrap::RunAsyncWorker {
 
   // Start the run. Ownership passes to the ThreadSafeFunction, whose finalizer deletes the worker on
   // the Javascript thread once the completion callback has run.
-  void Queue() {
+  //
+  // Returns false if the worker thread could not be started, for instance when the process is out of
+  // thread resources. Ownership has still passed to the ThreadSafeFunction in that case, and its
+  // finalizer settles the promise, so the caller must not delete the worker either.
+  bool Queue() {
     tsfn_ = Napi::ThreadSafeFunction::New(
         env_, Napi::Function::New(env_, [](const Napi::CallbackInfo&) {}), "InferenceSession.run", 0, 1,
         [this](Napi::Env) { delete this; });
 
-    std::thread([this] {
-      Execute();
-      // Copy the handle: after Release() the finalizer may have deleted this worker already.
+    try {
+      std::thread([this] {
+        Execute();
+        // Copy the handle: after Release() the finalizer may have deleted this worker already.
+        auto tsfn = tsfn_;
+        tsfn.BlockingCall([this](Napi::Env env, Napi::Function) { OnComplete(env); });
+        tsfn.Release();
+      }).detach();
+    } catch (const std::system_error& e) {
+      // The thread never started, so nothing will ever release the ThreadSafeFunction. Release it
+      // here through a copied handle, which runs the finalizer and destroys this worker; nothing may
+      // touch the worker afterwards.
+      error_ = std::string("Could not start a thread to run inference: ") + e.what();
       auto tsfn = tsfn_;
-      tsfn.BlockingCall([this](Napi::Env env, Napi::Function) { OnComplete(env); });
       tsfn.Release();
-    }).detach();
+      return false;
+    }
+    return true;
   }
 
   void AcquireOutputBufferLeases() {
@@ -338,8 +367,8 @@ class InferenceSessionWrap::RunAsyncWorker {
         return;
       }
 
-      // See io_binding_mutex_: binding does device work that ORT's own run guard does not cover.
-      std::lock_guard<std::mutex> io_binding_lock(session_->io_binding_mutex_);
+      // See IoBindingMutex(): binding does device work that ORT's own run guard does not cover.
+      std::lock_guard<std::mutex> io_binding_lock(IoBindingMutex());
 
       io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
       for (size_t i = 0; i < input_names_.size(); ++i) {
@@ -535,7 +564,11 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   try {
     worker = std::make_unique<RunAsyncWorker>(*this, feed, fetch, options, deferred);
     worker->AcquireOutputBufferLeases();
-    worker->Queue();
+    if (!worker->Queue()) {
+      // The ThreadSafeFunction finalizer owns the worker now and has settled the promise.
+      worker.release();
+      return deferred.Promise();
+    }
   } catch (const Napi::Error& e) {
     // Reject rather than throw: the deferred already exists, and N-API frees it only once it has
     // been settled. Throwing would leak it and would also make a method that is typed as returning
@@ -605,8 +638,10 @@ Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  // Safe to call while runs are in flight: Profiler::EndProfiling() and the event recording done by
-  // a running inference both take the profiler's own mutex, so ending early simply stops collecting.
+  // Not deferrable and not safe to overlap with a run: Profiler::EndTimeAndRecordEvent() calls each
+  // execution provider profiler's Stop() outside Profiler::mutex_, while EndProfiling() calls the
+  // same object's EndProfiling() under it, and 'enabled_' is a plain bool. Racing them is undefined.
+  ORT_NAPI_THROW_ERROR_IF(this->active_runs_ != 0, env, "Cannot end profiling while inference is running.");
 
   Napi::EscapableHandleScope scope(env);
 

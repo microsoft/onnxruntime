@@ -6,7 +6,6 @@
 #include "onnxruntime_cxx_api.h"
 
 #include <memory>
-#include <mutex>
 #include <napi.h>
 
 // class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
@@ -76,7 +75,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    * [sync] end the profiling.
    * @param nothing
    * @returns nothing
-   * @throw nothing
+   * @throw error if inference is running
    */
   Napi::Value EndProfiling(const Napi::CallbackInfo& info);
 
@@ -100,12 +99,6 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   bool teardown_pending_{false};
   size_t active_runs_{0};
   std::unique_ptr<Ort::Session> session_;
-  // Serializes the IoBinding path. ORT guards graph execution itself for execution providers whose
-  // ConcurrentRunSupported() is false (WebGPU is one), but binding inputs and outputs performs
-  // device work before Run() is reached, outside that guard. Two concurrent runs would then encode
-  // onto the same command encoder and the provider would fail with "command encoding already
-  // finished". The plain Run path needs no lock: it does no device work outside ORT's own.
-  std::mutex io_binding_mutex_;
 
   // input/output metadata
   std::vector<std::string> inputNames_;
