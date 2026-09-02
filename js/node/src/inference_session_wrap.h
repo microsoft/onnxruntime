@@ -6,6 +6,7 @@
 #include "onnxruntime_cxx_api.h"
 
 #include <memory>
+#include <mutex>
 #include <napi.h>
 
 // class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
@@ -89,6 +90,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   void FailRun(const std::unique_ptr<RunAsyncWorker>& worker, Napi::Promise::Deferred& deferred, Napi::Value error);
   // Release the ORT objects. Deferred until the last in-flight run finishes if one is outstanding.
   void TeardownSession();
+  // Hold the device lock for the duration of the returned guard, if this session's provider needs it.
+  std::unique_lock<std::mutex> LockDeviceIfRequired();
 
   // private members
 

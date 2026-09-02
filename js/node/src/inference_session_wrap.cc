@@ -115,6 +115,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions, &requires_device_serialization_);
+      auto device_lock = LockDeviceIfRequired();
       this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
@@ -130,6 +131,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions, &requires_device_serialization_);
+      auto device_lock = LockDeviceIfRequired();
       this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
                                             reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
@@ -400,11 +402,19 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         std::unique_lock<std::mutex>* lock;
         ~DeviceCleanup() {
           worker->io_binding_.reset();
-          worker->input_values_.clear();
-          worker->gpu_value_owners_.clear();
           if (lock->owns_lock()) {
+            worker->input_values_.clear();
+            worker->gpu_value_owners_.clear();
             OrtInstanceData::DrainDeviceReleasesLocked();
+            return;
           }
+          // This session does not serialize its runs, but it can still have been handed a gpu-buffer
+          // input, so the values may be device-backed even here. Hand them over rather than
+          // destroying them on a pool thread with no lock held.
+          OrtInstanceData::ReleaseDeviceObject(
+              std::make_shared<DeviceValues>(std::move(worker->input_values_), worker->session_->session_));
+          OrtInstanceData::ReleaseDeviceObject(
+              std::make_shared<std::vector<OrtValueOwner>>(std::move(worker->gpu_value_owners_)));
         }
       } device_cleanup{this, &device_lock};
 
@@ -656,7 +666,21 @@ void InferenceSessionWrap::EndRun() {
 void InferenceSessionWrap::TeardownSession() {
   inputTypes_.clear();
   outputTypes_.clear();
+
+  if (requires_device_serialization_) {
+    // Destroying the session tears down its execution provider, which returns pooled buffers through
+    // a manager bound to the shared device context. Hand it over so that happens under the device
+    // lock instead of on the Javascript thread while another session is encoding.
+    OrtInstanceData::ReleaseDeviceObject(std::move(session_));
+  }
   session_.reset();
+}
+
+std::unique_lock<std::mutex> InferenceSessionWrap::LockDeviceIfRequired() {
+  if (!requires_device_serialization_) {
+    return {};
+  }
+  return std::unique_lock<std::mutex>(OrtInstanceData::DeviceMutex());
 }
 
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
