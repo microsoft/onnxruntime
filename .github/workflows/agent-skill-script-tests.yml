@@ -32,7 +32,14 @@ jobs:
         run: |
           set -euo pipefail
           # Run per scripts directory so sibling imports work without making skill directories Python packages.
-          while IFS= read -r test_directory; do
+          mapfile -t test_directories < <(
+            find .github/skills -path "*/scripts/test_*.py" -printf "%h\n" | sort -u
+          )
+          if [[ ${#test_directories[@]} -eq 0 ]]; then
+            echo "No skill script test directories found" >&2
+            exit 1
+          fi
+          for test_directory in "${test_directories[@]}"; do
             echo "Running tests in ${test_directory}"
             python -m unittest discover -s "${test_directory}" -p "test_*.py"
-          done < <(find .github/skills -path "*/scripts/test_*.py" -printf "%h\n" | sort -u)
+          done
