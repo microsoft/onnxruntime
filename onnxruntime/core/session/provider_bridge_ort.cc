@@ -4,7 +4,6 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
-#include <complex>
 #include <optional>
 #include <utility>
 
@@ -995,8 +994,6 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetType_uint64() override { return DataTypeImpl::GetType<uint64_t>(); }
   MLDataType DataTypeImpl__GetType_float() override { return DataTypeImpl::GetType<float>(); }
   MLDataType DataTypeImpl__GetType_double() override { return DataTypeImpl::GetType<double>(); }
-  MLDataType DataTypeImpl__GetType_complex_float() override { return DataTypeImpl::GetType<std::complex<float>>(); }
-  MLDataType DataTypeImpl__GetType_complex_double() override { return DataTypeImpl::GetType<std::complex<double>>(); }
   MLDataType DataTypeImpl__GetType_BFloat16() override { return DataTypeImpl::GetType<BFloat16>(); }
   MLDataType DataTypeImpl__GetType_MLFloat16() override { return DataTypeImpl::GetType<MLFloat16>(); }
   MLDataType DataTypeImpl__GetType_string() override { return DataTypeImpl::GetType<std::string>(); }
@@ -1031,12 +1028,6 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_uint64() override { return DataTypeImpl::GetTensorType<uint64_t>(); }
   MLDataType DataTypeImpl__GetTensorType_float() override { return DataTypeImpl::GetTensorType<float>(); }
   MLDataType DataTypeImpl__GetTensorType_double() override { return DataTypeImpl::GetTensorType<double>(); }
-  MLDataType DataTypeImpl__GetTensorType_complex_float() override {
-    return DataTypeImpl::GetTensorType<std::complex<float>>();
-  }
-  MLDataType DataTypeImpl__GetTensorType_complex_double() override {
-    return DataTypeImpl::GetTensorType<std::complex<double>>();
-  }
   MLDataType DataTypeImpl__GetTensorType_BFloat16() override { return DataTypeImpl::GetTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetTensorType_MLFloat16() override { return DataTypeImpl::GetTensorType<MLFloat16>(); }
 
@@ -1702,12 +1693,6 @@ struct ProviderHostImpl : ProviderHost {
   uint64_t* Tensor__MutableData_uint64(Tensor* p) override { return p->MutableData<uint64_t>(); }
   float* Tensor__MutableData_float(Tensor* p) override { return p->MutableData<float>(); }
   double* Tensor__MutableData_double(Tensor* p) override { return p->MutableData<double>(); }
-  std::complex<float>* Tensor__MutableData_complex_float(Tensor* p) override {
-    return p->MutableData<std::complex<float>>();
-  }
-  std::complex<double>* Tensor__MutableData_complex_double(Tensor* p) override {
-    return p->MutableData<std::complex<double>>();
-  }
   BFloat16* Tensor__MutableData_BFloat16(Tensor* p) override { return p->MutableData<BFloat16>(); }
   MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) override { return p->MutableData<MLFloat16>(); }
 
@@ -1740,12 +1725,6 @@ struct ProviderHostImpl : ProviderHost {
   const uint64_t* Tensor__Data_uint64(const Tensor* p) override { return p->Data<uint64_t>(); }
   const float* Tensor__Data_float(const Tensor* p) override { return p->Data<float>(); }
   const double* Tensor__Data_double(const Tensor* p) override { return p->Data<double>(); }
-  const std::complex<float>* Tensor__Data_complex_float(const Tensor* p) override {
-    return p->Data<std::complex<float>>();
-  }
-  const std::complex<double>* Tensor__Data_complex_double(const Tensor* p) override {
-    return p->Data<std::complex<double>>();
-  }
   const BFloat16* Tensor__Data_BFloat16(const Tensor* p) override { return p->Data<BFloat16>(); }
   const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) override { return p->Data<MLFloat16>(); }
 
@@ -1786,12 +1765,6 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_uint64(const Tensor* p) noexcept override { return p->IsDataType<uint64_t>(); }
   bool Tensor__IsDataType_float(const Tensor* p) noexcept override { return p->IsDataType<float>(); }
   bool Tensor__IsDataType_double(const Tensor* p) noexcept override { return p->IsDataType<double>(); }
-  bool Tensor__IsDataType_complex_float(const Tensor* p) noexcept override {
-    return p->IsDataType<std::complex<float>>();
-  }
-  bool Tensor__IsDataType_complex_double(const Tensor* p) noexcept override {
-    return p->IsDataType<std::complex<double>>();
-  }
   bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
   bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept override { return p->IsDataType<BFloat16>(); }
   bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }

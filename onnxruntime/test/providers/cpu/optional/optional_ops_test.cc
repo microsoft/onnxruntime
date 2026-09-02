@@ -5,8 +5,6 @@
 
 #include "gtest/gtest.h"
 
-#include <complex>
-
 #include "core/framework/float6.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -37,28 +35,6 @@ TEST(OptionalOpTest, OptionalSeqTensorCreateFromSeqTensor) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
-TEST(OptionalOpTest, OptionalComplexTensorCreateOpset28) {
-  OpTester test("Optional", 28);
-  const std::initializer_list<std::complex<float>> data = {{1.0f, -2.0f}, {-3.0f, 4.0f}};
-
-  test.AddInput<std::complex<float>>("A", {2}, data);
-  test.AddOptionalTypeTensorOutput<std::complex<float>>("Y", {2}, &data);
-  test.SetCustomOutputVerifier([expected = std::vector<std::complex<float>>(data)](
-                                   const std::vector<OrtValue>& fetches, const std::string&) {
-    ASSERT_EQ(fetches.size(), 1u);
-    ASSERT_TRUE(fetches[0].IsTensor());
-    const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_TRUE(output.IsDataType<std::complex<float>>());
-    ASSERT_EQ(output.Shape().Size(), static_cast<int64_t>(expected.size()));
-    const auto* actual = output.Data<std::complex<float>>();
-    for (size_t i = 0; i < expected.size(); ++i) {
-      EXPECT_EQ(actual[i], expected[i]);
-    }
-  });
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
 TEST(OptionalOpTest, OptionalFloat6TensorSequenceCreateOpset28) {
   OpTester test("Optional", 28);
   SeqTensors<Float6E2M3> data;
@@ -77,28 +53,6 @@ TEST(OptionalOpTest, OptionalFloat6TensorSequenceCreateOpset28) {
     EXPECT_EQ(output.Get(0).Data<Float6E2M3>()[1].ToBits(), Float6E2M3(-2.0f).ToBits());
     ASSERT_EQ(output.Get(1).Shape().Size(), 1);
     EXPECT_EQ(output.Get(1).Data<Float6E2M3>()[0].ToBits(), Float6E2M3(3.5f).ToBits());
-  });
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
-TEST(OptionalOpTest, OptionalComplexTensorGetElementOpset28) {
-  OpTester test("OptionalGetElement", 28);
-  const std::initializer_list<std::complex<double>> data = {{1.0, -2.0}, {-3.0, 4.0}};
-
-  test.AddOptionalTypeTensorInput<std::complex<double>>("A", {2}, &data);
-  test.AddOutput<std::complex<double>>("Y", {2}, data);
-  test.SetCustomOutputVerifier([expected = std::vector<std::complex<double>>(data)](
-                                   const std::vector<OrtValue>& fetches, const std::string&) {
-    ASSERT_EQ(fetches.size(), 1u);
-    ASSERT_TRUE(fetches[0].IsTensor());
-    const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_TRUE(output.IsDataType<std::complex<double>>());
-    ASSERT_EQ(output.Shape().Size(), static_cast<int64_t>(expected.size()));
-    const auto* actual = output.Data<std::complex<double>>();
-    for (size_t i = 0; i < expected.size(); ++i) {
-      EXPECT_EQ(actual[i], expected[i]);
-    }
   });
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -132,16 +86,6 @@ TEST(OptionalOpTest, OptionalFloat6HasElementOpset28) {
   test.AddOutput<bool>("Y", {}, {true});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
-TEST(OptionalOpTest, ComplexTensorRemainsUnsupportedBeforeOpset28) {
-  OpTester test("Optional", 27);
-  const std::initializer_list<std::complex<float>> data = {{1.0f, -2.0f}};
-
-  test.AddInput<std::complex<float>>("A", {1}, data);
-  test.AddOptionalTypeTensorOutput<std::complex<float>>("Y", {1}, &data);
-
-  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {

@@ -1556,14 +1556,6 @@ inline bool Tensor::IsDataType<float>() const { return g_host->Tensor__IsDataTyp
 template <>
 inline bool Tensor::IsDataType<double>() const { return g_host->Tensor__IsDataType_double(this); }
 template <>
-inline bool Tensor::IsDataType<std::complex<float>>() const {
-  return g_host->Tensor__IsDataType_complex_float(this);
-}
-template <>
-inline bool Tensor::IsDataType<std::complex<double>>() const {
-  return g_host->Tensor__IsDataType_complex_double(this);
-}
-template <>
 inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDataType_MLFloat16(this); }
 template <>
 inline bool Tensor::IsDataType<BFloat16>() const { return g_host->Tensor__IsDataType_BFloat16(this); }
@@ -1620,14 +1612,6 @@ template <>
 inline float* Tensor::MutableData<float>() { return g_host->Tensor__MutableData_float(this); }
 template <>
 inline double* Tensor::MutableData<double>() { return g_host->Tensor__MutableData_double(this); }
-template <>
-inline std::complex<float>* Tensor::MutableData<std::complex<float>>() {
-  return g_host->Tensor__MutableData_complex_float(this);
-}
-template <>
-inline std::complex<double>* Tensor::MutableData<std::complex<double>>() {
-  return g_host->Tensor__MutableData_complex_double(this);
-}
 template <>
 inline BFloat16* Tensor::MutableData<BFloat16>() { return g_host->Tensor__MutableData_BFloat16(this); }
 template <>
@@ -1689,14 +1673,6 @@ template <>
 inline const float* Tensor::Data<float>() const { return g_host->Tensor__Data_float(this); }
 template <>
 inline const double* Tensor::Data<double>() const { return g_host->Tensor__Data_double(this); }
-template <>
-inline const std::complex<float>* Tensor::Data<std::complex<float>>() const {
-  return g_host->Tensor__Data_complex_float(this);
-}
-template <>
-inline const std::complex<double>* Tensor::Data<std::complex<double>>() const {
-  return g_host->Tensor__Data_complex_double(this);
-}
 template <>
 inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__Data_BFloat16(this); }
 template <>

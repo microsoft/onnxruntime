@@ -632,8 +632,6 @@ ORT_REGISTER_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_TENSOR_TYPE(BFloat16);
 ORT_REGISTER_TENSOR_TYPE(Float6E2M3);
 ORT_REGISTER_TENSOR_TYPE(Float6E3M2);
-ORT_REGISTER_TENSOR_TYPE(std::complex<float>);
-ORT_REGISTER_TENSOR_TYPE(std::complex<double>);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 ORT_REGISTER_TENSOR_TYPE(Float8E4M3FN);
@@ -706,8 +704,6 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float6E2M3);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float6E3M2);
-ORT_REGISTER_SEQ_TENSOR_TYPE(std::complex<float>);
-ORT_REGISTER_SEQ_TENSOR_TYPE(std::complex<double>);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
@@ -725,6 +721,10 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(UInt4x2);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Int2x4);
 ORT_REGISTER_SEQ_TENSOR_TYPE(UInt2x4);
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+ORT_REGISTER_SEQ_TENSOR_TYPE(Float4E2M1x2);
+#endif
+
 #if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
@@ -732,65 +732,66 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);                \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);                 \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string);          \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);               \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);               \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);            \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::complex<float>);  \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::complex<double>); \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E2M3);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E3M2);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FN);         \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FNUZ);       \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2FNUZ);       \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E8M0);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int4x2);               \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int2x4);               \
+#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);          \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);           \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);         \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);         \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E2M3);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E3M2);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FN);   \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FNUZ); \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2FNUZ); \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E8M0);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int4x2);         \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int2x4);         \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt2x4);
 
 #else
 
-#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);                \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);                 \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string);          \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);               \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);               \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);            \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);             \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::complex<float>);  \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::complex<double>); \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E2M3);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E3M2);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int4x2);               \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);              \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int2x4);               \
+#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string); \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);   \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E2M3);  \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float6E3M2);  \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int4x2);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int2x4);      \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt2x4);
 
 #endif
 
 ORT_REGISTER_OPTIONAL_ORT_TYPE(Tensor)
 ORT_REGISTER_OPTIONAL_ORT_TYPE(TensorSeq)
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+ORT_REGISTER_OPTIONAL_TYPE(Tensor, Float4E2M1x2);
+ORT_REGISTER_OPTIONAL_TYPE(TensorSeq, Float4E2M1x2);
+#endif
 
 // Used for Tensor Proto registrations
 #define REGISTER_TENSOR_PROTO(TYPE, reg_fn)                  \
@@ -846,8 +847,6 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(BFloat16, reg_fn);
   REGISTER_TENSOR_PROTO(Float6E2M3, reg_fn);
   REGISTER_TENSOR_PROTO(Float6E3M2, reg_fn);
-  REGISTER_TENSOR_PROTO(std::complex<float>, reg_fn);
-  REGISTER_TENSOR_PROTO(std::complex<double>, reg_fn);
 #if !defined(DISABLE_FLOAT8_TYPES)
   REGISTER_TENSOR_PROTO(Float8E4M3FN, reg_fn);
   REGISTER_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
@@ -914,8 +913,6 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Float6E2M3, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Float6E3M2, reg_fn);
-  REGISTER_SEQ_TENSOR_PROTO(std::complex<float>, reg_fn);
-  REGISTER_SEQ_TENSOR_PROTO(std::complex<double>, reg_fn);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
@@ -931,6 +928,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(UInt4x2, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Int2x4, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(UInt2x4, reg_fn);
+#if !defined(DISABLE_FLOAT4_TYPES)
+  REGISTER_SEQ_TENSOR_PROTO(Float4E2M1x2, reg_fn);
+#endif
 
 #if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
@@ -941,65 +941,65 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);                \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);                 \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);          \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);               \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);               \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);            \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<float>, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<double>, reg_fn); \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FN, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E8M0, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);               \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);               \
+#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);          \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);    \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FN, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn); \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn); \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E8M0, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);         \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
 
 #else
 
-#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);                \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);                 \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);          \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);               \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);               \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);            \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);             \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<float>, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<double>, reg_fn); \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);               \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);              \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);               \
+#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn) \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);  \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);       \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
 
 #endif
 
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(Tensor, reg_fn);
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(TensorSeq, reg_fn);
+#if !defined(DISABLE_FLOAT4_TYPES)
+  REGISTER_OPTIONAL_PROTO(Tensor, Float4E2M1x2, reg_fn);
+  REGISTER_OPTIONAL_PROTO(TensorSeq, Float4E2M1x2, reg_fn);
+#endif
 #endif
 }
 }  // namespace data_types_internal
@@ -1047,10 +1047,6 @@ const char* DataTypeImpl::ToString(MLDataType type) {
         return "float16";
       case TensorProto_DataType_BFLOAT16:
         return "bfloat16";
-      case TensorProto_DataType_COMPLEX64:
-        return "complex64";
-      case TensorProto_DataType_COMPLEX128:
-        return "complex128";
       case TensorProto_DataType_FLOAT8E4M3FN:
         return "Float8E4M3FN";
       case TensorProto_DataType_FLOAT8E4M3FNUZ:
@@ -1130,11 +1126,6 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
-    case TensorProto_DataType_COMPLEX64:
-      return DataTypeImpl::GetTensorType<std::complex<float>>()->AsTensorType();
-    case TensorProto_DataType_COMPLEX128:
-      return DataTypeImpl::GetTensorType<std::complex<double>>()->AsTensorType();
-
 #if !defined(DISABLE_FLOAT8_TYPES)
     case TensorProto_DataType_FLOAT8E4M3FN:
       return DataTypeImpl::GetTensorType<Float8E4M3FN>()->AsTensorType();
@@ -1199,11 +1190,6 @@ const SequenceTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int t
       return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsSequenceTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsSequenceTensorType();
-    case TensorProto_DataType_COMPLEX64:
-      return DataTypeImpl::GetSequenceTensorType<std::complex<float>>()->AsSequenceTensorType();
-    case TensorProto_DataType_COMPLEX128:
-      return DataTypeImpl::GetSequenceTensorType<std::complex<double>>()->AsSequenceTensorType();
-
 #if !defined(DISABLE_FLOAT8_TYPES)
 
     case TensorProto_DataType_FLOAT8E4M3FN:
@@ -1317,8 +1303,6 @@ ORT_REGISTER_PRIM_TYPE(MLFloat16);
 ORT_REGISTER_PRIM_TYPE(BFloat16);
 ORT_REGISTER_PRIM_TYPE(Float6E2M3);
 ORT_REGISTER_PRIM_TYPE(Float6E3M2);
-ORT_REGISTER_PRIM_TYPE(std::complex<float>);
-ORT_REGISTER_PRIM_TYPE(std::complex<double>);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 

@@ -5,7 +5,6 @@
 #include "gmock/gmock.h"
 
 #include <algorithm>
-#include <complex>
 
 #include "model_builder_utils.h"
 #include "core/framework/data_types.h"
@@ -150,10 +149,10 @@ void VerifyTensorSequenceAndOptionalTypes(ONNX_NAMESPACE::TensorProto_DataType p
 }
 
 TEST(TypeInfoTests, IRv14TensorSequenceAndOptionalTypes) {
-  VerifyTensorSequenceAndOptionalTypes<std::complex<float>>(
-      ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64, ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64);
-  VerifyTensorSequenceAndOptionalTypes<std::complex<double>>(
-      ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128, ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128);
+#if !defined(DISABLE_FLOAT4_TYPES)
+  VerifyTensorSequenceAndOptionalTypes<Float4E2M1x2>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1);
+#endif
   VerifyTensorSequenceAndOptionalTypes<Float6E2M3>(
       ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3);
   VerifyTensorSequenceAndOptionalTypes<Float6E3M2>(
@@ -161,16 +160,10 @@ TEST(TypeInfoTests, IRv14TensorSequenceAndOptionalTypes) {
 
   const auto& irv14_types = DataTypeImpl::AllOptionalTypesIRv14();
   EXPECT_NE(std::find(irv14_types.begin(), irv14_types.end(),
-                      DataTypeImpl::GetOptionalType<Tensor, std::complex<float>>()),
-            irv14_types.end());
-  EXPECT_NE(std::find(irv14_types.begin(), irv14_types.end(),
                       DataTypeImpl::GetOptionalType<TensorSeq, Float6E3M2>()),
             irv14_types.end());
 
   const auto& irv9_types = DataTypeImpl::AllOptionalTypesIRv9();
-  EXPECT_EQ(std::find(irv9_types.begin(), irv9_types.end(),
-                      DataTypeImpl::GetOptionalType<Tensor, std::complex<float>>()),
-            irv9_types.end());
   EXPECT_EQ(std::find(irv9_types.begin(), irv9_types.end(),
                       DataTypeImpl::GetOptionalType<TensorSeq, Float6E3M2>()),
             irv9_types.end());

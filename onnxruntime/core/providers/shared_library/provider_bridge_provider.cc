@@ -5,7 +5,6 @@
 
 #include "provider_api.h"
 #include <assert.h>
-#include <complex>
 #include <mutex>
 #include "core/providers/shared/common.h"
 
@@ -157,14 +156,6 @@ MLDataType DataTypeImpl::GetType<float>() { return Provider_GetHost()->DataTypeI
 template <>
 MLDataType DataTypeImpl::GetType<double>() { return Provider_GetHost()->DataTypeImpl__GetType_double(); }
 template <>
-MLDataType DataTypeImpl::GetType<std::complex<float>>() {
-  return Provider_GetHost()->DataTypeImpl__GetType_complex_float();
-}
-template <>
-MLDataType DataTypeImpl::GetType<std::complex<double>>() {
-  return Provider_GetHost()->DataTypeImpl__GetType_complex_double();
-}
-template <>
 MLDataType DataTypeImpl::GetType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_MLFloat16(); }
@@ -224,14 +215,6 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<float>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_float(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<double>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_double(); }
-template <>
-MLDataType DataTypeImpl::GetTensorType<std::complex<float>>() {
-  return Provider_GetHost()->DataTypeImpl__GetTensorType_complex_float();
-}
-template <>
-MLDataType DataTypeImpl::GetTensorType<std::complex<double>>() {
-  return Provider_GetHost()->DataTypeImpl__GetTensorType_complex_double();
-}
 template <>
 MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_BFloat16(); }
 template <>
