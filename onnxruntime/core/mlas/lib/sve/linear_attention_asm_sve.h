@@ -203,8 +203,8 @@ MlasLinearAttentionSveSinglePanelAsmN1(
             "b.ne 3b\n"
             "4:\n"
             MLAS_LA_ASM_EPILOGUE
-            : [st] "+r"(St), [kt] "+r"(kt), [dec] "+r"(dec), [q0] "+r"(q0),
-              [quads] "+r"(quads), [rem] "+r"(rem)
+            : [st] "+&r"(St), [kt] "+&r"(kt), [dec] "+&r"(dec), [q0] "+&r"(q0),
+              [quads] "+&r"(quads), [rem] "+&r"(rem)
             : [vt] "r"(vt), [o] "r"(o), [dvb] "r"(d_v_bytes), [scale] "r"(scale)
             : MLAS_LA_ASM_CLOBBERS);
     } else {
@@ -228,8 +228,8 @@ MlasLinearAttentionSveSinglePanelAsmN1(
             "b.ne 3b\n"
             "4:\n"
             MLAS_LA_ASM_EPILOGUE
-            : [st] "+r"(St), [kt] "+r"(kt), [q0] "+r"(q0),
-              [quads] "+r"(quads), [rem] "+r"(rem)
+            : [st] "+&r"(St), [kt] "+&r"(kt), [q0] "+&r"(q0),
+              [quads] "+&r"(quads), [rem] "+&r"(rem)
             : [vt] "r"(vt), [o] "r"(o), [dvb] "r"(d_v_bytes), [scale] "r"(scale)
             : MLAS_LA_ASM_CLOBBERS);
     }
@@ -397,9 +397,9 @@ MlasLinearAttentionSveSinglePanelAsmN1x2(
             "b.ne 3b\n"
             "4:\n"
             MLAS_LA_ASM2_EPILOGUE
-            : [st] "+r"(St), [kt0] "+r"(kt0), [dec0] "+r"(dec0), [q0] "+r"(q0),
-              [kt1] "+r"(kt1), [dec1] "+r"(dec1), [q1] "+r"(q1),
-              [quads] "+r"(quads), [rem] "+r"(rem)
+            : [st] "+&r"(St), [kt0] "+&r"(kt0), [dec0] "+&r"(dec0), [q0] "+&r"(q0),
+              [kt1] "+&r"(kt1), [dec1] "+&r"(dec1), [q1] "+&r"(q1),
+              [quads] "+&r"(quads), [rem] "+&r"(rem)
             : [vt0] "r"(vt0), [vt1] "r"(vt1), [o0] "r"(o0), [o1] "r"(o1),
               [dvb] "r"(d_v_bytes), [scale] "r"(scale)
             : MLAS_LA_ASM2_CLOBBERS);
@@ -438,9 +438,9 @@ MlasLinearAttentionSveSinglePanelAsmN1x2(
             "b.ne 3b\n"
             "4:\n"
             MLAS_LA_ASM2_EPILOGUE
-            : [st] "+r"(St), [kt0] "+r"(kt0), [q0] "+r"(q0),
-              [kt1] "+r"(kt1), [q1] "+r"(q1),
-              [quads] "+r"(quads), [rem] "+r"(rem)
+            : [st] "+&r"(St), [kt0] "+&r"(kt0), [q0] "+&r"(q0),
+              [kt1] "+&r"(kt1), [q1] "+&r"(q1),
+              [quads] "+&r"(quads), [rem] "+&r"(rem)
             : [vt0] "r"(vt0), [vt1] "r"(vt1), [o0] "r"(o0), [o1] "r"(o1),
               [dvb] "r"(d_v_bytes), [scale] "r"(scale)
             : MLAS_LA_ASM2_CLOBBERS);
