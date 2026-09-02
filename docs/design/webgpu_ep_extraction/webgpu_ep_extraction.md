@@ -55,6 +55,9 @@ The effort is divided into four workstreams:
 | `test-conformance` | [Test ownership and operator conformance](test_ownership_and_conformance/test_ownership_and_conformance_workstream.md) | Existing coverage is preserved, every test has an owner, and portable conformance coverage protects the external provider |
 | `node-migration` | [Node plugin migration](node_plugin_migration/node_plugin_migration_workstream.md) | Existing bundled Node WebGPU support is replaced by an explicitly consumable plugin without regressing current users |
 
+The detailed static plugin EP registration design is in
+[Static Plugin EP Registration](plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md).
+
 The detailed reusable conformance-suite design is in
 [Execution Provider Operator Conformance Suite](test_ownership_and_conformance/ep_operator_conformance_design.md).
 
