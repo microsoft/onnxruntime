@@ -15,9 +15,9 @@ Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_h
 
 //  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //  2 | // Licensed under the MIT License.
-//  3 | 
+//  3 |
 //  4 | #use .getByOffset .setByOffset
-//  5 | 
+//  5 |
 //  6 | fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {
 ss << __str_301;
 //  7 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
@@ -38,7 +38,7 @@ ss << __str_218;
 ss << __str_306;
 // 14 | }
 ss << __str_245;
-// 15 | 
+// 15 |
 ss << __str_12;
 // 16 | fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {
 ss << __str_307;
@@ -58,11 +58,11 @@ ss << __str_189;
 ss << __str_218;
 // 23 | }
 ss << __str_245;
-// 24 | 
+// 24 |
 ss << __str_12;
 // 25 | var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;
 ss << __str_311;
-// 26 | 
+// 26 |
 ss << __str_12;
 // 27 | $MAIN {
 MainFunctionStart();
@@ -71,7 +71,7 @@ ss << __str_12;
 ss << __str_312;
 // 29 |   let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;
 ss << __str_313;
-// 30 | 
+// 30 |
 ss << __str_12;
 // 31 |   if (group_co >= uniforms.O || group_ci >= uniforms.I) {
 ss << __str_314;
@@ -79,7 +79,7 @@ ss << __str_314;
 ss << __str_315;
 // 33 |   }
 ss << __str_218;
-// 34 | 
+// 34 |
 ss << __str_12;
 // 35 |   for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {
 ss << __str_316;
@@ -91,7 +91,7 @@ ss << __str_317;
 ss << __str_318;
 // 39 |       let load_h_w_idx = local_idx % 4;
 ss << __str_319;
-// 40 | 
+// 40 |
 ss << __str_12;
 // 41 |       data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,
 ss << __str_320;
@@ -103,7 +103,7 @@ ss << __str_322;
 ss << __str_135;
 // 45 |     workgroupBarrier();
 ss << __str_168;
-// 46 | 
+// 46 |
 ss << __str_12;
 // 47 |     // store
 // 48 |     for (var local_h_w_idx = 0u; local_h_w_idx < 4u; local_h_w_idx++) {
@@ -121,7 +121,7 @@ ss << __str_218;
 // 54 | }  // MAIN
 MainFunctionEnd();
 ss << __str_12;
-// 55 | 
+// 55 |
 
 
   return Status::OK();

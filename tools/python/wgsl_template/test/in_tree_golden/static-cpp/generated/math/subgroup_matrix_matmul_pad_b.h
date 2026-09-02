@@ -15,15 +15,15 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 
 //  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //  2 | // Licensed under the MIT License.
-//  3 | 
+//  3 |
 //  4 | // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 //  5 | // (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
 //  6 | // Gives B an even row stride so the subgroup-matrix f16 load's 4-byte row-start
 //  7 | // alignment holds for odd N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
-//  8 | 
+//  8 |
 //  9 | #use guardAgainstOutOfBoundsWorkgroupSizes
 // 10 | #use .getByOffset .setByOffset
-// 11 | 
+// 11 |
 // 12 | $MAIN {
 MainFunctionStart();
 ss << __str_12;
@@ -52,7 +52,7 @@ ss << __str_189;
 // 21 | }  // MAIN
 MainFunctionEnd();
 ss << __str_12;
-// 22 | 
+// 22 |
 
 
   return Status::OK();
