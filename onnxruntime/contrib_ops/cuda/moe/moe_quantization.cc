@@ -170,6 +170,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// The CUDA QMoE path reads zero-points as packed uint8 only (see moe_quantization.cc where
+// zeros->DataRaw() is cast to uint8_t). Constrain TZ to uint8 so this kernel can't silently
+// claim float zero-point models -- which the QMoE schema now allows via the TZ type constraint
+// -- and reinterpret their float bytes as uint8.
 #define REGISTER_KERNEL_TYPED(T)                                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
       QMoE,                                                                    \
@@ -182,6 +186,7 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<uint8_t>(),       \
                                  DataTypeImpl::GetTensorType<Float8E4M3FN>()}) \
+          .TypeConstraint("TZ", DataTypeImpl::GetTensorType<uint8_t>())        \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<T>(),             \
                                  DataTypeImpl::GetTensorType<Float8E8M0>(),    \
                                  DataTypeImpl::GetTensorType<Float8E4M3FN>()}) \

@@ -23,6 +23,12 @@ namespace contrib {
 
 template <typename T>
 MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info), MoEBaseCPU(op_kernel_info) {
+  // GeGLU is a gated activation only implemented in the quantized QMoE CPU path. The float MoE
+  // path does not treat it as gated (no doubled FC1 sizing, no gate/up dispatch), so accepting it
+  // here would silently produce wrong results. Reject it explicitly until the float path supports it.
+  if (activation_type_ == ActivationType::GeGLU) {
+    ORT_THROW("CPU MoE does not support GeGLU activation. GeGLU is only supported by the quantized QMoE CPU operator.");
+  }
   if (activation_type_ == ActivationType::SwiGLU && swiglu_fusion_ != 1) {
     ORT_THROW("CPU MoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   }
