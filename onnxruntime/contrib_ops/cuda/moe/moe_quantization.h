@@ -86,7 +86,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
   // Cached source weight shapes captured at PrePack time. When the
-  // PrePack hook consumed and released the original int4/int8 (or MXFP4)
+  // PrePack hook consumed and released the original int4/int8 or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
   // and ``(5)`` return nothing, so ``moe_helper::CheckInputs`` can no
   // longer read the shapes from the live tensors. We feed it these
@@ -208,6 +208,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   // decode GEMV reads gemv_fp4_fc*_weights_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_decode_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_decode_;
+  // MXFP4-only combined activation-dtype scales. Raw-layout NVFP4 GEMV reads the E4M3 block
+  // scales and fp32 per-expert globals directly, avoiding a persistent full-model scale bank.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;  // [E, hidden/32, 2*inter] activation dtype
   IAllocatorUniquePtr<void> gemv_fp4_fc2_scales_;  // [E, inter/32, hidden] activation dtype
   // Raw [E, n, k_blocks] e8m0 block scales kept for GEMV when the native CUTLASS path has
