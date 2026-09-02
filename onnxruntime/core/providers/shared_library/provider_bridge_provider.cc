@@ -279,14 +279,6 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_MLFloat16(); }
-template <>
-MLDataType DataTypeImpl::GetSparseTensorType<Float6E2M3>() {
-  return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float6E2M3();
-}
-template <>
-MLDataType DataTypeImpl::GetSparseTensorType<Float6E3M2>() {
-  return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float6E3M2();
-}
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 template <>

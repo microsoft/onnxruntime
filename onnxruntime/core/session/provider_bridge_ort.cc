@@ -1064,8 +1064,6 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_string() override { return DataTypeImpl::GetSparseTensorType<std::string>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() override { return DataTypeImpl::GetSparseTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
-  MLDataType DataTypeImpl__GetSparseTensorType_Float6E2M3() override { return DataTypeImpl::GetSparseTensorType<Float6E2M3>(); }
-  MLDataType DataTypeImpl__GetSparseTensorType_Float6E3M2() override { return DataTypeImpl::GetSparseTensorType<Float6E3M2>(); }
 #if !defined(DISABLE_FLOAT8_TYPES)
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FN() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FN>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>(); }

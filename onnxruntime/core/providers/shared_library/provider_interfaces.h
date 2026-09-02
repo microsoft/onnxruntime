@@ -1428,10 +1428,6 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_Float6E3M2() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float6E2M3() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float6E3M2() = 0;
-#if !defined(DISABLE_SPARSE_TENSORS)
-  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float6E2M3() = 0;
-  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float6E3M2() = 0;
-#endif
   virtual Float6E2M3* Tensor__MutableData_Float6E2M3(Tensor* p) = 0;
   virtual Float6E3M2* Tensor__MutableData_Float6E3M2(Tensor* p) = 0;
   virtual const Float6E2M3* Tensor__Data_Float6E2M3(const Tensor* p) = 0;

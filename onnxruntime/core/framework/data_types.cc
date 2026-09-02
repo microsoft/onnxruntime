@@ -666,8 +666,6 @@ ORT_REGISTER_SPARSE_TENSOR_TYPE(uint32_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(BFloat16);
-ORT_REGISTER_SPARSE_TENSOR_TYPE(Float6E2M3);
-ORT_REGISTER_SPARSE_TENSOR_TYPE(Float6E3M2);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E4M3FN);
@@ -870,8 +868,6 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(BFloat16, reg_fn);
-  REGISTER_SPARSE_TENSOR_PROTO(Float6E2M3, reg_fn);
-  REGISTER_SPARSE_TENSOR_PROTO(Float6E3M2, reg_fn);
 #if !defined(DISABLE_FLOAT8_TYPES)
   REGISTER_SPARSE_TENSOR_PROTO(Float8E4M3FN, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
@@ -1257,10 +1253,6 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
     case TensorProto_DataType_FLOAT8E8M0:
       return DataTypeImpl::GetSparseTensorType<Float8E8M0>()->AsSparseTensorType();
 #endif
-    case TensorProto_DataType_FLOAT6E2M3:
-      return DataTypeImpl::GetSparseTensorType<Float6E2M3>()->AsSparseTensorType();
-    case TensorProto_DataType_FLOAT6E3M2:
-      return DataTypeImpl::GetSparseTensorType<Float6E3M2>()->AsSparseTensorType();
 
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
