@@ -80,6 +80,10 @@
 #include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/stft_decomposition.h"
+#include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+#include "core/optimizer/transpose_optimization/optimizer_api.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
@@ -3615,6 +3619,197 @@ enum class OptionalActivationInput {
   kPresent,
 };
 
+// Push the output transpose through the activation before ConvActivationFusion runs.
+static Status RunLayoutPropagationThenConvActivationFusion(
+    const std::string& act_op, const std::string& act_domain, const logging::Logger& logger,
+    const std::function<void(Node&)>& decorate, const std::function<Status(Graph&)>& post_graph_checker) {
+  const std::unordered_map<std::string, int> domain_to_version{
+      {kOnnxDomain, 13}, {kMSDomain, 1}, {kMSInternalNHWCDomain, 13}};
+
+  Model model("LayoutPropagationConvActivationTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input = builder.MakeInput<float>({1, 5, 7, 2}, -1.0f, 1.0f);
+  auto* weight = builder.MakeInitializer<float>({3, 2, 3, 3}, -1.0f, 1.0f);
+  auto* conv_out = builder.MakeIntermediate();
+  auto* transpose_out = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+
+  Node& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+  conv.SetExecutionProviderType(kWebGpuExecutionProvider);
+
+  Node& transpose = builder.AddNode("Transpose", {conv_out}, {transpose_out});
+  transpose.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+  transpose.SetExecutionProviderType(kWebGpuExecutionProvider);
+
+  Node& activation = builder.AddNode(act_op, {transpose_out}, {output}, act_domain);
+  if (decorate) {
+    decorate(activation);
+  }
+  activation.SetExecutionProviderType(kWebGpuExecutionProvider);
+
+  builder.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 3, "expected Conv -> Transpose -> activation, got ",
+                    graph.NumberOfNodes(), " nodes");
+
+  {
+    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  kWebGpuExecutionProvider);
+    auto always_push = [](const onnx_transpose_optimization::api::GraphRef&,
+                          const onnx_transpose_optimization::api::NodeRef&, const std::vector<int64_t>&,
+                          const std::unordered_set<std::string>&) {
+      return onnx_transpose_optimization::CostCheckResult::kPushTranspose;
+    };
+    onnx_transpose_optimization::OptimizeResult result = onnx_transpose_optimization::Optimize(
+        *api_graph, kWebGpuExecutionProvider, always_push, OrtExtendedHandlers());
+    ORT_RETURN_IF(result.error_msg.has_value(), "transpose optimization failed: ", *result.error_msg);
+  }
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
+                                                        TransformerLevel::Level2));
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  return post_graph_checker(graph);
+}
+
+// The output transpose remains after activation fusion.
+static Status ExpectActivationPropagatedAndFused(Graph& graph, const std::string& activation) {
+  ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2,
+                    "expected a fused NHWC Conv plus the pushed Transpose, got ", graph.NumberOfNodes(),
+                    " nodes; the activation did not move past the Transpose");
+
+  const Node* fused = nullptr;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Conv" && node.Domain() == kMSInternalNHWCDomain) {
+      fused = &node;
+    }
+  }
+  ORT_RETURN_IF_NOT(fused != nullptr, "expected the NHWC Conv to survive");
+
+  const auto* attr = graph_utils::GetNodeAttribute(*fused, "activation");
+  ORT_RETURN_IF_NOT(attr != nullptr && attr->s() == activation, "expected ", activation,
+                    " to be fused into the NHWC Conv");
+  return Status::OK();
+}
+
+TEST_F(GraphTransformationTests, LayoutPropagationFusesContribQuickGeluIntoNhwcConv) {
+  auto decorate = [](Node& node) { node.AddAttribute("alpha", 1.702f); };
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    return ExpectActivationPropagatedAndFused(graph, "QuickGelu");
+  };
+  ASSERT_STATUS_OK(RunLayoutPropagationThenConvActivationFusion("QuickGelu", kMSDomain, *logger_,
+                                                                decorate, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayoutPropagationFusesContribGeluIntoNhwcConv) {
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    return ExpectActivationPropagatedAndFused(graph, "Gelu");
+  };
+  ASSERT_STATUS_OK(RunLayoutPropagationThenConvActivationFusion("Gelu", kMSDomain, *logger_, nullptr,
+                                                                post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayoutPropagationFusesContribFastGeluIntoNhwcConv) {
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    return ExpectActivationPropagatedAndFused(graph, "FastGelu");
+  };
+  ASSERT_STATUS_OK(RunLayoutPropagationThenConvActivationFusion("FastGelu", kMSDomain, *logger_, nullptr,
+                                                                post_graph_checker));
+}
+
+static std::unique_ptr<GraphTransformer> TakeRegisteredLevel2Transformer(const std::string& name,
+                                                                         const logging::Logger& logger) {
+  SessionOptions session_options;
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options,
+                                                            *TestCPUExecutionProvider(), logger);
+  for (auto& transformer : transformers) {
+    if (transformer->Name() == name) {
+      return std::move(transformer);
+    }
+  }
+  return nullptr;
+}
+
+TEST_F(GraphTransformationTests, WebGpuTanhGeluAfterConvFusesToFastGelu) {
+  auto fast_gelu_fusion = TakeRegisteredLevel2Transformer("FastGeluFusion", *logger_);
+  ASSERT_NE(fast_gelu_fusion, nullptr) << "FastGeluFusion is not registered at Level2";
+  const auto& compatible_eps = fast_gelu_fusion->GetCompatibleExecutionProviders();
+  EXPECT_TRUE(compatible_eps.count(kWebGpuExecutionProvider) != 0)
+      << "FastGeluFusion excludes the WebGPU EP, so the tanh GELU decomposition can never reach "
+         "com.microsoft.FastGelu and the Conv+FastGelu fusion advertised for pre-opset-20 models is dead";
+
+  const std::unordered_map<std::string, int> domain_to_version{
+      {kOnnxDomain, 13}, {kMSDomain, 1}, {kMSInternalNHWCDomain, 13}};
+  Model model("WebGpuTanhGeluAfterConv", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input = builder.MakeInput<float>({1, 5, 7, 2}, -1.0f, 1.0f);
+  auto* weight = builder.MakeInitializer<float>({3, 2, 3, 3}, -1.0f, 1.0f);
+  auto* coeff = builder.MakeInitializer<float>({}, {0.044715f});
+  auto* sqrt2pi = builder.MakeInitializer<float>({}, {0.7978845834732056f});
+  auto* one = builder.MakeInitializer<float>({}, {1.0f});
+  auto* half = builder.MakeInitializer<float>({}, {0.5f});
+  auto* three = builder.MakeInitializer<float>({}, {3.0f});
+
+  auto* conv_out = builder.MakeIntermediate();
+  auto* pow_out = builder.MakeIntermediate();
+  auto* mul1_out = builder.MakeIntermediate();
+  auto* add1_out = builder.MakeIntermediate();
+  auto* mul2_out = builder.MakeIntermediate();
+  auto* tanh_out = builder.MakeIntermediate();
+  auto* add2_out = builder.MakeIntermediate();
+  auto* mul_half_out = builder.MakeIntermediate();
+  auto* gelu_out = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+
+  builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+  builder.AddNode("Pow", {conv_out, three}, {pow_out});
+  builder.AddNode("Mul", {pow_out, coeff}, {mul1_out});
+  builder.AddNode("Add", {conv_out, mul1_out}, {add1_out});
+  builder.AddNode("Mul", {add1_out, sqrt2pi}, {mul2_out});
+  builder.AddNode("Tanh", {mul2_out}, {tanh_out});
+  builder.AddNode("Add", {tanh_out, one}, {add2_out});
+  builder.AddNode("Mul", {conv_out, half}, {mul_half_out});
+  builder.AddNode("Mul", {mul_half_out, add2_out}, {gelu_out});
+  // FastGeluFusion requires a non-graph-output consumer.
+  builder.AddNode("Identity", {gelu_out}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(fast_gelu_fusion), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.count("Tanh"), 0u) << "the tanh decomposition was not collapsed";
+  ASSERT_EQ(graph.NumberOfNodes(), 2) << "expected a fused NHWC Conv plus the trailing Identity";
+
+  const Node* fused = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      fused = &node;
+    }
+  }
+  ASSERT_NE(fused, nullptr);
+  EXPECT_EQ(fused->Domain(), kMSInternalNHWCDomain);
+  const auto* activation = graph_utils::GetNodeAttribute(*fused, "activation");
+  ASSERT_NE(activation, nullptr);
+  EXPECT_EQ(activation->s(), "FastGelu");
+}
+
 static void BuildConvActivationGraph(ModelTestBuilder& builder, const std::string& act_op,
                                      const std::string& act_domain, const std::string& ep,
                                      const std::function<void(Node&)>& decorate = nullptr,
@@ -3978,6 +4173,12 @@ TEST_F(GraphTransformationTests, WebGpuConvHardSigmoidFusionMatchesUnfusedResult
                          node.AddAttribute("beta", 0.4f);
                        }),
       "HardSigmoid", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuConvEluFusionMatchesUnfusedResults) {
+  RunWebGpuConvActivationParity(
+      SimpleActivation("Elu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.7f); }),
+      "Elu", 17);
 }
 
 TEST_F(GraphTransformationTests, WebGpuConvClipFusionMatchesUnfusedResults) {
