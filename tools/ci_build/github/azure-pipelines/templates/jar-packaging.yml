@@ -12,8 +12,7 @@ parameters:
       - 'gpu'
 
 steps:
-- checkout: self
-  submodules: false
+- template: jobs/checkout-and-git-redirect.yml
 
 - template: setup-feeds-and-python-steps.yml
   parameters:
