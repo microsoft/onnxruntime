@@ -2776,6 +2776,160 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* VarlenEngramGate_ver1_doc = R"DOC(
+EngramGate over a packed token-major batch of variable-length sequences (CUDA only).
+
+key and query have shape (total_tokens, hc_mult, hidden_size), value has shape
+(total_tokens, hidden_size), and output has the same shape as key. cumulative_sequence_length is a
+device-resident int32 tensor of shape (batch_size + 1); sequence i occupies the half-open range
+[cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes at
+least one token. The gate itself is token-local, but accepting the Engine's common boundary tensor
+keeps the packed model interface uniform and permits endpoint validation without a host sync.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenEngramGate, 1,
+    OpSchema()
+        .SetDoc(VarlenEngramGate_ver1_doc)
+        .Attr("epsilon",
+              "Epsilon used by both RMS normalization steps. Default is 1e-5.",
+              AttributeProto::FLOAT,
+              1.0e-5f)
+        .Input(0, "key", "Packed keys with shape (total_tokens, hc_mult, hidden_size).", "T")
+        .Input(1, "query", "Packed queries with the same shape as key.", "T")
+        .Input(2, "value", "Packed values with shape (total_tokens, hidden_size).", "T")
+        .Input(3, "key_norm_scale", "Key RMSNorm scale with shape (hc_mult, hidden_size).", "T")
+        .Input(4, "query_norm_scale", "Query RMSNorm scale with shape (hc_mult, hidden_size).", "T")
+        .Input(5,
+               "cumulative_sequence_length",
+               "Device int32 packed boundaries with shape (batch_size + 1).",
+               "M")
+        .Output(0, "output", "Packed gated values with the same shape as key.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain data to floating-point tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain packed boundaries to int32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() != 3) {
+            fail_shape_inference("VarlenEngramGate: key must have rank 3");
+          }
+          if (hasInputShape(ctx, 5)) {
+            const auto& cu_shape = getInputShape(ctx, 5);
+            if (cu_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenEngramGate: cumulative_sequence_length must have rank 1");
+            }
+            if (cu_shape.dim(0).has_dim_value() && cu_shape.dim(0).dim_value() < 2) {
+              fail_shape_inference(
+                  "VarlenEngramGate: cumulative_sequence_length must contain at least 2 elements");
+            }
+          }
+        }));
+
+constexpr const char* VarlenNGramHashMapping_ver1_doc = R"DOC(
+NGramHashMapping over a packed token-major batch of variable-length sequences (CUDA only).
+
+input_ids has shape (total_tokens), and cumulative_sequence_length gives each request's packed
+range. initial_ids and final_ids have shape (batch_size, max_ngram_size - 1) and contain the
+committed ids immediately before and after this call. prefix_ids optionally exposes the state after
+the first max_checkpoints local tokens so an Engine speculative step can commit an accepted prefix.
+initial_ids and final_ids must not alias.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenNGramHashMapping, 1,
+    OpSchema()
+        .SetDoc(VarlenNGramHashMapping_ver1_doc)
+        .Attr("max_ngram_size", "Maximum n-gram order. Must be at least 2.", AttributeProto::INT)
+        .Attr("n_head_per_ngram", "Number of hash heads emitted for each n-gram order.", AttributeProto::INT)
+        .Attr("pad_id", "Compressed tokenizer id used before sequence start.", AttributeProto::INT)
+        .Attr("max_checkpoints",
+              "Number of per-request prefix states to expose. Valid range is [0, 8].",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Input(0, "input_ids", "Packed ids with shape (total_tokens).", "M")
+        .Input(1, "multipliers", "Per-shift multipliers with shape (max_ngram_size).", "M")
+        .Input(2, "vocab_sizes", "Per-head positive vocabulary sizes.", "M")
+        .Input(3,
+               "cumulative_sequence_length",
+               "Device int32 packed boundaries with shape (batch_size + 1).",
+               "L")
+        .Input(4,
+               "initial_ids",
+               "Required committed history with shape (batch_size, max_ngram_size - 1).",
+               "M")
+        .Output(0, "hash_ids", "Packed hashes with shape (total_tokens, num_heads).", "M")
+        .Output(1, "final_ids", "History after every request's final token.", "M")
+        .Output(2,
+                "prefix_ids",
+                "Optional prefix states with shape (max_checkpoints, batch_size, max_ngram_size - 1).",
+                "M",
+                OpSchema::Optional)
+        .TypeConstraint("M",
+                        {"tensor(int32)", "tensor(int64)"},
+                        "Constrain ids and hashes to integer tensors.")
+        .TypeConstraint("L", {"tensor(int32)"}, "Constrain packed boundaries to int32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 2);
+          }
+
+          const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
+          const int64_t heads_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          const int64_t max_checkpoints = getAttribute(ctx, "max_checkpoints", int64_t{0});
+          if (max_ngram_size < 2) {
+            fail_shape_inference("VarlenNGramHashMapping: max_ngram_size must be at least 2");
+          }
+          if (heads_per_ngram < 1) {
+            fail_shape_inference("VarlenNGramHashMapping: n_head_per_ngram must be positive");
+          }
+          if (max_checkpoints < 0 || max_checkpoints > kMaxStateWindow) {
+            fail_shape_inference("VarlenNGramHashMapping: max_checkpoints must be in [0, ",
+                                 kMaxStateWindow, "]");
+          }
+
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3)) {
+            const auto& ids_shape = getInputShape(ctx, 0);
+            const auto& cu_shape = getInputShape(ctx, 3);
+            if (ids_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenNGramHashMapping: input_ids must have rank 1");
+            }
+            if (cu_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenNGramHashMapping: cumulative_sequence_length must have rank 1");
+            }
+            if (cu_shape.dim(0).has_dim_value() && cu_shape.dim(0).dim_value() < 2) {
+              fail_shape_inference(
+                  "VarlenNGramHashMapping: cumulative_sequence_length must contain at least 2 elements");
+            }
+
+            TensorShapeProto hash_shape;
+            *hash_shape.add_dim() = ids_shape.dim(0);
+            hash_shape.add_dim()->set_dim_value((max_ngram_size - 1) * heads_per_ngram);
+            updateOutputShape(ctx, 0, hash_shape);
+
+            TensorShapeProto state_shape;
+            if (cu_shape.dim(0).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(cu_shape.dim(0).dim_value() - 1);
+            } else {
+              state_shape.add_dim();
+            }
+            state_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+            updateOutputShape(ctx, 1, state_shape);
+
+            if (ctx.getNumOutputs() > 2) {
+              TensorShapeProto checkpoint_shape;
+              checkpoint_shape.add_dim()->set_dim_value(max_checkpoints);
+              for (const auto& dim : state_shape.dim()) {
+                *checkpoint_shape.add_dim() = dim;
+              }
+              updateOutputShape(ctx, 2, checkpoint_shape);
+            }
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     CausalConvWithState, 1,
     OpSchema()

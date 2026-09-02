@@ -126,6 +126,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
+  * <a href="#com.microsoft.VarlenEngramGate">com.microsoft.VarlenEngramGate</a>
+  * <a href="#com.microsoft.VarlenNGramHashMapping">com.microsoft.VarlenNGramHashMapping</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
@@ -7397,6 +7399,125 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain cumulative_sequence_length and capture_count to device int32 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.VarlenEngramGate"></a><a name="com.microsoft.varlenengramgate">**com.microsoft.VarlenEngramGate**</a>
+
+  EngramGate over a packed token-major batch of variable-length sequences (CUDA only).
+  
+  key and query have shape (total_tokens, hc_mult, hidden_size), value has shape
+  (total_tokens, hidden_size), and output has the same shape as key. cumulative_sequence_length is a
+  device-resident int32 tensor of shape (batch_size + 1); sequence i occupies the half-open range
+  [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes at
+  least one token. The gate itself is token-local, but accepting the Engine's common boundary tensor
+  keeps the packed model interface uniform and permits endpoint validation without a host sync.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>key</tt> : T</dt>
+<dd>Packed keys with shape (total_tokens, hc_mult, hidden_size).</dd>
+<dt><tt>query</tt> : T</dt>
+<dd>Packed queries with the same shape as key.</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Packed values with shape (total_tokens, hidden_size).</dd>
+<dt><tt>key_norm_scale</tt> : T</dt>
+<dd>Key RMSNorm scale with shape (hc_mult, hidden_size).</dd>
+<dt><tt>query_norm_scale</tt> : T</dt>
+<dd>Query RMSNorm scale with shape (hc_mult, hidden_size).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>Device int32 packed boundaries with shape (batch_size + 1).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Packed gated values with the same shape as key.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain data to floating-point tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain packed boundaries to int32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.VarlenNGramHashMapping"></a><a name="com.microsoft.varlenngramhashmapping">**com.microsoft.VarlenNGramHashMapping**</a>
+
+  NGramHashMapping over a packed token-major batch of variable-length sequences (CUDA only).
+  
+  input_ids has shape (total_tokens), and cumulative_sequence_length gives each request's packed
+  range. initial_ids and final_ids have shape (batch_size, max_ngram_size - 1) and contain the
+  committed ids immediately before and after this call. prefix_ids optionally exposes the state after
+  the first max_checkpoints local tokens so an Engine speculative step can commit an accepted prefix.
+  initial_ids and final_ids must not alias.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_checkpoints</tt> : int</dt>
+<dd>Number of per-request prefix states to expose. Valid range is [0, 8].</dd>
+<dt><tt>max_ngram_size</tt> : int (required)</dt>
+<dd>Maximum n-gram order. Must be at least 2.</dd>
+<dt><tt>n_head_per_ngram</tt> : int (required)</dt>
+<dd>Number of hash heads emitted for each n-gram order.</dd>
+<dt><tt>pad_id</tt> : int (required)</dt>
+<dd>Compressed tokenizer id used before sequence start.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input_ids</tt> : M</dt>
+<dd>Packed ids with shape (total_tokens).</dd>
+<dt><tt>multipliers</tt> : M</dt>
+<dd>Per-shift multipliers with shape (max_ngram_size).</dd>
+<dt><tt>vocab_sizes</tt> : M</dt>
+<dd>Per-head positive vocabulary sizes.</dd>
+<dt><tt>cumulative_sequence_length</tt> : L</dt>
+<dd>Device int32 packed boundaries with shape (batch_size + 1).</dd>
+<dt><tt>initial_ids</tt> : M</dt>
+<dd>Required committed history with shape (batch_size, max_ngram_size - 1).</dd>
+</dl>
+
+#### Outputs (2 - 3)
+
+<dl>
+<dt><tt>hash_ids</tt> : M</dt>
+<dd>Packed hashes with shape (total_tokens, num_heads).</dd>
+<dt><tt>final_ids</tt> : M</dt>
+<dd>History after every request's final token.</dd>
+<dt><tt>prefix_ids</tt> (optional) : M</dt>
+<dd>Optional prefix states with shape (max_checkpoints, batch_size, max_ngram_size - 1).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain ids and hashes to integer tensors.</dd>
+<dt><tt>L</tt> : tensor(int32)</dt>
+<dd>Constrain packed boundaries to int32.</dd>
 </dl>
 
 

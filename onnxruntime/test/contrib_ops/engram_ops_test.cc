@@ -716,5 +716,86 @@ TEST(EngramOpsTest, EngramGateZeroDotProduct) {
   test.Run();
 }
 
+TEST(EngramOpsTest, VarlenSchemasResolve) {
+  for (const char* name : {"VarlenEngramGate", "VarlenNGramHashMapping"}) {
+    EXPECT_NE(ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMSDomain), nullptr) << name;
+  }
+}
+
+#ifdef USE_CUDA
+namespace {
+
+std::vector<std::unique_ptr<IExecutionProvider>> VarlenCudaProvider() {
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  if (auto ep = DefaultCudaExecutionProvider()) {
+    providers.push_back(std::move(ep));
+  }
+  return providers;
+}
+
+TEST(EngramOpsTest, VarlenEngramGateRagged) {
+  auto providers = VarlenCudaProvider();
+  if (providers.empty()) {
+    GTEST_SKIP() << "CUDA is unavailable";
+  }
+
+  const std::vector<float> key{1, 2, 3, 4, 5, 6};
+  const std::vector<float> query{2, -1, 1, 3, -2, 4};
+  const std::vector<float> value{0.5f, 1.5f, -1.0f, 2.0f, 3.0f, -0.5f};
+  const std::vector<float> scale{1, 1};
+  std::vector<float> expected(6);
+  for (int token = 0; token < 3; ++token) {
+    const std::vector<float> key_row{key[token * 2], key[token * 2 + 1]};
+    const std::vector<float> query_row{query[token * 2], query[token * 2 + 1]};
+    const float gate = EngramGateReference(key_row, query_row);
+    expected[token * 2] = gate * value[token * 2];
+    expected[token * 2 + 1] = gate * value[token * 2 + 1];
+  }
+
+  OpTester test("VarlenEngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<float>("key", {3, 1, 2}, key);
+  test.AddInput<float>("query", {3, 1, 2}, query);
+  test.AddInput<float>("value", {3, 2}, value);
+  test.AddInput<float>("key_norm_scale", {1, 2}, scale);
+  test.AddInput<float>("query_norm_scale", {1, 2}, scale);
+  test.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 2, 3});
+  test.AddOutput<float>("output", {3, 1, 2}, expected, false, 1e-4f, 1e-4f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRaggedStateAndCheckpoint) {
+  auto providers = VarlenCudaProvider();
+  if (providers.empty()) {
+    GTEST_SKIP() << "CUDA is unavailable";
+  }
+
+  const std::vector<int32_t> ids{3, 4, 5};
+  const std::vector<int32_t> multipliers{11, 13, 17};
+  const std::vector<int32_t> vocab_sizes{101, 103, 107, 109};
+  const std::vector<int32_t> history{kPadId, kPadId};
+  auto expected0 = NGramHashMappingReference<int32_t>({3, 4}, history, multipliers, vocab_sizes);
+  auto expected1 = NGramHashMappingReference<int32_t>({5}, history, multipliers, vocab_sizes);
+  expected0.insert(expected0.end(), expected1.begin(), expected1.end());
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("max_checkpoints", 1);
+  test.AddInput<int32_t>("input_ids", {3}, ids);
+  test.AddInput<int32_t>("multipliers", {3}, multipliers);
+  test.AddInput<int32_t>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 2, 3});
+  test.AddInput<int32_t>("initial_ids", {2, 2}, {9, 9, 9, 9});
+  test.AddOutput<int32_t>("hash_ids", {3, 4}, expected0);
+  test.AddOutput<int32_t>("final_ids", {2, 2}, {3, 4, 9, 5});
+  test.AddOutput<int32_t>("prefix_ids", {1, 2, 2}, {9, 3, 9, 5});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+}  // namespace
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
