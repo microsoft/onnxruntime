@@ -725,6 +725,36 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_range_with_float_inputs(self):
+        # Range start/limit/delta are floats here. Truncating them to int makes delta 0
+        # and the length computation divide by zero.
+        initializers = [
+            numpy_helper.from_array(numpy.array(0.0, dtype=numpy.float32), "start"),
+            numpy_helper.from_array(numpy.array(1.0, dtype=numpy.float32), "limit"),
+            numpy_helper.from_array(numpy.array(0.3, dtype=numpy.float32), "delta"),
+        ]
+        graph = helper.make_graph(
+            [
+                helper.make_node("Range", ["start", "limit", "delta"], ["temp"]),
+                helper.make_node("Identity", ["temp"], ["output"]),
+            ],
+            "Range_Float_Test",
+            [],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, [4]),
+            ],
+            initializers,
+        )
+        model = helper.make_model(graph, producer_name="Range_Float_Test_Model")
+        model.opset_import[0].version = 18
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("temp", TensorProto.FLOAT, [4]),
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [4]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
