@@ -186,11 +186,14 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     bool copy_to_js{false};
     // Type and shape the caller's tensor declares, checked against what the model produced.
     PreallocatedOutputInfo declared;
-    // Indices into the keep_alive array: the caller's Tensor, the buffer written, the leased
-    // resource.
-    uint32_t js_value_index{0};
-    uint32_t js_data_index{0};
-    uint32_t lease_key_index{0};
+    // The caller's Tensor, the buffer written into, and the resource leased for that write, pinned
+    // for the lifetime of the run. Held as persistent references rather than slots in a Javascript
+    // array: array element assignment can be intercepted by an inherited setter (Array.prototype[0]),
+    // leaving the value unpinned and letting a matching getter return a different object on every
+    // read, so validation and the copy could see different buffers.
+    Napi::Reference<Napi::Value> js_value;
+    Napi::Reference<Napi::Value> js_data;
+    Napi::Reference<Napi::Value> lease_resource;
     size_t lease_byte_offset{0};
     size_t lease_byte_length{0};
     // Device outputs lease the whole External; they have no addressable sub-range.
@@ -204,11 +207,8 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         session_(&session),
         deferred_(deferred),
         session_reference_(Napi::Persistent(session.Value())),
-        keep_alive_reference_(Napi::Persistent(Napi::Array::New(env_))),
         cpu_memory_info_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)),
         gpu_buffer_memory_info_("WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault) {
-    auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
-
     for (const auto& name : session.inputNames_) {
       if (feed.Has(name)) {
         auto value = feed.Get(name);
@@ -217,7 +217,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         input_values_.push_back(
             NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_, NapiValueUsage::kInput,
                                 &gpu_value_owners_, &conversion));
-        KeepTensorAndDataAlive(keep_alive, value, conversion);
+        input_references_.push_back(Napi::Persistent(value));
+        if (!conversion.data.IsEmpty()) {
+          input_references_.push_back(Napi::Persistent(conversion.data));
+        }
+        if (!conversion.gpuBuffer.IsEmpty()) {
+          input_references_.push_back(Napi::Persistent(conversion.gpuBuffer));
+        }
       }
     }
 
@@ -242,8 +248,17 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           output.copy_to_js = static_cast<OrtValue*>(output_value) == nullptr;
           output_values_.push_back(std::move(output_value));
 
-          output.js_value_index =
-              KeepTensorAndDataAlive(keep_alive, value, conversion, &output.js_data_index, &output.lease_key_index);
+          output.js_value = Napi::Persistent(value);
+          if (!conversion.data.IsEmpty()) {
+            output.js_data = Napi::Persistent(conversion.data);
+          }
+          if (!conversion.dataArrayBuffer.IsEmpty()) {
+            output.lease_resource = Napi::Persistent(conversion.dataArrayBuffer);
+          } else if (!conversion.gpuBuffer.IsEmpty()) {
+            output.lease_resource = Napi::Persistent(conversion.gpuBuffer);
+          } else {
+            output.lease_resource = Napi::Persistent(value);
+          }
           output.declared = std::move(conversion.declared);
           output.lease_byte_offset = conversion.dataByteOffset;
           output.lease_byte_length = conversion.dataByteLength;
@@ -264,11 +279,10 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   }
 
   void AcquireOutputBufferLeases() {
-    auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
     for (const auto& output : outputs_) {
       if (output.reuse) {
         output_buffer_leases_.push_back(OrtInstanceData::AcquireOutputBufferLease(
-            keep_alive.Get(output.lease_key_index).As<Napi::Object>(), output.lease_byte_offset,
+            output.lease_resource.Value().As<Napi::Object>(), output.lease_byte_offset,
             output.lease_byte_length, output.lease_whole_resource));
       }
     }
@@ -335,15 +349,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   void OnOK() override {
     Napi::HandleScope scope(env_);
     try {
-      auto keep_alive = keep_alive_reference_.Value().As<Napi::Array>();
-
       // Build the result first. OrtValueToNapiValue() runs the Javascript Tensor constructor and can
       // throw, and no caller-owned buffer may be written before the last step that can fail or hand
       // control back to Javascript.
       auto result = Napi::Object::New(env_);
       for (size_t i = 0; i < output_values_.size(); ++i) {
         const auto& output = outputs_[i];
-        auto value = output.reuse ? keep_alive.Get(output.js_value_index)
+        auto value = output.reuse ? output.js_value.Value()
                                   : OrtValueToNapiValue(env_, std::move(output_values_[i]));
         // Define the property rather than assigning it: assignment would run an inherited setter for
         // the output name (Object.prototype.<name>), which is user Javascript that could both
@@ -360,8 +372,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       for (size_t i = 0; i < output_values_.size(); ++i) {
         const auto& output = outputs_[i];
         if (output.copy_to_js) {
-          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], keep_alive.Get(output.js_data_index),
-                                            output.declared);
+          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], output.js_data.Value(), output.declared);
         } else if (output.reuse) {
           // A device output is handed straight back to the caller, so nothing would otherwise
           // notice that the model produced a different type or shape than the tensor declares.
@@ -374,8 +385,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
       for (size_t i = 0; i < output_values_.size(); ++i) {
         if (outputs_[i].copy_to_js) {
-          CopyOrtValueToNapiTypedArray(env_, output_values_[i], keep_alive.Get(outputs_[i].js_data_index),
-                                       outputs_[i].declared);
+          CopyOrtValueToNapiTypedArray(env_, output_values_[i], outputs_[i].js_data.Value(), outputs_[i].declared);
         }
       }
       Complete();
@@ -398,42 +408,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   }
 
  private:
-  // Pin the tensor and the storage it is backed by for the lifetime of the run. The objects come
-  // from 'conversion' rather than from a fresh read of Tensor.data / Tensor.gpuBuffer: those are
-  // plain JS properties, so a second read may hand back something other than what was validated,
-  // leased and copied into.
-  uint32_t KeepTensorAndDataAlive(Napi::Array& keep_alive, const Napi::Value& value,
-                                  const NapiTensorConversion& conversion, uint32_t* data_index = nullptr,
-                                  uint32_t* buffer_key_index = nullptr) {
-    const auto tensor_index = keep_alive.Length();
-    keep_alive.Set(tensor_index, value);
-    if (data_index != nullptr) {
-      *data_index = tensor_index;
-    }
-    if (buffer_key_index != nullptr) {
-      *buffer_key_index = tensor_index;
-    }
-
-    if (!conversion.data.IsEmpty()) {
-      const auto index = keep_alive.Length();
-      keep_alive.Set(index, conversion.data);
-      if (data_index != nullptr) {
-        *data_index = index;
-      }
-      if (buffer_key_index != nullptr && !conversion.dataArrayBuffer.IsEmpty()) {
-        const auto buffer_index = keep_alive.Length();
-        keep_alive.Set(buffer_index, conversion.dataArrayBuffer);
-        *buffer_key_index = buffer_index;
-      }
-    } else if (!conversion.gpuBuffer.IsEmpty()) {
-      const auto index = keep_alive.Length();
-      keep_alive.Set(index, conversion.gpuBuffer);
-      if (buffer_key_index != nullptr) {
-        *buffer_key_index = index;
-      }
-    }
-    return tensor_index;
-  }
 
   void Complete() {
     if (completed_) {
@@ -465,11 +439,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   InferenceSessionWrap* session_;
   Napi::Promise::Deferred deferred_;
   Napi::ObjectReference session_reference_;
-  Napi::Reference<Napi::Array> keep_alive_reference_;
   Ort::MemoryInfo cpu_memory_info_;
   Ort::MemoryInfo gpu_buffer_memory_info_;
   Ort::RunOptions run_options_;
   std::vector<OrtValueOwner> gpu_value_owners_;
+  // Inputs pinned for the run: their OrtValues either borrow the storage (gpu-buffer) or were
+  // copied from it (cpu).
+  std::vector<Napi::Reference<Napi::Value>> input_references_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> input_values_;
   std::vector<OutputBinding> outputs_;

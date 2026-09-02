@@ -290,6 +290,19 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
         value_owners->push_back(*valueOwner);
       }
 
+      // The OrtValue behind the External is authoritative for type, shape and allocation size.
+      // Tensor.type and Tensor.dims are ordinary mutable Javascript properties, so a caller can
+      // declare a larger shape over a smaller device allocation; check the declaration against the
+      // owned value before handing ORT a view over it, which for a preallocated output would
+      // otherwise be an out-of-bounds device write.
+      OrtTensorTypeAndShapeInfo* ownedTypeAndShape = nullptr;
+      Ort::ThrowOnError(Ort::GetApi().GetTensorTypeAndShape(valueOwner->get(), &ownedTypeAndShape));
+      Ort::TensorTypeAndShapeInfo ownedInfo{ownedTypeAndShape};
+      ORT_NAPI_THROW_TYPEERROR_IF(ownedInfo.GetElementType() != elemType, env,
+                                  "Tensor.type does not match the type of the GPU buffer it wraps.");
+      ORT_NAPI_THROW_ERROR_IF(ownedInfo.GetShape() != dims, env,
+                              "Tensor.dims does not match the shape of the GPU buffer it wraps.");
+
       if (conversion != nullptr) {
         conversion->declared.elementType = elemType;
         conversion->declared.dims = dims;

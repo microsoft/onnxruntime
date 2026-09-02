@@ -266,6 +266,34 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('is unaffected by a poisoned Array prototype', async () => {
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
+    // Far too small to hold the output: if an inherited accessor could intercept the binding's
+    // internal pinning, this is what validation and the copy would disagree about.
+    const decoy = new Float32Array(1);
+    const indices = [0, 1, 2, 3, 4];
+    for (const index of indices) {
+      Object.defineProperty(Array.prototype, index, {
+        configurable: true,
+        get: () => decoy,
+        set: () => {},
+      });
+    }
+
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const output = new Tensor('float32', new Float32Array(5), [1, 5]);
+      const result = await localSession.run({ input }, { output });
+      assert.strictEqual(result.output, output);
+      assertTensorEqual(output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+    } finally {
+      for (const index of indices) {
+        delete (Array.prototype as unknown as Record<number, unknown>)[index];
+      }
+      await localSession.release().catch(() => {});
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
