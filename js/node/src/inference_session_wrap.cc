@@ -284,9 +284,25 @@ class InferenceSessionWrap::RunAsyncWorker {
   }
 
   ~RunAsyncWorker() {
-    // The worker can be destroyed without the completion callback ever running, for instance if the
-    // environment is torn down while the run is queued. Draining here keeps the run count honest,
-    // and the promise is rejected rather than left pending forever.
+    // The worker owns its thread rather than detaching it, so it cannot be destroyed while that
+    // thread is still touching it. If the run never completed — the environment is being torn down,
+    // say — ask ORT to abandon it first so the join returns promptly instead of waiting out a full
+    // inference on the Javascript thread.
+    if (thread_.joinable()) {
+      if (thread_.get_id() == std::this_thread::get_id()) {
+        // Nothing can join itself. Unreachable today: the ThreadSafeFunction finalizer that destroys
+        // the worker always runs on the Javascript thread.
+        thread_.detach();
+      } else {
+        if (!completed_) {
+          run_options_.SetTerminate();
+        }
+        thread_.join();
+      }
+    }
+
+    // The completion callback may never have run, so drain the run count here and reject rather than
+    // leaving the promise pending forever.
     Complete();
     if (!settled_) {
       settled_ = true;
@@ -318,13 +334,15 @@ class InferenceSessionWrap::RunAsyncWorker {
         [this](Napi::Env) { delete this; });
 
     try {
-      std::thread([this] {
+      // The thread holds the ThreadSafeFunction's initial reference until it calls Release(), so the
+      // finalizer cannot destroy this worker while the thread is still using it.
+      thread_ = std::thread([this] {
         Execute();
-        // Copy the handle: after Release() the finalizer may have deleted this worker already.
+        // Copy the handle: Release() can let the finalizer delete this worker immediately.
         auto tsfn = tsfn_;
         tsfn.BlockingCall([this](Napi::Env env, Napi::Function) { OnComplete(env); });
         tsfn.Release();
-      }).detach();
+      });
     } catch (const std::system_error& e) {
       // The thread never started, so nothing will ever release the ThreadSafeFunction. Release it
       // here through a copied handle, which runs the finalizer and destroys this worker; nothing may
@@ -521,6 +539,7 @@ class InferenceSessionWrap::RunAsyncWorker {
   std::unique_ptr<Ort::IoBinding> io_binding_;
   std::string error_;
   Napi::ThreadSafeFunction tsfn_;
+  std::thread thread_;
   bool completed_{false};
   bool settled_{false};
 };
