@@ -238,22 +238,6 @@ Status UnpackFloat6Tensor(const ONNX_NAMESPACE::TensorProto& tensor, const void*
   return Status::OK();
 }
 
-template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                    /*out*/ Float6E2M3* p_data, size_t expected_num_elems) {
-  ORT_RETURN_IF(tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3,
-                "Unexpected Float6E2M3 tensor type");
-  return UnpackFloat6Tensor(tensor, raw_data, raw_data_len, p_data, expected_num_elems);
-}
-
-template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                    /*out*/ Float6E3M2* p_data, size_t expected_num_elems) {
-  ORT_RETURN_IF(tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2,
-                "Unexpected Float6E3M2 tensor type");
-  return UnpackFloat6Tensor(tensor, raw_data, raw_data_len, p_data, expected_num_elems);
-}
-
 template <typename FLOAT6_TYPE>
 std::string PackFloat6Tensor(const FLOAT6_TYPE* data, size_t num_elements) {
   std::string packed_data(FLOAT6_TYPE::CalcNumFloat6Bytes(num_elements), '\0');
@@ -941,6 +925,22 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_num_elements);
+
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float6E2M3* p_data, size_t expected_num_elems) {
+  ORT_RETURN_IF(tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3,
+                "Unexpected Float6E2M3 tensor type");
+  return UnpackFloat6Tensor(tensor, raw_data, raw_data_len, p_data, expected_num_elems);
+}
+
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float6E3M2* p_data, size_t expected_num_elems) {
+  ORT_RETURN_IF(tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2,
+                "Unexpected Float6E3M2 tensor type");
+  return UnpackFloat6Tensor(tensor, raw_data, raw_data_len, p_data, expected_num_elems);
+}
 
 #define DEFINE_UNPACK_TENSOR_IMPL(T, Type, field_name, field_size)                                          \
   template <>                                                                                               \
