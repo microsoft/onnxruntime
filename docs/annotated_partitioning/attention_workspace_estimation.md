@@ -206,10 +206,10 @@ operator-owned root. PA places its simultaneously-live projection and Attention 
 has only the Attention region:
 
 ```text
-PA attention offset   = align_up(projection bytes, 256)
-PA root bytes         = attention offset + max(feasible attention routes)
+PA attention offset = align_up(projection bytes, 256)
+PA root bytes = attention offset + max(feasible attention routes)
 PMHA attention offset = 0
-PMHA root bytes        = max(feasible attention routes)
+PMHA root bytes = max(feasible attention routes)
 ```
 
 The PA alignment gap is intentional, so its root can be up to 255 bytes larger than the unaligned sum. Level 2 emits
