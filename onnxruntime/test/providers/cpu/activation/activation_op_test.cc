@@ -438,6 +438,37 @@ TEST_F(ActivationOpTest, Celu) {
       {{"alpha", alpha}}, {}, false, 12);
 }
 
+TEST_F(ActivationOpTest, CeluOpset28NewTypes) {
+  constexpr float alpha = 0.5f;
+  const std::vector<float> input{-1.0f, -0.5f, 0.0f, 1.0f};
+  const std::vector<float> expected{-0.43233237f, -0.31606027f, 0.0f, 1.0f};
+
+  OpTester fp16_test("Celu", 28);
+  fp16_test.AddAttribute("alpha", alpha);
+  fp16_test.AddInput<MLFloat16>("X", {2, 2}, FloatsToMLFloat16s(input));
+  fp16_test.AddOutput<MLFloat16>("Y", {2, 2}, FloatsToMLFloat16s(expected));
+  fp16_test.Run();
+
+  OpTester bf16_test("Celu", 28);
+  bf16_test.AddAttribute("alpha", alpha);
+  bf16_test.AddInput<BFloat16>("X", {2, 2}, FloatsToBFloat16s(input));
+  bf16_test.AddOutput<BFloat16>("Y", {2, 2}, FloatsToBFloat16s(expected));
+  bf16_test.Run();
+
+  TestActivationOp<double>(
+      "Celu", {{-1.0, -0.5, 0.0, 1.0}},
+      [alpha](double x) { return std::max(0.0, x) + std::min(0.0, alpha * (std::exp(x / alpha) - 1.0)); },
+      {{"alpha", alpha}}, {}, false, 28);
+}
+
+TEST_F(ActivationOpTest, CeluOpset28BFloat16CastsAlpha) {
+  OpTester test("Celu", 28);
+  test.AddAttribute("alpha", 0.5001f);
+  test.AddInput<BFloat16>("X", {1}, {BFloat16(-3.109375f)});
+  test.AddOutput<BFloat16>("Y", {1}, {BFloat16(-0.498046875f)});
+  test.Run();
+}
+
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
   TestActivationOp<float>("LeakyRelu",

@@ -156,6 +156,20 @@ TEST(CompressTest, Compress_3dims_neg_axis) {
   test.Run();
 }
 
+TEST(CompressTest, BFloat16Opset28NegativeAxis) {
+  OpTester test("Compress", 28);
+  test.AddAttribute("axis", int64_t(-2));
+  test.AddInput<BFloat16>("input", {2, 3, 2},
+                           {BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f),
+                            BFloat16(5.0f), BFloat16(6.0f), BFloat16(7.0f), BFloat16(8.0f),
+                            BFloat16(9.0f), BFloat16(10.0f), BFloat16(11.0f), BFloat16(12.0f)});
+  test.AddInput<bool>("condition", {3}, {false, true, true});
+  test.AddOutput<BFloat16>("output", {2, 2, 2},
+                            {BFloat16(3.0f), BFloat16(4.0f), BFloat16(5.0f), BFloat16(6.0f),
+                             BFloat16(9.0f), BFloat16(10.0f), BFloat16(11.0f), BFloat16(12.0f)});
+  test.Run();
+}
+
 #ifdef USE_CUDA
 // Regression test for the CUDA Compress prefix-sum sizing path. A bool condition byte may hold a
 // non-canonical value (e.g. 0xFF) at runtime — initializers are normalized to {0, 1} on unpack,
