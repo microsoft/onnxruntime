@@ -51,9 +51,7 @@ class OnnxRuntimeTestSession : public TestSession {
   // Stores an already-staged value; used to avoid double-staging in CreateAndStoreGeneratedInput.
   void StoreTestData(size_t test_data_id, size_t input_id, Ort::Value&& value);
 
-  // True if allocator_ can't safely hold placement-constructed std::string values, i.e. it's a
-  // plugin EP allocator without host-accessible memory, or the legacy CUDA custom allocator.
-  // Used to keep string tensors (inputs and outputs) out of device-only memory.
+  // True if allocator_ is for device-only (i.e., non CPU or host-accessible) memory.
   bool IsAllocatorDeviceOnly() const;
 
   Ort::Session session_{nullptr};
