@@ -657,7 +657,7 @@ MlasLinearAttentionSveTokens(
     // both, halving the state traffic per token on an L1-port-bound loop. Any
     // odd trailing token falls through to the serial loop below.
     //
-    if constexpr (!HAS_BETA && NOUT == 1) {
+    if constexpr (!HAS_BETA && NOUT == 1 && NLANE >= 4) {
         for (; t + 2 <= Chunk->TokenCount; t += 2) {
             const size_t u = t + 1;
             MlasLinearAttentionSveSinglePass2<HAS_DECAY>(
@@ -699,6 +699,35 @@ MlasLinearAttentionSveTokens(
 // Resolve the lane count and the two rule flags, then run the chunk. if/else
 // rather than switch: a jump table would emit adrp, which the freezer rejects.
 //
+//
+// One (NOUT, NLANE) instantiation, with the runtime rule flags folded to
+// template parameters. Factored out so the lane-count ladder above it does not
+// repeat the four-way branch per lane count.
+//
+template <size_t NOUT, size_t NLANE>
+MLAS_FORCEINLINE
+void
+MlasLinearAttentionSveRunTokens(
+    const MLAS_LINEAR_ATTENTION_SVE_CHUNK* Chunk,
+    bool has_decay,
+    bool has_beta
+)
+{
+    if (has_beta) {
+        if (has_decay) {
+            MlasLinearAttentionSveTokens<NOUT, NLANE, true, true>(Chunk);
+        } else {
+            MlasLinearAttentionSveTokens<NOUT, NLANE, false, true>(Chunk);
+        }
+    } else {
+        if (has_decay) {
+            MlasLinearAttentionSveTokens<NOUT, NLANE, true, false>(Chunk);
+        } else {
+            MlasLinearAttentionSveTokens<NOUT, NLANE, false, false>(Chunk);
+        }
+    }
+}
+
 template <size_t NOUT>
 MLAS_FORCEINLINE
 void
@@ -708,45 +737,44 @@ MlasLinearAttentionSveHead(
 {
     constexpr size_t NLaneMax = MlasLinearAttentionSveLanes<NOUT>::Max;
 
-    const bool wide = (MlasLinearAttentionSveLaneCount(NLaneMax, Chunk->KHeadSize) == NLaneMax);
+    const size_t lanes = MlasLinearAttentionSveLaneCount(NLaneMax, Chunk->KHeadSize);
     const bool has_decay = (Chunk->Decay != nullptr);
     const bool has_beta = (Chunk->Beta != nullptr);
 
-    if (wide) {
-        if (has_beta) {
-            if (has_decay) {
-                MlasLinearAttentionSveTokens<NOUT, NLaneMax, true, true>(Chunk);
-            } else {
-                MlasLinearAttentionSveTokens<NOUT, NLaneMax, false, true>(Chunk);
-            }
-        } else {
-            if (has_decay) {
-                MlasLinearAttentionSveTokens<NOUT, NLaneMax, true, false>(Chunk);
-            } else {
-                MlasLinearAttentionSveTokens<NOUT, NLaneMax, false, false>(Chunk);
-            }
-        }
-    } else {
-        //
-        // Only ever halve once. NLaneMax is already 2 at NOUT == 8, and the L1
-        // cap cannot fire there inside the d_k <= 256 envelope, so a 1-lane
-        // body would be unreachable code in the frozen output. Staying put is
-        // still correct at any vector length -- the cap is an L1 optimization,
-        // not a correctness condition.
-        //
-        constexpr size_t NLaneNarrow = (NLaneMax > 2) ? NLaneMax / 2 : NLaneMax;
-        if (has_beta) {
-            if (has_decay) {
-                MlasLinearAttentionSveTokens<NOUT, NLaneNarrow, true, true>(Chunk);
-            } else {
-                MlasLinearAttentionSveTokens<NOUT, NLaneNarrow, false, true>(Chunk);
-            }
-        } else {
-            if (has_decay) {
-                MlasLinearAttentionSveTokens<NOUT, NLaneNarrow, true, false>(Chunk);
-            } else {
-                MlasLinearAttentionSveTokens<NOUT, NLaneNarrow, false, false>(Chunk);
-            }
+    //
+    // Dispatch the EXACT lane count the L1 helper returns, not merely
+    // "wide or halved". The helper can halve more than once: at VL=512 with
+    // d_k=256 the eight-lane budget for NOUT=1 comes back as 2, and at the
+    // architectural maximum VL=2048 it reaches 1 for every head count. An
+    // earlier revision collapsed the return to a boolean and hardcoded a
+    // single halving, which silently broke the half-L1 two-pass bound at
+    // VL >= 512. Every power of two down to 1 is instantiated; the token
+    // pairing and the hand-scheduled bodies gate themselves on NLANE, so the
+    // narrow instantiations honor the cap they exist for.
+    //
+    // An if/else ladder rather than a switch, as everywhere else in this
+    // kernel: a switch risks a jump table, which the freezer rejects.
+    //
+    if (lanes >= NLaneMax) {
+        MlasLinearAttentionSveRunTokens<NOUT, NLaneMax>(Chunk, has_decay, has_beta);
+        return;
+    }
+    if constexpr (NLaneMax >= 4) {
+        if (lanes == NLaneMax / 2) {
+            MlasLinearAttentionSveRunTokens<NOUT, NLaneMax / 2>(Chunk, has_decay, has_beta);
+            return;
         }
     }
+    if constexpr (NLaneMax >= 8) {
+        if (lanes == NLaneMax / 4) {
+            MlasLinearAttentionSveRunTokens<NOUT, NLaneMax / 4>(Chunk, has_decay, has_beta);
+            return;
+        }
+    }
+
+    //
+    // lanes == 1 (the helper never returns 0), reached only when even two
+    // lanes overflow the L1 budget.
+    //
+    MlasLinearAttentionSveRunTokens<NOUT, 1>(Chunk, has_decay, has_beta);
 }
