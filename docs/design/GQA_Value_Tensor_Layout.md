@@ -1,7 +1,7 @@
 # BNHS Value layout for GroupQueryAttention
 
 Status: partially implemented (see [Sequencing](#8-sequencing))
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Motivation
 
@@ -99,7 +99,7 @@ different responses from an application:
 
 | Situation | Code |
 |---|---|
-| Unrecognized option value; option set on an ORT format model | `ORT_INVALID_ARGUMENT` — the caller passed something wrong |
+| Unrecognized option value (checked first, on every path); option set on an ORT format model | `ORT_INVALID_ARGUMENT` — the caller passed something wrong |
 | Recognized value, but this model's topology or cache format cannot satisfy it (section 3.5) | `ORT_FAIL` — the option is fine, the model is not, so falling back to BNSH may work |
 
 ## 3. The graph transform
@@ -360,7 +360,11 @@ the difference between a diagnosable perf cliff and an invisible one.
 The check is anchored on the **boundaries**, not on the GQA nodes. `GqaValueLayoutTransformer` records
 the graph input and output names into a `GqaValueLayoutBoundaries`, which the caller then passes here;
 recording happens in `ClassifyNode`, so it covers boundaries a *previous* run already converted as
-well as ones this run converts. Recording only the latter would leave the list empty for a model
+well as ones this run converts. The lookup **searches** the boundary's consumers for the Transpose
+rather than requiring it to be the only one: a BNHS boundary may legitimately have other BNHS
+readers, and demanding sole consumership here would silence the warning while the Transpose still
+copies the cache every step. (Sole consumership *is* required at conversion time, in 3.5, but a
+boundary converted by an earlier run never went through that check in this session.) Recording only the latter would leave the list empty for a model
 reloaded from `session.optimized_model_filepath`, silently disabling the diagnostic in precisely the
 case where the Transposes are present and may still be executing. the check asks whether the graph input's consumer, or the graph output's producer, is
 still a value-layout Transpose. Graph input and output names are stable across partitioning, which is
@@ -424,6 +428,19 @@ transposed data, producing wrong results with no error.
 ORT format model that had the transform applied at conversion time already carries the BNHS boundary
 shapes in the model itself and must be loaded without setting the option.
 
+The value is validated *before* that restriction is applied, by the shared `GetGqaValueLayout()`
+helper. Rejecting any non-BNSH value first would report a typo like `"NHWC"` as an ORT format
+limitation instead of naming the bad value and the accepted ones.
+
+Because such a model is loaded *without* the option, nothing records its boundaries, so the 4.2
+diagnostic would not run over it even though it still carries the Transposes.
+`FindConvertedGqaValueLayoutBoundaries(graph)` detects them from the graph instead — called before
+partitioning, while the GQA nodes are still present to anchor on — and the report runs after. Unlike
+the ORT-format *writing* path, `kOrtFormatLoad` does compile and fuse, so a surviving Transpose here
+really will execute. This part is `#if !defined(ORT_MINIMAL_BUILD)`: the translation unit is not in
+the minimal source lists, and it is a developer diagnostic rather than something correctness depends
+on.
+
 That check is deliberately **not** guarded on the build flavour. A minimal build serves ORT format
 models only — `InferenceSession::Initialize` refuses anything else — so this is the only place the
 option can be caught there, and guarding it would let a minimal build silently ignore the option.
@@ -463,6 +480,11 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - The post-partition diagnostic (4.2) reports both boundaries when the Transposes survive with no GQA
   node present -- the compiling-EP case -- and reports nothing when they were fused away. The fixture
   asserts it contains no GQA node, so it cannot silently stop covering the regression.
+- The diagnostic still reports a boundary that has other consumers besides the Transpose; the fixture
+  asserts two consumers, and the test fails against a sole-consumer lookup.
+- `FindConvertedGqaValueLayoutBoundaries` finds both boundaries of an already-converted graph and
+  none in an unconverted one, which is what makes the ORT-format diagnostic (5) possible.
+- An invalid option value on an ORT format model reports the bad value, not the format restriction.
 - The graph is left untouched when validation fails (section 3.6). Two independent GQA nodes, one
   convertible and one not, asserted for both build orders — `GetNodesInTopologicalOrder()` does not
   follow insertion order for independent nodes, and only the order that presents the convertible node

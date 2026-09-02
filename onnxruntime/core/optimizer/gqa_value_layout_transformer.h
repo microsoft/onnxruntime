@@ -72,6 +72,15 @@ class GqaValueLayoutTransformer : public GraphTransformer {
 };
 
 /**
+Finds the application boundaries of a graph that already carry the BNHS conversion.
+
+For a graph this transformer did not process in this session -- an ORT format model converted offline,
+for instance -- so that the same post-partition diagnostic can run over it. Call before partitioning,
+while the GroupQueryAttention nodes are still there to anchor on.
+*/
+GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph);
+
+/**
 Reports the converted boundaries whose Value-layout Transpose survived graph partitioning, i.e. that
 will execute at runtime rather than having been fused away. Logs a warning naming each one and
 returns their names. Call after partitioning, and only when the BNHS layout was requested.

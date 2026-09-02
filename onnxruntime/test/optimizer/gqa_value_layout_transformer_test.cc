@@ -896,6 +896,49 @@ TEST_F(GqaValueLayoutTransformerTest, RecordsBoundariesForAnAlreadyTransformedMo
   EXPECT_EQ(unfused.size(), 2u);
 }
 
+// An ORT format model converted after the transform was applied is loaded without the option, so
+// nothing records its boundaries. They have to be detected from the graph instead, or such a model
+// silently pays the full-cache copies with nothing in the logs.
+TEST_F(GqaValueLayoutTransformerTest, FindsBoundariesOfAnAlreadyConvertedGraph) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutFindBoundaries", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+  EXPECT_EQ(ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_).size(), 2u);
+}
+
+// An unconverted graph has no boundaries to find.
+TEST_F(GqaValueLayoutTransformerTest, FindsNoBoundariesInAnUnconvertedGraph) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutFindNoBoundaries", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, BuildOptions{});
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(FindConvertedGqaValueLayoutBoundaries(graph).Empty());
+}
+
 // Only a rank-4 declared shape can be reinterpreted between BNSH and BNHS. GQA shape inference
 // validates past_key's rank but not past_value's, so a rank-3 past_value reaches the transformer and
 // has to be rejected there. Shape inference is relaxed for this fixture so the malformed model
@@ -1043,6 +1086,44 @@ TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposesWhenTheGqaNodeWasR
   const auto unfused = ReportUnfusedGqaValueLayoutTransposes(model.MainGraph(), boundaries, *logger_);
   EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundaries.past_value_inputs[0],
                                                        boundaries.present_value_outputs[0]));
+}
+
+// A BNHS boundary may legitimately feed other BNHS readers besides the Transpose. Requiring sole
+// consumership here would suppress the warning while the Transpose is still in the graph and still
+// copying the whole cache every step.
+TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposeWhenTheBoundaryHasOtherConsumers) {
+  Model model = MakePostPartitionModel(*logger_);
+  Graph& graph = model.MainGraph();
+
+  const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+  const std::vector<int64_t> bnsh{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+
+  ModelTestBuilder builder(graph);
+  NodeArg* boundary_in = builder.MakeInput<MLFloat16>(bnhs, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* fused_in = builder.MakeIntermediate<MLFloat16>(bnsh);
+  NodeArg* fused_out = builder.MakeIntermediate<MLFloat16>(bnsh);
+  NodeArg* boundary_out = builder.MakeOutput<MLFloat16>(bnhs);
+
+  Node& in_transpose = builder.AddNode("Transpose", {boundary_in}, {fused_in});
+  in_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  builder.AddNode("Identity", {fused_in}, {fused_out});
+  Node& out_transpose = builder.AddNode("Transpose", {fused_out}, {boundary_out});
+  out_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+
+  // A second, unrelated BNHS reader of the same boundary.
+  NodeArg* extra_output = builder.MakeOutput<MLFloat16>(bnhs);
+  builder.AddNode("Identity", {boundary_in}, {extra_output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(graph.GetConsumerNodes(boundary_in->Name()).size(), 2u) << "fixture must have two consumers";
+
+  GqaValueLayoutBoundaries boundaries;
+  boundaries.past_value_inputs.push_back(boundary_in->Name());
+  boundaries.present_value_outputs.push_back(boundary_out->Name());
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+  EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundary_in->Name(), boundary_out->Name()));
 }
 
 // The other half of the contract: when the provider did absorb the Transposes, nothing is reported.
@@ -1220,6 +1301,21 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsOrtFormatModel) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("is not supported for ORT format models"));
+}
+
+// An unrecognized value is a bad argument whatever the model format. Applying the ORT format
+// restriction first would report a typo as a format limitation and never name the accepted values.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValueOnAnOrtFormatModel) {
+  SessionOptions session_options = MakeSessionOptions("NHWC");
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid value for session option"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::Not(::testing::HasSubstr("ORT format models")));
 }
 
 TEST_F(GqaValueLayoutTransformerTest, AllowsOrtFormatModelWithTheDefaultLayout) {
