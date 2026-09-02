@@ -1144,8 +1144,19 @@ PackedAttentionProblemResult<PackedMultiHeadAttentionProblem> BuildPackedMultiHe
   return result;
 }
 
-PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
-    const PackedAttentionProblem& problem) noexcept {
+namespace {
+
+enum class PackedAttentionRecipeGeometry {
+  ExactRuntime,
+  UpperBound,
+};
+
+// Exact runtime calls retain route eligibility checks. An aggregate instead
+// evaluates a route reachable below the bounds at the original componentwise
+// maximum geometry, which need not itself satisfy equal-head route gates.
+PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipeImpl(
+    const PackedAttentionProblem& problem,
+    PackedAttentionRecipeGeometry geometry) noexcept {
   PackedAttentionWorkspaceResult result;
 
   auto status = ValidateElementSize(problem.element_size);
@@ -1178,7 +1189,8 @@ PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
       return result;
     }
 
-    if (problem.qk_head_size != problem.v_head_size) {
+    if (geometry == PackedAttentionRecipeGeometry::ExactRuntime &&
+        problem.qk_head_size != problem.v_head_size) {
       result.status = Invalid("The packed TRT route requires equal Q/K and V head sizes.");
       return result;
     }
@@ -1235,8 +1247,9 @@ PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
   return result;
 }
 
-PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
-    const PackedMultiHeadAttentionProblem& problem) noexcept {
+PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipeImpl(
+    const PackedMultiHeadAttentionProblem& problem,
+    PackedAttentionRecipeGeometry geometry) noexcept {
   PackedAttentionWorkspaceResult result;
 
   auto status = ValidateElementSize(problem.element_size);
@@ -1265,14 +1278,17 @@ PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
       return result;
     }
 
-    if (problem.qk_head_size != problem.v_head_size) {
+    if (geometry == PackedAttentionRecipeGeometry::ExactRuntime &&
+        problem.qk_head_size != problem.v_head_size) {
       result.status = Invalid("The packed TRT route requires equal Q/K and V head sizes.");
       return result;
     }
   }
 
   if (problem.backend == PackedAttentionBackend::Flash) {
-    if (problem.qk_head_size != problem.v_head_size || problem.has_attention_bias) {
+    if ((geometry == PackedAttentionRecipeGeometry::ExactRuntime &&
+         problem.qk_head_size != problem.v_head_size) ||
+        problem.has_attention_bias) {
       result.status = Invalid("The packed Flash route requires equal head sizes and no attention bias.");
       return result;
     }
@@ -1304,6 +1320,20 @@ PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
   return result;
 }
 
+}  // namespace
+
+PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
+    const PackedAttentionProblem& problem) noexcept {
+  return GetPackedAttentionWorkspaceRecipeImpl(
+      problem, PackedAttentionRecipeGeometry::ExactRuntime);
+}
+
+PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
+    const PackedMultiHeadAttentionProblem& problem) noexcept {
+  return GetPackedMultiHeadAttentionWorkspaceRecipeImpl(
+      problem, PackedAttentionRecipeGeometry::ExactRuntime);
+}
+
 namespace {
 
 constexpr uint32_t kAllPackedAttentionBackendBits =
@@ -1323,15 +1353,15 @@ bool IsProvenEmpty(const PackedMultiHeadAttentionProblem& problem) noexcept {
 template <typename TProblem, typename TRecipeBuilder>
 PackedAttentionWorkspaceAggregate AggregatePackedAttentionWorkspace(
     const TProblem& problem,
-    PackedAttentionBackendMask feasible_backends,
+    PackedAttentionBackendMask reachable_backends,
     bool allow_flash_backend,
     TRecipeBuilder build_recipe) noexcept {
   PackedAttentionWorkspaceAggregate result;
-  const uint32_t mask_bits = static_cast<uint32_t>(feasible_backends);
+  const uint32_t mask_bits = static_cast<uint32_t>(reachable_backends);
   if ((mask_bits & ~kAllPackedAttentionBackendBits) != 0 ||
       (!allow_flash_backend &&
-       HasPackedAttentionBackend(feasible_backends, PackedAttentionBackend::Flash))) {
-    result.status = Invalid("Packed attention feasible-backend mask is invalid.");
+       HasPackedAttentionBackend(reachable_backends, PackedAttentionBackend::Flash))) {
+    result.status = Invalid("Packed attention reachable-backend mask is invalid.");
     return result;
   }
 
@@ -1352,8 +1382,8 @@ PackedAttentionWorkspaceAggregate AggregatePackedAttentionWorkspace(
     return result;
   }
 
-  if (feasible_backends == PackedAttentionBackendMask::None) {
-    result.status = Invalid("A non-empty packed attention problem must have a feasible backend.");
+  if (reachable_backends == PackedAttentionBackendMask::None) {
+    result.status = Invalid("A non-empty packed attention problem must have a reachable backend.");
     return result;
   }
 
@@ -1361,7 +1391,7 @@ PackedAttentionWorkspaceAggregate AggregatePackedAttentionWorkspace(
   for (PackedAttentionBackend backend :
        {PackedAttentionBackend::Trt, PackedAttentionBackend::Flash,
         PackedAttentionBackend::MemoryEfficient, PackedAttentionBackend::Unfused}) {
-    if (!HasPackedAttentionBackend(feasible_backends, backend)) {
+    if (!HasPackedAttentionBackend(reachable_backends, backend)) {
       continue;
     }
 
@@ -1390,7 +1420,7 @@ PackedAttentionWorkspaceAggregate AggregatePackedAttentionWorkspace(
   }
 
   if (!found_route) {
-    result.status = Invalid("Packed attention feasible-backend mask has no usable route.");
+    result.status = Invalid("Packed attention reachable-backend mask has no usable route.");
     return result;
   }
 
@@ -1409,23 +1439,25 @@ PackedAttentionWorkspaceAggregate AggregatePackedAttentionWorkspace(
 
 }  // namespace
 
-PackedAttentionWorkspaceAggregate GetPackedAttentionWorkspaceAggregate(
+PackedAttentionWorkspaceAggregate GetPackedAttentionWorkspaceAggregateForBounds(
     const PackedAttentionProblem& problem,
-    PackedAttentionBackendMask feasible_backends) noexcept {
+    PackedAttentionBackendMask reachable_backends) noexcept {
   return AggregatePackedAttentionWorkspace(
-      problem, feasible_backends, /*allow_flash_backend=*/false,
+      problem, reachable_backends, /*allow_flash_backend=*/false,
       [](const PackedAttentionProblem& route_problem) {
-        return GetPackedAttentionWorkspaceRecipe(route_problem);
+        return GetPackedAttentionWorkspaceRecipeImpl(
+            route_problem, PackedAttentionRecipeGeometry::UpperBound);
       });
 }
 
-PackedAttentionWorkspaceAggregate GetPackedMultiHeadAttentionWorkspaceAggregate(
+PackedAttentionWorkspaceAggregate GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
     const PackedMultiHeadAttentionProblem& problem,
-    PackedAttentionBackendMask feasible_backends) noexcept {
+    PackedAttentionBackendMask reachable_backends) noexcept {
   return AggregatePackedAttentionWorkspace(
-      problem, feasible_backends, /*allow_flash_backend=*/true,
+      problem, reachable_backends, /*allow_flash_backend=*/true,
       [](const PackedMultiHeadAttentionProblem& route_problem) {
-        return GetPackedMultiHeadAttentionWorkspaceRecipe(route_problem);
+        return GetPackedMultiHeadAttentionWorkspaceRecipeImpl(
+            route_problem, PackedAttentionRecipeGeometry::UpperBound);
       });
 }
 

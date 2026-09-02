@@ -32,15 +32,16 @@ using contrib::attention::AttentionBackend;
 using contrib::cuda::BuildPackedAttentionProblem;
 using contrib::cuda::BuildPackedMultiHeadAttentionProblem;
 using contrib::cuda::EstimatePackedAttentionWorkspace;
-using contrib::cuda::GetPackedAttentionFeasibleBackends;
-using contrib::cuda::GetPackedAttentionWorkspaceAggregate;
+using contrib::cuda::GetPackedAttentionReachableBackendsForBounds;
+using contrib::cuda::GetPackedAttentionWorkspaceAggregateForBounds;
 using contrib::cuda::GetPackedAttentionWorkspaceRecipe;
-using contrib::cuda::GetPackedMultiHeadAttentionFeasibleBackends;
-using contrib::cuda::GetPackedMultiHeadAttentionWorkspaceAggregate;
+using contrib::cuda::GetPackedMultiHeadAttentionReachableBackendsForBounds;
+using contrib::cuda::GetPackedMultiHeadAttentionWorkspaceAggregateForBounds;
 using contrib::cuda::GetPackedMultiHeadAttentionWorkspaceRecipe;
 using contrib::cuda::kPackedAttentionWorkspaceAlignment;
 using contrib::cuda::PackedAttentionBackend;
 using contrib::cuda::PackedAttentionBackendMask;
+using contrib::cuda::PackedAttentionHeadSizeDomain;
 using contrib::cuda::PackedAttentionInputShapes;
 using contrib::cuda::PackedAttentionProblem;
 using contrib::cuda::PackedAttentionQkvMaterializationIndexWidth;
@@ -180,20 +181,26 @@ PackedAttentionProblem RoutePaProblem(int32_t head_size = 64) {
   return problem;
 }
 
-PackedMultiHeadAttentionProblem RoutePmhaProblem(int32_t head_size = 64) {
+PackedMultiHeadAttentionProblem RoutePmhaProblem(int32_t qk_head_size = 64,
+                                                 int32_t v_head_size = -1) {
+  if (v_head_size < 0) {
+    v_head_size = qk_head_size;
+  }
+
   PackedMultiHeadAttentionProblem problem;
   problem.element_size = 2;
   problem.token_count = 128;
   problem.batch_size = 1;
   problem.sequence_length = 128;
   problem.num_heads = 1;
-  problem.hidden_size = head_size;
-  problem.v_hidden_size = head_size;
-  problem.qk_head_size = head_size;
-  problem.v_head_size = head_size;
+  problem.hidden_size = qk_head_size;
+  problem.v_hidden_size = v_head_size;
+  problem.qk_head_size = qk_head_size;
+  problem.v_head_size = v_head_size;
   problem.qkv_format = PackedMultiHeadAttentionQkvFormat::Separate;
   problem.qkv_materialization_index_width =
-      contrib::cuda::GetPackedAttentionQkvMaterializationIndexWidth(head_size, head_size);
+      contrib::cuda::GetPackedAttentionQkvMaterializationIndexWidth(
+          qk_head_size, v_head_size);
   return problem;
 }
 
@@ -448,7 +455,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, AggregateUsesMaxOfMutuallyExclusiveRo
   const auto unfused = GetPackedAttentionWorkspaceRecipe(unfused_problem);
   ASSERT_TRUE(unfused.status.IsOK()) << unfused.status.message;
 
-  const auto aggregate = GetPackedAttentionWorkspaceAggregate(
+  const auto aggregate = GetPackedAttentionWorkspaceAggregateForBounds(
       pa_problem.problem,
       PackedAttentionBackendMask::MemoryEfficient |
           PackedAttentionBackendMask::Unfused);
@@ -464,7 +471,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, AggregateUsesMaxOfMutuallyExclusiveRo
 }
 
 TEST(PackedAttentionWorkspaceEstimateTest, AlignedProjectionStartsAttentionWithoutPadding) {
-  const auto aggregate = GetPackedAttentionWorkspaceAggregate(
+  const auto aggregate = GetPackedAttentionWorkspaceAggregateForBounds(
       RoutePaProblem(), PackedAttentionBackendMask::Unfused);
   ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
   ASSERT_NE(aggregate.projection_bytes, 0U);
@@ -503,7 +510,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, Level2AdaptersDeclareOneAlignedRoot) 
   graph_problem_inputs.qkv_hidden_sizes = {8, 8, 8};
   auto problem = BuildPackedAttentionProblem(graph_problem_inputs);
   ASSERT_TRUE(problem.status.IsOK()) << problem.status.message;
-  const auto graph_free = GetPackedAttentionWorkspaceAggregate(
+  const auto graph_free = GetPackedAttentionWorkspaceAggregateForBounds(
       problem.problem, PackedAttentionBackendMask::Unfused);
   ASSERT_TRUE(graph_free.status.IsOK()) << graph_free.status.message;
   EXPECT_EQ(estimate->total_workspace_bytes, graph_free.total_workspace_bytes);
@@ -706,7 +713,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   pa_inputs.qkv_hidden_sizes = {8, 8, 8};
   auto pa_problem = BuildPackedAttentionProblem(pa_inputs);
   ASSERT_TRUE(pa_problem.status.IsOK()) << pa_problem.status.message;
-  auto zero_aggregate = GetPackedAttentionWorkspaceAggregate(
+  auto zero_aggregate = GetPackedAttentionWorkspaceAggregateForBounds(
       pa_problem.problem, PackedAttentionBackendMask::Unfused);
   ExpectEmptyAggregate(zero_aggregate);
 
@@ -724,7 +731,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   pa_inputs.qkv_hidden_sizes = {8, 8, 0};
   pa_problem = BuildPackedAttentionProblem(pa_inputs);
   ASSERT_TRUE(pa_problem.status.IsOK()) << pa_problem.status.message;
-  zero_aggregate = GetPackedAttentionWorkspaceAggregate(
+  zero_aggregate = GetPackedAttentionWorkspaceAggregateForBounds(
       pa_problem.problem, PackedAttentionBackendMask::Unfused);
   ExpectEmptyAggregate(zero_aggregate);
 
@@ -741,7 +748,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   pmha_inputs.num_heads = 2;
   auto pmha_problem = BuildPackedMultiHeadAttentionProblem(pmha_inputs);
   ASSERT_TRUE(pmha_problem.status.IsOK()) << pmha_problem.status.message;
-  zero_aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
+  zero_aggregate = GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
       pmha_problem.problem, PackedAttentionBackendMask::Unfused);
   ExpectEmptyAggregate(zero_aggregate);
 
@@ -759,7 +766,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, ZeroShapeHintsAreUnavailable) {
   pmha_inputs.has_value = true;
   pmha_problem = BuildPackedMultiHeadAttentionProblem(pmha_inputs);
   ASSERT_TRUE(pmha_problem.status.IsOK()) << pmha_problem.status.message;
-  zero_aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
+  zero_aggregate = GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
       pmha_problem.problem, PackedAttentionBackendMask::Unfused);
   ExpectEmptyAggregate(zero_aggregate);
 }
@@ -770,8 +777,14 @@ TEST(PackedAttentionWorkspaceEstimateTest, RouteSetConservativelyIncludesFallbac
   AttentionKernelOptions all_options;
   all_options.InitializeOnce(kFlash | kMea | kTrt | kTrtFlash | kMath, true);
   const auto pa_routes =
-      GetPackedAttentionFeasibleBackends(RoutePaProblem(), device, all_options);
+      GetPackedAttentionReachableBackendsForBounds(
+          RoutePaProblem(), PackedAttentionHeadSizeDomain::UpperBound,
+          device, all_options);
+#if USE_TRT_FUSED_ATTENTION
   EXPECT_TRUE(HasRoute(pa_routes, PackedAttentionBackend::Trt));
+#else
+  EXPECT_FALSE(HasRoute(pa_routes, PackedAttentionBackend::Trt));
+#endif
 #if USE_MEMORY_EFFICIENT_ATTENTION
   EXPECT_TRUE(HasRoute(pa_routes, PackedAttentionBackend::MemoryEfficient));
 #endif
@@ -779,7 +792,8 @@ TEST(PackedAttentionWorkspaceEstimateTest, RouteSetConservativelyIncludesFallbac
   EXPECT_FALSE(HasRoute(pa_routes, PackedAttentionBackend::Flash));
 
   const auto flash_routes =
-      GetPackedMultiHeadAttentionFeasibleBackends(RoutePmhaProblem(), device, all_options);
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          RoutePmhaProblem(/*qk_head_size=*/128), device, all_options);
 #if USE_FLASH_ATTENTION
   EXPECT_TRUE(HasRoute(flash_routes, PackedAttentionBackend::Flash));
 #else
@@ -790,9 +804,13 @@ TEST(PackedAttentionWorkspaceEstimateTest, RouteSetConservativelyIncludesFallbac
   AttentionKernelOptions trt_mea_options;
   trt_mea_options.InitializeOnce(kMea | kTrt | kTrtFlash | kMath, true);
   const auto trt_fallback_routes =
-      GetPackedMultiHeadAttentionFeasibleBackends(
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
           RoutePmhaProblem(), device, trt_mea_options);
+#if USE_TRT_FUSED_ATTENTION
   EXPECT_TRUE(HasRoute(trt_fallback_routes, PackedAttentionBackend::Trt));
+#else
+  EXPECT_FALSE(HasRoute(trt_fallback_routes, PackedAttentionBackend::Trt));
+#endif
 #if USE_MEMORY_EFFICIENT_ATTENTION
   EXPECT_TRUE(HasRoute(trt_fallback_routes, PackedAttentionBackend::MemoryEfficient));
 #endif
@@ -801,7 +819,8 @@ TEST(PackedAttentionWorkspaceEstimateTest, RouteSetConservativelyIncludesFallbac
   AttentionKernelOptions mea_options;
   mea_options.InitializeOnce(kMea | kMath, true);
   const auto mea_routes =
-      GetPackedMultiHeadAttentionFeasibleBackends(RoutePmhaProblem(), device, mea_options);
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          RoutePmhaProblem(), device, mea_options);
 #if USE_MEMORY_EFFICIENT_ATTENTION
   EXPECT_TRUE(HasRoute(mea_routes, PackedAttentionBackend::MemoryEfficient));
 #endif
@@ -809,12 +828,302 @@ TEST(PackedAttentionWorkspaceEstimateTest, RouteSetConservativelyIncludesFallbac
 
   AttentionKernelOptions math_options;
   math_options.InitializeOnce(kMath, true);
-  EXPECT_EQ(GetPackedMultiHeadAttentionFeasibleBackends(
+  EXPECT_EQ(GetPackedMultiHeadAttentionReachableBackendsForBounds(
                 RoutePmhaProblem(), device, math_options),
             PackedAttentionBackendMask::Unfused);
-  EXPECT_EQ(GetPackedAttentionFeasibleBackends(
-                RoutePaProblem(7), device, math_options),
+  EXPECT_EQ(GetPackedAttentionReachableBackendsForBounds(
+                RoutePaProblem(7), PackedAttentionHeadSizeDomain::UpperBound,
+                device, math_options),
             PackedAttentionBackendMask::Unfused);
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, PaTensorHeadBoundAboveMeaLimitSizesReachableSmallerHead) {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMea | kMath, true);
+
+  auto maximum_problem = RoutePaProblem(/*head_size=*/1032);
+  maximum_problem.token_count = 1;
+  maximum_problem.batch_size = 1;
+  maximum_problem.sequence_length = 1;
+  maximum_problem.input_hidden_size = 1;
+  const auto maximum_routes = GetPackedAttentionReachableBackendsForBounds(
+      maximum_problem, PackedAttentionHeadSizeDomain::UpperBound,
+      Sm80Device(), options);
+  ASSERT_TRUE(HasRoute(maximum_routes, PackedAttentionBackend::MemoryEfficient));
+
+  auto unequal_bounds = maximum_problem;
+  unequal_bounds.v_head_size = 520;
+  unequal_bounds.v_hidden_size = 520;
+  unequal_bounds.qkv_materialization_index_width =
+      contrib::cuda::GetPackedAttentionQkvMaterializationIndexWidth(
+          unequal_bounds.qk_head_size, unequal_bounds.v_head_size);
+  const auto unequal_routes = GetPackedAttentionReachableBackendsForBounds(
+      unequal_bounds, PackedAttentionHeadSizeDomain::UpperBound,
+      Sm80Device(), options);
+  EXPECT_TRUE(HasRoute(unequal_routes, PackedAttentionBackend::MemoryEfficient));
+
+  std::array<WorkspaceInputShape, 6> shapes;
+  shapes[0] = KnownShape({1, 1});
+  shapes[1] = KnownShape({1, 3096});
+  shapes[2] = KnownShape({3096});
+  shapes[3] = KnownShape({1, 1});
+  shapes[4] = KnownShape({2});
+  auto config = PaConfig();
+  config.num_heads = 1;
+  config.qkv_hidden_sizes_count = 0;
+  config.qkv_hidden_sizes = {};
+  const auto estimate = EstimatePackedAttentionWorkspace(
+      config, gsl::make_span(shapes), Sm80Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_EQ(estimate->total_workspace_bytes, 16720U);
+
+  auto runtime_problem = RoutePaProblem(/*head_size=*/1024);
+  runtime_problem.token_count = 1;
+  runtime_problem.batch_size = 1;
+  runtime_problem.sequence_length = 1;
+  runtime_problem.input_hidden_size = 1;
+  const auto runtime_root = GetPackedAttentionWorkspaceAggregateForBounds(
+      runtime_problem, PackedAttentionBackendMask::MemoryEfficient);
+  ASSERT_TRUE(runtime_root.status.IsOK()) << runtime_root.status.message;
+  EXPECT_EQ(runtime_root.total_workspace_bytes, 16384U);
+  EXPECT_GE(estimate->total_workspace_bytes, runtime_root.total_workspace_bytes);
+#else
+  GTEST_SKIP() << "Memory Efficient Attention is not compiled.";
+#endif
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, PaExactQkvHiddenSizesDoNotAdmitSmallerHeadRoutes) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMea | kTrt | kTrtFlash | kMath, true);
+
+  auto exact_problem = RoutePaProblem(/*head_size=*/1032);
+  exact_problem.token_count = 1;
+  exact_problem.batch_size = 1;
+  exact_problem.sequence_length = 1;
+  exact_problem.input_hidden_size = 1;
+  const auto exact_routes = GetPackedAttentionReachableBackendsForBounds(
+      exact_problem, PackedAttentionHeadSizeDomain::Exact,
+      Sm80Device(), options);
+  EXPECT_FALSE(HasRoute(exact_routes, PackedAttentionBackend::MemoryEfficient));
+  EXPECT_FALSE(HasRoute(exact_routes, PackedAttentionBackend::Trt));
+  EXPECT_EQ(exact_routes, PackedAttentionBackendMask::Unfused);
+
+  std::array<WorkspaceInputShape, 6> shapes;
+  shapes[0] = KnownShape({1, 1});
+  shapes[1] = KnownShape({1, 3096});
+  shapes[2] = KnownShape({3096});
+  shapes[3] = KnownShape({1, 1});
+  shapes[4] = KnownShape({2});
+  auto config = PaConfig();
+  config.num_heads = 1;
+  config.qkv_hidden_sizes = {1032, 1032, 1032};
+  const auto estimate = EstimatePackedAttentionWorkspace(
+      config, gsl::make_span(shapes), Sm80Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+
+  const auto unfused_bound = GetPackedAttentionWorkspaceAggregateForBounds(
+      exact_problem, PackedAttentionBackendMask::Unfused);
+  ASSERT_TRUE(unfused_bound.status.IsOK()) << unfused_bound.status.message;
+  EXPECT_EQ(estimate->total_workspace_bytes,
+            unfused_bound.total_workspace_bytes);
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, PackedPmhaHeadBoundAboveMeaLimitSizesReachableSmallerHead) {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMea | kMath, true);
+
+  const auto maximum_problem =
+      BuildPmhaProblem(/*sequence_length=*/1, /*element_size=*/2,
+                       /*packed=*/true, /*has_attention_bias=*/false,
+                       /*head_size=*/1032);
+  const auto maximum_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
+      maximum_problem, Sm80Device(), options);
+  ASSERT_TRUE(HasRoute(maximum_routes, PackedAttentionBackend::MemoryEfficient));
+
+  const auto unequal_bounds =
+      RoutePmhaProblem(/*qk_head_size=*/1032, /*v_head_size=*/520);
+  const auto unequal_routes =
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          unequal_bounds, Sm80Device(), options);
+  EXPECT_TRUE(HasRoute(unequal_routes, PackedAttentionBackend::MemoryEfficient));
+
+  const auto shapes = PackedPmhaShapes(/*sequence_length=*/1, /*head_size=*/1032);
+  const auto estimate = EstimatePackedAttentionWorkspace(
+      PmhaConfig(/*element_size=*/2), gsl::make_span(shapes),
+      Sm80Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_EQ(estimate->total_workspace_bytes, 10320U);
+
+  auto runtime_problem =
+      BuildPmhaProblem(/*sequence_length=*/1, /*element_size=*/2,
+                       /*packed=*/true, /*has_attention_bias=*/false,
+                       /*head_size=*/1024);
+  runtime_problem.backend = PackedAttentionBackend::MemoryEfficient;
+  const auto runtime_recipe =
+      GetPackedMultiHeadAttentionWorkspaceRecipe(runtime_problem);
+  ASSERT_TRUE(runtime_recipe.status.IsOK()) << runtime_recipe.status.message;
+  EXPECT_EQ(runtime_recipe.recipe.attention_workspace_bytes, 10240U);
+  EXPECT_GE(estimate->total_workspace_bytes,
+            runtime_recipe.recipe.attention_workspace_bytes);
+#else
+  GTEST_SKIP() << "Memory Efficient Attention is not compiled.";
+#endif
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, FlashReachabilityProbesSmallerAndUnequalBoundedHeads) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kFlash | kMath, true);
+
+  const auto equal_bound_problem = RoutePmhaProblem(/*qk_head_size=*/264);
+  const auto equal_bound_routes =
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          equal_bound_problem, Sm80Device(), options);
+#if USE_FLASH_ATTENTION
+  EXPECT_TRUE(HasRoute(equal_bound_routes, PackedAttentionBackend::Flash));
+#else
+  EXPECT_FALSE(HasRoute(equal_bound_routes, PackedAttentionBackend::Flash));
+#endif
+
+  const auto unequal_bound_problem =
+      RoutePmhaProblem(/*qk_head_size=*/264, /*v_head_size=*/200);
+  const auto unequal_bound_routes =
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          unequal_bound_problem, Sm80Device(), options);
+#if USE_FLASH_ATTENTION
+  ASSERT_TRUE(HasRoute(unequal_bound_routes, PackedAttentionBackend::Flash));
+  const auto aggregate = GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
+      unequal_bound_problem, PackedAttentionBackendMask::Flash);
+  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
+  EXPECT_EQ(aggregate.total_workspace_bytes, 512U);
+#else
+  EXPECT_FALSE(HasRoute(unequal_bound_routes, PackedAttentionBackend::Flash));
+#endif
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, TrtReachabilityProbesSmallerAndUnequalBoundedHeads) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kTrt | kMath, true);
+
+  const auto equal_bound_problem = RoutePmhaProblem(/*qk_head_size=*/72);
+  const auto equal_bound_routes =
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          equal_bound_problem, Sm80Device(), options);
+#if USE_TRT_FUSED_ATTENTION
+  EXPECT_TRUE(HasRoute(equal_bound_routes, PackedAttentionBackend::Trt));
+#else
+  EXPECT_FALSE(HasRoute(equal_bound_routes, PackedAttentionBackend::Trt));
+#endif
+
+  const auto unequal_bound_problem =
+      RoutePmhaProblem(/*qk_head_size=*/72, /*v_head_size=*/80);
+  const auto unequal_bound_routes =
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          unequal_bound_problem, Sm80Device(), options);
+#if USE_TRT_FUSED_ATTENTION
+  ASSERT_TRUE(HasRoute(unequal_bound_routes, PackedAttentionBackend::Trt));
+  const auto aggregate = GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
+      unequal_bound_problem, PackedAttentionBackendMask::Trt);
+  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
+  EXPECT_EQ(aggregate.total_workspace_bytes, 57344U);
+#else
+  EXPECT_FALSE(HasRoute(unequal_bound_routes, PackedAttentionBackend::Trt));
+#endif
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, ExactRecipesRejectUnequalHeadsAcceptedByBoundAggregates) {
+  auto pa_problem = RoutePaProblem(/*head_size=*/72);
+  pa_problem.v_head_size = 80;
+  pa_problem.v_hidden_size = 80;
+  pa_problem.qkv_materialization_index_width =
+      contrib::cuda::GetPackedAttentionQkvMaterializationIndexWidth(
+          pa_problem.qk_head_size, pa_problem.v_head_size);
+  pa_problem.backend = PackedAttentionBackend::Trt;
+  pa_problem.trt_runner_available = true;
+  EXPECT_EQ(GetPackedAttentionWorkspaceRecipe(pa_problem).status.error,
+            PackedAttentionWorkspaceError::InvalidArgument);
+
+  const auto pa_bound = GetPackedAttentionWorkspaceAggregateForBounds(
+      pa_problem, PackedAttentionBackendMask::Trt);
+  ASSERT_TRUE(pa_bound.status.IsOK()) << pa_bound.status.message;
+  auto pa_runtime = RoutePaProblem(/*head_size=*/64);
+  pa_runtime.backend = PackedAttentionBackend::Trt;
+  pa_runtime.trt_runner_available = true;
+  const auto pa_runtime_recipe = GetPackedAttentionWorkspaceRecipe(pa_runtime);
+  ASSERT_TRUE(pa_runtime_recipe.status.IsOK()) << pa_runtime_recipe.status.message;
+  EXPECT_GE(pa_bound.projection_bytes,
+            pa_runtime_recipe.recipe.projection_bytes);
+  EXPECT_GE(pa_bound.attention_workspace_bytes,
+            pa_runtime_recipe.recipe.attention_workspace_bytes);
+
+  auto pmha_problem =
+      RoutePmhaProblem(/*qk_head_size=*/136, /*v_head_size=*/160);
+  pmha_problem.backend = PackedAttentionBackend::Trt;
+  pmha_problem.trt_runner_available = true;
+  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceRecipe(pmha_problem).status.error,
+            PackedAttentionWorkspaceError::InvalidArgument);
+
+  const auto trt_bound =
+      GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
+          pmha_problem, PackedAttentionBackendMask::Trt);
+  ASSERT_TRUE(trt_bound.status.IsOK()) << trt_bound.status.message;
+  auto trt_runtime = RoutePmhaProblem(/*qk_head_size=*/64);
+  trt_runtime.backend = PackedAttentionBackend::Trt;
+  trt_runtime.trt_runner_available = true;
+  const auto trt_runtime_recipe =
+      GetPackedMultiHeadAttentionWorkspaceRecipe(trt_runtime);
+  ASSERT_TRUE(trt_runtime_recipe.status.IsOK())
+      << trt_runtime_recipe.status.message;
+  EXPECT_GE(trt_bound.attention_workspace_bytes,
+            trt_runtime_recipe.recipe.attention_workspace_bytes);
+
+  pmha_problem.backend = PackedAttentionBackend::Flash;
+  pmha_problem.trt_runner_available = false;
+  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceRecipe(pmha_problem).status.error,
+            PackedAttentionWorkspaceError::InvalidArgument);
+
+  const auto flash_bound =
+      GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
+          pmha_problem, PackedAttentionBackendMask::Flash);
+  ASSERT_TRUE(flash_bound.status.IsOK()) << flash_bound.status.message;
+  auto flash_runtime = RoutePmhaProblem(/*qk_head_size=*/128);
+  flash_runtime.backend = PackedAttentionBackend::Flash;
+  const auto flash_runtime_recipe =
+      GetPackedMultiHeadAttentionWorkspaceRecipe(flash_runtime);
+  ASSERT_TRUE(flash_runtime_recipe.status.IsOK())
+      << flash_runtime_recipe.status.message;
+  EXPECT_GE(flash_bound.attention_workspace_bytes,
+            flash_runtime_recipe.recipe.attention_workspace_bytes);
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, HeadBoundsBelowMinimumWitnessesExcludeOptionalRoutes) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kFlash | kMea | kTrt | kTrtFlash | kMath, true);
+
+  const auto pmha_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
+      RoutePmhaProblem(/*qk_head_size=*/7), Sm80Device(), options);
+  EXPECT_FALSE(HasRoute(pmha_routes, PackedAttentionBackend::Flash));
+  EXPECT_FALSE(HasRoute(pmha_routes, PackedAttentionBackend::MemoryEfficient));
+  EXPECT_FALSE(HasRoute(pmha_routes, PackedAttentionBackend::Trt));
+  EXPECT_TRUE(HasRoute(pmha_routes, PackedAttentionBackend::Unfused));
+
+  for (const auto& problem :
+       {RoutePmhaProblem(/*qk_head_size=*/7, /*v_head_size=*/1032),
+        RoutePmhaProblem(/*qk_head_size=*/1032, /*v_head_size=*/7)}) {
+    const auto routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
+        problem, Sm80Device(), options);
+    EXPECT_FALSE(HasRoute(routes, PackedAttentionBackend::Flash));
+    EXPECT_FALSE(HasRoute(routes, PackedAttentionBackend::MemoryEfficient));
+    EXPECT_FALSE(HasRoute(routes, PackedAttentionBackend::Trt));
+  }
+
+  const auto pa_routes = GetPackedAttentionReachableBackendsForBounds(
+      RoutePaProblem(/*head_size=*/7), PackedAttentionHeadSizeDomain::UpperBound,
+      Sm80Device(), options);
+  EXPECT_FALSE(HasRoute(pa_routes, PackedAttentionBackend::MemoryEfficient));
+  EXPECT_FALSE(HasRoute(pa_routes, PackedAttentionBackend::Trt));
+  EXPECT_TRUE(HasRoute(pa_routes, PackedAttentionBackend::Unfused));
 }
 
 TEST(PackedAttentionWorkspaceEstimateTest, DefaultPackedPmhaCrossesFlashThreshold) {
@@ -826,7 +1135,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, DefaultPackedPmhaCrossesFlashThreshol
       BuildPmhaProblem(/*sequence_length=*/1024, /*element_size=*/2,
                        /*packed=*/true, /*has_attention_bias=*/false,
                        /*head_size=*/128);
-  const auto maximum_routes = GetPackedMultiHeadAttentionFeasibleBackends(
+  const auto maximum_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
       maximum_problem, Sm80Device(), options);
   EXPECT_TRUE(HasRoute(maximum_routes, PackedAttentionBackend::Unfused));
 #if USE_FLASH_ATTENTION
@@ -837,7 +1146,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, DefaultPackedPmhaCrossesFlashThreshol
       BuildPmhaProblem(/*sequence_length=*/512, /*element_size=*/2,
                        /*packed=*/true, /*has_attention_bias=*/false,
                        /*head_size=*/128);
-  const auto runtime_bound_routes = GetPackedMultiHeadAttentionFeasibleBackends(
+  const auto runtime_bound_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
       runtime_problem, Sm80Device(), options);
   EXPECT_FALSE(HasRoute(runtime_bound_routes, PackedAttentionBackend::Flash));
   EXPECT_TRUE(HasRoute(runtime_bound_routes, PackedAttentionBackend::Unfused));
@@ -859,7 +1168,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, DefaultFp32PmhaCrossesMeaThreshold) {
   const auto maximum_problem =
       BuildPmhaProblem(/*sequence_length=*/512, /*element_size=*/4,
                        /*packed=*/false, /*has_attention_bias=*/true);
-  const auto maximum_routes = GetPackedMultiHeadAttentionFeasibleBackends(
+  const auto maximum_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
       maximum_problem, Sm80Device(), options);
   EXPECT_TRUE(HasRoute(maximum_routes, PackedAttentionBackend::Unfused));
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -869,7 +1178,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, DefaultFp32PmhaCrossesMeaThreshold) {
   const auto smaller_problem =
       BuildPmhaProblem(/*sequence_length=*/128, /*element_size=*/4,
                        /*packed=*/false, /*has_attention_bias=*/true);
-  const auto smaller_routes = GetPackedMultiHeadAttentionFeasibleBackends(
+  const auto smaller_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
       smaller_problem, Sm80Device(), options);
   EXPECT_FALSE(HasRoute(smaller_routes, PackedAttentionBackend::MemoryEfficient));
   EXPECT_TRUE(HasRoute(smaller_routes, PackedAttentionBackend::Unfused));
@@ -890,7 +1199,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, AttentionBiasAlignmentIsPossibleBelow
   const auto too_small_problem =
       BuildPmhaProblem(/*sequence_length=*/7, /*element_size=*/2,
                        /*packed=*/false, /*has_attention_bias=*/true);
-  const auto too_small_routes = GetPackedMultiHeadAttentionFeasibleBackends(
+  const auto too_small_routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
       too_small_problem, Sm80Device(), options);
   EXPECT_FALSE(HasRoute(too_small_routes, PackedAttentionBackend::MemoryEfficient));
   EXPECT_TRUE(HasRoute(too_small_routes, PackedAttentionBackend::Unfused));
@@ -900,7 +1209,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, AttentionBiasAlignmentIsPossibleBelow
     const auto problem =
         BuildPmhaProblem(maximum_sequence_length, /*element_size=*/2,
                          /*packed=*/false, /*has_attention_bias=*/true);
-    const auto routes = GetPackedMultiHeadAttentionFeasibleBackends(
+    const auto routes = GetPackedMultiHeadAttentionReachableBackendsForBounds(
         problem, Sm80Device(), options);
     EXPECT_TRUE(HasRoute(routes, PackedAttentionBackend::Unfused));
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -982,7 +1291,8 @@ TEST(PackedAttentionWorkspaceEstimateTest, AttentionBiasDisablesFlashAndTrtCandi
   problem.broadcast_attn_bias_dim_0 = true;
   problem.broadcast_attn_bias_dim_1 = true;
   const auto routes =
-      GetPackedMultiHeadAttentionFeasibleBackends(problem, Sm80Device(), options);
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          problem, Sm80Device(), options);
   EXPECT_FALSE(HasRoute(routes, PackedAttentionBackend::Flash));
   EXPECT_FALSE(HasRoute(routes, PackedAttentionBackend::Trt));
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -1010,30 +1320,30 @@ TEST(PackedAttentionWorkspaceEstimateTest, IncludedRouteOverflowMakesAggregateUn
   const auto single_route = GetPackedMultiHeadAttentionWorkspaceRecipe(problem);
   EXPECT_EQ(single_route.status.error, PackedAttentionWorkspaceError::Overflow);
 
-  const auto aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
+  const auto aggregate = GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
       problem, PackedAttentionBackendMask::MemoryEfficient);
   EXPECT_EQ(aggregate.status.error, PackedAttentionWorkspaceError::Overflow);
 }
 
 TEST(PackedAttentionWorkspaceEstimateTest, InvalidAndEmptyRouteMasksAreDistinguished) {
   auto nonempty = RoutePaProblem();
-  EXPECT_EQ(GetPackedAttentionWorkspaceAggregate(
+  EXPECT_EQ(GetPackedAttentionWorkspaceAggregateForBounds(
                 nonempty, PackedAttentionBackendMask::None)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
 
   nonempty.token_count = 0;
-  const auto empty = GetPackedAttentionWorkspaceAggregate(
+  const auto empty = GetPackedAttentionWorkspaceAggregateForBounds(
       nonempty, PackedAttentionBackendMask::None);
   ExpectEmptyAggregate(empty);
 
   const auto invalid_mask = static_cast<PackedAttentionBackendMask>(1U << 31);
-  EXPECT_EQ(GetPackedAttentionWorkspaceAggregate(nonempty, invalid_mask).status.error,
+  EXPECT_EQ(GetPackedAttentionWorkspaceAggregateForBounds(nonempty, invalid_mask).status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
 
   auto empty_pmha = RoutePmhaProblem();
   empty_pmha.token_count = 0;
-  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregate(empty_pmha, invalid_mask)
+  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(empty_pmha, invalid_mask)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
 }
@@ -1042,39 +1352,39 @@ TEST(PackedAttentionWorkspaceEstimateTest, EmptyAggregatesStillValidateProblemGe
   auto valid_pa = RoutePaProblem();
   valid_pa.token_count = 0;
   auto aggregate =
-      GetPackedAttentionWorkspaceAggregate(valid_pa, PackedAttentionBackendMask::None);
+      GetPackedAttentionWorkspaceAggregateForBounds(valid_pa, PackedAttentionBackendMask::None);
   ExpectEmptyAggregate(aggregate);
 
   auto malformed_pa = valid_pa;
   malformed_pa.input_hidden_size = -1;
-  EXPECT_EQ(GetPackedAttentionWorkspaceAggregate(
+  EXPECT_EQ(GetPackedAttentionWorkspaceAggregateForBounds(
                 malformed_pa, PackedAttentionBackendMask::None)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
 
   malformed_pa = valid_pa;
   malformed_pa.hidden_size += 1;
-  EXPECT_EQ(GetPackedAttentionWorkspaceAggregate(
+  EXPECT_EQ(GetPackedAttentionWorkspaceAggregateForBounds(
                 malformed_pa, PackedAttentionBackendMask::None)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
 
   auto valid_pmha = RoutePmhaProblem();
   valid_pmha.token_count = 0;
-  aggregate = GetPackedMultiHeadAttentionWorkspaceAggregate(
+  aggregate = GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
       valid_pmha, PackedAttentionBackendMask::None);
   ExpectEmptyAggregate(aggregate);
 
   auto malformed_pmha = valid_pmha;
   malformed_pmha.batch_size = -1;
-  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregate(
+  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
                 malformed_pmha, PackedAttentionBackendMask::None)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
 
   malformed_pmha = valid_pmha;
   malformed_pmha.hidden_size += 1;
-  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregate(
+  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
                 malformed_pmha, PackedAttentionBackendMask::None)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);
@@ -1082,7 +1392,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, EmptyAggregatesStillValidateProblemGe
   malformed_pmha = valid_pmha;
   malformed_pmha.qkv_format =
       static_cast<PackedMultiHeadAttentionQkvFormat>(-1);
-  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregate(
+  EXPECT_EQ(GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
                 malformed_pmha, PackedAttentionBackendMask::None)
                 .status.error,
             PackedAttentionWorkspaceError::InvalidArgument);

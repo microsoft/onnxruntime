@@ -35,25 +35,37 @@ struct PackedAttentionWorkspaceEstimateConfig {
   PackedAttentionWorkspaceOperator op = PackedAttentionWorkspaceOperator::PackedAttention;
   size_t element_size = 0;
   int64_t num_heads = 0;
+  // When present, these immutable node attributes are exact rather than
+  // WorkspaceInputShape bounds.
   size_t qkv_hidden_sizes_count = 0;
   std::array<int64_t, 3> qkv_hidden_sizes{};
 };
 
-// The problem geometry is an upper-bound hint. Returned routes are those that
-// may be reachable at some valid runtime geometry up to that bound.
-PackedAttentionBackendMask GetPackedAttentionFeasibleBackends(
+enum class PackedAttentionHeadSizeDomain {
+  Exact,
+  UpperBound,
+};
+
+// Non-head problem geometry is an upper-bound hint. For UpperBound head
+// geometry, returned routes are those reachable at some valid positive runtime
+// head geometry componentwise no greater than that bound. Exact head geometry
+// retains the runtime backend head-eligibility gates.
+PackedAttentionBackendMask GetPackedAttentionReachableBackendsForBounds(
     const PackedAttentionProblem& problem,
+    PackedAttentionHeadSizeDomain head_size_domain,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options);
 
-PackedAttentionBackendMask GetPackedMultiHeadAttentionFeasibleBackends(
+// PMHA head geometry always comes from WorkspaceInputShape, which does not
+// preserve provenance, so head sizes are treated as upper bounds.
+PackedAttentionBackendMask GetPackedMultiHeadAttentionReachableBackendsForBounds(
     const PackedMultiHeadAttentionProblem& problem,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options);
 
 // Translates positional framework shapes into the graph-free problem and then
 // aggregates every route potentially reachable up to the supplied geometry.
-// nullopt means required metadata, route feasibility, or checked recipe
+// nullopt means required metadata, route reachability, or checked recipe
 // arithmetic was unavailable.
 std::optional<PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspace(
     const PackedAttentionWorkspaceEstimateConfig& config,

@@ -36,23 +36,29 @@ Runtime sizing can be exact because the kernel first selects a backend and then 
 concrete inputs -> runtime dispatch -> selected backend -> exact workspace recipe
 ```
 
-Ahead-of-time (AOT) estimation cannot assume that the same selection is known. Backend feasibility can depend on
+Ahead-of-time (AOT) estimation cannot assume that the same selection is known. Backend reachability can depend on
 optional inputs, build and runtime options, cache state, runner availability, device properties, and concrete dynamic
-sequence lengths. When the exact backend cannot be proven, AOT estimation must enumerate the feasible backend recipes
+sequence lengths. When the exact backend cannot be proven, AOT estimation must enumerate the reachable backend recipes
 and take a safe upper bound:
 
 ```text
-shapes and bounds -> feasible backends -> recipe per backend -> maximum workspace
+shapes and bounds -> reachable backends -> recipe per backend -> maximum workspace
 ```
 
 An estimator must not copy the runtime dispatch cascade or assume that dispatch is monotonic with shape. For example,
 a larger shape may use a fused backend with small workspace while a nearby smaller shape falls back to an unfused
-backend with an `S^2` attention buffer.
+backend with an `S^2` attention buffer. Head eligibility is also non-monotonic: a componentwise upper bound can exceed
+a backend's supported head range while a smaller runtime head remains supported, and equal-head routes can be reachable
+under unequal Q/K and V bounds. Each route reachable at a positive runtime geometry within the bounds must therefore be
+sized using the original componentwise maximum geometry, whose current workspace terms are monotonic. PA's
+`qkv_hidden_sizes` values are immutable node attributes, not shape bounds, so their derived head sizes retain exact
+runtime eligibility checks. Only PA geometry derived without that attribute and PMHA geometry supplied through
+`WorkspaceInputShape` use bounded head reachability.
 
 An AOT result should therefore be classified as:
 
 - **Exact:** the backend and all governing dimensions are proven.
-- **Safe bound:** the maximum workspace across all feasible backend recipes.
+- **Safe bound:** the maximum workspace across all reachable backend recipes.
 - **Unavailable:** a required shape, optional-input, capability, or recipe contract is not available.
 
 ## Recipe architecture
@@ -172,7 +178,7 @@ Each Attention family must provide:
 - a runtime source of truth for the selected backend's workspace and layout;
 - checked arithmetic and ABI, grid, alignment, and containment validation;
 - byte-total and view-layout parity with runtime allocation;
-- tests for feasible backend routes and fallback boundaries;
+- tests for reachable backend routes and fallback boundaries;
 - explicit exact, safe-bound, or unavailable estimation semantics;
 - no copied runtime dispatch cascade; and
 - no dependency from the reusable recipe on graph or CUDA runtime types.
@@ -200,16 +206,18 @@ Route aggregation does not evaluate the runtime cascade only at the supplied max
 such as Flash and FP32 MEA thresholds or attention-bias alignment are non-monotonic across smaller runtime shapes.
 Every backend that can be reached for some valid shape up to the supplied geometry is sized at that maximum geometry.
 Unfused is always retained as a possible fallback for a nonempty problem, including alongside Flash, MEA, and
-TensorRT candidates. If any included route cannot be safely bounded, estimation is unavailable. Mutually exclusive
-route workspaces are combined with `max`, never `sum`. The Level-1 aggregate describes one 256-byte-aligned,
-operator-owned root. PA places its simultaneously-live projection and Attention regions in that root; PMHA naturally
-has only the Attention region:
+TensorRT candidates. Bound aggregates deliberately bypass exact equal-head recipe gates because an equal-head route
+can be reachable below unequal maximum bounds; the recipe is still checked at those original maximum bounds. If a
+newly reachable route's max-geometry recipe is invalid, or any included route otherwise cannot be safely bounded,
+estimation is unavailable rather than silently omitting the route. Mutually exclusive route workspaces are combined
+with `max`, never `sum`. The Level-1 aggregate describes one 256-byte-aligned, operator-owned root. PA places its
+simultaneously-live projection and Attention regions in that root; PMHA naturally has only the Attention region:
 
 ```text
 PA attention offset = align_up(projection bytes, 256)
-PA root bytes = attention offset + max(feasible attention routes)
+PA root bytes = attention offset + max(reachable attention routes)
 PMHA attention offset = 0
-PMHA root bytes = max(feasible attention routes)
+PMHA root bytes = max(reachable attention routes)
 ```
 
 The PA alignment gap is intentional, so its root can be up to 255 bytes larger than the unaligned sum. Level 2 emits

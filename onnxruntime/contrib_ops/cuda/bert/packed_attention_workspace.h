@@ -234,8 +234,13 @@ struct PackedAttentionWorkspaceResult {
 };
 
 // AOT routes are mutually exclusive, so the attention component is the maximum
-// single-route recipe. A successful nonempty aggregate describes one
-// operator-owned, 256-byte-aligned root with this graph-free layout:
+// single-route recipe. These bound aggregates deliberately skip exact-runtime
+// equal-head route gates: a route may be reachable only at a smaller equal-head
+// geometry, but its checked recipe is evaluated at the supplied componentwise
+// maximum bounds. If any included route's max-geometry recipe is invalid,
+// aggregation fails rather than omitting that route. A successful nonempty
+// aggregate describes one operator-owned, 256-byte-aligned root with this
+// graph-free layout:
 //   projection: [0, projection_bytes)
 //   attention:  [attention_workspace_offset_bytes,
 //                attention_workspace_offset_bytes + attention_workspace_bytes)
@@ -273,13 +278,13 @@ PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
 PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
     const PackedMultiHeadAttentionProblem& problem) noexcept;
 
-PackedAttentionWorkspaceAggregate GetPackedAttentionWorkspaceAggregate(
+PackedAttentionWorkspaceAggregate GetPackedAttentionWorkspaceAggregateForBounds(
     const PackedAttentionProblem& problem,
-    PackedAttentionBackendMask feasible_backends) noexcept;
+    PackedAttentionBackendMask reachable_backends) noexcept;
 
-PackedAttentionWorkspaceAggregate GetPackedMultiHeadAttentionWorkspaceAggregate(
+PackedAttentionWorkspaceAggregate GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
     const PackedMultiHeadAttentionProblem& problem,
-    PackedAttentionBackendMask feasible_backends) noexcept;
+    PackedAttentionBackendMask reachable_backends) noexcept;
 
 PackedAttentionWorkspaceStatus ValidatePackedAttentionWorkspaceRecipe(
     const PackedAttentionWorkspaceRecipe& recipe) noexcept;

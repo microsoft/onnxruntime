@@ -24,6 +24,10 @@ namespace cuda {
 
 namespace {
 
+bool HasExactQkvHiddenSizes(const PackedAttentionWorkspaceEstimateConfig& config) {
+  return config.qkv_hidden_sizes_count == config.qkv_hidden_sizes.size();
+}
+
 bool IsValidConfig(const PackedAttentionWorkspaceEstimateConfig& config) {
   if ((config.element_size != 2 && config.element_size != 4) ||
       config.num_heads <= 0 ||
@@ -46,7 +50,7 @@ bool IsValidConfig(const PackedAttentionWorkspaceEstimateConfig& config) {
       return false;
     }
   }
-  if (config.qkv_hidden_sizes_count == config.qkv_hidden_sizes.size()) {
+  if (HasExactQkvHiddenSizes(config)) {
     const int64_t q = config.qkv_hidden_sizes[0];
     const int64_t k = config.qkv_hidden_sizes[1];
     const int64_t v = config.qkv_hidden_sizes[2];
@@ -60,7 +64,7 @@ bool IsValidConfig(const PackedAttentionWorkspaceEstimateConfig& config) {
 
 bool HasZeroDimension(const PackedAttentionWorkspaceEstimateConfig& config) {
   return config.op == PackedAttentionWorkspaceOperator::PackedAttention &&
-         config.qkv_hidden_sizes_count == config.qkv_hidden_sizes.size() &&
+         HasExactQkvHiddenSizes(config) &&
          std::find(config.qkv_hidden_sizes.begin(), config.qkv_hidden_sizes.end(), int64_t{0}) !=
              config.qkv_hidden_sizes.end();
 }
@@ -121,35 +125,64 @@ bool HasValidPmhaLayoutPresence(gsl::span<const WorkspaceInputShape> input_shape
   return false;
 }
 
-bool IsTrtRoutePossible(const PackedAttentionProblem& problem,
-                        int sm,
-                        const AttentionKernelOptions& kernel_options) {
-  if (problem.sequence_length <= 0) {
+bool IsTrtRouteReachable(int32_t qk_head_size,
+                         int32_t v_head_size,
+                         PackedAttentionHeadSizeDomain head_size_domain,
+                         int32_t sequence_length_bound,
+                         int sm,
+                         const AttentionKernelOptions& kernel_options) {
+  if (sequence_length_bound <= 0) {
     return false;
   }
 
-  return FusedMHARunnerFP16v2::IsSupported(
-             sm, problem.qk_head_size, 1,
-             kernel_options.UseTrtFlashAttention()) ||
-         FusedMHARunnerFP16v2::IsSupported(
-             sm, problem.qk_head_size, problem.sequence_length,
-             kernel_options.UseTrtFlashAttention());
+  const bool enable_flash_attention = kernel_options.UseTrtFlashAttention();
+  if (head_size_domain == PackedAttentionHeadSizeDomain::Exact) {
+    return qk_head_size == v_head_size &&
+           (FusedMHARunnerFP16v2::IsSupported(
+                sm, qk_head_size, 1, enable_flash_attention) ||
+            FusedMHARunnerFP16v2::IsSupported(
+                sm, qk_head_size, sequence_length_bound, enable_flash_attention));
+  }
+
+  const int32_t common_head_size_bound = std::min(qk_head_size, v_head_size);
+  return FusedMHARunnerFP16v2::IsAnySupportedHeadSize(
+             sm, common_head_size_bound, 1, enable_flash_attention) ||
+         FusedMHARunnerFP16v2::IsAnySupportedHeadSize(
+             sm, common_head_size_bound, sequence_length_bound, enable_flash_attention);
 }
 
-bool IsTrtRoutePossible(const PackedMultiHeadAttentionProblem& problem,
-                        int sm,
-                        const AttentionKernelOptions& kernel_options) {
-  if (problem.sequence_length <= 0) {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+bool IsMemoryEfficientRouteReachable(
+    int32_t qk_head_size,
+    int32_t v_head_size,
+    PackedAttentionHeadSizeDomain head_size_domain,
+    int sm,
+    bool is_half) {
+  if (head_size_domain == PackedAttentionHeadSizeDomain::Exact) {
+    return has_memory_efficient_attention(
+        sm, is_half, false, qk_head_size, v_head_size);
+  }
+
+  return has_memory_efficient_attention_for_head_size_bounds(
+      sm, is_half, false, qk_head_size, v_head_size);
+}
+#endif
+
+#if USE_FLASH_ATTENTION
+bool IsFlashRouteReachableForBounds(const PackedMultiHeadAttentionProblem& problem,
+                                    const cudaDeviceProp& device_prop) {
+  const int32_t common_head_size_bound =
+      std::min(problem.qk_head_size, problem.v_head_size);
+  if (common_head_size_bound <= 0) {
     return false;
   }
 
-  return FusedMHARunnerFP16v2::IsSupported(
-             sm, problem.qk_head_size, 1,
-             kernel_options.UseTrtFlashAttention()) ||
-         FusedMHARunnerFP16v2::IsSupported(
-             sm, problem.qk_head_size, problem.sequence_length,
-             kernel_options.UseTrtFlashAttention());
+  return onnxruntime::flash::is_any_supported_head_size<MLFloat16>(
+      device_prop, static_cast<size_t>(common_head_size_bound),
+      static_cast<size_t>(problem.num_heads),
+      static_cast<size_t>(problem.num_heads));
 }
+#endif
 
 std::optional<PackedAttentionWorkspaceAggregate> EstimatePa(
     const PackedAttentionWorkspaceEstimateConfig& config,
@@ -200,8 +233,17 @@ std::optional<PackedAttentionWorkspaceAggregate> EstimatePa(
   }
 
   const auto routes =
-      GetPackedAttentionFeasibleBackends(problem_result.problem, device_prop, kernel_options);
-  const auto aggregate = GetPackedAttentionWorkspaceAggregate(problem_result.problem, routes);
+      GetPackedAttentionReachableBackendsForBounds(
+          problem_result.problem,
+          HasExactQkvHiddenSizes(config)
+              ? PackedAttentionHeadSizeDomain::Exact
+              : PackedAttentionHeadSizeDomain::UpperBound,
+          device_prop, kernel_options);
+  // A reachable route is intentionally evaluated at the original maximum
+  // geometry. Current QKV, projection, and MEA accumulator formulas are
+  // componentwise monotonic even when route eligibility is not.
+  const auto aggregate =
+      GetPackedAttentionWorkspaceAggregateForBounds(problem_result.problem, routes);
   return aggregate.status.IsOK()
              ? std::optional<PackedAttentionWorkspaceAggregate>{aggregate}
              : std::nullopt;
@@ -265,9 +307,12 @@ std::optional<PackedAttentionWorkspaceAggregate> EstimatePmha(
   }
 
   const auto routes =
-      GetPackedMultiHeadAttentionFeasibleBackends(problem_result.problem, device_prop, kernel_options);
+      GetPackedMultiHeadAttentionReachableBackendsForBounds(
+          problem_result.problem, device_prop, kernel_options);
+  // Keep route recipes at the original maximum geometry; only the
+  // reachability probes use smaller supported head witnesses.
   const auto aggregate =
-      GetPackedMultiHeadAttentionWorkspaceAggregate(problem_result.problem, routes);
+      GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(problem_result.problem, routes);
   return aggregate.status.IsOK()
              ? std::optional<PackedAttentionWorkspaceAggregate>{aggregate}
              : std::nullopt;
@@ -325,8 +370,9 @@ std::optional<PackedAttentionWorkspaceEstimateConfig> ConfigFromNode(const Node&
 
 }  // namespace
 
-PackedAttentionBackendMask GetPackedAttentionFeasibleBackends(
+PackedAttentionBackendMask GetPackedAttentionReachableBackendsForBounds(
     const PackedAttentionProblem& problem,
+    PackedAttentionHeadSizeDomain head_size_domain,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options) {
   const int sm = device_prop.major * 10 + device_prop.minor;
@@ -335,8 +381,9 @@ PackedAttentionBackendMask GetPackedAttentionFeasibleBackends(
       problem.element_size == 2 &&
       kernel_options.UseTrtFusedAttention() &&
       !problem.has_attention_bias &&
-      problem.qk_head_size == problem.v_head_size &&
-      IsTrtRoutePossible(problem, sm, kernel_options);
+      IsTrtRouteReachable(
+          problem.qk_head_size, problem.v_head_size,
+          head_size_domain, problem.sequence_length, sm, kernel_options);
   if (trt_candidate) {
     routes = routes | PackedAttentionBackendMask::Trt;
   }
@@ -349,8 +396,9 @@ PackedAttentionBackendMask GetPackedAttentionFeasibleBackends(
            ? problem.sequence_length >= static_cast<int32_t>(4 * problem.element_size)
            : true) &&
       problem.element_size == 2 &&
-      has_memory_efficient_attention(
-          sm, true, false, problem.qk_head_size, problem.v_head_size);
+      IsMemoryEfficientRouteReachable(
+          problem.qk_head_size, problem.v_head_size,
+          head_size_domain, sm, true);
 #endif
 
   return mea_feasible
@@ -358,7 +406,7 @@ PackedAttentionBackendMask GetPackedAttentionFeasibleBackends(
              : routes;
 }
 
-PackedAttentionBackendMask GetPackedMultiHeadAttentionFeasibleBackends(
+PackedAttentionBackendMask GetPackedMultiHeadAttentionReachableBackendsForBounds(
     const PackedMultiHeadAttentionProblem& problem,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options) {
@@ -372,10 +420,7 @@ PackedAttentionBackendMask GetPackedMultiHeadAttentionFeasibleBackends(
       problem.element_size == 2 &&
       kernel_options.UseFlashAttention() &&
       !problem.has_attention_bias &&
-      problem.qk_head_size == problem.v_head_size &&
-      onnxruntime::flash::is_supported<MLFloat16>(
-          device_prop, static_cast<size_t>(problem.qk_head_size),
-          static_cast<size_t>(problem.num_heads), static_cast<size_t>(problem.num_heads)) &&
+      IsFlashRouteReachableForBounds(problem, device_prop) &&
       (problem.qkv_format != PackedMultiHeadAttentionQkvFormat::Packed ||
        problem.sequence_length >= kernel_options.MinSeqLenForFlashAttentionPackedQkv());
 #endif
@@ -387,8 +432,10 @@ PackedAttentionBackendMask GetPackedMultiHeadAttentionFeasibleBackends(
       problem.element_size == 2 &&
       kernel_options.UseTrtFusedAttention() &&
       !problem.has_attention_bias &&
-      problem.qk_head_size == problem.v_head_size &&
-      IsTrtRoutePossible(problem, sm, kernel_options);
+      IsTrtRouteReachable(
+          problem.qk_head_size, problem.v_head_size,
+          PackedAttentionHeadSizeDomain::UpperBound,
+          problem.sequence_length, sm, kernel_options);
   if (trt_candidate) {
     routes = routes | PackedAttentionBackendMask::Trt;
   }
@@ -402,9 +449,10 @@ PackedAttentionBackendMask GetPackedMultiHeadAttentionFeasibleBackends(
            : true) &&
       (problem.element_size == 2 ||
        problem.sequence_length >= kernel_options.MinSeqLenForEfficientAttentionFp32()) &&
-      has_memory_efficient_attention(
-          sm, problem.element_size == 2, false,
-          problem.qk_head_size, problem.v_head_size);
+      IsMemoryEfficientRouteReachable(
+          problem.qk_head_size, problem.v_head_size,
+          PackedAttentionHeadSizeDomain::UpperBound, sm,
+          problem.element_size == 2);
 #endif
 
   return mea_feasible
